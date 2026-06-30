@@ -1,14 +1,52 @@
+import asyncio
 import unittest
+from unittest.mock import AsyncMock
 
 from sqlalchemy import create_engine, inspect
 
 from app.config import Settings
-from app.database import Base
+from app.database import Base, Department, Direction, User
+from app.repositories.users import assign_interests
 from app.services.ai_service import fallback_project_document
 from app.utils.constants import BADGES, DEPARTMENTS, DEFAULT_POINTS
 
 
+class _ScalarResult:
+    def __init__(self, items: list[object]) -> None:
+        self.items = items
+
+    def all(self) -> list[object]:
+        return self.items
+
+
 class DomainTests(unittest.TestCase):
+    def test_registration_interests_keep_loaded_relationships(self) -> None:
+        department = Department(name="Внутренние связи")
+        direction = Direction(name="Культура", department=department)
+        user = User(
+            telegram_id=1,
+            first_name="Тест",
+            departments=[],
+            directions=[],
+        )
+        session = AsyncMock()
+        session.scalars.side_effect = [
+            _ScalarResult([department]),
+            _ScalarResult([direction]),
+        ]
+
+        asyncio.run(
+            assign_interests(
+                session,
+                user,
+                [department.name],
+                [direction.name],
+            )
+        )
+
+        self.assertIs(user.departments[0].department, department)
+        self.assertIs(user.directions[0].direction, direction)
+
     def test_final_department_structure(self) -> None:
         self.assertEqual(
             DEPARTMENTS["Внутренние связи"],

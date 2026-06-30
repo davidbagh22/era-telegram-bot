@@ -164,6 +164,7 @@ async def register(
         entity_id=user.id,
     )
     await session.flush()
+    await session.refresh(user, attribute_names=["departments", "directions"])
     if user.application_status != ApplicationStatus.APPROVED:
         await notify_admins(
             request.app.state.bot,

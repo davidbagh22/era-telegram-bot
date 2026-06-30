@@ -83,11 +83,11 @@ async def assign_interests(
         )
     ).all()
     user.departments = [
-        UserDepartment(department_id=department.id, status="interested")
+        UserDepartment(department=department, status="interested")
         for department in departments
     ]
     user.directions = [
-        UserDirection(direction_id=direction.id, status="interested")
+        UserDirection(direction=direction, status="interested")
         for direction in directions
     ]
 

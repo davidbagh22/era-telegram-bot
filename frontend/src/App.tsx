@@ -551,7 +551,20 @@ function RegistrationWizard({ session, onComplete }: { session: SessionResponse;
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((current) => ({ ...current, [key]: value }));
   const toggle = (key: "departments" | "directions" | "skills", value: string) => set(key, form[key].includes(value) ? form[key].filter((item) => item !== value) : [...form[key], value]);
   const visibleDirections = form.departments.length === 1 ? form.departments[0] === "Внутренние связи" ? internalDirections : externalDirections : [...internalDirections, ...externalDirections];
-  const canContinue = [Boolean(form.first_name && form.last_name && Number(form.age) >= 14 && form.phone && form.city), Boolean(form.education_work && form.occupation && form.experience), Boolean(form.departments.length && form.directions.length), Boolean(form.skills.length && form.available_time && form.desired_path), Boolean(form.motivation && form.personal_data_consent)][step];
+  const canContinue = [
+    Boolean(form.first_name.trim() && form.last_name.trim() && Number(form.age) >= 14 && form.phone.trim().length >= 7 && form.city.trim()),
+    Boolean(form.education_work.trim() && form.occupation.trim() && form.experience.trim()),
+    Boolean(form.departments.length && form.directions.length),
+    Boolean(form.skills.length && form.available_time && form.desired_path),
+    Boolean(form.motivation.trim().length >= 10 && form.personal_data_consent)
+  ][step];
+
+  const goToStep = (nextStep: number) => {
+    setError(null);
+    (document.activeElement as HTMLElement | null)?.blur();
+    setStep(nextStep);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const submit = async () => {
     setSaving(true); setError(null);
@@ -559,22 +572,35 @@ function RegistrationWizard({ session, onComplete }: { session: SessionResponse;
       await api("/api/registration", { method: "POST", body: JSON.stringify({ ...form, age: Number(form.age) }) });
       haptic.success(); onComplete();
     } catch (requestError) {
-      haptic.error(); setError(requestError instanceof Error ? requestError.message : "Не удалось отправить анкету.");
+      haptic.error();
+      setError(requestError instanceof Error ? requestError.message : "Не удалось отправить анкету.");
+      window.setTimeout(() => document.querySelector(".form-error")?.scrollIntoView({ block: "center", behavior: "smooth" }), 80);
     } finally { setSaving(false); }
   };
 
   return (
     <main className="registration page-shell">
-      <div className="registration-header"><BrandLogo /><span>Регистрация</span></div>
-      <div className="registration-progress">{steps.map((label, index) => <div className={index <= step ? "is-active" : ""} key={label}><span>{index < step ? <Check size={12} /> : index + 1}</span><small>{label}</small></div>)}</div>
-      <section className="registration-card">
-        {step === 0 && <div className="form-stack"><FormIntro icon={<UserRound />} title="Давайте познакомимся" text="Эти данные нужны только для внутренней работы ЭРА." /><div className="field-row"><Field label="Имя"><input value={form.first_name} onChange={(event) => set("first_name", event.target.value)} /></Field><Field label="Фамилия"><input value={form.last_name} onChange={(event) => set("last_name", event.target.value)} /></Field></div><div className="field-row field-row--age"><Field label="Возраст"><input type="number" min="14" max="100" value={form.age} onChange={(event) => set("age", event.target.value)} placeholder="18" /></Field><Field label="Телефон"><input type="tel" value={form.phone} onChange={(event) => set("phone", event.target.value)} placeholder="+374..." /></Field></div><Field label="Город"><input value={form.city} onChange={(event) => set("city", event.target.value)} placeholder="Ереван" /></Field></div>}
-        {step === 1 && <div className="form-stack"><FormIntro icon={<Target />} title="Где Вы сейчас" text="Здесь ценят не идеальное резюме, а желание действовать." /><Field label="Где Вы учитесь или работаете"><input value={form.education_work} onChange={(event) => set("education_work", event.target.value)} placeholder="Университет, школа, компания" /></Field><Field label="Чем Вы занимаетесь"><textarea rows={4} value={form.occupation} onChange={(event) => set("occupation", event.target.value)} placeholder="Расскажите коротко о себе" /></Field><Field label="Опыт участия"><textarea rows={4} value={form.experience} onChange={(event) => set("experience", event.target.value)} placeholder="Проекты, мероприятия, волонтёрство — или отсутствие опыта" /></Field></div>}
+      <div className="registration-header">
+        <BrandLogo />
+        <span>Анкета участника</span>
+      </div>
+      <div className="registration-progress" aria-label={`Шаг ${step + 1} из ${steps.length}: ${steps[step]}`}>
+        <div className="registration-progress__header">
+          <span>Шаг {step + 1} из {steps.length}</span>
+          <strong>{steps[step]}</strong>
+        </div>
+        <div className="registration-progress__track" aria-hidden="true">
+          {steps.map((label, index) => <span className={index <= step ? "is-active" : ""} key={label} />)}
+        </div>
+      </div>
+      <section className="registration-card" key={step}>
+        {step === 0 && <div className="form-stack"><FormIntro icon={<UserRound />} title="Давайте познакомимся" text="Основная информация для Вашего профиля в ЭРА." /><div className="field-row"><Field label="Имя"><input autoComplete="given-name" value={form.first_name} onChange={(event) => set("first_name", event.target.value)} /></Field><Field label="Фамилия"><input autoComplete="family-name" value={form.last_name} onChange={(event) => set("last_name", event.target.value)} /></Field></div><div className="field-row field-row--age"><Field label="Возраст"><input inputMode="numeric" type="number" min="14" max="100" value={form.age} onChange={(event) => set("age", event.target.value)} placeholder="18" /></Field><Field label="Телефон"><input autoComplete="tel" inputMode="tel" type="tel" value={form.phone} onChange={(event) => set("phone", event.target.value)} placeholder="+374..." /></Field></div><Field label="Город"><input autoComplete="address-level2" value={form.city} onChange={(event) => set("city", event.target.value)} placeholder="Ереван" /></Field></div>}
+        {step === 1 && <div className="form-stack"><FormIntro icon={<Target />} title="Где Вы сейчас" text="Не нужно идеальное резюме — расскажите коротко и по делу." /><Field label="Учёба или работа"><input value={form.education_work} onChange={(event) => set("education_work", event.target.value)} placeholder="Университет, школа или компания" /></Field><Field label="Чем Вы занимаетесь"><textarea rows={3} value={form.occupation} onChange={(event) => set("occupation", event.target.value)} placeholder="Расскажите коротко о себе" /></Field><Field label="Опыт участия"><textarea rows={3} value={form.experience} onChange={(event) => set("experience", event.target.value)} placeholder="Проекты, мероприятия, волонтёрство — или пока без опыта" /></Field></div>}
         {step === 2 && <div className="form-stack"><FormIntro icon={<UsersRound />} title="Выберите направление" text="Можно выбрать оба департамента и несколько направлений." /><Field label="Департаменты"><ChoiceGrid values={["Внутренние связи", "Внешние связи"]} selected={form.departments} onToggle={(value) => toggle("departments", value)} multiple /></Field><Field label="Направления"><ChoiceGrid values={visibleDirections} selected={form.directions} onToggle={(value) => toggle("directions", value)} multiple /></Field></div>}
-        {step === 3 && <div className="form-stack"><FormIntro icon={<Sparkles />} title="Ваш потенциал" text="Это поможет предлагать подходящие задачи и возможности." /><Field label="Сколько времени Вы готовы уделять"><ChoiceGrid values={["1–2 часа в неделю", "3–5 часов в неделю", "1 час в день", "Готов активно включаться"]} selected={[form.available_time]} onToggle={(value) => set("available_time", value)} /></Field><Field label="Навыки и интересы"><ChoiceGrid values={skillOptions} selected={form.skills} onToggle={(value) => toggle("skills", value)} multiple /></Field><Field label="Как Вы хотите начать"><select value={form.desired_path} onChange={(event) => set("desired_path", event.target.value)}><option>Просто участником</option><option>Хочу быть активнее</option><option>Хочу помогать команде</option><option>Хочу создавать проекты</option><option>В будущем хочу стать лидером</option></select></Field></div>}
-        {step === 4 && <div className="form-stack"><FormIntro icon={<Check />} title="Последний шаг" text="Расскажите, почему Вам важно быть частью ЭРА." /><Field label="Ваша мотивация"><textarea rows={6} value={form.motivation} onChange={(event) => set("motivation", event.target.value)} placeholder="Одного-двух честных предложений достаточно" /></Field><label className="consent-row"><input type="checkbox" checked={form.personal_data_consent} onChange={(event) => set("personal_data_consent", event.target.checked)} /><span><strong>Согласие на обработку данных</strong><small>Информация используется для регистрации, связи, мероприятий, портфолио и возможностей внутри ЭРА.</small></span></label>{error && <p className="form-error">{error}</p>}</div>}
+        {step === 3 && <div className="form-stack"><FormIntro icon={<Sparkles />} title="Ваш потенциал" text="Ответы помогут предлагать подходящие задачи и возможности." /><Field label="Сколько времени Вы готовы уделять"><ChoiceGrid values={["1–2 часа в неделю", "3–5 часов в неделю", "1 час в день", "Готов активно включаться"]} selected={[form.available_time]} onToggle={(value) => set("available_time", value)} /></Field><Field label="Навыки и интересы"><ChoiceGrid values={skillOptions} selected={form.skills} onToggle={(value) => toggle("skills", value)} multiple /></Field><Field label="Как Вы хотите начать"><select value={form.desired_path} onChange={(event) => set("desired_path", event.target.value)}><option>Просто участником</option><option>Хочу быть активнее</option><option>Хочу помогать команде</option><option>Хочу создавать проекты</option><option>В будущем хочу стать лидером</option></select></Field></div>}
+        {step === 4 && <div className="form-stack"><FormIntro icon={<Check />} title="Почти готово" text="Одного-двух честных предложений будет достаточно." /><Field label="Почему Вам важно быть частью ЭРА"><textarea minLength={10} rows={4} value={form.motivation} onChange={(event) => set("motivation", event.target.value)} placeholder="Напишите не менее 10 символов" /></Field><label className="consent-row"><input type="checkbox" checked={form.personal_data_consent} onChange={(event) => set("personal_data_consent", event.target.checked)} /><span><strong>Согласие на обработку данных</strong><small>Данные нужны для регистрации, связи, мероприятий и Вашего портфолио внутри ЭРА.</small></span></label>{error && <p className="form-error" role="alert">{error}</p>}</div>}
       </section>
-      <div className="registration-actions">{step > 0 && <button className="button button--ghost" onClick={() => setStep((value) => value - 1)}><ArrowLeft size={18} />Назад</button>}<button className="button button--primary" disabled={!canContinue || saving} onClick={() => step < steps.length - 1 ? setStep((value) => value + 1) : void submit()}>{saving ? <><LoaderCircle className="spin" size={18} />Отправляем</> : step < steps.length - 1 ? <>Продолжить<ArrowRight size={18} /></> : <>Отправить анкету<Send size={18} /></>}</button></div>
+      <div className="registration-actions">{step > 0 && <button className="button button--ghost" onClick={() => goToStep(step - 1)}><ArrowLeft size={18} />Назад</button>}<button className="button button--primary" disabled={!canContinue || saving} onClick={() => step < steps.length - 1 ? goToStep(step + 1) : void submit()}>{saving ? <><LoaderCircle className="spin" size={18} />Сохраняем</> : step < steps.length - 1 ? <>Продолжить<ArrowRight size={18} /></> : <>Отправить<Send size={18} /></>}</button></div>
     </main>
   );
 }
