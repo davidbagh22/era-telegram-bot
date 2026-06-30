@@ -1,12 +1,12 @@
 import asyncio
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock, patch
 
 from sqlalchemy import create_engine, inspect
 
 from app.config import Settings
 from app.database import Base, Department, Direction, User
-from app.repositories.users import assign_interests
+from app.repositories.users import assign_interests, create_user_from_registration
 from app.services.ai_service import fallback_project_document
 from app.utils.constants import BADGES, DEPARTMENTS, DEFAULT_POINTS
 
@@ -20,6 +20,67 @@ class _ScalarResult:
 
 
 class DomainTests(unittest.TestCase):
+    def test_registration_creates_loaded_relationship_collections(self) -> None:
+        session = AsyncMock()
+        session.add = Mock()
+        session.scalar.return_value = None
+        data = {
+            "first_name": "Тест",
+            "last_name": "Участник",
+            "age": 20,
+            "phone": "+37400000000",
+            "city": "Ереван",
+            "education_work": "Университет",
+            "occupation": "Студент",
+            "experience": "Нет",
+            "motivation": "Хочу участвовать",
+            "available_time": "1–2 часа в неделю",
+            "desired_path": "Просто участником",
+            "departments": [],
+            "directions": [],
+        }
+
+        with patch(
+            "app.repositories.users.assign_interests", new=AsyncMock()
+        ) as assign:
+            user, created = asyncio.run(
+                create_user_from_registration(
+                    session,
+                    telegram_id=123,
+                    username="test_user",
+                    data=data,
+                )
+            )
+
+        self.assertTrue(created)
+        self.assertEqual(user.departments, [])
+        self.assertEqual(user.directions, [])
+        assign.assert_awaited_once()
+
+    def test_registration_retry_reuses_existing_user(self) -> None:
+        existing = User(
+            telegram_id=123,
+            first_name="Тест",
+            departments=[],
+            directions=[],
+        )
+        session = AsyncMock()
+        session.add = Mock()
+        session.scalar.return_value = existing
+
+        user, created = asyncio.run(
+            create_user_from_registration(
+                session,
+                telegram_id=123,
+                username=None,
+                data={},
+            )
+        )
+
+        self.assertIs(user, existing)
+        self.assertFalse(created)
+        session.add.assert_not_called()
+
     def test_registration_interests_keep_loaded_relationships(self) -> None:
         department = Department(name="Внутренние связи")
         direction = Direction(name="Культура", department=department)

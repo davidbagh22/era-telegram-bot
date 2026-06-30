@@ -288,7 +288,7 @@ async def finish_registration(
 ) -> None:
     await call.answer()
     data = await state.get_data()
-    user = await create_user_from_registration(
+    user, created = await create_user_from_registration(
         session,
         telegram_id=call.from_user.id,
         username=call.from_user.username,
@@ -297,21 +297,23 @@ async def finish_registration(
     if call.from_user.id in settings.admin_ids:
         user.role = Role.ADMIN
         user.application_status = ApplicationStatus.APPROVED
-        await add_points(
+        if created:
+            await add_points(
+                session,
+                user_id=user.id,
+                points=5,
+                reason="Регистрация в боте",
+                approved_by=user.id,
+            )
+    if created:
+        await audit(
             session,
-            user_id=user.id,
-            points=5,
-            reason="Регистрация в боте",
-            approved_by=user.id,
+            actor_id=user.id,
+            action="user.registered",
+            entity_type="user",
+            entity_id=user.id,
+            new_value={"telegram_id": user.telegram_id},
         )
-    await audit(
-        session,
-        actor_id=user.id,
-        action="user.registered",
-        entity_type="user",
-        entity_id=user.id,
-        new_value={"telegram_id": user.telegram_id},
-    )
     await session.flush()
     await state.clear()
     if user.application_status == ApplicationStatus.APPROVED:

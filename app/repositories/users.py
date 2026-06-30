@@ -34,7 +34,11 @@ async def create_user_from_registration(
     telegram_id: int,
     username: str | None,
     data: dict[str, Any],
-) -> User:
+) -> tuple[User, bool]:
+    existing = await get_user_by_telegram_id(session, telegram_id)
+    if existing is not None:
+        return existing, False
+
     user = User(
         telegram_id=telegram_id,
         username=username,
@@ -52,6 +56,8 @@ async def create_user_from_registration(
         desired_path=data["desired_path"],
         personal_data_consent=True,
         is_channel_subscribed=True,
+        departments=[],
+        directions=[],
     )
     session.add(user)
     await session.flush()
@@ -61,7 +67,7 @@ async def create_user_from_registration(
         data.get("departments", []),
         data.get("directions", []),
     )
-    return user
+    return user, True
 
 
 async def assign_interests(
