@@ -31,7 +31,6 @@ async def show_home(message: Message, user: User, settings: Settings) -> None:
             settings.era_channel_url,
             privileged=user.role in PRIVILEGED_ROLES,
             admin=user.role == Role.ADMIN,
-            mini_app_url=settings.effective_base_url or None,
         ),
     )
 

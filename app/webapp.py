@@ -2,14 +2,10 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
 
-from aiogram.types import MenuButtonWebApp, Update, WebAppInfo
+from aiogram.types import BotCommand, MenuButtonDefault, Update
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import router as api_router
 from app.bot import create_bot, create_dispatcher
 from app.config import get_settings
 from app.database.session import create_engine_and_sessionmaker
@@ -18,8 +14,6 @@ from app.services.scheduler_service import create_scheduler
 from app.services.seed_service import seed_reference_data
 
 logger = logging.getLogger(__name__)
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 
 
 @asynccontextmanager
@@ -55,10 +49,17 @@ async def lifespan(app: FastAPI):
                 allowed_updates=dispatcher.resolve_used_update_types(),
                 drop_pending_updates=False,
             )
-            await bot.set_chat_menu_button(
-                menu_button=MenuButtonWebApp(
-                    text="Открыть ЭРА", web_app=WebAppInfo(url=base_url)
-                )
+            await bot.set_chat_menu_button(menu_button=MenuButtonDefault())
+            await bot.set_my_commands(
+                [
+                    BotCommand(command="start", description="Открыть бота ЭРА"),
+                    BotCommand(command="menu", description="Главное меню"),
+                    BotCommand(command="events", description="Мероприятия"),
+                    BotCommand(command="project", description="Создать проект"),
+                    BotCommand(command="departments", description="Департаменты"),
+                    BotCommand(command="rules", description="Правила сообщества"),
+                    BotCommand(command="links", description="Полезные ссылки"),
+                ]
             )
             logger.info("Telegram webhook configured: %s", webhook_url)
         else:
@@ -72,13 +73,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="ERA Mini App API",
+    title="ERA Telegram Bot Service",
     version="1.0.0",
     lifespan=lifespan,
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json",
+    docs_url=None,
+    openapi_url=None,
 )
-app.include_router(api_router)
 
 
 @app.get("/health")
@@ -98,22 +98,3 @@ async def telegram_webhook(
     update = Update.model_validate(payload, context={"bot": request.app.state.bot})
     await request.app.state.dispatcher.feed_update(request.app.state.bot, update)
     return {"ok": True}
-
-
-if (FRONTEND_DIST / "assets").exists():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
-
-
-@app.get("/{path:path}", include_in_schema=False)
-async def frontend(path: str) -> FileResponse:
-    requested = FRONTEND_DIST / path
-    if (
-        path
-        and requested.is_file()
-        and requested.resolve().is_relative_to(FRONTEND_DIST.resolve())
-    ):
-        return FileResponse(requested)
-    index = FRONTEND_DIST / "index.html"
-    if not index.exists():
-        raise HTTPException(status_code=503, detail="Mini App frontend is not built")
-    return FileResponse(index)

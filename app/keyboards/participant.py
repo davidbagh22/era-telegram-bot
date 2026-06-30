@@ -1,24 +1,14 @@
 from collections.abc import Iterable
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def main_menu(
     channel_url: str,
     privileged: bool = False,
     admin: bool = False,
-    mini_app_url: str | None = None,
 ) -> InlineKeyboardMarkup:
     rows = []
-    if mini_app_url:
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="Открыть приложение ЭРА",
-                    web_app=WebAppInfo(url=mini_app_url),
-                )
-            ]
-        )
     rows.extend(
         [
             [InlineKeyboardButton(text="Мой кабинет", callback_data="cabinet:open")],
