@@ -572,6 +572,11 @@ function RegistrationWizard({ session, onComplete }: { session: SessionResponse;
       await api("/api/registration", { method: "POST", body: JSON.stringify({ ...form, age: Number(form.age) }) });
       haptic.success(); onComplete();
     } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.status === 409) {
+        haptic.success();
+        onComplete();
+        return;
+      }
       haptic.error();
       setError(requestError instanceof Error ? requestError.message : "Не удалось отправить анкету.");
       window.setTimeout(() => document.querySelector(".form-error")?.scrollIntoView({ block: "center", behavior: "smooth" }), 80);
