@@ -1,0 +1,70 @@
+services:
+  - type: web
+    name: era-telegram-bot
+    runtime: docker
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeployTrigger: commit
+    healthCheckPath: /health
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      - key: DEV_AUTH_ENABLED
+        value: "false"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: era-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: era-redis
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.5
+      - key: ERA_CHANNEL_ID
+        sync: false
+      - key: ERA_CHANNEL_URL
+        value: https://t.me/+kFak7gRKoA8xYTc6
+      - key: ERA_PRO_CHANNEL_URL
+        value: https://t.me/+WSagiElAvEsxMTI6
+      - key: GENERAL_CHAT_ID
+        sync: false
+      - key: GENERAL_CHAT_URL
+        value: https://t.me/+Q6MzTrnR21dmZjgy
+      - key: INTERNAL_DEPARTMENT_CHAT_ID
+        sync: false
+      - key: INTERNAL_DEPARTMENT_CHAT_URL
+        value: https://t.me/+zV8olVtkdc8yMWVi
+      - key: EXTERNAL_DEPARTMENT_CHAT_ID
+        sync: false
+      - key: EXTERNAL_DEPARTMENT_CHAT_URL
+        value: https://t.me/+PsEYN685g1w5ZmEy
+      - key: LEADERS_CHAT_ID
+        sync: false
+      - key: LEADERS_CHAT_URL
+        value: https://t.me/+V3OkO1PNwmhiY2Ni
+      - key: ADMIN_IDS
+        value: "1593868942"
+      - key: TIMEZONE
+        value: Asia/Yerevan
+      - key: LOG_LEVEL
+        value: INFO
+
+  - type: keyvalue
+    name: era-redis
+    region: frankfurt
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+    persistenceMode: snapshot
+
+databases:
+  - name: era-postgres
+    region: frankfurt
+    databaseName: era
+    user: era
