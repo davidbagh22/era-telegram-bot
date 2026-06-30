@@ -29,7 +29,9 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection, target_metadata=target_metadata, compare_type=True
+    )
     with context.begin_transaction():
         context.run_migrations()
 
@@ -51,4 +53,3 @@ else:
     import asyncio
 
     asyncio.run(run_async_migrations())
-

@@ -1,3 +1,4 @@
+import hashlib
 from functools import lru_cache
 from typing import Annotated
 
@@ -74,6 +75,12 @@ class Settings(BaseSettings):
         if self.render_external_hostname:
             return f"https://{self.render_external_hostname}".rstrip("/")
         return ""
+
+    @property
+    def effective_webhook_secret(self) -> str:
+        if not self.webhook_secret:
+            return ""
+        return hashlib.sha256(self.webhook_secret.encode()).hexdigest()
 
 
 @lru_cache

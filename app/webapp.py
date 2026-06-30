@@ -45,25 +45,24 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     app.state.scheduler = scheduler
 
-    base_url = settings.effective_base_url
-    if base_url:
-        webhook_url = f"{base_url}/telegram/webhook"
-        await bot.set_webhook(
-            webhook_url,
-            secret_token=settings.webhook_secret or None,
-            allowed_updates=dispatcher.resolve_used_update_types(),
-            drop_pending_updates=False,
-        )
-        await bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(
-                text="Открыть ЭРА", web_app=WebAppInfo(url=base_url)
-            )
-        )
-        logger.info("Telegram webhook configured: %s", webhook_url)
-    else:
-        logger.warning("PUBLIC_BASE_URL is not set; Telegram webhook is disabled")
-
     try:
+        base_url = settings.effective_base_url
+        if base_url:
+            webhook_url = f"{base_url}/telegram/webhook"
+            await bot.set_webhook(
+                webhook_url,
+                secret_token=settings.effective_webhook_secret or None,
+                allowed_updates=dispatcher.resolve_used_update_types(),
+                drop_pending_updates=False,
+            )
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="Открыть ЭРА", web_app=WebAppInfo(url=base_url)
+                )
+            )
+            logger.info("Telegram webhook configured: %s", webhook_url)
+        else:
+            logger.warning("PUBLIC_BASE_URL is not set; Telegram webhook is disabled")
         yield
     finally:
         scheduler.shutdown(wait=False)
@@ -92,7 +91,7 @@ async def telegram_webhook(
     request: Request,
     secret: str | None = Header(default=None, alias="X-Telegram-Bot-Api-Secret-Token"),
 ) -> dict[str, bool]:
-    expected_secret = request.app.state.settings.webhook_secret
+    expected_secret = request.app.state.settings.effective_webhook_secret
     if expected_secret and secret != expected_secret:
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
     payload = await request.json()

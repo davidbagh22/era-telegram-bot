@@ -61,6 +61,13 @@ class DomainTests(unittest.TestCase):
             "postgresql+asyncpg://era:secret@host/era",
         )
 
+    def test_webhook_secret_is_telegram_safe(self) -> None:
+        settings = Settings(
+            bot_token="test-token-for-settings",
+            webhook_secret="unsafe secret with + / = characters",
+        )
+        self.assertRegex(settings.effective_webhook_secret, r"^[A-Za-z0-9_-]{1,256}$")
+
 
 if __name__ == "__main__":
     unittest.main()
