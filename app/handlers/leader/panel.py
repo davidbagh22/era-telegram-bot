@@ -30,7 +30,16 @@ from app.services.notification_service import notify_admins
 from app.states.event import EventStates
 from app.states.task import BroadcastStates, ProposalStates, ReportStates, TaskStates
 from app.utils import texts
-from app.utils.constants import ApplicationStatus, EventStatus, PRIVILEGED_ROLES, Role
+from app.utils.constants import (
+    ApplicationStatus,
+    EVENT_STATUS_LABELS,
+    EventStatus,
+    PRIVILEGED_ROLES,
+    PROJECT_STATUS_LABELS,
+    STATUS_LABELS,
+    TASK_STATUS_LABELS,
+    Role,
+)
 from app.utils.telegram import send_long_text
 from app.utils.validators import clean_text, parse_date, parse_time
 
@@ -116,7 +125,8 @@ async def leader_participants(
     )
     body = (
         "\n".join(
-            f"• {item.first_name} {item.last_name or ''} — {item.participation_status}"
+            f"• {item.first_name} {item.last_name or ''} — "
+            f"{STATUS_LABELS.get(item.participation_status, 'Статус уточняется')}"
             for item in participants
         )
         or "Участников в Вашем контуре пока нет."
@@ -144,7 +154,10 @@ async def leader_events(
         await session.scalars(query.order_by(Event.event_date.desc()).limit(30))
     ).all()
     body = (
-        "\n".join(f"• #{x.id} {x.title} — {x.status}" for x in events)
+        "\n".join(
+            f"• #{x.id} {x.title} — {EVENT_STATUS_LABELS.get(x.status, 'Статус уточняется')}"
+            for x in events
+        )
         or "Мероприятий пока нет."
     )
     await call.message.answer(body)
@@ -423,7 +436,10 @@ async def leader_projects(
         await session.scalars(query.order_by(Project.created_at.desc()).limit(30))
     ).all()
     body = (
-        "\n".join(f"• #{x.id} {x.title} — {x.status}" for x in projects)
+        "\n".join(
+            f"• #{x.id} {x.title} — {PROJECT_STATUS_LABELS.get(x.status, 'Статус уточняется')}"
+            for x in projects
+        )
         or "Проектов пока нет."
     )
     await call.message.answer(body)
@@ -555,7 +571,10 @@ async def leader_tasks(
         )
     ).all()
     body = (
-        "\n".join(f"• #{x.id} {x.title} — {x.status}" for x in tasks)
+        "\n".join(
+            f"• #{x.id} {x.title} — {TASK_STATUS_LABELS.get(x.status, 'Статус уточняется')}"
+            for x in tasks
+        )
         or "Созданных задач пока нет."
     )
     await call.message.answer(body)

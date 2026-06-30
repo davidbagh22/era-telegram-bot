@@ -16,7 +16,12 @@ from app.keyboards.common import back_keyboard
 from app.keyboards.participant import cabinet_keyboard
 from app.repositories.users import rating, user_stats
 from app.utils import texts
-from app.utils.constants import ApplicationStatus
+from app.utils.constants import (
+    ApplicationStatus,
+    PROJECT_STATUS_LABELS,
+    REGISTRATION_STATUS_LABELS,
+    TASK_STATUS_LABELS,
+)
 from app.utils.telegram import send_long_text
 
 router = Router(name="cabinet")
@@ -187,7 +192,11 @@ async def my_projects(
         )
     ).all()
     body = (
-        "\n".join(f"• {p.title} — {p.status}" for p in projects) or "Проектов пока нет."
+        "\n".join(
+            f"• {p.title} — {PROJECT_STATUS_LABELS.get(p.status, 'Статус уточняется')}"
+            for p in projects
+        )
+        or "Проектов пока нет."
     )
     await call.message.answer(body, reply_markup=back_keyboard("cabinet:open"))
 
@@ -205,7 +214,8 @@ async def my_tasks(
     ).all()
     body = (
         "\n".join(
-            f"• {task.title} — {task.status}, до {task.deadline:%d.%m.%Y}"
+            f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, 'Статус уточняется')}, "
+            f"до {task.deadline:%d.%m.%Y}"
             for task in tasks
         )
         or "Задач пока нет."
@@ -303,7 +313,8 @@ async def my_events(
     lines = []
     for registration, event in rows:
         lines.append(
-            f"• {event.title} — {event.event_date:%d.%m.%Y}, {registration.status}"
+            f"• {event.title} — {event.event_date:%d.%m.%Y}, "
+            f"{REGISTRATION_STATUS_LABELS.get(registration.status, 'Статус уточняется')}"
         )
         if event.selfie_required:
             keyboard_rows.append(

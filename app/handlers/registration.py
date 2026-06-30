@@ -7,14 +7,14 @@ from app.config import Settings
 from app.keyboards.registration import (
     DEPARTMENT_OPTIONS,
     DIRECTION_OPTIONS,
-    SKILL_OPTIONS,
     consent_keyboard,
     department_keyboard,
     desired_path_keyboard,
     directions_keyboard,
-    skills_keyboard,
+    pending_registration_keyboard,
     time_keyboard,
 )
+from app.keyboards.participant import main_menu
 from app.repositories.users import create_user_from_registration
 from app.services.audit_service import audit
 from app.services.notification_service import notify_admins
@@ -22,7 +22,7 @@ from app.services.points_service import add_points
 from app.services.subscription_service import is_channel_member
 from app.states.registration import RegistrationStates
 from app.utils import texts
-from app.utils.constants import ApplicationStatus, Role
+from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
 from app.utils.validators import clean_text, normalize_phone, parse_age
 
 router = Router(name="registration")
@@ -232,33 +232,9 @@ async def available_time(call: CallbackQuery, state: FSMContext) -> None:
     key = call.data.rsplit(":", 1)[-1]
     if key not in TIME_VALUES:
         return
-    await state.update_data(available_time=TIME_VALUES[key], selected_skills=[])
-    await state.set_state(RegistrationStates.skills)
-    await call.message.answer(texts.REG_SKILLS, reply_markup=skills_keyboard())
-
-
-@router.callback_query(RegistrationStates.skills, F.data.startswith("reg:skill:"))
-async def skills(call: CallbackQuery, state: FSMContext) -> None:
-    await call.answer()
-    key = call.data.rsplit(":", 1)[-1]
-    data = await state.get_data()
-    selected = set(data.get("selected_skills", []))
-    if key == "done":
-        if not selected:
-            await call.message.answer(texts.REG_SKILLS_REQUIRED)
-            return
-        await state.update_data(skills=[SKILL_OPTIONS[item] for item in selected])
-        await state.set_state(RegistrationStates.experience)
-        await call.message.answer(texts.REG_EXPERIENCE)
-        return
-    if key not in SKILL_OPTIONS:
-        return
-    if key in selected:
-        selected.remove(key)
-    else:
-        selected.add(key)
-    await state.update_data(selected_skills=list(selected))
-    await call.message.edit_reply_markup(reply_markup=skills_keyboard(selected))
+    await state.update_data(available_time=TIME_VALUES[key], skills=[])
+    await state.set_state(RegistrationStates.experience)
+    await call.message.answer(texts.REG_EXPERIENCE)
 
 
 @router.message(RegistrationStates.experience)
@@ -338,12 +314,21 @@ async def finish_registration(
     )
     await session.flush()
     await state.clear()
-    await call.message.answer(
-        texts.APPLICATION_APPROVED
-        if user.application_status == ApplicationStatus.APPROVED
-        else texts.REG_DONE
-    )
-    if user.application_status != ApplicationStatus.APPROVED:
+    if user.application_status == ApplicationStatus.APPROVED:
+        await call.message.answer(texts.APPLICATION_APPROVED)
+        await call.message.answer(
+            texts.MAIN_MENU,
+            reply_markup=main_menu(
+                settings.era_channel_url,
+                privileged=user.role in PRIVILEGED_ROLES,
+                admin=user.role == Role.ADMIN,
+            ),
+        )
+    else:
+        await call.message.answer(
+            texts.REG_DONE,
+            reply_markup=pending_registration_keyboard(settings.era_channel_url),
+        )
         await notify_admins(
             bot,
             settings,
@@ -351,3 +336,29 @@ async def finish_registration(
             f"Telegram ID: {user.telegram_id}\nГород: {user.city}\n"
             f"Мотивация: {user.motivation}\n\nОткройте /admin для рассмотрения.",
         )
+
+
+@router.callback_query(F.data == "registration:status")
+async def registration_status(
+    call: CallbackQuery,
+    user,
+    settings: Settings,
+) -> None:
+    await call.answer()
+    if user is None:
+        await call.message.answer(texts.WELCOME)
+        return
+    if user.application_status == ApplicationStatus.APPROVED:
+        await call.message.answer(
+            texts.APPLICATION_APPROVED,
+            reply_markup=main_menu(
+                settings.era_channel_url,
+                privileged=user.role in PRIVILEGED_ROLES,
+                admin=user.role == Role.ADMIN,
+            ),
+        )
+        return
+    await call.message.answer(
+        texts.APPLICATION_PENDING,
+        reply_markup=pending_registration_keyboard(settings.era_channel_url),
+    )

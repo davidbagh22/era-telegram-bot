@@ -19,21 +19,6 @@ DIRECTION_OPTIONS = {
     "participate": "Пока хочу просто участвовать",
 }
 
-SKILL_OPTIONS = {
-    "events": "Организация мероприятий",
-    "photo": "Фото / видео",
-    "design": "Дизайн",
-    "texts": "Тексты",
-    "smm": "SMM",
-    "speaking": "Публичные выступления",
-    "volunteering": "Волонтёрство",
-    "communications": "Коммуникации",
-    "international": "Международные проекты",
-    "people": "Работа с людьми",
-    "unsure": "Пока не знаю",
-    "other": "Другое",
-}
-
 
 def department_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -98,17 +83,6 @@ def time_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def skills_keyboard(selected: set[str] | None = None) -> InlineKeyboardMarkup:
-    selected = selected or set()
-    builder = InlineKeyboardBuilder()
-    for key, label in SKILL_OPTIONS.items():
-        mark = "✓ " if key in selected else ""
-        builder.button(text=mark + label, callback_data=f"reg:skill:{key}")
-    builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="Продолжить", callback_data="reg:skill:done"))
-    return builder.as_markup()
-
-
 def desired_path_keyboard() -> InlineKeyboardMarkup:
     values = (
         "Просто участником",
@@ -130,5 +104,19 @@ def consent_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="Согласен", callback_data="reg:consent:yes")],
             [InlineKeyboardButton(text="Не согласен", callback_data="reg:consent:no")],
+        ]
+    )
+
+
+def pending_registration_keyboard(channel_url: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Проверить статус заявки",
+                    callback_data="registration:status",
+                )
+            ],
+            [InlineKeyboardButton(text="Перейти на канал ЭРА", url=channel_url)],
         ]
     )

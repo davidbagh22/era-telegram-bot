@@ -4,31 +4,92 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
-    options = (
-        ("Заявки", "admin:applications"),
-        ("Участники", "admin:participants"),
-        ("Роли и статусы", "admin:roles"),
-        ("Департаменты и направления", "admin:departments"),
-        ("Мероприятия", "admin:events"),
-        ("Селфи на проверке", "admin:attendance"),
-        ("Проекты", "admin:projects"),
-        ("Баллы и знаки", "admin:points"),
-        ("Портфолио участников", "admin:portfolio"),
-        ("Задачи на проверке", "admin:tasks"),
-        ("Предложения лидеров", "admin:proposals"),
-        ("Вопросы пользователей", "admin:questions"),
-        ("Рассылки", "admin:broadcast"),
-        ("Рассылки лидеров", "admin:leader_broadcasts"),
-        ("Отчёты", "admin:reports"),
-        ("Аналитика", "admin:analytics"),
-        ("Настройки", "admin:settings"),
-        ("Главное меню", "menu:main"),
-    )
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=label, callback_data=callback)]
-            for label, callback in options
+            [
+                InlineKeyboardButton(
+                    text="👥 Участники", callback_data="admin:menu:users"
+                ),
+                InlineKeyboardButton(
+                    text="📅 События", callback_data="admin:menu:activity"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💬 Общение", callback_data="admin:menu:communications"
+                ),
+                InlineKeyboardButton(
+                    text="⭐ Развитие", callback_data="admin:menu:growth"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📊 Управление", callback_data="admin:menu:system"
+                ),
+                InlineKeyboardButton(text="🏠 Главное", callback_data="menu:main"),
+            ],
         ]
+    )
+
+
+def _submenu(options: tuple[tuple[str, str], ...]) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=label, callback_data=callback)]
+        for label, callback in options
+    ]
+    rows.append([InlineKeyboardButton(text="Назад", callback_data="admin:panel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_users_keyboard() -> InlineKeyboardMarkup:
+    return _submenu(
+        (
+            ("Новые заявки", "admin:applications"),
+            ("Все участники", "admin:participants"),
+            ("Роли и статусы", "admin:roles"),
+            ("Департаменты", "admin:departments"),
+        )
+    )
+
+
+def admin_activity_keyboard() -> InlineKeyboardMarkup:
+    return _submenu(
+        (
+            ("Мероприятия", "admin:events"),
+            ("Селфи на проверке", "admin:attendance"),
+            ("Проекты", "admin:projects"),
+            ("Задачи на проверке", "admin:tasks"),
+            ("Отчёты", "admin:reports"),
+        )
+    )
+
+
+def admin_communications_keyboard() -> InlineKeyboardMarkup:
+    return _submenu(
+        (
+            ("Вопросы пользователей", "admin:questions"),
+            ("Рассылка участникам", "admin:broadcast"),
+            ("Рассылки лидеров", "admin:leader_broadcasts"),
+        )
+    )
+
+
+def admin_growth_keyboard() -> InlineKeyboardMarkup:
+    return _submenu(
+        (
+            ("Баллы и знаки", "admin:points"),
+            ("Портфолио участников", "admin:portfolio"),
+            ("Предложения лидеров", "admin:proposals"),
+        )
+    )
+
+
+def admin_system_keyboard() -> InlineKeyboardMarkup:
+    return _submenu(
+        (
+            ("Аналитика", "admin:analytics"),
+            ("Настройки", "admin:settings"),
+        )
     )
 
 

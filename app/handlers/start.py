@@ -5,6 +5,7 @@ from app.config import Settings
 from app.database.models import User
 from app.keyboards.common import registration_keyboard, subscription_keyboard
 from app.keyboards.participant import main_menu
+from app.keyboards.registration import pending_registration_keyboard
 from app.services.subscription_service import is_channel_member
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
@@ -17,13 +18,19 @@ async def show_home(message: Message, user: User, settings: Settings) -> None:
         await message.answer(texts.BLOCKED)
         return
     if user.application_status == ApplicationStatus.PENDING:
-        await message.answer(texts.APPLICATION_PENDING)
+        await message.answer(
+            texts.APPLICATION_PENDING,
+            reply_markup=pending_registration_keyboard(settings.era_channel_url),
+        )
         return
     if user.application_status == ApplicationStatus.REJECTED:
         await message.answer(texts.APPLICATION_REJECTED)
         return
     if user.application_status == ApplicationStatus.NEEDS_INFO:
-        await message.answer(texts.APPLICATION_PENDING)
+        await message.answer(
+            texts.APPLICATION_PENDING,
+            reply_markup=pending_registration_keyboard(settings.era_channel_url),
+        )
         return
     await message.answer(
         texts.MAIN_MENU,

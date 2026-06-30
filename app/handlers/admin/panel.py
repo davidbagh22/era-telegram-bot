@@ -34,11 +34,17 @@ from app.database.models import (
     UserQuestion,
 )
 from app.keyboards.admin import (
+    admin_activity_keyboard,
+    admin_communications_keyboard,
+    admin_growth_keyboard,
     admin_panel_keyboard,
+    admin_system_keyboard,
+    admin_users_keyboard,
     application_actions,
     applications_keyboard,
     entity_actions,
 )
+from app.keyboards.participant import main_menu
 from app.services.audit_service import audit
 from app.services.notification_service import broadcast, safe_send
 from app.services.points_service import add_points, add_portfolio_item
@@ -49,7 +55,10 @@ from app.utils.constants import (
     EventStatus,
     ParticipationStatus,
     ProjectStatus,
+    REPORT_STATUS_LABELS,
+    REPORT_TYPE_LABELS,
     RegistrationStatus,
+    ROLE_LABELS,
     Role,
 )
 from app.utils.telegram import send_long_text
@@ -96,7 +105,29 @@ async def admin_panel(
 ) -> None:
     if not await _guard(call, user, settings):
         return
-    await call.message.answer(texts.ADMIN_PANEL, reply_markup=admin_panel_keyboard())
+    await call.message.edit_text(texts.ADMIN_PANEL, reply_markup=admin_panel_keyboard())
+
+
+@router.callback_query(F.data.startswith("admin:menu:"))
+async def admin_submenu(
+    call: CallbackQuery, user: User | None, settings: Settings
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+    menus = {
+        "users": ("Участники и заявки", admin_users_keyboard()),
+        "activity": ("События и проекты", admin_activity_keyboard()),
+        "communications": ("Общение и рассылки", admin_communications_keyboard()),
+        "growth": ("Баллы и развитие", admin_growth_keyboard()),
+        "system": ("Аналитика и настройки", admin_system_keyboard()),
+    }
+    key = call.data.rsplit(":", 1)[-1]
+    item = menus.get(key)
+    if item is None:
+        await call.message.answer("Раздел не найден.")
+        return
+    title, keyboard = item
+    await call.message.edit_text(title, reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "admin:applications")
@@ -147,7 +178,6 @@ async def application_detail(
 Департаменты: {departments}
 Направления: {directions}
 Время: {target.available_time or "—"}
-Навыки: {", ".join(target.skills)}
 Опыт: {target.experience or "—"}
 Путь: {target.desired_path or "—"}
 Мотивация: {target.motivation or "—"}"""
@@ -190,7 +220,12 @@ async def approve_user(
         new_value={"application_status": target.application_status},
     )
     await call.message.answer("Заявка одобрена.")
-    await safe_send(bot, target.telegram_id, texts.APPLICATION_APPROVED)
+    await safe_send(
+        bot,
+        target.telegram_id,
+        texts.APPLICATION_APPROVED,
+        main_menu(settings.era_channel_url),
+    )
 
 
 async def _start_user_review(
@@ -902,7 +937,8 @@ async def participants(
         )
     ).all()
     body = "\n".join(
-        f"• {x.first_name} {x.last_name or ''} — {x.role}, {x.telegram_id}"
+        f"• {x.first_name} {x.last_name or ''} — "
+        f"{ROLE_LABELS.get(x.role, 'Роль уточняется')}, {x.telegram_id}"
         for x in users
     )
     await send_long_text(call.message, body or "Участников пока нет.")
@@ -947,7 +983,11 @@ async def reports(
         )
     ).all()
     body = (
-        "\n".join(f"• #{x.id} {x.report_type} — {x.status}" for x in items)
+        "\n".join(
+            f"• #{x.id} {REPORT_TYPE_LABELS.get(x.report_type, 'Отчёт')} — "
+            f"{REPORT_STATUS_LABELS.get(x.status, 'Статус уточняется')}"
+            for x in items
+        )
         or "Отчётов пока нет."
     )
     await call.message.answer(body)

@@ -12,7 +12,6 @@ class RegistrationStates(StatesGroup):
     department = State()
     directions = State()
     available_time = State()
-    skills = State()
     experience = State()
     desired_path = State()
     motivation = State()

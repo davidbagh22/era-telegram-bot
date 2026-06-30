@@ -80,6 +80,65 @@ STATUS_LABELS = {
     ParticipationStatus.COMMUNITY_LEADER: "Лидер сообщества",
 }
 
+APPLICATION_STATUS_LABELS = {
+    ApplicationStatus.PENDING: "На рассмотрении",
+    ApplicationStatus.APPROVED: "Одобрена",
+    ApplicationStatus.REJECTED: "Не одобрена",
+    ApplicationStatus.NEEDS_INFO: "Нужна дополнительная информация",
+}
+
+EVENT_STATUS_LABELS = {
+    EventStatus.DRAFT: "Черновик",
+    EventStatus.PENDING_APPROVAL: "На согласовании",
+    EventStatus.APPROVED: "Одобрено",
+    EventStatus.PUBLISHED: "Опубликовано",
+    EventStatus.COMPLETED: "Завершено",
+    EventStatus.REPORT_SUBMITTED: "Отчёт отправлен",
+    EventStatus.CANCELLED: "Отменено",
+}
+
+REGISTRATION_STATUS_LABELS = {
+    RegistrationStatus.REGISTERED: "Зарегистрирован",
+    RegistrationStatus.WILL_COME: "Подтвердил участие",
+    RegistrationStatus.NOT_COMING: "Не сможет прийти",
+    RegistrationStatus.ATTENDED: "Посетил",
+    RegistrationStatus.NO_SHOW: "Не пришёл",
+    RegistrationStatus.CANCELLED: "Регистрация отменена",
+}
+
+PROJECT_STATUS_LABELS = {
+    ProjectStatus.DRAFT: "Черновик",
+    ProjectStatus.PENDING_REVIEW: "На рассмотрении",
+    ProjectStatus.NEEDS_REVISION: "Нужна доработка",
+    ProjectStatus.APPROVED: "Одобрен",
+    ProjectStatus.IN_PROGRESS: "В работе",
+    ProjectStatus.COMPLETED: "Завершён",
+    ProjectStatus.REJECTED: "Не одобрен",
+}
+
+TASK_STATUS_LABELS = {
+    TaskStatus.NEW: "Новая",
+    TaskStatus.IN_PROGRESS: "В работе",
+    TaskStatus.REVIEW: "На проверке",
+    TaskStatus.COMPLETED: "Выполнена",
+    TaskStatus.OVERDUE: "Просрочена",
+    TaskStatus.CANCELLED: "Отменена",
+}
+
+REPORT_TYPE_LABELS = {
+    "event": "Отчёт по мероприятию",
+    "monthly": "Месячный отчёт лидера",
+}
+
+REPORT_STATUS_LABELS = {
+    "draft": "Черновик",
+    "pending": "На рассмотрении",
+    "submitted": "На рассмотрении",
+    "approved": "Принят",
+    "needs_revision": "Нужна доработка",
+    "rejected": "Не принят",
+}
+
 DEPARTMENTS = {
     "Внутренние связи": ("Лидерство", "Культура", "Интерактив"),
     "Внешние связи": (
