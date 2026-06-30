@@ -399,7 +399,125 @@ function ProjectsScreen({ showToast }: { showToast: (text: string) => void }) {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [wizard, setWizard] = useState(false);
-  const [selected, setSelected] = useSta…4102 tokens truncated…er.city || "Не указан"}</strong></div><div><span>Учёба / работа</span><strong>{user.education_work || "Не указано"}</strong></div></section><SectionHeader title="Мои направления" />{departments?.items.map((department) => <article className={department.selected ? "department-card is-selected" : "department-card"} key={department.name}><div><strong>{department.name}</strong><p>{department.directions.join(" · ")}</p></div>{department.selected && <span><Check size={14} />Выбрано</span>}</article>)}{user.is_admin && admin && <><SectionHeader title="Управление ЭРА" /><section className="admin-card"><div className="admin-card__head"><span><ShieldCheck size={20} /></span><div><strong>Панель администратора</strong><small>Сводка системы</small></div></div><div className="admin-metrics"><div><strong>{admin.participants}</strong><span>Участников</span></div><div><strong>{admin.pending_applications}</strong><span>Заявок</span></div><div><strong>{admin.pending_projects}</strong><span>Проектов</span></div><div><strong>{admin.upcoming_events}</strong><span>Событий</span></div></div><p>Решения по заявкам, ролям и баллам пока доступны через панель администратора в боте.</p></section></>}<button className="support-button" onClick={() => setQuestion(true)}><span><MessageCircle size={21} /></span><div><strong>Задать вопрос команде</strong><small>Ответ придёт через бот ЭРА</small></div><ChevronRight size={18} /></button><button className="refresh-link" onClick={refreshSession}>Обновить данные кабинета</button></div>}
+  const [selected, setSelected] = useState<ProjectItem | null>(null);
+
+  const loadProjects = useCallback(() => {
+    setLoading(true);
+    api<ProjectItem[]>("/api/projects").then(setProjects).finally(() => setLoading(false));
+  }, []);
+  useEffect(loadProjects, [loadProjects]);
+
+  return (
+    <div className="screen">
+      <PageTitle eyebrow="От идеи к результату" title="Мои проекты" text="ИИ-конструктор поможет превратить идею в понятный проектный документ." />
+      <button className="create-project-card" onClick={() => setWizard(true)}><span><Sparkles size={25} /></span><div><strong>Создать проект с ИИ</strong><small>Пошагово соберите идею, аудиторию, программу и результат</small></div><Plus size={22} /></button>
+      <SectionHeader title="Ваши проекты" />
+      {loading ? <CardSkeleton /> : projects.length ? (
+        <div className="project-list">
+          {projects.map((project) => (
+            <button className="project-card" key={project.id} onClick={() => setSelected(project)}>
+              <div className="project-card__icon"><FolderKanban size={20} /></div>
+              <div><span className={`status-tag status-tag--${project.status}`}>{projectStatusLabels[project.status] || project.status}</span><h3>{project.title}</h3><p>{project.description}</p></div>
+              <ChevronRight size={18} />
+            </button>
+          ))}
+        </div>
+      ) : <EmptyState icon={<FolderKanban />} title="Первый проект начинается с идеи" text="Не нужно писать идеально. Конструктор поможет собрать сильную структуру." action={<button className="button button--soft" onClick={() => setWizard(true)}>Начать проект</button>} />}
+      {wizard && <ProjectWizard onClose={() => setWizard(false)} onCreated={(project) => { setWizard(false); loadProjects(); showToast("Проект сохранён"); setSelected(project); }} />}
+      {selected && <ProjectDetails project={selected} onClose={() => setSelected(null)} onSubmitted={() => { setSelected(null); loadProjects(); showToast("Проект отправлен на рассмотрение"); }} />}
+    </div>
+  );
+}
+
+function ProjectWizard({ onClose, onCreated }: { onClose: () => void; onCreated: (project: ProjectItem) => void }) {
+  const [step, setStep] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    idea: "", department: "Внутренние связи", direction: "Лидерство", target_audience: "",
+    relevance: "", goal: "", format: "Встреча", program: "", resources: "", team: "",
+    expected_result: "", needs_from_era: "", use_ai: true
+  });
+  const steps = ["Идея", "Для кого", "Как устроено", "Результат"];
+  const set = (key: keyof typeof form, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
+  const directions = form.department === "Внутренние связи" ? internalDirections : externalDirections;
+
+  const canContinue = useMemo(() => {
+    if (step === 0) return form.idea.trim().length >= 3;
+    if (step === 1) return form.target_audience.trim() && form.relevance.trim() && form.goal.trim();
+    if (step === 2) return form.program.trim() && form.resources.trim() && form.team.trim();
+    return form.expected_result.trim() && form.needs_from_era.trim();
+  }, [form, step]);
+
+  const submit = async () => {
+    setSaving(true); setError(null);
+    try {
+      const result = await api<{ id: number; title: string; status: string; document: string }>("/api/projects", { method: "POST", body: JSON.stringify(form) });
+      haptic.success();
+      onCreated({ id: result.id, title: result.title, status: result.status, document: result.document, description: form.idea, created_at: new Date().toISOString() });
+    } catch (requestError) {
+      haptic.error();
+      setError(requestError instanceof Error ? requestError.message : "Не удалось создать проект.");
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal title="Проектный конструктор" onClose={onClose} full>
+      <div className="wizard-progress">{steps.map((label, index) => <div key={label} className={index <= step ? "is-active" : ""}><span>{index < step ? <Check size={13} /> : index + 1}</span><small>{label}</small></div>)}</div>
+      {step === 0 && <div className="form-stack"><FormIntro icon={<Sparkles />} title="Начнём с идеи" text="Объясните простыми словами, что Вы хотите создать. ИИ поможет оформить структуру." /><Field label="Идея проекта"><textarea rows={5} value={form.idea} onChange={(event) => set("idea", event.target.value)} placeholder="Например: провести культурный квест для новых участников ЭРА" /></Field><Field label="Департамент"><ChoiceGrid values={["Внутренние связи", "Внешние связи"]} selected={[form.department]} onToggle={(value) => { set("department", value); set("direction", value === "Внутренние связи" ? "Лидерство" : "Медиа"); }} /></Field><Field label="Направление"><ChoiceGrid values={directions} selected={[form.direction]} onToggle={(value) => set("direction", value)} /></Field></div>}
+      {step === 1 && <div className="form-stack"><FormIntro icon={<UsersRound />} title="Определим смысл" text="Сильный проект понимает, для кого он создан и какую потребность закрывает." /><Field label="Целевая аудитория"><input value={form.target_audience} onChange={(event) => set("target_audience", event.target.value)} placeholder="Новые участники, студенты, команда ЭРА" /></Field><Field label="Почему проект нужен"><textarea rows={4} value={form.relevance} onChange={(event) => set("relevance", event.target.value)} placeholder="Какую проблему или потребность решает проект?" /></Field><Field label="Цель"><textarea rows={3} value={form.goal} onChange={(event) => set("goal", event.target.value)} placeholder="Что должно измениться после проекта?" /></Field></div>}
+      {step === 2 && <div className="form-stack"><FormIntro icon={<BriefcaseBusiness />} title="Соберём реализацию" text="Теперь превратим идею в последовательность действий." /><Field label="Формат"><ChoiceGrid values={["Встреча", "Мастер-класс", "Игра", "Квест", "Дебаты", "Медиа-проект", "Волонтёрская акция", "Форум"]} selected={[form.format]} onToggle={(value) => set("format", value)} /></Field><Field label="Программа"><textarea rows={4} value={form.program} onChange={(event) => set("program", event.target.value)} placeholder="Открытие, основная часть, интерактив, финал" /></Field><Field label="Ресурсы"><textarea rows={3} value={form.resources} onChange={(event) => set("resources", event.target.value)} placeholder="Площадка, техника, материалы, партнёры" /></Field><Field label="Команда"><textarea rows={3} value={form.team} onChange={(event) => set("team", event.target.value)} placeholder="Координатор, ведущий, дизайнер, волонтёры" /></Field></div>}
+      {step === 3 && <div className="form-stack"><FormIntro icon={<Target />} title="Зафиксируем результат" text="Результат должен быть понятным и измеримым." /><Field label="Ожидаемый результат"><textarea rows={4} value={form.expected_result} onChange={(event) => set("expected_result", event.target.value)} placeholder="Например: 30 участников, новая команда, фотоотчёт" /></Field><Field label="Какая поддержка нужна от ЭРА"><textarea rows={4} value={form.needs_from_era} onChange={(event) => set("needs_from_era", event.target.value)} placeholder="Команда, площадка, медиа, партнёры" /></Field><label className="toggle-row"><span><strong>Усилить проект с ИИ</strong><small>ИИ оформит ответы в полноценный документ</small></span><input type="checkbox" checked={form.use_ai} onChange={(event) => set("use_ai", event.target.checked)} /></label>{error && <p className="form-error">{error}</p>}</div>}
+      <div className="modal-actions">{step > 0 && <button className="button button--ghost" onClick={() => setStep((current) => current - 1)}><ArrowLeft size={18} />Назад</button>}<button className="button button--primary" disabled={!canContinue || saving} onClick={() => step < steps.length - 1 ? setStep((current) => current + 1) : void submit()}>{saving ? <><LoaderCircle className="spin" size={18} />Формируем проект</> : step < steps.length - 1 ? <>Продолжить<ArrowRight size={18} /></> : <><Sparkles size={18} />Создать проект</>}</button></div>
+    </Modal>
+  );
+}
+
+function ProjectDetails({ project, onClose, onSubmitted }: { project: ProjectItem; onClose: () => void; onSubmitted: () => void }) {
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async () => {
+    setSending(true); setError(null);
+    try { await api(`/api/projects/${project.id}/submit`, { method: "POST" }); haptic.success(); onSubmitted(); }
+    catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Не удалось отправить проект."); }
+    finally { setSending(false); }
+  };
+  return <Modal title={project.title} onClose={onClose} full><span className={`status-tag status-tag--${project.status}`}>{projectStatusLabels[project.status] || project.status}</span><div className="project-document">{project.document || project.description}</div>{error && <p className="form-error">{error}</p>}{["draft", "needs_revision"].includes(project.status) && <div className="modal-actions"><button className="button button--primary" onClick={submit} disabled={sending}>{sending ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}Отправить на рассмотрение</button></div>}</Modal>;
+}
+
+function ProfileScreen({ user, showToast, refreshSession }: { user: EraUser; showToast: (text: string) => void; refreshSession: () => void }) {
+  const [section, setSection] = useState<"overview" | "portfolio" | "rating" | "tasks">("overview");
+  const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
+  const [rating, setRating] = useState<RatingItem[]>([]);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [departments, setDepartments] = useState<{ items: Array<{ name: string; directions: string[]; selected: boolean }>; selected_directions: string[] } | null>(null);
+  const [admin, setAdmin] = useState<Record<string, number> | null>(null);
+  const [question, setQuestion] = useState(false);
+
+  useEffect(() => {
+    void Promise.all([
+      api<PortfolioItem[]>("/api/portfolio").then(setPortfolio),
+      api<{ items: RatingItem[] }>("/api/rating").then((value) => setRating(value.items)),
+      api<TaskItem[]>("/api/tasks").then(setTasks),
+      api<typeof departments>("/api/departments").then(setDepartments)
+    ]);
+    if (user.is_admin) void api<Record<string, number>>("/api/admin/summary").then(setAdmin);
+  }, [user.is_admin]);
+
+  const updateTask = async (task: TaskItem) => {
+    const next = task.status === "new" ? "in_progress" : "review";
+    try {
+      await api(`/api/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify({ status: next }) });
+      setTasks((items) => items.map((item) => item.id === task.id ? { ...item, status: next } : item));
+      showToast(next === "review" ? "Задача отправлена на проверку" : "Задача начата");
+    } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось изменить задачу"); }
+  };
+
+  return (
+    <div className="screen">
+      <section className="profile-hero"><div className="profile-avatar">{user.first_name[0]}</div><div><p>{user.role_label}</p><h1>{user.first_name} {user.last_name}</h1><span>{user.status_label}</span></div></section>
+      <div className="profile-tabs"><button className={section === "overview" ? "is-active" : ""} onClick={() => setSection("overview")}>Обзор</button><button className={section === "portfolio" ? "is-active" : ""} onClick={() => setSection("portfolio")}>Портфолио</button><button className={section === "rating" ? "is-active" : ""} onClick={() => setSection("rating")}>Рейтинг</button><button className={section === "tasks" ? "is-active" : ""} onClick={() => setSection("tasks")}>Задачи</button></div>
+      {section === "overview" && <div className="profile-section"><section className="identity-card"><div><span>Статус участия</span><strong>{user.status_label}</strong></div><div><span>Город</span><strong>{user.city || "Не указан"}</strong></div><div><span>Учёба / работа</span><strong>{user.education_work || "Не указано"}</strong></div></section><SectionHeader title="Мои направления" />{departments?.items.map((department) => <article className={department.selected ? "department-card is-selected" : "department-card"} key={department.name}><div><strong>{department.name}</strong><p>{department.directions.join(" · ")}</p></div>{department.selected && <span><Check size={14} />Выбрано</span>}</article>)}{user.is_admin && admin && <><SectionHeader title="Управление ЭРА" /><section className="admin-card"><div className="admin-card__head"><span><ShieldCheck size={20} /></span><div><strong>Панель администратора</strong><small>Сводка системы</small></div></div><div className="admin-metrics"><div><strong>{admin.participants}</strong><span>Участников</span></div><div><strong>{admin.pending_applications}</strong><span>Заявок</span></div><div><strong>{admin.pending_projects}</strong><span>Проектов</span></div><div><strong>{admin.upcoming_events}</strong><span>Событий</span></div></div><p>Решения по заявкам, ролям и баллам пока доступны через панель администратора в боте.</p></section></>}<button className="support-button" onClick={() => setQuestion(true)}><span><MessageCircle size={21} /></span><div><strong>Задать вопрос команде</strong><small>Ответ придёт через бот ЭРА</small></div><ChevronRight size={18} /></button><button className="refresh-link" onClick={refreshSession}>Обновить данные кабинета</button></div>}
       {section === "portfolio" && <div className="profile-section"><div className="portfolio-intro"><Award size={24} /><div><strong>Ваша история роста</strong><p>Здесь собираются проекты, мероприятия, задачи и достижения.</p></div></div>{portfolio.length ? portfolio.map((item) => <article className="portfolio-card" key={item.id}><span><Award size={18} /></span><div><strong>{item.title}</strong><small>{item.description || item.type}</small></div></article>) : <EmptyState icon={<Award />} title="Портфолио пока пустое" text="Оно начнёт заполняться после участия в мероприятиях, задачах и проектах." />}</div>}
       {section === "rating" && <div className="profile-section"><div className="rating-banner"><Trophy size={26} /><div><strong>Рейтинг вклада</strong><p>Не соревнование ради цифр, а отражение движения и ответственности.</p></div></div><div className="rating-list">{rating.map((item) => <article className={item.is_current_user ? "rating-row is-current" : "rating-row"} key={item.place}><span className="rating-place">{item.place <= 3 ? ["I", "II", "III"][item.place - 1] : item.place}</span><div className="rating-avatar">{item.name[0]}</div><strong>{item.name}</strong><b>{item.points}</b></article>)}</div></div>}
       {section === "tasks" && <div className="profile-section">{tasks.length ? tasks.map((task) => <article className="task-card" key={task.id}><div className="task-card__head"><span><ListTodo size={18} /></span><div><strong>{task.title}</strong><small>{taskStatusLabels[task.status] || task.status}</small></div><b>+{task.points}</b></div><p>{task.description}</p><div className="task-card__footer"><span><Clock3 size={14} />{formatDateTime(task.deadline)}</span>{["new", "in_progress"].includes(task.status) && <button onClick={() => updateTask(task)}>{task.status === "new" ? "Начать" : "На проверку"}<ArrowRight size={14} /></button>}</div></article>) : <EmptyState icon={<ListTodo />} title="Активных задач нет" text="Когда лидер назначит задачу, она появится здесь." />}</div>}

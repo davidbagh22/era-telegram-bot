@@ -554,7 +554,464 @@ async def review_comment(
                     await safe_send(
                         bot,
                         owner.telegram_id,
-                        f"Решение по меропр…3888 tokens truncated…n    await state.set_state(AdminBroadcastStates.text)
+                        f"Решение по мероприятию «{entity.title}»: {action}. Комментарий: {comment}",
+                    )
+    await audit(
+        session,
+        actor_id=user.id if user else None,
+        action=f"{kind}.{action}",
+        entity_type=kind,
+        entity_id=entity_id,
+        new_value={"comment": comment},
+    )
+    await state.clear()
+    await message.answer("Решение сохранено и отправлено.")
+
+
+@router.callback_query(F.data == "admin:questions")
+async def questions(
+    call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+    items = (
+        await session.scalars(
+            select(UserQuestion)
+            .where(UserQuestion.status == "new")
+            .order_by(UserQuestion.created_at)
+        )
+    ).all()
+    if not items:
+        await call.message.answer("Новых вопросов нет.")
+        return
+    for question in items:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Ответить", callback_data=f"admin:answer:{question.id}"
+                    )
+                ]
+            ]
+        )
+        await call.message.answer(
+            f"Вопрос #{question.id}\n\n{question.text}", reply_markup=keyboard
+        )
+
+
+@router.callback_query(F.data.startswith("admin:answer:"))
+async def answer_start(
+    call: CallbackQuery,
+    state: FSMContext,
+    user: User | None,
+    settings: Settings,
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+    await state.set_state(AdminAnswerStates.answer)
+    await state.update_data(question_id=int(call.data.rsplit(":", 1)[-1]))
+    await call.message.answer("Напишите ответ участнику.")
+
+
+@router.message(AdminAnswerStates.answer)
+async def answer_finish(
+    message: Message,
+    state: FSMContext,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+    bot: Bot,
+) -> None:
+    if not await _guard(message, user, settings):
+        return
+    answer = clean_text(message.text or "", 3000)
+    if not answer:
+        await message.answer(texts.INVALID_INPUT)
+        return
+    question = await session.get(UserQuestion, (await state.get_data())["question_id"])
+    if question:
+        question.admin_answer = answer
+        question.answered_by = user.id if user else None
+        question.status = "answered"
+        target = await session.get(User, question.user_id)
+        if target:
+            await safe_send(
+                bot, target.telegram_id, texts.QUESTION_ANSWER.format(answer=answer)
+            )
+    await state.clear()
+    await message.answer("Ответ отправлен.")
+
+
+@router.callback_query(F.data == "admin:portfolio")
+async def portfolio_help(
+    call: CallbackQuery, user: User | None, settings: Settings
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+    await call.message.answer(
+        "Чтобы добавить достижение, используйте команду:\n"
+        "/portfolio Telegram_ID | тип | название | описание"
+    )
+
+
+@router.message(Command("portfolio"))
+async def portfolio_add_command(
+    message: Message,
+    command: CommandObject,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+) -> None:
+    if not await _guard(message, user, settings):
+        return
+    try:
+        telegram_id, item_type, title, description = [
+            x.strip() for x in (command.args or "").split("|", 3)
+        ]
+        target = await session.scalar(
+            select(User).where(User.telegram_id == int(telegram_id))
+        )
+        if target is None:
+            raise ValueError
+    except (ValueError, TypeError):
+        await message.answer(
+            "Формат: /portfolio Telegram_ID | тип | название | описание"
+        )
+        return
+    reply = message.reply_to_message
+    file_id = None
+    if reply:
+        if reply.document:
+            file_id = reply.document.file_id
+        elif reply.photo:
+            file_id = reply.photo[-1].file_id
+    url = description if description.startswith(("https://", "http://")) else None
+    await add_portfolio_item(
+        session,
+        user_id=target.id,
+        title=title,
+        item_type=item_type,
+        description=description,
+        issued_by=user.id if user else None,
+        file_id=file_id,
+        url=url,
+    )
+    await message.answer("Достижение добавлено в портфолио.")
+
+
+@router.callback_query(F.data == "admin:points")
+async def points_help(
+    call: CallbackQuery, user: User | None, settings: Settings
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+    await call.message.answer(
+        "Команды управления:\n"
+        "/addpoints Telegram_ID количество причина\n"
+        "/awardbadge Telegram_ID | название знака | причина"
+    )
+
+
+@router.message(Command("addpoints"))
+async def addpoints_command(
+    message: Message,
+    command: CommandObject,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+    bot: Bot,
+) -> None:
+    if not await _guard(message, user, settings):
+        return
+    try:
+        telegram_id, amount, reason = (command.args or "").split(maxsplit=2)
+        target = await session.scalar(
+            select(User).where(User.telegram_id == int(telegram_id))
+        )
+        if target is None:
+            raise ValueError
+        amount_value = int(amount)
+    except (ValueError, TypeError):
+        await message.answer("Формат: /addpoints Telegram_ID количество причина")
+        return
+    await add_points(
+        session,
+        user_id=target.id,
+        points=amount_value,
+        reason=reason,
+        approved_by=user.id if user else None,
+    )
+    await message.answer("Баллы начислены.")
+    await safe_send(
+        bot,
+        target.telegram_id,
+        f"Вам начислены баллы: {amount_value}. Причина: {reason}",
+    )
+
+
+@router.message(Command("awardbadge"))
+async def award_badge(
+    message: Message,
+    command: CommandObject,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+    bot: Bot,
+) -> None:
+    if not await _guard(message, user, settings):
+        return
+    try:
+        raw_id, badge_name, reason = [
+            x.strip() for x in (command.args or "").split("|", 2)
+        ]
+        target = await session.scalar(
+            select(User).where(User.telegram_id == int(raw_id))
+        )
+        badge = await session.scalar(select(Badge).where(Badge.name == badge_name))
+        if target is None or badge is None:
+            raise ValueError
+    except (ValueError, TypeError):
+        await message.answer(
+            "Формат: /awardbadge Telegram_ID | название знака | причина"
+        )
+        return
+    session.add(
+        UserBadge(
+            user_id=target.id, badge_id=badge.id, reason=reason, awarded_by=user.id
+        )
+    )
+    await add_portfolio_item(
+        session,
+        user_id=target.id,
+        title=badge.name,
+        item_type="badge",
+        description=reason,
+        issued_by=user.id,
+    )
+    await add_points(
+        session,
+        user_id=target.id,
+        points=20,
+        reason="Получение знака отличия",
+        approved_by=user.id,
+    )
+    await message.answer("Знак выдан.")
+    await safe_send(
+        bot,
+        target.telegram_id,
+        f"У Вас новый знак отличия.\n\n{badge.name}\n\nПричина: {reason}\n\nЭто признание Вашего вклада в ЭРА.",
+    )
+
+
+@router.callback_query(F.data == "admin:roles")
+async def roles_help(
+    call: CallbackQuery, user: User | None, settings: Settings
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+    await call.message.answer(
+        "Команды управления:\n"
+        "/setrole Telegram_ID participant|activist|leader|council|admin\n"
+        "/setstatus Telegram_ID new_member|involved_member|active_member|team_member|project_curator|community_leader"
+    )
+
+
+async def _set_enum_value(
+    message: Message,
+    command: CommandObject,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+    field: str,
+    allowed: set[str],
+) -> None:
+    if not await _guard(message, user, settings):
+        return
+    try:
+        raw_id, value = (command.args or "").split(maxsplit=1)
+        if value not in allowed:
+            raise ValueError
+        target = await session.scalar(
+            select(User).where(User.telegram_id == int(raw_id))
+        )
+        if target is None:
+            raise ValueError
+    except (ValueError, TypeError):
+        await message.answer(
+            f"Проверьте Telegram ID и значение. Допустимо: {', '.join(sorted(allowed))}"
+        )
+        return
+    old = getattr(target, field)
+    setattr(target, field, value)
+    await audit(
+        session,
+        actor_id=user.id if user else None,
+        action=f"user.{field}_changed",
+        entity_type="user",
+        entity_id=target.id,
+        old_value={field: old},
+        new_value={field: value},
+    )
+    await message.answer("Изменение сохранено.")
+
+
+@router.message(Command("setrole"))
+async def set_role(
+    message: Message,
+    command: CommandObject,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+) -> None:
+    await _set_enum_value(
+        message, command, user, settings, session, "role", {x.value for x in Role}
+    )
+
+
+@router.message(Command("setstatus"))
+async def set_status(
+    message: Message,
+    command: CommandObject,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+) -> None:
+    await _set_enum_value(
+        message,
+        command,
+        user,
+        settings,
+        session,
+        "participation_status",
+        {x.value for x in ParticipationStatus},
+    )
+
+
+@router.callback_query(F.data == "admin:participants")
+async def participants(
+    call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+    users = (
+        await session.scalars(
+            select(User)
+            .where(User.application_status == ApplicationStatus.APPROVED)
+            .order_by(User.first_name)
+            .limit(100)
+        )
+    ).all()
+    body = "\n".join(
+        f"• {x.first_name} {x.last_name or ''} — {x.role}, {x.telegram_id}"
+        for x in users
+    )
+    await send_long_text(call.message, body or "Участников пока нет.")
+
+
+@router.callback_query(F.data == "admin:analytics")
+async def analytics(
+    call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+
+    async def count(model, *conditions) -> int:
+        return int(
+            await session.scalar(
+                select(func.count()).select_from(model).where(*conditions)
+            )
+            or 0
+        )
+
+    body = (
+        "Аналитика ЭРА\n\n"
+        f"Участников: {await count(User, User.application_status == ApplicationStatus.APPROVED)}\n"
+        f"Заявок: {await count(User, User.application_status == ApplicationStatus.PENDING)}\n"
+        f"Мероприятий: {await count(Event)}\n"
+        f"Проектов: {await count(Project)}\n"
+        f"Вопросов без ответа: {await count(UserQuestion, UserQuestion.status == 'new')}\n"
+        f"Селфи на проверке: {await count(AttendanceProof, AttendanceProof.status == 'pending')}"
+    )
+    await call.message.answer(body)
+
+
+@router.callback_query(F.data == "admin:reports")
+async def reports(
+    call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+    items = (
+        await session.scalars(
+            select(Report).order_by(Report.created_at.desc()).limit(30)
+        )
+    ).all()
+    body = (
+        "\n".join(f"• #{x.id} {x.report_type} — {x.status}" for x in items)
+        or "Отчётов пока нет."
+    )
+    await call.message.answer(body)
+
+
+@router.callback_query(F.data == "admin:broadcast")
+async def broadcast_start(
+    call: CallbackQuery, state: FSMContext, user: User | None, settings: Settings
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+    await state.clear()
+    await state.set_state(AdminBroadcastStates.audience)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Все участники", callback_data="broadcast:audience:all"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="По роли", callback_data="broadcast:audience:role"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="По департаменту",
+                    callback_data="broadcast:audience:department",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="По направлению", callback_data="broadcast:audience:direction"
+                )
+            ],
+        ]
+    )
+    await call.message.answer("Выберите аудиторию рассылки.", reply_markup=keyboard)
+
+
+@router.callback_query(
+    AdminBroadcastStates.audience, F.data.startswith("broadcast:audience:")
+)
+async def broadcast_audience(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    audience = call.data.rsplit(":", 1)[-1]
+    await state.update_data(broadcast_audience=audience)
+    if audience == "all":
+        await state.set_state(AdminBroadcastStates.text)
+        await call.message.answer("Напишите текст рассылки.")
+    else:
+        await state.set_state(AdminBroadcastStates.filter_value)
+        await call.message.answer("Напишите точное значение фильтра.")
+
+
+@router.message(AdminBroadcastStates.filter_value)
+async def broadcast_filter(message: Message, state: FSMContext) -> None:
+    value = clean_text(message.text or "", 100)
+    if not value:
+        await message.answer(texts.INVALID_INPUT)
+        return
+    await state.update_data(broadcast_filter=value)
+    await state.set_state(AdminBroadcastStates.text)
     await message.answer("Напишите текст рассылки.")
 
 
