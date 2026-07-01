@@ -22,23 +22,19 @@ def _approved(user: User | None) -> bool:
 
 
 def _task_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🟢 Задачи в работе", callback_data="tasks:list:active")],
-            [InlineKeyboardButton(text="🗂 Архив задач", callback_data="tasks:list:archive")],
-            [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
-        ]
-    )
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🟢 Задачи в работе", callback_data="tasks:list:active")],
+        [InlineKeyboardButton(text="🗂 Архив задач", callback_data="tasks:list:archive")],
+        [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
+    ])
 
 
 def _review_keyboard(submission_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Одобрить и начислить баллы", callback_data=f"admin:tasksub:approve:{submission_id}")],
-            [InlineKeyboardButton(text="💬 Вернуть на доработку", callback_data=f"admin:tasksub:revision:{submission_id}")],
-            [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:tasksub:reject:{submission_id}")],
-        ]
-    )
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Одобрить и начислить баллы", callback_data=f"admin:tasksub:approve:{submission_id}")],
+        [InlineKeyboardButton(text="💬 Вернуть на доработку", callback_data=f"admin:tasksub:revision:{submission_id}")],
+        [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:tasksub:reject:{submission_id}")],
+    ])
 
 
 async def _membership(session: AsyncSession, task_id: int, user_id: int) -> TaskParticipant | None:
@@ -62,20 +58,42 @@ async def _can_submit(session: AsyncSession, task: Task, user: User) -> bool:
 
 
 async def _tasks_for_user(session: AsyncSession, user: User) -> list[Task]:
-    tasks = (
-        await session.scalars(
-            select(Task)
-            .where(or_(Task.assignee_id == user.id, ((Task.task_type == "challenge") & (Task.status == "published"))))
-            .order_by(Task.deadline)
-        )
-    ).all()
+    direct_tasks = (await session.scalars(
+        select(Task).where(or_(Task.assignee_id == user.id, ((Task.task_type == "challenge") & (Task.status == "published"))))
+    )).all()
+    memberships = (await session.scalars(select(TaskParticipant).where(TaskParticipant.user_id == user.id))).all()
+    tasks_by_id = {task.id: task for task in direct_tasks}
+    for membership in memberships:
+        task = await session.get(Task, membership.task_id)
+        if task and membership.status in {"pending", "accepted", "joined"}:
+            tasks_by_id[task.id] = task
+    tasks = sorted(tasks_by_id.values(), key=lambda item: item.deadline)
     return [
-        task
-        for task in tasks
+        task for task in tasks
         if task.assignee_id == user.id
+        or task.id in {membership.task_id for membership in memberships if membership.status in {"pending", "accepted", "joined"}}
         or not (task.audience_filter_json or {}).get("role")
         or (task.audience_filter_json or {}).get("role") == user.role
     ]
+
+
+async def _send_task_file(call: CallbackQuery, task: Task) -> None:
+    if not task.file_id:
+        return
+    try:
+        await call.message.answer_photo(task.file_id, caption="Материал к заданию")
+        return
+    except Exception:
+        pass
+    try:
+        await call.message.answer_video(task.file_id, caption="Материал к заданию")
+        return
+    except Exception:
+        pass
+    try:
+        await call.message.answer_document(task.file_id, caption="Материал к заданию")
+    except Exception:
+        await call.message.answer("К заданию прикреплён файл, но Telegram не дал открыть его повторно.")
 
 
 @router.callback_query(F.data == "cabinet:tasks")
@@ -101,20 +119,10 @@ async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSessi
     else:
         tasks = [task for task in all_tasks if task.status not in ARCHIVE_STATUSES]
         title = "🟢 Задачи в работе"
-    participants = (
-        await session.scalars(
-            select(TaskParticipant).where(
-                TaskParticipant.user_id == user.id,
-                TaskParticipant.task_id.in_([task.id for task in tasks] or [-1]),
-            )
-        )
-    ).all()
+    participants = (await session.scalars(select(TaskParticipant).where(TaskParticipant.user_id == user.id, TaskParticipant.task_id.in_([task.id for task in tasks] or [-1])))).all()
     joined_ids = {item.task_id for item in participants if item.status in {"pending", "accepted", "joined"}}
     joined_ids.update(task.id for task in tasks if task.assignee_id == user.id)
-    body = "\n".join(
-        f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, task.status)}, до {task.deadline:%d.%m.%Y} · {task.points} баллов"
-        for task in tasks
-    ) or "Здесь пока пусто."
+    body = "\n".join(f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, task.status)}, до {task.deadline:%d.%m.%Y} · {task.points} баллов" for task in tasks) or "Здесь пока пусто."
     await call.message.answer(f"{title}\n\n{body}", reply_markup=tasks_keyboard(tasks, joined_ids) if tasks else _task_menu())
 
 
@@ -139,17 +147,10 @@ async def task_view(call: CallbackQuery, user: User | None, session: AsyncSessio
         rows.append([InlineKeyboardButton(text="💬 Чат команды", url=task.chat_url)])
     rows.append([InlineKeyboardButton(text="← Мои задачи", callback_data="cabinet:tasks")])
     await call.message.answer(
-        f"✅ {task.title}\n\n{task.description}\n\n"
-        f"Срок: {task.deadline:%d.%m.%Y %H:%M}\n"
-        f"Награда: {task.points} баллов\n"
-        f"Статус: {TASK_STATUS_LABELS.get(task.status, task.status)}",
+        f"✅ {task.title}\n\n{task.description}\n\nСрок: {task.deadline:%d.%m.%Y %H:%M}\nНаграда: {task.points} баллов\nСтатус: {TASK_STATUS_LABELS.get(task.status, task.status)}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
     )
-    if task.file_id:
-        try:
-            await call.message.answer_photo(task.file_id, caption="Материал к заданию")
-        except Exception:
-            await call.message.answer_document(task.file_id, caption="Материал к заданию")
+    await _send_task_file(call, task)
 
 
 @router.callback_query(F.data.startswith("task:result:"))
@@ -196,12 +197,7 @@ async def task_result_save(message: Message, user: User, session: AsyncSession, 
     await state.clear()
     await message.answer("Результат отправлен на проверку. После решения админа Вы получите уведомление.")
     telegram = f"@{user.username}" if user.username else str(user.telegram_id)
-    await notify_admins(
-        bot,
-        settings,
-        f"📥 Новый результат задания\n\n{task.title}\nУчастник: {user.first_name} {user.last_name or ''}\nTelegram: {telegram}\n\n{submission.text or 'Материал прикреплён файлом'}",
-        reply_markup=_review_keyboard(submission.id),
-    )
+    await notify_admins(bot, settings, f"📥 Новый результат задания\n\n{task.title}\nУчастник: {user.first_name} {user.last_name or ''}\nTelegram: {telegram}\n\n{submission.text or 'Материал прикреплён файлом'}", reply_markup=_review_keyboard(submission.id))
     if file_id:
         for chat_id in set(settings.admin_ids):
             try:
