@@ -1,5 +1,6 @@
 from aiogram import F, Bot, Router
 from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from app.config import Settings
 from app.database.models import User
@@ -14,7 +15,7 @@ router = Router(name="start")
 
 
 async def show_home(message: Message, user: User, settings: Settings) -> None:
-    if user.is_blocked:
+    if user.is_blocked or user.is_archived:
         await message.answer(texts.BLOCKED)
         return
     if user.application_status == ApplicationStatus.PENDING:
@@ -37,7 +38,11 @@ async def show_home(message: Message, user: User, settings: Settings) -> None:
         reply_markup=main_menu(
             settings.era_channel_url,
             privileged=user.role in PRIVILEGED_ROLES,
-            admin=user.role == Role.ADMIN,
+            admin=user.role == Role.ADMIN
+            or any(
+                grant.is_active
+                for grant in (getattr(user, "permission_grants", None) or [])
+            ),
         ),
     )
 
@@ -87,10 +92,16 @@ async def check_subscription(
 
 @router.callback_query(F.data == "menu:main")
 async def main_menu_callback(
-    call: CallbackQuery, user: User | None, settings: Settings
+    call: CallbackQuery, user: User | None, settings: Settings, state: FSMContext
 ) -> None:
     await call.answer()
+    await state.clear()
     if user is None:
         await call.message.answer(texts.WELCOME, reply_markup=registration_keyboard())
         return
     await show_home(call.message, user, settings)
+
+
+@router.message(Command("rules"), F.chat.type == "private")
+async def private_rules(message: Message) -> None:
+    await message.answer(texts.CHAT_RULES)

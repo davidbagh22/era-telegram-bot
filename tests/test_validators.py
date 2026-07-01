@@ -2,6 +2,7 @@ import unittest
 
 from app.utils.validators import (
     clean_text,
+    normalize_email,
     normalize_phone,
     parse_age,
     parse_date,
@@ -18,6 +19,10 @@ class ValidatorTests(unittest.TestCase):
     def test_phone_normalization(self) -> None:
         self.assertEqual(normalize_phone("+374 99 123-456"), "+37499123456")
         self.assertIsNone(normalize_phone("123"))
+
+    def test_email_normalization(self) -> None:
+        self.assertEqual(normalize_email(" Test@Example.com "), "test@example.com")
+        self.assertIsNone(normalize_email("not-an-email"))
 
     def test_date_and_time(self) -> None:
         self.assertEqual(parse_date("30.06.2026").isoformat(), "2026-06-30")

@@ -41,6 +41,7 @@ class User(TimestampMixin, Base):
     last_name: Mapped[str | None] = mapped_column(String(100))
     age: Mapped[int | None] = mapped_column(Integer)
     phone: Mapped[str | None] = mapped_column(String(32))
+    email: Mapped[str | None] = mapped_column(String(255), index=True)
     city: Mapped[str | None] = mapped_column(String(100))
     education_work: Mapped[str | None] = mapped_column(String(255))
     occupation: Mapped[str | None] = mapped_column(Text)
@@ -59,12 +60,18 @@ class User(TimestampMixin, Base):
     is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
     is_channel_subscribed: Mapped[bool] = mapped_column(Boolean, default=False)
     personal_data_consent: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
     departments: Mapped[list[UserDepartment]] = relationship(
         back_populates="user", cascade="all, delete-orphan", lazy="selectin"
     )
     directions: Mapped[list[UserDirection]] = relationship(
         back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+    )
+    permission_grants: Mapped[list[PermissionGrant]] = relationship(
+        foreign_keys="PermissionGrant.user_id", lazy="selectin"
     )
 
 
@@ -151,6 +158,9 @@ class Event(TimestampMixin, Base):
     location: Mapped[str] = mapped_column(String(255))
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
     direction_id: Mapped[int | None] = mapped_column(ForeignKey("directions.id"))
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id"), index=True
+    )
     format: Mapped[str] = mapped_column(String(100))
     responsible_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     participant_limit: Mapped[int | None] = mapped_column(Integer)
@@ -264,6 +274,10 @@ class PortfolioItem(Base):
     related_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
     issued_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     issued_at: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(32), default="verified", index=True)
+    submitted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    verified_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    admin_comment: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now().astimezone()
     )
@@ -290,6 +304,15 @@ class Project(TimestampMixin, Base):
     risks: Mapped[str | None] = mapped_column(Text)
     needs_from_era: Mapped[str | None] = mapped_column(Text)
     generated_document: Mapped[str | None] = mapped_column(Text)
+    form_data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    current_step: Mapped[int] = mapped_column(Integer, default=0)
+    venue_status: Mapped[str] = mapped_column(String(32), default="not_requested")
+    venue_comment: Mapped[str | None] = mapped_column(Text)
+    venue_reminder_count: Mapped[int] = mapped_column(Integer, default=0)
+    venue_remind_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    proposed_date: Mapped[date | None] = mapped_column(Date)
+    proposed_time: Mapped[time | None] = mapped_column(Time)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(
         String(32), default=ProjectStatus.DRAFT, index=True
     )
@@ -302,7 +325,7 @@ class Task(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text)
-    assignee_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
     creator_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
     direction_id: Mapped[int | None] = mapped_column(ForeignKey("directions.id"))
@@ -311,6 +334,13 @@ class Task(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), default=TaskStatus.NEW, index=True)
     comment: Mapped[str | None] = mapped_column(Text)
     file_id: Mapped[str | None] = mapped_column(String(255))
+    task_type: Mapped[str] = mapped_column(String(32), default="private", index=True)
+    audience_filter_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    reward_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    chat_url: Mapped[str | None] = mapped_column(String(500))
+    max_participants: Mapped[int | None] = mapped_column(Integer)
+    remind_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reminder_count: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Report(TimestampMixin, Base):
@@ -390,3 +420,169 @@ class AppSetting(TimestampMixin, Base):
     key: Mapped[str] = mapped_column(String(100), unique=True)
     value: Mapped[Any] = mapped_column(JSON)
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class Office(TimestampMixin, Base):
+    __tablename__ = "offices"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(150), unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    scope_type: Mapped[str] = mapped_column(String(32), default="community")
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
+    direction_id: Mapped[int | None] = mapped_column(ForeignKey("directions.id"))
+    public_contact: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class UserOffice(TimestampMixin, Base):
+    __tablename__ = "user_offices"
+    __table_args__ = (UniqueConstraint("user_id", "office_id", "starts_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    office_id: Mapped[int] = mapped_column(ForeignKey("offices.id"), index=True)
+    appointed_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    starts_at: Mapped[date] = mapped_column(Date, default=date.today)
+    ends_at: Mapped[date | None] = mapped_column(Date)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class PermissionGrant(TimestampMixin, Base):
+    __tablename__ = "permission_grants"
+    __table_args__ = (
+        UniqueConstraint("user_id", "permission", "scope_type", "scope_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    permission: Mapped[str] = mapped_column(String(100), index=True)
+    scope_type: Mapped[str] = mapped_column(String(32), default="global")
+    scope_id: Mapped[int] = mapped_column(Integer, default=0)
+    granted_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class ChatGreeting(TimestampMixin, Base):
+    __tablename__ = "chat_greetings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_key: Mapped[str] = mapped_column(String(50), unique=True)
+    chat_id: Mapped[int | None] = mapped_column(BigInteger)
+    title: Mapped[str] = mapped_column(String(150))
+    text: Mapped[str] = mapped_column(Text)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class EventActivity(TimestampMixin, Base):
+    __tablename__ = "event_activities"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text)
+    submission_type: Mapped[str] = mapped_column(String(32), default="text")
+    points: Mapped[int] = mapped_column(Integer, default=0)
+    badge_id: Mapped[int | None] = mapped_column(ForeignKey("badges.id"))
+    certificate_title: Mapped[str | None] = mapped_column(String(255))
+    requires_review: Mapped[bool] = mapped_column(Boolean, default=True)
+    deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class EventActivitySubmission(TimestampMixin, Base):
+    __tablename__ = "event_activity_submissions"
+    __table_args__ = (UniqueConstraint("activity_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    activity_id: Mapped[int] = mapped_column(
+        ForeignKey("event_activities.id"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    text: Mapped[str | None] = mapped_column(Text)
+    file_id: Mapped[str | None] = mapped_column(String(255))
+    file_type: Mapped[str | None] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    admin_comment: Mapped[str | None] = mapped_column(Text)
+    points_awarded: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class TaskParticipant(TimestampMixin, Base):
+    __tablename__ = "task_participants"
+    __table_args__ = (UniqueConstraint("task_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="joined", index=True)
+
+
+class TaskSubmission(TimestampMixin, Base):
+    __tablename__ = "task_submissions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    text: Mapped[str | None] = mapped_column(Text)
+    file_id: Mapped[str | None] = mapped_column(String(255))
+    collaborators_json: Mapped[list[int]] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    admin_comment: Mapped[str | None] = mapped_column(Text)
+
+
+class RewardItem(TimestampMixin, Base):
+    __tablename__ = "reward_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text)
+    point_cost: Mapped[int] = mapped_column(Integer)
+    quantity: Mapped[int | None] = mapped_column(Integer)
+    image_file_id: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+class RewardRedemption(TimestampMixin, Base):
+    __tablename__ = "reward_redemptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reward_id: Mapped[int] = mapped_column(ForeignKey("reward_items.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    points_spent: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    admin_comment: Mapped[str | None] = mapped_column(Text)
+
+
+class Auction(TimestampMixin, Base):
+    __tablename__ = "auctions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text)
+    audience_filter_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    minimum_bid: Mapped[int] = mapped_column(Integer, default=1)
+    bid_step: Mapped[int] = mapped_column(Integer, default=1)
+    winner_count: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(32), default="draft", index=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+class AuctionBid(TimestampMixin, Base):
+    __tablename__ = "auction_bids"
+    __table_args__ = (UniqueConstraint("auction_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    auction_id: Mapped[int] = mapped_column(ForeignKey("auctions.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    amount: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32), default="active", index=True)
+    selected_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    selected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

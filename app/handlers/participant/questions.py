@@ -16,17 +16,30 @@ from app.utils.validators import clean_text
 router = Router(name="questions")
 
 
+async def _begin_question(
+    message: Message, state: FSMContext, user: User | None
+) -> None:
+    if not user or user.application_status != ApplicationStatus.APPROVED:
+        await message.answer(texts.APPLICATION_PENDING)
+        return
+    await state.clear()
+    await state.set_state(QuestionStates.text)
+    await message.answer(texts.QUESTION_START)
+
+
+@router.message(F.text == "💬 Задать вопрос")
+async def question_start_button(
+    message: Message, state: FSMContext, user: User | None
+) -> None:
+    await _begin_question(message, state, user)
+
+
 @router.callback_query(F.data == "question:start")
 async def question_start(
     call: CallbackQuery, state: FSMContext, user: User | None
 ) -> None:
     await call.answer()
-    if not user or user.application_status != ApplicationStatus.APPROVED:
-        await call.message.answer(texts.APPLICATION_PENDING)
-        return
-    await state.clear()
-    await state.set_state(QuestionStates.text)
-    await call.message.answer(texts.QUESTION_START)
+    await _begin_question(call.message, state, user)
 
 
 @router.message(QuestionStates.text)

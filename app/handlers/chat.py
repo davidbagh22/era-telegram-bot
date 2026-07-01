@@ -5,10 +5,11 @@ from aiogram import F, Bot, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import User
+from app.database.models import ChatGreeting, User
 from app.repositories.users import get_user_by_telegram_id
 from app.utils import texts
 from app.utils.constants import PRIVILEGED_ROLES
@@ -108,13 +109,26 @@ async def welcome_members(
                     )
                 continue
         if message.chat.id == settings.internal_department_chat_id:
-            body = texts.INTERNAL_DEPARTMENT
+            chat_key, fallback = "internal", texts.INTERNAL_DEPARTMENT
         elif message.chat.id == settings.external_department_chat_id:
-            body = texts.EXTERNAL_DEPARTMENT
+            chat_key, fallback = "external", texts.EXTERNAL_DEPARTMENT
         elif message.chat.id == settings.leaders_chat_id:
-            body = "Чат лидеров ЭРА\n\nЗдесь обсуждаются задачи, проекты, отчёты, решения и развитие команды."
+            chat_key, fallback = (
+                "leaders",
+                "Добро пожаловать в рабочее пространство лидеров ЭРА",
+            )
         else:
-            body = texts.chat_welcome(member.first_name, me.username or "era_bot")
+            chat_key, fallback = (
+                "general",
+                texts.chat_welcome(member.first_name, me.username or "era_bot"),
+            )
+        greeting = await session.scalar(
+            select(ChatGreeting).where(ChatGreeting.chat_key == chat_key)
+        )
+        if greeting is not None and not greeting.is_enabled:
+            continue
+        body = greeting.text if greeting is not None else fallback
+        body = body.replace("{name}", member.first_name)
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [

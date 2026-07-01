@@ -26,3 +26,7 @@ class FeedbackStates(StatesGroup):
 
 class SelfieStates(StatesGroup):
     photo = State()
+
+
+class EventActivityStates(StatesGroup):
+    submission = State()

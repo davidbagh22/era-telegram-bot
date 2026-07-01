@@ -54,11 +54,13 @@ async def lifespan(app: FastAPI):
                 [
                     BotCommand(command="start", description="Открыть бота ЭРА"),
                     BotCommand(command="menu", description="Главное меню"),
+                    BotCommand(command="journey", description="Мой путь"),
                     BotCommand(command="events", description="Мероприятия"),
-                    BotCommand(command="project", description="Создать проект"),
-                    BotCommand(command="departments", description="Департаменты"),
+                    BotCommand(command="projects", description="Проекты"),
+                    BotCommand(command="rating", description="Рейтинг"),
+                    BotCommand(command="team", description="Команда ЭРА"),
+                    BotCommand(command="about", description="Что умеет бот"),
                     BotCommand(command="rules", description="Правила сообщества"),
-                    BotCommand(command="links", description="Полезные ссылки"),
                 ]
             )
             logger.info("Telegram webhook configured: %s", webhook_url)

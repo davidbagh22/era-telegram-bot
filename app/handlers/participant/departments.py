@@ -1,11 +1,24 @@
 from aiogram import F, Bot, Router
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import Department, DepartmentApplication, Direction, User
+from app.database.models import (
+    Department,
+    DepartmentApplication,
+    Direction,
+    Office,
+    User,
+    UserOffice,
+)
 from app.keyboards.common import options_keyboard
 from app.keyboards.participant import department_keyboard, departments_keyboard
 from app.services.audit_service import audit
@@ -18,14 +31,36 @@ from app.utils.validators import clean_text
 router = Router(name="departments")
 
 
-@router.callback_query(F.data == "departments:menu")
-async def departments_menu(call: CallbackQuery, user: User | None) -> None:
-    await call.answer()
+async def _send_team_menu(
+    message: Message, user: User | None, settings: Settings
+) -> None:
     if not user or user.application_status != ApplicationStatus.APPROVED:
-        await call.message.answer(texts.APPLICATION_PENDING)
+        await message.answer(texts.APPLICATION_PENDING)
         return
-    await call.message.answer(
-        texts.DEPARTMENTS_OVERVIEW, reply_markup=departments_keyboard()
+    await message.answer(
+        texts.DEPARTMENTS_OVERVIEW,
+        reply_markup=departments_keyboard(settings.general_chat_url),
+    )
+
+
+@router.message(F.text == "🤝 Команда ЭРА")
+@router.message(Command("team"), F.chat.type == "private")
+@router.message(Command("departments"), F.chat.type == "private")
+async def departments_menu_button(
+    message: Message, user: User | None, settings: Settings, state: FSMContext
+) -> None:
+    await state.clear()
+    await _send_team_menu(message, user, settings)
+
+
+@router.callback_query(F.data == "departments:menu")
+async def departments_menu(
+    call: CallbackQuery, user: User | None, settings: Settings
+) -> None:
+    await call.answer()
+    await call.message.edit_text(
+        texts.DEPARTMENTS_OVERVIEW,
+        reply_markup=departments_keyboard(settings.general_chat_url),
     )
 
 
@@ -37,7 +72,47 @@ async def department_view(call: CallbackQuery, settings: Settings) -> None:
         text, url = texts.INTERNAL_DEPARTMENT, settings.internal_department_chat_url
     else:
         text, url = texts.EXTERNAL_DEPARTMENT, settings.external_department_chat_url
-    await call.message.answer(text, reply_markup=department_keyboard(url))
+    await call.message.edit_text(text, reply_markup=department_keyboard(url))
+
+
+@router.callback_query(F.data == "team:offices")
+async def team_offices(call: CallbackQuery, session: AsyncSession) -> None:
+    await call.answer()
+    rows = (
+        await session.execute(
+            select(Office, User)
+            .join(UserOffice, UserOffice.office_id == Office.id)
+            .join(User, User.id == UserOffice.user_id)
+            .where(Office.is_active.is_(True), UserOffice.is_active.is_(True))
+            .order_by(Office.sort_order, Office.title, User.first_name)
+        )
+    ).all()
+    if not rows:
+        await call.message.edit_text(
+            "Команда должностных лиц сейчас формируется\n\nКонтакты появятся здесь после назначения",
+            reply_markup=departments_keyboard(),
+        )
+        return
+    lines = ["Кто отвечает за направления 👥"]
+    buttons = []
+    for office, holder in rows:
+        name = f"{holder.first_name} {holder.last_name or ''}".strip()
+        lines.append(f"\n{office.title}\n{name}")
+        if holder.username and office.public_contact:
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"Написать: {name}",
+                        url=f"https://t.me/{holder.username}",
+                    )
+                ]
+            )
+    buttons.append(
+        [InlineKeyboardButton(text="← Назад", callback_data="departments:menu")]
+    )
+    await call.message.edit_text(
+        "\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
 
 
 @router.callback_query(F.data == "department:chats")

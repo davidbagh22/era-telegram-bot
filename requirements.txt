@@ -10,3 +10,5 @@ python-dotenv>=1.0,<2
 APScheduler>=3.11,<4
 openai>=1.59,<2
 greenlet>=3.1,<4
+reportlab>=4.2,<5
+openpyxl>=3.1,<4

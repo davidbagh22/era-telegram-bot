@@ -5,6 +5,7 @@ class Role(StrEnum):
     PARTICIPANT = "participant"
     ACTIVIST = "activist"
     LEADER = "leader"
+    HEAD = "head"
     COUNCIL = "council"
     ADMIN = "admin"
 
@@ -30,6 +31,9 @@ class EventStatus(StrEnum):
     PENDING_APPROVAL = "pending_approval"
     APPROVED = "approved"
     PUBLISHED = "published"
+    REGISTRATION_OPEN = "registration_open"
+    REGISTRATION_CLOSED = "registration_closed"
+    ACTIVE = "active"
     COMPLETED = "completed"
     REPORT_SUBMITTED = "report_submitted"
     CANCELLED = "cancelled"
@@ -47,15 +51,21 @@ class RegistrationStatus(StrEnum):
 class ProjectStatus(StrEnum):
     DRAFT = "draft"
     PENDING_REVIEW = "pending_review"
+    INITIAL_REVIEW = "initial_review"
+    VENUE_REVIEW = "venue_review"
     NEEDS_REVISION = "needs_revision"
     APPROVED = "approved"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     REJECTED = "rejected"
+    POSTPONED = "postponed"
+    CANCELLED = "cancelled"
 
 
 class TaskStatus(StrEnum):
+    DRAFT = "draft"
     NEW = "new"
+    PUBLISHED = "published"
     IN_PROGRESS = "in_progress"
     REVIEW = "review"
     COMPLETED = "completed"
@@ -67,6 +77,7 @@ ROLE_LABELS = {
     Role.PARTICIPANT: "Участник",
     Role.ACTIVIST: "Активист",
     Role.LEADER: "Лидер",
+    Role.HEAD: "Руководитель",
     Role.COUNCIL: "Совет",
     Role.ADMIN: "Председатель / администратор",
 }
@@ -92,6 +103,9 @@ EVENT_STATUS_LABELS = {
     EventStatus.PENDING_APPROVAL: "На согласовании",
     EventStatus.APPROVED: "Одобрено",
     EventStatus.PUBLISHED: "Опубликовано",
+    EventStatus.REGISTRATION_OPEN: "Регистрация открыта",
+    EventStatus.REGISTRATION_CLOSED: "Регистрация закрыта",
+    EventStatus.ACTIVE: "Идёт сейчас",
     EventStatus.COMPLETED: "Завершено",
     EventStatus.REPORT_SUBMITTED: "Отчёт отправлен",
     EventStatus.CANCELLED: "Отменено",
@@ -109,15 +123,21 @@ REGISTRATION_STATUS_LABELS = {
 PROJECT_STATUS_LABELS = {
     ProjectStatus.DRAFT: "Черновик",
     ProjectStatus.PENDING_REVIEW: "На рассмотрении",
+    ProjectStatus.INITIAL_REVIEW: "Первичная проверка",
+    ProjectStatus.VENUE_REVIEW: "Согласование площадки",
     ProjectStatus.NEEDS_REVISION: "Нужна доработка",
     ProjectStatus.APPROVED: "Одобрен",
     ProjectStatus.IN_PROGRESS: "В работе",
     ProjectStatus.COMPLETED: "Завершён",
     ProjectStatus.REJECTED: "Не одобрен",
+    ProjectStatus.POSTPONED: "Перенесён",
+    ProjectStatus.CANCELLED: "Отменён",
 }
 
 TASK_STATUS_LABELS = {
+    TaskStatus.DRAFT: "Черновик",
     TaskStatus.NEW: "Новая",
+    TaskStatus.PUBLISHED: "Открыт набор",
     TaskStatus.IN_PROGRESS: "В работе",
     TaskStatus.REVIEW: "На проверке",
     TaskStatus.COMPLETED: "Выполнена",
@@ -167,19 +187,30 @@ DEFAULT_POINTS = {
 }
 
 BADGES = (
+    "Первый шаг",
     "Голос ЭРА",
-    "Медиа-движок",
-    "Организатор",
-    "Волонтёр ЭРА",
-    "Проектный автор",
-    "Лидер месяца",
-    "Амбассадор ЭРА",
-    "Надёжный человек",
+    "Надёжный участник",
     "Командный игрок",
-    "Прорыв месяца",
+    "Организатор",
+    "Проектный автор",
+    "Медиа-двигатель",
+    "Амбассадор ЭРА",
     "Наставник",
-    "Поддержка ЭРА",
+    "Прорыв месяца",
 )
 
-PRIVILEGED_ROLES = {Role.LEADER, Role.COUNCIL, Role.ADMIN}
+PRIVILEGED_ROLES = {Role.LEADER, Role.HEAD, Role.COUNCIL, Role.ADMIN}
 ADMIN_ROLES = {Role.ADMIN}
+
+PERMISSIONS = (
+    "people.view",
+    "people.manage",
+    "applications.review",
+    "projects.review",
+    "events.manage",
+    "tasks.manage",
+    "points.award",
+    "portfolio.review",
+    "broadcasts.create",
+    "analytics.view",
+)

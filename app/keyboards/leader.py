@@ -3,18 +3,17 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 def leader_panel_keyboard() -> InlineKeyboardMarkup:
     options = (
-        ("Мой департамент", "leader:department"),
-        ("Участники", "leader:participants"),
-        ("Мероприятия", "leader:events"),
-        ("Создать мероприятие", "leader:event:new"),
-        ("Задачи", "leader:tasks"),
-        ("Создать задачу", "leader:task:new"),
-        ("Отчёты", "leader:reports"),
-        ("Проекты", "leader:projects"),
-        ("Предложения админу", "leader:proposal:new"),
-        ("Рассылка", "leader:broadcast:new"),
+        ("🌿 Мой контур", "leader:department"),
+        ("👥 Моя команда", "leader:participants"),
+        ("💡 Проекты команды", "leader:projects"),
+        ("📅 Мероприятия команды", "leader:events"),
+        ("➕ Предложить мероприятие", "leader:event:new"),
+        ("✅ Задания команды", "leader:tasks"),
+        ("➕ Назначить задание", "leader:task:new"),
+        ("⭐ Предложить поощрение или роль", "leader:proposal:new"),
+        ("📣 Предложить рассылку", "leader:broadcast:new"),
         ("Связь с председателем", "question:start"),
-        ("Главное меню", "menu:main"),
+        ("← Главное меню", "menu:main"),
     )
     return InlineKeyboardMarkup(
         inline_keyboard=[

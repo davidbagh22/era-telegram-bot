@@ -23,16 +23,16 @@ from app.services.subscription_service import is_channel_member
 from app.states.registration import RegistrationStates
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
-from app.utils.validators import clean_text, normalize_phone, parse_age
+from app.utils.validators import clean_text, normalize_email, normalize_phone, parse_age
 
 router = Router(name="registration")
 
 PATHS = (
-    "Просто участником",
-    "Хочу быть активнее",
-    "Хочу помогать команде",
-    "Хочу создавать проекты",
-    "В будущем хочу стать лидером",
+    "Участник",
+    "Активист",
+    "Лидер",
+    "Руководитель",
+    "Совет",
 )
 
 TIME_VALUES = {
@@ -105,6 +105,17 @@ async def phone(message: Message, state: FSMContext) -> None:
         await message.answer(texts.REG_PHONE_ERROR)
         return
     await state.update_data(phone=value)
+    await state.set_state(RegistrationStates.email)
+    await message.answer(texts.REG_EMAIL)
+
+
+@router.message(RegistrationStates.email)
+async def email(message: Message, state: FSMContext) -> None:
+    value = normalize_email(message.text or "")
+    if value is None:
+        await message.answer(texts.REG_EMAIL_ERROR)
+        return
+    await state.update_data(email=value)
     await state.set_state(RegistrationStates.city)
     await message.answer(texts.REG_CITY)
 
@@ -233,19 +244,10 @@ async def available_time(call: CallbackQuery, state: FSMContext) -> None:
     if key not in TIME_VALUES:
         return
     await state.update_data(available_time=TIME_VALUES[key], skills=[])
-    await state.set_state(RegistrationStates.experience)
-    await call.message.answer(texts.REG_EXPERIENCE)
-
-
-@router.message(RegistrationStates.experience)
-async def experience(message: Message, state: FSMContext) -> None:
-    value = clean_text(message.text or "", 1500)
-    if not value:
-        await message.answer(texts.INVALID_INPUT)
-        return
-    await state.update_data(experience=value)
     await state.set_state(RegistrationStates.desired_path)
-    await message.answer(texts.REG_DESIRED_PATH, reply_markup=desired_path_keyboard())
+    await call.message.answer(
+        texts.REG_DESIRED_PATH, reply_markup=desired_path_keyboard()
+    )
 
 
 @router.callback_query(RegistrationStates.desired_path, F.data.startswith("reg:path:"))
@@ -276,6 +278,33 @@ async def no_consent(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await state.clear()
     await call.message.answer(texts.REG_NO_CONSENT)
+
+
+def _application_notification(user) -> str:
+    telegram = f"@{user.username}" if user.username else str(user.telegram_id)
+    departments = (
+        ", ".join(item.department.name for item in user.departments)
+        or "пока не выбраны"
+    )
+    directions = (
+        ", ".join(item.direction.name for item in user.directions) or "пока не выбраны"
+    )
+    return (
+        "📝 Новая заявка в ЭРА\n\n"
+        f"👤 {user.first_name} {user.last_name or ''}\n"
+        f"🎂 Возраст: {user.age or 'не указан'}\n"
+        f"📍 Город: {user.city or 'не указан'}\n"
+        f"🎓 Учёба / работа: {user.education_work or 'не указано'}\n"
+        f"💼 Занятие: {user.occupation or 'не указано'}\n"
+        f"📧 Email: {user.email or 'не указан'}\n"
+        f"💬 Telegram: {telegram}\n\n"
+        f"🧭 Желаемый путь: {user.desired_path or 'не указан'}\n"
+        f"⏳ Доступное время: {user.available_time or 'не указано'}\n"
+        f"🏛 Департаменты: {departments}\n"
+        f"✨ Направления: {directions}\n\n"
+        f"Мотивация\n{user.motivation or 'не указана'}\n\n"
+        "Откройте «Участники → Новые заявки» в панели управления"
+    )
 
 
 @router.callback_query(RegistrationStates.consent, F.data == "reg:consent:yes")
@@ -334,9 +363,7 @@ async def finish_registration(
         await notify_admins(
             bot,
             settings,
-            f"Новая заявка ЭРА\n\n{user.first_name} {user.last_name or ''}\n"
-            f"Telegram ID: {user.telegram_id}\nГород: {user.city}\n"
-            f"Мотивация: {user.motivation}\n\nОткройте /admin для рассмотрения.",
+            _application_notification(user),
         )
 
 

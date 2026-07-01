@@ -24,11 +24,13 @@ class BotOnlyTests(unittest.TestCase):
             privileged=True,
             admin=True,
         )
-        buttons = [button for row in keyboard.inline_keyboard for button in row]
+        buttons = [button for row in keyboard.keyboard for button in row]
 
         self.assertTrue(all(button.web_app is None for button in buttons))
-        self.assertIn("cabinet:open", {button.callback_data for button in buttons})
-        self.assertIn("admin:panel", {button.callback_data for button in buttons})
+        labels = {button.text for button in buttons}
+        self.assertIn("🌱 Мой путь", labels)
+        self.assertIn("⚙️ Управление", labels)
+        self.assertTrue(keyboard.is_persistent)
 
     def test_pending_registration_has_a_clear_next_step(self) -> None:
         keyboard = pending_registration_keyboard("https://t.me/era")
@@ -43,6 +45,7 @@ class BotOnlyTests(unittest.TestCase):
 
     def test_removed_skills_question_is_not_in_registration_flow(self) -> None:
         self.assertFalse(hasattr(RegistrationStates, "skills"))
+        self.assertFalse(hasattr(RegistrationStates, "experience"))
         self.assertFalse(hasattr(texts, "REG_SKILLS"))
 
     def test_admin_panel_is_compact(self) -> None:

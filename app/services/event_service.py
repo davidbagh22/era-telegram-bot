@@ -15,7 +15,13 @@ async def published_events(session: AsyncSession) -> list[Event]:
             await session.scalars(
                 select(Event)
                 .where(
-                    Event.status.in_([EventStatus.APPROVED, EventStatus.PUBLISHED]),
+                    Event.status.in_(
+                        [
+                            EventStatus.APPROVED,
+                            EventStatus.PUBLISHED,
+                            EventStatus.REGISTRATION_OPEN,
+                        ]
+                    ),
                     Event.event_date >= date.today(),
                 )
                 .order_by(Event.event_date, Event.event_time)
@@ -46,6 +52,12 @@ async def available_places(session: AsyncSession, event: Event) -> str:
 async def register_for_event(
     session: AsyncSession, event: Event, user_id: int
 ) -> tuple[EventRegistration | None, str | None]:
+    if event.status not in {
+        EventStatus.APPROVED,
+        EventStatus.PUBLISHED,
+        EventStatus.REGISTRATION_OPEN,
+    }:
+        return None, "closed"
     existing = await session.scalar(
         select(EventRegistration).where(
             EventRegistration.event_id == event.id,

@@ -3,6 +3,7 @@ from datetime import date, datetime, time
 
 
 PHONE_RE = re.compile(r"^\+?[0-9()\-\s]{7,20}$")
+EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]{2,}$")
 
 
 def parse_age(value: str) -> int | None:
@@ -19,6 +20,11 @@ def normalize_phone(value: str) -> str | None:
         return None
     digits = re.sub(r"\D", "", value)
     return f"+{digits}" if value.startswith("+") else digits
+
+
+def normalize_email(value: str) -> str | None:
+    value = value.strip().casefold()
+    return value if len(value) <= 255 and EMAIL_RE.fullmatch(value) else None
 
 
 def parse_date(value: str) -> date | None:

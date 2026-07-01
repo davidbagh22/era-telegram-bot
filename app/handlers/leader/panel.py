@@ -4,7 +4,12 @@ from zoneinfo import ZoneInfo
 from aiogram import F, Bot, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,9 +71,13 @@ def _scope_ids(user: User) -> tuple[set[int], set[int]]:
 
 
 @router.message(Command("leader"))
-async def leader_command(message: Message, user: User | None) -> None:
+@router.message(F.text == "🧭 Панель лидера")
+async def leader_command(
+    message: Message, user: User | None, state: FSMContext
+) -> None:
     if not await _guard(message, user):
         return
+    await state.clear()
     await message.answer(texts.LEADER_PANEL, reply_markup=leader_panel_keyboard())
 
 
@@ -349,7 +358,14 @@ async def event_limit(message: Message, state: FSMContext) -> None:
 
 
 @router.message(EventStates.points)
-async def event_points(message: Message, state: FSMContext) -> None:
+async def event_points(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    user: User,
+    bot: Bot,
+    settings: Settings,
+) -> None:
     try:
         value = int(message.text or "")
         if not 0 <= value <= 1000:
@@ -358,25 +374,6 @@ async def event_points(message: Message, state: FSMContext) -> None:
         await message.answer("Укажите число от 0 до 1000.")
         return
     await state.update_data(event_points=value)
-    await state.set_state(EventStates.selfie_required)
-    await message.answer(
-        "Нужно ли селфи-подтверждение?",
-        reply_markup=options_keyboard(
-            [("Да", "event:selfie:yes"), ("Нет", "event:selfie:no")], columns=2
-        ),
-    )
-
-
-@router.callback_query(EventStates.selfie_required, F.data.startswith("event:selfie:"))
-async def event_finish(
-    call: CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession,
-    user: User,
-    bot: Bot,
-    settings: Settings,
-) -> None:
-    await call.answer()
     data = await state.get_data()
     department = await session.scalar(
         select(Department).where(Department.name == data["event_department"])
@@ -396,7 +393,7 @@ async def event_finish(
         responsible_id=user.id,
         participant_limit=data["event_limit"],
         points_for_visit=data["event_points"],
-        selfie_required=call.data.endswith(":yes"),
+        selfie_required=False,
         additional_info=data.get("event_ai_plan"),
         status=EventStatus.PENDING_APPROVAL,
         created_by=user.id,
@@ -411,7 +408,10 @@ async def event_finish(
         entity_id=event.id,
     )
     await state.clear()
-    await call.message.answer("Мероприятие отправлено администратору на утверждение.")
+    await message.answer(
+        "Мероприятие отправлено администратору на утверждение\n\n"
+        "После завершения администратор сможет отдельно открыть активности: отзыв, фото, видео или задание с собственной наградой"
+    )
     await notify_admins(
         bot, settings, f"Мероприятие на утверждении: {event.title} (#{event.id})."
     )
@@ -451,25 +451,49 @@ async def task_start(call: CallbackQuery, state: FSMContext, user: User | None) 
         return
     await state.clear()
     await state.set_state(TaskStates.assignee)
-    await call.message.answer("Укажите Telegram ID исполнителя.")
+    await call.message.answer(
+        "Кому назначить задачу? Напишите имя, фамилию, @username или Telegram ID"
+    )
 
 
 @router.message(TaskStates.assignee)
 async def task_assignee(
     message: Message, state: FSMContext, session: AsyncSession
 ) -> None:
-    try:
-        target = await session.scalar(
-            select(User).where(User.telegram_id == int(message.text or ""))
-        )
-        if target is None:
-            raise ValueError
-    except ValueError:
-        await message.answer("Участник с таким Telegram ID не найден.")
+    query = clean_text(message.text or "", 150).lstrip("@").lower()
+    conditions = [
+        User.first_name.ilike(f"%{query}%"),
+        User.last_name.ilike(f"%{query}%"),
+        User.username.ilike(f"%{query}%"),
+    ]
+    if query.isdigit():
+        conditions.append(User.telegram_id == int(query))
+    targets = (
+        await session.scalars(select(User).where(or_(*conditions)).limit(8))
+    ).all()
+    if not targets:
+        await message.answer("Участник не найден — попробуйте другое написание")
         return
-    await state.update_data(task_assignee_id=target.id)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"{target.first_name} {target.last_name or ''}".strip(),
+                    callback_data=f"leader:task:assignee:{target.id}",
+                )
+            ]
+            for target in targets
+        ]
+    )
+    await message.answer("Выберите участника", reply_markup=keyboard)
+
+
+@router.callback_query(TaskStates.assignee, F.data.startswith("leader:task:assignee:"))
+async def task_assignee_selected(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    await state.update_data(task_assignee_id=int(call.data.rsplit(":", 1)[-1]))
     await state.set_state(TaskStates.title)
-    await message.answer("Напишите название задачи.")
+    await call.message.answer("Напишите короткое название задачи")
 
 
 @router.message(TaskStates.title)
@@ -590,11 +614,10 @@ async def proposal_start(
     await state.set_state(ProposalStates.proposal_type)
     options = (
         ("Предложить баллы", "points"),
-        ("Документ в портфолио", "portfolio"),
         ("Повышение статуса", "status"),
+        ("Назначение на должность", "office"),
         ("Знак отличия", "badge"),
-        ("Поддержку ЭРА", "support"),
-        ("Наставника", "mentor"),
+        ("Документ в портфолио", "portfolio"),
     )
     await call.message.answer(
         "Выберите тип предложения.",
@@ -611,25 +634,51 @@ async def proposal_type(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await state.update_data(proposal_type=call.data.rsplit(":", 1)[-1])
     await state.set_state(ProposalStates.target)
-    await call.message.answer("Укажите Telegram ID участника.")
+    await call.message.answer(
+        "Кого Вы хотите предложить? Напишите имя, фамилию, @username или Telegram ID"
+    )
 
 
 @router.message(ProposalStates.target)
 async def proposal_target(
     message: Message, state: FSMContext, session: AsyncSession
 ) -> None:
-    try:
-        target = await session.scalar(
-            select(User).where(User.telegram_id == int(message.text or ""))
-        )
-        if target is None:
-            raise ValueError
-    except ValueError:
-        await message.answer("Участник не найден.")
+    query = clean_text(message.text or "", 150).lstrip("@").lower()
+    conditions = [
+        User.first_name.ilike(f"%{query}%"),
+        User.last_name.ilike(f"%{query}%"),
+        User.username.ilike(f"%{query}%"),
+    ]
+    if query.isdigit():
+        conditions.append(User.telegram_id == int(query))
+    targets = (
+        await session.scalars(select(User).where(or_(*conditions)).limit(8))
+    ).all()
+    if not targets:
+        await message.answer("Участник не найден — попробуйте другое написание")
         return
-    await state.update_data(proposal_target_id=target.id)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"{target.first_name} {target.last_name or ''}".strip(),
+                    callback_data=f"leader:proposal:target:{target.id}",
+                )
+            ]
+            for target in targets
+        ]
+    )
+    await message.answer("Выберите участника", reply_markup=keyboard)
+
+
+@router.callback_query(
+    ProposalStates.target, F.data.startswith("leader:proposal:target:")
+)
+async def proposal_target_selected(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    await state.update_data(proposal_target_id=int(call.data.rsplit(":", 1)[-1]))
     await state.set_state(ProposalStates.value)
-    await message.answer(
+    await call.message.answer(
         "Напишите предлагаемое значение: количество баллов, статус, знак или вид поддержки."
     )
 

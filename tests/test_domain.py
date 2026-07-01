@@ -8,6 +8,7 @@ from app.config import Settings
 from app.database import Base, Department, Direction, User
 from app.repositories.users import assign_interests, create_user_from_registration
 from app.services.ai_service import fallback_project_document
+from app.services.project_builder import PROJECT_QUESTIONS, render_project_document
 from app.utils.constants import BADGES, DEPARTMENTS, DEFAULT_POINTS
 
 
@@ -20,6 +21,29 @@ class _ScalarResult:
 
 
 class DomainTests(unittest.TestCase):
+    def test_project_builder_has_six_blocks_and_resumable_steps(self) -> None:
+        blocks = {question.block.split(" · ", 1)[0] for question in PROJECT_QUESTIONS}
+        self.assertEqual(blocks, {"1", "2", "3", "4", "5", "6"})
+        self.assertGreaterEqual(len(PROJECT_QUESTIONS), 15)
+        self.assertTrue(
+            any(question.input_type == "date" for question in PROJECT_QUESTIONS)
+        )
+        self.assertTrue(any(question.ai_hint for question in PROJECT_QUESTIONS))
+
+    def test_project_document_contains_all_six_sections(self) -> None:
+        document = render_project_document(
+            {"title": "Тест", "idea": "Идея"}, "Имя", "@telegram"
+        )
+        for heading in (
+            "1. ИДЕЯ",
+            "2. АУДИТОРИЯ",
+            "3. КОНЦЕПЦИЯ",
+            "4. ОРГАНИЗАЦИЯ",
+            "5. МАРКЕТИНГ",
+            "6. УСТОЙЧИВОСТЬ",
+        ):
+            self.assertIn(heading, document)
+
     def test_registration_creates_loaded_relationship_collections(self) -> None:
         session = AsyncMock()
         session.add = Mock()
@@ -119,7 +143,9 @@ class DomainTests(unittest.TestCase):
         )
 
     def test_reference_data(self) -> None:
-        self.assertIn("Лидер месяца", BADGES)
+        self.assertEqual(len(BADGES), 10)
+        self.assertIn("Первый шаг", BADGES)
+        self.assertIn("Прорыв месяца", BADGES)
         self.assertEqual(DEFAULT_POINTS["Регистрация в боте"], 5)
         self.assertEqual(DEFAULT_POINTS["Одобренный проект"], 30)
 
@@ -136,6 +162,11 @@ class DomainTests(unittest.TestCase):
                 "points",
                 "portfolio_items",
                 "audit_logs",
+                "offices",
+                "permission_grants",
+                "event_activities",
+                "reward_items",
+                "auctions",
             }.issubset(tables)
         )
 
