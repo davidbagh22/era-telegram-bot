@@ -25,7 +25,7 @@ async def decide(call: CallbackQuery, user: User | None, settings: Settings, ses
         return
     _, _, action, raw_id = call.data.split(":")
     sub = await session.get(EventActivitySubmission, int(raw_id))
-    if not sub or sub.status != "pending":
+    if not sub or sub.status not in {"pending", "leader_approved"}:
         await call.message.answer("Ответ уже проверен")
         return
     activity = await session.get(EventActivity, sub.activity_id)
