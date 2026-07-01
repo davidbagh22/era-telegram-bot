@@ -311,6 +311,7 @@ def _application_notification(user) -> str:
         f"👤 {user.first_name} {user.last_name or ''}\n"
         f"🎂 Возраст: {user.age or 'не указан'}\n"
         f"📍 Город: {user.city or 'не указан'}\n"
+        f"📱 Телефон: {user.phone or 'не указан'}\n"
         f"🎓 Учёба / работа: {user.education_work or 'не указано'}\n"
         f"💼 Занятие: {user.occupation or 'не указано'}\n"
         f"📧 Email: {user.email or 'не указан'}\n"
