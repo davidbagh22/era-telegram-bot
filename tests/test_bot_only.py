@@ -29,7 +29,7 @@ class BotOnlyTests(unittest.TestCase):
         self.assertTrue(all(button.web_app is None for button in buttons))
         labels = {button.text for button in buttons}
         self.assertIn("👤 Личный кабинет", labels)
-        self.assertIn("⚙️ Управление", labels)
+        self.assertIn("⚙️ Панель", labels)
         self.assertTrue(keyboard.is_persistent)
 
     def test_pending_registration_has_a_clear_next_step(self) -> None:
