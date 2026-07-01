@@ -10,6 +10,7 @@ def leader_panel_keyboard() -> InlineKeyboardMarkup:
         ("👥 Работа в команде", "leader:participants"),
         ("📋 Мои участники", "leader:participants"),
         ("📅 Предложить мероприятие", "leader:event:new"),
+        ("✨ Проверка активностей", "leader:event_activities"),
         ("🎖 Предложить поощрение", "leader:proposal:new"),
         ("⬆️ Предложить повышение", "leader:proposal:new"),
         ("🏅 Предложить знак", "leader:proposal:new"),
@@ -17,9 +18,5 @@ def leader_panel_keyboard() -> InlineKeyboardMarkup:
         ("💬 Связь с председателем", "question:start"),
         ("← Главное меню", "menu:main"),
     )
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=label, callback_data=callback)]
-            for label, callback in options
-        ]
-    )
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in options]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
