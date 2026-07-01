@@ -28,7 +28,7 @@ class BotOnlyTests(unittest.TestCase):
 
         self.assertTrue(all(button.web_app is None for button in buttons))
         labels = {button.text for button in buttons}
-        self.assertIn("🌱 Мой путь", labels)
+        self.assertIn("👤 Личный кабинет", labels)
         self.assertIn("⚙️ Управление", labels)
         self.assertTrue(keyboard.is_persistent)
 
