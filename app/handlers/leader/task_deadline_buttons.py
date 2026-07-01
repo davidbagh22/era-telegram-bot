@@ -1,4 +1,4 @@
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
@@ -166,7 +166,7 @@ async def task_deadline_confirm(call: CallbackQuery, state: FSMContext) -> None:
     if not raw_deadline:
         await call.message.answer("Сначала выберите дату и время дедлайна.", reply_markup=_deadline_day_keyboard())
         return
-    await state.update_data(task_deadline=datetime.fromisoformat(raw_deadline))
+    await state.update_data(task_deadline=raw_deadline)
     await state.set_state(TaskStates.points)
     await call.message.answer("Укажите количество баллов после подтверждения задачи.")
 
