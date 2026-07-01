@@ -228,18 +228,15 @@ def rewards_keyboard(rewards: Iterable, auctions: Iterable) -> InlineKeyboardMar
 
 
 def portfolio_keyboard(items: Iterable = ()) -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(text="👁 Просмотреть портфолио", callback_data="portfolio:view")],
-        [InlineKeyboardButton(text="📎 Добавить достижение", callback_data="portfolio:upload")],
-        [InlineKeyboardButton(text="📄 Скачать резюме ЭРА", callback_data="portfolio:resume")],
-    ]
-    rows.extend(
-        [InlineKeyboardButton(text=f"Скачать: {item.title[:32]}", callback_data=f"portfolio:file:{item.id}")]
-        for item in items
-        if item.file_id and item.status == "verified"
+    del items
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="👁 Просмотреть портфолио", callback_data="portfolio:view")],
+            [InlineKeyboardButton(text="📎 Добавить достижение", callback_data="portfolio:upload")],
+            [InlineKeyboardButton(text="📄 Скачать резюме ЭРА", callback_data="portfolio:resume")],
+            [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
+        ]
     )
-    rows.append([InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def tasks_keyboard(tasks: Iterable, joined_ids: set[int]) -> InlineKeyboardMarkup:
