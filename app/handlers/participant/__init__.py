@@ -2,6 +2,7 @@ from aiogram import Router
 
 from app.handlers.participant import (
     navigation,
+    task_flow,
     about,
     cabinet,
     departments,
@@ -14,6 +15,7 @@ from app.handlers.participant import (
 router = Router(name="participant")
 router.include_routers(
     navigation.router,
+    task_flow.router,
     cabinet.router,
     events.router,
     projects.router,
