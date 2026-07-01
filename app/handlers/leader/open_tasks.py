@@ -4,10 +4,11 @@ from zoneinfo import ZoneInfo
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import Task, User
+from app.database.models import Task, TaskParticipant, User
 from app.services.audit_service import audit
 from app.services.notification_service import notify_admins
 from app.states.open_task import OpenTaskStates
@@ -284,3 +285,38 @@ async def open_task_finish(
         settings,
         f"📢 Открытая задача опубликована\n\n{task.title}\nЛидер: {user.first_name} {user.last_name or ''}\nНужно помощников: {max_participants}",
     )
+
+
+@router.callback_query(F.data == "leader:task:applications")
+async def open_task_applications(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+    if not await _guard(call, user):
+        return
+    tasks = (
+        await session.scalars(
+            select(Task)
+            .where(Task.creator_id == user.id, Task.task_type == "challenge")
+            .order_by(Task.deadline)
+        )
+    ).all()
+    if not tasks:
+        await call.message.answer("Открытых задач с заявками пока нет.")
+        return
+    lines = []
+    for task in tasks:
+        participants = (
+            await session.scalars(
+                select(TaskParticipant).where(TaskParticipant.task_id == task.id)
+            )
+        ).all()
+        names = []
+        for participant in participants:
+            person = await session.get(User, participant.user_id)
+            if person:
+                username = f"@{person.username}" if person.username else "без username"
+                names.append(f"{person.first_name} {person.last_name or ''} — {username}")
+        lines.append(
+            f"#{task.id} {task.title}\n"
+            f"Дедлайн: {task.deadline:%d.%m.%Y %H:%M}\n"
+            f"Отклики: {', '.join(names) if names else 'пока нет'}"
+        )
+    await call.message.answer("📥 Заявки на открытые задачи\n\n" + "\n\n".join(lines))
