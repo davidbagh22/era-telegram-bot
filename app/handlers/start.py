@@ -54,6 +54,15 @@ async def _subscription_ok(bot: Bot, telegram_id: int, settings: Settings) -> bo
         return None
 
 
+def _approved_existing_user(user: User | None) -> bool:
+    return bool(
+        user
+        and user.application_status == ApplicationStatus.APPROVED
+        and not user.is_blocked
+        and not user.is_archived
+    )
+
+
 @router.message(CommandStart())
 @router.message(Command("menu"))
 async def start(
@@ -64,6 +73,9 @@ async def start(
 ) -> None:
     subscribed = await _subscription_ok(bot, message.from_user.id, settings)
     if subscribed is None:
+        if _approved_existing_user(user):
+            await show_home(message, user, settings)
+            return
         await message.answer(
             getattr(
                 texts,
@@ -95,6 +107,9 @@ async def check_subscription(
     await call.answer()
     subscribed = await _subscription_ok(bot, call.from_user.id, settings)
     if subscribed is None:
+        if _approved_existing_user(user):
+            await show_home(call.message, user, settings)
+            return
         await call.message.answer(
             getattr(
                 texts,
