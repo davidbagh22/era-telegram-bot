@@ -6,6 +6,7 @@ def leader_panel_keyboard() -> InlineKeyboardMarkup:
         ("✅ Задачи", "leader:tasks"),
         ("➕ Назначить задачу", "leader:task:new"),
         ("📢 Опубликовать задачу", "leader:task:open"),
+        ("📥 Заявки на задачи", "leader:task:applications"),
         ("👥 Работа в команде", "leader:participants"),
         ("📋 Мои участники", "leader:participants"),
         ("📅 Предложить мероприятие", "leader:event:new"),
