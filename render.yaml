@@ -24,6 +24,8 @@ services:
           property: connectionString
       - key: OPENAI_MODEL
         value: gpt-5.5
+      - key: ERA_CHANNEL_ID
+        value: "-1002977129337"
       - key: ERA_CHANNEL_URL
         value: https://t.me/+kFak7gRKoA8xYTc6
       - key: ERA_PRO_CHANNEL_URL
