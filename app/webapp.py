@@ -76,7 +76,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="ERA Telegram Bot Service",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
     docs_url=None,
     openapi_url=None,
@@ -85,7 +85,7 @@ app = FastAPI(
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "version": "2.0.0"}
 
 
 @app.post("/telegram/webhook", include_in_schema=False)
