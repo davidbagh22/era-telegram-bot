@@ -57,7 +57,8 @@ def parse_deadline(value: str, timezone: str = "Asia/Yerevan") -> datetime | Non
         if not parsed_time:
             return None
         target_date = now.date() + (timedelta(days=1) if day_word == "завтра" else timedelta())
-        return datetime.combine(target_date, parsed_time, tzinfo=tz)
+        candidate = datetime.combine(target_date, parsed_time, tzinfo=tz)
+        return candidate if candidate > now else None
 
     parsed_time = parse_time(raw)
     if parsed_time:
@@ -97,12 +98,12 @@ def parse_deadline(value: str, timezone: str = "Asia/Yerevan") -> datetime | Non
             candidate = datetime.combine(date(year, month, day), parsed_time, tzinfo=tz)
         except ValueError:
             return None
-        if not has_year and candidate < now:
+        if not has_year and candidate <= now:
             try:
                 candidate = datetime.combine(date(year + 1, month, day), parsed_time, tzinfo=tz)
             except ValueError:
                 return None
-        return candidate
+        return candidate if candidate > now else None
 
     return None
 
