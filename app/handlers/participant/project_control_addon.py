@@ -38,6 +38,7 @@ def _project_row(project: Project) -> list[list[InlineKeyboardButton]]:
     if project.status in {ProjectStatus.DRAFT, ProjectStatus.NEEDS_REVISION}:
         rows.append([InlineKeyboardButton(text=f"Продолжить: {project.title[:32]}", callback_data=f"project:resume:{project.id}")])
     if project.status in {ProjectStatus.APPROVED, ProjectStatus.IN_PROGRESS}:
+        rows.append([InlineKeyboardButton(text=f"📅 Оформить мероприятие: {project.title[:24]}", callback_data=f"project:event:{project.id}")])
         rows.append([InlineKeyboardButton(text=f"🔍 Найти команду: {project.title[:28]}", callback_data=f"project:team_post:{project.id}")])
     if project.status in {ProjectStatus.DRAFT, ProjectStatus.NEEDS_REVISION, ProjectStatus.REJECTED, ProjectStatus.POSTPONED}:
         rows.append([InlineKeyboardButton(text=f"🗑 Удалить: {project.title[:32]}", callback_data=f"project:delete:{project.id}")])
@@ -50,13 +51,7 @@ async def project_list_with_delete(call: CallbackQuery, session: AsyncSession, u
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    projects = (
-        await session.scalars(
-            select(Project)
-            .where(Project.author_id == user.id, Project.status != ProjectStatus.CANCELLED)
-            .order_by(desc(Project.updated_at))
-        )
-    ).all()
+    projects = (await session.scalars(select(Project).where(Project.author_id == user.id, Project.status != ProjectStatus.CANCELLED).order_by(desc(Project.updated_at)))).all()
     if not projects:
         await call.message.answer("Проектов пока нет.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← К проектам", callback_data="projects:menu")]]))
         return
@@ -64,7 +59,23 @@ async def project_list_with_delete(call: CallbackQuery, session: AsyncSession, u
     for project in projects:
         rows.extend(_project_row(project))
     rows.append([InlineKeyboardButton(text="← К проектам", callback_data="projects:menu")])
-    await call.message.answer("📁 Мои проекты\n\nЧерновики можно продолжить или удалить. Для одобренных проектов можно искать команду.", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await call.message.answer("📁 Мои проекты\n\nЧерновики можно продолжить или удалить. Для одобренных проектов можно оформить мероприятие или найти команду.", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("project:event:"))
+async def project_event_hint(call: CallbackQuery, session: AsyncSession, user: User | None) -> None:
+    await call.answer()
+    if not _approved(user):
+        return
+    project = await _load_owned_project(session, int(call.data.rsplit(":", 1)[-1]), user)
+    if not project or project.status not in {ProjectStatus.APPROVED, ProjectStatus.IN_PROGRESS}:
+        await call.message.answer("Оформить мероприятие можно после одобрения проекта")
+        return
+    await call.message.answer(
+        f"📅 Следующий этап проекта «{project.title}» — оформление мероприятия.\n\n"
+        "Откройте панель лидера или попросите руководителя направления нажать «Предложить мероприятие». "
+        "В следующем обновлении этот шаг будет открываться как конструктор прямо из проекта."
+    )
 
 
 @router.callback_query(F.data.startswith("project:delete:"))
@@ -78,12 +89,10 @@ async def project_delete_ask(call: CallbackQuery, session: AsyncSession, user: U
         return
     await call.message.answer(
         f"Удалить проект «{project.title}»?\n\nЭто действие нужно подтвердить ещё раз.",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="Да, удалить проект", callback_data=f"project:delete_confirm:{project.id}")],
-                [InlineKeyboardButton(text="Нет, оставить", callback_data="projects:drafts")],
-            ]
-        ),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Да, удалить проект", callback_data=f"project:delete_confirm:{project.id}")],
+            [InlineKeyboardButton(text="Нет, оставить", callback_data="projects:drafts")],
+        ]),
     )
 
 
@@ -101,13 +110,7 @@ async def project_delete_confirm(call: CallbackQuery, session: AsyncSession, use
 
 
 @router.callback_query(F.data.startswith("project:submit:"))
-async def project_submit_with_document(
-    call: CallbackQuery,
-    session: AsyncSession,
-    user: User | None,
-    bot: Bot,
-    settings: Settings,
-) -> None:
+async def project_submit_with_document(call: CallbackQuery, session: AsyncSession, user: User | None, bot: Bot, settings: Settings) -> None:
     await call.answer()
     if not _approved(user):
         return
@@ -129,12 +132,7 @@ async def project_submit_with_document(
     recipients = set(settings.admin_ids)
     if settings.leaders_chat_id:
         recipients.add(settings.leaders_chat_id)
-    summary = (
-        "💡 Новый проект на рассмотрении\n\n"
-        f"{project.title}\n"
-        f"Автор: {author_name} ({telegram})\n\n"
-        "Полный файл проекта прикреплён ниже."
-    )
+    summary = f"💡 Новый проект на рассмотрении\n\n{project.title}\nАвтор: {author_name} ({telegram})\n\nПолный файл проекта прикреплён ниже."
     for chat_id in recipients:
         file = BufferedInputFile(BytesIO(document.encode("utf-8")).getvalue(), filename=f"ERA_project_{project.id}.txt")
         await safe_send(bot, chat_id, summary, reply_markup=entity_actions("project", project.id))
@@ -152,11 +150,7 @@ async def project_team_post_start(call: CallbackQuery, session: AsyncSession, us
         return
     await state.set_state(ProjectTeamPostStates.text)
     await state.update_data(team_project_id=project.id)
-    await call.message.answer(
-        "Напишите публикацию для поиска единомышленников.\n\n"
-        "Укажите: кого ищете, что нужно делать, сколько времени займёт участие и почему это стоит сделать.\n"
-        "После отправки текст должен утвердить админ."
-    )
+    await call.message.answer("Напишите публикацию для поиска единомышленников.\n\nУкажите: кого ищете, что нужно делать, сколько времени займёт участие и почему это стоит сделать.\nПосле отправки текст должен утвердить админ.")
 
 
 @router.message(ProjectTeamPostStates.text)
@@ -178,14 +172,7 @@ async def project_team_post_submit(message: Message, state: FSMContext, session:
     await state.clear()
     await message.answer("Публикация для поиска команды отправлена админу на утверждение.")
     telegram = f"@{user.username}" if user.username else str(user.telegram_id)
-    await notify_admins(
-        bot,
-        settings,
-        f"🔍 Запрос на поиск команды\n\nПроект: {project.title}\nАвтор: {user.first_name} {user.last_name or ''} ({telegram})\n\n{text}",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="✅ Одобрить публикацию", callback_data=f"admin:team_post:approve:{project.id}")],
-                [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:team_post:reject:{project.id}")],
-            ]
-        ),
-    )
+    await notify_admins(bot, settings, f"🔍 Запрос на поиск команды\n\nПроект: {project.title}\nАвтор: {user.first_name} {user.last_name or ''} ({telegram})\n\n{text}", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Одобрить публикацию", callback_data=f"admin:team_post:approve:{project.id}")],
+        [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:team_post:reject:{project.id}")],
+    ]))
