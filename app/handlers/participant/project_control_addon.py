@@ -2,7 +2,9 @@ from datetime import datetime
 from io import BytesIO
 
 from aiogram import F, Bot, Router
-from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,12 +12,16 @@ from app.config import Settings
 from app.database.models import Project, User
 from app.keyboards.admin import entity_actions
 from app.services.audit_service import audit
-from app.services.notification_service import safe_send
+from app.services.notification_service import notify_admins, safe_send
 from app.services.project_builder import render_project_document
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, ProjectStatus
 
 router = Router(name="participant_project_control_addon")
+
+
+class ProjectTeamPostStates(StatesGroup):
+    text = State()
 
 
 def _approved(user: User | None) -> bool:
@@ -129,14 +135,14 @@ async def project_submit_with_document(
         f"Автор: {author_name} ({telegram})\n\n"
         "Полный файл проекта прикреплён ниже."
     )
-    file = BufferedInputFile(BytesIO(document.encode("utf-8")).getvalue(), filename=f"ERA_project_{project.id}.txt")
     for chat_id in recipients:
+        file = BufferedInputFile(BytesIO(document.encode("utf-8")).getvalue(), filename=f"ERA_project_{project.id}.txt")
         await safe_send(bot, chat_id, summary, reply_markup=entity_actions("project", project.id))
         await bot.send_document(chat_id, file, caption=f"Полный проект #{project.id}")
 
 
 @router.callback_query(F.data.startswith("project:team_post:"))
-async def project_team_post_start(call: CallbackQuery, session: AsyncSession, user: User | None) -> None:
+async def project_team_post_start(call: CallbackQuery, session: AsyncSession, user: User | None, state: FSMContext) -> None:
     await call.answer()
     if not _approved(user):
         return
@@ -144,8 +150,42 @@ async def project_team_post_start(call: CallbackQuery, session: AsyncSession, us
     if not project or project.status not in {ProjectStatus.APPROVED, ProjectStatus.IN_PROGRESS}:
         await call.message.answer("Искать команду можно после одобрения проекта")
         return
+    await state.set_state(ProjectTeamPostStates.text)
+    await state.update_data(team_project_id=project.id)
     await call.message.answer(
         "Напишите публикацию для поиска единомышленников.\n\n"
         "Укажите: кого ищете, что нужно делать, сколько времени займёт участие и почему это стоит сделать.\n"
         "После отправки текст должен утвердить админ."
+    )
+
+
+@router.message(ProjectTeamPostStates.text)
+async def project_team_post_submit(message: Message, state: FSMContext, session: AsyncSession, user: User, bot: Bot, settings: Settings) -> None:
+    data = await state.get_data()
+    project = await _load_owned_project(session, int(data["team_project_id"]), user)
+    if not project:
+        await state.clear()
+        await message.answer(texts.NO_ACCESS)
+        return
+    text = (message.text or message.caption or "").strip()
+    if len(text) < 30:
+        await message.answer("Слишком коротко. Добавьте, кого ищете и что нужно делать.")
+        return
+    form_data = dict(project.form_data or {})
+    form_data["team_search_post"] = text
+    form_data["team_search_status"] = "pending"
+    project.form_data = form_data
+    await state.clear()
+    await message.answer("Публикация для поиска команды отправлена админу на утверждение.")
+    telegram = f"@{user.username}" if user.username else str(user.telegram_id)
+    await notify_admins(
+        bot,
+        settings,
+        f"🔍 Запрос на поиск команды\n\nПроект: {project.title}\nАвтор: {user.first_name} {user.last_name or ''} ({telegram})\n\n{text}",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Одобрить публикацию", callback_data=f"admin:team_post:approve:{project.id}")],
+                [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:team_post:reject:{project.id}")],
+            ]
+        ),
     )
