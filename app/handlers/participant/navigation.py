@@ -22,6 +22,12 @@ from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
 
 router = Router(name="participant_navigation")
 
+LEADER_PANEL_TEXT = """Панель лидера
+
+Здесь лидер не просто смотрит разделы, а двигает команду: назначает задачи, публикует открытые задачи, ищет помощников, предлагает мероприятия, поощрения, повышения и знаки.
+
+Лидер в ЭРА — это ответственность за людей, движение и результат."""
+
 
 def _approved(user: User | None) -> bool:
     return bool(
@@ -186,7 +192,7 @@ async def panel_button(message: Message, user: User | None, state: FSMContext) -
         await message.answer(texts.ADMIN_PANEL, reply_markup=admin_panel_keyboard())
         return
     if user.role in PRIVILEGED_ROLES:
-        await message.answer(texts.LEADER_PANEL, reply_markup=leader_panel_keyboard())
+        await message.answer(LEADER_PANEL_TEXT, reply_markup=leader_panel_keyboard())
         return
     await message.answer(texts.NO_ACCESS)
 
@@ -201,7 +207,7 @@ async def panel_callback(call: CallbackQuery, user: User | None) -> None:
         await call.message.answer(texts.ADMIN_PANEL, reply_markup=admin_panel_keyboard())
         return
     if user.role in PRIVILEGED_ROLES:
-        await call.message.answer(texts.LEADER_PANEL, reply_markup=leader_panel_keyboard())
+        await call.message.answer(LEADER_PANEL_TEXT, reply_markup=leader_panel_keyboard())
         return
     await call.message.answer(texts.NO_ACCESS)
 
