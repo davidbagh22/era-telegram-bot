@@ -2,21 +2,21 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Bot, Router
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Badge, Task, User, UserBadge
-from app.keyboards.admin import application_actions
-from app.keyboards.participant import main_menu
+from app.keyboards.admin import admin_panel_keyboard, application_actions
 from app.services.audit_service import audit
 from app.services.notification_service import safe_send
 from app.states.admin import AdminGrowthStates
 from app.utils import texts
-from app.utils.constants import ApplicationStatus, ParticipationStatus, PERMISSIONS, Role
+from app.utils.constants import ApplicationStatus, Role
 from app.utils.validators import clean_text, parse_deadline, parse_time
 
 router = Router(name="admin_addons")
@@ -34,6 +34,17 @@ class AdminTaskFixStates(StatesGroup):
     photo = State()
     deadline = State()
     points = State()
+
+
+ADMIN_ESCAPE_TEXTS = {
+    "Отменить",
+    "отменить",
+    "Назад",
+    "← Назад",
+    "Главное меню",
+    "⚙️ Панель",
+    "⚙️ Управление",
+}
 
 
 def _active_permissions(user: User | None) -> set[str]:
@@ -64,6 +75,48 @@ async def _guard(event: Message | CallbackQuery, user: User | None, settings: Se
         await message.answer(texts.NO_ACCESS)
         return False
     return True
+
+
+async def _reset_admin_state(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("Состояние сброшено. Админ-панель открыта.", reply_markup=admin_panel_keyboard())
+
+
+@router.message(Command("cancel"))
+async def admin_cancel_command(
+    message: Message,
+    user: User | None,
+    settings: Settings,
+    state: FSMContext,
+) -> None:
+    if not await _guard(message, user, settings):
+        return
+    await _reset_admin_state(message, state)
+
+
+@router.message(F.text.in_(ADMIN_ESCAPE_TEXTS))
+async def admin_escape_text(
+    message: Message,
+    user: User | None,
+    settings: Settings,
+    state: FSMContext,
+) -> None:
+    if not await _guard(message, user, settings):
+        return
+    await _reset_admin_state(message, state)
+
+
+@router.callback_query(F.data.in_({"admin:task:cancel", "admin:panel"}))
+async def admin_escape_callback(
+    call: CallbackQuery,
+    user: User | None,
+    settings: Settings,
+    state: FSMContext,
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+    await state.clear()
+    await call.message.answer("Состояние сброшено. Админ-панель открыта.", reply_markup=admin_panel_keyboard())
 
 
 def _tg(user: User) -> str:
@@ -345,13 +398,6 @@ async def admin_task_new(
         return
     await state.set_state(AdminTaskFixStates.person)
     await call.message.answer("Кому дать задание? Напишите имя, фамилию, @username или Telegram ID", reply_markup=_cancel_keyboard())
-
-
-@router.callback_query(F.data == "admin:task:cancel")
-async def admin_task_cancel(call: CallbackQuery, state: FSMContext) -> None:
-    await call.answer()
-    await state.clear()
-    await call.message.answer("Создание задания отменено")
 
 
 @router.message(AdminTaskFixStates.person)
