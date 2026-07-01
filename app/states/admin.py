@@ -40,6 +40,10 @@ class AdminRewardStates(StatesGroup):
     quantity = State()
 
 
+class AdminRedemptionStates(StatesGroup):
+    answer = State()
+
+
 class AdminAuctionStates(StatesGroup):
     audience = State()
     title = State()
