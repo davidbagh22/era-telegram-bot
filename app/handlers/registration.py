@@ -4,6 +4,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.keyboards.common import subscription_keyboard
 from app.keyboards.registration import (
     DEPARTMENT_OPTIONS,
     DIRECTION_OPTIONS,
@@ -19,7 +20,7 @@ from app.repositories.users import create_user_from_registration
 from app.services.audit_service import audit
 from app.services.notification_service import notify_admins
 from app.services.points_service import add_points
-from app.services.subscription_service import is_channel_member
+from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.states.registration import RegistrationStates
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
@@ -56,8 +57,23 @@ async def registration_start(
     if user is not None:
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    if not await is_channel_member(bot, call.from_user.id, settings):
-        await call.message.answer(texts.SUBSCRIPTION_REQUIRED)
+    try:
+        subscribed = await is_channel_member(bot, call.from_user.id, settings)
+    except SubscriptionCheckError:
+        await call.message.answer(
+            getattr(
+                texts,
+                "SUBSCRIPTION_CHECK_UNAVAILABLE",
+                "Проверка подписки временно недоступна. Попробуйте позже или напишите администратору.",
+            ),
+            reply_markup=subscription_keyboard(settings.era_channel_url),
+        )
+        return
+    if not subscribed:
+        await call.message.answer(
+            texts.SUBSCRIPTION_REQUIRED,
+            reply_markup=subscription_keyboard(settings.era_channel_url),
+        )
         return
     await state.clear()
     await state.set_state(RegistrationStates.first_name)
