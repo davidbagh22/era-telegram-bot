@@ -9,9 +9,7 @@ from app.utils import texts
 from app.utils.constants import ApplicationStatus, TASK_STATUS_LABELS
 
 router = Router(name="participant_task_lists_addon")
-
 ARCHIVE_STATUSES = {"completed", "cancelled", "rejected"}
-ACTIVE_STATUSES = {"new", "published", "in_progress", "review", "overdue"}
 
 
 def _approved(user: User | None) -> bool:
@@ -19,30 +17,20 @@ def _approved(user: User | None) -> bool:
 
 
 def _task_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🟢 Задачи в работе", callback_data="tasks:list:active")],
-            [InlineKeyboardButton(text="🗂 Архив задач", callback_data="tasks:list:archive")],
-            [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
-        ]
-    )
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🟢 Задачи в работе", callback_data="tasks:list:active")],
+        [InlineKeyboardButton(text="🗂 Архив задач", callback_data="tasks:list:archive")],
+        [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
+    ])
+
+
+async def _membership(session: AsyncSession, task_id: int, user_id: int):
+    return await session.scalar(select(TaskParticipant).where(TaskParticipant.task_id == task_id, TaskParticipant.user_id == user_id))
 
 
 async def _tasks_for_user(session: AsyncSession, user: User) -> list[Task]:
-    tasks = (
-        await session.scalars(
-            select(Task)
-            .where(or_(Task.assignee_id == user.id, ((Task.task_type == "challenge") & (Task.status == "published"))))
-            .order_by(Task.deadline)
-        )
-    ).all()
-    return [
-        task
-        for task in tasks
-        if task.assignee_id == user.id
-        or not (task.audience_filter_json or {}).get("role")
-        or (task.audience_filter_json or {}).get("role") == user.role
-    ]
+    rows = (await session.scalars(select(Task).where(or_(Task.assignee_id == user.id, ((Task.task_type == "challenge") & (Task.status == "published")))).order_by(Task.deadline))).all()
+    return [t for t in rows if t.assignee_id == user.id or not (t.audience_filter_json or {}).get("role") or (t.audience_filter_json or {}).get("role") == user.role]
 
 
 @router.callback_query(F.data == "cabinet:tasks")
@@ -62,30 +50,41 @@ async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSessi
         return
     mode = call.data.rsplit(":", 1)[-1]
     all_tasks = await _tasks_for_user(session, user)
-    if mode == "archive":
-        tasks = [task for task in all_tasks if task.status in ARCHIVE_STATUSES]
-        title = "🗂 Архив задач"
-    else:
-        tasks = [task for task in all_tasks if task.status not in ARCHIVE_STATUSES]
-        title = "🟢 Задачи в работе"
-    participants = (
-        await session.scalars(
-            select(TaskParticipant).where(
-                TaskParticipant.user_id == user.id,
-                TaskParticipant.task_id.in_([task.id for task in tasks] or [-1]),
-            )
-        )
-    ).all()
-    joined_ids = {item.task_id for item in participants if item.status in {"pending", "accepted", "joined"}}
-    joined_ids.update(task.id for task in tasks if task.assignee_id == user.id)
-    body = (
-        "\n".join(
-            f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, 'Открыто')}, до {task.deadline:%d.%m.%Y} · {task.points} баллов"
-            for task in tasks
-        )
-        or "Здесь пока пусто."
-    )
-    await call.message.answer(
-        f"{title}\n\n{body}",
-        reply_markup=tasks_keyboard(tasks, joined_ids) if tasks else _task_menu(),
-    )
+    tasks = [t for t in all_tasks if (t.status in ARCHIVE_STATUSES) == (mode == "archive")]
+    title = "🗂 Архив задач" if mode == "archive" else "🟢 Задачи в работе"
+    links = (await session.scalars(select(TaskParticipant).where(TaskParticipant.user_id == user.id, TaskParticipant.task_id.in_([t.id for t in tasks] or [-1])))).all()
+    joined = {x.task_id for x in links if x.status in {"pending", "accepted", "joined"}} | {t.id for t in tasks if t.assignee_id == user.id}
+    body = "\n".join(f"• {t.title} — {TASK_STATUS_LABELS.get(t.status, 'Открыто')}, до {t.deadline:%d.%m.%Y} · {t.points} баллов" for t in tasks) or "Здесь пока пусто."
+    await call.message.answer(f"{title}\n\n{body}", reply_markup=tasks_keyboard(tasks, joined) if tasks else _task_menu())
+
+
+@router.callback_query(F.data.startswith("task:view:"))
+async def task_view_card(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+    await call.answer()
+    if not _approved(user):
+        await call.message.answer(texts.APPLICATION_PENDING)
+        return
+    task = await session.get(Task, int(call.data.rsplit(":", 1)[-1]))
+    if not task:
+        await call.message.answer(texts.NO_ACCESS)
+        return
+    link = await _membership(session, task.id, user.id)
+    can_view = task.assignee_id == user.id or (link and link.status in {"pending", "accepted", "joined"}) or (task.task_type == "challenge" and task.status == "published")
+    if not can_view:
+        await call.message.answer(texts.NO_ACCESS)
+        return
+    can_submit = task.assignee_id == user.id or (link and link.status in {"accepted", "joined"})
+    rows = []
+    if can_submit:
+        rows.append([InlineKeyboardButton(text="📤 Отправить результат", callback_data=f"task:result:{task.id}")])
+    elif link and link.status == "pending":
+        rows.append([InlineKeyboardButton(text="⏳ Заявка на рассмотрении", callback_data="cabinet:tasks")])
+    elif task.task_type == "challenge" and task.status == "published":
+        rows.append([InlineKeyboardButton(text="🙌 Хочу помочь", callback_data=f"task:join:{task.id}")])
+    rows.append([InlineKeyboardButton(text="← Мои задачи", callback_data="cabinet:tasks")])
+    await call.message.answer(f"✅ {task.title}\n\n{task.description}\n\nСрок: {task.deadline:%d.%m.%Y %H:%M}\nНаграда: {task.points} баллов", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    if task.file_id:
+        try:
+            await call.message.answer_photo(task.file_id, caption="Материал к заданию")
+        except Exception:
+            await call.message.answer_document(task.file_id, caption="Материал к заданию")
