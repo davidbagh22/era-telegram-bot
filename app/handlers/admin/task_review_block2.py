@@ -43,22 +43,18 @@ async def _guard(event: CallbackQuery | Message, user: User | None, settings: Se
 
 
 def _review_keyboard(submission_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Одобрить и начислить баллы", callback_data=f"admin:tasksub:approve:{submission_id}")],
-            [InlineKeyboardButton(text="💬 Вернуть на доработку", callback_data=f"admin:tasksub:revision:{submission_id}")],
-            [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:tasksub:reject:{submission_id}")],
-        ]
-    )
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Одобрить и начислить баллы", callback_data=f"admin:tasksub:approve:{submission_id}")],
+        [InlineKeyboardButton(text="💬 Вернуть на доработку", callback_data=f"admin:tasksub:revision:{submission_id}")],
+        [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:tasksub:reject:{submission_id}")],
+    ])
 
 
 def _task_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📥 Результаты на проверке", callback_data="admin:task_submissions")],
-            [InlineKeyboardButton(text="← События", callback_data="admin:menu:activity")],
-        ]
-    )
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📥 Результаты на проверке", callback_data="admin:task_submissions")],
+        [InlineKeyboardButton(text="← События", callback_data="admin:menu:activity")],
+    ])
 
 
 async def _context(session: AsyncSession, submission_id: int) -> tuple[TaskSubmission | None, Task | None, User | None]:
@@ -71,14 +67,25 @@ async def _context(session: AsyncSession, submission_id: int) -> tuple[TaskSubmi
 
 
 async def _already_awarded(session: AsyncSession, user_id: int, task_id: int) -> bool:
-    previous = await session.scalar(
-        select(PointTransaction).where(
-            PointTransaction.user_id == user_id,
-            PointTransaction.related_task_id == task_id,
-            PointTransaction.points > 0,
-        )
-    )
+    previous = await session.scalar(select(PointTransaction).where(PointTransaction.user_id == user_id, PointTransaction.related_task_id == task_id, PointTransaction.points > 0))
     return previous is not None
+
+
+async def _send_file(message: Message, file_id: str) -> None:
+    try:
+        await message.answer_photo(file_id, caption="Файл результата")
+        return
+    except Exception:
+        pass
+    try:
+        await message.answer_video(file_id, caption="Файл результата")
+        return
+    except Exception:
+        pass
+    try:
+        await message.answer_document(file_id, caption="Файл результата")
+    except Exception:
+        await message.answer("Файл прикреплён, но Telegram не дал открыть его повторно.")
 
 
 async def _send_submission_card(message: Message, session: AsyncSession, submission_id: int) -> None:
@@ -87,12 +94,7 @@ async def _send_submission_card(message: Message, session: AsyncSession, submiss
         await message.answer("Результат не найден")
         return
     telegram = f"@{participant.username}" if participant.username else str(participant.telegram_id)
-    status = {
-        "pending": "на проверке",
-        "approved": "одобрено",
-        "rejected": "отклонено",
-        "needs_revision": "на доработке",
-    }.get(submission.status, submission.status)
+    status = {"pending": "на проверке", "approved": "одобрено", "rejected": "отклонено", "needs_revision": "на доработке"}.get(submission.status, submission.status)
     await message.answer(
         f"📥 Результат задания #{submission.id}\n\n"
         f"Задание: {task.title}\n"
@@ -106,10 +108,7 @@ async def _send_submission_card(message: Message, session: AsyncSession, submiss
         reply_markup=_review_keyboard(submission.id),
     )
     if submission.file_id:
-        try:
-            await message.answer_photo(submission.file_id, caption="Файл результата")
-        except Exception:
-            await message.answer_document(submission.file_id, caption="Файл результата")
+        await _send_file(message, submission.file_id)
 
 
 @router.callback_query(F.data == "admin:tasks")
@@ -123,14 +122,7 @@ async def tasks_menu(call: CallbackQuery, user: User | None, settings: Settings)
 async def task_submissions(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await _guard(call, user, settings):
         return
-    submissions = (
-        await session.scalars(
-            select(TaskSubmission)
-            .where(TaskSubmission.status == "pending")
-            .order_by(TaskSubmission.created_at.desc())
-            .limit(30)
-        )
-    ).all()
+    submissions = (await session.scalars(select(TaskSubmission).where(TaskSubmission.status == "pending").order_by(TaskSubmission.created_at.desc()).limit(30))).all()
     if not submissions:
         await call.message.answer("Результатов заданий на проверке пока нет.", reply_markup=_task_menu())
         return
@@ -156,14 +148,7 @@ async def approve_submission(call: CallbackQuery, user: User | None, settings: S
     if await _already_awarded(session, participant.id, task.id):
         await call.message.answer("Результат принят. Баллы за это задание уже начислялись ранее.")
         return
-    await add_points(
-        session,
-        user_id=participant.id,
-        points=task.points,
-        reason=f"Выполнение задания: {task.title}",
-        approved_by=user.id if user else None,
-        related_task_id=task.id,
-    )
+    await add_points(session, user_id=participant.id, points=task.points, reason=f"Выполнение задания: {task.title}", approved_by=user.id if user else None, related_task_id=task.id)
     await safe_send(bot, participant.telegram_id, f"Ваш результат по заданию одобрен.\n\n{task.title}\n\nНачислено: {task.points} баллов")
     await call.message.answer("Результат одобрен. Баллы начислены один раз.")
 
