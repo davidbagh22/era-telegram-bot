@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import Task, TaskParticipant, User
 from app.services.audit_service import audit
-from app.services.notification_service import notify_admins
+from app.services.notification_service import notify_admins, safe_send
 from app.states.open_task import OpenTaskStates
 from app.utils import texts
 from app.utils.constants import PRIVILEGED_ROLES
@@ -71,6 +71,17 @@ def _confirm_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def _application_keyboard(task_id: int, user_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Принять", callback_data=f"leader:taskapp:accept:{task_id}:{user_id}"),
+                InlineKeyboardButton(text="❌ Отклонить", callback_data=f"leader:taskapp:reject:{task_id}:{user_id}"),
+            ]
+        ]
+    )
+
+
 async def _guard(event: Message | CallbackQuery, user: User | None) -> bool:
     message = event.message if isinstance(event, CallbackQuery) else event
     if isinstance(event, CallbackQuery):
@@ -88,8 +99,7 @@ async def open_task_start(call: CallbackQuery, user: User | None, state: FSMCont
     await state.clear()
     await state.set_state(OpenTaskStates.title)
     await call.message.answer(
-        "Как называется открытая задача?\n\n"
-        "Например: Нужны помощники для съёмки мероприятия"
+        "Как называется открытая задача?\n\nНапример: Нужны помощники для съёмки мероприятия"
     )
 
 
@@ -301,22 +311,103 @@ async def open_task_applications(call: CallbackQuery, user: User | None, session
     if not tasks:
         await call.message.answer("Открытых задач с заявками пока нет.")
         return
-    lines = []
+    found = False
     for task in tasks:
         participants = (
             await session.scalars(
                 select(TaskParticipant).where(TaskParticipant.task_id == task.id)
             )
         ).all()
-        names = []
+        if not participants:
+            continue
+        found = True
+        lines = [
+            f"📢 #{task.id} {task.title}",
+            f"Дедлайн: {task.deadline:%d.%m.%Y %H:%M}",
+            f"Нужно помощников: {task.max_participants or 'без ограничения'}",
+            "",
+            "Отклики:",
+        ]
         for participant in participants:
             person = await session.get(User, participant.user_id)
-            if person:
-                username = f"@{person.username}" if person.username else "без username"
-                names.append(f"{person.first_name} {person.last_name or ''} — {username}")
-        lines.append(
-            f"#{task.id} {task.title}\n"
-            f"Дедлайн: {task.deadline:%d.%m.%Y %H:%M}\n"
-            f"Отклики: {', '.join(names) if names else 'пока нет'}"
+            if not person:
+                continue
+            username = f"@{person.username}" if person.username else "без username"
+            status = {
+                "pending": "на рассмотрении",
+                "accepted": "принят",
+                "joined": "в команде",
+                "rejected": "отклонён",
+            }.get(participant.status, participant.status)
+            lines.append(f"• {person.first_name} {person.last_name or ''} — {username} — {status}")
+            if participant.status == "pending":
+                await call.message.answer(
+                    "\n".join(lines),
+                    reply_markup=_application_keyboard(task.id, person.id),
+                )
+                lines = []
+        if lines:
+            await call.message.answer("\n".join(lines))
+    if not found:
+        await call.message.answer("Заявок на открытые задачи пока нет.")
+
+
+@router.callback_query(F.data.regexp(r"^leader:taskapp:(accept|reject):\d+:\d+$"))
+async def open_task_application_action(
+    call: CallbackQuery,
+    user: User | None,
+    session: AsyncSession,
+    bot: Bot,
+) -> None:
+    if not await _guard(call, user):
+        return
+    _, _, action, raw_task_id, raw_user_id = call.data.split(":")
+    task = await session.get(Task, int(raw_task_id))
+    target = await session.get(User, int(raw_user_id))
+    if task is None or target is None or task.creator_id != user.id:
+        await call.message.answer(texts.NO_ACCESS)
+        return
+    participant = await session.scalar(
+        select(TaskParticipant).where(
+            TaskParticipant.task_id == task.id,
+            TaskParticipant.user_id == target.id,
         )
-    await call.message.answer("📥 Заявки на открытые задачи\n\n" + "\n\n".join(lines))
+    )
+    if participant is None:
+        await call.message.answer("Заявка уже не найдена.")
+        return
+    if action == "accept":
+        accepted = (
+            await session.scalars(
+                select(TaskParticipant).where(
+                    TaskParticipant.task_id == task.id,
+                    TaskParticipant.status.in_(["accepted", "joined"]),
+                )
+            )
+        ).all()
+        if task.max_participants and len(accepted) >= task.max_participants:
+            await call.message.answer("Команда уже набрана. Увеличьте лимит или отклоните лишние заявки.")
+            return
+        participant.status = "accepted"
+        await safe_send(
+            bot,
+            target.telegram_id,
+            f"Вас приняли в открытую задачу ЭРА.\n\n{task.title}\n\nОткройте Личный кабинет → Мои задачи и отправьте результат после выполнения.",
+        )
+        await call.message.answer(f"Заявка принята: {target.first_name} {target.last_name or ''}")
+    else:
+        participant.status = "rejected"
+        await safe_send(
+            bot,
+            target.telegram_id,
+            f"Заявка на открытую задачу не была принята.\n\n{task.title}\n\nБудут новые возможности — выбирайте следующую задачу в личном кабинете.",
+        )
+        await call.message.answer(f"Заявка отклонена: {target.first_name} {target.last_name or ''}")
+    await audit(
+        session,
+        actor_id=user.id,
+        action=f"task.application_{action}",
+        entity_type="task",
+        entity_id=task.id,
+        new_value={"user_id": target.id},
+    )
