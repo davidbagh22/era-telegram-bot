@@ -1,7 +1,8 @@
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -50,6 +51,81 @@ async def _context(session: AsyncSession, item_id: int):
     return redemption, reward, target
 
 
+def _keyboard(redemption: RewardRedemption) -> InlineKeyboardMarkup:
+    rows = []
+    if redemption.status in {"pending", "reserved"}:
+        rows.append([
+            InlineKeyboardButton(
+                text="💬 Ответить пользователю",
+                callback_data=f"admin:redemption:reply:{redemption.id}",
+            )
+        ])
+        rows.append([
+            InlineKeyboardButton(
+                text="✅ Обменять и списать баллы",
+                callback_data=f"admin:redemption:exchange:{redemption.id}",
+            )
+        ])
+        rows.append([
+            InlineKeyboardButton(
+                text="❌ Отклонить без списания",
+                callback_data=f"admin:redemption:reject:{redemption.id}",
+            )
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _status_label(status: str) -> str:
+    return {
+        "pending": "ждёт ответа админа",
+        "reserved": "ответ отправлен, ждёт обмена",
+        "approved": "обмен завершён",
+        "rejected": "отклонена",
+    }.get(status, status)
+
+
+@router.callback_query(F.data == "admin:reward:redemptions")
+async def reward_redemptions_unified(
+    call: CallbackQuery,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+    items = (
+        await session.scalars(
+            select(RewardRedemption)
+            .where(RewardRedemption.status.in_(["pending", "reserved"]))
+            .order_by(RewardRedemption.created_at)
+        )
+    ).all()
+    if not items:
+        await call.message.answer("Новых заявок на возможности нет")
+        return
+    await call.message.answer(f"🎁 Заявки на возможности: {len(items)}")
+    for item in items:
+        reward = await session.get(RewardItem, item.reward_id)
+        target = await session.get(User, item.user_id)
+        if not reward or not target:
+            continue
+        balance = await total_points(session, target.id)
+        telegram = f"@{target.username}" if target.username else str(target.telegram_id)
+        await call.message.answer(
+            f"🎁 Заявка #{item.id}\n\n"
+            f"Возможность: {reward.name}\n"
+            f"Стоимость: {reward.point_cost} баллов\n"
+            f"Статус: {_status_label(item.status)}\n\n"
+            f"Участник: {target.first_name} {target.last_name or ''}\n"
+            f"Telegram: {telegram}\n"
+            f"Телефон: {target.phone or 'не указан'}\n"
+            f"Баланс сейчас: {balance} баллов\n\n"
+            f"Ответ админа:\n{item.admin_comment or 'ещё не отправлен'}\n\n"
+            "Баллы будут списаны только после финальной кнопки обмена.",
+            reply_markup=_keyboard(item),
+        )
+
+
 @router.callback_query(F.data.startswith("admin:redemption:reply:"))
 async def reward_reply_start(call: CallbackQuery, user: User | None, settings: Settings, state: FSMContext) -> None:
     if not await _guard(call, user, settings):
@@ -69,6 +145,10 @@ async def reward_reply_send(message: Message, user: User | None, settings: Setti
         await state.clear()
         await message.answer("Заявка не найдена")
         return
+    if redemption.status not in {"pending", "reserved"}:
+        await state.clear()
+        await message.answer("Эта заявка уже закрыта")
+        return
     text = (message.text or "").strip()
     if not text:
         await message.answer("Сообщение не может быть пустым")
@@ -76,12 +156,13 @@ async def reward_reply_send(message: Message, user: User | None, settings: Setti
     redemption.admin_comment = text
     redemption.status = "reserved"
     redemption.reviewed_by = user.id if user else None
-    await safe_send(bot, target.telegram_id, f"Ответ по возможности «{reward.name}»:\n\n{text}\n\nБаллы будут списаны только после финального подтверждения админа.")
+    await safe_send(bot, target.telegram_id, f"Ответ по возможности «{reward.name}":\n\n{text}\n\nБаллы будут списаны только после финального подтверждения админа.")
     await state.clear()
-    await message.answer("Ответ отправлен пользователю. Теперь можно подтвердить выдачу возможности.")
+    await message.answer("Ответ отправлен пользователю. Теперь можно подтвердить обмен и списать баллы.")
 
 
 @router.callback_query(F.data.startswith("admin:redemption:exchange:"))
+@router.callback_query(F.data.startswith("admin:redemption:approve:"))
 async def reward_confirm(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, bot: Bot) -> None:
     if not await _guard(call, user, settings):
         return
@@ -91,6 +172,12 @@ async def reward_confirm(call: CallbackQuery, user: User | None, settings: Setti
         return
     if redemption.status == "approved":
         await call.message.answer("Эта заявка уже подтверждена. Повторно баллы не списываю.")
+        return
+    if redemption.status == "rejected":
+        await call.message.answer("Эта заявка уже отклонена")
+        return
+    if not redemption.admin_comment or redemption.status != "reserved":
+        await call.message.answer("Сначала отправьте ответ пользователю через кнопку «Ответить пользователю». Только после этого можно обменять и списать баллы.")
         return
     if reward.quantity == 0:
         await call.message.answer("Возможность закончилась.")
@@ -127,6 +214,10 @@ async def reward_reject_finish(message: Message, user: User | None, settings: Se
     if not redemption or not reward or not target:
         await state.clear()
         await message.answer("Заявка не найдена")
+        return
+    if redemption.status == "approved":
+        await state.clear()
+        await message.answer("Заявка уже обменяна, отклонить нельзя")
         return
     reason = (message.text or "").strip()
     if not reason:
