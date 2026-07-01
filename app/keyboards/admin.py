@@ -115,20 +115,19 @@ def application_actions(user_id: int) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Одобрить", callback_data=f"admin:approve_user:{user_id}"
-                )
+                    text="✅ Одобрить", callback_data=f"admin:approve_user:{user_id}"
+                ),
+                InlineKeyboardButton(
+                    text="❌ Отклонить", callback_data=f"admin:reject_user:{user_id}"
+                ),
             ],
             [
                 InlineKeyboardButton(
-                    text="Запросить информацию",
+                    text="💬 Задать уточняющий вопрос",
                     callback_data=f"admin:info_user:{user_id}",
                 )
             ],
-            [
-                InlineKeyboardButton(
-                    text="Отклонить", callback_data=f"admin:reject_user:{user_id}"
-                )
-            ],
+            [InlineKeyboardButton(text="Открыть заявку", callback_data=f"admin:application:{user_id}")],
             [InlineKeyboardButton(text="Назад", callback_data="admin:applications")],
         ]
     )
@@ -178,336 +177,23 @@ def role_filters_keyboard() -> InlineKeyboardMarkup:
         ("Администраторы", "admin"),
     )
     rows = [
-        [
-            InlineKeyboardButton(
-                text=label, callback_data=f"admin:people:list:role:{value}:0"
-            )
-        ]
-        for label, value in options
+        [InlineKeyboardButton(text=label, callback_data=f"admin:people:list:{role}:0:0")]
+        for label, role in options
     ]
-    rows.append(
-        [InlineKeyboardButton(text="← К фильтрам", callback_data="admin:participants")]
-    )
+    rows.append([InlineKeyboardButton(text="← Назад", callback_data="admin:participants")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def age_filters_keyboard() -> InlineKeyboardMarkup:
-    options = (
-        ("14–17 лет", "14_17"),
-        ("18–24 года", "18_24"),
-        ("25–34 года", "25_34"),
-        ("35 лет и старше", "35_plus"),
+    ranges = (
+        ("14–17", "14-17"),
+        ("18–21", "18-21"),
+        ("22–25", "22-25"),
+        ("26+", "26-200"),
     )
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=label, callback_data=f"admin:people:list:age:{value}:0"
-                )
-            ]
-            for label, value in options
-        ]
-        + [
-            [
-                InlineKeyboardButton(
-                    text="← К фильтрам", callback_data="admin:participants"
-                )
-            ]
-        ]
-    )
-
-
-def people_list_keyboard(
-    users: Iterable,
-    *,
-    kind: str,
-    value: str,
-    page: int,
-    has_next: bool,
-) -> InlineKeyboardMarkup:
     rows = [
-        [
-            InlineKeyboardButton(
-                text=f"{person.first_name} {person.last_name or ''}".strip(),
-                callback_data=f"admin:user:{person.id}",
-            )
-        ]
-        for person in users
+        [InlineKeyboardButton(text=label, callback_data=f"admin:people:list:all:{value}:0")]
+        for label, value in ranges
     ]
-    navigation = []
-    if page > 0:
-        navigation.append(
-            InlineKeyboardButton(
-                text="←", callback_data=f"admin:people:list:{kind}:{value}:{page - 1}"
-            )
-        )
-    if has_next:
-        navigation.append(
-            InlineKeyboardButton(
-                text="→", callback_data=f"admin:people:list:{kind}:{value}:{page + 1}"
-            )
-        )
-    if navigation:
-        rows.append(navigation)
-    rows.append(
-        [InlineKeyboardButton(text="← К фильтрам", callback_data="admin:participants")]
-    )
+    rows.append([InlineKeyboardButton(text="← Назад", callback_data="admin:participants")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def admin_user_actions(user_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="Изменить роль", callback_data=f"admin:user:role:{user_id}"
-                ),
-                InlineKeyboardButton(
-                    text="Изменить статус", callback_data=f"admin:user:status:{user_id}"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Портфолио", callback_data=f"admin:user:portfolio:{user_id}"
-                ),
-                InlineKeyboardButton(
-                    text="Баллы и бейджи", callback_data="admin:points"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Удалить участника",
-                    callback_data=f"admin:user:archive:{user_id}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="← К списку", callback_data="admin:participants"
-                )
-            ],
-        ]
-    )
-
-
-def user_role_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    options = (
-        ("Участник", "participant"),
-        ("Активист", "activist"),
-        ("Лидер", "leader"),
-        ("Руководитель", "head"),
-        ("Совет", "council"),
-    )
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=label,
-                    callback_data=f"admin:user:setrole:{user_id}:{value}",
-                )
-            ]
-            for label, value in options
-        ]
-        + [
-            [
-                InlineKeyboardButton(
-                    text="← Назад", callback_data=f"admin:user:{user_id}"
-                )
-            ]
-        ]
-    )
-
-
-def user_status_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    options = (
-        ("Новый участник", "new_member"),
-        ("Вовлечённый участник", "involved_member"),
-        ("Активный участник", "active_member"),
-        ("Член команды", "team_member"),
-        ("Куратор проекта", "project_curator"),
-        ("Лидер сообщества", "community_leader"),
-    )
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=label,
-                    callback_data=f"admin:user:setstatus:{user_id}:{value}",
-                )
-            ]
-            for label, value in options
-        ]
-        + [
-            [
-                InlineKeyboardButton(
-                    text="← Назад", callback_data=f"admin:user:{user_id}"
-                )
-            ]
-        ]
-    )
-
-
-def entity_actions(kind: str, entity_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="Одобрить", callback_data=f"admin:{kind}:approve:{entity_id}"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="На доработку",
-                    callback_data=f"admin:{kind}:revise:{entity_id}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Отклонить", callback_data=f"admin:{kind}:reject:{entity_id}"
-                )
-            ],
-        ]
-    )
-
-
-def event_management_keyboard(event_id: int, status: str) -> InlineKeyboardMarkup:
-    rows = []
-    if status not in {"draft", "pending_approval", "cancelled"}:
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="Участники и посещение",
-                    callback_data=f"admin:event:participants:{event_id}",
-                )
-            ]
-        )
-    if status in {"approved", "published"}:
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="Открыть регистрацию",
-                    callback_data=f"admin:event:status:registration_open:{event_id}",
-                )
-            ]
-        )
-    elif status == "registration_open":
-        rows.extend(
-            [
-                [
-                    InlineKeyboardButton(
-                        text="Закрыть регистрацию",
-                        callback_data=f"admin:event:status:registration_closed:{event_id}",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="Мероприятие началось",
-                        callback_data=f"admin:event:status:active:{event_id}",
-                    )
-                ],
-            ]
-        )
-    elif status == "registration_closed":
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="Мероприятие началось",
-                    callback_data=f"admin:event:status:active:{event_id}",
-                )
-            ]
-        )
-    elif status == "active":
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="Завершить мероприятие",
-                    callback_data=f"admin:event:status:completed:{event_id}",
-                )
-            ]
-        )
-    elif status == "completed":
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="Добавить активность после события",
-                    callback_data=f"admin:activity:event:{event_id}",
-                )
-            ]
-        )
-    rows.append(
-        [InlineKeyboardButton(text="← Назад", callback_data="admin:menu:activity")]
-    )
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def project_review_actions(project_id: int, stage: str) -> InlineKeyboardMarkup:
-    if stage == "venue_review":
-        rows = [
-            [
-                InlineKeyboardButton(
-                    text="Одобрить площадку",
-                    callback_data=f"admin:project:review:venue_approve:{project_id}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Напомнить позже",
-                    callback_data=f"admin:project:snooze:{project_id}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Перенести проект",
-                    callback_data=f"admin:project:review:postpone:{project_id}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Отклонить",
-                    callback_data=f"admin:project:review:reject:{project_id}",
-                )
-            ],
-        ]
-    else:
-        rows = [
-            [
-                InlineKeyboardButton(
-                    text="Взять на рассмотрение",
-                    callback_data=f"admin:project:review:initial_accept:{project_id}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Вернуть на доработку",
-                    callback_data=f"admin:project:review:revise:{project_id}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Отклонить",
-                    callback_data=f"admin:project:review:reject:{project_id}",
-                )
-            ],
-        ]
-    rows.append([InlineKeyboardButton(text="← Назад", callback_data="admin:projects")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def project_snooze_keyboard(project_id: int) -> InlineKeyboardMarkup:
-    options = (
-        ("Через 1 день", 1),
-        ("Через 2 дня", 2),
-        ("Через 3 дня", 3),
-        ("Через неделю", 7),
-    )
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=label,
-                    callback_data=f"admin:project:snooze_set:{project_id}:{days}",
-                )
-            ]
-            for label, days in options
-        ]
-        + [[InlineKeyboardButton(text="Отмена", callback_data="admin:projects")]]
-    )
