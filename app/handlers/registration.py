@@ -4,6 +4,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.keyboards.admin import application_actions
 from app.keyboards.common import subscription_keyboard
 from app.keyboards.registration import (
     DEPARTMENT_OPTIONS,
@@ -319,7 +320,7 @@ def _application_notification(user) -> str:
         f"🏛 Департаменты: {departments}\n"
         f"✨ Направления: {directions}\n\n"
         f"Мотивация\n{user.motivation or 'не указана'}\n\n"
-        "Откройте «Участники → Новые заявки» в панели управления"
+        "Выберите действие ниже."
     )
 
 
@@ -380,6 +381,7 @@ async def finish_registration(
             bot,
             settings,
             _application_notification(user),
+            reply_markup=application_actions(user.id),
         )
 
 
