@@ -79,7 +79,10 @@ async def _guard(event: Message | CallbackQuery, user: User | None, settings: Se
 
 async def _reset_admin_state(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer("Состояние сброшено. Админ-панель открыта.", reply_markup=admin_panel_keyboard())
+    await message.answer(
+        "Состояние сброшено. Админ-панель открыта.",
+        reply_markup=admin_panel_keyboard(),
+    )
 
 
 @router.message(Command("cancel"))
@@ -116,7 +119,10 @@ async def admin_escape_callback(
     if not await _guard(call, user, settings):
         return
     await state.clear()
-    await call.message.answer("Состояние сброшено. Админ-панель открыта.", reply_markup=admin_panel_keyboard())
+    await call.message.answer(
+        "Состояние сброшено. Админ-панель открыта.",
+        reply_markup=admin_panel_keyboard(),
+    )
 
 
 def _tg(user: User) -> str:
@@ -181,7 +187,12 @@ async def points_menu(
     await state.clear()
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Начислить или списать баллы", callback_data="admin:growth:start:points")],
+            [
+                InlineKeyboardButton(
+                    text="Начислить или списать баллы",
+                    callback_data="admin:growth:start:points",
+                )
+            ],
             [InlineKeyboardButton(text="Вручить знак", callback_data="admin:growth:start:badge")],
             [InlineKeyboardButton(text="🏅 Список знаков", callback_data="admin:badges")],
             [InlineKeyboardButton(text="← Назад", callback_data="admin:menu:growth")],
@@ -200,7 +211,12 @@ async def badges_menu(
     rows = [[InlineKeyboardButton(text="➕ Добавить знак", callback_data="admin:badge:new")]]
     for badge in badges:
         rows.append(
-            [InlineKeyboardButton(text=f"#{badge.id} · {badge.name}", callback_data=f"admin:badge:edit:{badge.id}")]
+            [
+                InlineKeyboardButton(
+                    text=f"#{badge.id} · {badge.name}",
+                    callback_data=f"admin:badge:edit:{badge.id}",
+                )
+            ]
         )
     rows.append([InlineKeyboardButton(text="← Баллы и знаки", callback_data="admin:points")])
     await call.message.answer(
@@ -312,11 +328,19 @@ async def growth_select_person_filtered(
         return
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=f"#{badge.id} · {badge.name}", callback_data=f"admin:growth:badge:{badge.id}")]
+            [
+                InlineKeyboardButton(
+                    text=f"#{badge.id} · {badge.name}",
+                    callback_data=f"admin:growth:badge:{badge.id}",
+                )
+            ]
             for badge in badges
         ]
     )
-    await call.message.answer("Какой знак вручить? Уже выданные знаки не показываются.", reply_markup=keyboard)
+    await call.message.answer(
+        "Какой знак вручить? Уже выданные знаки не показываются.",
+        reply_markup=keyboard,
+    )
 
 
 # ---------- Новое создание админского задания ----------
@@ -397,12 +421,19 @@ async def admin_task_new(
     if not await _guard(call, user, settings):
         return
     await state.set_state(AdminTaskFixStates.person)
-    await call.message.answer("Кому дать задание? Напишите имя, фамилию, @username или Telegram ID", reply_markup=_cancel_keyboard())
+    await call.message.answer(
+        "Кому дать задание? Напишите имя, фамилию, @username или Telegram ID",
+        reply_markup=_cancel_keyboard(),
+    )
 
 
 @router.message(AdminTaskFixStates.person)
 async def admin_task_person(
-    message: Message, user: User | None, settings: Settings, state: FSMContext, session: AsyncSession
+    message: Message,
+    user: User | None,
+    settings: Settings,
+    state: FSMContext,
+    session: AsyncSession,
 ) -> None:
     if not await _guard(message, user, settings):
         return
@@ -414,7 +445,11 @@ async def admin_task_person(
     ]
     if query.isdigit():
         conditions.append(User.telegram_id == int(query))
-    targets = (await session.scalars(select(User).where(or_(*conditions), User.is_archived.is_(False)).limit(8))).all()
+    targets = (
+        await session.scalars(
+            select(User).where(or_(*conditions), User.is_archived.is_(False)).limit(8)
+        )
+    ).all()
     if not targets:
         await message.answer("Участник не найден. Попробуйте ещё раз", reply_markup=_cancel_keyboard())
         return
@@ -422,7 +457,12 @@ async def admin_task_person(
         "Выберите участника",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text=f"{target.first_name} {target.last_name or ''}".strip(), callback_data=f"admin:task:person:{target.id}")]
+                [
+                    InlineKeyboardButton(
+                        text=f"{target.first_name} {target.last_name or ''}".strip(),
+                        callback_data=f"admin:task:person:{target.id}",
+                    )
+                ]
                 for target in targets
             ]
             + [[InlineKeyboardButton(text="Отменить", callback_data="admin:task:cancel")]]
@@ -457,7 +497,10 @@ async def admin_task_description(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(task_description=value)
     await state.set_state(AdminTaskFixStates.photo)
-    await message.answer("Прикрепите фото к заданию или пропустите этот шаг", reply_markup=_photo_keyboard())
+    await message.answer(
+        "Прикрепите фото к заданию или пропустите этот шаг",
+        reply_markup=_photo_keyboard(),
+    )
 
 
 @router.callback_query(AdminTaskFixStates.photo, F.data == "admin:task:photo:skip")
@@ -490,13 +533,21 @@ async def admin_task_deadline_time(call: CallbackQuery, state: FSMContext, setti
     await call.answer()
     raw_time = call.data.split("admin:task:deadline:time:", 1)[-1]
     selected_time = parse_time(raw_time)
+    if selected_time is None:
+        await call.message.answer("Не понял время. Выберите другое.", reply_markup=_deadline_time_keyboard())
+        return
     data = await state.get_data()
-    selected_date = datetime.fromisoformat(data["task_deadline_date"]).date()
-    deadline = datetime.combine(selected_date, selected_time, tzinfo=ZoneInfo(settings.timezone))
-    if deadline <= datetime.now(ZoneInfo(settings.timezone)):
+    raw_date = data.get("task_deadline_date")
+    if not raw_date:
+        await call.message.answer("Сначала выберите дату дедлайна.", reply_markup=_deadline_day_keyboard())
+        return
+    tz = ZoneInfo(settings.timezone)
+    selected_date = datetime.fromisoformat(raw_date).date()
+    deadline = datetime.combine(selected_date, selected_time, tzinfo=tz)
+    if deadline <= datetime.now(tz):
         await call.message.answer("Это время уже прошло. Выберите другое.", reply_markup=_deadline_time_keyboard())
         return
-    await state.update_data(task_deadline=deadline)
+    await state.update_data(task_deadline=deadline.isoformat())
     await state.set_state(AdminTaskFixStates.points)
     await call.message.answer(f"Дедлайн: {deadline:%d.%m.%Y %H:%M}\n\nСколько баллов начислить за выполнение?")
 
@@ -505,7 +556,10 @@ async def admin_task_deadline_time(call: CallbackQuery, state: FSMContext, setti
 async def admin_task_deadline_manual(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await state.update_data(task_deadline_manual_mode="full")
-    await call.message.answer("Напишите дедлайн: 15.07 18:30, завтра 18:00 или 18:00", reply_markup=_cancel_keyboard())
+    await call.message.answer(
+        "Напишите дедлайн: 15.07 18:30, завтра 18:00 или 18:00",
+        reply_markup=_cancel_keyboard(),
+    )
 
 
 @router.callback_query(AdminTaskFixStates.deadline, F.data == "admin:task:deadline:manual_time")
@@ -539,9 +593,12 @@ async def admin_task_deadline_text(message: Message, state: FSMContext, settings
     else:
         deadline = parse_deadline(message.text or "", settings.timezone)
         if deadline is None:
-            await message.answer("Не понял дедлайн. Пример: завтра 18:00 или 15.07 18:30", reply_markup=_cancel_keyboard())
+            await message.answer(
+                "Не понял дедлайн. Пример: завтра 18:00 или 15.07 18:30",
+                reply_markup=_cancel_keyboard(),
+            )
             return
-    await state.update_data(task_deadline=deadline)
+    await state.update_data(task_deadline=deadline.isoformat())
     await state.set_state(AdminTaskFixStates.points)
     await message.answer(f"Дедлайн: {deadline:%d.%m.%Y %H:%M}\n\nСколько баллов начислить за выполнение?")
 
@@ -570,12 +627,13 @@ async def admin_task_finish(
         await state.clear()
         await message.answer("Участник не найден")
         return
+    task_deadline = datetime.fromisoformat(data["task_deadline"])
     task = Task(
         title=data["task_title"],
         description=data["task_description"],
         assignee_id=target.id,
         creator_id=user.id if user else target.id,
-        deadline=data["task_deadline"],
+        deadline=task_deadline,
         points=points,
         status="published",
         file_id=data.get("task_file_id"),
@@ -583,7 +641,13 @@ async def admin_task_finish(
     )
     session.add(task)
     await session.flush()
-    await audit(session, actor_id=user.id if user else None, action="task.admin_created", entity_type="task", entity_id=task.id)
+    await audit(
+        session,
+        actor_id=user.id if user else None,
+        action="task.admin_created",
+        entity_type="task",
+        entity_id=task.id,
+    )
     await state.clear()
     await message.answer("Задание создано и отправлено участнику")
     notice = (
