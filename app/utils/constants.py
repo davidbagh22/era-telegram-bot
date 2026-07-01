@@ -10,9 +10,6 @@ class Role(StrEnum):
     ADMIN = "admin"
 
 
-PRIVILEGED_ROLES = {Role.LEADER, Role.HEAD, Role.COUNCIL, Role.ADMIN}
-
-
 class ParticipationStatus(StrEnum):
     NEW_MEMBER = "new_member"
     INVOLVED_MEMBER = "involved_member"
@@ -161,3 +158,59 @@ REPORT_STATUS_LABELS = {
     "needs_revision": "Нужна доработка",
     "rejected": "Не принят",
 }
+
+DEPARTMENTS = {
+    "Внутренние связи": ("Лидерство", "Культура", "Интерактив"),
+    "Внешние связи": (
+        "Международное направление",
+        "Медиа",
+        "Социальные инициативы",
+    ),
+}
+
+DEFAULT_POINTS = {
+    "Регистрация в боте": 5,
+    "Посещение мероприятия": 5,
+    "Подтверждённое селфи": 5,
+    "Помощь в организации": 15,
+    "Волонтёрство": 20,
+    "Создание контента": 15,
+    "Привлечение нового участника": 10,
+    "Предложение идеи проекта": 10,
+    "Одобренный проект": 30,
+    "Участие в реализации проекта": 20,
+    "Роль ведущего / спикера": 25,
+    "Выполнение задачи": 10,
+    "Получение знака отличия": 20,
+    "Наставничество": 25,
+    "Поддержка ЭРА": 15,
+}
+
+BADGES = (
+    "Первый шаг",
+    "Голос ЭРА",
+    "Надёжный участник",
+    "Командный игрок",
+    "Организатор",
+    "Проектный автор",
+    "Медиа-двигатель",
+    "Амбассадор ЭРА",
+    "Наставник",
+    "Прорыв месяца",
+)
+
+PRIVILEGED_ROLES = {Role.LEADER, Role.HEAD, Role.COUNCIL, Role.ADMIN}
+ADMIN_ROLES = {Role.ADMIN}
+
+PERMISSIONS = (
+    "people.view",
+    "people.manage",
+    "applications.review",
+    "projects.review",
+    "events.manage",
+    "tasks.manage",
+    "points.award",
+    "portfolio.review",
+    "broadcasts.create",
+    "analytics.view",
+)
