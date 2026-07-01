@@ -99,11 +99,10 @@ def journey_keyboard(
     rows = [
         [
             InlineKeyboardButton(text="👤 Мой профиль", callback_data="cabinet:profile"),
-            InlineKeyboardButton(text="⭐ Мои баллы", callback_data="cabinet:points"),
+            InlineKeyboardButton(text="🏆 Мои достижения", callback_data="cabinet:achievements"),
         ],
         [
-            InlineKeyboardButton(text="🏅 Мои знаки", callback_data="rewards:menu"),
-            InlineKeyboardButton(text="📊 Мой прогресс", callback_data="cabinet:journey"),
+            InlineKeyboardButton(text="➕ Выбрать направление", callback_data="cabinet:direction:add"),
         ],
         [
             InlineKeyboardButton(text="🎓 Портфолио", callback_data="cabinet:portfolio"),
@@ -230,6 +229,7 @@ def rewards_keyboard(rewards: Iterable, auctions: Iterable) -> InlineKeyboardMar
 
 def portfolio_keyboard(items: Iterable = ()) -> InlineKeyboardMarkup:
     rows = [
+        [InlineKeyboardButton(text="👁 Просмотреть портфолио", callback_data="portfolio:view")],
         [InlineKeyboardButton(text="📎 Добавить достижение", callback_data="portfolio:upload")],
         [InlineKeyboardButton(text="📄 Скачать резюме ЭРА", callback_data="portfolio:resume")],
     ]
