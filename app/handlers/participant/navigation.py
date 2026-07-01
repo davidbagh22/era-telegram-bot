@@ -5,11 +5,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import User
-from app.handlers.participant.cabinet import _send_journey
-from app.handlers.participant.events import _send_event_list
 from app.keyboards.admin import admin_panel_keyboard
 from app.keyboards.leader import leader_panel_keyboard
-from app.keyboards.participant import contact_keyboard, main_inline_keyboard, team_keyboard
+from app.keyboards.participant import (
+    contact_keyboard,
+    event_list_keyboard,
+    journey_keyboard,
+    main_inline_keyboard,
+    team_keyboard,
+)
+from app.repositories.users import rating, user_stats
+from app.services.event_service import published_events
 from app.services.points_service import total_points
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
@@ -32,8 +38,7 @@ def _has_admin_access(user: User | None) -> bool:
     if user.role == Role.ADMIN:
         return True
     return any(
-        grant.is_active
-        for grant in (getattr(user, "permission_grants", None) or [])
+        grant.is_active for grant in (getattr(user, "permission_grants", None) or [])
     )
 
 
@@ -41,11 +46,48 @@ async def _send_main_menu(message: Message, user: User | None) -> None:
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
-    admin = _has_admin_access(user)
-    privileged = user.role in PRIVILEGED_ROLES
     await message.answer(
         "Главное меню ЭРА",
-        reply_markup=main_inline_keyboard(privileged=privileged, admin=admin),
+        reply_markup=main_inline_keyboard(
+            privileged=user.role in PRIVILEGED_ROLES,
+            admin=_has_admin_access(user),
+        ),
+    )
+
+
+async def _send_personal_cabinet(
+    message: Message,
+    user: User,
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    stats = await user_stats(session, user.id)
+    rows = await rating(session, limit=1000)
+    place = next(
+        (index for index, (item, _) in enumerate(rows, 1) if item.id == user.id), "—"
+    )
+    await message.answer(
+        texts.journey_text(user, stats, place),
+        reply_markup=journey_keyboard(
+            settings.internal_department_chat_url,
+            settings.external_department_chat_url,
+        ),
+    )
+
+
+async def _send_event_list(
+    message: Message, user: User | None, session: AsyncSession
+) -> None:
+    if not _approved(user):
+        await message.answer(texts.APPLICATION_PENDING)
+        return
+    events = await published_events(session)
+    if not events:
+        await message.answer(texts.EVENTS_EMPTY)
+        return
+    await message.answer(
+        "Афиша ЭРА 📅\n\nВыберите мероприятие, чтобы увидеть программу, место, баллы и свободные места",
+        reply_markup=event_list_keyboard(events),
     )
 
 
@@ -61,7 +103,7 @@ async def personal_cabinet_button(
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
-    await _send_journey(message, user, session, settings)
+    await _send_personal_cabinet(message, user, session, settings)
 
 
 @router.message(F.text == "📅 Афиша")
@@ -113,9 +155,7 @@ async def contact_callback(call: CallbackQuery, user: User | None) -> None:
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    await call.message.answer(
-        "💬 Связь\n\nВыберите, что Вам нужно.", reply_markup=contact_keyboard()
-    )
+    await call.message.answer("💬 Связь\n\nВыберите, что Вам нужно.", reply_markup=contact_keyboard())
 
 
 @router.callback_query(F.data == "team:menu")
@@ -137,9 +177,7 @@ async def rules_callback(call: CallbackQuery) -> None:
 
 
 @router.message(F.text == "⚙️ Панель")
-async def panel_button(
-    message: Message, user: User | None, state: FSMContext
-) -> None:
+async def panel_button(message: Message, user: User | None, state: FSMContext) -> None:
     await state.clear()
     if not _approved(user):
         await message.answer(texts.NO_ACCESS)
@@ -169,12 +207,6 @@ async def panel_callback(call: CallbackQuery, user: User | None) -> None:
 
 
 @router.message(F.text == "🧭 Главное меню")
-@router.callback_query(F.data == "menu:main")
-async def main_menu_entry(event, user: User | None, state: FSMContext) -> None:
-    if isinstance(event, CallbackQuery):
-        await event.answer()
-        message = event.message
-    else:
-        message = event
+async def main_menu_message(message: Message, user: User | None, state: FSMContext) -> None:
     await state.clear()
     await _send_main_menu(message, user)
