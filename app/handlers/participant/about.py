@@ -10,12 +10,34 @@ from app.utils.constants import ApplicationStatus
 
 router = Router(name="about")
 
+ABOUT_TEXT = """ℹ️ Что умеет бот ЭРА
+
+Это Ваш личный кабинет внутри сообщества. Здесь участник не просто смотрит новости, а двигается: приходит на мероприятия, берёт задачи, предлагает проекты, получает баллы и фиксирует рост.
+
+👤 Личный кабинет
+Профиль, баллы, знаки, прогресс, портфолио, задачи, мероприятия и рейтинг.
+
+📅 Афиша
+Ближайшие мероприятия ЭРА, регистрация и участие.
+
+💡 Проекты
+Пошаговый конструктор проекта, черновики и отправка идеи команде ЭРА. На каждом этапе можно получить подсказку.
+
+⭐ Возможности
+Каталог возможностей, аукционы, награды и баллы за реальный вклад.
+
+💬 Связь
+Вопросы команде, департаменты, контакты, правила и информация о боте.
+
+⚙️ Панель
+Рабочий раздел для лидеров и администраторов. Он появляется только у тех, кому выданы права."""
+
 
 async def _send_about(message: Message, user: User | None) -> None:
     if user is None or user.application_status != ApplicationStatus.APPROVED:
         await message.answer(texts.APPLICATION_PENDING)
         return
-    await message.answer(texts.ABOUT_BOT, reply_markup=about_keyboard())
+    await message.answer(ABOUT_TEXT, reply_markup=about_keyboard())
 
 
 @router.message(F.text == "ℹ️ О боте")
