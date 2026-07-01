@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Project, User
-from app.keyboards.admin import entity_actions
 from app.keyboards.participant import project_menu_keyboard
 from app.services.audit_service import audit
 from app.services.notification_service import safe_send
@@ -41,6 +40,15 @@ def _project_document(project: Project, author: User) -> str:
     author_name = f"{author.first_name} {author.last_name or ''}".strip()
     telegram = f"@{author.username}" if author.username else str(author.telegram_id)
     return render_project_document(project.form_data or {}, author_name, telegram)
+
+
+def _admin_project_keyboard(project_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📄 Полный файл проекта", callback_data=f"admin:project:file:{project_id}")],
+        [InlineKeyboardButton(text="✅ Принять в работу", callback_data=f"admin:project:review:initial_accept:{project_id}")],
+        [InlineKeyboardButton(text="✏️ На доработку", callback_data=f"admin:project:review:revise:{project_id}")],
+        [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:project:review:reject:{project_id}")],
+    ])
 
 
 def _projects_keyboard(projects: list[Project]) -> InlineKeyboardMarkup:
@@ -82,9 +90,7 @@ async def project_status(call: CallbackQuery, user: User | None, session: AsyncS
         await call.message.answer(texts.NO_ACCESS)
         return
     await call.message.answer(
-        f"💡 {project.title}\n\n"
-        f"Статус: {PROJECT_STATUS_LABELS.get(project.status, project.status)}\n"
-        f"Комментарий команды:\n{project.admin_comment or project.venue_comment or 'пока нет комментария'}",
+        f"💡 {project.title}\n\nСтатус: {PROJECT_STATUS_LABELS.get(project.status, project.status)}\nКомментарий команды:\n{project.admin_comment or project.venue_comment or 'пока нет комментария'}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Мои проекты", callback_data="cabinet:projects")]]),
     )
 
@@ -160,7 +166,7 @@ async def project_submit_full(call: CallbackQuery, session: AsyncSession, user: 
     if settings.leaders_chat_id:
         recipients.add(settings.leaders_chat_id)
     for chat_id in recipients:
-        await safe_send(bot, chat_id, summary, reply_markup=entity_actions("project", project.id))
+        await safe_send(bot, chat_id, summary, reply_markup=_admin_project_keyboard(project.id))
         await bot.send_document(chat_id, BufferedInputFile(BytesIO(document.encode("utf-8")).getvalue(), filename=f"ERA_project_{project.id}.txt"), caption=f"Полный проект #{project.id}")
 
 
@@ -174,8 +180,7 @@ async def project_event_next(call: CallbackQuery, user: User | None, session: As
         await call.message.answer("Оформить мероприятие можно после одобрения проекта")
         return
     await call.message.answer(
-        f"📅 Следующий этап: мероприятие по проекту «{project.title}»\n\n"
-        "В следующем блоке здесь будет открываться конструктор мероприятия. Сейчас можно передать проект лидеру/админу для оформления через панель.",
+        f"📅 Следующий этап: мероприятие по проекту «{project.title}»\n\nВ следующем блоке здесь будет открываться конструктор мероприятия. Сейчас можно передать проект лидеру/админу для оформления через панель.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔍 Найти команду", callback_data=f"project:team:{project.id}")], [InlineKeyboardButton(text="← Мои проекты", callback_data="cabinet:projects")]]),
     )
 
@@ -191,11 +196,7 @@ async def team_start(call: CallbackQuery, user: User | None, session: AsyncSessi
         return
     await state.set_state(ProjectTeamStates.text)
     await state.update_data(team_project_id=project.id)
-    await call.message.answer(
-        "Напишите текст для поиска команды.\n\n"
-        "Структура: кого ищем, что нужно делать, сколько времени займёт участие и почему это стоит сделать.\n"
-        "После отправки текст уйдёт админу на модерацию."
-    )
+    await call.message.answer("Напишите текст для поиска команды.\n\nСтруктура: кого ищем, что нужно делать, сколько времени займёт участие и почему это стоит сделать.\nПосле отправки текст уйдёт админу на модерацию.")
 
 
 @router.message(ProjectTeamStates.text)
