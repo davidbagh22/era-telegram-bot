@@ -1,17 +1,15 @@
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import User
 from app.handlers.participant.cabinet import _send_journey
 from app.handlers.participant.events import _send_event_list
-from app.handlers.participant.projects import _send_projects_menu
 from app.keyboards.admin import admin_panel_keyboard
 from app.keyboards.leader import leader_panel_keyboard
 from app.keyboards.participant import contact_keyboard, main_inline_keyboard, team_keyboard
-from app.repositories.users import rating, user_stats
 from app.services.points_service import total_points
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
@@ -85,11 +83,14 @@ async def opportunities_button(
     balance = await total_points(session, user.id)
     await message.answer(
         f"⭐ Возможности\n\nВаш баланс: {balance} баллов\n\n"
-        "Здесь будут доступны каталог возможностей, аукционы, награды и специальные форматы ЭРА.",
-        reply_markup=main_inline_keyboard(privileged=user.role in PRIVILEGED_ROLES, admin=_has_admin_access(user)),
+        "Здесь доступны каталог возможностей, аукционы, награды и специальные форматы ЭРА.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="⭐ Открыть возможности", callback_data="rewards:menu")],
+                [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
+            ]
+        ),
     )
-    # Открываем текущий рабочий раздел возможностей отдельным сообщением через callback-кнопку
-    await message.answer("Откройте раздел:", reply_markup=contact_keyboard().model_copy(update={"inline_keyboard": [[contact_keyboard().inline_keyboard[0][0]]]}))
 
 
 @router.message(F.text == "💬 Связь")
