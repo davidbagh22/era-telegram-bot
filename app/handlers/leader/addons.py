@@ -1,9 +1,15 @@
-from aiogram import F, Router
-from aiogram.types import CallbackQuery
+from datetime import datetime
+
+from aiogram import F, Bot, Router
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import User, UserDepartment, UserDirection
+from app.database.models import Task, User, UserDepartment, UserDirection
+from app.services.audit_service import audit
+from app.services.notification_service import safe_send
+from app.states.task import TaskStates
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
 from app.utils.telegram import send_long_text
@@ -11,10 +17,17 @@ from app.utils.telegram import send_long_text
 router = Router(name="leader_addons")
 
 
-async def _guard(call: CallbackQuery, user: User | None) -> bool:
+async def _guard_call(call: CallbackQuery, user: User | None) -> bool:
     await call.answer()
     if not user or user.is_blocked or user.role not in PRIVILEGED_ROLES:
         await call.message.answer(texts.NO_ACCESS)
+        return False
+    return True
+
+
+async def _guard_message(message: Message, user: User | None) -> bool:
+    if not user or user.is_blocked or user.role not in PRIVILEGED_ROLES:
+        await message.answer(texts.NO_ACCESS)
         return False
     return True
 
@@ -30,11 +43,62 @@ def _tg(user: User) -> str:
     return f"@{user.username}" if user.username else str(user.telegram_id)
 
 
+@router.message(TaskStates.points)
+async def task_finish_serialized_deadline(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    user: User,
+    bot: Bot,
+) -> None:
+    if not await _guard_message(message, user):
+        return
+    try:
+        points = int(message.text or "")
+        if not 0 <= points <= 1000:
+            raise ValueError
+    except ValueError:
+        await message.answer("Укажите число от 0 до 1000.")
+        return
+    data = await state.get_data()
+    raw_deadline = data.get("task_deadline")
+    if isinstance(raw_deadline, str):
+        deadline = datetime.fromisoformat(raw_deadline)
+    else:
+        deadline = raw_deadline
+    task = Task(
+        title=data["task_title"],
+        description=data["task_description"],
+        assignee_id=data["task_assignee_id"],
+        creator_id=user.id,
+        deadline=deadline,
+        points=points,
+    )
+    session.add(task)
+    await session.flush()
+    target = await session.get(User, task.assignee_id)
+    if target:
+        await safe_send(
+            bot,
+            target.telegram_id,
+            f"У Вас новая задача ЭРА.\n\n{task.title}\n{task.description}\n\nДедлайн: {task.deadline:%d.%m.%Y %H:%M}",
+        )
+    await audit(
+        session,
+        actor_id=user.id,
+        action="task.created",
+        entity_type="task",
+        entity_id=task.id,
+    )
+    await state.clear()
+    await message.answer("Задача создана и отправлена исполнителю.")
+
+
 @router.callback_query(F.data.in_({"leader:participants", "leader:tasks"}))
 async def detailed_leader_participants(
     call: CallbackQuery, user: User | None, session: AsyncSession
 ) -> None:
-    if not await _guard(call, user):
+    if not await _guard_call(call, user):
         return
     if user.role == Role.ADMIN:
         query = select(User).where(
@@ -56,7 +120,9 @@ async def detailed_leader_participants(
                 ),
             )
         )
-    participants = (await session.scalars(query.order_by(User.first_name, User.last_name))).unique().all()
+    participants = (
+        await session.scalars(query.order_by(User.first_name, User.last_name))
+    ).unique().all()
     if not participants:
         await call.message.answer("В Вашем направлении пока нет активистов.")
         return
