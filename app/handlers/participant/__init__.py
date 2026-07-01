@@ -1,4 +1,4 @@
 from aiogram import Router
-from app.handlers.participant import navigation, task_block2, task_flow, about, cabinet, departments, events, growth, projects, questions
+from app.handlers.participant import navigation, achievements_block4, task_block2, task_flow, about, cabinet, departments, events, growth, projects, questions
 router = Router(name="participant")
-router.include_routers(navigation.router, task_block2.router, task_flow.router, cabinet.router, events.router, projects.router, departments.router, questions.router, growth.router, about.router)
+router.include_routers(navigation.router, achievements_block4.router, task_block2.router, task_flow.router, cabinet.router, events.router, projects.router, departments.router, questions.router, growth.router, about.router)
