@@ -9,6 +9,7 @@ from app.handlers.admin import (
     task_guard2,
     event_points_check,
     activity_files,
+    activity_award_check,
     task_review_clean,
     task_review,
     project_team_review,
@@ -25,6 +26,7 @@ router.include_router(dashboard_quick.router)
 router.include_router(task_guard2.router)
 router.include_router(event_points_check.router)
 router.include_router(activity_files.router)
+router.include_router(activity_award_check.router)
 router.include_router(task_review_clean.router)
 router.include_router(task_review.router)
 router.include_router(project_team_review.router)
