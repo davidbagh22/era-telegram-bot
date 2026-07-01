@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
     Badge,
+    Department,
     Direction,
     PointTransaction,
     PortfolioItem,
@@ -179,7 +180,8 @@ async def direction_select(
         f"Готово. Вы выбрали направление: {direction.name}",
         reply_markup=back_keyboard("cabinet:open"),
     )
-    leader_id = direction.leader_id or getattr(direction.department, "leader_id", None)
+    department = await session.get(Department, direction.department_id)
+    leader_id = direction.leader_id or (department.leader_id if department else None)
     if leader_id:
         leader = await session.get(User, leader_id)
         if leader and not leader.is_blocked:
