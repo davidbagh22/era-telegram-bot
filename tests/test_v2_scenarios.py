@@ -46,7 +46,7 @@ class V2ScenarioTests(unittest.TestCase):
         )
         self.assertNotIn("Профиль", " ".join(labels))
         self.assertIn("🎓 Портфолио", labels)
-        self.assertIn("🎁 Награды и аукционы", labels)
+        self.assertIn("🏆 Мои достижения", labels)
         self.assertIn("🏠 Главное меню", labels)
 
     def test_02_project_review_has_two_human_stages(self) -> None:
@@ -121,7 +121,7 @@ class V2ScenarioTests(unittest.TestCase):
         ]
         self.assertTrue(all(role in ROLE_LABELS for role in expected))
         labels = " ".join(_labels(leader_panel_keyboard()))
-        self.assertIn("Моя команда", labels)
+        self.assertIn("Работа в команде", labels)
         self.assertIn("Предложить поощрение или роль", labels)
         self.assertNotIn("Отчёты", labels)
 
