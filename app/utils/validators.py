@@ -1,5 +1,6 @@
 import re
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 
 PHONE_RE = re.compile(r"^\+?[0-9()\-\s]{7,20}$")
@@ -39,6 +40,71 @@ def parse_time(value: str) -> time | None:
         return datetime.strptime(value.strip(), "%H:%M").time()
     except ValueError:
         return None
+
+
+def parse_deadline(value: str, timezone: str = "Asia/Yerevan") -> datetime | None:
+    raw = " ".join((value or "").strip().lower().split())
+    if not raw:
+        return None
+
+    tz = ZoneInfo(timezone or "Asia/Yerevan")
+    now = datetime.now(tz)
+
+    relative = re.fullmatch(r"(сегодня|завтра)\s+(\d{1,2}:\d{2})", raw)
+    if relative:
+        day_word, raw_time = relative.groups()
+        parsed_time = parse_time(raw_time)
+        if not parsed_time:
+            return None
+        target_date = now.date() + (timedelta(days=1) if day_word == "завтра" else timedelta())
+        return datetime.combine(target_date, parsed_time, tzinfo=tz)
+
+    parsed_time = parse_time(raw)
+    if parsed_time:
+        candidate = datetime.combine(now.date(), parsed_time, tzinfo=tz)
+        return candidate if candidate > now else candidate + timedelta(days=1)
+
+    normalized = raw.replace("/", ".").replace("-", ".")
+    patterns = (
+        (r"^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}:\d{2})$", True, True),
+        (r"^(\d{1,2})\.(\d{1,2})\s+(\d{1,2}:\d{2})$", False, True),
+        (r"^(\d{1,2})\.(\d{1,2})\.(\d{4})$", True, False),
+        (r"^(\d{1,2})\.(\d{1,2})$", False, False),
+    )
+    for pattern, has_year, has_time in patterns:
+        match = re.fullmatch(pattern, normalized)
+        if not match:
+            continue
+        parts = match.groups()
+        day = int(parts[0])
+        month = int(parts[1])
+        if has_year and has_time:
+            year = int(parts[2])
+            raw_time = parts[3]
+        elif has_year:
+            year = int(parts[2])
+            raw_time = "23:59"
+        elif has_time:
+            year = now.year
+            raw_time = parts[2]
+        else:
+            year = now.year
+            raw_time = "23:59"
+        parsed_time = parse_time(raw_time)
+        if not parsed_time:
+            return None
+        try:
+            candidate = datetime.combine(date(year, month, day), parsed_time, tzinfo=tz)
+        except ValueError:
+            return None
+        if not has_year and candidate < now:
+            try:
+                candidate = datetime.combine(date(year + 1, month, day), parsed_time, tzinfo=tz)
+            except ValueError:
+                return None
+        return candidate
+
+    return None
 
 
 def clean_text(value: str, max_length: int = 2000) -> str | None:
