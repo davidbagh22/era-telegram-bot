@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, Message, TelegramObject
 from app.keyboards.common import subscription_keyboard
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.utils import texts
+from app.utils.constants import ApplicationStatus
 
 
 class SubscriptionMiddleware(BaseMiddleware):
@@ -29,6 +30,9 @@ class SubscriptionMiddleware(BaseMiddleware):
                 telegram_user and await is_channel_member(bot, telegram_user.id, self.settings)
             )
         except SubscriptionCheckError:
+            user = data.get("user")
+            if user and user.application_status == ApplicationStatus.APPROVED and not user.is_blocked:
+                return await handler(event, data)
             if isinstance(event, CallbackQuery):
                 await event.answer()
             await message.answer(
