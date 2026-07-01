@@ -48,9 +48,11 @@ def event_kb(event: Event) -> InlineKeyboardMarkup:
     elif event.status == EventStatus.APPROVED:
         rows.append([InlineKeyboardButton(text="👁 Предпросмотр рассылки", callback_data=f"admin:event:broadcast_preview:{event.id}")])
         rows.append([InlineKeyboardButton(text="✅ Подготовить рассылку 1/2", callback_data=f"admin:event:broadcast_prepare:{event.id}")])
-    elif event.status in {EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN}:
+    elif event.status in {EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN, EventStatus.COMPLETED}:
         rows.append([InlineKeyboardButton(text="👥 Участники и посещение", callback_data=f"admin:event:participants:{event.id}")])
-        rows.append([InlineKeyboardButton(text="Открыть регистрацию", callback_data=f"admin:event:status:registration_open:{event.id}")])
+        rows.append([InlineKeyboardButton(text="➕ Создать активности", callback_data=f"admin:event:activities:create:{event.id}")])
+        rows.append([InlineKeyboardButton(text="📤 Отправить активности", callback_data=f"admin:event:activities:send:{event.id}")])
+        rows.append([InlineKeyboardButton(text="📥 Активности на проверке", callback_data="admin:event_activities:review")])
     rows.append([InlineKeyboardButton(text="← События", callback_data="admin:menu:activity")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -141,4 +143,4 @@ async def broadcast_publish(call: CallbackQuery, user: User | None, settings: Se
     event.status = EventStatus.REGISTRATION_OPEN
     event.additional_info = (event.additional_info or "").replace(PREPARED_MARK, "").strip()
     await audit(session, actor_id=user.id if user else None, action="event.broadcast_published", entity_type="event", entity_id=event.id)
-    await call.message.answer("Рассылка отправлена, регистрация открыта.")
+    await call.message.answer("Рассылка отправлена, регистрация открыта.", reply_markup=event_kb(event))
