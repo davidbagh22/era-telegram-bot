@@ -63,11 +63,14 @@ async def project_file(call: CallbackQuery, user: User | None, settings: Setting
     p.generated_document = text
     await call.message.answer_document(BufferedInputFile(BytesIO(text.encode("utf-8")).getvalue(), filename=f"ERA_project_{p.id}.txt"), caption=f"Полный проект #{p.id}: {p.title}")
 
-@router.callback_query(F.data.regexp(r"^admin:team_post:(approve|reject):\d+$"))
+@router.callback_query(F.data.startswith("admin:team_post:"))
 async def team_post_review(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, bot: Bot) -> None:
     if not await g(call, user, settings):
         return
-    _, _, action, raw_project_id = call.data.split(":")
+    parts = call.data.split(":")
+    if len(parts) != 4 or parts[2] not in {"approve", "reject"} or not parts[3].isdigit():
+        return
+    action, raw_project_id = parts[2], parts[3]
     project = await session.get(Project, int(raw_project_id))
     if not project:
         await call.message.answer("Проект не найден")
