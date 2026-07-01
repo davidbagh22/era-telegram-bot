@@ -16,7 +16,6 @@ router = Router(name="leader_events_block6")
 
 
 class EventBlock6States(StatesGroup):
-    mode = State()
     title = State()
     description = State()
     date = State()
@@ -72,10 +71,7 @@ async def mode(call: CallbackQuery, user: User | None, state: FSMContext) -> Non
     mode_value = call.data.rsplit(":", 1)[-1]
     await state.update_data(event_mode=mode_value)
     await state.set_state(EventBlock6States.title)
-    if mode_value == "ready":
-        await call.message.answer("Напишите короткое название мероприятия. Затем бот попросит вставить готовый анонс.")
-    else:
-        await call.message.answer("Напишите название мероприятия.")
+    await call.message.answer("Напишите короткое название мероприятия.")
 
 
 @router.message(EventBlock6States.title)
@@ -90,7 +86,7 @@ async def title(message: Message, user: User | None, state: FSMContext) -> None:
     data = await state.get_data()
     if data.get("event_mode") == "ready":
         await state.set_state(EventBlock6States.ready_text)
-        await message.answer("Вставьте готовый текст анонса. Можно вместе с фото — тогда отправьте фото с подписью.")
+        await message.answer("Вставьте готовый текст анонса. Можно вместе с фото — отправьте фото с подписью.")
     else:
         await state.set_state(EventBlock6States.description)
         await message.answer("Напишите описание мероприятия / анонс.")
@@ -192,7 +188,7 @@ async def limit_step(message: Message, user: User | None, state: FSMContext) -> 
 
 
 @router.message(EventBlock6States.points)
-async def points_step(message: Message, user: User | None, state: FSMContext) -> None:
+async def points_step(message: Message, user: User | None, state: FSMContext, session: AsyncSession, bot: Bot, settings: Settings) -> None:
     if not await guard(message, user):
         return
     try:
@@ -205,7 +201,7 @@ async def points_step(message: Message, user: User | None, state: FSMContext) ->
     await state.update_data(points=value)
     data = await state.get_data()
     if data.get("poster"):
-        await finish_event(message, user, state, None, None, None)
+        await finish_event(message, user, state, session, bot, settings)
         return
     await state.set_state(EventBlock6States.poster)
     await message.answer("Прикрепите афишу/фото или нажмите «Пропустить фото».", reply_markup=skip_keyboard())
@@ -230,10 +226,7 @@ async def poster_step(message: Message, user: User | None, state: FSMContext, se
     await finish_event(message, user, state, session, bot, settings)
 
 
-async def finish_event(message: Message, user: User, state: FSMContext, session: AsyncSession | None, bot: Bot | None, settings: Settings | None) -> None:
-    if session is None or bot is None or settings is None:
-        await message.answer("Сохраните фото через кнопку пропуска или отправьте его ещё раз.")
-        return
+async def finish_event(message: Message, user: User, state: FSMContext, session: AsyncSession, bot: Bot, settings: Settings) -> None:
     data = await state.get_data()
     event = Event(
         title=data["title"],
