@@ -103,7 +103,7 @@ class MaintenanceTests(unittest.IsolatedAsyncioTestCase):
     async def test_main_menu_explains_the_bot(self) -> None:
         keyboard = main_menu("https://t.me/era")
         labels = {button.text for row in keyboard.keyboard for button in row}
-        self.assertIn("ℹ️ О боте", labels)
+        self.assertIn("⭐ Возможности", labels)
 
 
 if __name__ == "__main__":

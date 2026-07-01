@@ -26,7 +26,7 @@ from app.database.models import (
 from app.keyboards.common import back_keyboard
 from app.keyboards.participant import rewards_keyboard
 from app.services.notification_service import notify_admins
-from app.services.points_service import add_points, total_points
+from app.services.points_service import total_points
 from app.states.growth import (
     AuctionBidStates,
     PortfolioUploadStates,
@@ -141,11 +141,13 @@ async def reward_redeem(
         select(RewardRedemption).where(
             RewardRedemption.reward_id == reward.id,
             RewardRedemption.user_id == user.id,
-            RewardRedemption.status.in_(["pending", "approved"]),
+            RewardRedemption.status.in_(["pending", "answered", "exchanged"]),
         )
     )
     if duplicate:
-        await call.message.answer("Ваша заявка на эту возможность уже сохранена")
+        await call.message.answer(
+            "Ваша заявка на эту возможность уже сохранена — команда ЭРА ответит Вам"
+        )
         return
     balance = await total_points(session, user.id)
     if balance < reward.point_cost:
@@ -154,32 +156,49 @@ async def reward_redeem(
             "Участвуйте в мероприятиях и заданиях — баланс будет расти"
         )
         return
-    session.add(
-        RewardRedemption(
-            reward_id=reward.id,
-            user_id=user.id,
-            points_spent=reward.point_cost,
-            status="pending",
-        )
-    )
-    await add_points(
-        session,
+
+    redemption = RewardRedemption(
+        reward_id=reward.id,
         user_id=user.id,
-        points=-reward.point_cost,
-        reason=f"Обмен на возможность: {reward.name}",
-        approved_by=None,
+        points_spent=reward.point_cost,
+        status="pending",
     )
-    if reward.quantity is not None:
-        reward.quantity -= 1
+    session.add(redemption)
+    await session.flush()
+
+    admin_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="💬 Ответить пользователю",
+                    callback_data=f"admin:redemption:answer:{redemption.id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Отклонить без списания",
+                    callback_data=f"admin:redemption:reject:{redemption.id}",
+                )
+            ],
+        ]
+    )
     await call.message.answer(
-        "Готово — баллы зарезервированы, а заявка отправлена команде ЭРА. "
-        "Администратор напишет Вам после подтверждения"
+        "Заявка отправлена команде ЭРА 🙌\n\n"
+        "Баллы пока не списаны. Администратор сначала ответит Вам, "
+        "а обмен состоится только после окончательного подтверждения"
     )
+    username = f"@{user.username}" if user.username else "не указан"
     await notify_admins(
         bot,
         settings,
-        f"🎁 Новая заявка на награду\n\n{user.first_name} {user.last_name or ''}\n"
-        f"Возможность: {reward.name}\nСписано: {reward.point_cost} баллов",
+        f"🎁 Новая заявка на возможность\n\n"
+        f"Участник: {user.first_name} {user.last_name or ''}\n"
+        f"Telegram: {username}\n"
+        f"Возможность: {reward.name}\n"
+        f"Стоимость: {reward.point_cost} баллов\n"
+        f"Баланс: {balance} баллов\n\n"
+        "Баллы ещё не списаны",
+        reply_markup=admin_keyboard,
     )
 
 
