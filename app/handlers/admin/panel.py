@@ -75,6 +75,7 @@ from app.services.excel_service import build_analytics_workbook
 from app.services.maintenance_service import reset_operational_data, reset_preview
 from app.services.notification_service import broadcast, safe_send
 from app.services.points_service import add_points, add_portfolio_item, total_points
+from app.services.redemption_service import exchange_redemption, reject_redemption
 from app.states.admin import (
     AdminAnswerStates,
     AdminAuctionStates,
@@ -85,6 +86,7 @@ from app.states.admin import (
     AdminMaintenanceStates,
     AdminOfficeStates,
     AdminRewardStates,
+    AdminRedemptionStates,
     AdminSettingsStates,
     AdminTaskStates,
     AdminPeopleStates,
@@ -1873,6 +1875,35 @@ async def reward_disable(
     await call.message.answer("Позиция скрыта из каталога, история обменов сохранена")
 
 
+def _redemption_keyboard(item: RewardRedemption) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(
+                text="💬 Ответить пользователю",
+                callback_data=f"admin:redemption:answer:{item.id}",
+            )
+        ]
+    ]
+    if item.status == "answered":
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="✅ Обменять и списать баллы",
+                    callback_data=f"admin:redemption:exchange:{item.id}",
+                )
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="❌ Отклонить без списания",
+                callback_data=f"admin:redemption:reject:{item.id}",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 @router.callback_query(F.data == "admin:reward:redemptions")
 async def reward_redemptions(
     call: CallbackQuery,
@@ -1884,7 +1915,9 @@ async def reward_redemptions(
         return
     items = (
         await session.scalars(
-            select(RewardRedemption).where(RewardRedemption.status == "pending")
+            select(RewardRedemption)
+            .where(RewardRedemption.status.in_(["pending", "answered"]))
+            .order_by(RewardRedemption.created_at)
         )
     ).all()
     if not items:
@@ -1893,29 +1926,98 @@ async def reward_redemptions(
     for item in items:
         reward = await session.get(RewardItem, item.reward_id)
         target = await session.get(User, item.user_id)
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="Подтвердить",
-                        callback_data=f"admin:redemption:approve:{item.id}",
-                    ),
-                    InlineKeyboardButton(
-                        text="Отменить и вернуть баллы",
-                        callback_data=f"admin:redemption:reject:{item.id}",
-                    ),
-                ]
-            ]
+        if reward is None or target is None:
+            continue
+        status = "ожидает ответа" if item.status == "pending" else "ответ отправлен"
+        answer = (
+            f"\nОтвет участнику: {item.admin_comment}"
+            if item.admin_comment
+            else ""
         )
         await call.message.answer(
             f"🎁 {reward.name}\n\n"
             f"Участник: {target.first_name} {target.last_name or ''}\n"
-            f"Списано: {item.points_spent} баллов",
-            reply_markup=keyboard,
+            f"Стоимость: {item.points_spent} баллов\n"
+            f"Статус: {status}{answer}\n\n"
+            "Баллы ещё не списаны",
+            reply_markup=_redemption_keyboard(item),
         )
 
 
-@router.callback_query(F.data.regexp(r"^admin:redemption:(approve|reject):\d+$"))
+@router.callback_query(F.data.startswith("admin:redemption:answer:"))
+async def redemption_answer_start(
+    call: CallbackQuery,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+    item = await session.get(RewardRedemption, int(call.data.rsplit(":", 1)[-1]))
+    if item is None or item.status not in {"pending", "answered"}:
+        await call.message.answer("Эта заявка уже закрыта")
+        return
+    await state.set_state(AdminRedemptionStates.answer)
+    await state.update_data(redemption_id=item.id)
+    await call.message.answer(
+        "Напишите участнику ответ по этой возможности\n\n"
+        "После успешной отправки ответа появится кнопка окончательного обмена"
+    )
+
+
+@router.message(AdminRedemptionStates.answer)
+async def redemption_answer_save(
+    message: Message,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+    state: FSMContext,
+    bot: Bot,
+) -> None:
+    if not await _guard(message, user, settings):
+        return
+    answer = clean_text(message.text or "", 2000)
+    if not answer:
+        await message.answer("Напишите ответ текстом")
+        return
+    data = await state.get_data()
+    item = await session.get(RewardRedemption, int(data["redemption_id"]))
+    if item is None or item.status not in {"pending", "answered"}:
+        await state.clear()
+        await message.answer("Эта заявка уже закрыта")
+        return
+    reward = await session.get(RewardItem, item.reward_id)
+    target = await session.get(User, item.user_id)
+    if reward is None or target is None:
+        await state.clear()
+        await message.answer("Не удалось найти возможность или участника")
+        return
+    delivered = await safe_send(
+        bot,
+        target.telegram_id,
+        f"🎁 Ответ по возможности «{reward.name}»\n\n{answer}\n\n"
+        "Баллы пока не списаны — окончательное решение об обмене ещё не принято",
+    )
+    if not delivered:
+        await state.clear()
+        await message.answer(
+            "Ответ не доставлен. Списание недоступно — попробуйте связаться с участником позже"
+        )
+        return
+    item.status = "answered"
+    item.admin_comment = answer
+    item.reviewed_by = user.id if user else None
+    await state.clear()
+    await message.answer(
+        "Ответ доставлен. Теперь можно подтвердить обмен и списать баллы один раз",
+        reply_markup=_redemption_keyboard(item),
+    )
+
+
+@router.callback_query(
+    F.data.regexp(r"^admin:redemption:(exchange|approve|reject):\d+$")
+)
 async def redemption_decide(
     call: CallbackQuery,
     user: User | None,
@@ -1926,34 +2028,63 @@ async def redemption_decide(
     if not await _guard(call, user, settings):
         return
     _, _, action, raw_id = call.data.split(":")
-    item = await session.get(RewardRedemption, int(raw_id))
-    if item is None or item.status != "pending":
-        return
-    item.status = "approved" if action == "approve" else "rejected"
-    item.reviewed_by = user.id if user else None
-    reward = await session.get(RewardItem, item.reward_id)
-    target = await session.get(User, item.user_id)
+    admin_id = user.id if user else None
+
     if action == "reject":
-        await add_points(
-            session,
-            user_id=item.user_id,
-            points=item.points_spent,
-            reason=f"Возврат за отменённый обмен: {reward.name}",
-            approved_by=user.id if user else None,
+        result = await reject_redemption(
+            session, redemption_id=int(raw_id), admin_id=admin_id
         )
-        if reward.quantity is not None:
-            reward.quantity += 1
-    await call.message.answer("Решение сохранено")
+        if result.code == "rejected":
+            await call.message.answer(
+                "Заявка отклонена без списания баллов"
+            )
+            if result.redemption and result.reward:
+                target = await session.get(User, result.redemption.user_id)
+                if target:
+                    await safe_send(
+                        bot,
+                        target.telegram_id,
+                        f"Заявка на «{result.reward.name}» отклонена. "
+                        "Баллы с Вашего баланса не списывались",
+                    )
+            return
+        await call.message.answer("Эта заявка уже обработана")
+        return
+
+    # Legacy approve buttons are intentionally routed through the new safe exchange.
+    result = await exchange_redemption(
+        session, redemption_id=int(raw_id), admin_id=admin_id
+    )
+    messages = {
+        "answer_required": (
+            "Сначала ответьте участнику — до этого списывать баллы нельзя"
+        ),
+        "already_exchanged": "Обмен уже выполнен — повторного списания не было",
+        "already_closed": "Эта заявка уже закрыта",
+        "not_found": "Заявка не найдена",
+        "reward_missing": "Возможность больше не найдена",
+        "unavailable": "Возможность закончилась — баллы не списаны",
+        "insufficient_points": (
+            "У участника уже недостаточно баллов — обмен не выполнен"
+        ),
+    }
+    if result.code != "exchanged":
+        await call.message.answer(messages.get(result.code, "Обмен не выполнен"))
+        return
+
+    target = await session.get(User, result.redemption.user_id)
+    balance = await total_points(session, result.redemption.user_id)
+    await call.message.answer(
+        f"Обмен подтверждён. Списано {result.redemption.points_spent} баллов один раз"
+    )
     if target:
         await safe_send(
             bot,
             target.telegram_id,
-            f"Заявка на «{reward.name}» "
-            + (
-                "подтверждена — команда ЭРА свяжется с Вами"
-                if action == "approve"
-                else "отменена, баллы вернулись на Ваш баланс"
-            ),
+            f"✅ Возможность «{result.reward.name}» подтверждена\n\n"
+            f"Списано: {result.redemption.points_spent} баллов\n"
+            f"Остаток: {balance} баллов\n\n"
+            "Команда ЭРА свяжется с Вами по дальнейшим шагам",
         )
 
 
