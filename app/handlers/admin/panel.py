@@ -239,26 +239,6 @@ async def _guard(
     return True
 
 
-@router.message(Command("admin"))
-@router.message(F.text == "⚙️ Управление")
-async def admin_command(
-    message: Message, user: User | None, settings: Settings, state: FSMContext
-) -> None:
-    if not await _guard(message, user, settings):
-        return
-    await state.clear()
-    await message.answer(texts.ADMIN_PANEL, reply_markup=admin_panel_keyboard())
-
-
-@router.callback_query(F.data == "admin:panel")
-async def admin_panel(
-    call: CallbackQuery, user: User | None, settings: Settings
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    await call.message.edit_text(texts.ADMIN_PANEL, reply_markup=admin_panel_keyboard())
-
-
 @router.callback_query(F.data.startswith("admin:menu:"))
 async def admin_submenu(
     call: CallbackQuery, user: User | None, settings: Settings
@@ -431,35 +411,6 @@ async def info_user_start(
     if not await _guard(call, user, settings):
         return
     await _start_user_review(call, state, "info", int(call.data.rsplit(":", 1)[-1]))
-
-
-@router.callback_query(F.data == "admin:events")
-async def pending_events(
-    call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    events = (
-        await session.scalars(
-            select(Event).order_by(Event.event_date.desc(), Event.event_time).limit(50)
-        )
-    ).all()
-    if not events:
-        await call.message.answer("Мероприятий пока нет")
-        return
-    for event in events:
-        actions = (
-            entity_actions("event", event.id)
-            if event.status == EventStatus.PENDING_APPROVAL
-            else event_management_keyboard(event.id, event.status)
-        )
-        await call.message.answer(
-            f"📅 {event.title}\n\n"
-            f"{event.event_date:%d.%m.%Y} в {event.event_time:%H:%M}\n"
-            f"Место: {event.location}\n"
-            f"Статус: {EVENT_STATUS_LABELS.get(event.status, event.status)}",
-            reply_markup=actions,
-        )
 
 
 @router.callback_query(F.data.regexp(r"^admin:event:status:[a-z_]+:\d+$"))
@@ -1110,73 +1061,6 @@ async def reject_proof_start(
     await call.message.answer("Напишите причину отклонения селфи.")
 
 
-@router.callback_query(F.data.startswith("admin:event:approve:"))
-async def approve_entity(
-    call: CallbackQuery,
-    user: User | None,
-    settings: Settings,
-    session: AsyncSession,
-    bot: Bot,
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    _, kind, _, raw_id = call.data.split(":")
-    entity_id = int(raw_id)
-    entity = await session.get(Event, entity_id)
-    if entity is None:
-        return
-    entity.status = EventStatus.PUBLISHED
-    entity.approved_by = user.id if user else None
-    await audit(
-        session,
-        actor_id=user.id if user else None,
-        action=f"{kind}.approved",
-        entity_type=kind,
-        entity_id=entity_id,
-    )
-    await call.message.answer("Решение сохранено: одобрено.")
-    owner_id = entity.created_by
-    owner = await session.get(User, owner_id)
-    if owner:
-        notice = f"Мероприятие «{entity.title}» одобрено и опубликовано."
-        await safe_send(bot, owner.telegram_id, notice)
-    if settings.general_chat_id:
-        await safe_send(
-            bot,
-            settings.general_chat_id,
-            f"Новое мероприятие ЭРА\n\n{entity.title}\n"
-            f"{entity.event_date:%d.%m.%Y} в {entity.event_time:%H:%M}\n"
-            f"Место: {entity.location}\n\n{entity.description}",
-        )
-
-
-@router.callback_query(F.data.regexp(r"^admin:project:review:[a-z_]+:\d+$"))
-async def project_review_start(
-    call: CallbackQuery,
-    state: FSMContext,
-    user: User | None,
-    settings: Settings,
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    _, _, _, action, raw_id = call.data.split(":")
-    await state.set_state(AdminReviewStates.comment)
-    await state.update_data(
-        review_kind="project", review_action=action, review_id=int(raw_id)
-    )
-    prompts = {
-        "initial_accept": "Напишите, что уже принято в работу и что нужно уточнить по площадке",
-        "venue_approve": "Напишите итог по площадке и важные условия проведения",
-        "postpone": "Укажите причину и ориентир, когда вернуться к проекту",
-        "revise": "Напишите конкретно, что автору нужно доработать",
-        "reject": "Объясните решение уважительно и по существу",
-    }
-    await call.message.answer(
-        f"💬 {prompts.get(action, 'Добавьте комментарий к решению')}\n\n"
-        "Комментарий обязателен — автор получит его вместе с решением"
-    )
-
-
 @router.callback_query(F.data.startswith("admin:project:snooze:"))
 async def project_snooze(
     call: CallbackQuery, user: User | None, settings: Settings
@@ -1207,23 +1091,6 @@ async def project_snooze_set(
     days = int(raw_days)
     project.venue_remind_at = datetime.now().astimezone() + timedelta(days=days)
     await call.message.answer(f"Хорошо, напомню через {days} дн.")
-
-
-@router.callback_query(F.data.regexp(r"^admin:(event|project):(revise|reject):\d+$"))
-async def review_entity_start(
-    call: CallbackQuery,
-    state: FSMContext,
-    user: User | None,
-    settings: Settings,
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    _, kind, action, raw_id = call.data.split(":")
-    await state.set_state(AdminReviewStates.comment)
-    await state.update_data(
-        review_kind=kind, review_action=action, review_id=int(raw_id)
-    )
-    await call.message.answer("Напишите комментарий к решению.")
 
 
 @router.message(AdminReviewStates.comment)
@@ -4227,69 +4094,6 @@ async def decide_department_application(
             else "Сейчас заявка в департамент не одобрена. Вы можете задать вопрос команде ЭРА."
         )
         await safe_send(bot, target.telegram_id, notice)
-
-
-@router.callback_query(F.data == "admin:tasks")
-async def tasks_for_review(
-    call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    await call.message.answer(
-        "✅ Задания и конкурсы",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="➕ Создать задание или конкурс",
-                        callback_data="admin:task:new",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="← Назад", callback_data="admin:menu:activity"
-                    )
-                ],
-            ]
-        ),
-    )
-    submissions = (
-        await session.scalars(
-            select(TaskSubmission)
-            .where(TaskSubmission.status == "pending")
-            .order_by(TaskSubmission.created_at)
-        )
-    ).all()
-    if not submissions:
-        await call.message.answer(
-            "✅ Задания и конкурсы\n\nНовых результатов на проверке нет"
-        )
-        return
-    for submission in submissions:
-        task = await session.get(Task, submission.task_id)
-        target = await session.get(User, submission.user_id)
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=f"Принять · +{task.points}",
-                        callback_data=f"admin:task_submission:approve:{submission.id}",
-                    ),
-                    InlineKeyboardButton(
-                        text="Вернуть",
-                        callback_data=f"admin:task_submission:revise:{submission.id}",
-                    ),
-                ],
-            ]
-        )
-        await call.message.answer(
-            f"✅ Результат задания\n\n{task.title}\n\n"
-            f"Участник: {target.first_name if target else submission.user_id} "
-            f"{target.last_name or '' if target else ''}\n"
-            f"Награда: {task.points} баллов\n\n"
-            f"{submission.text or 'Результат прикреплён файлом'}",
-            reply_markup=keyboard,
-        )
 
 
 @router.callback_query(F.data == "admin:task:new")
