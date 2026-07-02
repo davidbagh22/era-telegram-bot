@@ -18,9 +18,6 @@ from app.database.models import (
     PortfolioItem,
     RewardItem,
     RewardRedemption,
-    Task,
-    TaskParticipant,
-    TaskSubmission,
     User,
 )
 from app.keyboards.common import back_keyboard
@@ -30,7 +27,6 @@ from app.services.points_service import total_points
 from app.states.growth import (
     AuctionBidStates,
     PortfolioUploadStates,
-    TaskSubmissionStates,
 )
 from app.utils.constants import ApplicationStatus
 from app.utils.validators import clean_text
@@ -398,135 +394,3 @@ async def portfolio_upload_file(
 @router.message(PortfolioUploadStates.file)
 async def portfolio_upload_wrong_file(message: Message) -> None:
     await message.answer("Прикрепите документ или фотографию")
-
-
-@router.callback_query(F.data.startswith("task:join:"))
-async def task_join(
-    call: CallbackQuery, user: User | None, session: AsyncSession
-) -> None:
-    await call.answer()
-    if not _approved(user):
-        return
-    task = await session.get(Task, int(call.data.rsplit(":", 1)[-1]))
-    if task is None or task.status not in {"published", "new", "in_progress"}:
-        await call.message.answer("Набор на это задание уже закрыт")
-        return
-    current = (
-        await session.scalars(
-            select(TaskParticipant).where(TaskParticipant.task_id == task.id)
-        )
-    ).all()
-    if task.max_participants and len(current) >= task.max_participants:
-        await call.message.answer("Команда уже набрана")
-        return
-    if not any(item.user_id == user.id for item in current):
-        session.add(TaskParticipant(task_id=task.id, user_id=user.id))
-    await call.message.answer(
-        "Вы в команде 🙌\n\nОткройте задание ещё раз — там появятся участники, чат и отправка результата",
-        reply_markup=back_keyboard("cabinet:tasks"),
-    )
-
-
-@router.callback_query(F.data.startswith("task:view:"))
-async def task_view(
-    call: CallbackQuery, user: User | None, session: AsyncSession
-) -> None:
-    await call.answer()
-    if not _approved(user):
-        return
-    task = await session.get(Task, int(call.data.rsplit(":", 1)[-1]))
-    if task is None:
-        return
-    memberships = (
-        await session.scalars(
-            select(TaskParticipant).where(TaskParticipant.task_id == task.id)
-        )
-    ).all()
-    members = []
-    for membership in memberships:
-        person = await session.get(User, membership.user_id)
-        if person:
-            contact = f"@{person.username}" if person.username else person.first_name
-            members.append(contact)
-    rows = [
-        [
-            InlineKeyboardButton(
-                text="📤 Отправить результат", callback_data=f"task:result:{task.id}"
-            )
-        ]
-    ]
-    if task.chat_url:
-        rows.append([InlineKeyboardButton(text="💬 Чат команды", url=task.chat_url)])
-    rows.append(
-        [InlineKeyboardButton(text="← Мои задания", callback_data="cabinet:tasks")]
-    )
-    await call.message.answer(
-        f"✅ {task.title}\n\n{task.description}\n\n"
-        f"Срок: {task.deadline:%d.%m.%Y %H:%M}\n"
-        f"Награда: {task.points} баллов\n\n"
-        f"Уже присоединились: {', '.join(members) or 'пока только Вы'}",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
-    )
-
-
-@router.callback_query(F.data.startswith("task:result:"))
-async def task_result_start(
-    call: CallbackQuery,
-    user: User | None,
-    state: FSMContext,
-) -> None:
-    await call.answer()
-    if not _approved(user):
-        return
-    await state.set_state(TaskSubmissionStates.result)
-    await state.update_data(task_id=int(call.data.rsplit(":", 1)[-1]))
-    await call.message.answer(
-        "Отправьте результат текстом, фотографией, видео или файлом\n\n"
-        "Укажите, с кем Вы работали и что получилось"
-    )
-
-
-@router.message(TaskSubmissionStates.result)
-async def task_result_save(
-    message: Message,
-    user: User,
-    session: AsyncSession,
-    state: FSMContext,
-    bot: Bot,
-    settings: Settings,
-) -> None:
-    data = await state.get_data()
-    task = await session.get(Task, int(data["task_id"]))
-    if task is None:
-        await state.clear()
-        return
-    text_value = clean_text(message.text or message.caption or "", 3000) or None
-    file_id = None
-    if message.photo:
-        file_id = message.photo[-1].file_id
-    elif message.video:
-        file_id = message.video.file_id
-    elif message.document:
-        file_id = message.document.file_id
-    if not text_value and not file_id:
-        await message.answer("Добавьте текст или прикрепите материал")
-        return
-    session.add(
-        TaskSubmission(
-            task_id=task.id,
-            user_id=user.id,
-            text=text_value,
-            file_id=file_id,
-            status="pending",
-        )
-    )
-    await state.clear()
-    await message.answer(
-        "Результат отправлен. После проверки Вы получите уведомление и награду"
-    )
-    await notify_admins(
-        bot,
-        settings,
-        f"✅ Новый результат задания\n\n{task.title}\n"
-        f"Участник: {user.first_name} {user.last_name or ''}",
-    )
