@@ -1,6 +1,6 @@
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -14,6 +14,39 @@ from app.utils.constants import ApplicationStatus
 from app.utils.validators import clean_text
 
 router = Router(name="questions")
+
+
+def _user_question_keyboard(question_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Вопрос решён", callback_data=f"question:resolved:yes:{question_id}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💬 Продолжить вопрос", callback_data=f"question:resolved:no:{question_id}"
+                )
+            ],
+        ]
+    )
+
+
+def _admin_question_keyboard(question_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Ответить", callback_data=f"admin:question:answer:{question_id}")],
+            [InlineKeyboardButton(text="История", callback_data=f"admin:question:history:{question_id}")],
+            [InlineKeyboardButton(text="Закрыть", callback_data=f"admin:question:close:{question_id}")],
+        ]
+    )
+
+
+def _append_history(current: str | None, author: str, text: str) -> str:
+    prefix = (current or "").strip()
+    line = f"{author}: {text.strip()}"
+    return (prefix + "\n\n" + line).strip() if prefix else line
 
 
 async def _begin_question(
@@ -66,7 +99,11 @@ async def _save_question(
 ) -> None:
     data = await state.get_data()
     question = UserQuestion(
-        user_id=user.id, text=data["question_text"], file_id=file_id
+        user_id=user.id,
+        text=data["question_text"],
+        file_id=file_id,
+        status="new",
+        admin_answer=_append_history(None, "Пользователь", data["question_text"]),
     )
     session.add(question)
     await session.flush()
@@ -83,6 +120,7 @@ async def _save_question(
         bot,
         settings,
         f"Новый вопрос #{question.id} от {user.first_name} {user.last_name or ''}:\n\n{question.text}",
+        reply_markup=_admin_question_keyboard(question.id),
     )
 
 
@@ -122,3 +160,59 @@ async def question_attachment(
 @router.message(QuestionStates.attachment)
 async def question_invalid_attachment(message: Message) -> None:
     await message.answer(texts.QUESTION_SEND_FILE)
+
+
+@router.callback_query(F.data.regexp(r"^question:resolved:(yes|no):\d+$"))
+async def question_resolved(
+    call: CallbackQuery, user: User | None, session: AsyncSession, state: FSMContext
+) -> None:
+    await call.answer()
+    if not user or user.application_status != ApplicationStatus.APPROVED:
+        await call.message.answer(texts.APPLICATION_PENDING)
+        return
+    _, _, answer, raw_id = call.data.split(":")
+    question = await session.get(UserQuestion, int(raw_id))
+    if question is None or question.user_id != user.id:
+        await call.message.answer(texts.NO_ACCESS)
+        return
+    if answer == "yes":
+        question.status = "closed"
+        await state.clear()
+        await call.message.answer("Отлично. Вопрос закрыт ✅")
+        return
+    question.status = "open"
+    await state.set_state(QuestionStates.followup)
+    await state.update_data(question_id=question.id)
+    await call.message.answer("Напишите уточнение. Админ увидит всю историю переписки.")
+
+
+@router.message(QuestionStates.followup)
+async def question_followup(
+    message: Message,
+    user: User,
+    session: AsyncSession,
+    state: FSMContext,
+    bot: Bot,
+    settings: Settings,
+) -> None:
+    data = await state.get_data()
+    question = await session.get(UserQuestion, int(data["question_id"]))
+    if question is None or question.user_id != user.id:
+        await state.clear()
+        await message.answer(texts.NO_ACCESS)
+        return
+    text = clean_text(message.text or message.caption or "", 3000)
+    if not text:
+        await message.answer(texts.INVALID_INPUT)
+        return
+    question.status = "open"
+    question.text = text
+    question.admin_answer = _append_history(question.admin_answer, "Пользователь", text)
+    await state.clear()
+    await message.answer("Уточнение отправлено. Команда ЭРА ответит здесь же.")
+    await notify_admins(
+        bot,
+        settings,
+        f"Новое уточнение по вопросу #{question.id}\n\n{user.first_name} {user.last_name or ''}:\n{text}",
+        reply_markup=_admin_question_keyboard(question.id),
+    )
