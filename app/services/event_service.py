@@ -17,7 +17,6 @@ async def published_events(session: AsyncSession) -> list[Event]:
                 .where(
                     Event.status.in_(
                         [
-                            EventStatus.APPROVED,
                             EventStatus.PUBLISHED,
                             EventStatus.REGISTRATION_OPEN,
                         ]
@@ -53,7 +52,6 @@ async def register_for_event(
     session: AsyncSession, event: Event, user_id: int
 ) -> tuple[EventRegistration | None, str | None]:
     if event.status not in {
-        EventStatus.APPROVED,
         EventStatus.PUBLISHED,
         EventStatus.REGISTRATION_OPEN,
     }:

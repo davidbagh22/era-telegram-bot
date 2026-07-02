@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import PointTransaction, Task, TaskSubmission, User
+from app.database.models import PointTransaction, Task, TaskParticipant, TaskSubmission, User
 from app.services.notification_service import safe_send
 from app.services.points_service import add_points
 from app.utils import texts
@@ -24,7 +24,10 @@ def _is_admin(user: User | None, settings: Settings, telegram_id: int) -> bool:
     return bool(
         telegram_id in settings.admin_ids
         or (user and user.role == Role.ADMIN and not user.is_blocked)
-        or (user and not user.is_blocked and any(grant.is_active for grant in (user.permission_grants or [])))
+        or (
+            user and not user.is_blocked and not user.is_archived
+            and any(grant.is_active and grant.permission == "tasks.manage" for grant in (user.permission_grants or []))
+        )
     )
 
 
@@ -52,6 +55,7 @@ def _review_keyboard(submission_id: int) -> InlineKeyboardMarkup:
 
 def _task_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Создать задание или конкурс", callback_data="admin:task:new")],
         [InlineKeyboardButton(text="📥 Результаты на проверке", callback_data="admin:task_submissions")],
         [InlineKeyboardButton(text="← События", callback_data="admin:menu:activity")],
     ])
@@ -144,11 +148,22 @@ async def approve_submission(call: CallbackQuery, user: User | None, settings: S
         return
     submission.status = "approved"
     submission.reviewed_by = user.id if user else None
-    task.status = TaskStatus.COMPLETED
     if await _already_awarded(session, participant.id, task.id):
         await call.message.answer("Результат принят. Баллы за это задание уже начислялись ранее.")
         return
     await add_points(session, user_id=participant.id, points=task.points, reason=f"Выполнение задания: {task.title}", approved_by=user.id if user else None, related_task_id=task.id)
+    if task.task_type == "private":
+        task.status = TaskStatus.COMPLETED
+    else:
+        member_ids = set((await session.scalars(select(TaskParticipant.user_id).where(
+            TaskParticipant.task_id == task.id,
+            TaskParticipant.status.in_(["accepted", "joined"]),
+        ))).all())
+        approved_ids = set((await session.scalars(select(TaskSubmission.user_id).where(
+            TaskSubmission.task_id == task.id,
+            TaskSubmission.status == "approved",
+        ))).all())
+        task.status = TaskStatus.COMPLETED if member_ids and member_ids.issubset(approved_ids) else TaskStatus.IN_PROGRESS
     await safe_send(bot, participant.telegram_id, f"Ваш результат по заданию одобрен.\n\n{task.title}\n\nНачислено: {task.points} баллов")
     await call.message.answer("Результат одобрен. Баллы начислены один раз.")
 

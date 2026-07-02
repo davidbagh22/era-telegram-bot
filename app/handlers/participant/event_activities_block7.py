@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import EventActivity, EventActivitySubmission, User
+from app.database.models import EventActivity, EventActivitySubmission, EventRegistration, User
 from app.utils import texts
 from app.utils.constants import ApplicationStatus
 from app.utils.validators import clean_text
@@ -34,6 +34,13 @@ async def activity_submit_start(call: CallbackQuery, user: User | None, session:
     activity = await session.get(EventActivity, int(call.data.rsplit(":", 1)[-1]))
     if not activity or not activity.is_active:
         await call.message.answer("Активность недоступна")
+        return
+    registration = await session.scalar(select(EventRegistration).where(
+        EventRegistration.event_id == activity.event_id,
+        EventRegistration.user_id == user.id,
+    ))
+    if registration is None:
+        await call.message.answer("Активность доступна только участникам мероприятия")
         return
     existing = await session.scalar(select(EventActivitySubmission).where(EventActivitySubmission.activity_id == activity.id, EventActivitySubmission.user_id == user.id))
     if existing and existing.status == "approved":

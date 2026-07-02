@@ -23,7 +23,13 @@ class ActivityAdminStates(StatesGroup):
 
 
 def is_admin(user: User | None, settings: Settings, tg_id: int) -> bool:
-    return bool(tg_id in settings.admin_ids or (user and user.role == Role.ADMIN and not user.is_blocked))
+    return bool(
+        tg_id in settings.admin_ids
+        or (user and user.role == Role.ADMIN and not user.is_blocked)
+        or (user and not user.is_blocked and not user.is_archived and any(
+            g.is_active and g.permission == "events.manage" for g in (user.permission_grants or [])
+        ))
+    )
 
 
 async def guard(event: CallbackQuery | Message, user: User | None, settings: Settings) -> bool:
@@ -122,7 +128,7 @@ async def create_finish(message: Message, user: User | None, settings: Settings,
 
 
 @router.callback_query(F.data.startswith("admin:event:activities:send:"))
-async def send_to_registered(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, bot: Bot) -> None:
+async def send_to_registered_prepare(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await guard(call, user, settings):
         return
     event_id = int(call.data.rsplit(":", 1)[-1])
@@ -131,21 +137,39 @@ async def send_to_registered(call: CallbackQuery, user: User | None, settings: S
     if not event or not activities:
         await call.message.answer("Мероприятие или активности не найдены")
         return
+    if "[ERA_ACTIVITIES_SENT]" in (event.additional_info or ""):
+        await call.message.answer("Активности уже отправлялись. Повторная рассылка заблокирована.")
+        return
+    registrations = (await session.scalars(select(EventRegistration).where(EventRegistration.event_id == event_id, EventRegistration.status.in_([RegistrationStatus.REGISTERED, RegistrationStatus.WILL_COME, RegistrationStatus.ATTENDED])))).all()
+    await call.message.answer(
+        f"Проверка перед отправкой\n\n{event.title}\nАктивностей: {len(activities)}\nПолучателей: {len(registrations)}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Подтвердить отправку 2/2", callback_data=f"admin:event:activities:send_confirm:{event.id}")],
+            [InlineKeyboardButton(text="Отмена", callback_data="admin:events")],
+        ]),
+    )
+
+
+@router.callback_query(F.data.startswith("admin:event:activities:send_confirm:"))
+async def send_to_registered_confirm(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, bot: Bot) -> None:
+    if not await guard(call, user, settings):
+        return
+    event_id = int(call.data.rsplit(":", 1)[-1])
+    event = await session.get(Event, event_id)
+    if not event or "[ERA_ACTIVITIES_SENT]" in (event.additional_info or ""):
+        await call.message.answer("Рассылка уже выполнена или мероприятие недоступно")
+        return
+    activities = (await session.scalars(select(EventActivity).where(EventActivity.event_id == event_id, EventActivity.is_active == True))).all()
     registrations = (await session.scalars(select(EventRegistration).where(EventRegistration.event_id == event_id, EventRegistration.status.in_([RegistrationStatus.REGISTERED, RegistrationStatus.WILL_COME, RegistrationStatus.ATTENDED])))).all()
     sent = 0
     for registration in registrations:
         target = await session.get(User, registration.user_id)
-        if not target:
-            continue
-        for activity in activities:
-            await safe_send(
-                bot,
-                target.telegram_id,
-                f"✨ Активность после мероприятия\n\n{event.title}\n\n{activity.title}\n{activity.description}\n\nФормат: {activity.submission_type}\nБаллы: {activity.points}",
-                reply_markup=submit_button(activity.id),
-            )
-        sent += 1
-    await call.message.answer(f"Активности отправлены участникам: {sent}. Отменившим регистрацию не отправлял.")
+        if target:
+            for activity in activities:
+                await safe_send(bot, target.telegram_id, f"✨ Активность после мероприятия\n\n{event.title}\n\n{activity.title}\n{activity.description}\n\nФормат: {activity.submission_type}\nБаллы: {activity.points}", reply_markup=submit_button(activity.id))
+            sent += 1
+    event.additional_info = ((event.additional_info or "") + "\n[ERA_ACTIVITIES_SENT]").strip()
+    await call.message.answer(f"Активности отправлены: {sent}. Повторная отправка заблокирована.")
 
 
 async def send_submission_card(message: Message, session: AsyncSession, sub: EventActivitySubmission) -> None:
@@ -173,7 +197,7 @@ async def send_submission_card(message: Message, session: AsyncSession, sub: Eve
 async def review_list(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await guard(call, user, settings):
         return
-    items = (await session.scalars(select(EventActivitySubmission).where(EventActivitySubmission.status.in_(["pending", "leader_approved"])).order_by(EventActivitySubmission.created_at).limit(50))).all()
+    items = (await session.scalars(select(EventActivitySubmission).where(EventActivitySubmission.status == "leader_approved").order_by(EventActivitySubmission.created_at).limit(50))).all()
     if not items:
         await call.message.answer("Активностей на проверке нет")
         return

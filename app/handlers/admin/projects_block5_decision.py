@@ -22,7 +22,13 @@ class ProjectDecisionStates(StatesGroup):
 
 
 def _is_admin(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    return bool(telegram_id in settings.admin_ids or (user and user.role == Role.ADMIN and not user.is_blocked))
+    return bool(
+        telegram_id in settings.admin_ids
+        or (user and user.role == Role.ADMIN and not user.is_blocked)
+        or (user and not user.is_blocked and not user.is_archived and any(
+            g.is_active and g.permission == "projects.review" for g in (user.permission_grants or [])
+        ))
+    )
 
 
 async def _guard(event: CallbackQuery | Message, user: User | None, settings: Settings) -> bool:

@@ -22,8 +22,19 @@ class DirectRewardStates(StatesGroup):
     badge_reason = State()
 
 
-def is_admin(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    return bool(telegram_id in settings.admin_ids or (user and user.role == Role.ADMIN and not user.is_blocked) or (user and not user.is_blocked and any(g.is_active for g in (user.permission_grants or []))))
+def is_admin(user: User | None, settings: Settings, telegram_id: int, event: CallbackQuery | Message) -> bool:
+    if telegram_id in settings.admin_ids or (user and user.role == Role.ADMIN and not user.is_blocked):
+        return True
+    if not user or user.is_blocked or user.is_archived:
+        return False
+    active = {g.permission for g in (user.permission_grants or []) if g.is_active}
+    if isinstance(event, CallbackQuery):
+        data = event.data or ""
+        if ":points:" in data or ":badge" in data:
+            return "points.award" in active
+        if is_profile_callback(data):
+            return "people.manage" in active or "people.view" in active
+    return bool(active)
 
 
 async def guard(event: CallbackQuery | Message, user: User | None, settings: Settings) -> bool:
@@ -34,7 +45,7 @@ async def guard(event: CallbackQuery | Message, user: User | None, settings: Set
     else:
         message = event
         telegram_id = event.from_user.id
-    if not is_admin(user, settings, telegram_id):
+    if not is_admin(user, settings, telegram_id, event):
         await message.answer(texts.NO_ACCESS)
         return False
     return True
@@ -45,6 +56,7 @@ def profile_kb(user_id: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="➕ Дать баллы", callback_data=f"admin:user:points:{user_id}"), InlineKeyboardButton(text="🏅 Дать знак", callback_data=f"admin:user:badge:{user_id}")],
         [InlineKeyboardButton(text="Изменить роль", callback_data=f"admin:user:role:{user_id}"), InlineKeyboardButton(text="Изменить статус", callback_data=f"admin:user:status:{user_id}")],
         [InlineKeyboardButton(text="Портфолио", callback_data=f"admin:user:portfolio:{user_id}")],
+        [InlineKeyboardButton(text="🗄 Удалить доступ", callback_data=f"admin:user:archive:{user_id}")],
         [InlineKeyboardButton(text="← К списку", callback_data="admin:participants")],
     ])
 
