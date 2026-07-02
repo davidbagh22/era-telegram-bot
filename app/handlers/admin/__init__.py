@@ -1,6 +1,7 @@
 from aiogram import Router
 from app.handlers.admin import (
     dashboard_block_a,
+    applications_flow,
     task_review_block2,
     user_profile_block3_safe,
     projects_block5_list,
@@ -14,6 +15,7 @@ from app.handlers.admin import (
 
 router = Router(name="admin_root")
 router.include_router(dashboard_block_a.router)
+router.include_router(applications_flow.router)
 router.include_router(task_review_block2.router)
 router.include_router(user_profile_block3_safe.router)
 router.include_router(projects_block5_list.router)
