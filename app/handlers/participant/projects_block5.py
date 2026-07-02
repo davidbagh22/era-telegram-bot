@@ -9,13 +9,13 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import Project, User
+from app.database.models import Event, Project, User
 from app.keyboards.participant import project_menu_keyboard
 from app.services.audit_service import audit
-from app.services.notification_service import safe_send
+from app.services.notification_service import notify_admins, safe_send
 from app.services.project_builder import render_project_document
 from app.utils import texts
-from app.utils.constants import ApplicationStatus, PROJECT_STATUS_LABELS, ProjectStatus
+from app.utils.constants import ApplicationStatus, EventStatus, PROJECT_STATUS_LABELS, ProjectStatus
 from app.utils.validators import clean_text
 
 router = Router(name="participant_projects_block5")
@@ -171,7 +171,7 @@ async def project_submit_full(call: CallbackQuery, session: AsyncSession, user: 
 
 
 @router.callback_query(F.data.startswith("project:event:"))
-async def project_event_next(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+async def project_event_next(call: CallbackQuery, user: User | None, session: AsyncSession, bot: Bot, settings: Settings) -> None:
     await call.answer()
     if not _approved(user):
         return
@@ -179,10 +179,38 @@ async def project_event_next(call: CallbackQuery, user: User | None, session: As
     if not project or project.status not in {ProjectStatus.APPROVED, ProjectStatus.IN_PROGRESS}:
         await call.message.answer("Оформить мероприятие можно после одобрения проекта")
         return
-    await call.message.answer(
-        f"📅 Следующий этап: мероприятие по проекту «{project.title}»\n\nВ следующем блоке здесь будет открываться конструктор мероприятия. Сейчас можно передать проект лидеру/админу для оформления через панель.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔍 Найти команду", callback_data=f"project:team:{project.id}")], [InlineKeyboardButton(text="← Мои проекты", callback_data="cabinet:projects")]]),
+    marker = f"[ERA_PROJECT_ID:{project.id}]"
+    existing = await session.scalar(select(Event).where(Event.additional_info.contains(marker)))
+    if existing:
+        await call.message.answer(f"Мероприятие уже создано: «{existing.title}»")
+        return
+    data = dict(project.form_data or {})
+    try:
+        event_date = datetime.strptime(str(data.get("proposed_date")), "%d.%m.%Y").date()
+        event_time = datetime.strptime(str(data.get("proposed_time")), "%H:%M").time()
+    except (TypeError, ValueError):
+        await call.message.answer("В проекте нет корректной даты или времени")
+        return
+    event = Event(
+        title=data.get("title") or project.title,
+        description=data.get("announcement") or data.get("idea") or project.short_description,
+        event_date=event_date,
+        event_time=event_time,
+        location=data.get("venue_request") or "Требуется согласование площадки",
+        format=data.get("format") or "мероприятие",
+        responsible_id=user.id,
+        participant_limit=None,
+        points_for_visit=0,
+        selfie_required=False,
+        additional_info=marker,
+        status=EventStatus.PENDING_APPROVAL,
+        created_by=user.id,
     )
+    session.add(event)
+    project.status = ProjectStatus.IN_PROGRESS
+    await session.flush()
+    await call.message.answer(f"Мероприятие «{event.title}» создано из проекта и отправлено на утверждение.")
+    await notify_admins(bot, settings, f"📅 Мероприятие из проекта #{project.id}\n\n#{event.id} {event.title}\nДата: {event.event_date:%d.%m.%Y} {event.event_time:%H:%M}", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Открыть мероприятия", callback_data="admin:events")]]))
 
 
 @router.callback_query(F.data.startswith("project:team:"))

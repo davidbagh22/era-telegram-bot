@@ -56,6 +56,20 @@ def skip_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Пропустить фото", callback_data="leader:event6:poster:skip")]])
 
 
+@router.callback_query(F.data.startswith("leader:event:revise:"))
+async def event_revise(call: CallbackQuery, user: User | None, state: FSMContext, session: AsyncSession) -> None:
+    if not await guard(call, user):
+        return
+    event = await session.get(Event, int(call.data.rsplit(":", 1)[-1]))
+    if not event or event.created_by != user.id or event.status != EventStatus.DRAFT:
+        await call.message.answer(texts.NO_ACCESS)
+        return
+    await state.clear()
+    await state.update_data(event_mode="constructor", editing_event_id=event.id)
+    await state.set_state(EventBlock6States.title)
+    await call.message.answer(f"Исправляем «{event.title}». Введите итоговое название заново.")
+
+
 @router.callback_query(F.data == "leader:event:new")
 async def event_new(call: CallbackQuery, user: User | None, state: FSMContext) -> None:
     if not await guard(call, user):
@@ -228,22 +242,21 @@ async def poster_step(message: Message, user: User | None, state: FSMContext, se
 
 async def finish_event(message: Message, user: User, state: FSMContext, session: AsyncSession, bot: Bot, settings: Settings) -> None:
     data = await state.get_data()
-    event = Event(
-        title=data["title"],
-        description=data["description"],
-        event_date=data["date"],
-        event_time=data["time"],
-        location=data["location"],
-        format=data["format"],
-        responsible_id=user.id,
-        participant_limit=data.get("limit"),
-        points_for_visit=data.get("points", 0),
-        selfie_required=False,
-        poster_file_id=data.get("poster"),
-        status=EventStatus.PENDING_APPROVAL,
-        created_by=user.id,
-    )
-    session.add(event)
+    event = await session.get(Event, int(data["editing_event_id"])) if data.get("editing_event_id") else None
+    if event is None:
+        event = Event(created_by=user.id, responsible_id=user.id)
+        session.add(event)
+    event.title = data["title"]
+    event.description = data["description"]
+    event.event_date = data["date"]
+    event.event_time = data["time"]
+    event.location = data["location"]
+    event.format = data["format"]
+    event.participant_limit = data.get("limit")
+    event.points_for_visit = data.get("points", 0)
+    event.selfie_required = False
+    event.poster_file_id = data.get("poster")
+    event.status = EventStatus.PENDING_APPROVAL
     await session.flush()
     await audit(session, actor_id=user.id, action="event.submitted.block6", entity_type="event", entity_id=event.id)
     await state.clear()

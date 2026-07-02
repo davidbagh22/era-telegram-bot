@@ -1,5 +1,7 @@
 from aiogram import F, Bot, Router
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,13 +11,24 @@ from app.services.audit_service import audit
 from app.services.notification_service import safe_send
 from app.utils import texts
 from app.utils.constants import EVENT_STATUS_LABELS, EventStatus, Role
+from app.utils.validators import clean_text
 
 router = Router(name="admin_events_block6")
 PREPARED_MARK = "[ERA_BROADCAST_PREPARED]"
 
 
+class EventDecisionStates(StatesGroup):
+    comment = State()
+
+
 def is_admin(user: User | None, settings: Settings, tg_id: int) -> bool:
-    return bool(tg_id in settings.admin_ids or (user and user.role == Role.ADMIN and not user.is_blocked))
+    return bool(
+        tg_id in settings.admin_ids
+        or (user and user.role == Role.ADMIN and not user.is_blocked)
+        or (user and not user.is_blocked and not user.is_archived and any(
+            g.is_active and g.permission == "events.manage" for g in (user.permission_grants or [])
+        ))
+    )
 
 
 async def guard(call: CallbackQuery, user: User | None, settings: Settings) -> bool:
@@ -48,11 +61,21 @@ def event_kb(event: Event) -> InlineKeyboardMarkup:
     elif event.status == EventStatus.APPROVED:
         rows.append([InlineKeyboardButton(text="👁 Предпросмотр рассылки", callback_data=f"admin:event:broadcast_preview:{event.id}")])
         rows.append([InlineKeyboardButton(text="✅ Подготовить рассылку 1/2", callback_data=f"admin:event:broadcast_prepare:{event.id}")])
-    elif event.status in {EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN, EventStatus.COMPLETED}:
+    elif event.status in {EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN, EventStatus.REGISTRATION_CLOSED, EventStatus.ACTIVE, EventStatus.COMPLETED}:
         rows.append([InlineKeyboardButton(text="👥 Участники и посещение", callback_data=f"admin:event:participants:{event.id}")])
-        rows.append([InlineKeyboardButton(text="➕ Создать активности", callback_data=f"admin:event:activities:create:{event.id}")])
-        rows.append([InlineKeyboardButton(text="📤 Отправить активности", callback_data=f"admin:event:activities:send:{event.id}")])
-        rows.append([InlineKeyboardButton(text="📥 Активности на проверке", callback_data="admin:event_activities:review")])
+        if event.status == EventStatus.PUBLISHED:
+            rows.append([InlineKeyboardButton(text="🟢 Открыть регистрацию", callback_data=f"admin:event:status:registration_open:{event.id}")])
+        elif event.status == EventStatus.REGISTRATION_OPEN:
+            rows.append([InlineKeyboardButton(text="🔒 Закрыть регистрацию", callback_data=f"admin:event:status:registration_closed:{event.id}")])
+            rows.append([InlineKeyboardButton(text="▶️ Мероприятие началось", callback_data=f"admin:event:status:active:{event.id}")])
+        elif event.status == EventStatus.REGISTRATION_CLOSED:
+            rows.append([InlineKeyboardButton(text="▶️ Мероприятие началось", callback_data=f"admin:event:status:active:{event.id}")])
+        elif event.status == EventStatus.ACTIVE:
+            rows.append([InlineKeyboardButton(text="🏁 Завершить мероприятие", callback_data=f"admin:event:status:completed:{event.id}")])
+        elif event.status == EventStatus.COMPLETED:
+            rows.append([InlineKeyboardButton(text="➕ Создать активности", callback_data=f"admin:event:activities:create:{event.id}")])
+            rows.append([InlineKeyboardButton(text="📤 Отправить активности", callback_data=f"admin:event:activities:send:{event.id}")])
+            rows.append([InlineKeyboardButton(text="📥 Активности на проверке", callback_data="admin:event_activities:review")])
     rows.append([InlineKeyboardButton(text="← События", callback_data="admin:menu:activity")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -61,6 +84,7 @@ def event_kb(event: Event) -> InlineKeyboardMarkup:
 async def events_list(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await guard(call, user, settings):
         return
+    await call.message.answer("📅 Управление мероприятиями", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➕ Создать мероприятие", callback_data="leader:event:new")]]))
     events = (await session.scalars(select(Event).order_by(Event.event_date.desc(), Event.event_time).limit(50))).all()
     if not events:
         await call.message.answer("Мероприятий пока нет")
@@ -144,3 +168,39 @@ async def broadcast_publish(call: CallbackQuery, user: User | None, settings: Se
     event.additional_info = (event.additional_info or "").replace(PREPARED_MARK, "").strip()
     await audit(session, actor_id=user.id if user else None, action="event.broadcast_published", entity_type="event", entity_id=event.id)
     await call.message.answer("Рассылка отправлена, регистрация открыта.", reply_markup=event_kb(event))
+
+
+@router.callback_query(F.data.regexp(r"^admin:event:(revise|reject):\d+$"))
+async def event_decision_start(call: CallbackQuery, user: User | None, settings: Settings, state: FSMContext) -> None:
+    if not await guard(call, user, settings):
+        return
+    _, _, action, raw_id = call.data.split(":")
+    await state.set_state(EventDecisionStates.comment)
+    await state.update_data(event_decision_action=action, event_decision_id=int(raw_id))
+    await call.message.answer("Напишите комментарий автору")
+
+
+@router.message(EventDecisionStates.comment)
+async def event_decision_finish(message: Message, user: User | None, settings: Settings, state: FSMContext, session: AsyncSession, bot: Bot) -> None:
+    if not is_admin(user, settings, message.from_user.id):
+        await message.answer(texts.NO_ACCESS)
+        return
+    comment = clean_text(message.text or "", 2000)
+    if not comment:
+        await message.answer("Комментарий обязателен")
+        return
+    data = await state.get_data()
+    event = await session.get(Event, int(data["event_decision_id"]))
+    if not event:
+        await state.clear()
+        return
+    revise = data["event_decision_action"] == "revise"
+    event.status = EventStatus.DRAFT if revise else EventStatus.CANCELLED
+    owner = await session.get(User, event.created_by)
+    if owner:
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✏️ Исправить мероприятие", callback_data=f"leader:event:revise:{event.id}")
+        ]]) if revise else None
+        await safe_send(bot, owner.telegram_id, f"Мероприятие «{event.title}» {'возвращено на доработку' if revise else 'отклонено'}\n\n{comment}", reply_markup=markup)
+    await state.clear()
+    await message.answer("Решение сохранено")
