@@ -1514,9 +1514,10 @@ async def portfolio_help(
             f"Название: {item.title}\n\n{item.description or ''}"
         )
         if item.file_id:
-            await call.message.answer_document(
-                item.file_id, caption=caption, reply_markup=keyboard
-            )
+            try:
+                await call.message.answer_document(item.file_id, caption=caption, reply_markup=keyboard)
+            except Exception:
+                await call.message.answer_photo(item.file_id, caption=caption, reply_markup=keyboard)
         else:
             await call.message.answer(caption, reply_markup=keyboard)
 
@@ -3157,6 +3158,7 @@ async def admin_user_set_role(
     user: User | None,
     settings: Settings,
     session: AsyncSession,
+    bot: Bot,
 ) -> None:
     if not await _guard(call, user, settings):
         return
@@ -3177,6 +3179,16 @@ async def admin_user_set_role(
         new_value={"role": value},
     )
     await call.message.answer(f"Роль изменена: {ROLE_LABELS.get(value, value)}")
+    await safe_send(
+        bot,
+        target.telegram_id,
+        f"Ваша роль в ЭРА изменена: {ROLE_LABELS.get(value, value)}\n\nНовые возможности уже доступны в обновлённом меню.",
+        main_menu(
+            settings.era_channel_url,
+            privileged=value in {Role.LEADER, Role.HEAD, Role.COUNCIL, Role.ADMIN},
+            admin=value == Role.ADMIN,
+        ),
+    )
 
 
 @router.callback_query(F.data.startswith("admin:user:setstatus:"))
