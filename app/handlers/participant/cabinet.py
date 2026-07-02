@@ -3,36 +3,26 @@ from aiogram.filters import Command
 from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
-from sqlalchemy import desc, or_, select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import (
-    Event,
-    EventActivity,
-    EventActivitySubmission,
-    EventRegistration,
     PointTransaction,
     PortfolioItem,
-    Project,
     Task,
-    TaskParticipant,
     User,
 )
 from app.keyboards.common import back_keyboard
 from app.keyboards.participant import (
     journey_keyboard,
     portfolio_keyboard,
-    tasks_keyboard,
 )
 from app.repositories.users import rating, user_stats
 from app.services.resume_service import build_era_resume
 from app.utils import texts
 from app.utils.constants import (
     ApplicationStatus,
-    PROJECT_STATUS_LABELS,
-    REGISTRATION_STATUS_LABELS,
-    TASK_STATUS_LABELS,
 )
 from app.utils.telegram import send_long_text
 
@@ -272,76 +262,6 @@ async def resume(call: CallbackQuery, user: User | None, session: AsyncSession) 
     )
 
 
-@router.callback_query(F.data == "cabinet:projects")
-async def my_projects(
-    call: CallbackQuery, user: User | None, session: AsyncSession
-) -> None:
-    if not await _guard(call, user):
-        return
-    projects = (
-        await session.scalars(
-            select(Project)
-            .where(Project.author_id == user.id)
-            .order_by(desc(Project.created_at))
-        )
-    ).all()
-    body = (
-        "\n".join(
-            f"• {p.title} — {PROJECT_STATUS_LABELS.get(p.status, 'Статус уточняется')}"
-            for p in projects
-        )
-        or "Проектов пока нет."
-    )
-    await call.message.answer(body, reply_markup=back_keyboard("cabinet:open"))
-
-
-@router.callback_query(F.data == "cabinet:tasks")
-async def my_tasks(
-    call: CallbackQuery, user: User | None, session: AsyncSession
-) -> None:
-    if not await _guard(call, user):
-        return
-    tasks = (
-        await session.scalars(
-            select(Task)
-            .where(
-                or_(
-                    Task.assignee_id == user.id,
-                    Task.status == "published",
-                    Task.task_type == "challenge",
-                )
-            )
-            .order_by(Task.deadline)
-        )
-    ).all()
-    tasks = [
-        task
-        for task in tasks
-        if task.assignee_id == user.id
-        or not (task.audience_filter_json or {}).get("role")
-        or (task.audience_filter_json or {}).get("role") == user.role
-    ]
-    participants = (
-        await session.scalars(
-            select(TaskParticipant).where(
-                TaskParticipant.user_id == user.id,
-                TaskParticipant.task_id.in_([task.id for task in tasks] or [-1]),
-            )
-        )
-    ).all()
-    joined_ids = {item.task_id for item in participants}
-    joined_ids.update(task.id for task in tasks if task.assignee_id == user.id)
-    body = (
-        "\n".join(
-            f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, 'Открыто')}, "
-            f"до {task.deadline:%d.%m.%Y} · {task.points} баллов"
-            for task in tasks
-        )
-        or "Задач пока нет."
-    )
-    await call.message.answer(body, reply_markup=tasks_keyboard(tasks, joined_ids))
-
-
 @router.callback_query(F.data.regexp(r"^task:(start|submit):\d+$"))
 async def update_task(
     call: CallbackQuery, user: User | None, session: AsyncSession
@@ -378,73 +298,4 @@ async def my_departments(call: CallbackQuery, user: User | None) -> None:
     await call.message.answer(
         f"Мои департаменты\n{departments}\n\nМои направления\n{directions}",
         reply_markup=back_keyboard("cabinet:open"),
-    )
-
-
-@router.callback_query(F.data == "cabinet:events")
-async def my_events(
-    call: CallbackQuery, user: User | None, session: AsyncSession
-) -> None:
-    if not await _guard(call, user):
-        return
-    rows = (
-        await session.execute(
-            select(EventRegistration, Event)
-            .join(Event, Event.id == EventRegistration.event_id)
-            .where(EventRegistration.user_id == user.id)
-            .order_by(desc(Event.event_date))
-        )
-    ).all()
-    if not rows:
-        await call.message.answer(
-            "Регистраций на мероприятия пока нет.",
-            reply_markup=back_keyboard("cabinet:open"),
-        )
-        return
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
-    keyboard_rows = []
-    lines = []
-    for registration, event in rows:
-        lines.append(
-            f"• {event.title} — {event.event_date:%d.%m.%Y}, "
-            f"{REGISTRATION_STATUS_LABELS.get(registration.status, 'Статус уточняется')}"
-        )
-        activities = (
-            await session.scalars(
-                select(EventActivity).where(
-                    EventActivity.event_id == event.id,
-                    EventActivity.is_active.is_(True),
-                )
-            )
-        ).all()
-        submitted = set(
-            (
-                await session.scalars(
-                    select(EventActivitySubmission.activity_id).where(
-                        EventActivitySubmission.user_id == user.id,
-                        EventActivitySubmission.activity_id.in_(
-                            [activity.id for activity in activities] or [-1]
-                        ),
-                        EventActivitySubmission.status.in_(["pending", "approved"]),
-                    )
-                )
-            ).all()
-        )
-        for activity in activities:
-            if activity.id not in submitted:
-                keyboard_rows.append(
-                    [
-                        InlineKeyboardButton(
-                            text=f"+{activity.points} · {activity.title[:30]}",
-                            callback_data=f"event:activity:{activity.id}",
-                        )
-                    ]
-                )
-    keyboard_rows.append(
-        [InlineKeyboardButton(text="Назад", callback_data="cabinet:open")]
-    )
-    await call.message.answer(
-        "Мои мероприятия\n\n" + "\n".join(lines),
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard_rows),
     )
