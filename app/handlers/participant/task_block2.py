@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Task, TaskParticipant, TaskSubmission, User
+from app.keyboards.common import back_keyboard
 from app.keyboards.participant import tasks_keyboard
 from app.services.notification_service import notify_admins
 from app.states.growth import TaskSubmissionStates
@@ -124,6 +125,49 @@ async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSessi
     joined_ids.update(task.id for task in tasks if task.assignee_id == user.id)
     body = "\n".join(f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, task.status)}, до {task.deadline:%d.%m.%Y} · {task.points} баллов" for task in tasks) or "Здесь пока пусто."
     await call.message.answer(f"{title}\n\n{body}", reply_markup=tasks_keyboard(tasks, joined_ids) if tasks else _task_menu())
+
+
+@router.callback_query(F.data.startswith("task:join:"))
+async def task_join(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+    await call.answer()
+    if not _approved(user):
+        return
+    task = await session.get(Task, int(call.data.rsplit(":", 1)[-1]))
+    if task is None or task.task_type != "challenge" or task.status != "published":
+        await call.message.answer("Набор на это задание уже закрыт")
+        return
+    current = (
+        await session.scalars(
+            select(TaskParticipant).where(TaskParticipant.task_id == task.id)
+        )
+    ).all()
+    accepted = [item for item in current if item.status in {"accepted", "joined"}]
+    if task.max_participants and len(accepted) >= task.max_participants:
+        await call.message.answer("Команда уже набрана")
+        return
+    existing = next((item for item in current if item.user_id == user.id), None)
+    if existing:
+        if existing.status == "rejected":
+            existing.status = "pending"
+        elif existing.status == "pending":
+            await call.message.answer(
+                "Ваша заявка уже у лидера на рассмотрении",
+                reply_markup=back_keyboard("cabinet:tasks"),
+            )
+            return
+        else:
+            await call.message.answer(
+                "Вы уже в команде этой задачи",
+                reply_markup=back_keyboard("cabinet:tasks"),
+            )
+            return
+    else:
+        session.add(TaskParticipant(task_id=task.id, user_id=user.id, status="pending"))
+    await call.message.answer(
+        "Заявка отправлена лидеру 🙌\n\n"
+        "После подтверждения задача появится среди активных",
+        reply_markup=back_keyboard("cabinet:tasks"),
+    )
 
 
 @router.callback_query(F.data.startswith("task:view:"))
