@@ -29,39 +29,20 @@ def department_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def directions_keyboard(
-    scope: str, selected: set[str] | None = None
-) -> InlineKeyboardMarkup:
+def directions_keyboard(scope: str, selected: set[str] | None = None) -> InlineKeyboardMarkup:
     selected = selected or set()
     if scope == "internal":
         keys = ["leadership", "culture", "interactive"]
     elif scope == "external":
         keys = ["international", "media", "social"]
     elif scope == "both":
-        keys = [
-            "leadership",
-            "culture",
-            "interactive",
-            "international",
-            "media",
-            "social",
-        ]
+        keys = ["leadership", "culture", "interactive", "international", "media", "social"]
     else:
-        keys = [
-            "leadership",
-            "media",
-            "culture",
-            "interactive",
-            "social",
-            "international",
-            "participate",
-        ]
+        keys = ["leadership", "media", "culture", "interactive", "social", "international", "participate"]
     builder = InlineKeyboardBuilder()
     for key in keys:
         mark = "✓ " if key in selected else ""
-        builder.button(
-            text=mark + DIRECTION_OPTIONS[key], callback_data=f"reg:dir:{key}"
-        )
+        builder.button(text=mark + DIRECTION_OPTIONS[key], callback_data=f"reg:dir:{key}")
     builder.adjust(1)
     builder.row(InlineKeyboardButton(text="Продолжить", callback_data="reg:dir:done"))
     return builder.as_markup()
@@ -75,12 +56,7 @@ def time_keyboard() -> InlineKeyboardMarkup:
         ("Несколько часов в день", "daily_more"),
         ("Готов активно включаться", "active"),
     )
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=label, callback_data=f"reg:time:{key}")]
-            for label, key in values
-        ]
-    )
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=label, callback_data=f"reg:time:{key}")] for label, key in values])
 
 
 def desired_path_keyboard() -> InlineKeyboardMarkup:
@@ -91,12 +67,7 @@ def desired_path_keyboard() -> InlineKeyboardMarkup:
         "Руководитель — отвечать за департамент",
         "Совет — участвовать в развитии ЭРА",
     )
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=value, callback_data=f"reg:path:{index}")]
-            for index, value in enumerate(values)
-        ]
-    )
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=value, callback_data=f"reg:path:{index}")] for index, value in enumerate(values)])
 
 
 def consent_keyboard() -> InlineKeyboardMarkup:
@@ -111,12 +82,8 @@ def consent_keyboard() -> InlineKeyboardMarkup:
 def pending_registration_keyboard(channel_url: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="Проверить статус заявки",
-                    callback_data="registration:status",
-                )
-            ],
+            [InlineKeyboardButton(text="Проверить статус заявки", callback_data="registration:status")],
+            [InlineKeyboardButton(text="Ответить на уточнение", callback_data="registration:answer_info")],
             [InlineKeyboardButton(text="Перейти на канал ЭРА", url=channel_url)],
         ]
     )
