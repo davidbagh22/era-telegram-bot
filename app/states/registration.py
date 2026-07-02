@@ -16,3 +16,4 @@ class RegistrationStates(StatesGroup):
     desired_path = State()
     motivation = State()
     consent = State()
+    clarification = State()
