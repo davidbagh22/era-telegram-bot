@@ -1,4 +1,5 @@
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -55,10 +56,39 @@ async def _count(session: AsyncSession, model, *conditions) -> int:
     return int(await session.scalar(query) or 0)
 
 
-def _dashboard_keyboard() -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text="🧭 Что где ждёт", callback_data="admin:attention")]]
+def _attention_total(m: dict[str, int]) -> int:
+    keys = (
+        "users_pending",
+        "projects_review",
+        "events_pending",
+        "task_results",
+        "activity_results",
+        "rewards",
+        "portfolio",
+        "reports",
+        "questions",
+        "departments",
+    )
+    return sum(m[key] for key in keys)
+
+
+def _dashboard_keyboard(m: dict[str, int]) -> InlineKeyboardMarkup:
+    attention = _attention_total(m)
+    label = f"🔔 Требует решения · {attention}" if attention else "✅ Очередь чиста"
+    rows = [[InlineKeyboardButton(text=label, callback_data="admin:attention")]]
     rows.extend(admin_panel_keyboard().inline_keyboard)
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _replace_message(
+    message: Message,
+    text: str,
+    reply_markup: InlineKeyboardMarkup,
+) -> None:
+    try:
+        await message.edit_text(text, reply_markup=reply_markup)
+    except TelegramBadRequest:
+        await message.answer(text, reply_markup=reply_markup)
 
 
 async def _metrics(session: AsyncSession) -> dict[str, int]:
@@ -84,30 +114,23 @@ async def _metrics(session: AsyncSession) -> dict[str, int]:
 
 
 def _dashboard_text(m: dict[str, int]) -> str:
-    attention = m["users_pending"] + m["projects_review"] + m["events_pending"] + m["task_results"] + m["activity_results"] + m["rewards"] + m["portfolio"] + m["reports"] + m["questions"] + m["departments"]
+    attention = _attention_total(m)
+    queue = (
+        f"🔔 Требует решения: {attention}\n"
+        "Откройте очередь — там показаны только актуальные запросы"
+        if attention
+        else "✅ Очередь чиста\nНовых запросов на проверку сейчас нет"
+    )
     return (
-        "⚙️ Админ-панель ЭРА\n\n"
-        "Организация сейчас:\n"
-        f"👥 Участники всего: {m['users_total']}\n"
-        f"✅ Одобрены: {m['users_approved']}\n"
-        f"📝 Новые заявки: {m['users_pending']}\n"
-        f"🔥 Активисты: {m['activists']}\n"
-        f"🧭 Лидеры / совет / админы: {m['leaders']}\n\n"
-        "Проекты и события:\n"
-        f"💡 Проекты на проверке: {m['projects_review']}\n"
-        f"🚀 Активные проекты: {m['projects_active']}\n"
-        f"📅 Мероприятия на согласовании: {m['events_pending']}\n"
-        f"📣 Мероприятия в работе / опубликованы: {m['events_live']}\n\n"
-        "Что ждёт решения:\n"
-        f"✅ Итоги заданий: {m['task_results']}\n"
-        f"✨ Активности после мероприятий: {m['activity_results']}\n"
-        f"🎁 Заявки на возможности: {m['rewards']}\n"
-        f"🎓 Портфолио: {m['portfolio']}\n"
-        f"📄 Отчёты: {m['reports']}\n"
-        f"💬 Вопросы: {m['questions']}\n"
-        f"🏛 Заявки по направлениям: {m['departments']}\n\n"
-        f"Итого требует внимания: {attention}\n"
-        f"Открытых задач в системе: {m['tasks_open']}"
+        "⚙️ Центр управления ЭРА\n\n"
+        "👥 Люди\n"
+        f"Всего: {m['users_total']} · одобрено: {m['users_approved']}\n"
+        f"Активисты: {m['activists']} · лидерский состав: {m['leaders']}\n\n"
+        "🚀 Работа сообщества\n"
+        f"Проекты: {m['projects_active']} активных · {m['projects_review']} ждут решения\n"
+        f"Мероприятия: {m['events_live']} в работе · {m['events_pending']} ждут решения\n"
+        f"Открытые задачи: {m['tasks_open']}\n\n"
+        f"{queue}"
     )
 
 
@@ -118,7 +141,7 @@ async def admin_dashboard(message: Message, user: User | None, settings: Setting
         return
     await state.clear()
     metrics = await _metrics(session)
-    await message.answer(_dashboard_text(metrics), reply_markup=_dashboard_keyboard())
+    await message.answer(_dashboard_text(metrics), reply_markup=_dashboard_keyboard(metrics))
 
 
 @router.callback_query(F.data == "admin:panel")
@@ -127,7 +150,7 @@ async def admin_dashboard_callback(call: CallbackQuery, user: User | None, setti
         return
     await state.clear()
     metrics = await _metrics(session)
-    await call.message.answer(_dashboard_text(metrics), reply_markup=_dashboard_keyboard())
+    await _replace_message(call.message, _dashboard_text(metrics), _dashboard_keyboard(metrics))
 
 
 @router.callback_query(F.data == "admin:attention")
@@ -147,11 +170,19 @@ async def admin_attention(call: CallbackQuery, user: User | None, settings: Sett
         ("💬 Вопросы", "admin:questions", m["questions"]),
         ("🏛 Направления", "admin:departments", m["departments"]),
     ]
-    rows: list[list[InlineKeyboardButton]] = []
-    lines = ["🧭 Что где ждёт\n"]
-    for label, callback, amount in items:
-        lines.append(f"{label}: {amount}")
-        if amount:
-            rows.append([InlineKeyboardButton(text=f"{label} · {amount}", callback_data=callback)])
+    active = [(label, callback, amount) for label, callback, amount in items if amount]
+    rows = [
+        [InlineKeyboardButton(text=f"{label} · {amount}", callback_data=callback)]
+        for label, callback, amount in active
+    ]
     rows.append([InlineKeyboardButton(text="← Админ-панель", callback_data="admin:panel")])
-    await call.message.answer("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    if active:
+        lines = ["🔔 Что требует решения", "", "Выберите очередь:"]
+        lines.extend(f"{label}: {amount}" for label, _, amount in active)
+    else:
+        lines = ["✅ Очередь чиста", "", "Новых запросов на проверку сейчас нет"]
+    await _replace_message(
+        call.message,
+        "\n".join(lines),
+        InlineKeyboardMarkup(inline_keyboard=rows),
+    )

@@ -37,7 +37,7 @@ def _submenu(options: tuple[tuple[str, str], ...]) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=label, callback_data=callback)]
         for label, callback in options
     ]
-    rows.append([InlineKeyboardButton(text="Назад", callback_data="admin:panel")])
+    rows.append([InlineKeyboardButton(text="← Админ-панель", callback_data="admin:panel")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
