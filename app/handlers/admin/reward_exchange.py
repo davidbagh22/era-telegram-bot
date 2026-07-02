@@ -156,7 +156,7 @@ async def reward_reply_send(message: Message, user: User | None, settings: Setti
     redemption.admin_comment = text
     redemption.status = "reserved"
     redemption.reviewed_by = user.id if user else None
-    await safe_send(bot, target.telegram_id, f"Ответ по возможности «{reward.name}":\n\n{text}\n\nБаллы будут списаны только после финального подтверждения админа.")
+    await safe_send(bot, target.telegram_id, f"Ответ по возможности «{reward.name}»:\n\n{text}\n\nБаллы будут списаны только после финального подтверждения админа.")
     await state.clear()
     await message.answer("Ответ отправлен пользователю. Теперь можно подтвердить обмен и списать баллы.")
 

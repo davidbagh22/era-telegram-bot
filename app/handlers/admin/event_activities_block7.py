@@ -172,7 +172,7 @@ async def send_to_registered_confirm(call: CallbackQuery, user: User | None, set
     await call.message.answer(f"Активности отправлены: {sent}. Повторная отправка заблокирована.")
 
 
-async def send_submission_cardasync def send_submission_card(message: Message, session: AsyncSession, sub: EventActivitySubmission) -> None:
+async def send_submission_card(message: Message, session: AsyncSession, sub: EventActivitySubmission) -> None:
     activity = await session.get(EventActivity, sub.activity_id)
     target = await session.get(User, sub.user_id)
     if not activity or not target:
