@@ -1,24 +1,19 @@
-from datetime import datetime
 from io import BytesIO
 
-from aiogram import F, Bot, Router
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
-from sqlalchemy import desc, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import Settings
 from app.database.models import Project, User
-from app.keyboards.admin import entity_actions
 from app.keyboards.participant import (
-    project_drafts_keyboard,
     project_menu_keyboard,
     project_question_keyboard,
     project_result_keyboard,
 )
 from app.services.audit_service import audit
-from app.services.notification_service import notify_admins
 from app.services.project_builder import (
     PROJECT_QUESTIONS,
     question_text,
@@ -289,73 +284,3 @@ async def project_resume(
     current = (project.form_data or {}).get(PROJECT_QUESTIONS[index].key)
     await call.message.answer(f"Продолжаем проект «{project.title}»")
     await _ask_question(call.message, index, current)
-
-
-@router.callback_query(F.data.startswith("project:submit:"))
-async def project_submit(
-    call: CallbackQuery,
-    session: AsyncSession,
-    user: User,
-    bot: Bot,
-    settings: Settings,
-) -> None:
-    await call.answer()
-    project = await _load_owned_project(
-        session, int(call.data.rsplit(":", 1)[-1]), user
-    )
-    if project is None:
-        await call.message.answer(texts.NO_ACCESS)
-        return
-    if project.status not in {ProjectStatus.DRAFT, ProjectStatus.NEEDS_REVISION}:
-        await call.message.answer("Проект уже отправлен на рассмотрение")
-        return
-    project.status = ProjectStatus.INITIAL_REVIEW
-    project.submitted_at = datetime.now().astimezone()
-    await audit(
-        session,
-        actor_id=user.id,
-        action="project.submitted",
-        entity_type="project",
-        entity_id=project.id,
-    )
-    await call.message.answer(texts.PROJECT_SUBMITTED)
-    data = project.form_data or {}
-    telegram = f"@{user.username}" if user.username else str(user.telegram_id)
-    await notify_admins(
-        bot,
-        settings,
-        "💡 Новый проект на рассмотрении\n\n"
-        f"{project.title}\n"
-        f"Автор: {user.first_name} {user.last_name or ''} ({telegram})\n\n"
-        f"Суть\n{project.short_description}\n\n"
-        f"Аудитория\n{data.get('target_audience', 'не указана')}\n\n"
-        f"Дата и время: {data.get('proposed_date', 'не указана')}, {data.get('proposed_time', 'не указано')}\n"
-        f"Площадка: {data.get('venue_request', 'не указана')}",
-        reply_markup=entity_actions("project", project.id),
-    )
-
-
-@router.callback_query(F.data == "projects:drafts")
-async def project_drafts(
-    call: CallbackQuery, session: AsyncSession, user: User
-) -> None:
-    await call.answer()
-    projects = (
-        await session.scalars(
-            select(Project)
-            .where(
-                Project.author_id == user.id,
-                Project.status.in_([ProjectStatus.DRAFT, ProjectStatus.NEEDS_REVISION]),
-            )
-            .order_by(desc(Project.updated_at))
-        )
-    ).all()
-    if not projects:
-        await call.message.answer(
-            "Черновиков пока нет", reply_markup=project_menu_keyboard()
-        )
-        return
-    await call.message.answer(
-        "Ваши черновики\n\nВыберите проект, чтобы продолжить с сохранённого шага",
-        reply_markup=project_drafts_keyboard(projects),
-    )
