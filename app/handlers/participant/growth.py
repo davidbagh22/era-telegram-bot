@@ -45,9 +45,13 @@ def _approved(user: User | None) -> bool:
 
 @router.callback_query(F.data == "rewards:menu")
 async def rewards_menu(
-    call: CallbackQuery, user: User | None, session: AsyncSession
+    call: CallbackQuery,
+    user: User | None,
+    session: AsyncSession,
+    state: FSMContext,
 ) -> None:
     await call.answer()
+    await state.clear()
     if not _approved(user):
         return
     now = datetime.now().astimezone()
