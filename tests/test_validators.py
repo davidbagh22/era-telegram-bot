@@ -27,8 +27,12 @@ class ValidatorTests(unittest.TestCase):
 
     def test_date_and_time(self) -> None:
         self.assertEqual(parse_date("30.06.2026").isoformat(), "2026-06-30")
+        self.assertEqual(parse_date("30/06/2026").isoformat(), "2026-06-30")
+        self.assertEqual(parse_date("30-06-2026").isoformat(), "2026-06-30")
+        self.assertEqual(parse_date("30.06.26").isoformat(), "2026-06-30")
         self.assertEqual(parse_time("19:30").isoformat(), "19:30:00")
         self.assertIsNone(parse_date("2026-06-30"))
+        self.assertIsNone(parse_date("31.02.2026"))
         self.assertIsNone(parse_time("25:00"))
 
     def test_deadline_full_date_time(self) -> None:
