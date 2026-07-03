@@ -1,6 +1,6 @@
-from aiogram import Router
+from aiogram import F, Router
 from app.handlers.leader import open_tasks, events_block6, event_activities_block7, panel, task_deadline_buttons
-router = Router(name="leader_root")
+router = Router(name="leader_root")\nrouter.message.filter(F.chat.type == "private")\nrouter.callback_query.filter(F.message.chat.type == "private")
 router.include_router(open_tasks.router)
 router.include_router(task_deadline_buttons.router)
 router.include_router(events_block6.router)
