@@ -28,6 +28,8 @@ from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
 from app.utils.validators import clean_text, normalize_email, normalize_phone, parse_age
 
 router = Router(name="registration")
+router.message.filter(F.chat.type == "private")
+router.callback_query.filter(F.message.chat.type == "private")
 
 PATHS = (
     "Участник",

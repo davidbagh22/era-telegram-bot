@@ -89,58 +89,63 @@ async def welcome_members(
     session: AsyncSession,
 ) -> None:
     me = await bot.get_me()
+    welcomed = []
     for member in message.new_chat_members:
         if member.is_bot:
             continue
         if message.chat.id == settings.leaders_chat_id:
             joined_user = await get_user_by_telegram_id(session, member.id)
             if not joined_user or joined_user.role not in PRIVILEGED_ROLES:
-                await message.answer(
-                    f"{member.first_name}, этот чат предназначен только для лидеров, Совета и администрации ЭРА."
-                )
                 try:
                     await bot.ban_chat_member(message.chat.id, member.id)
                     await bot.unban_chat_member(
-                        message.chat.id, member.id, only_if_banned=True
+                        message.chat.id,
+                        member.id,
+                        only_if_banned=True,
                     )
                 except TelegramAPIError:
                     await message.answer(
                         "Не удалось автоматически ограничить доступ. Администратору чата нужно проверить права бота."
                     )
                 continue
-        if message.chat.id == settings.internal_department_chat_id:
-            chat_key, fallback = "internal", texts.INTERNAL_DEPARTMENT
-        elif message.chat.id == settings.external_department_chat_id:
-            chat_key, fallback = "external", texts.EXTERNAL_DEPARTMENT
-        elif message.chat.id == settings.leaders_chat_id:
-            chat_key, fallback = (
-                "leaders",
-                "Добро пожаловать в рабочее пространство лидеров ЭРА",
-            )
-        else:
-            chat_key, fallback = (
-                "general",
-                texts.chat_welcome(member.first_name, me.username or "era_bot"),
-            )
-        greeting = await session.scalar(
-            select(ChatGreeting).where(ChatGreeting.chat_key == chat_key)
-        )
-        if greeting is not None and not greeting.is_enabled:
-            continue
-        body = greeting.text if greeting is not None else fallback
-        body = body.replace("{name}", member.first_name)
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="Открыть бот ЭРА", url=f"https://t.me/{me.username}"
-                    )
-                ],
-                [InlineKeyboardButton(text="Правила ЭРА", callback_data="chat:rules")],
-            ]
-        )
-        await message.answer(body, reply_markup=keyboard)
+        welcomed.append(member.first_name)
 
+    if not welcomed:
+        return
+
+    if message.chat.id == settings.internal_department_chat_id:
+        chat_key = "internal"
+    elif message.chat.id == settings.external_department_chat_id:
+        chat_key = "external"
+    elif message.chat.id == settings.leaders_chat_id:
+        chat_key = "leaders"
+    else:
+        chat_key = "general"
+
+    greeting = await session.scalar(
+        select(ChatGreeting).where(ChatGreeting.chat_key == chat_key)
+    )
+    if greeting is not None and not greeting.is_enabled:
+        return
+
+    fallback = (
+        "Добро пожаловать в ЭРА.\n\n"
+        "Здесь общаются участники сообщества, появляются анонсы, проекты и возможности.\n\n"
+        "Регистрация, баллы, портфолио и личный кабинет — в личном чате с ботом."
+    )
+    body = greeting.text if greeting is not None else fallback
+    body = body.replace("{name}", ", ".join(welcomed))
+    await message.answer(
+        body,
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="Открыть бот",
+                    url=f"https://t.me/{me.username}?start=registration",
+                )
+            ]]
+        ),
+    )
 
 @router.callback_query(F.data == "chat:rules")
 async def rules_callback(call) -> None:

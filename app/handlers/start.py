@@ -63,14 +63,16 @@ def _approved_existing_user(user: User | None) -> bool:
     )
 
 
-@router.message(CommandStart())
-@router.message(Command("menu"))
+@router.message(CommandStart(), F.chat.type == "private")
+@router.message(Command("menu"), F.chat.type == "private")
 async def start(
     message: Message,
     bot: Bot,
     user: User | None,
     settings: Settings,
+    state: FSMContext,
 ) -> None:
+    await state.clear()
     subscribed = await _subscription_ok(bot, message.from_user.id, settings)
     if subscribed is None:
         if _approved_existing_user(user):
@@ -103,8 +105,10 @@ async def check_subscription(
     bot: Bot,
     user: User | None,
     settings: Settings,
+    state: FSMContext,
 ) -> None:
     await call.answer()
+    await state.clear()
     subscribed = await _subscription_ok(bot, call.from_user.id, settings)
     if subscribed is None:
         if _approved_existing_user(user):
@@ -146,5 +150,6 @@ async def main_menu_callback(
 
 
 @router.message(Command("rules"), F.chat.type == "private")
-async def private_rules(message: Message) -> None:
+async def private_rules(message: Message, state: FSMContext) -> None:
+    await state.clear()
     await message.answer(texts.CHAT_RULES)
