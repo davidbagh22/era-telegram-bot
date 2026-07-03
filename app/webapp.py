@@ -4,7 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from aiogram.types import BotCommand, MenuButtonDefault, Update
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 
 from app.bot import create_bot, create_dispatcher
 from app.config import get_settings
@@ -34,6 +34,17 @@ async def lifespan(app: FastAPI):
     app.state.session_factory = session_factory
     app.state.bot = bot
     app.state.dispatcher = dispatcher
+
+    # Redis is dedicated to aiogram FSM storage in this service. Clear stale
+    # production forms on deploy; PostgreSQL user and organization data is
+    # stored separately and is not affected.
+    recovery_marker = "era:recovery:fsm-global-v2"
+    redis_client = dispatcher.storage.redis
+    if not await redis_client.exists(recovery_marker):
+        await redis_client.flushdb()
+        await redis_client.set(recovery_marker, "done")
+        logger.warning("Redis FSM storage cleared during recovery deploy")
+
     app.state.ai_service = AIService(settings)
     scheduler = create_scheduler(bot, settings, session_factory)
     scheduler.start()
@@ -42,7 +53,7 @@ async def lifespan(app: FastAPI):
     try:
         base_url = settings.effective_base_url
         if base_url:
-            webhook_url = f"{base_url}/telegram/webhook"
+            webhook_url = f"{base_url}/telegram/webhook?v=2.0.2"
             await bot.set_webhook(
                 webhook_url,
                 secret_token=settings.effective_webhook_secret or None,
@@ -76,7 +87,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="ERA Telegram Bot Service",
-    version="2.0.0",
+    version="2.0.2",
     lifespan=lifespan,
     docs_url=None,
     openapi_url=None,
@@ -85,12 +96,13 @@ app = FastAPI(
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "version": "2.0.0"}
+    return {"status": "ok", "version": "2.0.2"}
 
 
 @app.post("/telegram/webhook", include_in_schema=False)
 async def telegram_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     secret: str | None = Header(default=None, alias="X-Telegram-Bot-Api-Secret-Token"),
 ) -> dict[str, bool]:
     expected_secret = request.app.state.settings.effective_webhook_secret
@@ -98,5 +110,9 @@ async def telegram_webhook(
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
     payload = await request.json()
     update = Update.model_validate(payload, context={"bot": request.app.state.bot})
-    await request.app.state.dispatcher.feed_update(request.app.state.bot, update)
+    background_tasks.add_task(
+        request.app.state.dispatcher.feed_update,
+        request.app.state.bot,
+        update,
+    )
     return {"ok": True}
