@@ -1,3 +1,5 @@
+from datetime import date as DateType, time as TimeType
+
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -13,6 +15,7 @@ from app.utils.constants import EventStatus, PRIVILEGED_ROLES
 from app.utils.validators import clean_text, parse_date, parse_time
 
 router = Router(name="leader_events_block6")
+MENU_BUTTONS = {"👤 Личный кабинет", "📅 Афиша", "💡 Проекты", "⭐ Возможности", "💬 Связь", "⚙️ Панель", "🧭 Главное меню"}
 
 
 class EventBlock6States(StatesGroup):
@@ -52,8 +55,30 @@ def mode_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+def cancel_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="leader:event6:cancel")]])
+
+
 def skip_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Пропустить фото", callback_data="leader:event6:poster:skip")]])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Пропустить фото", callback_data="leader:event6:poster:skip")],
+        [InlineKeyboardButton(text="Отмена", callback_data="leader:event6:cancel")],
+    ])
+
+
+async def _menu_escape(message: Message, state: FSMContext) -> bool:
+    if (message.text or "") not in MENU_BUTTONS:
+        return False
+    await state.clear()
+    await message.answer("Форма мероприятия закрыта. Нажмите кнопку ещё раз, чтобы открыть нужный раздел.")
+    return True
+
+
+@router.callback_query(F.data == "leader:event6:cancel")
+async def cancel_event_form(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    await state.clear()
+    await call.message.answer("Создание мероприятия отменено.")
 
 
 @router.callback_query(F.data.startswith("leader:event:revise:"))
@@ -67,7 +92,7 @@ async def event_revise(call: CallbackQuery, user: User | None, state: FSMContext
     await state.clear()
     await state.update_data(event_mode="constructor", editing_event_id=event.id)
     await state.set_state(EventBlock6States.title)
-    await call.message.answer(f"Исправляем «{event.title}». Введите итоговое название заново.")
+    await call.message.answer(f"Исправляем «{event.title}». Введите итоговое название заново.", reply_markup=cancel_keyboard())
 
 
 @router.callback_query(F.data == "leader:event:new")
@@ -85,108 +110,124 @@ async def mode(call: CallbackQuery, user: User | None, state: FSMContext) -> Non
     mode_value = call.data.rsplit(":", 1)[-1]
     await state.update_data(event_mode=mode_value)
     await state.set_state(EventBlock6States.title)
-    await call.message.answer("Напишите короткое название мероприятия.")
+    await call.message.answer("Напишите короткое название мероприятия.", reply_markup=cancel_keyboard())
 
 
 @router.message(EventBlock6States.title)
 async def title(message: Message, user: User | None, state: FSMContext) -> None:
+    if await _menu_escape(message, state):
+        return
     if not await guard(message, user):
         return
     value = clean_text(message.text or "", 255)
     if not value:
-        await message.answer(texts.INVALID_INPUT)
+        await message.answer(texts.INVALID_INPUT, reply_markup=cancel_keyboard())
         return
     await state.update_data(title=value)
     data = await state.get_data()
     if data.get("event_mode") == "ready":
         await state.set_state(EventBlock6States.ready_text)
-        await message.answer("Вставьте готовый текст анонса. Можно вместе с фото — отправьте фото с подписью.")
+        await message.answer("Вставьте готовый текст анонса. Можно вместе с фото — отправьте фото с подписью.", reply_markup=cancel_keyboard())
     else:
         await state.set_state(EventBlock6States.description)
-        await message.answer("Напишите описание мероприятия / анонс.")
+        await message.answer("Напишите описание мероприятия / анонс.", reply_markup=cancel_keyboard())
 
 
 @router.message(EventBlock6States.ready_text)
 async def ready_text(message: Message, user: User | None, state: FSMContext) -> None:
+    if await _menu_escape(message, state):
+        return
     if not await guard(message, user):
         return
     text = clean_text(message.text or message.caption or "", 3000)
     if not text:
-        await message.answer("Нужен текст анонса")
+        await message.answer("Нужен текст анонса", reply_markup=cancel_keyboard())
         return
     poster = message.photo[-1].file_id if message.photo else None
     await state.update_data(description=text, poster=poster)
     await state.set_state(EventBlock6States.date)
-    await message.answer("Укажите дату мероприятия: ДД.ММ.ГГГГ")
+    await message.answer("Укажите дату мероприятия: ДД.ММ.ГГГГ", reply_markup=cancel_keyboard())
 
 
 @router.message(EventBlock6States.description)
 async def description(message: Message, user: User | None, state: FSMContext) -> None:
+    if await _menu_escape(message, state):
+        return
     if not await guard(message, user):
         return
     value = clean_text(message.text or "", 3000)
     if not value:
-        await message.answer(texts.INVALID_INPUT)
+        await message.answer(texts.INVALID_INPUT, reply_markup=cancel_keyboard())
         return
     await state.update_data(description=value)
     await state.set_state(EventBlock6States.date)
-    await message.answer("Укажите дату: ДД.ММ.ГГГГ")
+    await message.answer("Укажите дату: ДД.ММ.ГГГГ", reply_markup=cancel_keyboard())
 
 
 @router.message(EventBlock6States.date)
 async def date_step(message: Message, user: User | None, state: FSMContext) -> None:
+    if await _menu_escape(message, state):
+        return
     if not await guard(message, user):
         return
     value = parse_date(message.text or "")
     if value is None:
-        await message.answer("Проверьте формат: ДД.ММ.ГГГГ")
+        await message.answer("Проверьте формат: ДД.ММ.ГГГГ", reply_markup=cancel_keyboard())
         return
-    await state.update_data(date=value)
+    await state.update_data(date=value.isoformat())
     await state.set_state(EventBlock6States.time)
-    await message.answer("Укажите время: ЧЧ:ММ")
+    await message.answer("Укажите время: ЧЧ:ММ", reply_markup=cancel_keyboard())
 
 
 @router.message(EventBlock6States.time)
 async def time_step(message: Message, user: User | None, state: FSMContext) -> None:
+    if await _menu_escape(message, state):
+        return
     if not await guard(message, user):
         return
     value = parse_time(message.text or "")
     if value is None:
-        await message.answer("Проверьте формат: ЧЧ:ММ")
+        await message.answer("Проверьте формат: ЧЧ:ММ", reply_markup=cancel_keyboard())
         return
-    await state.update_data(time=value)
+    await state.update_data(time=value.isoformat(timespec="minutes"))
     await state.set_state(EventBlock6States.location)
-    await message.answer("Укажите место проведения.")
+    await message.answer("Укажите место проведения.", reply_markup=cancel_keyboard())
 
 
 @router.message(EventBlock6States.location)
 async def location(message: Message, user: User | None, state: FSMContext) -> None:
+    if await _menu_escape(message, state):
+        return
     if not await guard(message, user):
         return
     value = clean_text(message.text or "", 255)
     if not value:
-        await message.answer(texts.INVALID_INPUT)
+        await message.answer(texts.INVALID_INPUT, reply_markup=cancel_keyboard())
         return
     await state.update_data(location=value)
     await state.set_state(EventBlock6States.format)
-    await message.answer("Укажите формат: мастер-класс, игра, встреча, экскурсия и т.д.")
+    await message.answer("Укажите формат: мастер-класс, игра, встреча, экскурсия и т.д.", reply_markup=cancel_keyboard())
 
 
 @router.message(EventBlock6States.format)
 async def format_step(message: Message, user: User | None, state: FSMContext) -> None:
+    if await _menu_escape(message, state):
+        return
     if not await guard(message, user):
         return
     value = clean_text(message.text or "", 100)
     if not value:
-        await message.answer(texts.INVALID_INPUT)
+        await message.answer(texts.INVALID_INPUT, reply_markup=cancel_keyboard())
         return
     await state.update_data(format=value)
     await state.set_state(EventBlock6States.limit)
-    await message.answer("Лимит участников числом. Если лимита нет — 0.")
+    await message.answer("Лимит участников числом. Если лимита нет — 0.", reply_markup=cancel_keyboard())
 
 
 @router.message(EventBlock6States.limit)
 async def limit_step(message: Message, user: User | None, state: FSMContext) -> None:
+    if await _menu_escape(message, state):
+        return
     if not await guard(message, user):
         return
     try:
@@ -194,15 +235,17 @@ async def limit_step(message: Message, user: User | None, state: FSMContext) -> 
         if value < 0:
             raise ValueError
     except ValueError:
-        await message.answer("Введите число от 0")
+        await message.answer("Введите число от 0", reply_markup=cancel_keyboard())
         return
     await state.update_data(limit=value or None)
     await state.set_state(EventBlock6States.points)
-    await message.answer("Сколько баллов за подтверждённое участие? От 0 до 1000.")
+    await message.answer("Сколько баллов за подтверждённое участие? От 0 до 1000.", reply_markup=cancel_keyboard())
 
 
 @router.message(EventBlock6States.points)
 async def points_step(message: Message, user: User | None, state: FSMContext, session: AsyncSession, bot: Bot, settings: Settings) -> None:
+    if await _menu_escape(message, state):
+        return
     if not await guard(message, user):
         return
     try:
@@ -210,7 +253,7 @@ async def points_step(message: Message, user: User | None, state: FSMContext, se
         if not 0 <= value <= 1000:
             raise ValueError
     except ValueError:
-        await message.answer("Введите число от 0 до 1000")
+        await message.answer("Введите число от 0 до 1000", reply_markup=cancel_keyboard())
         return
     await state.update_data(points=value)
     data = await state.get_data()
@@ -230,6 +273,8 @@ async def skip_poster(call: CallbackQuery, user: User | None, state: FSMContext,
 
 @router.message(EventBlock6States.poster)
 async def poster_step(message: Message, user: User | None, state: FSMContext, session: AsyncSession, bot: Bot, settings: Settings) -> None:
+    if await _menu_escape(message, state):
+        return
     if not await guard(message, user):
         return
     poster = message.photo[-1].file_id if message.photo else None
@@ -246,10 +291,12 @@ async def finish_event(message: Message, user: User, state: FSMContext, session:
     if event is None:
         event = Event(created_by=user.id, responsible_id=user.id)
         session.add(event)
+    event_date = DateType.fromisoformat(data["date"])
+    event_time = TimeType.fromisoformat(data["time"])
     event.title = data["title"]
     event.description = data["description"]
-    event.event_date = data["date"]
-    event.event_time = data["time"]
+    event.event_date = event_date
+    event.event_time = event_time
     event.location = data["location"]
     event.format = data["format"]
     event.participant_limit = data.get("limit")
