@@ -30,7 +30,6 @@ from app.utils.validators import clean_text, normalize_email, normalize_phone, p
 router = Router(name="registration")
 router.message.filter(F.chat.type == "private")
 router.callback_query.filter(F.message.chat.type == "private")
-WELCOME_POINTS = 100
 
 PATHS = (
     "Участник",
@@ -50,21 +49,34 @@ TIME_VALUES = {
 
 
 @router.callback_query(F.data == "registration:start")
-async def registration_start(call: CallbackQuery, state: FSMContext, bot: Bot, settings: Settings, user) -> None:
+async def registration_start(
+    call: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    settings: Settings,
+    user,
+) -> None:
     await call.answer()
     if user is not None:
-        await call.message.answer(texts.APPLICATION_PENDING, reply_markup=pending_registration_keyboard(settings.era_channel_url))
+        await call.message.answer(texts.APPLICATION_PENDING)
         return
     try:
         subscribed = await is_channel_member(bot, call.from_user.id, settings)
     except SubscriptionCheckError:
         await call.message.answer(
-            getattr(texts, "SUBSCRIPTION_CHECK_UNAVAILABLE", "Проверка подписки временно недоступна. Попробуйте позже или напишите администратору."),
+            getattr(
+                texts,
+                "SUBSCRIPTION_CHECK_UNAVAILABLE",
+                "Проверка подписки временно недоступна. Попробуйте позже или напишите администратору.",
+            ),
             reply_markup=subscription_keyboard(settings.era_channel_url),
         )
         return
     if not subscribed:
-        await call.message.answer(texts.SUBSCRIPTION_REQUIRED, reply_markup=subscription_keyboard(settings.era_channel_url))
+        await call.message.answer(
+            texts.SUBSCRIPTION_REQUIRED,
+            reply_markup=subscription_keyboard(settings.era_channel_url),
+        )
         return
     await state.clear()
     await state.set_state(RegistrationStates.first_name)
@@ -127,7 +139,14 @@ async def email(message: Message, state: FSMContext) -> None:
     await message.answer(texts.REG_CITY)
 
 
-async def _save_text_and_advance(message: Message, state: FSMContext, key: str, next_state, prompt: str, max_length: int = 1000) -> None:
+async def _save_text_and_advance(
+    message: Message,
+    state: FSMContext,
+    key: str,
+    next_state,
+    prompt: str,
+    max_length: int = 1000,
+) -> None:
     value = clean_text(message.text or "", max_length)
     if not value:
         await message.answer(texts.INVALID_INPUT)
@@ -139,12 +158,26 @@ async def _save_text_and_advance(message: Message, state: FSMContext, key: str, 
 
 @router.message(RegistrationStates.city)
 async def city(message: Message, state: FSMContext) -> None:
-    await _save_text_and_advance(message, state, "city", RegistrationStates.education_work, texts.REG_EDUCATION, 100)
+    await _save_text_and_advance(
+        message,
+        state,
+        "city",
+        RegistrationStates.education_work,
+        texts.REG_EDUCATION,
+        100,
+    )
 
 
 @router.message(RegistrationStates.education_work)
 async def education(message: Message, state: FSMContext) -> None:
-    await _save_text_and_advance(message, state, "education_work", RegistrationStates.occupation, texts.REG_OCCUPATION, 255)
+    await _save_text_and_advance(
+        message,
+        state,
+        "education_work",
+        RegistrationStates.occupation,
+        texts.REG_OCCUPATION,
+        255,
+    )
 
 
 @router.message(RegistrationStates.occupation)
@@ -163,7 +196,6 @@ async def department(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     key = call.data.rsplit(":", 1)[-1]
     if key not in DEPARTMENT_OPTIONS:
-        await call.message.answer("Раздел не найден. Выберите департамент ещё раз.", reply_markup=department_keyboard())
         return
     departments = {
         "internal": ["Внутренние связи"],
@@ -177,11 +209,14 @@ async def department(call: CallbackQuery, state: FSMContext) -> None:
         "both": texts.REG_BOTH,
         "unsure": texts.REG_UNSURE,
     }[key]
-    await state.update_data(department_scope=key, departments=departments, selected_directions=[])
+    await state.update_data(
+        department_scope=key, departments=departments, selected_directions=[]
+    )
     await state.set_state(RegistrationStates.directions)
-    await call.message.answer(f"{prompt}
-
-{texts.REG_DIRECTION_HINT}", reply_markup=directions_keyboard(key))
+    await call.message.answer(
+        f"{prompt}\n\n{texts.REG_DIRECTION_HINT}",
+        reply_markup=directions_keyboard(key),
+    )
 
 
 @router.callback_query(RegistrationStates.directions, F.data.startswith("reg:dir:"))
@@ -194,10 +229,12 @@ async def directions(call: CallbackQuery, state: FSMContext) -> None:
         if not selected:
             await call.message.answer(texts.REG_DIRECTION_REQUIRED)
             return
-        names = [DIRECTION_OPTIONS[item] for item in selected if item in DIRECTION_OPTIONS and item != "participate"]
+        names = [DIRECTION_OPTIONS[item] for item in selected if item != "participate"]
         departments = list(data.get("departments", []))
         if not departments:
-            if any(item in selected for item in ("leadership", "culture", "interactive")):
+            if any(
+                item in selected for item in ("leadership", "culture", "interactive")
+            ):
                 departments.append("Внутренние связи")
             if any(item in selected for item in ("international", "media", "social")):
                 departments.append("Внешние связи")
@@ -206,17 +243,20 @@ async def directions(call: CallbackQuery, state: FSMContext) -> None:
         await call.message.answer(texts.REG_TIME, reply_markup=time_keyboard())
         return
     if key not in DIRECTION_OPTIONS:
-        await call.message.answer("Направление не найдено. Выберите вариант из кнопок.")
         return
     if key in selected:
         selected.remove(key)
     else:
         selected.add(key)
     await state.update_data(selected_directions=list(selected))
-    await call.message.edit_reply_markup(reply_markup=directions_keyboard(data.get("department_scope", "both"), selected))
+    await call.message.edit_reply_markup(
+        reply_markup=directions_keyboard(data.get("department_scope", "both"), selected)
+    )
 
 
-@router.callback_query(RegistrationStates.available_time, F.data.startswith("reg:time:"))
+@router.callback_query(
+    RegistrationStates.available_time, F.data.startswith("reg:time:")
+)
 async def available_time(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     key = call.data.rsplit(":", 1)[-1]
@@ -224,7 +264,9 @@ async def available_time(call: CallbackQuery, state: FSMContext) -> None:
         return
     await state.update_data(available_time=TIME_VALUES[key], skills=[])
     await state.set_state(RegistrationStates.desired_path)
-    await call.message.answer(texts.REG_DESIRED_PATH, reply_markup=desired_path_keyboard())
+    await call.message.answer(
+        texts.REG_DESIRED_PATH, reply_markup=desired_path_keyboard()
+    )
 
 
 @router.callback_query(RegistrationStates.desired_path, F.data.startswith("reg:path:"))
@@ -259,116 +301,114 @@ async def no_consent(call: CallbackQuery, state: FSMContext) -> None:
 
 def _application_notification(user) -> str:
     telegram = f"@{user.username}" if user.username else str(user.telegram_id)
-    departments = ", ".join(item.department.name for item in user.departments) or "пока не выбраны"
-    directions = ", ".join(item.direction.name for item in user.directions) or "пока не выбраны"
+    departments = (
+        ", ".join(item.department.name for item in user.departments)
+        or "пока не выбраны"
+    )
+    directions = (
+        ", ".join(item.direction.name for item in user.directions) or "пока не выбраны"
+    )
     return (
-        "📝 Новая заявка в ЭРА
-
-"
-        f"👤 {user.first_name} {user.last_name or ''}
-"
-        f"🎂 Возраст: {user.age or 'не указан'}
-"
-        f"📍 Город: {user.city or 'не указан'}
-"
-        f"📱 Телефон: {user.phone or 'не указан'}
-"
-        f"🎓 Учёба / работа: {user.education_work or 'не указано'}
-"
-        f"💼 Занятие: {user.occupation or 'не указано'}
-"
-        f"📧 Email: {user.email or 'не указан'}
-"
-        f"💬 Telegram: {telegram}
-
-"
-        f"🧭 Желаемый путь: {user.desired_path or 'не указан'}
-"
-        f"⏳ Доступное время: {user.available_time or 'не указано'}
-"
-        f"🏛 Департаменты: {departments}
-"
-        f"✨ Направления: {directions}
-
-"
-        f"Мотивация
-{user.motivation or 'не указана'}
-
-"
+        "📝 Новая заявка в ЭРА\n\n"
+        f"👤 {user.first_name} {user.last_name or ''}\n"
+        f"🎂 Возраст: {user.age or 'не указан'}\n"
+        f"📍 Город: {user.city or 'не указан'}\n"
+        f"📱 Телефон: {user.phone or 'не указан'}\n"
+        f"🎓 Учёба / работа: {user.education_work or 'не указано'}\n"
+        f"💼 Занятие: {user.occupation or 'не указано'}\n"
+        f"📧 Email: {user.email or 'не указан'}\n"
+        f"💬 Telegram: {telegram}\n\n"
+        f"🧭 Желаемый путь: {user.desired_path or 'не указан'}\n"
+        f"⏳ Доступное время: {user.available_time or 'не указано'}\n"
+        f"🏛 Департаменты: {departments}\n"
+        f"✨ Направления: {directions}\n\n"
+        f"Мотивация\n{user.motivation or 'не указана'}\n\n"
         "Выберите действие ниже."
     )
 
 
 @router.callback_query(RegistrationStates.consent, F.data == "reg:consent:yes")
-async def finish_registration(call: CallbackQuery, state: FSMContext, session: AsyncSession, bot: Bot, settings: Settings) -> None:
+async def finish_registration(
+    call: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    bot: Bot,
+    settings: Settings,
+) -> None:
     await call.answer()
     data = await state.get_data()
-    user, created = await create_user_from_registration(session, telegram_id=call.from_user.id, username=call.from_user.username, data=data)
+    user, created = await create_user_from_registration(
+        session,
+        telegram_id=call.from_user.id,
+        username=call.from_user.username,
+        data=data,
+    )
     if call.from_user.id in settings.admin_ids:
         user.role = Role.ADMIN
         user.application_status = ApplicationStatus.APPROVED
         if created:
-            await add_points(session, user_id=user.id, points=WELCOME_POINTS, reason="Регистрация в боте", approved_by=user.id)
+            await add_points(
+                session,
+                user_id=user.id,
+                points=5,
+                reason="Регистрация в боте",
+                approved_by=user.id,
+            )
     if created:
-        await audit(session, actor_id=user.id, action="user.registered", entity_type="user", entity_id=user.id, new_value={"telegram_id": user.telegram_id})
+        await audit(
+            session,
+            actor_id=user.id,
+            action="user.registered",
+            entity_type="user",
+            entity_id=user.id,
+            new_value={"telegram_id": user.telegram_id},
+        )
     await session.flush()
     await state.clear()
     if user.application_status == ApplicationStatus.APPROVED:
         await call.message.answer(texts.APPLICATION_APPROVED)
-        await call.message.answer(texts.MAIN_MENU, reply_markup=main_menu(settings.era_channel_url, privileged=user.role in PRIVILEGED_ROLES, admin=user.role == Role.ADMIN))
+        await call.message.answer(
+            texts.MAIN_MENU,
+            reply_markup=main_menu(
+                settings.era_channel_url,
+                privileged=user.role in PRIVILEGED_ROLES,
+                admin=user.role == Role.ADMIN,
+            ),
+        )
     else:
-        await call.message.answer(texts.REG_DONE, reply_markup=pending_registration_keyboard(settings.era_channel_url))
-        await notify_admins(bot, settings, _application_notification(user), reply_markup=application_actions(user.id))
+        await call.message.answer(
+            texts.REG_DONE,
+            reply_markup=pending_registration_keyboard(settings.era_channel_url),
+        )
+        await notify_admins(
+            bot,
+            settings,
+            _application_notification(user),
+            reply_markup=application_actions(user.id),
+        )
 
 
 @router.callback_query(F.data == "registration:status")
-async def registration_status(call: CallbackQuery, user, settings: Settings) -> None:
+async def registration_status(
+    call: CallbackQuery,
+    user,
+    settings: Settings,
+) -> None:
     await call.answer()
     if user is None:
         await call.message.answer(texts.WELCOME)
         return
     if user.application_status == ApplicationStatus.APPROVED:
-        await call.message.answer(texts.APPLICATION_APPROVED, reply_markup=main_menu(settings.era_channel_url, privileged=user.role in PRIVILEGED_ROLES, admin=user.role == Role.ADMIN))
+        await call.message.answer(
+            texts.APPLICATION_APPROVED,
+            reply_markup=main_menu(
+                settings.era_channel_url,
+                privileged=user.role in PRIVILEGED_ROLES,
+                admin=user.role == Role.ADMIN,
+            ),
+        )
         return
-    await call.message.answer(texts.APPLICATION_PENDING, reply_markup=pending_registration_keyboard(settings.era_channel_url))
-
-
-@router.callback_query(F.data == "registration:answer_info")
-async def clarification_start(call: CallbackQuery, user, settings: Settings, state: FSMContext) -> None:
-    await call.answer()
-    if user is None:
-        await call.message.answer(texts.WELCOME)
-        return
-    if user.application_status == ApplicationStatus.APPROVED:
-        await call.message.answer(texts.APPLICATION_APPROVED, reply_markup=main_menu(settings.era_channel_url, privileged=user.role in PRIVILEGED_ROLES, admin=user.role == Role.ADMIN))
-        return
-    await state.clear()
-    await state.set_state(RegistrationStates.clarification)
-    await call.message.answer("Напишите ответ на уточняющий вопрос команды ЭРА. Админ получит его вместе с Вашей заявкой.")
-
-
-@router.message(RegistrationStates.clarification)
-async def clarification_finish(message: Message, user, session: AsyncSession, state: FSMContext, bot: Bot, settings: Settings) -> None:
-    if user is None:
-        await state.clear()
-        await message.answer(texts.WELCOME)
-        return
-    answer = clean_text(message.text or "", 2000)
-    if not answer:
-        await message.answer(texts.INVALID_INPUT)
-        return
-    user.application_status = ApplicationStatus.PENDING
-    existing = user.motivation or ""
-    user.motivation = (existing + "
-
-Ответ на уточнение:
-" + answer).strip()
-    await audit(session, actor_id=user.id, action="user.clarification_sent", entity_type="user", entity_id=user.id, new_value={"answer": answer})
-    await state.clear()
-    await message.answer("Ответ отправлен. Заявка снова у команды ЭРА на рассмотрении.", reply_markup=pending_registration_keyboard(settings.era_channel_url))
-    await notify_admins(bot, settings, f"Ответ на уточнение по заявке #{user.id}
-
-{user.first_name} {user.last_name or ''}:
-{answer}
-
-Можно принять решение ниже.", reply_markup=application_actions(user.id))
+    await call.message.answer(
+        texts.APPLICATION_PENDING,
+        reply_markup=pending_registration_keyboard(settings.era_channel_url),
+    )
