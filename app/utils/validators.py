@@ -29,10 +29,15 @@ def normalize_email(value: str) -> str | None:
 
 
 def parse_date(value: str) -> date | None:
-    try:
-        return datetime.strptime(value.strip(), "%d.%m.%Y").date()
-    except ValueError:
-        return None
+    """Parse a calendar date without making the user guess one separator."""
+    normalized = re.sub(r"[\\/\-]", ".", (value or "").strip())
+    normalized = re.sub(r"\s+", "", normalized)
+    for pattern in ("%d.%m.%Y", "%d.%m.%y"):
+        try:
+            return datetime.strptime(normalized, pattern).date()
+        except ValueError:
+            continue
+    return None
 
 
 def parse_time(value: str) -> time | None:
