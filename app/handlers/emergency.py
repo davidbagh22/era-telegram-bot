@@ -37,6 +37,28 @@ async def _subscription_ok(bot: Bot, telegram_id: int, settings: Settings) -> bo
         return None
 
 
+@router.message(StateFilter("*"), Command("cancel"), F.chat.type == "private")
+@router.message(
+    StateFilter("*"),
+    F.text.in_({"Отмена", "❌ Отмена", "Отменить"}),
+    F.chat.type == "private",
+)
+async def cancel_stale_form(
+    message: Message,
+    user: User | None,
+    state: FSMContext,
+) -> None:
+    await state.clear()
+    if _approved(user):
+        await message.answer("Форма закрыта")
+        await _send_main_menu(message, user)
+        return
+    if user is None:
+        await message.answer(texts.WELCOME, reply_markup=registration_keyboard())
+        return
+    await message.answer(texts.APPLICATION_PENDING)
+
+
 @router.message(StateFilter("*"), CommandStart(), F.chat.type == "private")
 @router.message(StateFilter("*"), Command("menu"), F.chat.type == "private")
 async def rescue_start(message: Message, bot: Bot, user: User | None, settings: Settings, state: FSMContext) -> None:
