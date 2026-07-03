@@ -1,10 +1,9 @@
 from aiogram import F, Bot, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, Message
 from app.config import Settings
 from app.database.models import User
-from app.handlers import emergency
 from app.keyboards.common import registration_keyboard, subscription_keyboard
 from app.keyboards.participant import main_menu
 from app.keyboards.registration import pending_registration_keyboard
@@ -13,7 +12,6 @@ from app.utils import texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
 
 router = Router(name="start")
-router.include_router(emergency.router)
 
 
 async def show_home(message: Message, user: User, settings: Settings) -> None:
@@ -43,26 +41,16 @@ def _approved_existing_user(user: User | None) -> bool:
     return bool(user and user.application_status == ApplicationStatus.APPROVED and not user.is_blocked and not user.is_archived)
 
 
-@router.message(CommandStart(), F.chat.type != "private")
-async def group_start(message: Message, bot: Bot, state: FSMContext) -> None:
-    await state.clear()
-    me = await bot.get_me()
-    await message.answer(
-        "Регистрация и личный кабинет доступны в личном чате с ботом",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[
-                InlineKeyboardButton(
-                    text="Открыть бот",
-                    url=f"https://t.me/{me.username}?start=registration",
-                )
-            ]]
-        ),
-    )
-
-
 @router.message(CommandStart(), F.chat.type == "private")
 @router.message(Command("menu"), F.chat.type == "private")
-async def start(message: Message, bot: Bot, user: User | None, settings: Settings) -> None:
+async def start(
+    message: Message,
+    bot: Bot,
+    user: User | None,
+    settings: Settings,
+    state: FSMContext,
+) -> None:
+    await state.clear()
     subscribed = await _subscription_ok(bot, message.from_user.id, settings)
     if subscribed is None:
         if _approved_existing_user(user):
@@ -80,8 +68,15 @@ async def start(message: Message, bot: Bot, user: User | None, settings: Setting
 
 
 @router.callback_query(F.data == "subscription:check")
-async def check_subscription(call: CallbackQuery, bot: Bot, user: User | None, settings: Settings) -> None:
+async def check_subscription(
+    call: CallbackQuery,
+    bot: Bot,
+    user: User | None,
+    settings: Settings,
+    state: FSMContext,
+) -> None:
     await call.answer()
+    await state.clear()
     subscribed = await _subscription_ok(bot, call.from_user.id, settings)
     if subscribed is None:
         if _approved_existing_user(user):
