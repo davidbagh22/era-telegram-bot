@@ -6,13 +6,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import User
-from app.handlers.participant.navigation import _send_event_list, _send_personal_cabinet, _send_main_menu
+from app.handlers.participant.navigation import (
+    LEADER_PANEL_TEXT,
+    _has_admin_access,
+    _send_event_list,
+    _send_main_menu,
+    _send_personal_cabinet,
+)
+from app.keyboards.admin import admin_panel_keyboard
 from app.keyboards.common import registration_keyboard, subscription_keyboard
+from app.keyboards.leader import leader_panel_keyboard
 from app.keyboards.participant import contact_keyboard, project_menu_keyboard
 from app.services.points_service import total_points
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.utils import texts
-from app.utils.constants import ApplicationStatus
+from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES
 
 router = Router(name="emergency")
 MENU_BUTTONS = {"👤 Личный кабинет", "📅 Афиша", "💡 Проекты", "⭐ Возможности", "💬 Связь", "⚙️ Панель", "🧭 Главное меню"}
@@ -81,5 +89,14 @@ async def rescue_menu_button(message: Message, user: User | None, settings: Sett
         return
     if text == "💬 Связь":
         await message.answer("💬 Связь\n\nВыберите, что Вам нужно.", reply_markup=contact_keyboard())
+        return
+    if text == "⚙️ Панель":
+        if _has_admin_access(user):
+            await message.answer(texts.ADMIN_PANEL, reply_markup=admin_panel_keyboard())
+            return
+        if user.role in PRIVILEGED_ROLES:
+            await message.answer(LEADER_PANEL_TEXT, reply_markup=leader_panel_keyboard())
+            return
+        await message.answer(texts.NO_ACCESS)
         return
     await _send_main_menu(message, user)

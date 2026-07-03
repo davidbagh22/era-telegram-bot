@@ -156,8 +156,11 @@ async def contact_button(
 
 
 @router.callback_query(F.data == "contact:menu")
-async def contact_callback(call: CallbackQuery, user: User | None) -> None:
+async def contact_callback(
+    call: CallbackQuery, user: User | None, state: FSMContext
+) -> None:
     await call.answer()
+    await state.clear()
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
@@ -198,8 +201,11 @@ async def panel_button(message: Message, user: User | None, state: FSMContext) -
 
 
 @router.callback_query(F.data == "panel:open")
-async def panel_callback(call: CallbackQuery, user: User | None) -> None:
+async def panel_callback(
+    call: CallbackQuery, user: User | None, state: FSMContext
+) -> None:
     await call.answer()
+    await state.clear()
     if not _approved(user):
         await call.message.answer(texts.NO_ACCESS)
         return

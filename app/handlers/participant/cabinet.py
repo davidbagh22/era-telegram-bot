@@ -84,7 +84,9 @@ async def cabinet(
     user: User | None,
     session: AsyncSession,
     settings: Settings,
+    state: FSMContext,
 ) -> None:
+    await state.clear()
     if not await _guard(call, user):
         return
     await _send_journey(call.message, user, session, settings)

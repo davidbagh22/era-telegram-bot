@@ -73,9 +73,13 @@ async def event_list_button(
 
 @router.callback_query(F.data == "events:list")
 async def event_list(
-    call: CallbackQuery, user: User | None, session: AsyncSession
+    call: CallbackQuery,
+    user: User | None,
+    session: AsyncSession,
+    state: FSMContext,
 ) -> None:
     await call.answer()
+    await state.clear()
     await _send_event_list(call.message, user, session)
 
 
