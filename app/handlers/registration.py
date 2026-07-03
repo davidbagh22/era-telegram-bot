@@ -27,7 +27,9 @@ from app.utils import texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
 from app.utils.validators import clean_text, normalize_email, normalize_phone, parse_age
 
-router = Router(name="registration")\nrouter.message.filter(F.chat.type == "private")\nrouter.callback_query.filter(F.message.chat.type == "private")
+router = Router(name="registration")
+router.message.filter(F.chat.type == "private")
+router.callback_query.filter(F.message.chat.type == "private")
 WELCOME_POINTS = 100
 
 PATHS = (
@@ -177,7 +179,9 @@ async def department(call: CallbackQuery, state: FSMContext) -> None:
     }[key]
     await state.update_data(department_scope=key, departments=departments, selected_directions=[])
     await state.set_state(RegistrationStates.directions)
-    await call.message.answer(f"{prompt}\n\n{texts.REG_DIRECTION_HINT}", reply_markup=directions_keyboard(key))
+    await call.message.answer(f"{prompt}
+
+{texts.REG_DIRECTION_HINT}", reply_markup=directions_keyboard(key))
 
 
 @router.callback_query(RegistrationStates.directions, F.data.startswith("reg:dir:"))
@@ -258,20 +262,39 @@ def _application_notification(user) -> str:
     departments = ", ".join(item.department.name for item in user.departments) or "пока не выбраны"
     directions = ", ".join(item.direction.name for item in user.directions) or "пока не выбраны"
     return (
-        "📝 Новая заявка в ЭРА\n\n"
-        f"👤 {user.first_name} {user.last_name or ''}\n"
-        f"🎂 Возраст: {user.age or 'не указан'}\n"
-        f"📍 Город: {user.city or 'не указан'}\n"
-        f"📱 Телефон: {user.phone or 'не указан'}\n"
-        f"🎓 Учёба / работа: {user.education_work or 'не указано'}\n"
-        f"💼 Занятие: {user.occupation or 'не указано'}\n"
-        f"📧 Email: {user.email or 'не указан'}\n"
-        f"💬 Telegram: {telegram}\n\n"
-        f"🧭 Желаемый путь: {user.desired_path or 'не указан'}\n"
-        f"⏳ Доступное время: {user.available_time or 'не указано'}\n"
-        f"🏛 Департаменты: {departments}\n"
-        f"✨ Направления: {directions}\n\n"
-        f"Мотивация\n{user.motivation or 'не указана'}\n\n"
+        "📝 Новая заявка в ЭРА
+
+"
+        f"👤 {user.first_name} {user.last_name or ''}
+"
+        f"🎂 Возраст: {user.age or 'не указан'}
+"
+        f"📍 Город: {user.city or 'не указан'}
+"
+        f"📱 Телефон: {user.phone or 'не указан'}
+"
+        f"🎓 Учёба / работа: {user.education_work or 'не указано'}
+"
+        f"💼 Занятие: {user.occupation or 'не указано'}
+"
+        f"📧 Email: {user.email or 'не указан'}
+"
+        f"💬 Telegram: {telegram}
+
+"
+        f"🧭 Желаемый путь: {user.desired_path or 'не указан'}
+"
+        f"⏳ Доступное время: {user.available_time or 'не указано'}
+"
+        f"🏛 Департаменты: {departments}
+"
+        f"✨ Направления: {directions}
+
+"
+        f"Мотивация
+{user.motivation or 'не указана'}
+
+"
         "Выберите действие ниже."
     )
 
@@ -336,8 +359,16 @@ async def clarification_finish(message: Message, user, session: AsyncSession, st
         return
     user.application_status = ApplicationStatus.PENDING
     existing = user.motivation or ""
-    user.motivation = (existing + "\n\nОтвет на уточнение:\n" + answer).strip()
+    user.motivation = (existing + "
+
+Ответ на уточнение:
+" + answer).strip()
     await audit(session, actor_id=user.id, action="user.clarification_sent", entity_type="user", entity_id=user.id, new_value={"answer": answer})
     await state.clear()
     await message.answer("Ответ отправлен. Заявка снова у команды ЭРА на рассмотрении.", reply_markup=pending_registration_keyboard(settings.era_channel_url))
-    await notify_admins(bot, settings, f"Ответ на уточнение по заявке #{user.id}\n\n{user.first_name} {user.last_name or ''}:\n{answer}\n\nМожно принять решение ниже.", reply_markup=application_actions(user.id))
+    await notify_admins(bot, settings, f"Ответ на уточнение по заявке #{user.id}
+
+{user.first_name} {user.last_name or ''}:
+{answer}
+
+Можно принять решение ниже.", reply_markup=application_actions(user.id))
