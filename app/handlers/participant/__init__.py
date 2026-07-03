@@ -1,4 +1,4 @@
-from aiogram import Router
+from aiogram import F, Router
 
 from app.handlers.participant import (
     navigation,
@@ -18,6 +18,8 @@ from app.handlers.participant import (
 )
 
 router = Router(name="participant")
+router.message.filter(F.chat.type == "private")
+router.callback_query.filter(F.message.chat.type == "private")
 router.include_routers(
     navigation.router,
     achievements_block4.router,
