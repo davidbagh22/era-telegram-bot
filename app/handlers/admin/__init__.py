@@ -58,7 +58,7 @@ class AdminNavigationResetMiddleware(BaseMiddleware):
         return await handler(event, data)
 
 
-router = Router(name="admin_root")
+router = Router(name="admin_root")\nrouter.message.filter(F.chat.type == "private")\nrouter.callback_query.filter(F.message.chat.type == "private")
 router.callback_query.middleware(AdminNavigationResetMiddleware())
 router.include_router(dashboard_block_a.router)
 router.include_router(applications_flow.router)
