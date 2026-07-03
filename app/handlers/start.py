@@ -109,5 +109,6 @@ async def main_menu_callback(call: CallbackQuery, user: User | None, settings: S
 
 
 @router.message(Command("rules"), F.chat.type == "private")
-async def private_rules(message: Message) -> None:
+async def private_rules(message: Message, state: FSMContext) -> None:
+    await state.clear()
     await message.answer(texts.CHAT_RULES)
