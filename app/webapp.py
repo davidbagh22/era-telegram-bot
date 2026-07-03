@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     # admin contexts on every deploy so an old date/deadline step cannot trap
     # the operational account after database maintenance.
     for admin_id in settings.admin_ids:
-        admin_context = dispatcher.fsm.get_context(
+        admin_context = await dispatcher.fsm.get_context(
             bot=bot,
             chat_id=admin_id,
             user_id=admin_id,
