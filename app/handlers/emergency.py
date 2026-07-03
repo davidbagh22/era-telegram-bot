@@ -29,21 +29,37 @@ async def _subscription_ok(bot: Bot, telegram_id: int, settings: Settings) -> bo
         return None
 
 
-@router.message(StateFilter("*"), CommandStart())
-@router.message(StateFilter("*"), Command("menu"))
+@router.message(StateFilter("*"), CommandStart(), F.chat.type == "private")
+@router.message(StateFilter("*"), Command("menu"), F.chat.type == "private")
 async def rescue_start(message: Message, bot: Bot, user: User | None, settings: Settings, state: FSMContext) -> None:
     await state.clear()
     subscribed = await _subscription_ok(bot, message.from_user.id, settings)
-    if not subscribed:
-        await message.answer(texts.SUBSCRIPTION_REQUIRED, reply_markup=subscription_keyboard(settings.era_channel_url))
+    if subscribed is False:
+        await message.answer(
+            texts.SUBSCRIPTION_REQUIRED,
+            reply_markup=subscription_keyboard(settings.era_channel_url),
+        )
+        return
+    if subscribed is None and not _approved(user):
+        await message.answer(
+            getattr(
+                texts,
+                "SUBSCRIPTION_CHECK_UNAVAILABLE",
+                "Проверка подписки временно недоступна. Попробуйте ещё раз немного позже.",
+            ),
+            reply_markup=subscription_keyboard(settings.era_channel_url),
+        )
         return
     if user is None:
         await message.answer(texts.WELCOME, reply_markup=registration_keyboard())
         return
+    if not _approved(user):
+        await message.answer(texts.APPLICATION_PENDING)
+        return
     await _send_main_menu(message, user)
 
 
-@router.message(StateFilter("*"), F.text.in_(MENU_BUTTONS))
+@router.message(StateFilter("*"), F.text.in_(MENU_BUTTONS), F.chat.type == "private")
 async def rescue_menu_button(message: Message, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext) -> None:
     await state.clear()
     text = message.text or ""
