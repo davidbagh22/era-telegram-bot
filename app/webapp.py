@@ -4,7 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from aiogram.types import BotCommand, MenuButtonDefault, Update
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 
 from app.bot import create_bot, create_dispatcher
 from app.config import get_settings
@@ -91,6 +91,7 @@ async def health() -> dict[str, str]:
 @app.post("/telegram/webhook", include_in_schema=False)
 async def telegram_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     secret: str | None = Header(default=None, alias="X-Telegram-Bot-Api-Secret-Token"),
 ) -> dict[str, bool]:
     expected_secret = request.app.state.settings.effective_webhook_secret
@@ -98,5 +99,9 @@ async def telegram_webhook(
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
     payload = await request.json()
     update = Update.model_validate(payload, context={"bot": request.app.state.bot})
-    await request.app.state.dispatcher.feed_update(request.app.state.bot, update)
+    background_tasks.add_task(
+        request.app.state.dispatcher.feed_update,
+        request.app.state.bot,
+        update,
+    )
     return {"ok": True}
