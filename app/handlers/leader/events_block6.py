@@ -1,5 +1,7 @@
 from datetime import date as DateType, time as TimeType
 
+from datetime import date as DateType, time as TimeType
+
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -293,6 +295,8 @@ async def finish_event(message: Message, user: User, state: FSMContext, session:
         session.add(event)
     event_date = DateType.fromisoformat(data["date"]) if isinstance(data["date"], str) else data["date"]
     event_time = TimeType.fromisoformat(data["time"]) if isinstance(data["time"], str) else data["time"]
+    event_date = DateType.fromisoformat(data["date"])
+    event_time = TimeType.fromisoformat(data["time"])
     event.title = data["title"]
     event.description = data["description"]
     event.event_date = event_date
