@@ -76,8 +76,11 @@ async def projects_menu_button(
 
 
 @router.callback_query(F.data == "projects:menu")
-async def projects_menu(call: CallbackQuery, user: User | None) -> None:
+async def projects_menu(
+    call: CallbackQuery, user: User | None, state: FSMContext
+) -> None:
     await call.answer()
+    await state.clear()
     await _send_projects_menu(call.message, user)
 
 
