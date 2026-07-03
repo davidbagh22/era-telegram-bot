@@ -35,16 +35,11 @@ async def lifespan(app: FastAPI):
     app.state.bot = bot
     app.state.dispatcher = dispatcher
 
-    # Registration cleanup does not remove FSM keys from Redis. Clear private
-    # admin contexts on every deploy so an old date/deadline step cannot trap
-    # the operational account after database maintenance.
-    for admin_id in settings.admin_ids:
-        admin_context = await dispatcher.fsm.get_context(
-            bot=bot,
-            chat_id=admin_id,
-            user_id=admin_id,
-        )
-        await admin_context.clear()
+    # Redis is dedicated to aiogram FSM storage in this service. Clear stale
+    # production forms on deploy; PostgreSQL user and organization data is
+    # stored separately and is not affected.
+    await dispatcher.storage.redis.flushdb()
+    logger.warning("Redis FSM storage cleared during recovery deploy")
 
     app.state.ai_service = AIService(settings)
     scheduler = create_scheduler(bot, settings, session_factory)
@@ -54,7 +49,7 @@ async def lifespan(app: FastAPI):
     try:
         base_url = settings.effective_base_url
         if base_url:
-            webhook_url = f"{base_url}/telegram/webhook?v=2.0.1"
+            webhook_url = f"{base_url}/telegram/webhook?v=2.0.2"
             await bot.set_webhook(
                 webhook_url,
                 secret_token=settings.effective_webhook_secret or None,
@@ -88,7 +83,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="ERA Telegram Bot Service",
-    version="2.0.1",
+    version="2.0.2",
     lifespan=lifespan,
     docs_url=None,
     openapi_url=None,
@@ -97,7 +92,7 @@ app = FastAPI(
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "version": "2.0.1"}
+    return {"status": "ok", "version": "2.0.2"}
 
 
 @app.post("/telegram/webhook", include_in_schema=False)
