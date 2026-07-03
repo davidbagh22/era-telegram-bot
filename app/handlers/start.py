@@ -1,7 +1,7 @@
 from aiogram import F, Bot, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from app.config import Settings
 from app.database.models import User
 from app.handlers import emergency
@@ -43,8 +43,25 @@ def _approved_existing_user(user: User | None) -> bool:
     return bool(user and user.application_status == ApplicationStatus.APPROVED and not user.is_blocked and not user.is_archived)
 
 
-@router.message(CommandStart())
-@router.message(Command("menu"))
+@router.message(CommandStart(), F.chat.type != "private")
+async def group_start(message: Message, bot: Bot, state: FSMContext) -> None:
+    await state.clear()
+    me = await bot.get_me()
+    await message.answer(
+        "Регистрация и личный кабинет доступны в личном чате с ботом",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="Открыть бот",
+                    url=f"https://t.me/{me.username}?start=registration",
+                )
+            ]]
+        ),
+    )
+
+
+@router.message(CommandStart(), F.chat.type == "private")
+@router.message(Command("menu"), F.chat.type == "private")
 async def start(message: Message, bot: Bot, user: User | None, settings: Settings) -> None:
     subscribed = await _subscription_ok(bot, message.from_user.id, settings)
     if subscribed is None:
