@@ -38,8 +38,12 @@ async def lifespan(app: FastAPI):
     # Redis is dedicated to aiogram FSM storage in this service. Clear stale
     # production forms on deploy; PostgreSQL user and organization data is
     # stored separately and is not affected.
-    await dispatcher.storage.redis.flushdb()
-    logger.warning("Redis FSM storage cleared during recovery deploy")
+    recovery_marker = "era:recovery:fsm-global-v2"
+    redis_client = dispatcher.storage.redis
+    if not await redis_client.exists(recovery_marker):
+        await redis_client.flushdb()
+        await redis_client.set(recovery_marker, "done")
+        logger.warning("Redis FSM storage cleared during recovery deploy")
 
     app.state.ai_service = AIService(settings)
     scheduler = create_scheduler(bot, settings, session_factory)
