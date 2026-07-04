@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import ChatGreeting, User
+from app.database.models import AppSetting, ChatGreeting, User
 from app.repositories.users import get_user_by_telegram_id
 from app.utils import texts
 from app.utils.constants import PRIVILEGED_ROLES
@@ -146,6 +146,47 @@ async def welcome_members(
             ]]
         ),
     )
+
+@router.message(Command("bind"), ~F.chat.type.in_({"private"}))
+async def bind_current_chat(
+    message: Message,
+    settings: Settings,
+    session: AsyncSession,
+) -> None:
+    if message.from_user is None or message.from_user.id not in settings.admin_ids:
+        await message.answer("Привязать чат может только администратор ЭРА")
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    key = parts[1].strip().lower() if len(parts) > 1 else ""
+    mapping = {
+        "era_channel": ("era_channel_id", "channel"),
+        "general": ("general_chat_id", "general"),
+        "internal": ("internal_department_chat_id", "internal"),
+        "external": ("external_department_chat_id", "external"),
+        "leaders": ("leaders_chat_id", "leaders"),
+    }
+    if key not in mapping:
+        await message.answer(
+            "Формат: /bind general\n\n"
+            "Доступные ключи: era_channel, general, internal, external, leaders"
+        )
+        return
+    setting_key, greeting_key = mapping[key]
+    setattr(settings, setting_key, message.chat.id)
+    current = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
+    if current:
+        current.value = str(message.chat.id)
+    else:
+        session.add(AppSetting(key=setting_key, value=str(message.chat.id)))
+    greeting = await session.scalar(
+        select(ChatGreeting).where(ChatGreeting.chat_key == greeting_key)
+    )
+    if greeting:
+        greeting.chat_id = message.chat.id
+    await message.answer(
+        f"Готово — этот чат подключён как «{key}»\nID: {message.chat.id}"
+    )
+
 
 @router.callback_query(F.data == "chat:rules")
 async def rules_callback(call) -> None:

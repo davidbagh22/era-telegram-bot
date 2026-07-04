@@ -80,7 +80,7 @@ async def _send_rating(message: Message, user: User, session: AsyncSession) -> N
     current_points = next((score for item, score in rows if item.id == user.id), 0)
     names = [
         (f"{item.first_name} {item.last_name or ''}".strip(), score)
-        for item, score in rows[:10]
+        for item, score in rows[:5]
     ]
     await message.answer(
         texts.rating_text(names, place, current_points),
@@ -202,6 +202,7 @@ async def portfolio(
             .where(
                 PortfolioItem.user_id == user.id,
                 PortfolioItem.status.in_(["verified", "pending"]),
+                PortfolioItem.item_type != "profile_photo",
             )
             .order_by(desc(PortfolioItem.created_at))
         )
@@ -253,6 +254,7 @@ async def resume(call: CallbackQuery, user: User | None, session: AsyncSession) 
             select(PortfolioItem).where(
                 PortfolioItem.user_id == user.id,
                 PortfolioItem.status == "verified",
+                PortfolioItem.item_type != "profile_photo",
             )
         )
     ).all()

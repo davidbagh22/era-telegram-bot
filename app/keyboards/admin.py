@@ -67,7 +67,8 @@ def admin_communications_keyboard() -> InlineKeyboardMarkup:
     return _submenu(
         (
             ("Вопросы пользователей", "admin:questions"),
-            ("Создать рассылку", "admin:broadcast"),
+            ("Рассылка в личные сообщения", "admin:broadcast"),
+            ("Сообщение в выбранные чаты", "admin:chat_broadcast"),
             ("Приветствия в чатах", "admin:greetings"),
         )
     )
@@ -90,7 +91,10 @@ def admin_system_keyboard() -> InlineKeyboardMarkup:
         (
             ("Должности и права", "admin:offices"),
             ("Аналитика и Excel", "admin:analytics"),
-            ("Настройки", "admin:settings"),
+            ("Ежемесячные цели", "admin:goals"),
+            ("База организаций", "admin:contacts"),
+            ("Редактор структуры", "admin:content"),
+            ("Настройки и чаты", "admin:settings"),
             ("Очистка тестовых данных", "admin:maintenance"),
         )
     )
