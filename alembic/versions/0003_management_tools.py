@@ -25,8 +25,8 @@ def upgrade() -> None:
         sa.Column("notes", sa.Text()),
         sa.Column("created_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("updated_by", sa.Integer(), sa.ForeignKey("users.id")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_index("ix_monthly_goals_period", "monthly_goals", ["period"])
     op.create_index("ix_monthly_goals_scope_type", "monthly_goals", ["scope_type"])
@@ -45,8 +45,8 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean(), server_default=sa.true(), nullable=False),
         sa.Column("created_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("updated_by", sa.Integer(), sa.ForeignKey("users.id")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_index("ix_organization_contacts_organization", "organization_contacts", ["organization"])
     op.create_index("ix_organization_contacts_contact_name", "organization_contacts", ["contact_name"])
