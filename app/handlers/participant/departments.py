@@ -65,14 +65,46 @@ async def departments_menu(
 
 
 @router.callback_query(F.data.startswith("department:view:"))
-async def department_view(call: CallbackQuery, settings: Settings) -> None:
+async def department_view(
+    call: CallbackQuery, settings: Settings, session: AsyncSession
+) -> None:
     await call.answer()
     key = call.data.rsplit(":", 1)[-1]
     if key == "internal":
-        text, url = texts.INTERNAL_DEPARTMENT, settings.internal_department_chat_url
+        name, fallback, url = (
+            "Внутренние связи",
+            texts.INTERNAL_DEPARTMENT,
+            settings.internal_department_chat_url,
+        )
     else:
-        text, url = texts.EXTERNAL_DEPARTMENT, settings.external_department_chat_url
-    await call.message.edit_text(text, reply_markup=department_keyboard(url))
+        name, fallback, url = (
+            "Внешние связи",
+            texts.EXTERNAL_DEPARTMENT,
+            settings.external_department_chat_url,
+        )
+    department = await session.scalar(
+        select(Department).where(Department.name == name)
+    )
+    if department:
+        directions = (
+            await session.scalars(
+                select(Direction)
+                .where(Direction.department_id == department.id)
+                .order_by(Direction.name)
+            )
+        ).all()
+        direction_lines = "\n".join(
+            f"• {item.name}" + (f" — {item.description}" if item.description else "")
+            for item in directions
+        )
+        body = (
+            f"{department.name}\n\n"
+            f"{department.description or fallback}\n\n"
+            f"Направления:\n{direction_lines or 'Пока не добавлены'}"
+        )
+    else:
+        body = fallback
+    await call.message.edit_text(body, reply_markup=department_keyboard(url))
 
 
 @router.callback_query(F.data == "team:offices")
