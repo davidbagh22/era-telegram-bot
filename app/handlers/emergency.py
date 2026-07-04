@@ -18,6 +18,7 @@ from app.keyboards.admin import admin_panel_keyboard
 from app.keyboards.common import registration_keyboard, subscription_keyboard
 from app.keyboards.leader import leader_panel_keyboard
 from app.keyboards.participant import contact_keyboard, project_menu_keyboard
+from app.repositories.users import rating
 from app.services.points_service import total_points
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.utils import texts
@@ -31,6 +32,7 @@ MENU_BUTTONS = {
     "💡 Проекты",
     "⭐ Возможности",
     "💬 Связь",
+    "🏆 Рейтинг",
     "⚙️ Панель",
     "🧭 Главное меню",
 }
@@ -154,6 +156,22 @@ async def rescue_menu_button(
                     [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
                 ]
             ),
+        )
+        return
+    if text == "🏆 Рейтинг":
+        rows = await rating(session, limit=1000)
+        place = next(
+            (index for index, (person, _) in enumerate(rows, 1) if person.id == user.id),
+            "—",
+        )
+        points = next((score for person, score in rows if person.id == user.id), 0)
+        top = "\n".join(
+            f"{index}. {person.first_name} {person.last_name or ''} — {score}"
+            for index, (person, score) in enumerate(rows[:5], 1)
+        )
+        await message.answer(
+            f"🏆 Топ-5 активистов\n\n{top or 'Рейтинг пока формируется'}\n\n"
+            f"Ваше место: {place} · {points} баллов"
         )
         return
     if text == "💬 Связь":
