@@ -147,7 +147,7 @@ class ManagementV3Tests(unittest.TestCase):
 
         main_callbacks = [
             button.callback_data
-            for row in main_inline_keyboard()
+            for row in main_inline_keyboard().inline_keyboard
             for button in row
             if button.callback_data
         ]
