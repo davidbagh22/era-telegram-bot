@@ -202,6 +202,7 @@ async def portfolio(
             .where(
                 PortfolioItem.user_id == user.id,
                 PortfolioItem.status.in_(["verified", "pending"]),
+                PortfolioItem.item_type != "profile_photo",
             )
             .order_by(desc(PortfolioItem.created_at))
         )
@@ -253,6 +254,7 @@ async def resume(call: CallbackQuery, user: User | None, session: AsyncSession) 
             select(PortfolioItem).where(
                 PortfolioItem.user_id == user.id,
                 PortfolioItem.status == "verified",
+                PortfolioItem.item_type != "profile_photo",
             )
         )
     ).all()
