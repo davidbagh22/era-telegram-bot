@@ -586,3 +586,37 @@ class AuctionBid(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), default="active", index=True)
     selected_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     selected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MonthlyGoal(TimestampMixin, Base):
+    __tablename__ = "monthly_goals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    period: Mapped[str] = mapped_column(String(7), index=True)
+    scope_type: Mapped[str] = mapped_column(String(32), default="department", index=True)
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
+    direction_id: Mapped[int | None] = mapped_column(ForeignKey("directions.id"))
+    title: Mapped[str] = mapped_column(String(255))
+    metric: Mapped[str] = mapped_column(String(100), default="Результат")
+    target_value: Mapped[int] = mapped_column(Integer, default=1)
+    actual_value: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(32), default="active", index=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class OrganizationContact(TimestampMixin, Base):
+    __tablename__ = "organization_contacts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization: Mapped[str | None] = mapped_column(String(255), index=True)
+    contact_name: Mapped[str | None] = mapped_column(String(255), index=True)
+    position_primary: Mapped[str | None] = mapped_column(String(255))
+    position_secondary: Mapped[str | None] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(255), index=True)
+    phone: Mapped[str | None] = mapped_column(String(64))
+    notes: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
