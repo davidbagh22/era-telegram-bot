@@ -3464,9 +3464,7 @@ async def office_view(
                     )
                 ]
             )
-    rows.append([InlineKeyboardButton(text="← Назад", callback_data="admin:offices")])
-    await call.message.answer(
-        f"{office.title}\n\n{office.description or 'Описание можно добавить позже'}\n\n"
+    rows.extend([\n        [\n            InlineKeyboardButton(text="✏️ Изменить название", callback_data=f"admin:office:edit:{office.id}:title"),\n            InlineKeyboardButton(text="📝 Изменить описание", callback_data=f"admin:office:edit:{office.id}:description"),\n        ],\n        [InlineKeyboardButton(text="🗑 Удалить должность", callback_data=f"admin:office:disable:{office.id}")],\n        [InlineKeyboardButton(text="← Назад", callback_data="admin:offices")],\n    ])\n    await call.message.answer(\n        f"{office.title}\n\n{office.description or 'Описание можно добавить позже'}\n\n"
         f"Сейчас: {', '.join(names) or 'никто не назначен'}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
     )
