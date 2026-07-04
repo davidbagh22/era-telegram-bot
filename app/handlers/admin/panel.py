@@ -5058,8 +5058,10 @@ async def bind_chat_start(
     await state.set_state(AdminSettingsStates.chat_bind)
     await state.update_data(bind_chat_key=key)
     await call.message.answer(
-        "Перешлите сюда любое сообщение из нужного канала или чата\n\n"
-        "Для закрытого канала пересылка должна быть разрешена. Если она запрещена — временно включите её в настройках канала"
+        "Подключить чат можно двумя способами:\n\n"
+        "1. Откройте нужный чат и отправьте команду /bind с ключом раздела\n"
+        "2. Пришлите сюда числовой ID чата, например -1001234567890\n\n"
+        "Пересылка сообщений пользователей часто не содержит ID группы — это ограничение Telegram"
     )
 
 
@@ -5075,9 +5077,18 @@ async def bind_chat_finish(
         return
     origin = message.forward_origin
     chat = getattr(origin, "chat", None) or getattr(origin, "sender_chat", None)
-    if chat is None:
+    manual = (message.text or "").strip()
+    chat_id = getattr(chat, "id", None)
+    chat_title = getattr(chat, "title", None) or getattr(chat, "username", None)
+    if chat_id is None and manual.lstrip("-").isdigit():
+        chat_id = int(manual)
+        chat_title = f"чат {chat_id}"
+    if chat_id is None:
         await message.answer(
-            "Не удалось определить чат. Перешлите обычное сообщение непосредственно из нужного чата"
+            "Telegram не передал ID исходной группы.\n\n"
+            "Надёжный способ: откройте нужный чат и отправьте там команду "
+            "/bind general, /bind internal, /bind external, /bind leaders или /bind era_channel.\n\n"
+            "Также можно прислать сюда числовой ID чата"
         )
         return
     key = (await state.get_data())["bind_chat_key"]
@@ -5089,18 +5100,18 @@ async def bind_chat_finish(
         "leaders": ("leaders_chat_id", "leaders"),
     }
     setting_key, greeting_key = mapping[key]
-    setattr(settings, setting_key, chat.id)
+    setattr(settings, setting_key, chat_id)
     current = await session.scalar(
         select(AppSetting).where(AppSetting.key == setting_key)
     )
     if current:
-        current.value = str(chat.id)
+        current.value = str(chat_id)
         current.updated_by = user.id if user else None
     else:
         session.add(
             AppSetting(
                 key=setting_key,
-                value=str(chat.id),
+                value=str(chat_id),
                 updated_by=user.id if user else None,
             )
         )
@@ -5108,10 +5119,10 @@ async def bind_chat_finish(
         select(ChatGreeting).where(ChatGreeting.chat_key == greeting_key)
     )
     if greeting:
-        greeting.chat_id = chat.id
+        greeting.chat_id = chat_id
     await state.clear()
     await message.answer(
-        f"Готово — «{chat.title or chat.username or 'чат'}» подключён к боту"
+        f"Готово — «{chat_title or 'чат'}» подключён к боту"
     )
 
 
