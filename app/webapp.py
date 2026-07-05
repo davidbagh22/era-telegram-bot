@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from aiogram.types import BotCommand, MenuButtonDefault, Update
@@ -15,6 +16,11 @@ from app.services.seed_service import seed_reference_data
 
 logger = logging.getLogger(__name__)
 
+# Render sets RENDER_GIT_COMMIT automatically for every deploy; no extra
+# render.yaml configuration is needed. Falls back to "unknown" locally
+# or on any host that doesn't set it.
+DEPLOYED_COMMIT = os.environ.get("RENDER_GIT_COMMIT", "unknown")[:7]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -23,6 +29,8 @@ async def lifespan(app: FastAPI):
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
+    logger.info("Starting ERA bot, commit=%s", DEPLOYED_COMMIT)
+
     engine, session_factory = create_engine_and_sessionmaker(settings.database_url)
     async with session_factory() as session:
         await seed_reference_data(session, settings)
@@ -96,7 +104,7 @@ app = FastAPI(
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "version": "2.0.2"}
+    return {"status": "ok", "version": "2.0.2", "commit": DEPLOYED_COMMIT}
 
 
 @app.post("/telegram/webhook", include_in_schema=False)
