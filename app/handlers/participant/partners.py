@@ -27,3 +27,16 @@ async def partners_list(call: CallbackQuery, user: User | None, session: AsyncSe
         await call.message.answer("🤝 Партнёры ЭРА\n\nПартнёры скоро появятся в этом разделе.")
         return
     await call.message.answer("🤝 Партнёры ЭРА\n\nПлощадки и организации, с которыми можно расти дальше.", reply_markup=partner_list_keyboard(partners))
+
+
+@router.callback_query(F.data.startswith("partner:view:"))
+async def partner_view(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+    await call.answer()
+    if not _approved(user):
+        await call.message.answer(texts.APPLICATION_PENDING)
+        return
+    partner = await session.get(Partner, int(call.data.rsplit(":", 1)[-1]))
+    if partner is None or not partner.is_active or partner.is_archived:
+        await call.message.answer("Этот партнёр сейчас недоступен.")
+        return
+    await call.message.answer(f"🤝 {partner.name}\n\n{partner.description}")
