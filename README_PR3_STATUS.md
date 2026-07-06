@@ -4,6 +4,7 @@
 
 - Added partner data models: Partner, PartnerInitiative, PartnerTask.
 - Registered partner tables in SQLAlchemy metadata.
+- Added Alembic migration for partner tables: `0003_add_partners.py`.
 - Added participant partner directory and partner cards with source link.
 - Added active partner initiatives and partner tasks in partner cards.
 - Added admin partner management flow:
@@ -30,6 +31,7 @@
 ## Still needed before production merge
 
 - GitHub Actions must be green.
-- Add Alembic migrations for partner tables before deploy.
-- Review whether point transfers need admin moderation or daily limits.
-- Add a richer partner mailing/export flow in a later PR.
+- PR3 should be rebased after PR2 is merged, because migration `0003_add_partners.py` depends on `0002_social_profiles` from PR2.
+- Keep transfer confirmation mandatory.
+- Later: decide whether point transfers need daily limits or moderation for large transfers.
+- Later: add richer partner mailing/export flow in a separate PR.
