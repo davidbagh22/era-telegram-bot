@@ -124,11 +124,23 @@ def profile_sections_keyboard(
         [InlineKeyboardButton(text="🧩 Мои направления", callback_data="cabinet:departments")],
         [InlineKeyboardButton(text="➕ Выбрать направление", callback_data="department:apply:start")],
         [InlineKeyboardButton(text="✅ Мои задачи", callback_data="cabinet:tasks")],
+        [InlineKeyboardButton(text="⚙️ Настройки профиля", callback_data="profile:settings")],
     ]
     if chat_row:
         rows.append(chat_row)
     rows.append([InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def profile_settings_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Фото", callback_data="profile:photo")],
+            [InlineKeyboardButton(text="Соцсети", callback_data="profile:socials")],
+            [InlineKeyboardButton(text="Email", callback_data="profile:email")],
+            [InlineKeyboardButton(text="← Мой профиль", callback_data="cabinet:profile")],
+        ]
+    )
 
 
 def cabinet_keyboard() -> InlineKeyboardMarkup:
@@ -219,10 +231,10 @@ def rewards_keyboard(rewards: Iterable, auctions: Iterable) -> InlineKeyboardMar
         ]
         for reward in rewards
     ]
-    rows.extend([
-        InlineKeyboardButton(text=f"🔨 {auction.title}", callback_data=f"auction:view:{auction.id}")
-        for auction in auctions
-    ])
+    rows.extend(
+        [[InlineKeyboardButton(text=f"🔨 {auction.title}", callback_data=f"auction:view:{auction.id}")]
+         for auction in auctions]
+    )
     rows.append([InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
