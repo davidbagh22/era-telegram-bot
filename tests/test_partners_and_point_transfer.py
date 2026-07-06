@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, inspect
 
 from app.database import Base
 from app.database.partners import Partner, PartnerInitiative, PartnerTask
+from app.keyboards.participant import points_hub_keyboard, rewards_keyboard
 from app.keyboards.partners import admin_partner_card_keyboard, partner_card_keyboard, partner_list_keyboard
 from app.states.point_transfer import PointTransferStates
 
@@ -39,10 +40,16 @@ class PartnersAndPointTransferTests(unittest.TestCase):
         self.assertEqual(initiative.partner_id, 1)
         self.assertEqual(task.points, 20)
 
-    def test_point_transfer_states_exist(self) -> None:
+    def test_partner_entry_is_in_rewards_menu(self) -> None:
+        callbacks = [button.callback_data for row in rewards_keyboard([], []).inline_keyboard for button in row]
+        self.assertIn("partners:list", callbacks)
+
+    def test_point_transfer_states_and_button_exist(self) -> None:
         self.assertTrue(PointTransferStates.recipient.state)
         self.assertTrue(PointTransferStates.amount.state)
         self.assertTrue(PointTransferStates.confirm.state)
+        callbacks = [button.callback_data for row in points_hub_keyboard().inline_keyboard for button in row]
+        self.assertIn("points:transfer:start", callbacks)
 
 
 if __name__ == "__main__":
