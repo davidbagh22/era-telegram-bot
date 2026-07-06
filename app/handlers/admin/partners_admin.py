@@ -1,5 +1,5 @@
 from aiogram import F, Router
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,21 @@ router = Router(name="admin_partners")
 
 def admin_ok(user: User | None, settings: Settings, telegram_id: int) -> bool:
     return telegram_id in settings.admin_ids or bool(user and user.role == Role.ADMIN and not user.is_blocked and not user.is_archived)
+
+
+@router.callback_query(F.data == "admin:menu:growth")
+async def growth_menu(call: CallbackQuery, user: User | None, settings: Settings) -> None:
+    await call.answer()
+    if not admin_ok(user, settings, call.from_user.id):
+        return
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Начислить баллы или знак", callback_data="admin:points")],
+        [InlineKeyboardButton(text="Каталог возможностей", callback_data="admin:rewards")],
+        [InlineKeyboardButton(text="Партнёры", callback_data="admin:partners")],
+        [InlineKeyboardButton(text="Аукционы", callback_data="admin:auctions")],
+        [InlineKeyboardButton(text="Назад", callback_data="admin:panel")],
+    ])
+    await call.message.edit_text("Баллы и развитие", reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "admin:partners")
