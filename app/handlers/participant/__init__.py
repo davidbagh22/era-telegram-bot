@@ -14,6 +14,8 @@ from app.handlers.participant import (
     departments,
     events,
     growth,
+    partners,
+    point_transfer,
     projects,
     questions,
 )
@@ -36,5 +38,7 @@ router.include_routers(
     departments.router,
     questions.router,
     growth.router,
+    partners.router,
+    point_transfer.router,
     about.router,
 )
