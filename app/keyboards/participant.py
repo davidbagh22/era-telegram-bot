@@ -101,6 +101,7 @@ def points_hub_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="⭐ Баланс и история", callback_data="cabinet:points")],
+            [InlineKeyboardButton(text="Отправить баллы", callback_data="points:transfer:start")],
             [InlineKeyboardButton(text="🏅 Достижения и знаки", callback_data="cabinet:achievements")],
             [InlineKeyboardButton(text="🏆 Рейтинг", callback_data="cabinet:rating")],
             [InlineKeyboardButton(text="← Мой профиль", callback_data="cabinet:open")],
