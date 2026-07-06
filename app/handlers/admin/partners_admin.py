@@ -2,7 +2,7 @@ from urllib.parse import urlparse
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +29,28 @@ def _normalize_url(value: str) -> str | None:
     if parsed.scheme not in {"http", "https"} or "." not in parsed.netloc:
         return None
     return value
+
+
+def _growth_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Начислить баллы или знак", callback_data="admin:points")],
+            [InlineKeyboardButton(text="Каталог возможностей", callback_data="admin:rewards")],
+            [InlineKeyboardButton(text="Партнёры", callback_data="admin:partners")],
+            [InlineKeyboardButton(text="Аукционы", callback_data="admin:auctions")],
+            [InlineKeyboardButton(text="Портфолио и сертификаты", callback_data="admin:portfolio")],
+            [InlineKeyboardButton(text="Предложения лидеров", callback_data="admin:proposals")],
+            [InlineKeyboardButton(text="Назад", callback_data="admin:panel")],
+        ]
+    )
+
+
+@router.callback_query(F.data == "admin:menu:growth")
+async def admin_growth_menu(call: CallbackQuery, user: User | None) -> None:
+    await call.answer()
+    if not _admin(user):
+        return
+    await call.message.edit_text("Баллы и развитие", reply_markup=_growth_keyboard())
 
 
 @router.callback_query(F.data == "admin:partners")
