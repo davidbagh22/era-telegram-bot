@@ -1,37 +1,25 @@
 # PR3 checkpoint
 
-## Done
+Done:
+- Partner models.
+- Partner table registration.
+- Migration file: 0003_add_partners.py.
+- User partner list.
+- Partner card with source link.
+- Partner initiatives and tasks.
+- Admin partner list/add/view/edit-source/toggle/archive.
+- Admin menu entry for partners.
+- Partners entry in opportunities menu.
+- Auction keyboard row fix.
+- Point transfer flow with mandatory confirmation.
+- Transfer checks: balance, no self-transfer, active recipient.
+- Debit sender and credit recipient transactions.
+- Tests added.
+- GitHub Actions green.
 
-- Added partner data models: Partner, PartnerInitiative, PartnerTask.
-- Registered partner tables in SQLAlchemy metadata.
-- Added Alembic migration for partner tables: `0003_add_partners.py`.
-- Added participant partner directory and partner cards with source link.
-- Added active partner initiatives and partner tasks in partner cards.
-- Added admin partner management flow:
-  - list partners;
-  - add partner;
-  - view partner;
-  - edit source link;
-  - enable/disable;
-  - archive.
-- Added admin entry point under growth menu.
-- Added partners entry in rewards/opportunities menu.
-- Fixed reward auction keyboard rows.
-- Added member point transfer flow:
-  - /give_points command;
-  - button in points hub;
-  - recipient by username or Telegram ID;
-  - amount validation;
-  - balance check;
-  - no self-transfer;
-  - confirmation step;
-  - creates negative transaction for sender and positive transaction for recipient.
-- Added tests for partner models, partner keyboards, menu callbacks, and transfer states.
-
-## Still needed before production merge
-
-- GitHub Actions must be green.
-- PR3 should be rebased after PR2 is merged, because migration `0003_add_partners.py` depends on `0002_social_profiles` from PR2.
-- Keep transfer confirmation mandatory.
-- Later: decide whether point transfers need daily limits or moderation for large transfers.
-- Later: add richer partner mailing/export flow in a separate PR.
+Before merge:
+- Merge PR2 first.
+- Rebase PR3 after PR2.
+- Keep confirmation mandatory.
+- Later: daily limits or moderation for large transfers.
+- Later: partner mailing/export flow.
