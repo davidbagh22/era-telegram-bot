@@ -18,7 +18,14 @@ async def add_points(
     related_task_id: int | None = None,
     related_project_id: int | None = None,
 ) -> PointTransaction:
-    if reason == "registration" and points < REGISTRATION_POINTS:
+    is_registration_bonus = (
+        points <= 5
+        and related_event_id is None
+        and related_task_id is None
+        and related_project_id is None
+        and reason.casefold().startswith("рег")
+    )
+    if is_registration_bonus:
         points = REGISTRATION_POINTS
     transaction = PointTransaction(
         user_id=user_id,
