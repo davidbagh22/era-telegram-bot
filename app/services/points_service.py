@@ -4,6 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models import PointTransaction, PortfolioItem
 from app.services.audit_service import audit
 
+REGISTRATION_POINTS = 100
+
 
 async def add_points(
     session: AsyncSession,
@@ -16,6 +18,8 @@ async def add_points(
     related_task_id: int | None = None,
     related_project_id: int | None = None,
 ) -> PointTransaction:
+    if reason == "registration" and points < REGISTRATION_POINTS:
+        points = REGISTRATION_POINTS
     transaction = PointTransaction(
         user_id=user_id,
         points=points,
