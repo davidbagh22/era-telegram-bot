@@ -87,14 +87,14 @@ def journey_keyboard(
     internal_chat_url: str | None = None,
     external_chat_url: str | None = None,
 ) -> InlineKeyboardMarkup:
-    del internal_chat_url, external_chat_url  # chats live inside "Мой путь" now
-    rows = [
-        [InlineKeyboardButton(text="👤 Мой профиль", callback_data="cabinet:profile")],
-        [InlineKeyboardButton(text="🏆 Баллы и достижения", callback_data="cabinet:points_hub")],
-        [InlineKeyboardButton(text="🧭 Мой путь", callback_data="cabinet:path_hub")],
-        [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    del internal_chat_url, external_chat_url
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="👤 Мой профиль", callback_data="cabinet:profile")],
+            [InlineKeyboardButton(text="🏆 Баллы и достижения", callback_data="cabinet:points_hub")],
+            [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
+        ]
+    )
 
 
 def points_hub_keyboard() -> InlineKeyboardMarkup:
@@ -108,19 +108,15 @@ def points_hub_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def path_hub_keyboard(
+def profile_sections_keyboard(
     internal_chat_url: str | None = None,
     external_chat_url: str | None = None,
 ) -> InlineKeyboardMarkup:
     chat_row = []
     if internal_chat_url:
-        chat_row.append(
-            InlineKeyboardButton(text="Внутренние связи", url=internal_chat_url)
-        )
+        chat_row.append(InlineKeyboardButton(text="Внутренние связи", url=internal_chat_url))
     if external_chat_url:
-        chat_row.append(
-            InlineKeyboardButton(text="Внешние связи", url=external_chat_url)
-        )
+        chat_row.append(InlineKeyboardButton(text="Внешние связи", url=external_chat_url))
     rows = [
         [InlineKeyboardButton(text="🎓 Портфолио", callback_data="cabinet:portfolio")],
         [InlineKeyboardButton(text="📅 Мои мероприятия", callback_data="cabinet:events")],
@@ -131,7 +127,7 @@ def path_hub_keyboard(
     ]
     if chat_row:
         rows.append(chat_row)
-    rows.append([InlineKeyboardButton(text="← Мой профиль", callback_data="cabinet:open")])
+    rows.append([InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -140,10 +136,7 @@ def cabinet_keyboard() -> InlineKeyboardMarkup:
 
 
 def event_list_keyboard(events: Iterable) -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(text=event.title[:50], callback_data=f"event:view:{event.id}")]
-        for event in events
-    ]
+    rows = [[InlineKeyboardButton(text=event.title[:50], callback_data=f"event:view:{event.id}")] for event in events]
     rows.append([InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -182,9 +175,7 @@ def project_result_keyboard(project_id: int) -> InlineKeyboardMarkup:
 def project_question_keyboard(index: int, has_hint: bool) -> InlineKeyboardMarkup:
     rows = []
     if has_hint:
-        rows.append(
-            [InlineKeyboardButton(text="✨ Получить подсказку", callback_data=f"project:hint:{index}")]
-        )
+        rows.append([InlineKeyboardButton(text="✨ Получить подсказку", callback_data=f"project:hint:{index}")])
     rows.append([InlineKeyboardButton(text="Сохранить и выйти", callback_data="project:pause")])
     if index > 0:
         rows.append([InlineKeyboardButton(text="← Предыдущий вопрос", callback_data="project:previous")])
@@ -192,10 +183,7 @@ def project_question_keyboard(index: int, has_hint: bool) -> InlineKeyboardMarku
 
 
 def project_drafts_keyboard(projects: Iterable) -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(text=f"Продолжить: {project.title[:35]}", callback_data=f"project:resume:{project.id}")]
-        for project in projects
-    ]
+    rows = [[InlineKeyboardButton(text=f"Продолжить: {project.title[:35]}", callback_data=f"project:resume:{project.id}")] for project in projects]
     rows.append([InlineKeyboardButton(text="← К проектам", callback_data="projects:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -231,14 +219,10 @@ def rewards_keyboard(rewards: Iterable, auctions: Iterable) -> InlineKeyboardMar
         ]
         for reward in rewards
     ]
-    rows.extend(
-        [
-            InlineKeyboardButton(
-                text=f"🔨 {auction.title}", callback_data=f"auction:view:{auction.id}"
-            )
-        ]
+    rows.extend([
+        InlineKeyboardButton(text=f"🔨 {auction.title}", callback_data=f"auction:view:{auction.id}")
         for auction in auctions
-    )
+    ])
     rows.append([InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
