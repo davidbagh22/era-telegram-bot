@@ -16,6 +16,7 @@ from app.handlers.participant import (
     growth,
     projects,
     questions,
+    profile_settings,
 )
 
 router = Router(name="participant")
@@ -37,4 +38,5 @@ router.include_routers(
     questions.router,
     growth.router,
     about.router,
+    profile_settings.router,
 )
