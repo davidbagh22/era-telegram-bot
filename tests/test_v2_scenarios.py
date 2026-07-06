@@ -15,9 +15,9 @@ from app.keyboards.admin import (
 from app.keyboards.leader import leader_panel_keyboard
 from app.keyboards.participant import (
     journey_keyboard,
-    path_hub_keyboard,
     points_hub_keyboard,
     portfolio_keyboard,
+    profile_sections_keyboard,
     rewards_keyboard,
     tasks_keyboard,
 )
@@ -44,27 +44,26 @@ class V2ScenarioTests(unittest.TestCase):
 
     def test_01_user_journey_is_compact_and_grouped(self) -> None:
         # Product decision (2026-07): the flat 8-button cabinet was replaced
-        # with a 3-item menu (Профиль / Баллы и достижения / Мой путь) plus
-        # two sub-hubs, so this no longer asserts "no Профиль".
+        # with a 2-item menu (Профиль / Баллы и достижения). "Мой путь" was
+        # folded into "Мой профиль" — opening the profile now shows
+        # portfolio/events/projects/directions/tasks directly.
         labels = _labels(journey_keyboard())
         self.assertEqual(
             labels,
-            ["👤 Мой профиль", "🏆 Баллы и достижения", "🧭 Мой путь", "← Главное меню"],
+            ["👤 Мой профиль", "🏆 Баллы и достижения", "← Главное меню"],
         )
         points_labels = _labels(points_hub_keyboard())
         self.assertIn("🏅 Достижения и знаки", points_labels)
-        path_labels = _labels(
-            path_hub_keyboard("https://t.me/internal", "https://t.me/external")
+        profile_labels = _labels(
+            profile_sections_keyboard("https://t.me/internal", "https://t.me/external")
         )
-        self.assertIn("🎓 Портфолио", path_labels)
-        self.assertIn("➕ Выбрать направление", path_labels)
-        # The direction-application button must point at a live handler,
-        # not the orphaned cabinet:direction:add callback.
-        path_callbacks = _callbacks(
-            path_hub_keyboard("https://t.me/internal", "https://t.me/external")
+        self.assertIn("🎓 Портфолио", profile_labels)
+        self.assertIn("➕ Выбрать направление", profile_labels)
+        profile_callbacks = _callbacks(
+            profile_sections_keyboard("https://t.me/internal", "https://t.me/external")
         )
-        self.assertIn("department:apply:start", path_callbacks)
-        self.assertNotIn("cabinet:direction:add", path_callbacks)
+        self.assertIn("department:apply:start", profile_callbacks)
+        self.assertNotIn("cabinet:direction:add", profile_callbacks)
 
     def test_02_project_review_has_two_human_stages(self) -> None:
         initial = _callbacks(project_review_actions(7, "initial_review"))
