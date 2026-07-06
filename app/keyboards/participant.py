@@ -87,6 +87,31 @@ def journey_keyboard(
     internal_chat_url: str | None = None,
     external_chat_url: str | None = None,
 ) -> InlineKeyboardMarkup:
+    del internal_chat_url, external_chat_url  # chats live inside "Мой путь" now
+    rows = [
+        [InlineKeyboardButton(text="👤 Мой профиль", callback_data="cabinet:profile")],
+        [InlineKeyboardButton(text="🏆 Баллы и достижения", callback_data="cabinet:points_hub")],
+        [InlineKeyboardButton(text="🧭 Мой путь", callback_data="cabinet:path_hub")],
+        [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def points_hub_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⭐ Баланс и история", callback_data="cabinet:points")],
+            [InlineKeyboardButton(text="🏅 Достижения и знаки", callback_data="cabinet:achievements")],
+            [InlineKeyboardButton(text="🏆 Рейтинг", callback_data="cabinet:rating")],
+            [InlineKeyboardButton(text="← Мой профиль", callback_data="cabinet:open")],
+        ]
+    )
+
+
+def path_hub_keyboard(
+    internal_chat_url: str | None = None,
+    external_chat_url: str | None = None,
+) -> InlineKeyboardMarkup:
     chat_row = []
     if internal_chat_url:
         chat_row.append(
@@ -97,25 +122,16 @@ def journey_keyboard(
             InlineKeyboardButton(text="Внешние связи", url=external_chat_url)
         )
     rows = [
-        [
-            InlineKeyboardButton(text="👤 Мой профиль", callback_data="cabinet:profile"),
-            InlineKeyboardButton(text="🏆 Мои достижения", callback_data="cabinet:achievements"),
-        ],
-        [
-            InlineKeyboardButton(text="➕ Выбрать направление", callback_data="cabinet:direction:add"),
-        ],
-        [
-            InlineKeyboardButton(text="🎓 Портфолио", callback_data="cabinet:portfolio"),
-            InlineKeyboardButton(text="✅ Мои задачи", callback_data="cabinet:tasks"),
-        ],
-        [
-            InlineKeyboardButton(text="📅 Мои мероприятия", callback_data="cabinet:events"),
-            InlineKeyboardButton(text="🏆 Рейтинг", callback_data="cabinet:rating"),
-        ],
+        [InlineKeyboardButton(text="🎓 Портфолио", callback_data="cabinet:portfolio")],
+        [InlineKeyboardButton(text="📅 Мои мероприятия", callback_data="cabinet:events")],
+        [InlineKeyboardButton(text="💡 Мои проекты", callback_data="cabinet:projects")],
+        [InlineKeyboardButton(text="🧩 Мои направления", callback_data="cabinet:departments")],
+        [InlineKeyboardButton(text="➕ Выбрать направление", callback_data="department:apply:start")],
+        [InlineKeyboardButton(text="✅ Мои задачи", callback_data="cabinet:tasks")],
     ]
     if chat_row:
         rows.append(chat_row)
-    rows.append([InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")])
+    rows.append([InlineKeyboardButton(text="← Мой профиль", callback_data="cabinet:open")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
