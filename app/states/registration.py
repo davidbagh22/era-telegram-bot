@@ -15,4 +15,6 @@ class RegistrationStates(StatesGroup):
     available_time = State()
     desired_path = State()
     motivation = State()
+    profile_photo = State()
+    social_url = State()
     consent = State()
