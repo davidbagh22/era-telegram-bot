@@ -131,10 +131,11 @@ async def opportunities_button(
     balance = await total_points(session, user.id)
     await message.answer(
         f"⭐ Возможности\n\nВаш баланс: {balance} баллов\n\n"
-        "Здесь доступны каталог возможностей, аукционы, награды и специальные форматы ЭРА.",
+        "Здесь доступны партнёры, каталог возможностей, аукционы, награды и специальные форматы ЭРА.",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="⭐ Открыть возможности", callback_data="rewards:menu")],
+                [InlineKeyboardButton(text="🤝 Партнёры", callback_data="partners:list")],
+                [InlineKeyboardButton(text="⭐ Каталог возможностей", callback_data="rewards:menu")],
                 [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
             ]
         ),
