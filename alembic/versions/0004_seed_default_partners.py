@@ -1,5 +1,7 @@
 """Seed default partners."""
 
+from datetime import datetime
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -17,6 +19,7 @@ PARTNERS = (
 
 
 def upgrade() -> None:
+    now = datetime.now().astimezone()
     table = sa.table(
         "partners",
         sa.column("name", sa.String),
@@ -36,8 +39,8 @@ def upgrade() -> None:
                 "status": "partner",
                 "is_active": True,
                 "is_archived": False,
-                "created_at": sa.func.now(),
-                "updated_at": sa.func.now(),
+                "created_at": now,
+                "updated_at": now,
             }
             for name, description in PARTNERS
         ],
