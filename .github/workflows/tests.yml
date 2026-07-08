@@ -23,3 +23,8 @@ jobs:
           code=$?
           tail -120 /tmp/unittest.log
           exit $code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unittest-log
+          path: /tmp/unittest.log
