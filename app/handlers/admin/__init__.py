@@ -9,6 +9,7 @@ from app.handlers.admin import (
     events_block6,
     event_activities_block7,
     partners_admin,
+    approval_bonus_fix,
     panel,
 )
 
@@ -24,6 +25,7 @@ router.include_router(projects_block5_team.router)
 router.include_router(events_block6.router)
 router.include_router(event_activities_block7.router)
 router.include_router(partners_admin.router)
+router.include_router(approval_bonus_fix.router)
 router.include_router(panel.router)
 
 __all__ = ["router"]
