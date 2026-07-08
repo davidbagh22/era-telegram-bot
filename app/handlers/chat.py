@@ -33,12 +33,7 @@ async def _moderation_enabled(session: AsyncSession, chat_id: int) -> bool:
 
 
 def _is_approved_member(user: User | None) -> bool:
-    return bool(
-        user
-        and user.application_status == ApplicationStatus.APPROVED
-        and not user.is_blocked
-        and not user.is_archived
-    )
+    return bool(user and user.application_status == ApplicationStatus.APPROVED and not user.is_blocked and not user.is_archived)
 
 
 async def _soft_moderation(message: Message) -> None:
@@ -63,9 +58,7 @@ async def rules(message: Message) -> None:
 
 
 @router.message(Command("links"), ~F.chat.type.in_({"private"}))
-async def links(
-    message: Message, bot: Bot, user: User | None, settings: Settings
-) -> None:
+async def links(message: Message, bot: Bot, user: User | None, settings: Settings) -> None:
     me = await bot.get_me()
     include_leaders = bool(user and user.role in PRIVILEGED_ROLES)
     await message.answer(texts.links_text(settings, me.username or "era_bot", include_leaders))
@@ -79,22 +72,14 @@ async def departments(message: Message, settings: Settings) -> None:
 @router.message(Command("events"), ~F.chat.type.in_({"private"}))
 async def events_link(message: Message, bot: Bot) -> None:
     me = await bot.get_me()
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[[
-            InlineKeyboardButton(text="Открыть мероприятия", url=f"https://t.me/{me.username}?start=events")
-        ]]
-    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Открыть мероприятия", url=f"https://t.me/{me.username}?start=events")]])
     await message.answer("Откройте бот ЭРА и выберите раздел «Мероприятия».", reply_markup=keyboard)
 
 
 @router.message(Command("project"), ~F.chat.type.in_({"private"}))
 async def project_link(message: Message, bot: Bot) -> None:
     me = await bot.get_me()
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[[
-            InlineKeyboardButton(text="Создать проект", url=f"https://t.me/{me.username}?start=project")
-        ]]
-    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Создать проект", url=f"https://t.me/{me.username}?start=project")]])
     await message.answer("Проектный конструктор доступен в боте ЭРА.", reply_markup=keyboard)
 
 
@@ -111,10 +96,7 @@ async def moderation_on(message: Message, user: User | None, session: AsyncSessi
     setting.enabled_by = user.id
     setting.enabled_at = message.date
     await session.flush()
-    await message.reply(
-        "✅ Модерация включена для этого чата.\n\n"
-        "Теперь писать смогут только одобренные участники ЭРА, руководители и администраторы."
-    )
+    await message.reply("✅ Модерация включена для этого чата.\n\nТеперь писать смогут только одобренные участники ЭРА, руководители и администраторы.")
 
 
 @router.message(Command("moderation_off"), ~F.chat.type.in_({"private"}))
@@ -136,12 +118,7 @@ async def moderation_status(message: Message, session: AsyncSession) -> None:
 
 
 @router.message(F.new_chat_members)
-async def welcome_members(
-    message: Message,
-    bot: Bot,
-    settings: Settings,
-    session: AsyncSession,
-) -> None:
+async def welcome_members(message: Message, bot: Bot, settings: Settings, session: AsyncSession) -> None:
     me = await bot.get_me()
     welcomed = []
     for member in message.new_chat_members:
@@ -157,10 +134,8 @@ async def welcome_members(
                     await message.answer("Не удалось автоматически ограничить доступ. Администратору чата нужно проверить права бота.")
                 continue
         welcomed.append(member.first_name)
-
     if not welcomed:
         return
-
     if message.chat.id == settings.internal_department_chat_id:
         chat_key = "internal"
     elif message.chat.id == settings.external_department_chat_id:
@@ -169,26 +144,13 @@ async def welcome_members(
         chat_key = "leaders"
     else:
         chat_key = "general"
-
     greeting = await session.scalar(select(ChatGreeting).where(ChatGreeting.chat_key == chat_key))
     if greeting is not None and not greeting.is_enabled:
         return
-
-    fallback = (
-        "Добро пожаловать в ЭРА.\n\n"
-        "Здесь общаются участники сообщества, появляются анонсы, проекты и возможности.\n\n"
-        "Регистрация, баллы, портфолио и личный кабинет — в личном чате с ботом."
-    )
+    fallback = "Добро пожаловать в ЭРА.\n\nЗдесь общаются участники сообщества, появляются анонсы, проекты и возможности.\n\nРегистрация, баллы, портфолио и личный кабинет — в личном чате с ботом."
     body = greeting.text if greeting is not None else fallback
     body = body.replace("{name}", ", ".join(welcomed))
-    await message.answer(
-        body,
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[
-                InlineKeyboardButton(text="Открыть бот", url=f"https://t.me/{me.username}?start=registration")
-            ]]
-        ),
-    )
+    await message.answer(body, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Открыть бот", url=f"https://t.me/{me.username}?start=registration")]]))
 
 
 @router.callback_query(F.data == "chat:rules")
@@ -200,9 +162,7 @@ async def rules_callback(call) -> None:
 @router.message(~F.chat.type.in_({"private"}))
 async def moderation_gate(message: Message, bot: Bot, user: User | None, session: AsyncSession) -> None:
     enabled = await _moderation_enabled(session, message.chat.id)
-    allowed = _is_approved_member(user) or bool(
-        user and user.role in PRIVILEGED_ROLES and not user.is_blocked and not user.is_archived
-    )
+    allowed = _is_approved_member(user) or bool(user and user.role in PRIVILEGED_ROLES and not user.is_blocked and not user.is_archived)
     if enabled and not allowed and message.from_user:
         try:
             member = await bot.get_chat_member(message.chat.id, message.from_user.id)
@@ -223,11 +183,12 @@ async def moderation_gate(message: Message, bot: Bot, user: User | None, session
             return
         _dm_notice_sent[key] = now
         try:
-            await bot.send_message(
-                message.from_user.id,
-                "Сначала пройдите регистрацию в боте ЭРА. После одобрения Вы сможете писать в общем чате.",
-            )
+            await bot.send_message(message.from_user.id, "Сначала пройдите регистрацию в боте ЭРА. После одобрения Вы сможете писать в общем чате.")
         except TelegramForbiddenError:
             pass
         return
+    await _soft_moderation(message)
+
+
+async def soft_moderation(message: Message) -> None:
     await _soft_moderation(message)
