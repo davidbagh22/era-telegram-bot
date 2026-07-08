@@ -19,7 +19,9 @@ PARTNERS = (
 
 
 def upgrade() -> None:
-    now = datetime.now().astimezone()
+    # partners.created_at / updated_at are TIMESTAMP WITHOUT TIME ZONE in the
+    # current schema, so seed data must use offset-naive datetimes for asyncpg.
+    now = datetime.utcnow()
     table = sa.table(
         "partners",
         sa.column("name", sa.String),
