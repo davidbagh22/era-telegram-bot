@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from urllib.parse import urlparse
 
 from aiogram import F, Router
@@ -48,7 +49,8 @@ async def _guard(call: CallbackQuery | Message, user: User | None) -> bool:
 async def _profile(session: AsyncSession, user_id: int) -> SocialProfile:
     profile = await session.scalar(select(SocialProfile).where(SocialProfile.user_id == user_id))
     if profile is None:
-        profile = SocialProfile(user_id=user_id)
+        now = datetime.now().astimezone()
+        profile = SocialProfile(user_id=user_id, created_at=now, updated_at=now)
         session.add(profile)
         await session.flush()
     return profile
@@ -85,15 +87,15 @@ async def settings_menu(call: CallbackQuery, user: User | None) -> None:
 
 
 @router.callback_query(F.data == "profile:photo")
-async def photo_menu(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+async def photo_menu(call: CallbackQuery, user: User | None, session: AsyncSession, state: FSMContext) -> None:
     if not await _guard(call, user):
         return
     profile = await _profile(session, user.id)
     status = "Фото добавлено." if profile.photo_file_id else "Фото пока не добавлено."
+    await state.set_state(ProfileSettingsStates.photo)
     await call.message.answer(
-        f"🖼 Фото профиля\n\n{status}\n\nОтправьте новое фото одним сообщением или используйте команды ниже."
+        f"🖼 Фото профиля\n\n{status}\n\nОтправьте новое фото одним сообщением.\n\n/remove_photo — удалить фото\n/cancel — отменить"
     )
-    await call.message.answer("Команды: /remove_photo — удалить фото, /cancel — отменить")
 
 
 @router.callback_query(F.data == "profile:email")
@@ -114,29 +116,34 @@ async def email_save(message: Message, user: User | None, session: AsyncSession,
         return
     profile = await _profile(session, user.id)
     profile.contact_email = email
+    profile.updated_at = datetime.now().astimezone()
     await session.flush()
     await state.clear()
     await message.answer("Email обновлён ✅", reply_markup=profile_settings_keyboard())
 
 
-@router.message(F.photo)
-async def photo_save(message: Message, user: User | None, session: AsyncSession) -> None:
+@router.message(ProfileSettingsStates.photo, F.photo)
+async def photo_save(message: Message, user: User | None, session: AsyncSession, state: FSMContext) -> None:
     if not await _guard(message, user):
         return
     profile = await _profile(session, user.id)
     profile.photo_file_id = message.photo[-1].file_id
+    profile.updated_at = datetime.now().astimezone()
     await session.flush()
-    await message.answer("Фото профиля обновлено ✅")
+    await state.clear()
+    await message.answer("Фото профиля обновлено ✅", reply_markup=profile_settings_keyboard())
 
 
 @router.message(F.text == "/remove_photo")
-async def photo_remove(message: Message, user: User | None, session: AsyncSession) -> None:
+async def photo_remove(message: Message, user: User | None, session: AsyncSession, state: FSMContext) -> None:
     if not await _guard(message, user):
         return
     profile = await _profile(session, user.id)
     profile.photo_file_id = None
+    profile.updated_at = datetime.now().astimezone()
     await session.flush()
-    await message.answer("Фото удалено.")
+    await state.clear()
+    await message.answer("Фото удалено.", reply_markup=profile_settings_keyboard())
 
 
 @router.callback_query(F.data == "profile:socials")
@@ -176,14 +183,16 @@ async def social_save(message: Message, user: User | None, session: AsyncSession
     exists = await session.scalar(
         select(SocialLink).where(SocialLink.user_id == user.id, SocialLink.url == url)
     )
+    now = datetime.now().astimezone()
     if exists:
         exists.is_active = True
         exists.platform = _platform_from_url(url)
+        exists.updated_at = now
     else:
-        session.add(SocialLink(user_id=user.id, url=url, platform=_platform_from_url(url)))
+        session.add(SocialLink(user_id=user.id, url=url, platform=_platform_from_url(url), created_at=now, updated_at=now))
     await session.flush()
     await state.clear()
-    await message.answer("Ссылка добавлена ✅")
+    await message.answer("Ссылка добавлена ✅", reply_markup=profile_settings_keyboard())
 
 
 @router.message(F.text == "/cancel")
