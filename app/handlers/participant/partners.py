@@ -1,11 +1,13 @@
+from datetime import datetime
+
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import User
-from app.database.partners import Partner
+from app.database.partners import Partner, PartnerInitiative, PartnerTask
 from app.keyboards.partners import partner_card_keyboard, partner_list_keyboard
 from app.utils import texts
 from app.utils.constants import ApplicationStatus
@@ -50,4 +52,10 @@ async def partner_view(call: CallbackQuery, user: User | None, session: AsyncSes
     if partner is None or not partner.is_active or partner.is_archived:
         await call.message.answer("Этот партнёр сейчас недоступен.")
         return
-    await call.message.answer(f"🤝 {partner.name}\n\n{partner.description}", reply_markup=partner_card_keyboard(partner))
+    now = datetime.now().astimezone()
+    initiatives = (await session.scalars(select(PartnerInitiative).where(PartnerInitiative.partner_id == partner.id, PartnerInitiative.is_active.is_(True), PartnerInitiative.is_archived.is_(False), or_(PartnerInitiative.expires_at.is_(None), PartnerInitiative.expires_at > now)).order_by(PartnerInitiative.title))).all()
+    tasks = (await session.scalars(select(PartnerTask).where(PartnerTask.partner_id == partner.id, PartnerTask.is_active.is_(True), PartnerTask.is_archived.is_(False), or_(PartnerTask.deadline.is_(None), PartnerTask.deadline > now)).order_by(PartnerTask.title))).all()
+    initiative_lines = "\n".join(f"• {item.title}" for item in initiatives) or "• пока нет активных инициатив"
+    task_lines = "\n".join(f"• {item.title} · {item.points} баллов" for item in tasks) or "• пока нет активных заданий"
+    body = f"🤝 {partner.name}\n\n{partner.description}\n\nИнициативы:\n{initiative_lines}\n\nЗадания:\n{task_lines}"
+    await call.message.answer(body, reply_markup=partner_card_keyboard(partner))
