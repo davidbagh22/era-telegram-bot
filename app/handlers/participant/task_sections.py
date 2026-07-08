@@ -59,14 +59,16 @@ async def _tasks_for_user(session: AsyncSession, user: User) -> tuple[list[Task]
 def _body(title: str, tasks: list[Task]) -> str:
     if not tasks:
         return f"{title}\n\nЗдесь пока пусто."
-    lines = [
-        f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, 'Открыто')}, до {task.deadline:%d.%m.%Y} · {task.points} баллов"
-        for task in tasks
-    ]
+    lines = []
+    for task in tasks:
+        deadline = f"до {task.deadline:%d.%m.%Y}" if task.deadline else "без срока"
+        lines.append(
+            f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, 'Открыто')}, {deadline} · {task.points} баллов"
+        )
     return f"{title}\n\n" + "\n".join(lines)
 
 
-@router.callback_query(F.data.in_({"cabinet:tasks:available", "cabinet:tasks:active", "cabinet:tasks:archive"}))
+@router.callback_query(F.data.regexp(r"^cabinet:tasks:(available|active|archive)$"))
 async def task_section(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
     if not await _guard(call, user):
         return
