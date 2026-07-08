@@ -118,19 +118,13 @@ def profile_sections_keyboard(
     if external_chat_url:
         chat_row.append(InlineKeyboardButton(text="Внешние связи", url=external_chat_url))
     rows = [
+        [InlineKeyboardButton(text="🎓 Портфолио", callback_data="cabinet:portfolio")],
+        [InlineKeyboardButton(text="📅 Мои мероприятия", callback_data="cabinet:events")],
+        [InlineKeyboardButton(text="💡 Мои проекты", callback_data="cabinet:projects")],
+        [InlineKeyboardButton(text="🧩 Мои направления", callback_data="cabinet:departments")],
+        [InlineKeyboardButton(text="➕ Выбрать направление", callback_data="department:apply:start")],
+        [InlineKeyboardButton(text="✅ Мои задачи", callback_data="cabinet:tasks")],
         [InlineKeyboardButton(text="✏️ Изменить данные", callback_data="profile:settings")],
-        [
-            InlineKeyboardButton(text="🎓 Портфолио", callback_data="cabinet:portfolio"),
-            InlineKeyboardButton(text="🧩 Направления", callback_data="cabinet:departments"),
-        ],
-        [
-            InlineKeyboardButton(text="📅 Мероприятия", callback_data="cabinet:events"),
-            InlineKeyboardButton(text="💡 Проекты", callback_data="cabinet:projects"),
-        ],
-        [
-            InlineKeyboardButton(text="✅ Задачи", callback_data="cabinet:tasks"),
-            InlineKeyboardButton(text="➕ Выбрать направление", callback_data="department:apply:start"),
-        ],
     ]
     if chat_row:
         rows.append(chat_row)
