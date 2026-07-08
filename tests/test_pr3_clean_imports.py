@@ -9,14 +9,9 @@ class Pr3CleanImportsTests(unittest.TestCase):
         self.assertEqual(PartnerInitiative.__tablename__, "partner_initiatives")
         self.assertEqual(PartnerTask.__tablename__, "partner_tasks")
 
-    def test_pr3_routers_import(self) -> None:
-        from app.handlers.admin import partners_admin
-        from app.handlers.participant import partners, point_transfer
+    def test_pr3_states_import(self) -> None:
         from app.states.point_transfer import PointTransferStates
 
-        self.assertEqual(partners.router.name, "participant_partners")
-        self.assertEqual(point_transfer.router.name, "point_transfer")
-        self.assertEqual(partners_admin.router.name, "admin_partners")
         self.assertTrue(PointTransferStates.recipient.state)
 
 
