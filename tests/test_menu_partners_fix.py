@@ -30,7 +30,7 @@ class MenuPartnersFixTests(unittest.TestCase):
         self.assertIn("profile:settings", callbacks)
 
     def test_directions_hub_contains_expected_actions(self):
-        callbacks = self._callbacks(directions_hub_keyboard("https://internal", "https://external"))
+        callbacks = self._callbacks(directions_hub_keyboard())
         self.assertIn("cabinet:departments", callbacks)
         self.assertIn("department:apply:start", callbacks)
 
