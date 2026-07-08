@@ -2,7 +2,6 @@ from collections import defaultdict, deque
 from time import monotonic
 
 from aiogram import F, Bot, Router
-from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -40,6 +39,22 @@ def _is_approved_member(user: User | None) -> bool:
         and not user.is_blocked
         and not user.is_archived
     )
+
+
+async def _soft_moderation(message: Message) -> None:
+    if not message.from_user:
+        return
+    text = (message.text or "").casefold()
+    if any(word in text for word in _personal_attacks):
+        await message.reply(texts.MODERATION_PERSONAL)
+        return
+    key = (message.chat.id, message.from_user.id)
+    now = monotonic()
+    bucket = _activity[key]
+    bucket.append(now)
+    if len(bucket) >= 7 and now - bucket[0] < 20:
+        bucket.clear()
+        await message.reply(texts.MODERATION_FLOOD)
 
 
 @router.message(Command("rules"), ~F.chat.type.in_({"private"}))
@@ -184,48 +199,35 @@ async def rules_callback(call) -> None:
 
 @router.message(~F.chat.type.in_({"private"}))
 async def moderation_gate(message: Message, bot: Bot, user: User | None, session: AsyncSession) -> None:
-    if not await _moderation_enabled(session, message.chat.id):
-        raise SkipHandler
-    if _is_approved_member(user) or (user and user.role in PRIVILEGED_ROLES and not user.is_blocked and not user.is_archived):
-        raise SkipHandler
-    if message.from_user:
+    enabled = await _moderation_enabled(session, message.chat.id)
+    allowed = _is_approved_member(user) or bool(
+        user and user.role in PRIVILEGED_ROLES and not user.is_blocked and not user.is_archived
+    )
+    if enabled and not allowed and message.from_user:
         try:
             member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-            if member.status in {"administrator", "creator"}:
-                raise SkipHandler
+            allowed = member.status in {"administrator", "creator"}
         except TelegramAPIError:
             pass
-    try:
-        await message.delete()
-    except TelegramAPIError:
-        pass
-    if not message.from_user:
+    if enabled and not allowed:
+        try:
+            await message.delete()
+        except TelegramAPIError:
+            pass
+        if not message.from_user:
+            return
+        key = (message.chat.id, message.from_user.id)
+        now = monotonic()
+        last_sent = _dm_notice_sent.get(key, 0.0)
+        if now - last_sent < _DM_NOTICE_COOLDOWN:
+            return
+        _dm_notice_sent[key] = now
+        try:
+            await bot.send_message(
+                message.from_user.id,
+                "Сначала пройдите регистрацию в боте ЭРА. После одобрения Вы сможете писать в общем чате.",
+            )
+        except TelegramForbiddenError:
+            pass
         return
-    key = (message.chat.id, message.from_user.id)
-    now = monotonic()
-    last_sent = _dm_notice_sent.get(key, 0.0)
-    if now - last_sent < _DM_NOTICE_COOLDOWN:
-        return
-    _dm_notice_sent[key] = now
-    try:
-        await bot.send_message(
-            message.from_user.id,
-            "Сначала пройдите регистрацию в боте ЭРА. После одобрения Вы сможете писать в общем чате.",
-        )
-    except TelegramForbiddenError:
-        pass
-
-
-@router.message(F.text, ~F.chat.type.in_({"private"}))
-async def soft_moderation(message: Message) -> None:
-    text = (message.text or "").casefold()
-    if any(word in text for word in _personal_attacks):
-        await message.reply(texts.MODERATION_PERSONAL)
-        return
-    key = (message.chat.id, message.from_user.id)
-    now = monotonic()
-    bucket = _activity[key]
-    bucket.append(now)
-    if len(bucket) >= 7 and now - bucket[0] < 20:
-        bucket.clear()
-        await message.reply(texts.MODERATION_FLOOD)
+    await _soft_moderation(message)
