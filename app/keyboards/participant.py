@@ -90,7 +90,7 @@ def journey_keyboard(
     del internal_chat_url, external_chat_url
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="👤 Мой профиль", callback_data="cabinet:profile")],
+            [InlineKeyboardButton(text="⚙️ Мои данные", callback_data="cabinet:profile")],
             [InlineKeyboardButton(text="🏆 Баллы и достижения", callback_data="cabinet:points_hub")],
             [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
         ]
@@ -103,7 +103,7 @@ def points_hub_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="⭐ Баланс и история", callback_data="cabinet:points")],
             [InlineKeyboardButton(text="🏅 Достижения и знаки", callback_data="cabinet:achievements")],
             [InlineKeyboardButton(text="🏆 Рейтинг", callback_data="cabinet:rating")],
-            [InlineKeyboardButton(text="← Мой профиль", callback_data="cabinet:open")],
+            [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
         ]
     )
 
@@ -124,7 +124,7 @@ def profile_sections_keyboard(
         [InlineKeyboardButton(text="🧩 Мои направления", callback_data="cabinet:departments")],
         [InlineKeyboardButton(text="➕ Выбрать направление", callback_data="department:apply:start")],
         [InlineKeyboardButton(text="✅ Мои задачи", callback_data="cabinet:tasks")],
-        [InlineKeyboardButton(text="⚙️ Настройки профиля", callback_data="profile:settings")],
+        [InlineKeyboardButton(text="✏️ Изменить данные", callback_data="profile:settings")],
     ]
     if chat_row:
         rows.append(chat_row)
@@ -138,7 +138,7 @@ def profile_settings_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Фото", callback_data="profile:photo")],
             [InlineKeyboardButton(text="Соцсети", callback_data="profile:socials")],
             [InlineKeyboardButton(text="Email", callback_data="profile:email")],
-            [InlineKeyboardButton(text="← Мой профиль", callback_data="cabinet:profile")],
+            [InlineKeyboardButton(text="← Мои данные", callback_data="cabinet:profile")],
         ]
     )
 
@@ -246,7 +246,7 @@ def portfolio_keyboard(items: Iterable = ()) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="👁 Просмотреть портфолио", callback_data="portfolio:view")],
             [InlineKeyboardButton(text="📎 Добавить достижение", callback_data="portfolio:upload")],
             [InlineKeyboardButton(text="📄 Скачать резюме ЭРА", callback_data="portfolio:resume")],
-            [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
+            [InlineKeyboardButton(text="← Мои данные", callback_data="cabinet:profile")],
         ]
     )
 
