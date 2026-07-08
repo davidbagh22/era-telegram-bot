@@ -5,7 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Badge, User, UserBadge
-from app.keyboards.participant import points_hub_keyboard, profile_sections_keyboard
+from app.keyboards.participant import (
+    directions_hub_keyboard,
+    points_hub_keyboard,
+    profile_sections_keyboard,
+    tasks_hub_keyboard,
+)
 from app.repositories.users import user_stats
 from app.utils import texts
 from app.utils.constants import ApplicationStatus
@@ -50,7 +55,7 @@ async def profile_home(
     body = (
         f"{texts.profile_text(user, stats)}\n\n"
         f"🏅 Знаки\n{badge_lines}\n\n"
-        "Портфолио, мероприятия, проекты, направления и задачи — кнопками ниже."
+        "Портфолио, мероприятия, проекты, направления, чаты и задачи — кнопками ниже."
     )
     await call.message.answer(
         body,
@@ -68,4 +73,27 @@ async def points_hub(call: CallbackQuery, user: User | None) -> None:
     await call.message.answer(
         "🏆 Баллы и достижения\n\nБаланс, история операций, знаки и место в рейтинге — здесь.",
         reply_markup=points_hub_keyboard(),
+    )
+
+
+@router.callback_query(F.data == "cabinet:directions_hub")
+async def directions_hub(call: CallbackQuery, user: User | None, settings: Settings) -> None:
+    if not await _guard(call, user):
+        return
+    await call.message.answer(
+        "🧩 Направления и чаты\n\nЗдесь можно посмотреть свои направления, выбрать новые и перейти в чаты внутренних или внешних связей.",
+        reply_markup=directions_hub_keyboard(
+            settings.internal_department_chat_url,
+            settings.external_department_chat_url,
+        ),
+    )
+
+
+@router.callback_query(F.data == "cabinet:tasks")
+async def tasks_hub(call: CallbackQuery, user: User | None) -> None:
+    if not await _guard(call, user):
+        return
+    await call.message.answer(
+        "✅ Мои задачи\n\nВыберите, что хотите посмотреть.",
+        reply_markup=tasks_hub_keyboard(),
     )
