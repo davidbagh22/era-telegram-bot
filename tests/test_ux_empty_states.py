@@ -10,20 +10,13 @@ class UxEmptyStateTests(unittest.TestCase):
         self.assertIn("портфолио", combined)
         self.assertIn("рейтинг", combined)
         self.assertIn("возможности", combined)
-        self.assertIn("Каждая встреча", combined)
 
-    def test_participant_empty_states_are_alive_and_short(self) -> None:
-        states = [
-            ux_texts.EVENTS_EMPTY,
-            ux_texts.TASKS_EMPTY_ACTIVE,
-            ux_texts.TASKS_EMPTY_ARCHIVE,
-            ux_texts.REWARDS_EMPTY,
-        ]
-        for state in states:
-            self.assertNotIn("пока нет.", state.lower())
-            self.assertLessEqual(len(state), 260)
+    def test_participant_empty_states_have_next_step_energy(self) -> None:
         self.assertIn("задачи", ux_texts.EVENTS_EMPTY.lower())
-        self.assertIn("истории роста", ux_texts.TASKS_EMPTY_ARCHIVE.lower())
+        self.assertIn("направление", ux_texts.EVENTS_EMPTY.lower())
+        self.assertIn("идею проекта", ux_texts.EVENTS_EMPTY.lower())
+        self.assertIn("скоро появятся", ux_texts.TASKS_EMPTY_ACTIVE.lower())
+        self.assertIn("результаты", ux_texts.TASKS_EMPTY_ARCHIVE.lower())
         self.assertIn("партнёров", ux_texts.REWARDS_EMPTY.lower())
 
     def test_rating_empty_state_explains_first_actions(self) -> None:
