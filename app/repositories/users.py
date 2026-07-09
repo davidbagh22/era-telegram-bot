@@ -16,6 +16,7 @@ from app.database.models import (
     UserDepartment,
     UserDirection,
 )
+from app.utils.validators import calculate_age
 
 
 async def get_user_by_telegram_id(
@@ -39,12 +40,14 @@ async def create_user_from_registration(
     if existing is not None:
         return existing, False
 
+    birth_date = data["birth_date"]
     user = User(
         telegram_id=telegram_id,
         username=username,
         first_name=data["first_name"],
         last_name=data["last_name"],
-        age=data["age"],
+        birth_date=birth_date,
+        age=calculate_age(birth_date),
         phone=data["phone"],
         email=data.get("email"),
         city=data["city"],
