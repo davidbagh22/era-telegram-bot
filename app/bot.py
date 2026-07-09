@@ -6,7 +6,7 @@ from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import ErrorEvent, Message
 
 from app.config import Settings
-from app.handlers import chat, emergency, registration, start
+from app.handlers import chat, chat_binding, emergency, registration, start
 from app.handlers.admin import router as admin_router
 from app.handlers.leader import router as leader_router
 from app.handlers.participant import router as participant_router
@@ -45,6 +45,7 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
         admin_router,
         leader_router,
         participant_router,
+        chat_binding.router,
         chat.router,
     )
 

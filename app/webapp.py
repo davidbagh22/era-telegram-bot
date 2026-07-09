@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
     try:
         base_url = settings.effective_base_url
         if base_url:
-            webhook_url = f"{base_url}/telegram/webhook?v=2.0.2"
+            webhook_url = f"{base_url}/telegram/webhook?v=2.1.0"
             await bot.set_webhook(
                 webhook_url,
                 secret_token=settings.effective_webhook_secret or None,
@@ -73,10 +73,15 @@ async def lifespan(app: FastAPI):
                 [
                     BotCommand(command="start", description="Открыть бота ЭРА"),
                     BotCommand(command="menu", description="Главное меню"),
+                    BotCommand(command="profile", description="Личный кабинет"),
                     BotCommand(command="journey", description="Мой путь"),
-                    BotCommand(command="events", description="Мероприятия"),
+                    BotCommand(command="events", description="Афиша"),
+                    BotCommand(command="tasks", description="Задачи"),
+                    BotCommand(command="opportunities", description="Возможности"),
                     BotCommand(command="projects", description="Проекты"),
                     BotCommand(command="rating", description="Рейтинг"),
+                    BotCommand(command="contact", description="Связь с командой"),
+                    BotCommand(command="panel", description="Панель управления"),
                     BotCommand(command="team", description="Команда ЭРА"),
                     BotCommand(command="about", description="Что умеет бот"),
                     BotCommand(command="rules", description="Правила сообщества"),
@@ -95,7 +100,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="ERA Telegram Bot Service",
-    version="2.0.2",
+    version="2.1.0",
     lifespan=lifespan,
     docs_url=None,
     openapi_url=None,
@@ -104,7 +109,7 @@ app = FastAPI(
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "version": "2.0.2", "commit": DEPLOYED_COMMIT}
+    return {"status": "ok", "version": "2.1.0", "commit": DEPLOYED_COMMIT}
 
 
 @app.post("/telegram/webhook", include_in_schema=False)
