@@ -17,7 +17,7 @@ def main_menu(
     rows = [
         [KeyboardButton(text="👤 Личный кабинет"), KeyboardButton(text="📅 Афиша")],
         [KeyboardButton(text="✅ Задачи"), KeyboardButton(text="⭐ Возможности")],
-        [KeyboardButton(text="🏆 Рейтинг"), KeyboardButton(text="💬 Связь")],
+        [KeyboardButton(text="💬 Связь")],
     ]
     if privileged or admin:
         rows.append([KeyboardButton(text="⚙️ Панель")])
@@ -39,10 +39,7 @@ def main_inline_keyboard(privileged: bool = False, admin: bool = False) -> Inlin
             InlineKeyboardButton(text="✅ Задачи", callback_data="cabinet:tasks"),
             InlineKeyboardButton(text="⭐ Возможности", callback_data="rewards:menu"),
         ],
-        [
-            InlineKeyboardButton(text="🏆 Рейтинг", callback_data="cabinet:rating"),
-            InlineKeyboardButton(text="💬 Связь", callback_data="contact:menu"),
-        ],
+        [InlineKeyboardButton(text="💬 Связь", callback_data="contact:menu")],
     ]
     if privileged or admin:
         rows.append([InlineKeyboardButton(text="⚙️ Панель", callback_data="panel:open")])
