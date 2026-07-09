@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from app.utils.constants import ROLE_LABELS, STATUS_LABELS
+from app.utils.validators import calculate_age
 
 
 WELCOME = """Добро пожаловать в ЭРА.
@@ -37,6 +38,16 @@ REGISTRATION_INTRO = """Давайте познакомимся 🌿
 Как Вас зовут?"""
 
 REG_LAST_NAME = "Спасибо! А теперь подскажите Вашу фамилию"
+REG_BIRTH_DATE = """Укажите дату рождения 🎂
+
+Формат: ДД.ММ.ГГГГ
+
+Например: 05.09.2001"""
+REG_BIRTH_DATE_ERROR = """Не получилось распознать дату рождения
+
+Отправьте дату строго в формате ДД.ММ.ГГГГ
+
+Например: 05.09.2001"""
 REG_AGE = "Сколько Вам лет? Отправьте только число"
 REG_AGE_ERROR = "Укажите возраст числом от 14 до 100."
 REG_PHONE = (
@@ -164,6 +175,14 @@ ABOUT_BOT = """ℹ️ Что умеет бот ЭРА
 CABINET = "Ваш путь в ЭРА 🌱"
 
 
+def _birth_date_and_age(user) -> tuple[str, str]:
+    birth_date = getattr(user, "birth_date", None)
+    if birth_date:
+        return birth_date.strftime("%d.%m.%Y"), str(calculate_age(birth_date))
+    age = getattr(user, "age", None)
+    return "не указана", str(age) if age else "не указан"
+
+
 def profile_text(user, stats: dict[str, int]) -> str:
     departments = (
         ", ".join(item.department.name for item in user.departments) or "Не выбраны"
@@ -172,10 +191,12 @@ def profile_text(user, stats: dict[str, int]) -> str:
         ", ".join(item.direction.name for item in user.directions) or "Не выбраны"
     )
     username = f"@{user.username}" if user.username else "не указан"
+    birth_date, age = _birth_date_and_age(user)
     return f"""Профиль
 
 Имя: {user.first_name} {user.last_name or ""}
-Возраст: {user.age or "не указан"}
+Дата рождения: {birth_date}
+Возраст: {age}
 Город: {user.city or "не указан"}
 Учёба / работа: {user.education_work or "не указано"}
 Telegram: {username}
