@@ -8,7 +8,7 @@ from app.keyboards.common import registration_keyboard, subscription_keyboard
 from app.keyboards.participant import main_menu
 from app.keyboards.registration import pending_registration_keyboard
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
-from app.utils import texts
+from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
 
 router = Router(name="start")
@@ -34,7 +34,7 @@ async def show_home(message: Message, user: User, settings: Settings) -> None:
         )
         return
     await message.answer(
-        texts.MAIN_MENU,
+        ux_texts.MAIN_MENU,
         reply_markup=main_menu(
             settings.era_channel_url,
             privileged=user.role in PRIVILEGED_ROLES,
@@ -94,7 +94,7 @@ async def start(
         )
         return
     if user is None:
-        await message.answer(texts.WELCOME, reply_markup=registration_keyboard())
+        await message.answer(ux_texts.WELCOME_START, reply_markup=registration_keyboard())
         return
     await show_home(message, user, settings)
 
@@ -144,7 +144,7 @@ async def main_menu_callback(
     await call.answer()
     await state.clear()
     if user is None:
-        await call.message.answer(texts.WELCOME, reply_markup=registration_keyboard())
+        await call.message.answer(ux_texts.WELCOME_START, reply_markup=registration_keyboard())
         return
     await show_home(call.message, user, settings)
 
