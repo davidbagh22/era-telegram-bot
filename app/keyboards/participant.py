@@ -247,6 +247,7 @@ def portfolio_keyboard(items: Iterable = ()) -> InlineKeyboardMarkup:
     del items
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="📎 Добавить достижение", callback_data="portfolio:upload")],
             [InlineKeyboardButton(text="📄 Скачать резюме ЭРА", callback_data="portfolio:resume")],
             [InlineKeyboardButton(text="← Мои данные", callback_data="cabinet:profile")],
         ]
