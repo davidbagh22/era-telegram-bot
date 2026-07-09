@@ -29,7 +29,7 @@ from app.services.subscription_service import SubscriptionCheckError, is_channel
 from app.states.registration import RegistrationStates
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
-from app.utils.validators import clean_text, normalize_email, normalize_phone, parse_age
+from app.utils.validators import clean_text, normalize_email, normalize_phone, calculate_age, parse_birth_date
 
 router = Router(name="registration")
 router.message.filter(F.chat.type == "private")
@@ -137,17 +137,17 @@ async def last_name(message: Message, state: FSMContext) -> None:
         await message.answer(texts.INVALID_INPUT)
         return
     await state.update_data(last_name=value)
-    await state.set_state(RegistrationStates.age)
-    await message.answer(texts.REG_AGE)
+    await state.set_state(RegistrationStates.birth_date)
+    await message.answer(texts.REG_BIRTH_DATE)
 
 
-@router.message(RegistrationStates.age)
-async def age(message: Message, state: FSMContext) -> None:
-    value = parse_age(message.text or "")
+@router.message(RegistrationStates.birth_date)
+async def birth_date(message: Message, state: FSMContext) -> None:
+    value = parse_birth_date(message.text or "")
     if value is None:
-        await message.answer(texts.REG_AGE_ERROR)
+        await message.answer(texts.REG_BIRTH_DATE_ERROR)
         return
-    await state.update_data(age=value)
+    await state.update_data(birth_date=value.isoformat(), age=calculate_age(value))
     await state.set_state(RegistrationStates.phone)
     await message.answer(texts.REG_PHONE)
 
@@ -335,10 +335,12 @@ def _application_notification(user) -> str:
     telegram = f"@{user.username}" if user.username else str(user.telegram_id)
     departments = ", ".join(item.department.name for item in user.departments) or "пока не выбраны"
     directions = ", ".join(item.direction.name for item in user.directions) or "пока не выбраны"
+    birth_date_text = user.birth_date.strftime("%d.%m.%Y") if user.birth_date else "не указана"
     return (
         "📝 Новая заявка в ЭРА\n\n"
         f"👤 {user.first_name} {user.last_name or ''}\n"
-        f"🎂 Возраст: {user.age or 'не указан'}\n"
+        f"🎂 Дата рождения: {birth_date_text}\n"
+        f"🎈 Возраст: {user.age or 'не указан'}\n"
         f"📍 Город: {user.city or 'не указан'}\n"
         f"📱 Телефон: {user.phone or 'не указан'}\n"
         f"🎓 Учёба / работа: {user.education_work or 'не указано'}\n"
