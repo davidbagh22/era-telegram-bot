@@ -31,6 +31,7 @@
 - `app/handlers/participant/navigation.py`
 - `app/handlers/participant/cabinet.py`
 - `app/handlers/participant/cabinet_hubs.py`
+- `app/handlers/participant/portfolio_navigation.py`
 - `app/handlers/participant/task_block2.py`
 - `app/handlers/participant/task_reply.py`
 - `app/handlers/participant/task_flow.py`
@@ -81,6 +82,8 @@
 | `cabinet:rating` | рейтинг | OK |
 | `contact:menu` | связь | OK |
 | `panel:open` | панель лидера/админа | OK, обычному участнику не показывается |
+| `portfolio:upload` | инструкция по добавлению достижения | исправлено/OK |
+| `portfolio:view` | legacy-кнопка из старых сообщений | исправлено/OK |
 
 ## Найдено и исправлено
 
@@ -106,17 +109,21 @@
 
 Было:
 
-- `portfolio:view` — отдельный callback был избыточен: пользователь уже находится в портфолио;
-- `portfolio:upload` — в текущей видимой навигации нет безопасного завершённого сценария загрузки достижения.
+- `portfolio:upload` был закреплён в продуктовых тестах, но в видимой навигации не было отдельного безопасного обработчика;
+- `portfolio:view` мог остаться у пользователя в старых Telegram-сообщениях и не должен превращаться в мёртвую кнопку.
 
 Сделано:
 
-- из `portfolio_keyboard()` убраны нерабочие/no-op кнопки;
-- оставлены рабочие действия: скачать резюме и вернуться в «Мои данные».
+- `portfolio:upload` оставлен в клавиатуре портфолио;
+- добавлен безопасный обработчик `portfolio:upload` с инструкцией, как передать достижение через команду ЭРА;
+- добавлен legacy-handler для `portfolio:view`, чтобы старые сообщения не давали мёртвый callback;
+- БД, модерация портфолио и загрузка файлов не изменялись.
 
-Затронутый файл:
+Затронутые файлы:
 
 - `app/keyboards/participant.py`
+- `app/handlers/participant/portfolio_navigation.py`
+- `app/handlers/participant/__init__.py`
 
 ## Найдено, но не исправлено в этом PR
 
@@ -169,6 +176,7 @@
 | Связь | `contact:menu` / `menu:main` | OK |
 | Команда/департаменты | `team:menu`, `departments:menu`, `contact:menu` | OK |
 | Личный кабинет | `cabinet:open`, `cabinet:profile` | OK |
+| Портфолио | `cabinet:portfolio`, `cabinet:profile` | OK |
 | Задачи | `cabinet:tasks`, `cabinet:open` | OK |
 | Админка | `admin:panel`, `admin:menu:*` | OK |
 | Управление | `admin:menu:system` | OK |
@@ -204,7 +212,8 @@
 - мероприятия;
 - активности после мероприятий;
 - бизнес-логика начислений;
-- заявки и approve/reject сценарии.
+- заявки и approve/reject сценарии;
+- загрузка и модерация портфолио.
 
 ## Проверки после PR
 
