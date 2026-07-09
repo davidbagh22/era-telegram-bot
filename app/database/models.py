@@ -249,7 +249,7 @@ class UserBadge(Base):
     __tablename__ = "user_badges"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", index=True))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     badge_id: Mapped[int] = mapped_column(ForeignKey("badges.id"))
     reason: Mapped[str] = mapped_column(Text)
     awarded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
