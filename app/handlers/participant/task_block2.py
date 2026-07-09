@@ -96,6 +96,15 @@ async def _send_task_file(call: CallbackQuery, task: Task) -> None:
         await call.message.answer("К заданию прикреплён файл, но Telegram не дал открыть его повторно.")
 
 
+@router.message(F.text == "✅ Задачи")
+async def tasks_reply_button(message: Message, user: User | None, state: FSMContext) -> None:
+    await state.clear()
+    if not _approved(user):
+        await message.answer(texts.APPLICATION_PENDING)
+        return
+    await message.answer("✅ Мои задачи\n\nВыберите раздел:", reply_markup=_task_menu())
+
+
 @router.callback_query(F.data == "cabinet:tasks")
 async def tasks_root(call: CallbackQuery, user: User | None) -> None:
     await call.answer()
