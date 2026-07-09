@@ -7,7 +7,7 @@ from app.config import Settings
 from app.database.models import Badge, User, UserBadge
 from app.keyboards.participant import points_hub_keyboard, profile_sections_keyboard
 from app.repositories.users import user_stats
-from app.utils import texts
+from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus
 
 router = Router(name="cabinet_hubs")
@@ -48,7 +48,8 @@ async def profile_home(
         else "Пока нет знаков — они появятся за вклад, ответственность и результат."
     )
     body = (
-        f"{texts.profile_text(user, stats)}\n\n"
+        f"{texts.profile_text(user, stats)}"
+        f"{ux_texts.profile_empty_hint(user)}\n\n"
         f"🏅 Знаки\n{badge_lines}\n\n"
         "Портфолио, мероприятия, проекты, направления и задачи — кнопками ниже."
     )
