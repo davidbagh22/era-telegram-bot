@@ -5,7 +5,7 @@ from aiogram.types import Message
 
 from app.database.models import User
 from app.handlers.participant.task_block2 import _approved, _task_menu
-from app.utils import texts
+from app.utils import texts, ux_texts
 
 router = Router(name="participant_task_reply")
 
@@ -17,4 +17,4 @@ async def tasks_bottom_button(message: Message, user: User | None, state: FSMCon
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
-    await message.answer("✅ Мои задачи\n\nВыберите раздел:", reply_markup=_task_menu())
+    await message.answer(ux_texts.TASKS_MENU, reply_markup=_task_menu())
