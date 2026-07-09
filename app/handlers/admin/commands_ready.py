@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from app.config import Settings
 from app.database.models import User
 from app.handlers.admin.management_ready import _guard
-from app.keyboards.admin import admin_activity_keyboard, admin_panel_keyboard, admin_users_keyboard
+from app.keyboards.admin import admin_activity_keyboard, admin_users_keyboard
 
 router = Router(name="admin_commands_ready")
 router.message.filter(F.chat.type == "private")
@@ -84,11 +84,3 @@ async def admin_rights_command(message: Message, user: User | None, settings: Se
             [InlineKeyboardButton(text="← Админ-панель", callback_data="admin:panel")],
         ]),
     )
-
-
-@router.message(Command("panel"))
-async def panel_alias_command(message: Message, user: User | None, settings: Settings, state: FSMContext) -> None:
-    if not await _guard(message, user, settings):
-        return
-    await state.clear()
-    await message.answer("⚙️ Панель управления ЭРА", reply_markup=admin_panel_keyboard())
