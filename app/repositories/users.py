@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from datetime import date
 from typing import Any
 
 from sqlalchemy import func, select
@@ -29,6 +30,12 @@ async def get_user(session: AsyncSession, user_id: int) -> User | None:
     return await session.get(User, user_id)
 
 
+def _birth_date_from_registration(value: date | str) -> date:
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(value)
+
+
 async def create_user_from_registration(
     session: AsyncSession,
     *,
@@ -40,7 +47,7 @@ async def create_user_from_registration(
     if existing is not None:
         return existing, False
 
-    birth_date = data["birth_date"]
+    birth_date = _birth_date_from_registration(data["birth_date"])
     user = User(
         telegram_id=telegram_id,
         username=username,
