@@ -17,6 +17,7 @@ from app.database.models import (
     User,
 )
 from app.keyboards.admin import project_review_actions
+from app.services.birthday_service import send_birthday_greetings
 from app.services.event_service import event_datetime
 from app.services.notification_service import safe_send
 from app.utils.constants import EventStatus, ProjectStatus, RegistrationStatus
@@ -212,6 +213,17 @@ def create_scheduler(bot: Bot, settings: Settings, session_factory) -> AsyncIOSc
         minutes=1,
         args=(bot, settings, session_factory),
         id="event-reminders",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        send_birthday_greetings,
+        "cron",
+        hour=10,
+        minute=0,
+        args=(bot, settings, session_factory),
+        id="birthday-greetings",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
