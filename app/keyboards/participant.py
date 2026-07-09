@@ -94,7 +94,7 @@ def journey_keyboard(
     del internal_chat_url, external_chat_url
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="⚙️ Мои данные", callback_data="cabinet:profile")],
+            [InlineKeyboardButton(text="👤 Мой профиль", callback_data="cabinet:profile")],
             [InlineKeyboardButton(text="🏆 Баллы и достижения", callback_data="cabinet:points_hub")],
             [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
         ]
