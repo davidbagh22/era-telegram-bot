@@ -16,8 +16,8 @@ def main_menu(
     del channel_url
     rows = [
         [KeyboardButton(text="👤 Личный кабинет"), KeyboardButton(text="📅 Афиша")],
-        [KeyboardButton(text="💡 Проекты"), KeyboardButton(text="⭐ Возможности")],
-        [KeyboardButton(text="💬 Связь")],
+        [KeyboardButton(text="✅ Задачи"), KeyboardButton(text="⭐ Возможности")],
+        [KeyboardButton(text="🏆 Рейтинг"), KeyboardButton(text="💬 Связь")],
     ]
     if privileged or admin:
         rows.append([KeyboardButton(text="⚙️ Панель")])
@@ -36,10 +36,13 @@ def main_inline_keyboard(privileged: bool = False, admin: bool = False) -> Inlin
             InlineKeyboardButton(text="📅 Афиша", callback_data="events:list"),
         ],
         [
-            InlineKeyboardButton(text="💡 Проекты", callback_data="projects:menu"),
+            InlineKeyboardButton(text="✅ Задачи", callback_data="cabinet:tasks"),
             InlineKeyboardButton(text="⭐ Возможности", callback_data="rewards:menu"),
         ],
-        [InlineKeyboardButton(text="💬 Связь", callback_data="contact:menu")],
+        [
+            InlineKeyboardButton(text="🏆 Рейтинг", callback_data="cabinet:rating"),
+            InlineKeyboardButton(text="💬 Связь", callback_data="contact:menu"),
+        ],
     ]
     if privileged or admin:
         rows.append([InlineKeyboardButton(text="⚙️ Панель", callback_data="panel:open")])
@@ -51,6 +54,7 @@ def about_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="👤 Личный кабинет", callback_data="cabinet:open")],
             [InlineKeyboardButton(text="📅 Афиша", callback_data="events:list")],
+            [InlineKeyboardButton(text="✅ Задачи", callback_data="cabinet:tasks")],
             [InlineKeyboardButton(text="💡 Проекты", callback_data="projects:menu")],
             [InlineKeyboardButton(text="⭐ Возможности", callback_data="rewards:menu")],
             [InlineKeyboardButton(text="💬 Связь", callback_data="contact:menu")],
