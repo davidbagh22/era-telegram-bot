@@ -74,8 +74,6 @@ def _platform_from_url(url: str) -> str:
 
 def _normalize_url(value: str) -> str | None:
     value = " ".join((value or "").split()).strip()
-    if value in {"-", "нет", "Нет", "пропустить", "Пропустить"}:
-        return ""
     if not value or len(value) > 500:
         return None
     if "://" not in value:
@@ -300,33 +298,28 @@ async def motivation(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(motivation=value)
     await state.set_state(RegistrationStates.profile_photo)
-    await message.answer("Отправьте фото для профиля.\n\nЕсли хотите пропустить — напишите '-' .")
+    await message.answer("Отправьте фото для профиля.\n\nФото обязательно для регистрации в ЭРА.")
 
 
 @router.message(RegistrationStates.profile_photo, F.photo)
 async def registration_photo(message: Message, state: FSMContext) -> None:
     await state.update_data(profile_photo_file_id=message.photo[-1].file_id)
     await state.set_state(RegistrationStates.social_url)
-    await message.answer("Отправьте ссылку на соцсеть: Telegram, Instagram, LinkedIn или сайт.\n\nЕсли хотите пропустить — напишите '-' .")
+    await message.answer("Отправьте ссылку на соцсеть: Telegram, Instagram, LinkedIn или сайт.\n\nСсылка обязательна для регистрации в ЭРА.")
 
 
 @router.message(RegistrationStates.profile_photo)
-async def registration_photo_skip(message: Message, state: FSMContext) -> None:
-    if (message.text or "").strip() not in {"-", "нет", "Нет", "пропустить", "Пропустить"}:
-        await message.answer("Отправьте фото или напишите '-' чтобы пропустить.")
-        return
-    await state.update_data(profile_photo_file_id=None)
-    await state.set_state(RegistrationStates.social_url)
-    await message.answer("Отправьте ссылку на соцсеть: Telegram, Instagram, LinkedIn или сайт.\n\nЕсли хотите пропустить — напишите '-' .")
+async def registration_photo_required(message: Message, state: FSMContext) -> None:
+    await message.answer("Фото обязательно. Отправьте реальное фото одним сообщением, чтобы продолжить регистрацию.")
 
 
 @router.message(RegistrationStates.social_url)
 async def registration_social(message: Message, state: FSMContext) -> None:
     url = _normalize_url(message.text or "")
     if url is None:
-        await message.answer("Ссылка выглядит некорректно. Пример: t.me/username или instagram.com/name.\n\nМожно написать '-' чтобы пропустить.")
+        await message.answer("Ссылка на соцсеть обязательна. Пример: t.me/username или instagram.com/name.")
         return
-    await state.update_data(social_url=url or None)
+    await state.update_data(social_url=url)
     await state.set_state(RegistrationStates.consent)
     await message.answer(texts.REG_CONSENT, reply_markup=consent_keyboard())
 
@@ -371,12 +364,15 @@ async def finish_registration(
 ) -> None:
     await call.answer()
     data = await state.get_data()
+    if not data.get("profile_photo_file_id") or not data.get("social_url"):
+        await call.message.answer("Для регистрации нужны фото профиля и ссылка на соцсеть. Пройдите эти шаги заново.")
+        await state.set_state(RegistrationStates.profile_photo)
+        return
     user, created = await create_user_from_registration(session, telegram_id=call.from_user.id, username=call.from_user.username, data=data)
     if created:
         now = datetime.now().astimezone()
         session.add(SocialProfile(user_id=user.id, photo_file_id=data.get("profile_photo_file_id"), contact_email=user.email, created_at=now, updated_at=now))
-        if data.get("social_url"):
-            session.add(SocialLink(user_id=user.id, url=data["social_url"], platform=_platform_from_url(data["social_url"]), created_at=now, updated_at=now))
+        session.add(SocialLink(user_id=user.id, url=data["social_url"], platform=_platform_from_url(data["social_url"]), created_at=now, updated_at=now))
     if call.from_user.id in settings.admin_ids:
         user.role = Role.ADMIN
         user.application_status = ApplicationStatus.APPROVED
