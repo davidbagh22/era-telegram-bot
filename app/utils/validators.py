@@ -5,6 +5,30 @@ from zoneinfo import ZoneInfo
 
 PHONE_RE = re.compile(r"^\+?[0-9()\-\s]{7,20}$")
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]{2,}$")
+BIRTH_DATE_RE = re.compile(r"^\d{2}\.\d{2}\.\d{4}$")
+
+
+def calculate_age(birth_date: date, today: date | None = None) -> int:
+    today = today or date.today()
+    return today.year - birth_date.year - (
+        (today.month, today.day) < (birth_date.month, birth_date.day)
+    )
+
+
+def parse_birth_date(value: str, today: date | None = None) -> date | None:
+    """Parse a required birth date in strict DD.MM.YYYY format."""
+    raw = (value or "").strip()
+    if not BIRTH_DATE_RE.fullmatch(raw):
+        return None
+    try:
+        parsed = datetime.strptime(raw, "%d.%m.%Y").date()
+    except ValueError:
+        return None
+    today = today or date.today()
+    if parsed >= today:
+        return None
+    age = calculate_age(parsed, today)
+    return parsed if 14 <= age <= 100 else None
 
 
 def parse_age(value: str) -> int | None:
