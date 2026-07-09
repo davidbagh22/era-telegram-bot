@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import AppSetting, ChatGreeting, User
-from app.utils.constants import PRIVILEGED_ROLES, Role
+from app.utils.constants import Role
 
 router = Router(name="chat_binding")
 
@@ -26,14 +26,13 @@ def _can_bind(user: User | None, settings: Settings, telegram_id: int) -> bool:
     return bool(
         telegram_id in settings.admin_ids
         or (user and user.role == Role.ADMIN and not user.is_blocked and not user.is_archived)
-        or (user and user.role in PRIVILEGED_ROLES and not user.is_blocked and not user.is_archived)
     )
 
 
 @router.message(Command("bind"), ~F.chat.type.in_({"private"}))
 async def bind_current_chat(message: Message, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not message.from_user or not _can_bind(user, settings, message.from_user.id):
-        await message.reply("Привязать чат может только администратор или лидер ЭРА")
+        await message.reply("Привязать чат может только администратор ЭРА")
         return
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2 or parts[1].strip().lower() not in CHAT_KEYS:
