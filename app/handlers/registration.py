@@ -335,7 +335,8 @@ def _application_notification(user) -> str:
     telegram = f"@{user.username}" if user.username else str(user.telegram_id)
     departments = ", ".join(item.department.name for item in user.departments) or "пока не выбраны"
     directions = ", ".join(item.direction.name for item in user.directions) or "пока не выбраны"
-    birth_date_text = user.birth_date.strftime("%d.%m.%Y") if user.birth_date else "не указана"
+    birth_date_value = getattr(user, "birth_date", None)
+    birth_date_text = birth_date_value.strftime("%d.%m.%Y") if birth_date_value else "не указана"
     return (
         "📝 Новая заявка в ЭРА\n\n"
         f"👤 {user.first_name} {user.last_name or ''}\n"
