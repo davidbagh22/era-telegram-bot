@@ -1,5 +1,6 @@
 from aiogram import F, Router
 from app.handlers.admin import (
+    management_ready,
     dashboard_block_a,
     task_review_block2,
     user_profile_block3_safe,
@@ -16,6 +17,7 @@ from app.handlers.admin import (
 router = Router(name="admin_root")
 router.message.filter(F.chat.type == "private")
 router.callback_query.filter(F.message.chat.type == "private")
+router.include_router(management_ready.router)
 router.include_router(dashboard_block_a.router)
 router.include_router(task_review_block2.router)
 router.include_router(user_profile_block3_safe.router)
