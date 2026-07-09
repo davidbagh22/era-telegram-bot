@@ -242,32 +242,167 @@ async def feedback_rating(call: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(FeedbackStates.liked)
 async def feedback_liked(message: Message, state: FSMContext) -> None:
-    await state.update_data(liked=clean_text(message.text or "", 1500))
+    value = clean_text(message.text or "", 1000)
+    if not value:
+        await message.answer(texts.INVALID_INPUT)
+        return
+    await state.update_data(liked=value)
     await state.set_state(FeedbackStates.improve)
     await message.answer(texts.FEEDBACK_IMPROVE)
 
 
 @router.message(FeedbackStates.improve)
 async def feedback_improve(message: Message, state: FSMContext) -> None:
-    await state.update_data(improve=clean_text(message.text or "", 1500))
-    await state.set_state(FeedbackStates.again)
-    await message.answer(texts.FEEDBACK_AGAIN)
+    value = clean_text(message.text or "", 1000)
+    if not value:
+        await message.answer(texts.INVALID_INPUT)
+        return
+    await state.update_data(improve=value)
+    await state.set_state(FeedbackStates.wants_again)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=value, callback_data=f"feedback:again:{key}")]
+            for value, key in (("Да", "yes"), ("Нет", "no"), ("Пока не знаю", "unsure"))
+        ]
+    )
+    await message.answer(texts.FEEDBACK_AGAIN, reply_markup=keyboard)
 
 
-@router.message(FeedbackStates.again)
-async def feedback_done(
-    message: Message, state: FSMContext, session: AsyncSession, user: User
+@router.callback_query(FeedbackStates.wants_again, F.data.startswith("feedback:again:"))
+async def feedback_finish(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, user: User
 ) -> None:
+    await call.answer()
     data = await state.get_data()
-    session.add(
-        Feedback(
-            event_id=data["feedback_event_id"],
-            user_id=user.id,
-            rating=data["rating"],
-            liked=data.get("liked"),
-            improve=data.get("improve"),
-            attend_again=clean_text(message.text or "", 50),
+    event_id = int(data["feedback_event_id"])
+    existing = await session.scalar(
+        select(Feedback).where(
+            Feedback.event_id == event_id, Feedback.user_id == user.id
         )
     )
+    values = dict(
+        rating=data["rating"],
+        liked=data["liked"],
+        improve=data["improve"],
+        wants_again=call.data.rsplit(":", 1)[-1],
+    )
+    if existing:
+        for key, value in values.items():
+            setattr(existing, key, value)
+    else:
+        session.add(Feedback(event_id=event_id, user_id=user.id, **values))
     await state.clear()
-    await message.answer(texts.FEEDBACK_DONE)
+    await call.message.answer(texts.FEEDBACK_DONE)
+
+
+@router.callback_query(F.data.startswith("event:activity:"))
+async def event_activity_start(
+    call: CallbackQuery,
+    user: User | None,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    await call.answer()
+    if not _approved(user):
+        return
+    activity = await session.get(EventActivity, int(call.data.rsplit(":", 1)[-1]))
+    if (
+        activity is None
+        or not activity.is_active
+        or (activity.deadline and activity.deadline <= datetime.now().astimezone())
+    ):
+        await call.message.answer("Эта активность уже закрыта")
+        return
+    registration = await session.scalar(
+        select(EventRegistration).where(
+            EventRegistration.event_id == activity.event_id,
+            EventRegistration.user_id == user.id,
+        )
+    )
+    if registration is None:
+        await call.message.answer("Активность доступна участникам мероприятия")
+        return
+    existing = await session.scalar(
+        select(EventActivitySubmission).where(
+            EventActivitySubmission.activity_id == activity.id,
+            EventActivitySubmission.user_id == user.id,
+        )
+    )
+    if existing and existing.status in {"pending", "approved"}:
+        await call.message.answer("Ваш ответ уже сохранён")
+        return
+    await state.set_state(EventActivityStates.submission)
+    await state.update_data(event_activity_id=activity.id)
+    expected = {
+        "text": "сообщение",
+        "feedback": "сообщение с Вашим мнением",
+        "photo": "фотографию",
+        "video": "видео",
+        "file": "файл",
+    }.get(activity.submission_type, "сообщение или файл")
+    await call.message.answer(
+        f"✨ {activity.title}\n\n{activity.description}\n\n"
+        f"Награда: {activity.points} баллов\n\nОтправьте {expected}"
+    )
+
+
+@router.message(EventActivityStates.submission)
+async def event_activity_submit(
+    message: Message,
+    user: User,
+    session: AsyncSession,
+    state: FSMContext,
+    bot: Bot,
+    settings: Settings,
+) -> None:
+    data = await state.get_data()
+    activity = await session.get(EventActivity, int(data["event_activity_id"]))
+    if activity is None:
+        await state.clear()
+        return
+    file_id = file_type = None
+    if message.photo:
+        file_id, file_type = message.photo[-1].file_id, "photo"
+    elif message.video:
+        file_id, file_type = message.video.file_id, "video"
+    elif message.document:
+        file_id, file_type = message.document.file_id, "file"
+    text_value = clean_text(message.text or message.caption or "", 3000) or None
+    if not file_id and not text_value:
+        await message.answer("Отправьте текст, фотографию, видео или файл")
+        return
+    expected = activity.submission_type
+    if expected in {"photo", "video", "file"} and file_type != expected:
+        await message.answer(f"Для этой активности нужен формат: {expected}")
+        return
+    existing = await session.scalar(
+        select(EventActivitySubmission).where(
+            EventActivitySubmission.activity_id == activity.id,
+            EventActivitySubmission.user_id == user.id,
+        )
+    )
+    if existing:
+        existing.text = text_value
+        existing.file_id = file_id
+        existing.file_type = file_type
+        existing.status = "pending"
+    else:
+        session.add(
+            EventActivitySubmission(
+                activity_id=activity.id,
+                user_id=user.id,
+                text=text_value,
+                file_id=file_id,
+                file_type=file_type,
+            )
+        )
+    await state.clear()
+    await message.answer(
+        "Спасибо — материал отправлен на проверку. После подтверждения баллы появятся в «Моём пути»"
+    )
+    await notify_admins(
+        bot,
+        settings,
+        f"✨ Новый результат активности\n\n{user.first_name} {user.last_name or ''}\n"
+        f"Активность: {activity.title}\nНаграда: {activity.points} баллов",
+    )
