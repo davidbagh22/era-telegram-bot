@@ -17,7 +17,7 @@ from app.keyboards.participant import (
 from app.repositories.users import rating, user_stats
 from app.services.event_service import published_events
 from app.services.points_service import total_points
-from app.utils import texts
+from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
 
 router = Router(name="participant_navigation")
@@ -53,7 +53,7 @@ async def _send_main_menu(message: Message, user: User | None) -> None:
         await message.answer(texts.APPLICATION_PENDING)
         return
     await message.answer(
-        "Главное меню ЭРА",
+        ux_texts.MAIN_INLINE_MENU,
         reply_markup=main_inline_keyboard(
             privileged=user.role in PRIVILEGED_ROLES,
             admin=_has_admin_access(user),
@@ -89,10 +89,10 @@ async def _send_event_list(
         return
     events = await published_events(session)
     if not events:
-        await message.answer(texts.EVENTS_EMPTY)
+        await message.answer(ux_texts.EVENTS_EMPTY)
         return
     await message.answer(
-        "Афиша ЭРА 📅\n\nВыберите мероприятие, чтобы увидеть программу, место, баллы и свободные места",
+        ux_texts.EVENTS_LIST_HEADER,
         reply_markup=event_list_keyboard(events),
     )
 
@@ -130,8 +130,7 @@ async def opportunities_button(
         return
     balance = await total_points(session, user.id)
     await message.answer(
-        f"⭐ Возможности\n\nВаш баланс: {balance} баллов\n\n"
-        "Здесь доступны партнёры, каталог возможностей, аукционы, награды и специальные форматы ЭРА.",
+        ux_texts.OPPORTUNITIES_MENU.format(balance=balance),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="🤝 Партнёры", callback_data="partners:list")],
@@ -151,7 +150,7 @@ async def contact_button(
         await message.answer(texts.APPLICATION_PENDING)
         return
     await message.answer(
-        "💬 Связь\n\nЗдесь можно задать вопрос, найти команду ЭРА, открыть правила или информацию о боте.",
+        ux_texts.CONTACT_MENU,
         reply_markup=contact_keyboard(),
     )
 
@@ -162,7 +161,7 @@ async def contact_callback(call: CallbackQuery, user: User | None) -> None:
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    await call.message.answer("💬 Связь\n\nВыберите, что Вам нужно.", reply_markup=contact_keyboard())
+    await call.message.answer(ux_texts.CONTACT_CALLBACK, reply_markup=contact_keyboard())
 
 
 @router.callback_query(F.data == "team:menu")
@@ -172,7 +171,7 @@ async def team_callback(call: CallbackQuery, user: User | None, settings: Settin
         await call.message.answer(texts.APPLICATION_PENDING)
         return
     await call.message.answer(
-        "👥 Команда ЭРА\n\nДепартаменты, контакты, руководители направлений и чаты.",
+        ux_texts.TEAM_MENU,
         reply_markup=team_keyboard(settings.general_chat_url),
     )
 
