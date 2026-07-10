@@ -17,6 +17,7 @@ from app.database.models import (
     User,
 )
 from app.keyboards.admin import project_review_actions
+from app.services.archive_service import archive_expired_content
 from app.services.event_service import event_datetime
 from app.services.notification_service import safe_send
 from app.utils.constants import EventStatus, ProjectStatus, RegistrationStatus
@@ -107,6 +108,13 @@ async def send_event_reminders(bot: Bot, settings: Settings, session_factory) ->
 
 async def send_weekly_message(bot: Bot, chat_id: int, text: str) -> None:
     await safe_send(bot, chat_id, text)
+
+
+async def run_archive_maintenance(settings: Settings, session_factory) -> None:
+    async with session_factory() as session:
+        result = await archive_expired_content(session, timezone=settings.timezone)
+        await session.commit()
+    logger.info("archive-maintenance completed: %s", result)
 
 
 async def send_project_venue_reminders(
@@ -212,6 +220,16 @@ def create_scheduler(bot: Bot, settings: Settings, session_factory) -> AsyncIOSc
         minutes=1,
         args=(bot, settings, session_factory),
         id="event-reminders",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        run_archive_maintenance,
+        "interval",
+        hours=6,
+        args=(settings, session_factory),
+        id="archive-maintenance",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
