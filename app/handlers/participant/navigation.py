@@ -18,7 +18,7 @@ from app.repositories.users import rating, user_stats
 from app.services.event_service import published_events
 from app.services.points_service import total_points
 from app.utils import texts, ux_texts
-from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
+from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role, STATUS_LABELS
 
 router = Router(name="participant_navigation")
 
@@ -48,6 +48,19 @@ def _has_admin_access(user: User | None) -> bool:
     )
 
 
+def _cabinet_text(user: User, stats: dict[str, int], place: int | str) -> str:
+    status = STATUS_LABELS.get(user.participation_status, user.participation_status)
+    return f"""👤 Личный кабинет
+
+{user.first_name}, здесь собраны самые нужные разделы Вашего участия в ЭРА
+
+Статус: {status}
+Баланс: {stats['points']} баллов
+Место в рейтинге: {place}
+
+Выберите, что открыть"""
+
+
 async def _send_main_menu(message: Message, user: User | None) -> None:
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
@@ -73,7 +86,7 @@ async def _send_personal_cabinet(
         (index for index, (item, _) in enumerate(rows, 1) if item.id == user.id), "—"
     )
     await message.answer(
-        texts.journey_text(user, stats, place),
+        _cabinet_text(user, stats, place),
         reply_markup=journey_keyboard(
             settings.internal_department_chat_url,
             settings.external_department_chat_url,

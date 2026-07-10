@@ -1,3 +1,5 @@
+from datetime import date
+
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.exceptions import TelegramAPIError
@@ -23,6 +25,7 @@ from app.keyboards.common import back_keyboard
 from app.keyboards.participant import (
     journey_keyboard,
     portfolio_keyboard,
+    profile_sections_keyboard,
     tasks_keyboard,
 )
 from app.repositories.users import rating, user_stats
@@ -32,6 +35,7 @@ from app.utils.constants import (
     ApplicationStatus,
     PROJECT_STATUS_LABELS,
     REGISTRATION_STATUS_LABELS,
+    STATUS_LABELS,
     TASK_STATUS_LABELS,
 )
 from app.utils.telegram import send_long_text
@@ -58,6 +62,57 @@ async def _rating_context(session: AsyncSession, user: User) -> tuple[list, int 
     return rows, place
 
 
+def _age_from_birth_date(birth_date) -> int | None:
+    if not birth_date:
+        return None
+    today = date.today()
+    return today.year - birth_date.year - (
+        (today.month, today.day) < (birth_date.month, birth_date.day)
+    )
+
+
+def _birth_date_and_age(user: User) -> tuple[str, str]:
+    birth_date = getattr(user, "birth_date", None)
+    if birth_date:
+        return birth_date.strftime("%d.%m.%Y"), str(_age_from_birth_date(birth_date))
+    return "не указана", str(user.age) if user.age else "не указан"
+
+
+def _directions_text(user: User) -> str:
+    directions = ", ".join(item.direction.name for item in user.directions)
+    return directions or "не выбраны"
+
+
+def _cabinet_text(user: User, stats: dict[str, int], place: int | str) -> str:
+    status = STATUS_LABELS.get(user.participation_status, user.participation_status)
+    return f"""👤 Личный кабинет
+
+{user.first_name}, здесь собраны самые нужные разделы Вашего участия в ЭРА
+
+Статус: {status}
+Баланс: {stats['points']} баллов
+Место в рейтинге: {place}
+
+Выберите, что открыть"""
+
+
+def _my_data_text(user: User, stats: dict[str, int]) -> str:
+    birth_date, age = _birth_date_and_age(user)
+    status = STATUS_LABELS.get(user.participation_status, user.participation_status)
+    return f"""⚙️ Мои данные
+
+Имя: {user.first_name}
+Фамилия: {user.last_name or 'не указана'}
+Дата рождения: {birth_date}
+Возраст: {age}
+Город: {user.city or 'не указан'}
+Телефон: {user.phone or 'не указан'}
+Email: {user.email or 'не указан'}
+Статус: {status}
+Баланс: {stats['points']} баллов
+Направления: {_directions_text(user)}"""
+
+
 async def _send_journey(
     message: Message,
     user: User,
@@ -67,7 +122,7 @@ async def _send_journey(
     stats = await user_stats(session, user.id)
     _, place = await _rating_context(session, user)
     await message.answer(
-        texts.journey_text(user, stats, place),
+        _cabinet_text(user, stats, place),
         reply_markup=journey_keyboard(
             settings.internal_department_chat_url,
             settings.external_department_chat_url,
@@ -127,7 +182,7 @@ async def profile(
         return
     stats = await user_stats(session, user.id)
     await call.message.answer(
-        texts.profile_text(user, stats), reply_markup=back_keyboard("cabinet:open")
+        _my_data_text(user, stats), reply_markup=profile_sections_keyboard()
     )
 
 
@@ -292,7 +347,7 @@ async def my_projects(
         )
         or "Проектов пока нет."
     )
-    await call.message.answer(body, reply_markup=back_keyboard("cabinet:open"))
+    await call.message.answer(body, reply_markup=back_keyboard("cabinet:profile"))
 
 
 @router.callback_query(F.data == "cabinet:tasks")
@@ -376,8 +431,8 @@ async def my_departments(call: CallbackQuery, user: User | None) -> None:
         or "• Не выбраны"
     )
     await call.message.answer(
-        f"Мои департаменты\n{departments}\n\nМои направления\n{directions}",
-        reply_markup=back_keyboard("cabinet:open"),
+        f"🧩 Направления\n\nДепартаменты\n{departments}\n\nНаправления\n{directions}",
+        reply_markup=back_keyboard("cabinet:profile"),
     )
 
 
@@ -398,7 +453,7 @@ async def my_events(
     if not rows:
         await call.message.answer(
             "Регистраций на мероприятия пока нет.",
-            reply_markup=back_keyboard("cabinet:open"),
+            reply_markup=back_keyboard("cabinet:profile"),
         )
         return
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -442,9 +497,9 @@ async def my_events(
                     ]
                 )
     keyboard_rows.append(
-        [InlineKeyboardButton(text="Назад", callback_data="cabinet:open")]
+        [InlineKeyboardButton(text="Назад", callback_data="cabinet:profile")]
     )
     await call.message.answer(
-        "Мои мероприятия\n\n" + "\n".join(lines),
+        "📅 Мои мероприятия\n\n" + "\n".join(lines),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard_rows),
     )
