@@ -39,6 +39,7 @@ class User(TimestampMixin, Base):
     username: Mapped[str | None] = mapped_column(String(64))
     first_name: Mapped[str] = mapped_column(String(100))
     last_name: Mapped[str | None] = mapped_column(String(100))
+    birth_date: Mapped[date | None] = mapped_column(Date, index=True)
     age: Mapped[int | None] = mapped_column(Integer)
     phone: Mapped[str | None] = mapped_column(String(32))
     email: Mapped[str | None] = mapped_column(String(255), index=True)

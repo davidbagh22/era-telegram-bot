@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from datetime import date
 from typing import Any
 
 from sqlalchemy import func, select
@@ -16,6 +17,7 @@ from app.database.models import (
     UserDepartment,
     UserDirection,
 )
+from app.utils.validators import calculate_age
 
 
 async def get_user_by_telegram_id(
@@ -26,6 +28,14 @@ async def get_user_by_telegram_id(
 
 async def get_user(session: AsyncSession, user_id: int) -> User | None:
     return await session.get(User, user_id)
+
+
+def _birth_date_from_registration(value: date | str | None) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(value)
 
 
 async def create_user_from_registration(
@@ -39,12 +49,15 @@ async def create_user_from_registration(
     if existing is not None:
         return existing, False
 
+    birth_date = _birth_date_from_registration(data.get("birth_date"))
+    age = calculate_age(birth_date) if birth_date is not None else data.get("age")
     user = User(
         telegram_id=telegram_id,
         username=username,
         first_name=data["first_name"],
         last_name=data["last_name"],
-        age=data["age"],
+        birth_date=birth_date,
+        age=age,
         phone=data["phone"],
         email=data.get("email"),
         city=data["city"],
