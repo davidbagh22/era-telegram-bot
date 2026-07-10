@@ -4,7 +4,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from aiogram.types import BotCommand, MenuButtonDefault, Update
+from aiogram.types import BotCommand, BotCommandScopeChat, MenuButtonDefault, Update
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 
 from app.bot import create_bot, create_dispatcher
@@ -20,6 +20,29 @@ logger = logging.getLogger(__name__)
 # render.yaml configuration is needed. Falls back to "unknown" locally
 # or on any host that doesn't set it.
 DEPLOYED_COMMIT = os.environ.get("RENDER_GIT_COMMIT", "unknown")[:7]
+
+
+USER_COMMANDS = [
+    BotCommand(command="start", description="Открыть бота ЭРА"),
+    BotCommand(command="profile", description="Личный кабинет"),
+    BotCommand(command="data", description="Мои данные"),
+    BotCommand(command="events", description="Афиша"),
+    BotCommand(command="tasks", description="Задачи"),
+    BotCommand(command="opportunities", description="Возможности"),
+    BotCommand(command="points", description="Баллы"),
+    BotCommand(command="contact", description="Связь"),
+    BotCommand(command="help", description="Что умеет бот"),
+]
+
+ADMIN_COMMANDS = USER_COMMANDS + [
+    BotCommand(command="panel", description="Панель управления"),
+    BotCommand(command="admin_users", description="Участники"),
+    BotCommand(command="admin_events", description="События"),
+    BotCommand(command="admin_projects", description="Проекты"),
+    BotCommand(command="admin_partners", description="Партнёры"),
+    BotCommand(command="admin_tasks", description="Задачи"),
+    BotCommand(command="admin_rights", description="Должности и права"),
+]
 
 
 @asynccontextmanager
@@ -69,24 +92,12 @@ async def lifespan(app: FastAPI):
                 drop_pending_updates=False,
             )
             await bot.set_chat_menu_button(menu_button=MenuButtonDefault())
-            await bot.set_my_commands(
-                [
-                    BotCommand(command="start", description="Открыть бота ЭРА"),
-                    BotCommand(command="menu", description="Главное меню"),
-                    BotCommand(command="profile", description="Личный кабинет"),
-                    BotCommand(command="journey", description="Мой путь"),
-                    BotCommand(command="events", description="Афиша"),
-                    BotCommand(command="tasks", description="Задачи"),
-                    BotCommand(command="opportunities", description="Возможности"),
-                    BotCommand(command="projects", description="Проекты"),
-                    BotCommand(command="rating", description="Рейтинг"),
-                    BotCommand(command="contact", description="Связь с командой"),
-                    BotCommand(command="panel", description="Панель управления"),
-                    BotCommand(command="team", description="Команда ЭРА"),
-                    BotCommand(command="about", description="Что умеет бот"),
-                    BotCommand(command="rules", description="Правила сообщества"),
-                ]
-            )
+            await bot.set_my_commands(USER_COMMANDS)
+            for admin_id in settings.admin_ids:
+                await bot.set_my_commands(
+                    ADMIN_COMMANDS,
+                    scope=BotCommandScopeChat(chat_id=admin_id),
+                )
             logger.info("Telegram webhook configured: %s", webhook_url)
         else:
             logger.warning("PUBLIC_BASE_URL is not set; Telegram webhook is disabled")
