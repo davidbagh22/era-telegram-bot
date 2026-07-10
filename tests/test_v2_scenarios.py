@@ -43,26 +43,27 @@ class V2ScenarioTests(unittest.TestCase):
     """Ten product journeys that must remain stable as ERA grows."""
 
     def test_01_user_journey_is_compact_and_grouped(self) -> None:
-        # Product decision (2026-07): the flat 8-button cabinet was replaced
-        # with a 2-item menu (Профиль / Баллы и достижения). "Мой путь" was
-        # folded into "Мой профиль" — opening the profile now shows
-        # portfolio/events/projects/directions/tasks directly.
         labels = _labels(journey_keyboard())
         self.assertEqual(
             labels,
-            ["👤 Мой профиль", "🏆 Баллы и достижения", "← Главное меню"],
+            ["⚙️ Мои данные", "✅ Задачи", "🏆 Баллы", "← Главное меню"],
         )
         points_labels = _labels(points_hub_keyboard())
         self.assertIn("🏅 Достижения и знаки", points_labels)
         profile_labels = _labels(
             profile_sections_keyboard("https://t.me/internal", "https://t.me/external")
         )
-        self.assertIn("🎓 Портфолио", profile_labels)
-        self.assertIn("➕ Выбрать направление", profile_labels)
+        self.assertIn("✏️ Изменить данные", profile_labels)
+        self.assertIn("📅 Мероприятия", profile_labels)
+        self.assertIn("💡 Проекты", profile_labels)
+        self.assertIn("🧩 Направления", profile_labels)
         profile_callbacks = _callbacks(
             profile_sections_keyboard("https://t.me/internal", "https://t.me/external")
         )
-        self.assertIn("department:apply:start", profile_callbacks)
+        self.assertIn("profile:settings", profile_callbacks)
+        self.assertIn("cabinet:events", profile_callbacks)
+        self.assertIn("cabinet:projects", profile_callbacks)
+        self.assertIn("cabinet:departments", profile_callbacks)
         self.assertNotIn("cabinet:direction:add", profile_callbacks)
 
     def test_02_project_review_has_two_human_stages(self) -> None:
