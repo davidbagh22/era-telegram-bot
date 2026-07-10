@@ -32,6 +32,7 @@ from app.states.growth import (
     PortfolioUploadStates,
     TaskSubmissionStates,
 )
+from app.utils import ux_texts
 from app.utils.constants import ApplicationStatus
 from app.utils.validators import clean_text
 
@@ -78,13 +79,9 @@ async def rewards_menu(
         or (auction.audience_filter_json or {}).get("role") == user.role
     ]
     balance = await total_points(session, user.id)
-    body = (
-        f"🎁 Возможности за баллы\n\nВаш баланс: {balance} баллов\n\n"
-        "Баллы можно обменять на возможности из каталога или использовать в аукционах. "
-        "При обмене и после победы в аукционе баллы списываются"
-    )
+    body = ux_texts.REWARDS_MENU.format(balance=balance)
     if not rewards and not auctions:
-        body += "\n\nНовых возможностей пока нет — мы сообщим, когда появятся"
+        body += f"\n\n{ux_texts.REWARDS_EMPTY}"
     await call.message.answer(body, reply_markup=rewards_keyboard(rewards, auctions))
 
 

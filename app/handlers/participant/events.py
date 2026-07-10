@@ -30,7 +30,7 @@ from app.services.event_service import (
 )
 from app.services.notification_service import notify_admins
 from app.states.event import EventActivityStates, FeedbackStates, SelfieStates
-from app.utils import texts
+from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus, RegistrationStatus
 from app.utils.validators import clean_text
 
@@ -54,10 +54,10 @@ async def _send_event_list(
         return
     events = await published_events(session)
     if not events:
-        await message.answer(texts.EVENTS_EMPTY)
+        await message.answer(ux_texts.EVENTS_EMPTY)
         return
     await message.answer(
-        "Ближайшие мероприятия ЭРА 📅\n\nВыберите событие, чтобы увидеть программу, место, баллы и свободные места",
+        ux_texts.EVENTS_LIST_HEADER,
         reply_markup=event_list_keyboard(events),
     )
 
@@ -90,7 +90,7 @@ async def event_view(
     event_id = int(call.data.rsplit(":", 1)[-1])
     event = await session.get(Event, event_id)
     if event is None:
-        await call.message.answer(texts.EVENTS_EMPTY)
+        await call.message.answer(ux_texts.EVENTS_EMPTY)
         return
     places = await available_places(session, event)
     await call.message.answer(
@@ -109,7 +109,7 @@ async def event_join(
         return
     event = await session.get(Event, int(call.data.rsplit(":", 1)[-1]))
     if event is None:
-        await call.message.answer(texts.EVENTS_EMPTY)
+        await call.message.answer(ux_texts.EVENTS_EMPTY)
         return
     _, error = await register_for_event(session, event, user.id)
     if error == "already":
