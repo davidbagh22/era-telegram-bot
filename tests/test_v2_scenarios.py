@@ -18,6 +18,7 @@ from app.keyboards.participant import (
     points_hub_keyboard,
     portfolio_keyboard,
     profile_sections_keyboard,
+    profile_settings_keyboard,
     rewards_keyboard,
     tasks_keyboard,
 )
@@ -65,6 +66,20 @@ class V2ScenarioTests(unittest.TestCase):
         self.assertIn("cabinet:projects", profile_callbacks)
         self.assertIn("cabinet:departments", profile_callbacks)
         self.assertNotIn("cabinet:direction:add", profile_callbacks)
+        settings_labels = _labels(profile_settings_keyboard())
+        for label in (
+            "Имя",
+            "Фамилия",
+            "Дата рождения",
+            "Телефон",
+            "Email",
+            "Город",
+            "Учёба / работа",
+            "Занятость",
+            "Фото",
+            "Соцсети",
+        ):
+            self.assertIn(label, settings_labels)
 
     def test_02_project_review_has_two_human_stages(self) -> None:
         initial = _callbacks(project_review_actions(7, "initial_review"))
