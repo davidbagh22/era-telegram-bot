@@ -41,10 +41,17 @@ def _participants_keyboard(event_id: int, rows: list[tuple[EventRegistration, Us
         ])
     buttons.append([
         InlineKeyboardButton(
-            text="⭐ Начислить баллы посетившим",
-            callback_data=f"admin:event:award:{event_id}",
+            text="✨ Управление активностями",
+            callback_data=f"admin:event:activities:create:{event_id}",
         )
     ])
+    if rows:
+        buttons.append([
+            InlineKeyboardButton(
+                text="⭐ Начислить баллы посетившим",
+                callback_data=f"admin:event:award:{event_id}",
+            )
+        ])
     buttons.append([InlineKeyboardButton(text="← К мероприятию", callback_data="admin:events")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -72,7 +79,8 @@ async def event_participants(
     stats = await registration_stats(session, event)
     if not rows:
         await call.message.answer(
-            f"👥 Участники мероприятия\n\n{event.title}\n\nПока никто не зарегистрирован."
+            f"👥 Участники мероприятия\n\n{event.title}\n\nПока никто не зарегистрирован.",
+            reply_markup=_participants_keyboard(event.id, rows),
         )
         return
     lines = []
