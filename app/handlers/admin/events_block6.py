@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import Event, User
 from app.services.audit_service import audit
+from app.services.event_card import format_event_text, send_event_card, send_event_card_to_chat
 from app.services.notification_service import safe_send
 from app.utils import texts
 from app.utils.constants import EVENT_STATUS_LABELS, EventStatus, Role
@@ -40,15 +41,10 @@ async def guard(call: CallbackQuery, user: User | None, settings: Settings) -> b
 
 
 def public_text(event: Event) -> str:
-    return (
-        f"📅 Новое мероприятие ЭРА\n\n"
-        f"{event.title}\n\n"
-        f"{event.description}\n\n"
-        f"Дата: {event.event_date:%d.%m.%Y}\n"
-        f"Время: {event.event_time:%H:%M}\n"
-        f"Место: {event.location}\n"
-        f"Формат: {event.format}\n\n"
-        "Регистрация открыта в боте."
+    return format_event_text(
+        event,
+        header="📅 Новое мероприятие ЭРА",
+        extra_text="Регистрация открыта в боте.",
     )
 
 
@@ -90,12 +86,11 @@ async def events_list(call: CallbackQuery, user: User | None, settings: Settings
         await call.message.answer("Мероприятий пока нет")
         return
     for event in events:
-        await call.message.answer(
-            f"📅 Мероприятие #{event.id}\n\n{event.title}\n\n"
-            f"{event.event_date:%d.%m.%Y} в {event.event_time:%H:%M}\n"
-            f"Место: {event.location}\n"
-            f"Статус: {EVENT_STATUS_LABELS.get(event.status, event.status)}",
-            reply_markup=event_kb(event),
+        await send_event_card(
+            call.message,
+            event,
+            header=f"📅 Мероприятие #{event.id}\nСтатус: {EVENT_STATUS_LABELS.get(event.status, event.status)}",
+            keyboard=event_kb(event),
         )
 
 
@@ -113,7 +108,12 @@ async def approve_event(call: CallbackQuery, user: User | None, settings: Settin
     owner = await session.get(User, event.created_by)
     if owner:
         await safe_send(bot, owner.telegram_id, f"Мероприятие «{event.title}» одобрено. Рассылка будет только после отдельного подтверждения админа.")
-    await call.message.answer("Мероприятие одобрено. Рассылка ещё не отправлена.", reply_markup=event_kb(event))
+    await send_event_card(
+        call.message,
+        event,
+        header="Мероприятие одобрено. Рассылка ещё не отправлена.",
+        keyboard=event_kb(event),
+    )
 
 
 @router.callback_query(F.data.startswith("admin:event:broadcast_preview:"))
@@ -124,7 +124,13 @@ async def broadcast_preview(call: CallbackQuery, user: User | None, settings: Se
     if not event:
         await call.message.answer("Мероприятие не найдено")
         return
-    await call.message.answer(f"👁 Предпросмотр рассылки\n\n{public_text(event)}", reply_markup=event_kb(event))
+    await send_event_card(
+        call.message,
+        event,
+        header="👁 Предпросмотр рассылки",
+        extra_text="Регистрация будет открыта в боте после публикации.",
+        keyboard=event_kb(event),
+    )
 
 
 @router.callback_query(F.data.startswith("admin:event:broadcast_prepare:"))
@@ -155,15 +161,14 @@ async def broadcast_publish(call: CallbackQuery, user: User | None, settings: Se
     if not event or PREPARED_MARK not in (event.additional_info or ""):
         await call.message.answer("Сначала нажмите «Подготовить рассылку 1/2»")
         return
-    text = public_text(event)
     if settings.general_chat_id:
-        if event.poster_file_id:
-            try:
-                await bot.send_photo(settings.general_chat_id, event.poster_file_id, caption=text)
-            except Exception:
-                await safe_send(bot, settings.general_chat_id, text)
-        else:
-            await safe_send(bot, settings.general_chat_id, text)
+        await send_event_card_to_chat(
+            bot,
+            settings.general_chat_id,
+            event,
+            header="📅 Новое мероприятие ЭРА",
+            extra_text="Регистрация открыта в боте.",
+        )
     event.status = EventStatus.REGISTRATION_OPEN
     event.additional_info = (event.additional_info or "").replace(PREPARED_MARK, "").strip()
     await audit(session, actor_id=user.id if user else None, action="event.broadcast_published", entity_type="event", entity_id=event.id)

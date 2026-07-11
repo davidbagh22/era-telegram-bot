@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Event, User
 from app.keyboards.participant import event_card_keyboard, event_list_keyboard
+from app.services.event_card import send_event_card
 from app.services.event_service import (
     PUBLIC_EVENT_STATUSES,
     REGISTRATION_ALLOWED_STATUSES,
@@ -71,9 +72,11 @@ async def event_view(call: CallbackQuery, user: User | None, session: AsyncSessi
         return
     places = await available_places(session, event)
     can_register = event.status in REGISTRATION_ALLOWED_STATUSES
-    await call.message.answer(
-        texts.event_card(event, available=places),
-        reply_markup=event_card_keyboard(event.id, can_register=can_register),
+    await send_event_card(
+        call.message,
+        event,
+        available=places,
+        keyboard=event_card_keyboard(event.id, can_register=can_register),
     )
 
 
