@@ -24,38 +24,25 @@ class FullBotFlowContractTests(unittest.TestCase):
     def test_registration_flow_is_complete(self) -> None:
         text = source("app/handlers/registration.py")
         self.assertContainsAll(text, [
-            "RegistrationStates.birth_date",
-            "parse_birth_date",
-            "calculate_age",
-            "RegistrationStates.photo",
-            "photo_file_id",
-            "social_url",
+            "RegistrationStates.birth_date", "parse_birth_date", "calculate_age",
+            "RegistrationStates.photo", "photo_file_id", "social_url",
         ])
 
     def test_participant_main_modules_are_registered(self) -> None:
         text = source("app/handlers/participant/__init__.py")
         self.assertContainsAll(text, [
-            "navigation.router",
-            "commands_ready.router",
-            "task_block2.router",
-            "projects_block5.router",
-            "directions_block7.router",
-            "events_stability_block8.router",
-            "event_activities_block15.router",
-            "auction_block17.router",
-            "partner_offers_block16.router",
+            "navigation.router", "commands_ready.router", "task_block2.router",
+            "projects_block5.router", "directions_block7.router",
+            "events_stability_block8.router", "event_activities_block15.router",
+            "auction_block17.router", "partner_offers_block16.router",
         ])
 
     def test_admin_main_modules_are_registered(self) -> None:
         text = source("app/handlers/admin/__init__.py")
         self.assertContainsAll(text, [
-            "management_ready.router",
-            "rights_block6.router",
-            "task_review_block2.router",
-            "projects_block5_decision.router",
-            "event_registration_block14.router",
-            "event_activities_block15.router",
-            "auction_block17.router",
+            "management_ready.router", "rights_block6.router", "task_review_block2.router",
+            "projects_block5_decision.router", "event_registration_block14.router",
+            "event_activities_block15.router", "auction_block17.router",
             "partner_offers_block16.router",
         ])
 
@@ -90,7 +77,7 @@ class FullBotFlowContractTests(unittest.TestCase):
     def test_event_activities_proof_flow_exists(self) -> None:
         participant = source("app/handlers/participant/event_activities_block15.py")
         admin = source("app/handlers/admin/event_activities_block15.py")
-        self.assertContainsAll(participant, ["ActivitySubmission", "photo", "link", "text", "file"])
+        self.assertContainsAll(participant, ["EventActivitySubmission", "photo", "link", "text", "file"])
         self.assertContainsAll(admin, ["approve", "reject", "add_points"])
 
     def test_partner_offers_application_flow_exists(self) -> None:
