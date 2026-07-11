@@ -15,7 +15,19 @@ router = Router(name="admin_partners")
 
 
 def admin_ok(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    return telegram_id in settings.admin_ids or bool(user and user.role == Role.ADMIN and not user.is_blocked and not user.is_archived)
+    return bool(
+        telegram_id in settings.admin_ids
+        or (user and user.role == Role.ADMIN and not user.is_blocked and not user.is_archived)
+        or (
+            user
+            and not user.is_blocked
+            and not user.is_archived
+            and any(
+                grant.is_active and grant.permission == "partners.manage"
+                for grant in (user.permission_grants or [])
+            )
+        )
+    )
 
 
 @router.callback_query(F.data == "admin:menu:growth")
