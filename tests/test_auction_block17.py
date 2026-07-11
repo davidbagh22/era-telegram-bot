@@ -13,13 +13,17 @@ class AuctionFlowContractTests(unittest.TestCase):
         self.assertIn("with_for_update", source)
         self.assertIn("total_points", source)
         self.assertIn("Баллы пока не списаны", source)
+        self.assertIn("Последняя ставка", source)
+        self.assertIn("Лидер:", source)
         self.assertIn('callback_data="auctions:list"', (ROOT / "app/handlers/participant/navigation.py").read_text(encoding="utf-8"))
 
-    def test_admin_confirms_winner_before_points_are_spent(self) -> None:
+    def test_admin_confirms_winner_only_after_time_and_then_transfers(self) -> None:
         source = (ROOT / "app/handlers/admin/auction_block17.py").read_text(encoding="utf-8")
-        self.assertIn('points=-winner_bid.amount', source)
-        self.assertIn('winner_bid.status = "winner"', source)
+        self.assertIn("points=-bid.amount", source)
+        self.assertIn('bid.status = "winner"', source)
         self.assertIn('auction.status = "completed"', source)
+        self.assertIn('auction.status = "delivered"', source)
+        self.assertIn("datetime.now(timezone.utc) < auction.ends_at", source)
         self.assertIn("with_for_update", source)
 
     def test_routers_are_registered(self) -> None:
