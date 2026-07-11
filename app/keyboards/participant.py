@@ -129,9 +129,22 @@ def profile_sections_keyboard(
 def profile_settings_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Имя", callback_data="profile:edit:first_name"),
+                InlineKeyboardButton(text="Фамилия", callback_data="profile:edit:last_name"),
+            ],
+            [
+                InlineKeyboardButton(text="Дата рождения", callback_data="profile:birth_date"),
+                InlineKeyboardButton(text="Телефон", callback_data="profile:phone"),
+            ],
+            [
+                InlineKeyboardButton(text="Email", callback_data="profile:email"),
+                InlineKeyboardButton(text="Город", callback_data="profile:edit:city"),
+            ],
+            [InlineKeyboardButton(text="Учёба / работа", callback_data="profile:edit:education_work")],
+            [InlineKeyboardButton(text="Занятость", callback_data="profile:edit:occupation")],
             [InlineKeyboardButton(text="Фото", callback_data="profile:photo")],
             [InlineKeyboardButton(text="Соцсети", callback_data="profile:socials")],
-            [InlineKeyboardButton(text="Email", callback_data="profile:email")],
             [InlineKeyboardButton(text="← Мои данные", callback_data="cabinet:profile")],
         ]
     )
