@@ -28,6 +28,7 @@ def format_event_text(
     *,
     header: str | None = None,
     available: str | None = None,
+    registered: int | None = None,
     extra_text: str | None = None,
 ) -> str:
     parts = []
@@ -49,8 +50,13 @@ def format_event_text(
     additional = _clean_additional_info(getattr(event, "additional_info", None))
     if additional:
         parts.append(additional)
+    registration_lines = []
+    if registered is not None:
+        registration_lines.append(f"Зарегистрировано: {registered}")
     if available is not None:
-        parts.append(f"Свободных мест: {available}")
+        registration_lines.append(f"Свободных мест: {available}")
+    if registration_lines:
+        parts.append("\n".join(registration_lines))
     points = getattr(event, "points_for_visit", None)
     if points is not None:
         parts.append(f"Баллы за участие: {points}")
@@ -66,9 +72,16 @@ async def send_event_card(
     keyboard: InlineKeyboardMarkup | None = None,
     header: str | None = None,
     available: str | None = None,
+    registered: int | None = None,
     extra_text: str | None = None,
 ) -> None:
-    text = format_event_text(event, header=header, available=available, extra_text=extra_text)
+    text = format_event_text(
+        event,
+        header=header,
+        available=available,
+        registered=registered,
+        extra_text=extra_text,
+    )
     poster_file_id = getattr(event, "poster_file_id", None)
     if poster_file_id:
         try:
@@ -91,9 +104,16 @@ async def send_event_card_to_chat(
     keyboard: InlineKeyboardMarkup | None = None,
     header: str | None = None,
     available: str | None = None,
+    registered: int | None = None,
     extra_text: str | None = None,
 ) -> None:
-    text = format_event_text(event, header=header, available=available, extra_text=extra_text)
+    text = format_event_text(
+        event,
+        header=header,
+        available=available,
+        registered=registered,
+        extra_text=extra_text,
+    )
     poster_file_id = getattr(event, "poster_file_id", None)
     if poster_file_id:
         try:
