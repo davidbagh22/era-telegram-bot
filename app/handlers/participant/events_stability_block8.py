@@ -1,11 +1,12 @@
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Event, User
-from app.keyboards.participant import event_card_keyboard, event_list_keyboard
+from app.database.models import Event, EventActivity, User
+from app.keyboards.participant import event_list_keyboard
 from app.services.event_card import send_event_card
 from app.services.event_registration_service import registration_stats
 from app.services.event_service import (
@@ -27,6 +28,16 @@ def _approved(user: User | None) -> bool:
         and not user.is_blocked
         and not user.is_archived
     )
+
+
+def _event_keyboard(event_id: int, *, can_register: bool, has_activities: bool) -> InlineKeyboardMarkup:
+    rows = []
+    if can_register:
+        rows.append([InlineKeyboardButton(text="Зарегистрироваться", callback_data=f"event:join:{event_id}")])
+    if has_activities:
+        rows.append([InlineKeyboardButton(text="✨ Активности", callback_data=f"event:activities:{event_id}")])
+    rows.append([InlineKeyboardButton(text="← Афиша", callback_data="events:list")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def _send_event_list(message: Message, user: User | None, session: AsyncSession) -> None:
@@ -75,6 +86,13 @@ async def event_view(call: CallbackQuery, user: User | None, session: AsyncSessi
         event.status in REGISTRATION_ALLOWED_STATUSES
         and (event.participant_limit is None or int(stats["free"]) > 0)
     )
+    has_activities = bool(
+        await session.scalar(
+            select(func.count())
+            .select_from(EventActivity)
+            .where(EventActivity.event_id == event.id, EventActivity.is_active.is_(True))
+        )
+    )
     extra = None
     if event.status not in REGISTRATION_ALLOWED_STATUSES:
         extra = "Регистрация закрыта, но карточка мероприятия остаётся доступна."
@@ -86,7 +104,11 @@ async def event_view(call: CallbackQuery, user: User | None, session: AsyncSessi
         available=str(stats["free"]),
         registered=int(stats["registered"]),
         extra_text=extra,
-        keyboard=event_card_keyboard(event.id, can_register=can_register),
+        keyboard=_event_keyboard(
+            event.id,
+            can_register=can_register,
+            has_activities=has_activities,
+        ),
     )
 
 
