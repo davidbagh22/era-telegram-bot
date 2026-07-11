@@ -259,6 +259,14 @@ def admin_user_actions(user_id: int) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
+                    text="➕ Баллы", callback_data=f"admin:user:points:{user_id}"
+                ),
+                InlineKeyboardButton(
+                    text="🏅 Знак", callback_data=f"admin:user:badge:{user_id}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
                     text="Изменить роль", callback_data=f"admin:user:role:{user_id}"
                 ),
                 InlineKeyboardButton(
@@ -267,16 +275,23 @@ def admin_user_actions(user_id: int) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="Портфолио", callback_data=f"admin:user:portfolio:{user_id}"
+                    text="🔐 Технические права",
+                    callback_data=f"admin:user:permissions:{user_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🚫 Блок / разблокировка",
+                    callback_data=f"admin:user:block_menu:{user_id}",
                 ),
                 InlineKeyboardButton(
-                    text="Баллы и бейджи", callback_data="admin:points"
+                    text="🗄 Архив",
+                    callback_data=f"admin:user:archive:{user_id}",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="Удалить участника",
-                    callback_data=f"admin:user:archive:{user_id}",
+                    text="Портфолио", callback_data=f"admin:user:portfolio:{user_id}"
                 )
             ],
             [
@@ -293,8 +308,9 @@ def user_role_keyboard(user_id: int) -> InlineKeyboardMarkup:
         ("Участник", "participant"),
         ("Активист", "activist"),
         ("Лидер", "leader"),
-        ("Руководитель", "head"),
+        ("Руководитель направления", "head"),
         ("Совет", "council"),
+        ("Админ", "admin"),
     )
     return InlineKeyboardMarkup(
         inline_keyboard=[
