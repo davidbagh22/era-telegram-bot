@@ -14,6 +14,7 @@ from app.handlers.admin import (
     event_registration_block14,
     event_activities_block15,
     event_activities_block7,
+    auction_block17,
     partner_offers_block16,
     partners_admin,
     approval_bonus_fix,
@@ -37,6 +38,7 @@ router.include_router(events_block6.router)
 router.include_router(event_registration_block14.router)
 router.include_router(event_activities_block15.router)
 router.include_router(event_activities_block7.router)
+router.include_router(auction_block17.router)
 router.include_router(partner_offers_block16.router)
 router.include_router(partners_admin.router)
 router.include_router(approval_bonus_fix.router)
