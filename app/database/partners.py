@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base, TimestampMixin
@@ -33,8 +33,23 @@ class PartnerInitiative(TimestampMixin, Base):
     starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     location: Mapped[str | None] = mapped_column(String(255))
+    point_cost: Mapped[int] = mapped_column(Integer, default=0)
+    quantity: Mapped[int | None] = mapped_column(Integer)
+    instruction: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+
+class PartnerOfferApplication(TimestampMixin, Base):
+    __tablename__ = "partner_offer_applications"
+    __table_args__ = (UniqueConstraint("initiative_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    initiative_id: Mapped[int] = mapped_column(ForeignKey("partner_initiatives.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    admin_comment: Mapped[str | None] = mapped_column(Text)
 
 
 class PartnerTask(TimestampMixin, Base):
