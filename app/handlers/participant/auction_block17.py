@@ -131,4 +131,4 @@ async def auction_bid_save(message: Message, user: User, session: AsyncSession, 
         session.add(AuctionBid(auction_id=auction.id, user_id=user.id, amount=amount, status="active"))
     await session.flush()
     await state.clear()
-    await message.answer(f"Ставка принята: {amount} баллов.\n\nТеперь она отображается как последняя ставка. Баллы спишутся только после подтверждения победителя администратором.")
+    await message.answer(f"Ставка принята: {amount} баллов.\n\nБаллы пока не списаны. Теперь ставка отображается в карточке лота. Списание произойдёт только после подтверждения победителя администратором.")
