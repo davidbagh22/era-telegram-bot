@@ -8,6 +8,19 @@ from app.database.models import Event, EventRegistration
 from app.services.audit_service import audit
 from app.utils.constants import EventStatus, RegistrationStatus
 
+PUBLIC_EVENT_STATUSES = {
+    EventStatus.APPROVED,
+    EventStatus.PUBLISHED,
+    EventStatus.REGISTRATION_OPEN,
+    EventStatus.REGISTRATION_CLOSED,
+}
+
+REGISTRATION_ALLOWED_STATUSES = {
+    EventStatus.APPROVED,
+    EventStatus.PUBLISHED,
+    EventStatus.REGISTRATION_OPEN,
+}
+
 
 async def published_events(session: AsyncSession) -> list[Event]:
     return list(
@@ -15,12 +28,7 @@ async def published_events(session: AsyncSession) -> list[Event]:
             await session.scalars(
                 select(Event)
                 .where(
-                    Event.status.in_(
-                        [
-                            EventStatus.PUBLISHED,
-                            EventStatus.REGISTRATION_OPEN,
-                        ]
-                    ),
+                    Event.status.in_(PUBLIC_EVENT_STATUSES),
                     Event.event_date >= date.today(),
                 )
                 .order_by(Event.event_date, Event.event_time)
@@ -51,10 +59,7 @@ async def available_places(session: AsyncSession, event: Event) -> str:
 async def register_for_event(
     session: AsyncSession, event: Event, user_id: int
 ) -> tuple[EventRegistration | None, str | None]:
-    if event.status not in {
-        EventStatus.PUBLISHED,
-        EventStatus.REGISTRATION_OPEN,
-    }:
+    if event.status not in REGISTRATION_ALLOWED_STATUSES:
         return None, "closed"
     existing = await session.scalar(
         select(EventRegistration).where(

@@ -16,6 +16,7 @@ from app.keyboards.admin import (
 )
 from app.keyboards.leader import leader_panel_keyboard
 from app.keyboards.participant import (
+    event_card_keyboard,
     journey_keyboard,
     points_hub_keyboard,
     portfolio_keyboard,
@@ -144,6 +145,9 @@ class V2ScenarioTests(unittest.TestCase):
         callbacks = _callbacks(portfolio_keyboard())
         self.assertIn("portfolio:upload", callbacks)
         self.assertIn("portfolio:resume", callbacks)
+        closed_event_callbacks = _callbacks(event_card_keyboard(5, can_register=False))
+        self.assertNotIn("event:join:5", closed_event_callbacks)
+        self.assertIn("events:list", closed_event_callbacks)
 
     def test_09_role_hierarchy_and_admin_rights_are_clear(self) -> None:
         expected = [

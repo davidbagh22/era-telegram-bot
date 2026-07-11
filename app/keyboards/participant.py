@@ -160,13 +160,12 @@ def event_list_keyboard(events: Iterable) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def event_card_keyboard(event_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Зарегистрироваться", callback_data=f"event:join:{event_id}")],
-            [InlineKeyboardButton(text="← Афиша", callback_data="events:list")],
-        ]
-    )
+def event_card_keyboard(event_id: int, can_register: bool = True) -> InlineKeyboardMarkup:
+    rows = []
+    if can_register:
+        rows.append([InlineKeyboardButton(text="Зарегистрироваться", callback_data=f"event:join:{event_id}")])
+    rows.append([InlineKeyboardButton(text="← Афиша", callback_data="events:list")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def project_menu_keyboard() -> InlineKeyboardMarkup:
