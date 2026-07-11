@@ -10,7 +10,9 @@ from app.keyboards.admin import (
     admin_activity_keyboard,
     admin_communications_keyboard,
     admin_growth_keyboard,
+    admin_user_actions,
     project_review_actions,
+    user_role_keyboard,
 )
 from app.keyboards.leader import leader_panel_keyboard
 from app.keyboards.participant import (
@@ -23,7 +25,7 @@ from app.keyboards.participant import (
     tasks_keyboard,
 )
 from app.services.scheduler_service import create_scheduler
-from app.utils.constants import BADGES, ROLE_LABELS, Role
+from app.utils.constants import BADGES, PERMISSION_LABELS, PERMISSIONS, ROLE_LABELS, Role
 
 
 def _labels(keyboard) -> list[str]:
@@ -143,15 +145,35 @@ class V2ScenarioTests(unittest.TestCase):
         self.assertIn("portfolio:upload", callbacks)
         self.assertIn("portfolio:resume", callbacks)
 
-    def test_09_role_hierarchy_and_leader_scope_are_clear(self) -> None:
+    def test_09_role_hierarchy_and_admin_rights_are_clear(self) -> None:
         expected = [
             Role.PARTICIPANT,
             Role.ACTIVIST,
             Role.LEADER,
             Role.HEAD,
             Role.COUNCIL,
+            Role.ADMIN,
         ]
         self.assertTrue(all(role in ROLE_LABELS for role in expected))
+        role_callbacks = _callbacks(user_role_keyboard(7))
+        self.assertIn("admin:user:setrole:7:admin", role_callbacks)
+        user_actions = _callbacks(admin_user_actions(7))
+        self.assertIn("admin:user:permissions:7", user_actions)
+        self.assertIn("admin:user:block_menu:7", user_actions)
+        self.assertIn("admin:user:archive:7", user_actions)
+        for permission in (
+            "panel.view",
+            "applications.review",
+            "events.manage",
+            "projects.review",
+            "partners.manage",
+            "tasks.manage",
+            "points.award",
+            "analytics.view",
+            "chat.moderate",
+        ):
+            self.assertIn(permission, PERMISSIONS)
+            self.assertIn(permission, PERMISSION_LABELS)
         labels = " ".join(_labels(leader_panel_keyboard()))
         self.assertIn("Работа в команде", labels)
         self.assertIn("Предложить поощрение", labels)

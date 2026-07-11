@@ -77,9 +77,9 @@ ROLE_LABELS = {
     Role.PARTICIPANT: "Участник",
     Role.ACTIVIST: "Активист",
     Role.LEADER: "Лидер",
-    Role.HEAD: "Руководитель",
+    Role.HEAD: "Руководитель направления",
     Role.COUNCIL: "Совет",
-    Role.ADMIN: "Председатель / администратор",
+    Role.ADMIN: "Админ",
 }
 
 STATUS_LABELS = {
@@ -203,14 +203,33 @@ PRIVILEGED_ROLES = {Role.LEADER, Role.HEAD, Role.COUNCIL, Role.ADMIN}
 ADMIN_ROLES = {Role.ADMIN}
 
 PERMISSIONS = (
-    "people.view",
-    "people.manage",
+    "panel.view",
     "applications.review",
-    "projects.review",
     "events.manage",
+    "projects.review",
+    "partners.manage",
     "tasks.manage",
     "points.award",
+    "analytics.view",
+    "chat.moderate",
+    "people.view",
+    "people.manage",
     "portfolio.review",
     "broadcasts.create",
-    "analytics.view",
 )
+
+PERMISSION_LABELS = {
+    "panel.view": "Просмотр панели",
+    "applications.review": "Одобрение заявок",
+    "events.manage": "Управление мероприятиями",
+    "projects.review": "Управление проектами",
+    "partners.manage": "Управление партнёрами",
+    "tasks.manage": "Управление задачами",
+    "points.award": "Начисление баллов",
+    "analytics.view": "Просмотр аналитики",
+    "chat.moderate": "Модерация чата",
+    "people.view": "Просмотр участников",
+    "people.manage": "Управление участниками",
+    "portfolio.review": "Портфолио и сертификаты",
+    "broadcasts.create": "Рассылки и ответы",
+}

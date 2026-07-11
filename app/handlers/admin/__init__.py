@@ -4,6 +4,8 @@ from app.handlers.admin import (
     commands_ready,
     dashboard_block_a,
     task_review_block2,
+    rights_block6,
+    rights_block6_block_menu,
     user_profile_block3_safe,
     projects_block5_list,
     projects_block5_decision,
@@ -22,6 +24,8 @@ router.include_router(management_ready.router)
 router.include_router(commands_ready.router)
 router.include_router(dashboard_block_a.router)
 router.include_router(task_review_block2.router)
+router.include_router(rights_block6.router)
+router.include_router(rights_block6_block_menu.router)
 router.include_router(user_profile_block3_safe.router)
 router.include_router(projects_block5_list.router)
 router.include_router(projects_block5_decision.router)
