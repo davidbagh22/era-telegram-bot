@@ -7,10 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models import Event, User
 from app.keyboards.participant import event_card_keyboard, event_list_keyboard
 from app.services.event_card import send_event_card
+from app.services.event_registration_service import registration_stats
 from app.services.event_service import (
     PUBLIC_EVENT_STATUSES,
     REGISTRATION_ALLOWED_STATUSES,
-    available_places,
     published_events,
     register_for_event,
 )
@@ -70,12 +70,22 @@ async def event_view(call: CallbackQuery, user: User | None, session: AsyncSessi
     if event is None or event.status not in PUBLIC_EVENT_STATUSES:
         await call.message.answer("Это мероприятие сейчас недоступно в афише")
         return
-    places = await available_places(session, event)
-    can_register = event.status in REGISTRATION_ALLOWED_STATUSES
+    stats = await registration_stats(session, event)
+    can_register = (
+        event.status in REGISTRATION_ALLOWED_STATUSES
+        and (event.participant_limit is None or int(stats["free"]) > 0)
+    )
+    extra = None
+    if event.status not in REGISTRATION_ALLOWED_STATUSES:
+        extra = "Регистрация закрыта, но карточка мероприятия остаётся доступна."
+    elif event.participant_limit is not None and int(stats["free"]) <= 0:
+        extra = "Свободных мест сейчас нет."
     await send_event_card(
         call.message,
         event,
-        available=places,
+        available=str(stats["free"]),
+        registered=int(stats["registered"]),
+        extra_text=extra,
         keyboard=event_card_keyboard(event.id, can_register=can_register),
     )
 
@@ -93,9 +103,16 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
     _, error = await register_for_event(session, event, user.id)
     if error == "already":
         await call.message.answer(texts.EVENT_ALREADY_REGISTERED)
-    elif error == "full":
+        return
+    if error == "full":
         await call.message.answer(texts.EVENT_FULL)
-    elif error == "closed":
+        return
+    if error == "closed":
         await call.message.answer("Регистрация на это мероприятие закрыта, но само событие остаётся в афише")
-    else:
-        await call.message.answer(texts.event_registered(event))
+        return
+    stats = await registration_stats(session, event)
+    await call.message.answer(
+        texts.event_registered(event)
+        + f"\n\nЗарегистрировано: {stats['registered']}"
+        + (f"\nСвободных мест: {stats['free']}" if event.participant_limit is not None else "")
+    )
