@@ -25,6 +25,7 @@ from app.handlers.participant import (
     projects,
     questions,
     profile_settings,
+    partner_offers_block16,
     partners,
     point_transfer,
 )
@@ -57,6 +58,7 @@ router.include_routers(
     growth.router,
     about.router,
     profile_settings.router,
+    partner_offers_block16.router,
     partners.router,
     point_transfer.router,
 )

@@ -8,7 +8,7 @@ def partner_list_keyboard(partners: Iterable) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=partner.name[:50], callback_data=f"partner:view:{partner.id}")]
         for partner in partners
     ]
-    rows.append([InlineKeyboardButton(text="← Возможности", callback_data="rewards:menu")])
+    rows.append([InlineKeyboardButton(text="← Возможности", callback_data="offers:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -21,7 +21,10 @@ def partner_card_keyboard(partner) -> InlineKeyboardMarkup:
 
 
 def admin_partners_keyboard(partners: Iterable = ()) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text="Добавить партнёра", callback_data="admin:partner:add")]]
+    rows = [
+        [InlineKeyboardButton(text="Добавить партнёра", callback_data="admin:partner:add")],
+        [InlineKeyboardButton(text="🎁 Партнёрские предложения", callback_data="admin:offers")],
+    ]
     for partner in partners:
         status = "🟢" if partner.is_active else "⚪️"
         rows.append([InlineKeyboardButton(text=f"{status} {partner.name[:42]}", callback_data=f"admin:partner:view:{partner.id}")])
@@ -33,6 +36,7 @@ def admin_partner_card_keyboard(partner_id: int, active: bool = True) -> InlineK
     toggle_text = "Выключить" if active else "Включить"
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="🎁 Предложения", callback_data="admin:offers")],
             [InlineKeyboardButton(text=toggle_text, callback_data=f"admin:partner:toggle:{partner_id}")],
             [InlineKeyboardButton(text="Архив", callback_data=f"admin:partner:archive:{partner_id}")],
             [InlineKeyboardButton(text="← Партнёры", callback_data="admin:partners")],
