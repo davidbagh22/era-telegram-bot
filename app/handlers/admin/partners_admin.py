@@ -14,10 +14,28 @@ from app.utils.constants import Role
 router = Router(name="admin_partners")
 
 
-def admin_ok(user: User | None, settings: Settings, telegram_id: int) -> bool:
+def _is_admin(user: User | None, settings: Settings, telegram_id: int) -> bool:
     return bool(
         telegram_id in settings.admin_ids
         or (user and user.role == Role.ADMIN and not user.is_blocked and not user.is_archived)
+    )
+
+
+def _has_any_admin_access(user: User | None, settings: Settings, telegram_id: int) -> bool:
+    return bool(
+        _is_admin(user, settings, telegram_id)
+        or (
+            user
+            and not user.is_blocked
+            and not user.is_archived
+            and any(grant.is_active for grant in (user.permission_grants or []))
+        )
+    )
+
+
+def admin_ok(user: User | None, settings: Settings, telegram_id: int) -> bool:
+    return bool(
+        _is_admin(user, settings, telegram_id)
         or (
             user
             and not user.is_blocked
@@ -33,9 +51,19 @@ def admin_ok(user: User | None, settings: Settings, telegram_id: int) -> bool:
 @router.callback_query(F.data == "admin:menu:growth")
 async def growth_menu(call: CallbackQuery, user: User | None, settings: Settings) -> None:
     await call.answer()
-    if not admin_ok(user, settings, call.from_user.id):
+    if not _has_any_admin_access(user, settings, call.from_user.id):
         return
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Начислить баллы или знак", callback_data="admin:points")], [InlineKeyboardButton(text="Каталог возможностей", callback_data="admin:rewards")], [InlineKeyboardButton(text="Партнёры", callback_data="admin:partners")], [InlineKeyboardButton(text="Аукционы", callback_data="admin:auctions")], [InlineKeyboardButton(text="Назад", callback_data="admin:panel")]])
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Начислить баллы или знак", callback_data="admin:points")],
+            [InlineKeyboardButton(text="Каталог возможностей", callback_data="admin:rewards")],
+            [InlineKeyboardButton(text="Партнёры", callback_data="admin:partners")],
+            [InlineKeyboardButton(text="Аукционы", callback_data="admin:auctions")],
+            [InlineKeyboardButton(text="Портфолио и сертификаты", callback_data="admin:portfolio")],
+            [InlineKeyboardButton(text="Предложения лидеров", callback_data="admin:proposals")],
+            [InlineKeyboardButton(text="Назад", callback_data="admin:panel")],
+        ]
+    )
     await call.message.edit_text("Баллы и развитие", reply_markup=keyboard)
 
 
