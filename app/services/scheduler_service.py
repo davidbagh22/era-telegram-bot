@@ -8,6 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 
 from app.config import Settings
+from app.database.management_models import AdminSurvey
 from app.database.models import (
     Event,
     EventRegistration,
@@ -20,7 +21,13 @@ from app.keyboards.admin import project_review_actions
 from app.services.birthday_service import send_birthday_greetings
 from app.services.event_service import event_datetime
 from app.services.notification_service import safe_send
-from app.utils.constants import EventStatus, ProjectStatus, RegistrationStatus
+from app.services.survey_service import (
+    MONTHLY_SURVEY_DESCRIPTION,
+    MONTHLY_SURVEY_QUESTIONS,
+    MONTHLY_SURVEY_TITLE,
+    questions_payload,
+)
+from app.utils.constants import ApplicationStatus, EventStatus, ProjectStatus, RegistrationStatus
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +115,63 @@ async def send_event_reminders(bot: Bot, settings: Settings, session_factory) ->
 
 async def send_weekly_message(bot: Bot, chat_id: int, text: str) -> None:
     await safe_send(bot, chat_id, text)
+
+
+async def send_monthly_surveys(bot: Bot, settings: Settings, session_factory) -> None:
+    """Send the monthly management pulse survey to approved participants once per month."""
+    now = datetime.now(ZoneInfo(settings.timezone))
+    current_month = now.strftime("%Y-%m")
+    async with session_factory() as session:
+        surveys = list(
+            (
+                await session.scalars(
+                    select(AdminSurvey)
+                    .where(AdminSurvey.is_monthly.is_(True), AdminSurvey.status != "archived")
+                    .order_by(AdminSurvey.created_at.desc(), AdminSurvey.id.desc())
+                )
+            ).all()
+        )
+        survey = next((item for item in surveys if item.last_sent_month != current_month), None)
+        if not survey:
+            survey = AdminSurvey(
+                title=MONTHLY_SURVEY_TITLE,
+                description=MONTHLY_SURVEY_DESCRIPTION,
+                questions_json=questions_payload(MONTHLY_SURVEY_QUESTIONS),
+                audience_type="approved",
+                audience_filter_json={},
+                status="draft",
+                is_monthly=True,
+            )
+            session.add(survey)
+            await session.flush()
+        recipients = list(
+            (
+                await session.scalars(
+                    select(User).where(
+                        User.application_status == ApplicationStatus.APPROVED,
+                        User.is_blocked.is_(False),
+                        User.is_archived.is_(False),
+                    )
+                )
+            ).all()
+        )
+        if not recipients:
+            await session.commit()
+            return
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="Ответить на опрос", callback_data=f"survey:start:{survey.id}")]]
+        )
+        for participant in recipients:
+            await safe_send(
+                bot,
+                participant.telegram_id,
+                f"🗳 {survey.title}\n\n{survey.description}\n\nОтвет займёт несколько минут",
+                keyboard,
+            )
+        survey.status = "sent"
+        survey.sent_at = now
+        survey.last_sent_month = current_month
+        await session.commit()
 
 
 async def send_project_venue_reminders(
@@ -244,6 +308,18 @@ def create_scheduler(bot: Bot, settings: Settings, session_factory) -> AsyncIOSc
         minutes=15,
         args=(bot, settings, session_factory),
         id="task-reminders",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        send_monthly_surveys,
+        "cron",
+        day=1,
+        hour=11,
+        minute=0,
+        args=(bot, settings, session_factory),
+        id="monthly-surveys",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
