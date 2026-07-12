@@ -12,6 +12,7 @@ from app.handlers.admin import (
     projects_block5_team,
     events_block6,
     event_registration_block14,
+    event_activities_stability,
     event_activities_block15,
     event_activities_block7,
     auction_block17,
@@ -37,6 +38,7 @@ router.include_router(projects_block5_decision.router)
 router.include_router(projects_block5_team.router)
 router.include_router(events_block6.router)
 router.include_router(event_registration_block14.router)
+router.include_router(event_activities_stability.router)
 router.include_router(event_activities_block15.router)
 router.include_router(event_activities_block7.router)
 router.include_router(auction_block17.router)
