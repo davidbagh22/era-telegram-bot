@@ -1,5 +1,6 @@
 from aiogram import F, Router
 from app.handlers.admin import (
+    surveys_analytics,
     management_ready,
     commands_ready,
     dashboard_block_a,
@@ -26,6 +27,7 @@ from app.handlers.admin import (
 router = Router(name="admin_root")
 router.message.filter(F.chat.type == "private")
 router.callback_query.filter(F.message.chat.type == "private")
+router.include_router(surveys_analytics.router)
 router.include_router(management_ready.router)
 router.include_router(commands_ready.router)
 router.include_router(dashboard_block_a.router)
