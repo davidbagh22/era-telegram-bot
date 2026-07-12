@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -14,7 +14,7 @@ from app.handlers.admin.event_activities_block15 import ActivitySetupStates
 from app.services.notification_service import safe_send
 from app.services.points_service import add_points
 from app.utils import texts
-from app.utils.constants import Role
+from app.utils.constants import EventStatus, Role
 from app.utils.validators import clean_text
 
 router = Router(name="admin_event_activities_stability")
@@ -85,6 +85,52 @@ async def _send_file(message: Message, submission: EventActivitySubmission) -> N
             await message.answer_document(submission.file_id, caption="Подтверждение активности")
     except Exception:
         await message.answer("Файл сохранён, но Telegram не смог открыть его повторно")
+
+
+@router.callback_query(F.data == "admin:event_activities")
+async def activities_home(
+    call: CallbackQuery,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+    pending_count = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(EventActivitySubmission)
+            .where(EventActivitySubmission.status.in_(REVIEWABLE_ACTIVITY_STATUSES))
+        )
+        or 0
+    )
+    events = list(
+        (
+            await session.scalars(
+                select(Event)
+                .where(Event.status == EventStatus.COMPLETED)
+                .order_by(Event.event_date.desc(), Event.event_time.desc())
+                .limit(20)
+            )
+        ).all()
+    )
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text=f"📥 На проверке · {pending_count}", callback_data="admin:event_activities:review")]
+    ]
+    for event in events:
+        label = f"{event.event_date:%d.%m} · {event.title[:35]}"
+        rows.append([InlineKeyboardButton(text=f"➕ {label}", callback_data=f"admin:event:activities:create:{event.id}")])
+        rows.append([InlineKeyboardButton(text=f"📤 {label}", callback_data=f"admin:event:activities:send:{event.id}")])
+    rows.append([InlineKeyboardButton(text="← События", callback_data="admin:menu:activity")])
+    text = (
+        "✨ Активности после мероприятий\n\n"
+        f"На проверке: {pending_count}\n"
+        f"Завершённых мероприятий для настройки: {len(events)}\n\n"
+        "Выберите мероприятие, чтобы добавить задания после события или отправить их участникам"
+    )
+    if not events:
+        text += "\n\nПока нет завершённых мероприятий. Когда событие будет завершено, оно появится здесь"
+    await call.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 @router.message(ActivitySetupStates.lines)
