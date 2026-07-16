@@ -11,6 +11,12 @@ services:
     envVars:
       - key: BOT_TOKEN
         sync: false
+      - key: LAST_KEEPER_BOT_TOKEN
+        sync: false
+      - key: LAST_KEEPER_ADMIN_IDS
+        value: "1593868942"
+      - key: LAST_KEEPER_DATABASE_PATH
+        value: /tmp/last_keeper.db
       - key: WEBHOOK_SECRET
         generateValue: true
       - key: DATABASE_URL
