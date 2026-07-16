@@ -1,0 +1,10 @@
+services:
+  last-keeper-bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - last_keeper_data:/data
+
+volumes:
+  last_keeper_data:
