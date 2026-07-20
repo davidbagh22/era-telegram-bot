@@ -54,8 +54,12 @@ def directions_keyboard(
             "interactive",
             "social",
             "international",
-            "participate",
         ]
+
+    # Участник может выбрать путь без вступления в конкретное направление
+    # независимо от выбранного департамента.
+    keys.append("participate")
+
     builder = InlineKeyboardBuilder()
     for key in keys:
         mark = "✓ " if key in selected else ""
