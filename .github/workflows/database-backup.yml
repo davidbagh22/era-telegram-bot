@@ -1,0 +1,88 @@
+name: Database backup
+
+on:
+  schedule:
+    - cron: "17 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: restore
+          POSTGRES_PASSWORD: restore
+          POSTGRES_DB: era_restore_check
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U restore -d era_restore_check"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      RESTORE_DATABASE_URL: postgresql://restore:restore@localhost:5432/era_restore_check
+      BACKUP_DIR: backups
+      RETENTION_DAYS: "30"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Validate backup secret
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "Repository secret BACKUP_DATABASE_URL is not configured" >&2
+            exit 1
+          fi
+
+      - name: Create backup
+        id: backup
+        run: |
+          chmod +x scripts/backup_database.sh scripts/verify_database_restore.sh
+          BACKUP_FILE="$(scripts/backup_database.sh)"
+          echo "backup_file=${BACKUP_FILE}" >> "${GITHUB_OUTPUT}"
+          echo "sha256=$(sha256sum "${BACKUP_FILE}" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify restore on isolated PostgreSQL
+        env:
+          BACKUP_FILE: ${{ steps.backup.outputs.backup_file }}
+          BACKUP_SHA256: ${{ steps.backup.outputs.sha256 }}
+        run: scripts/verify_database_restore.sh
+
+      - name: Upload verified encrypted-at-rest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: era-postgres-backup-${{ github.run_id }}
+          path: backups/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Write job summary
+        run: |
+          {
+            echo "## PostgreSQL backup"
+            echo "- Backup created: yes"
+            echo "- Checksum verified: yes"
+            echo "- Restore test: passed"
+            echo "- Retention: 30 days"
+            echo "- Source credentials were not written to logs"
+          } >> "${GITHUB_STEP_SUMMARY}"
