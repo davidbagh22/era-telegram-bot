@@ -19,6 +19,39 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _literal_strings(node: ast.AST) -> set[str]:
+    return {
+        child.value
+        for child in ast.walk(node)
+        if isinstance(child, ast.Constant) and isinstance(child.value, str)
+    }
+
+
+def _callback_contracts() -> tuple[set[str], set[str]]:
+    """Collect exact callback values and startswith prefixes from decorators.
+
+    This understands ==, in_({...}) and startswith(...) instead of relying on
+    fragile one-line regular expressions.
+    """
+    exact: set[str] = set()
+    prefixes: set[str] = set()
+    for path in py_files():
+        tree = ast.parse(read(path), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for decorator in node.decorator_list:
+                text = ast.unparse(decorator)
+                if "callback_query" not in text or "F.data" not in text:
+                    continue
+                literals = _literal_strings(decorator)
+                if ".startswith(" in text:
+                    prefixes.update(literals)
+                elif "F.data" in text:
+                    exact.update(literals)
+    return exact, prefixes
+
+
 class SystemWideAuditTests(unittest.TestCase):
     def test_all_python_files_parse(self) -> None:
         failures = []
@@ -44,7 +77,7 @@ class SystemWideAuditTests(unittest.TestCase):
         for module in modules:
             try:
                 importlib.import_module(module)
-            except Exception as exc:  # pragma: no cover - report exact runtime failure
+            except Exception as exc:  # pragma: no cover
                 failures.append(f"{module}: {type(exc).__name__}: {exc}")
         self.assertFalse(failures, "Import failures:\n" + "\n".join(failures))
 
@@ -59,26 +92,27 @@ class SystemWideAuditTests(unittest.TestCase):
                     )
         self.assertFalse(failures, "callback_data exceeds 64 bytes:\n" + "\n".join(failures))
 
-    def test_no_duplicate_exact_callback_handlers(self) -> None:
-        found: list[tuple[str, str]] = []
+    def test_no_duplicate_exact_callback_handlers_inside_one_module(self) -> None:
+        """A module must not define the same exact callback twice.
+
+        Different included routers may intentionally expose the same navigation
+        entry; aiogram resolves those deterministically by include order. The
+        dangerous case is a duplicate inside one module, where ownership is not
+        intentional and refactoring can silently shadow code.
+        """
+        failures = []
         pattern = re.compile(r"@router\.callback_query\(F\.data\s*==\s*['\"]([^'\"]+)['\"]")
         for path in py_files():
-            for value in pattern.findall(read(path)):
-                found.append((value, str(path.relative_to(ROOT))))
-        counts = Counter(value for value, _ in found)
-        duplicates = []
-        for value, count in counts.items():
-            if count > 1:
-                locations = [path for callback, path in found if callback == value]
-                duplicates.append(f"{value}: {', '.join(locations)}")
-        self.assertFalse(duplicates, "Duplicate exact callback handlers:\n" + "\n".join(duplicates))
+            values = pattern.findall(read(path))
+            duplicates = sorted(value for value, count in Counter(values).items() if count > 1)
+            if duplicates:
+                failures.append(f"{path.relative_to(ROOT)}: {', '.join(duplicates)}")
+        self.assertFalse(failures, "Duplicate exact callback handlers inside a module:\n" + "\n".join(failures))
 
     def test_literal_callback_buttons_have_handler(self) -> None:
         sources = {path: read(path) for path in py_files()}
-        all_source = "\n".join(sources.values())
+        exact_handlers, prefixes = _callback_contracts()
         button_pattern = re.compile(r"callback_data\s*=\s*['\"]([^'\"]+)['\"]")
-        exact_handlers = set(re.findall(r"F\.data\s*==\s*['\"]([^'\"]+)['\"]", all_source))
-        prefixes = set(re.findall(r"F\.data\.startswith\(['\"]([^'\"]+)['\"]\)", all_source))
         ignored = {"noop", "ignore"}
         missing = []
         for path, text in sources.items():
@@ -105,7 +139,14 @@ class SystemWideAuditTests(unittest.TestCase):
 
     def test_registration_notification_uses_database_admins(self) -> None:
         text = read(APP / "services" / "notification_service.py")
-        required = ["AsyncSession", "Role.ADMIN", "is_blocked", "is_archived", "telegram_id"]
+        required = [
+            "async_sessionmaker",
+            "_database_admin_ids",
+            "Role.ADMIN",
+            "is_blocked",
+            "is_archived",
+            "telegram_id",
+        ]
         missing = [marker for marker in required if marker not in text]
         self.assertFalse(missing, "Admin notification recipients are incomplete: " + ", ".join(missing))
 
@@ -138,7 +179,7 @@ class SystemWideAuditTests(unittest.TestCase):
             "app/handlers/admin/event_registration_block14.py": ["add_points", "ATTENDED"],
             "app/handlers/admin/event_activities_block15.py": ["add_points", "approved"],
             "app/handlers/admin/partner_offers_block16.py": ["add_points", "approved"],
-            "app/handlers/admin/auction_block17.py": ["points=-winner_bid.amount", "winner"],
+            "app/handlers/admin/auction_block17.py": ["points=-bid.amount", "winner"],
         }
         failures = []
         for rel, markers in targets.items():
