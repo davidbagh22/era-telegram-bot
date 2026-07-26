@@ -6,6 +6,8 @@
 
 Этап 1: база данных и транзакции — завершён и смержен в `main`.
 
+Этап 2: система баллов — завершён и смержен в `main`.
+
 ## Завершённые этапы
 
 ### Этап 1. База данных и транзакции
@@ -49,13 +51,13 @@ CI:
 Проверка:
 - `python -m pytest` — 133 passed.
 
-PR: pending.
+PR: #68.
 
-Merge commit: pending.
+Merge commit: `c07e00090e718bc480664d76c5cf0187d70bc7e1`.
 
 CI:
-- Tests: pending;
-- Bot checks: pending.
+- Tests: success on `fbff6397febe8633a9c2923ce333b8e7c814a7e3`;
+- Bot checks: success on `fbff6397febe8633a9c2923ce333b8e7c814a7e3`.
 
 ## Открытые проблемы
 
