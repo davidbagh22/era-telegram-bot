@@ -9,7 +9,19 @@ branch_labels = None
 depends_on = None
 
 
+def _has_column(table_name: str, column_name: str) -> bool:
+    inspector = sa.inspect(op.get_bind())
+    return any(column["name"] == column_name for column in inspector.get_columns(table_name))
+
+
+def _table_exists(table_name: str) -> bool:
+    return table_name in sa.inspect(op.get_bind()).get_table_names()
+
+
 def upgrade() -> None:
+    if _has_column("users", "is_archived") and _table_exists("auction_bids"):
+        return
+
     op.add_column("users", sa.Column("email", sa.String(255), nullable=True))
     op.add_column(
         "users",

@@ -14,6 +14,10 @@ def _has_column(table_name: str, column_name: str) -> bool:
     return any(column["name"] == column_name for column in inspector.get_columns(table_name))
 
 
+def _table_exists(table_name: str) -> bool:
+    return table_name in sa.inspect(op.get_bind()).get_table_names()
+
+
 def upgrade() -> None:
     if not _has_column("partner_initiatives", "point_cost"):
         op.add_column("partner_initiatives", sa.Column("point_cost", sa.Integer(), nullable=False, server_default="0"))
@@ -21,6 +25,8 @@ def upgrade() -> None:
         op.add_column("partner_initiatives", sa.Column("quantity", sa.Integer(), nullable=True))
     if not _has_column("partner_initiatives", "instruction"):
         op.add_column("partner_initiatives", sa.Column("instruction", sa.Text(), nullable=True))
+    if _table_exists("partner_offer_applications"):
+        return
     op.create_table(
         "partner_offer_applications",
         sa.Column("id", sa.Integer(), primary_key=True),

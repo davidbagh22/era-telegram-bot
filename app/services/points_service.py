@@ -1,10 +1,14 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import PointTransaction, PortfolioItem
+from app.database.models import PointTransaction, PortfolioItem, User
 from app.services.audit_service import audit
 
 REGISTRATION_POINTS = 100
+
+
+class InsufficientPointsError(ValueError):
+    pass
 
 
 async def add_points(
@@ -17,7 +21,19 @@ async def add_points(
     related_event_id: int | None = None,
     related_task_id: int | None = None,
     related_project_id: int | None = None,
+    source_type: str | None = None,
+    source_id: int | None = None,
+    idempotency_key: str | None = None,
 ) -> PointTransaction:
+    if idempotency_key:
+        existing = await session.scalar(
+            select(PointTransaction).where(
+                PointTransaction.idempotency_key == idempotency_key
+            )
+        )
+        if existing is not None:
+            return existing
+
     is_registration_bonus = (
         points <= 5
         and related_event_id is None
@@ -27,11 +43,19 @@ async def add_points(
     )
     if is_registration_bonus:
         points = REGISTRATION_POINTS
+    if points < 0:
+        await session.scalar(select(User.id).where(User.id == user_id).with_for_update())
+        balance = await total_points(session, user_id)
+        if balance + points < 0:
+            raise InsufficientPointsError("points balance cannot become negative")
     transaction = PointTransaction(
         user_id=user_id,
         points=points,
         reason=reason,
         approved_by=approved_by,
+        source_type=source_type,
+        source_id=source_id,
+        idempotency_key=idempotency_key,
         related_event_id=related_event_id,
         related_task_id=related_task_id,
         related_project_id=related_project_id,

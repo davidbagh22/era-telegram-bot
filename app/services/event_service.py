@@ -59,6 +59,12 @@ async def available_places(session: AsyncSession, event: Event) -> str:
 async def register_for_event(
     session: AsyncSession, event: Event, user_id: int
 ) -> tuple[EventRegistration | None, str | None]:
+    locked_event = await session.scalar(
+        select(Event).where(Event.id == event.id).with_for_update()
+    )
+    if locked_event is None:
+        return None, "closed"
+    event = locked_event
     if event.status not in REGISTRATION_ALLOWED_STATUSES:
         return None, "closed"
     existing = await session.scalar(

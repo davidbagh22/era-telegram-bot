@@ -9,7 +9,14 @@ branch_labels = None
 depends_on = None
 
 
+def _table_exists(table_name: str) -> bool:
+    return table_name in sa.inspect(op.get_bind()).get_table_names()
+
+
 def upgrade() -> None:
+    if _table_exists("social_profiles") and _table_exists("social_links"):
+        return
+
     op.create_table(
         "social_profiles",
         sa.Column("id", sa.Integer(), primary_key=True),
