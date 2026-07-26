@@ -1,3 +1,5 @@
+from hashlib import sha256
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +11,11 @@ REGISTRATION_POINTS = 100
 
 class InsufficientPointsError(ValueError):
     pass
+
+
+def make_idempotency_key(*parts: object) -> str:
+    raw = ":".join(str(part) for part in parts)
+    return sha256(raw.encode("utf-8")).hexdigest()
 
 
 async def add_points(

@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -5,8 +7,8 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import PointTransaction, User
-from app.services.points_service import total_points
+from app.database.models import User
+from app.services.points_service import add_points, total_points
 from app.states.point_transfer import PointTransferStates
 from app.utils.constants import ApplicationStatus
 
@@ -70,7 +72,7 @@ async def amount(message: Message, user: User | None, session: AsyncSession, sta
         await message.answer(f"Недостаточно баллов. Ваш баланс: {balance}.")
         return
     data = await state.get_data()
-    await state.update_data(amount=value)
+    await state.update_data(amount=value, transfer_id=str(uuid4()))
     await state.set_state(PointTransferStates.confirm)
     await message.answer(f"Подтвердите передачу: {value} баллов участнику {data['recipient_name']}.", reply_markup=keyboard())
 
@@ -87,8 +89,27 @@ async def confirm(call: CallbackQuery, user: User | None, session: AsyncSession,
         await state.clear()
         await call.message.answer("Передача отменена: данные устарели.")
         return
-    session.add(PointTransaction(user_id=user.id, points=-value, reason=f"Передача баллов участнику {target.first_name}", approved_by=user.id))
-    session.add(PointTransaction(user_id=target.id, points=value, reason=f"Получено от {user.first_name}", approved_by=user.id))
+    transfer_id = str(data.get("transfer_id"))
+    await add_points(
+        session,
+        user_id=user.id,
+        points=-value,
+        reason=f"Передача баллов участнику {target.first_name}",
+        approved_by=user.id,
+        source_type="point_transfer",
+        source_id=target.id,
+        idempotency_key=f"point_transfer:{transfer_id}:debit",
+    )
+    await add_points(
+        session,
+        user_id=target.id,
+        points=value,
+        reason=f"Получено от {user.first_name}",
+        approved_by=user.id,
+        source_type="point_transfer",
+        source_id=user.id,
+        idempotency_key=f"point_transfer:{transfer_id}:credit",
+    )
     await session.flush()
     await state.clear()
     await call.message.answer("Баллы переданы ✅")

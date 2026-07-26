@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import Badge, User, UserBadge
 from app.services.notification_service import safe_send
-from app.services.points_service import add_points, add_portfolio_item, total_points
+from app.services.points_service import add_points, add_portfolio_item, make_idempotency_key, total_points
 from app.utils import texts
 from app.utils.constants import APPLICATION_STATUS_LABELS, ROLE_LABELS, STATUS_LABELS, Role
 from app.utils.validators import clean_text
@@ -128,7 +128,7 @@ async def points_finish(message: Message, user: User | None, settings: Settings,
         await message.answer("Участник не найден")
         return
     amount = int(data["profile_points_amount"])
-    await add_points(session, user_id=target.id, points=amount, reason=reason, approved_by=user.id if user else None)
+    await add_points(session, user_id=target.id, points=amount, reason=reason, approved_by=user.id if user else None, source_type="manual_points", source_id=target.id, idempotency_key=make_idempotency_key("manual_points", target.id, amount, reason, message.message_id, user.id if user else None))
     await state.clear()
     balance = await total_points(session, target.id)
     await message.answer(f"Готово. Баланс участника: {balance} баллов", reply_markup=profile_kb(target.id))

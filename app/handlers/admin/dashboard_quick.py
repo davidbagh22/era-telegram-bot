@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import Badge, Event, Project, TaskSubmission, User, UserBadge
 from app.keyboards.admin import admin_panel_keyboard, admin_user_actions
-from app.services.points_service import add_points
+from app.services.points_service import add_points, make_idempotency_key
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, ProjectStatus, Role
 
@@ -197,6 +197,16 @@ async def direct_points_finish(
         points=int(data["points_amount"]),
         reason=reason,
         approved_by=user.id if user else None,
+        source_type="manual_points",
+        source_id=int(data["target_user_id"]),
+        idempotency_key=make_idempotency_key(
+            "manual_points",
+            int(data["target_user_id"]),
+            int(data["points_amount"]),
+            reason,
+            message.message_id,
+            user.id if user else None,
+        ),
     )
     await state.clear()
     await message.answer("Баллы изменены")

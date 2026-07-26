@@ -244,6 +244,9 @@ async def approve(
         reason=f"Активность мероприятия: {activity.title}",
         approved_by=user.id if user else None,
         related_event_id=activity.event_id,
+        source_type="event_activity",
+        source_id=submission.id,
+        idempotency_key=f"event_activity:{submission.id}:approval",
     )
     await safe_send(
         bot,

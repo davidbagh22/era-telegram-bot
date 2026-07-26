@@ -224,6 +224,9 @@ async def application_approve(call: CallbackQuery, user: User | None, settings: 
             points=-offer.point_cost,
             reason=f"Партнёрское предложение: {offer.title}",
             approved_by=user.id if user else None,
+            source_type="partner_offer",
+            source_id=application.id,
+            idempotency_key=f"partner_offer:{application.id}:approval",
         )
     application.status = "approved"
     application.reviewed_by = user.id if user else None

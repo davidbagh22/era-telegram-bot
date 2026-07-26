@@ -230,7 +230,7 @@ async def approve(call: CallbackQuery, user: User | None, settings: Settings, se
         await call.message.answer("Ответ принят. Баллы за эту активность уже начислялись ранее.")
         return
     sub.points_awarded = activity.points
-    await add_points(session, user_id=sub.user_id, points=activity.points, reason=f"Активность после мероприятия: {activity.title}", approved_by=user.id if user else None, related_event_id=activity.event_id)
+    await add_points(session, user_id=sub.user_id, points=activity.points, reason=f"Активность после мероприятия: {activity.title}", approved_by=user.id if user else None, related_event_id=activity.event_id, source_type="event_activity", source_id=sub.id, idempotency_key=f"event_activity:{sub.id}:approval")
     await safe_send(bot, target.telegram_id, f"Ваш результат «{activity.title}» принят — начислено {activity.points} баллов")
     await call.message.answer("Активность принята. Баллы начислены один раз.")
 

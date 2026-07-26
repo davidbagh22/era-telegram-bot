@@ -54,6 +54,9 @@ async def finish_registration_full_notice(
                 points=5,
                 reason="Регистрация в боте",
                 approved_by=user.id,
+                source_type="registration",
+                source_id=user.id,
+                idempotency_key=f"registration:{user.id}",
             )
     if created:
         await audit(

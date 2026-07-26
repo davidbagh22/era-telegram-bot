@@ -191,7 +191,7 @@ async def reward_confirm(call: CallbackQuery, user: User | None, settings: Setti
     redemption.points_spent = reward.point_cost
     if reward.quantity is not None:
         reward.quantity -= 1
-    await add_points(session, user_id=target.id, points=-reward.point_cost, reason=f"Получение возможности: {reward.name}", approved_by=user.id if user else None)
+    await add_points(session, user_id=target.id, points=-reward.point_cost, reason=f"Получение возможности: {reward.name}", approved_by=user.id if user else None, source_type="reward_redemption_legacy", source_id=redemption.id, idempotency_key=f"reward_redemption_legacy:{redemption.id}")
     await safe_send(bot, target.telegram_id, f"Возможность «{reward.name}» подтверждена.\n\nСписано: {reward.point_cost} баллов.")
     await call.message.answer("Возможность подтверждена. Баллы списаны, пользователь уведомлён.")
 

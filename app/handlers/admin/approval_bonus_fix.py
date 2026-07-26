@@ -55,6 +55,9 @@ async def approve_user_with_100_points(
         points=100,
         reason="Регистрация в боте",
         approved_by=user.id if user else None,
+        source_type="registration_approval",
+        source_id=target.id,
+        idempotency_key=f"registration_approval:{target.id}",
     )
     await audit(
         session,
