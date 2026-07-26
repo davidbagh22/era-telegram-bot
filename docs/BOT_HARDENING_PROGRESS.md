@@ -32,8 +32,8 @@ PR: #66.
 Merge commit: pending.
 
 CI:
-- Tests: pending;
-- Bot checks: pending.
+- Tests: success on `dfbc039070a8bc9630f2bc7930415cef6be7400b`;
+- Bot checks: success on `dfbc039070a8bc9630f2bc7930415cef6be7400b`.
 
 ## Открытые проблемы
 
