@@ -95,7 +95,7 @@ async def decision_finish(message: Message, user: User | None, settings: Setting
         project.venue_comment = comment
         project.venue_remind_at = None
         if old_status != ProjectStatus.APPROVED:
-            await add_points(session, user_id=project.author_id, points=30, reason=f"Одобренный проект: {project.title}", approved_by=user.id if user else None, related_project_id=project.id)
+            await add_points(session, user_id=project.author_id, points=30, reason=f"Одобренный проект: {project.title}", approved_by=user.id if user else None, related_project_id=project.id, source_type="project_approval", source_id=project.id, idempotency_key=f"project_approval:{project.id}")
             await add_portfolio_item(session, user_id=project.author_id, title=f"Автор проекта: {project.title}", item_type="project", description=project.short_description, issued_by=user.id if user else None, related_project_id=project.id)
         notice = "Проект одобрен. Следующий шаг — оформить мероприятие или найти команду"
     elif action == "revise":

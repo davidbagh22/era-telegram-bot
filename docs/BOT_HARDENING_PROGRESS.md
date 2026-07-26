@@ -2,7 +2,7 @@
 
 ## Текущий статус
 
-Оценка готовности: 6/10.
+Оценка готовности: 7/10.
 
 Этап 1: база данных и транзакции — завершён и смержен в `main`.
 
@@ -35,6 +35,28 @@ CI:
 - Tests: success on `dfbc039070a8bc9630f2bc7930415cef6be7400b`;
 - Bot checks: success on `dfbc039070a8bc9630f2bc7930415cef6be7400b`.
 
+### Этап 2. Система баллов
+
+Выполнено:
+- все production-вызовы `add_points(...)` получили `idempotency_key`;
+- прямое создание `PointTransaction` вне `points_service` запрещено тестом;
+- перевод баллов между участниками переведён на `add_points(...)` с FSM `transfer_id`;
+- ручные начисления используют ключ с Telegram `message_id`, поэтому повтор update не дублирует операцию, а новая ручная операция не блокируется;
+- сущностные операции используют стабильные ключи: registration, event attendance, event activity, task submission, project approval, auction win, reward redemption, partner offer, badge award, proposal points;
+- добавлен `make_idempotency_key(...)` для компактных стабильных ключей;
+- добавлен аудит-тест `tests/test_points_idempotency_audit.py`.
+
+Проверка:
+- `python -m pytest` — 133 passed.
+
+PR: pending.
+
+Merge commit: pending.
+
+CI:
+- Tests: pending;
+- Bot checks: pending.
+
 ## Открытые проблемы
 
 - Production backup нельзя считать подтверждённым без `BACKUP_DATABASE_URL` и реального artifact restore.
@@ -42,7 +64,7 @@ CI:
 
 ## Следующий этап
 
-Этап 2. Система баллов:
-- покрыть idempotency key все источники начисления и списания;
-- проверить старые callback/update/быстрые нажатия;
-- унифицировать `source_type`, `source_id` и причины операций.
+Этап 3. Роли и права:
+- построить фактическую матрицу ролей;
+- проверить административные handlers на обход прав;
+- добавить негативные тесты на чужие ID, callback-подмену и ручные команды.

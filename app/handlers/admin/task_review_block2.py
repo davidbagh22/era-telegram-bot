@@ -151,7 +151,7 @@ async def approve_submission(call: CallbackQuery, user: User | None, settings: S
     if await _already_awarded(session, participant.id, task.id):
         await call.message.answer("Результат принят. Баллы за это задание уже начислялись ранее.")
         return
-    await add_points(session, user_id=participant.id, points=task.points, reason=f"Выполнение задания: {task.title}", approved_by=user.id if user else None, related_task_id=task.id)
+    await add_points(session, user_id=participant.id, points=task.points, reason=f"Выполнение задания: {task.title}", approved_by=user.id if user else None, related_task_id=task.id, source_type="task_submission", source_id=submission.id, idempotency_key=f"task_submission:{submission.id}:approval")
     if task.task_type == "private":
         task.status = TaskStatus.COMPLETED
     else:

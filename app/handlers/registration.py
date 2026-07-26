@@ -380,7 +380,7 @@ async def finish_registration(
         user.role = Role.ADMIN
         user.application_status = ApplicationStatus.APPROVED
         if created:
-            await add_points(session, user_id=user.id, points=5, reason="Регистрация в боте", approved_by=user.id)
+            await add_points(session, user_id=user.id, points=5, reason="Регистрация в боте", approved_by=user.id, source_type="registration", source_id=user.id, idempotency_key=f"registration:{user.id}")
     if created:
         await audit(session, actor_id=user.id, action="user.registered", entity_type="user", entity_id=user.id, new_value={"telegram_id": user.telegram_id})
     await session.flush()

@@ -232,6 +232,9 @@ async def task_submission_approve(
         reason=f"Выполнение задания: {task.title}",
         approved_by=user.id if user else None,
         related_task_id=task.id,
+        source_type="task_submission",
+        source_id=submission.id,
+        idempotency_key=f"task_submission:{submission.id}:approval",
     )
     await audit(
         session,

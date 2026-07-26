@@ -48,6 +48,6 @@ async def approve_once(call: CallbackQuery, user: User | None, settings: Setting
     if previous:
         await call.message.answer("Approved without duplicate points")
         return
-    await add_points(session, user_id=target.id, points=task.points, reason=f"Task completed: {task.title}", approved_by=user.id if user else None, related_task_id=task.id)
+    await add_points(session, user_id=target.id, points=task.points, reason=f"Task completed: {task.title}", approved_by=user.id if user else None, related_task_id=task.id, source_type="task_completion", source_id=task.id, idempotency_key=f"task_completion:{task.id}:{target.id}")
     await safe_send(bot, target.telegram_id, f"Task approved: {task.title}. Points: {task.points}")
     await call.message.answer("Approved and points added once")

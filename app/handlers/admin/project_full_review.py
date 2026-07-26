@@ -141,7 +141,7 @@ async def project_decision_finish(message: Message, user: User | None, settings:
         p.venue_comment = comment
         p.venue_remind_at = None
         if old_status != ProjectStatus.APPROVED:
-            await add_points(session, user_id=p.author_id, points=30, reason=f"Одобренный проект: {p.title}", approved_by=user.id if user else None, related_project_id=p.id)
+            await add_points(session, user_id=p.author_id, points=30, reason=f"Одобренный проект: {p.title}", approved_by=user.id if user else None, related_project_id=p.id, source_type="project_approval", source_id=p.id, idempotency_key=f"project_approval:{p.id}")
             await add_portfolio_item(session, user_id=p.author_id, title=f"Автор проекта: {p.title}", item_type="project", description=p.short_description, issued_by=user.id if user else None, related_project_id=p.id)
         notice = "Проект одобрен. Следующий шаг — оформить мероприятие и анонс"
     elif action == "postpone":

@@ -74,7 +74,7 @@ from app.services.audit_service import audit
 from app.services.excel_service import build_analytics_workbook
 from app.services.maintenance_service import reset_operational_data, reset_preview
 from app.services.notification_service import broadcast, safe_send
-from app.services.points_service import add_points, add_portfolio_item, total_points
+from app.services.points_service import add_points, add_portfolio_item, make_idempotency_key, total_points
 from app.services.redemption_service import exchange_redemption, reject_redemption
 from app.states.admin import (
     AdminAnswerStates,
@@ -376,6 +376,9 @@ async def approve_user(
         points=5,
         reason="Регистрация в боте",
         approved_by=user.id if user else None,
+        source_type="registration_approval",
+        source_id=target.id,
+        idempotency_key=f"registration_approval:{target.id}",
     )
     await audit(
         session,
@@ -609,6 +612,9 @@ async def event_attendance_confirm(
         reason=f"Участие в мероприятии: {event.title}",
         approved_by=user.id if user else None,
         related_event_id=event.id,
+        source_type="event_attendance",
+        source_id=registration.id,
+        idempotency_key=f"event_attendance:{event.id}:{target_id}",
     )
     await add_portfolio_item(
         session,
@@ -1014,6 +1020,9 @@ async def event_activity_decide(
             reason=f"Активность после мероприятия: {activity.title}",
             approved_by=user.id if user else None,
             related_event_id=activity.event_id,
+            source_type="event_activity",
+            source_id=submission.id,
+            idempotency_key=f"event_activity:{submission.id}:approval",
         )
     await call.message.answer(
         "Ответ принят и баллы начислены"
@@ -1062,6 +1071,9 @@ async def approve_proof(
         reason="Подтверждённое участие в мероприятии",
         approved_by=user.id if user else None,
         related_event_id=proof.event_id,
+        source_type="attendance_proof",
+        source_id=proof.id,
+        idempotency_key=f"attendance_proof:{proof.id}:approval",
     )
     await add_portfolio_item(
         session,
@@ -1327,6 +1339,9 @@ async def review_comment(
                             reason=f"Одобренный проект: {entity.title}",
                             approved_by=user.id if user else None,
                             related_project_id=entity.id,
+                            source_type="project_approval",
+                            source_id=entity.id,
+                            idempotency_key=f"project_approval:{entity.id}",
                         )
                         await add_portfolio_item(
                             session,
@@ -2397,6 +2412,9 @@ async def auction_select_winner(
         points=-bid.amount,
         reason=f"Победа в аукционе: {auction.title}",
         approved_by=user.id if user else None,
+        source_type="auction_win",
+        source_id=bid.id,
+        idempotency_key=f"auction_win:{auction.id}:{bid.id}",
     )
     bid.status = "won"
     bid.selected_by = user.id if user else None
@@ -2641,6 +2659,16 @@ async def growth_finish(
             points=amount,
             reason=reason,
             approved_by=user.id if user else None,
+            source_type="manual_points",
+            source_id=target.id,
+            idempotency_key=make_idempotency_key(
+                "manual_points",
+                target.id,
+                amount,
+                reason,
+                message.message_id,
+                user.id if user else None,
+            ),
         )
         notice = f"Ваш баланс изменён на {amount:+d} баллов\nПричина: {reason}"
     else:
@@ -2695,6 +2723,16 @@ async def addpoints_command(
         points=amount_value,
         reason=reason,
         approved_by=user.id if user else None,
+        source_type="manual_points_command",
+        source_id=target.id,
+        idempotency_key=make_idempotency_key(
+            "manual_points_command",
+            target.id,
+            amount_value,
+            reason,
+            message.message_id,
+            user.id if user else None,
+        ),
     )
     await message.answer("Баллы начислены.")
     await safe_send(
@@ -2749,6 +2787,9 @@ async def award_badge(
         points=20,
         reason="Получение знака отличия",
         approved_by=user.id,
+        source_type="badge_award",
+        source_id=badge.id,
+        idempotency_key=f"badge_award:{target.id}:{badge.id}",
     )
     await message.answer("Знак выдан.")
     await safe_send(
@@ -4572,6 +4613,9 @@ async def decide_task_submission(
             reason=f"Выполнение задания: {task.title}",
             approved_by=user.id if user else None,
             related_task_id=task.id,
+            source_type="task_submission",
+            source_id=submission.id,
+            idempotency_key=f"task_submission:{submission.id}:approval",
         )
         await add_portfolio_item(
             session,
@@ -4624,6 +4668,9 @@ async def decide_task(
             reason=f"Выполнение задачи: {task.title}",
             approved_by=user.id if user else None,
             related_task_id=task.id,
+            source_type="task_completion",
+            source_id=task.id,
+            idempotency_key=f"task_completion:{task.id}:{task.assignee_id}",
         )
         await add_portfolio_item(
             session,
@@ -4714,6 +4761,9 @@ async def decide_proposal(
                     points=amount,
                     reason=item.reason,
                     approved_by=user.id if user else None,
+                    source_type="proposal_points",
+                    source_id=item.id,
+                    idempotency_key=f"proposal_points:{item.id}:approval",
                 )
         elif item.proposal_type == "status" and value in {
             x.value for x in ParticipationStatus

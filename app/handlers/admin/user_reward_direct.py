@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Badge, User, UserBadge
-from app.services.points_service import add_points
+from app.services.points_service import add_points, make_idempotency_key
 from app.utils import texts
 from app.utils.constants import Role
 
@@ -74,7 +74,7 @@ async def points_finish(message: Message, user: User | None, settings: Settings,
     if not reason:
         await message.answer("Причина обязательна")
         return
-    await add_points(session, user_id=int(data["target_user_id"]), points=int(data["points_amount"]), reason=reason, approved_by=user.id if user else None)
+    await add_points(session, user_id=int(data["target_user_id"]), points=int(data["points_amount"]), reason=reason, approved_by=user.id if user else None, source_type="manual_points", source_id=int(data["target_user_id"]), idempotency_key=make_idempotency_key("manual_points", int(data["target_user_id"]), int(data["points_amount"]), reason, message.message_id, user.id if user else None))
     await state.clear()
     await message.answer("Баллы изменены")
 
