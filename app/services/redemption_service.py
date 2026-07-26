@@ -58,6 +58,9 @@ async def exchange_redemption(
         points=-redemption.points_spent,
         reason=f"Обмен на возможность: {reward.name}",
         approved_by=admin_id,
+        source_type="reward_redemption",
+        source_id=redemption.id,
+        idempotency_key=f"reward_redemption:{redemption.id}",
     )
     if reward.quantity is not None:
         reward.quantity -= 1

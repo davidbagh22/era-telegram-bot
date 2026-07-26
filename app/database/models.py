@@ -223,11 +223,15 @@ class Feedback(TimestampMixin, Base):
 
 class PointTransaction(Base):
     __tablename__ = "points"
+    __table_args__ = (UniqueConstraint("idempotency_key", name="uq_points_idempotency_key"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     points: Mapped[int] = mapped_column(Integer)
     reason: Mapped[str] = mapped_column(String(255))
+    source_type: Mapped[str | None] = mapped_column(String(64), index=True)
+    source_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(255))
     related_event_id: Mapped[int | None] = mapped_column(ForeignKey("events.id"))
     related_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"))
     related_project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"))

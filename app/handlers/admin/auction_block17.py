@@ -157,7 +157,16 @@ async def confirm_winner(call: CallbackQuery, user: User | None, settings: Setti
         if not candidate or candidate.is_blocked or candidate.is_archived or await total_points(session, bid.user_id) < bid.amount:
             bid.status = "invalid"
             continue
-        await add_points(session, user_id=candidate.id, points=-bid.amount, reason=f"Победа в аукционе: {auction.title}", approved_by=user.id if user else None)
+        await add_points(
+            session,
+            user_id=candidate.id,
+            points=-bid.amount,
+            reason=f"Победа в аукционе: {auction.title}",
+            approved_by=user.id if user else None,
+            source_type="auction_win",
+            source_id=bid.id,
+            idempotency_key=f"auction_win:{auction.id}:{bid.id}",
+        )
         bid.status = "winner"
         bid.selected_by = user.id if user else None
         bid.selected_at = datetime.now(timezone.utc)

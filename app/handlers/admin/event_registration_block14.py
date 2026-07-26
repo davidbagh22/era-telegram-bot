@@ -161,6 +161,9 @@ async def award_event_points(
             reason=f"Посещение мероприятия: {event.title}",
             approved_by=user.id if user else None,
             related_event_id=event.id,
+            source_type="event_attendance",
+            source_id=registration.id,
+            idempotency_key=f"event_attendance:{event.id}:{participant.id}",
         )
         awarded += 1
         await safe_send(

@@ -9,7 +9,14 @@ branch_labels = None
 depends_on = None
 
 
+def _table_exists(table_name: str) -> bool:
+    return table_name in sa.inspect(op.get_bind()).get_table_names()
+
+
 def upgrade() -> None:
+    if _table_exists("partners") and _table_exists("partner_initiatives") and _table_exists("partner_tasks"):
+        return
+
     op.create_table("partners", sa.Column("id", sa.Integer(), primary_key=True), sa.Column("name", sa.String(255), nullable=False), sa.Column("description", sa.Text(), nullable=False), sa.Column("source_url", sa.String(500), nullable=True), sa.Column("status", sa.String(32), nullable=False, server_default="partner"), sa.Column("notes", sa.Text(), nullable=True), sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()), sa.Column("is_archived", sa.Boolean(), nullable=False, server_default=sa.false()), sa.Column("created_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True), sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()), sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()))
     op.create_table("partner_initiatives", sa.Column("id", sa.Integer(), primary_key=True), sa.Column("partner_id", sa.Integer(), sa.ForeignKey("partners.id"), nullable=False), sa.Column("title", sa.String(255), nullable=False), sa.Column("description", sa.Text(), nullable=False), sa.Column("source_url", sa.String(500), nullable=True), sa.Column("starts_at", sa.DateTime(timezone=True), nullable=True), sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True), sa.Column("location", sa.String(255), nullable=True), sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()), sa.Column("is_archived", sa.Boolean(), nullable=False, server_default=sa.false()), sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()), sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()))
     op.create_table("partner_tasks", sa.Column("id", sa.Integer(), primary_key=True), sa.Column("partner_id", sa.Integer(), sa.ForeignKey("partners.id"), nullable=False), sa.Column("title", sa.String(255), nullable=False), sa.Column("description", sa.Text(), nullable=False), sa.Column("source_url", sa.String(500), nullable=True), sa.Column("points", sa.Integer(), nullable=False, server_default="0"), sa.Column("deadline", sa.DateTime(timezone=True), nullable=True), sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()), sa.Column("is_archived", sa.Boolean(), nullable=False, server_default=sa.false()), sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()), sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()))
