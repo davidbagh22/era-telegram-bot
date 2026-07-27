@@ -8,6 +8,8 @@
 
 Этап 2: система баллов — завершён и смержен в `main`.
 
+Ретроспективная очистка этапов 1-2 — в работе.
+
 ## Завершённые этапы
 
 ### Этап 1. База данных и транзакции
@@ -58,6 +60,33 @@ Merge commit: `c07e00090e718bc480664d76c5cf0187d70bc7e1`.
 CI:
 - Tests: success on `fbff6397febe8633a9c2923ce333b8e7c814a7e3`;
 - Bot checks: success on `fbff6397febe8633a9c2923ce333b8e7c814a7e3`.
+
+### Ретроспективная очистка этапов 1-2
+
+Проверено:
+- подключение router через `app/bot.py`, `app/handlers/admin/__init__.py`, `app/handlers/participant/__init__.py`;
+- production-вызовы `add_points(...)`, прямые создания `PointTransaction`, операции регистрации на мероприятия, подтверждения участия, наград, аукционов и партнёрских предложений;
+- старые callback handlers, которые дублировали активные маршруты баллов и регистрации, но не были подключены к bot dispatcher.
+
+Удалено:
+- неподключённые заменённые handlers: `registration_addons.py`, `admin/activity_files.py`, `admin/dashboard_quick.py`, `admin/event_flow.py`, `admin/project_full_review.py`, `admin/project_team_review.py`, `admin/proj2.py`, `admin/task_guard2.py`, `admin/task_review.py`, `admin/task_review_clean.py`, `admin/user_reward_direct.py`.
+
+Архитектурное решение:
+- рабочими путями для операций баллов остаются активные router-модули, подключённые в `admin/__init__.py` и `participant/__init__.py`;
+- прямое создание `PointTransaction` вне `points_service` по-прежнему запрещено аудит-тестом;
+- добавлен системный тест, который не даёт вернуть удалённые дублирующие handlers.
+
+Проверка:
+- `python -m pytest tests/test_system_wide_audit.py tests/test_points_idempotency_audit.py tests/test_points_transactions.py tests/test_event_registration_block14.py tests/test_event_activities_block15.py tests/test_reward_redemptions.py tests/test_auction_block17.py` — 29 passed;
+- `python -m pytest` — 134 passed.
+
+PR: pending.
+
+Merge commit: pending.
+
+CI:
+- Tests: pending;
+- Bot checks: pending.
 
 ## Открытые проблемы
 
