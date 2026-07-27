@@ -199,6 +199,26 @@ class SystemWideAuditTests(unittest.TestCase):
                 failures.append(f"{rel}: missing {', '.join(absent)}")
         self.assertFalse(failures, "Points flow contract failures:\n" + "\n".join(failures))
 
+    def test_replaced_points_and_registration_handlers_are_removed(self) -> None:
+        removed = [
+            "app/handlers/registration_addons.py",
+            "app/handlers/admin/activity_files.py",
+            "app/handlers/admin/dashboard_quick.py",
+            "app/handlers/admin/event_flow.py",
+            "app/handlers/admin/project_full_review.py",
+            "app/handlers/admin/project_team_review.py",
+            "app/handlers/admin/proj2.py",
+            "app/handlers/admin/task_guard2.py",
+            "app/handlers/admin/task_review.py",
+            "app/handlers/admin/task_review_clean.py",
+            "app/handlers/admin/user_reward_direct.py",
+        ]
+        existing = [rel for rel in removed if (ROOT / rel).exists()]
+        self.assertFalse(
+            existing,
+            "Replaced duplicate handlers must stay removed:\n" + "\n".join(existing),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
