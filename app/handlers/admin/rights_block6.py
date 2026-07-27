@@ -12,6 +12,15 @@ from app.config import Settings
 from app.database.models import PermissionGrant, PointTransaction, PortfolioItem, User
 from app.keyboards.participant import main_menu
 from app.services.audit_service import audit
+from app.services.authorization_service import (
+    active_permissions,
+    can_change_access_status,
+    can_change_permission,
+    can_change_role,
+    can_manage_people,
+    can_manage_permissions,
+    can_view_people,
+)
 from app.services.notification_service import safe_send
 from app.utils import texts
 from app.utils.constants import (
@@ -41,43 +50,6 @@ def _status_label(value: str | ParticipationStatus | None) -> str:
         return str(value or "не указан")
 
 
-def _active_permissions(user: User | None) -> set[str]:
-    return {
-        grant.permission
-        for grant in (getattr(user, "permission_grants", None) or [])
-        if grant.is_active
-    }
-
-
-def _is_full_admin(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    return bool(
-        telegram_id in settings.admin_ids
-        or (user and user.role == Role.ADMIN and not user.is_blocked and not user.is_archived)
-    )
-
-
-def _can_view_people(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    if _is_full_admin(user, settings, telegram_id):
-        return True
-    if not user or user.is_blocked or user.is_archived:
-        return False
-    permissions = _active_permissions(user)
-    return bool(permissions.intersection({"people.view", "people.manage"}))
-
-
-def _can_manage_people(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    if _is_full_admin(user, settings, telegram_id):
-        return True
-    if not user or user.is_blocked or user.is_archived:
-        return False
-    return "people.manage" in _active_permissions(user)
-
-
-def _can_manage_permissions(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    # Technical rights are intentionally restricted to real admins, not delegated managers.
-    return _is_full_admin(user, settings, telegram_id)
-
-
 async def _guard(
     event: CallbackQuery | Message,
     user: User | None,
@@ -94,11 +66,11 @@ async def _guard(
         message = event
         telegram_id = event.from_user.id
     allowed = (
-        _can_manage_permissions(user, settings, telegram_id)
+        can_manage_permissions(user, settings, telegram_id)
         if permissions
-        else _can_manage_people(user, settings, telegram_id)
+        else can_manage_people(user, settings, telegram_id)
         if manage
-        else _can_view_people(user, settings, telegram_id)
+        else can_view_people(user, settings, telegram_id)
     )
     if not allowed:
         await message.answer(texts.NO_ACCESS)
@@ -188,8 +160,8 @@ async def _send_user_card(message: Message, session: AsyncSession, target: User)
         )
         or 0
     )
-    active_permissions = _active_permissions(target)
-    rights = ", ".join(PERMISSION_LABELS.get(item, item) for item in active_permissions) or "нет отдельных прав"
+    target_permissions = active_permissions(target)
+    rights = ", ".join(PERMISSION_LABELS.get(item, item) for item in target_permissions) or "нет отдельных прав"
     text = (
         f"👤 Участник #{target.id}\n\n"
         f"{target.first_name} {target.last_name or ''}\n"
@@ -253,12 +225,20 @@ async def set_role(
     except ValueError:
         await call.message.answer("Такой роли нет")
         return
-    if new_role == Role.ADMIN and not _can_manage_permissions(user, settings, call.from_user.id):
-        await call.message.answer("Назначать админов может только действующий администратор")
-        return
     target = await session.get(User, int(raw_target))
     if not target:
         await call.message.answer("Участник не найден")
+        return
+    decision = await can_change_role(
+        session,
+        actor=user,
+        actor_telegram_id=call.from_user.id,
+        target=target,
+        new_role=new_role,
+        settings=settings,
+    )
+    if not decision.allowed:
+        await call.message.answer(decision.reason)
         return
     old_role = target.role
     target.role = new_role.value
@@ -336,6 +316,10 @@ async def permission_toggle(
     if not target:
         await call.message.answer("Участник не найден")
         return
+    decision = await can_change_permission(actor=user, target=target)
+    if not decision.allowed:
+        await call.message.answer(decision.reason)
+        return
     grant = await session.scalar(
         select(PermissionGrant).where(
             PermissionGrant.user_id == target_id,
@@ -385,11 +369,11 @@ async def block_toggle(
     if not target:
         await call.message.answer("Участник не найден")
         return
-    if user and target.id == user.id:
-        await call.message.answer("Нельзя заблокировать собственный доступ")
-        return
-    if target.telegram_id in settings.admin_ids:
-        await call.message.answer("Основного администратора нельзя заблокировать из бота")
+    decision = await can_change_access_status(
+        session, actor=user, target=target, settings=settings
+    )
+    if not decision.allowed:
+        await call.message.answer(decision.reason)
         return
     target.is_blocked = action == "block"
     await audit(
@@ -416,11 +400,11 @@ async def archive_toggle(
     if not target:
         await call.message.answer("Участник не найден")
         return
-    if user and target.id == user.id:
-        await call.message.answer("Нельзя отправить в архив собственный доступ")
-        return
-    if target.telegram_id in settings.admin_ids:
-        await call.message.answer("Основного администратора нельзя отправить в архив из бота")
+    decision = await can_change_access_status(
+        session, actor=user, target=target, settings=settings
+    )
+    if not decision.allowed:
+        await call.message.answer(decision.reason)
         return
     if action == "archive":
         target.is_archived = True
