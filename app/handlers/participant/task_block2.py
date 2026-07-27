@@ -48,7 +48,7 @@ async def _can_view(session: AsyncSession, task: Task, user: User) -> bool:
     item = await _membership(session, task.id, user.id)
     if item and item.status in {"pending", "accepted", "joined"}:
         return True
-    return task.task_type == "challenge" and task.status == "published"
+    return task.task_type == "challenge" and task.status == "published" and _matches_task_audience(task, user)
 
 
 async def _can_submit(session: AsyncSession, task: Task, user: User) -> bool:
@@ -73,9 +73,13 @@ async def _tasks_for_user(session: AsyncSession, user: User) -> list[Task]:
         task for task in tasks
         if task.assignee_id == user.id
         or task.id in {membership.task_id for membership in memberships if membership.status in {"pending", "accepted", "joined"}}
-        or not (task.audience_filter_json or {}).get("role")
-        or (task.audience_filter_json or {}).get("role") == user.role
+        or _matches_task_audience(task, user)
     ]
+
+
+def _matches_task_audience(task: Task, user: User) -> bool:
+    role = (task.audience_filter_json or {}).get("role")
+    return not role or role == user.role
 
 
 def _is_joined_or_assigned(task: Task, joined_ids: set[int], user: User) -> bool:
@@ -87,6 +91,7 @@ def _is_open_public_task(task: Task, joined_ids: set[int], user: User) -> bool:
         task.task_type == "challenge"
         and task.status == "published"
         and not _is_joined_or_assigned(task, joined_ids, user)
+        and _matches_task_audience(task, user)
     )
 
 
@@ -161,6 +166,59 @@ async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSessi
         empty = ux_texts.TASKS_EMPTY_ACTIVE
     body = "\n".join(f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, task.status)}, до {task.deadline:%d.%m.%Y} · {task.points} баллов" for task in tasks) or empty
     await call.message.answer(f"{title}\n\n{body}", reply_markup=tasks_keyboard(tasks, joined_ids) if tasks else _task_menu())
+
+
+@router.callback_query(F.data.startswith("task:join:"))
+async def task_join(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+    await call.answer()
+    if not _approved(user):
+        return
+    task = await session.get(Task, int(call.data.rsplit(":", 1)[-1]))
+    if (
+        task is None
+        or task.task_type != "challenge"
+        or task.status != "published"
+        or not _matches_task_audience(task, user)
+    ):
+        await call.message.answer("Набор на это задание уже закрыт")
+        return
+    current = (
+        await session.scalars(
+            select(TaskParticipant).where(TaskParticipant.task_id == task.id)
+        )
+    ).all()
+    accepted = [item for item in current if item.status in {"accepted", "joined"}]
+    if task.max_participants and len(accepted) >= task.max_participants:
+        await call.message.answer("Команда уже набрана")
+        return
+    existing = next((item for item in current if item.user_id == user.id), None)
+    if existing:
+        if existing.status == "rejected":
+            existing.status = "pending"
+        elif existing.status == "pending":
+            await call.message.answer(
+                "Ваша заявка уже у лидера на рассмотрении.",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[InlineKeyboardButton(text="← Мои задачи", callback_data="cabinet:tasks")]]
+                ),
+            )
+            return
+        else:
+            await call.message.answer(
+                "Вы уже в команде этой задачи.",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[InlineKeyboardButton(text="← Мои задачи", callback_data="cabinet:tasks")]]
+                ),
+            )
+            return
+    else:
+        session.add(TaskParticipant(task_id=task.id, user_id=user.id, status="pending"))
+    await call.message.answer(
+        "Заявка отправлена лидеру 🙌\n\nЕсли лидер примет Вас в команду, задача появится как активная в личном кабинете.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="← Мои задачи", callback_data="cabinet:tasks")]]
+        ),
+    )
 
 
 @router.callback_query(F.data.startswith("task:view:"))

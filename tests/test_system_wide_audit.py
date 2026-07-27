@@ -219,6 +219,20 @@ class SystemWideAuditTests(unittest.TestCase):
             "Replaced duplicate handlers must stay removed:\n" + "\n".join(existing),
         )
 
+    def test_replaced_participant_task_handlers_are_removed(self) -> None:
+        removed = [
+            "app/handlers/participant/task_extra.py",
+            "app/handlers/participant/task_flow.py",
+            "app/handlers/participant/task_lists_addon.py",
+            "app/handlers/participant/task_review_addon.py",
+            "app/handlers/participant/task_view_file.py",
+        ]
+        existing = [rel for rel in removed if (ROOT / rel).exists()]
+        self.assertFalse(
+            existing,
+            "Participant task routes must have a single owner:\n" + "\n".join(existing),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
