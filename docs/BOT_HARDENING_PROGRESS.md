@@ -8,7 +8,7 @@
 
 Этап 2: система баллов — завершён и смержен в `main`.
 
-Ретроспективная очистка этапов 1-2 — в работе.
+Ретроспективная очистка этапов 1-2 — завершена и смержена в `main`.
 
 ## Завершённые этапы
 
@@ -80,13 +80,13 @@ CI:
 - `python -m pytest tests/test_system_wide_audit.py tests/test_points_idempotency_audit.py tests/test_points_transactions.py tests/test_event_registration_block14.py tests/test_event_activities_block15.py tests/test_reward_redemptions.py tests/test_auction_block17.py` — 29 passed;
 - `python -m pytest` — 134 passed.
 
-PR: pending.
+PR: #70.
 
-Merge commit: pending.
+Merge commit: `b3ef0ff846051d39aed40a52a47f485b44fe3f65`.
 
 CI:
-- Tests: pending;
-- Bot checks: pending.
+- Tests: success on `66cada93b782840481c6a6f0a5d0b169dbb750cb`;
+- Bot checks: success on `66cada93b782840481c6a6f0a5d0b169dbb750cb`.
 
 ## Открытые проблемы
 
