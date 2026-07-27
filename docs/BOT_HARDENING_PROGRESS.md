@@ -16,6 +16,8 @@
 
 Доработка личного кабинета задач — завершена и смержена в `main`.
 
+Этап 5: мероприятия — в работе.
+
 ## Завершённые этапы
 
 ### Этап 1. База данных и транзакции
@@ -183,3 +185,33 @@ CI:
 Этап 5. Мероприятия:
 - проверить создание, публикацию, регистрацию, лимиты, отмену, подтверждение, баллы и уведомления;
 - QR остаётся отдельным открытым блокером, потому что система отсутствует.
+
+### Этап 5. Мероприятия
+
+Проверено:
+- активные participant event handlers: афиша, карточка, регистрация, лимиты мест;
+- сервис регистрации `event_service.register_for_event`;
+- admin status callbacks для открытия регистрации, закрытия, старта и завершения;
+- подтверждение посещения и начисление баллов за attendance.
+
+Найдено:
+- смена статуса мероприятия принимала целевой статус из callback без матрицы допустимых переходов;
+- старая или подменённая кнопка могла попытаться перескочить жизненный цикл мероприятия.
+
+Сделано:
+- добавлена матрица `EVENT_STATUS_TRANSITIONS`;
+- admin callback смены статуса теперь проверяет переход по текущему состоянию мероприятия;
+- добавлены негативные тесты на прямые callback-прыжки между статусами.
+
+Проверка:
+- `python -m pytest tests/test_event_status_transitions.py tests/test_event_registration_block14.py tests/test_stability_bindchat_projects.py tests/test_stabilization_contracts.py tests/test_system_wide_audit.py` — 27 passed;
+- `python -m pytest` — 145 passed;
+- `git diff --check` — успешно.
+
+PR: pending.
+
+Merge commit: pending.
+
+CI:
+- Tests: pending;
+- Bot checks: pending.

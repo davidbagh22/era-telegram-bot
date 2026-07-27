@@ -71,6 +71,7 @@ from app.keyboards.admin import (
 )
 from app.keyboards.participant import main_menu
 from app.services.audit_service import audit
+from app.services.event_service import can_change_event_status
 from app.services.excel_service import build_analytics_workbook
 from app.services.maintenance_service import reset_operational_data, reset_preview
 from app.services.notification_service import broadcast, safe_send
@@ -476,24 +477,24 @@ async def event_status_change(
     if not await _guard(call, user, settings):
         return
     _, _, _, status, raw_id = call.data.split(":")
-    allowed = {
-        EventStatus.REGISTRATION_OPEN,
-        EventStatus.REGISTRATION_CLOSED,
-        EventStatus.ACTIVE,
-        EventStatus.COMPLETED,
-    }
-    if status not in allowed:
+    try:
+        next_status = EventStatus(status)
+    except ValueError:
+        await call.message.answer("Такого статуса мероприятия нет")
         return
     event = await session.get(Event, int(raw_id))
     if event is None:
         return
-    event.status = status
+    if not can_change_event_status(event.status, next_status):
+        await call.message.answer("Этот переход статуса недоступен для текущего мероприятия")
+        return
+    event.status = next_status
     registrations = (
         await session.scalars(
             select(EventRegistration).where(EventRegistration.event_id == event.id)
         )
     ).all()
-    if status == EventStatus.COMPLETED:
+    if next_status == EventStatus.COMPLETED:
         notice = (
             f"Мероприятие «{event.title}» завершено 🌿\n\n"
             "Спасибо, что были частью события. Скоро здесь могут появиться отзыв, фото или другое задание с баллами"
@@ -508,10 +509,10 @@ async def event_status_change(
         action="event.status_changed",
         entity_type="event",
         entity_id=event.id,
-        new_value={"status": status},
+        new_value={"status": next_status.value},
     )
     await call.message.answer(
-        f"Статус обновлён: {EVENT_STATUS_LABELS.get(status, status)}"
+        f"Статус обновлён: {EVENT_STATUS_LABELS.get(next_status, next_status)}"
     )
 
 

@@ -21,6 +21,16 @@ REGISTRATION_ALLOWED_STATUSES = {
     EventStatus.REGISTRATION_OPEN,
 }
 
+EVENT_STATUS_TRANSITIONS = {
+    EventStatus.PUBLISHED: {EventStatus.REGISTRATION_OPEN},
+    EventStatus.REGISTRATION_OPEN: {
+        EventStatus.REGISTRATION_CLOSED,
+        EventStatus.ACTIVE,
+    },
+    EventStatus.REGISTRATION_CLOSED: {EventStatus.ACTIVE},
+    EventStatus.ACTIVE: {EventStatus.COMPLETED},
+}
+
 
 async def published_events(session: AsyncSession) -> list[Event]:
     return list(
@@ -104,3 +114,12 @@ def event_datetime(event: Event, timezone: str) -> datetime:
     return datetime.combine(
         event.event_date, event.event_time, tzinfo=ZoneInfo(timezone)
     )
+
+
+def can_change_event_status(current: str, target: str) -> bool:
+    try:
+        current_status = EventStatus(current)
+        target_status = EventStatus(target)
+    except ValueError:
+        return False
+    return target_status in EVENT_STATUS_TRANSITIONS.get(current_status, set())
