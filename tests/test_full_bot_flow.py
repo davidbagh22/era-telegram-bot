@@ -27,7 +27,7 @@ class FullBotFlowSmokeTests(unittest.TestCase):
             "app/handlers/participant/directions_block7.py",
             "app/handlers/participant/task_block2.py",
             "app/handlers/participant/projects_block5.py",
-            "app/handlers/participant/project_event_flow.py",
+            "app/handlers/participant/project_event_photo_flow.py",
             "app/handlers/participant/events_stability_block8.py",
             "app/handlers/participant/event_activities_block15.py",
             "app/handlers/participant/partner_offers_block16.py",
@@ -51,7 +51,7 @@ class FullBotFlowSmokeTests(unittest.TestCase):
         for marker in (
             "directions_block7.router",
             "task_block2.router",
-            "project_event_flow.router",
+            "project_event_photo_flow.router",
             "events_stability_block8.router",
             "event_activities_block15.router",
             "partner_offers_block16.router",

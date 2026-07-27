@@ -233,6 +233,20 @@ class SystemWideAuditTests(unittest.TestCase):
             "Participant task routes must have a single owner:\n" + "\n".join(existing),
         )
 
+    def test_replaced_project_event_handlers_are_removed(self) -> None:
+        removed = [
+            "app/handlers/participant/project_control_addon.py",
+            "app/handlers/participant/project_event_flow.py",
+            "app/handlers/participant/project_event_stability.py",
+            "app/handlers/participant/project_team_addon.py",
+            "app/handlers/participant/project_team_search_addon.py",
+        ]
+        existing = [rel for rel in removed if (ROOT / rel).exists()]
+        self.assertFalse(
+            existing,
+            "Project event creation must have a single owner:\n" + "\n".join(existing),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

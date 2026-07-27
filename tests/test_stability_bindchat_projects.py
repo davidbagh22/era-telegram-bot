@@ -3,9 +3,8 @@ from datetime import date, time
 from sqlalchemy import create_engine, inspect
 
 from app.database import Base
-from app.database.models import Project
 from app.handlers.chat_binding import CHAT_KEYS
-from app.handlers.participant.project_event_stability import _project_date, _project_time
+from app.handlers.participant.project_event_photo_flow import _date_string, _time_string
 from app.services.event_service import PUBLIC_EVENT_STATUSES, REGISTRATION_ALLOWED_STATUSES
 from app.utils.constants import EventStatus
 
@@ -19,29 +18,13 @@ def test_bind_command_covers_all_operational_chats() -> None:
 
 
 def test_project_event_uses_structured_date_and_time_first() -> None:
-    project = Project(
-        author_id=1,
-        title="Проект",
-        short_description="Описание",
-        form_data={"proposed_date": "01.01.2020", "proposed_time": "09:00"},
-    )
-    project.proposed_date = date(2026, 9, 15)
-    project.proposed_time = time(18, 30)
-
-    assert _project_date(project, project.form_data) == date(2026, 9, 15)
-    assert _project_time(project, project.form_data) == time(18, 30)
+    assert _date_string(date(2026, 9, 15)) == "15.09.2026"
+    assert _time_string(time(18, 30)) == "18:30"
 
 
 def test_project_event_falls_back_to_form_data() -> None:
-    project = Project(
-        author_id=1,
-        title="Проект",
-        short_description="Описание",
-        form_data={"proposed_date": "15.09.2026", "proposed_time": "18:30"},
-    )
-
-    assert _project_date(project, project.form_data) == date(2026, 9, 15)
-    assert _project_time(project, project.form_data) == time(18, 30)
+    assert _date_string("15.09.2026") == "15.09.2026"
+    assert _time_string("18:30") == "18:30"
 
 
 def test_event_schema_keeps_project_link_and_public_statuses() -> None:

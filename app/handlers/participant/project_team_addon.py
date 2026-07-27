@@ -1,1 +1,0 @@
-from app.handlers.participant.project_team_search_addon import router
