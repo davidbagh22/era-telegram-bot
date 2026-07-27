@@ -16,7 +16,7 @@
 
 Доработка личного кабинета задач — завершена и смержена в `main`.
 
-Этап 5: мероприятия — в работе.
+Этап 5: мероприятия — завершён и смержен в `main`.
 
 ## Завершённые этапы
 
@@ -172,13 +172,13 @@ CI:
 - `python -m pytest` — 143 passed;
 - `git diff --check` — успешно.
 
-PR: pending.
+PR: #77.
 
-Merge commit: pending.
+Merge commit: `befa64910a42f8c322945afbb44e632bb7ced568`.
 
 CI:
-- Tests: pending;
-- Bot checks: pending.
+- Tests: success on `55462d8f3bf21486b42476beb4d622a3735e5260`;
+- Bot checks: success on `55462d8f3bf21486b42476beb4d622a3735e5260`.
 
 ## Следующий этап
 
