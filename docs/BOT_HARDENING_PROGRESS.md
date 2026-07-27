@@ -14,7 +14,7 @@
 
 Этап 4: QR-система — не реализована.
 
-Доработка личного кабинета задач — в работе.
+Доработка личного кабинета задач — завершена и смержена в `main`.
 
 ## Завершённые этапы
 
@@ -149,13 +149,13 @@ CI:
 - `python -m pytest` — 141 passed;
 - `git diff --check` — успешно.
 
-PR: pending.
+PR: #75.
 
-Merge commit: pending.
+Merge commit: `9d96c50e066fe0462324ea4464b8da836c4ffe62`.
 
 CI:
-- Tests: pending;
-- Bot checks: pending.
+- Tests: success on `67cf2378abc0c691b3588f43844908d45f341fc6`;
+- Bot checks: success on `67cf2378abc0c691b3588f43844908d45f341fc6`.
 
 ### Доработка личного кабинета задач
 
