@@ -10,6 +10,8 @@
 
 Ретроспективная очистка этапов 1-2 — завершена и смержена в `main`.
 
+Этап 3: роли и права — в работе.
+
 ## Завершённые этапы
 
 ### Этап 1. База данных и транзакции
@@ -99,3 +101,35 @@ CI:
 - построить фактическую матрицу ролей;
 - проверить административные handlers на обход прав;
 - добавить негативные тесты на чужие ID, callback-подмену и ручные команды.
+
+## Текущий этап
+
+### Этап 3. Роли и права
+
+Проверено:
+- фактические источники прав: `users.role`, `settings.admin_ids`, `permission_grants`, `is_blocked`, `is_archived`, `application_status`;
+- активный модуль управления ролями и правами `app/handlers/admin/rights_block6.py`;
+- прямые callback-сценарии смены роли, блокировки, архивации и переключения technical permissions.
+
+Найдено:
+- проверки прав были размазаны по handler helpers;
+- не было единого серверного правила для самопонижения/самоповышения, изменения собственных technical permissions и защиты последнего администратора.
+
+Сделано:
+- добавлен `app/services/authorization_service.py` как единый слой решений для критических операций с ролями, доступом и technical permissions;
+- `rights_block6.py` переведён на этот сервис для опасных действий;
+- добавлены негативные тесты на прямой callback-обход: собственная роль, собственные права, последний администратор, основной администратор, мгновенная потеря delegated permissions после блокировки;
+- добавлена фактическая матрица прав `docs/ROLE_PERMISSION_MATRIX.md`.
+
+Проверка:
+- `python -m pytest tests/test_authorization_service.py tests/test_system_wide_audit.py tests/test_v2_scenarios.py tests/test_full_bot_flow.py` — 30 passed.
+- `python -m pytest` — 140 passed.
+- `git diff --check` — успешно.
+
+PR: pending.
+
+Merge commit: pending.
+
+CI:
+- Tests: pending;
+- Bot checks: pending.
