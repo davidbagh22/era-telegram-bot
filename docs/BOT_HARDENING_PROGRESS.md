@@ -14,6 +14,8 @@
 
 Этап 4: QR-система — не реализована.
 
+Доработка личного кабинета задач — в работе.
+
 ## Завершённые этапы
 
 ### Этап 1. База данных и транзакции
@@ -145,6 +147,27 @@ CI:
 Проверка:
 - `python -m pytest tests/test_qr_system_audit.py tests/test_event_registration_block14.py tests/test_full_bot_flow.py` — 10 passed;
 - `python -m pytest` — 141 passed;
+- `git diff --check` — успешно.
+
+PR: pending.
+
+Merge commit: pending.
+
+CI:
+- Tests: pending;
+- Bot checks: pending.
+
+### Доработка личного кабинета задач
+
+Сделано:
+- в `Личный кабинет → Задачи` добавлен отдельный раздел `🌐 Общие задачи`;
+- активные задачи теперь показывают только личные/взятые задачи;
+- общие задачи показывают опубликованные `challenge`-задачи, куда участник ещё не вступил;
+- архив не смешивается с открытым набором.
+
+Проверка:
+- `python -m pytest tests/test_participant_tasks_cabinet.py tests/test_v2_scenarios.py tests/test_system_wide_audit.py tests/test_full_bot_flow.py` — 26 passed;
+- `python -m pytest` — 143 passed;
 - `git diff --check` — успешно.
 
 PR: pending.

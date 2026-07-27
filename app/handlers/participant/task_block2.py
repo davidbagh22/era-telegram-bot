@@ -24,6 +24,7 @@ def _approved(user: User | None) -> bool:
 def _task_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🟢 Задачи в работе", callback_data="tasks:list:active")],
+        [InlineKeyboardButton(text="🌐 Общие задачи", callback_data="tasks:list:open")],
         [InlineKeyboardButton(text="🗂 Архив задач", callback_data="tasks:list:archive")],
         [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
     ])
@@ -77,6 +78,18 @@ async def _tasks_for_user(session: AsyncSession, user: User) -> list[Task]:
     ]
 
 
+def _is_joined_or_assigned(task: Task, joined_ids: set[int], user: User) -> bool:
+    return task.assignee_id == user.id or task.id in joined_ids
+
+
+def _is_open_public_task(task: Task, joined_ids: set[int], user: User) -> bool:
+    return (
+        task.task_type == "challenge"
+        and task.status == "published"
+        and not _is_joined_or_assigned(task, joined_ids, user)
+    )
+
+
 async def _send_task_file(call: CallbackQuery, task: Task) -> None:
     if not task.file_id:
         return
@@ -114,7 +127,7 @@ async def tasks_root(call: CallbackQuery, user: User | None) -> None:
     await call.message.answer(ux_texts.TASKS_MENU, reply_markup=_task_menu())
 
 
-@router.callback_query(F.data.in_({"tasks:list:active", "tasks:list:archive"}))
+@router.callback_query(F.data.in_({"tasks:list:active", "tasks:list:open", "tasks:list:archive"}))
 async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
     await call.answer()
     if not _approved(user):
@@ -122,17 +135,30 @@ async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSessi
         return
     mode = call.data.rsplit(":", 1)[-1]
     all_tasks = await _tasks_for_user(session, user)
+    participants = (await session.scalars(select(TaskParticipant).where(TaskParticipant.user_id == user.id, TaskParticipant.task_id.in_([task.id for task in all_tasks] or [-1])))).all()
+    joined_ids = {item.task_id for item in participants if item.status in {"pending", "accepted", "joined"}}
+    joined_ids.update(task.id for task in all_tasks if task.assignee_id == user.id)
     if mode == "archive":
-        tasks = [task for task in all_tasks if task.status in ARCHIVE_STATUSES]
+        tasks = [
+            task
+            for task in all_tasks
+            if task.status in ARCHIVE_STATUSES and _is_joined_or_assigned(task, joined_ids, user)
+        ]
         title = "🗂 Архив задач"
         empty = ux_texts.TASKS_EMPTY_ARCHIVE
+    elif mode == "open":
+        tasks = [task for task in all_tasks if _is_open_public_task(task, joined_ids, user)]
+        title = "🌐 Общие задачи"
+        empty = "Сейчас нет открытых общих задач. Как только команда опубликует набор, он появится здесь."
     else:
-        tasks = [task for task in all_tasks if task.status not in ARCHIVE_STATUSES]
+        tasks = [
+            task
+            for task in all_tasks
+            if task.status not in ARCHIVE_STATUSES
+            and _is_joined_or_assigned(task, joined_ids, user)
+        ]
         title = "🟢 Задачи в работе"
         empty = ux_texts.TASKS_EMPTY_ACTIVE
-    participants = (await session.scalars(select(TaskParticipant).where(TaskParticipant.user_id == user.id, TaskParticipant.task_id.in_([task.id for task in tasks] or [-1])))).all()
-    joined_ids = {item.task_id for item in participants if item.status in {"pending", "accepted", "joined"}}
-    joined_ids.update(task.id for task in tasks if task.assignee_id == user.id)
     body = "\n".join(f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, task.status)}, до {task.deadline:%d.%m.%Y} · {task.points} баллов" for task in tasks) or empty
     await call.message.answer(f"{title}\n\n{body}", reply_markup=tasks_keyboard(tasks, joined_ids) if tasks else _task_menu())
 
