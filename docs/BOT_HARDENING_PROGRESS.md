@@ -18,6 +18,8 @@
 
 Этап 5: мероприятия — завершён и смержен в `main`.
 
+Этап 6: задачи, проекты, опросы, портфолио — в работе.
+
 ## Завершённые этапы
 
 ### Этап 1. База данных и транзакции
@@ -180,12 +182,6 @@ CI:
 - Tests: success on `55462d8f3bf21486b42476beb4d622a3735e5260`;
 - Bot checks: success on `55462d8f3bf21486b42476beb4d622a3735e5260`.
 
-## Следующий этап
-
-Этап 5. Мероприятия:
-- проверить создание, публикацию, регистрацию, лимиты, отмену, подтверждение, баллы и уведомления;
-- QR остаётся отдельным открытым блокером, потому что система отсутствует.
-
 ### Этап 5. Мероприятия
 
 Проверено:
@@ -206,6 +202,43 @@ CI:
 Проверка:
 - `python -m pytest tests/test_event_status_transitions.py tests/test_event_registration_block14.py tests/test_stability_bindchat_projects.py tests/test_stabilization_contracts.py tests/test_system_wide_audit.py` — 27 passed;
 - `python -m pytest` — 145 passed;
+- `git diff --check` — успешно.
+
+PR: #77.
+
+Merge commit: `befa64910a42f8c322945afbb44e632bb7ced568`.
+
+CI:
+- Tests: success on `55462d8f3bf21486b42476beb4d622a3735e5260`;
+- Bot checks: success on `55462d8f3bf21486b42476beb4d622a3735e5260`.
+
+## Следующий этап
+
+Этап 6. Задачи, проекты, опросы, портфолио:
+- проверить пользовательские и админские маршруты задач, проектов, опросов и портфолио;
+- убрать дубли обработчиков, если они пересекаются с активными сценариями;
+- усилить прямые callback-переходы серверными проверками доступа.
+
+### Этап 6. Задачи, проекты, опросы, портфолио
+
+Проверено:
+- активные participant task handlers и порядок подключения router в `app/handlers/participant/__init__.py`;
+- сценарии `cabinet:tasks`, `tasks:list:*`, `task:view:*`, `task:join:*`, `task:result:*`;
+- старые task addon handlers, которые дублировали карточку задачи, список задач и отправку результата.
+
+Найдено:
+- пользовательские задачи имели несколько источников правды: основной `task_block2.py` и старый подключённый `task_flow.py`;
+- старый подключённый handler мог показывать задачи без нового раздела `Общие задачи`;
+- прямой `task:view:*` для опубликованной общей задачи не проверял role-фильтр аудитории.
+
+Сделано:
+- вступление в общую задачу перенесено в основной `task_block2.py`;
+- просмотр и вступление в общую задачу теперь проверяют аудиторию задачи;
+- старые duplicate task handlers удалены и закреплены системным аудит-тестом.
+
+Проверка:
+- `python -m pytest tests/test_participant_tasks_cabinet.py tests/test_system_wide_audit.py` — 14 passed;
+- `python -m pytest` — 147 passed;
 - `git diff --check` — успешно.
 
 PR: pending.

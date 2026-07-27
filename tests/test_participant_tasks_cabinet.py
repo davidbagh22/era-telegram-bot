@@ -27,3 +27,12 @@ def test_active_task_handler_supports_open_tasks_mode() -> None:
     assert 'task.task_type == "challenge"' in source
     assert 'task.status == "published"' in source
     assert "joined_ids" in source
+    assert "_matches_task_audience" in source
+
+
+def test_participant_task_router_owns_join_view_and_result() -> None:
+    source = inspect.getsource(task_block2)
+
+    assert 'F.data.startswith("task:join:")' in source
+    assert 'F.data.startswith("task:view:")' in source
+    assert 'F.data.startswith("task:result:")' in source
