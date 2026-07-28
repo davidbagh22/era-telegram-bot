@@ -513,9 +513,12 @@ CI:
 - `python -m pytest` — 173 passed;
 - `git diff --check` — успешно.
 
-PR: будет создан после push.
+PR: #90.
 
 Merge commit: ожидает merge.
+
+CI:
+- Tests/Bot checks: success on `1bb38b3b71f34582e45ef458d3b8adf7ef10243a`.
 
 Следующий блок:
 - survey/event/chat broadcast recipients and notification deduplication.
