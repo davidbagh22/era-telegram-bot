@@ -4,6 +4,7 @@ from app.handlers.admin import (
     surveys_analytics,
     management_ready,
     commands_ready,
+    version_command,
     dashboard_block_a,
     task_review_block2,
     rights_block6,
@@ -33,6 +34,7 @@ router.include_router(analytics_filters.router)
 router.include_router(surveys_analytics.router)
 router.include_router(management_ready.router)
 router.include_router(commands_ready.router)
+router.include_router(version_command.router)
 router.include_router(dashboard_block_a.router)
 router.include_router(task_review_block2.router)
 router.include_router(rights_block6.router)
