@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.socials import SocialLink, SocialProfile
-from app.keyboards.admin import application_actions
 from app.keyboards.common import subscription_keyboard
 from app.keyboards.registration import (
     DEPARTMENT_OPTIONS,
@@ -23,7 +22,7 @@ from app.keyboards.registration import (
 from app.keyboards.participant import main_menu
 from app.repositories.users import create_user_from_registration
 from app.services.audit_service import audit
-from app.services.notification_service import notify_admins
+from app.services.admin_user_card import send_admin_application_cards
 from app.services.points_service import add_points
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.states.registration import RegistrationStates
@@ -331,32 +330,6 @@ async def no_consent(call: CallbackQuery, state: FSMContext) -> None:
     await call.message.answer(texts.REG_NO_CONSENT)
 
 
-def _application_notification(user) -> str:
-    telegram = f"@{user.username}" if user.username else str(user.telegram_id)
-    departments = ", ".join(item.department.name for item in user.departments) or "пока не выбраны"
-    directions = ", ".join(item.direction.name for item in user.directions) or "пока не выбраны"
-    birth_date_value = getattr(user, "birth_date", None)
-    birth_date_text = birth_date_value.strftime("%d.%m.%Y") if birth_date_value else "не указана"
-    return (
-        "📝 Новая заявка в ЭРА\n\n"
-        f"👤 {user.first_name} {user.last_name or ''}\n"
-        f"🎂 Дата рождения: {birth_date_text}\n"
-        f"🎈 Возраст: {user.age or 'не указан'}\n"
-        f"📍 Город: {user.city or 'не указан'}\n"
-        f"📱 Телефон: {user.phone or 'не указан'}\n"
-        f"🎓 Учёба / работа: {user.education_work or 'не указано'}\n"
-        f"💼 Занятие: {user.occupation or 'не указано'}\n"
-        f"📧 Email: {user.email or 'не указан'}\n"
-        f"💬 Telegram: {telegram}\n\n"
-        f"🧭 Желаемый путь: {user.desired_path or 'не указан'}\n"
-        f"⏳ Доступное время: {user.available_time or 'не указано'}\n"
-        f"🏛 Департаменты: {departments}\n"
-        f"✨ Направления: {directions}\n\n"
-        f"Мотивация\n{user.motivation or 'не указана'}\n\n"
-        "Выберите действие ниже."
-    )
-
-
 @router.callback_query(RegistrationStates.consent, F.data == "reg:consent:yes")
 async def finish_registration(
     call: CallbackQuery,
@@ -390,7 +363,7 @@ async def finish_registration(
         await call.message.answer(texts.MAIN_MENU, reply_markup=main_menu(settings.era_channel_url, privileged=user.role in PRIVILEGED_ROLES, admin=user.role == Role.ADMIN))
     else:
         await call.message.answer(texts.REG_DONE, reply_markup=pending_registration_keyboard(settings.era_channel_url))
-        await notify_admins(bot, settings, _application_notification(user), reply_markup=application_actions(user.id))
+        await send_admin_application_cards(bot, settings, session, user)
 
 
 @router.callback_query(F.data == "registration:status")

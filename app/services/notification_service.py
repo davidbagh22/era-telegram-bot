@@ -53,13 +53,18 @@ async def safe_send(bot: Bot, chat_id: int, text: str, reply_markup=None) -> boo
         return False
 
 
-async def notify_admins(
-    bot: Bot, settings: Settings, text: str, reply_markup=None
-) -> tuple[int, int]:
+async def admin_notification_recipients(settings: Settings) -> set[int]:
     recipients = set(settings.admin_ids)
     recipients.update(await _database_admin_ids(settings))
     if settings.leaders_chat_id:
         recipients.add(settings.leaders_chat_id)
+    return recipients
+
+
+async def notify_admins(
+    bot: Bot, settings: Settings, text: str, reply_markup=None
+) -> tuple[int, int]:
+    recipients = await admin_notification_recipients(settings)
 
     sent = failed = 0
     if not recipients:

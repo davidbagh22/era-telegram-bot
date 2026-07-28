@@ -20,6 +20,8 @@
 
 Этап 6: задачи, проекты, опросы, портфолио — завершён и смержен в `main`.
 
+Дополнительный продуктовый блок: заявка участника и единая admin user card — в работе.
+
 ## Завершённые этапы
 
 ### Этап 1. База данных и транзакции
@@ -338,3 +340,47 @@ Merge commit: `cc499beb83642a5f43aca8f16dc0344de822a2cc`.
 CI:
 - Tests: success on `c57cc94dacf70a77d449d294138e06acef836ad1`;
 - Bot checks: success on `c57cc94dacf70a77d449d294138e06acef836ad1`.
+
+### Дополнительный продуктовый блок. Заявка участника и admin user card
+
+Проверено:
+- регистрационный flow с сохранением `photo_file_id` и соцссылки;
+- отправка заявки администраторам после регистрации;
+- активные callbacks `admin:application:*`, `admin:approve_user:*`, `admin:reject_user:*`;
+- админские callbacks выбора участника `admin:user:*` из списков, поисков, мероприятий и связанных разделов.
+
+Найдено:
+- заявка администратору отправлялась как текст без сохранённого фото участника;
+- соцсети не были единым обязательным элементом admin card;
+- `admin:user:*` мог показываться разными реализациями карточки;
+- approval был продублирован в `approval_bonus_fix.py` и `panel.py`;
+- повторная обработка уже отклонённой заявки не была явно закрыта общим правилом.
+
+Сделано:
+- добавлен единый presenter `app/services/admin_user_card.py`;
+- заявка и карточка участника теперь показывают фото первым сообщением, если `file_id` есть;
+- при отсутствии фото карточка явно пишет `Фото: не загружено` и не падает;
+- карточка включает имя, Telegram, возраст/дату рождения, роль, статус, департаменты, направления, баллы, портфолио и соцсети;
+- регистрация отправляет администраторам полноценную карточку заявки через сохранённый `file_id`;
+- `admin:application:*`, `admin:user:*` в active profile/rights handlers переведены на один presenter;
+- добавлен `app/services/application_review_service.py` для единого approve/reject;
+- повторный approve/reject защищён, уведомления не дублируются.
+
+Тесты:
+- добавлен `tests/test_admin_user_card.py`;
+- обновлён контракт получателей admin notifications.
+
+Проверка:
+- `python -m pytest tests/test_admin_user_card.py tests/test_admin_notification_recipients.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py` — 23 passed;
+- `python -m pytest` — 155 passed;
+- `git diff --check` — успешно.
+
+PR: #84.
+
+Merge commit: ожидает merge.
+
+CI:
+- Tests/Bot checks: success on `ecbf3f5247777ff13b9efa78429cf39548b5d4da`.
+
+Следующий блок:
+- chat access / join approval / restrictions.

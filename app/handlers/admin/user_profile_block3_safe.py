@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Badge, User, UserBadge
+from app.services.admin_user_card import send_admin_user_card
 from app.services.notification_service import safe_send
 from app.services.points_service import add_points, add_portfolio_item, make_idempotency_key, total_points
 from app.utils import texts
@@ -209,4 +210,4 @@ async def profile(call: CallbackQuery, user: User | None, settings: Settings, se
     if not target:
         await call.message.answer("Участник не найден")
         return
-    await call.message.answer(await profile_text(session, target), reply_markup=profile_kb(target.id))
+    await send_admin_user_card(call.message, session, target, mode="profile")

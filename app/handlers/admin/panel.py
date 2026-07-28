@@ -70,6 +70,8 @@ from app.keyboards.admin import (
     user_status_keyboard,
 )
 from app.keyboards.participant import main_menu
+from app.services.admin_user_card import send_admin_user_card
+from app.services.application_review_service import approve_application, reject_application
 from app.services.audit_service import audit
 from app.services.event_service import can_change_event_status
 from app.services.excel_service import build_analytics_workbook
@@ -316,37 +318,7 @@ async def application_detail(
     target = await session.get(User, int(call.data.rsplit(":", 1)[-1]))
     if target is None:
         return
-    departments = (
-        ", ".join(x.department.name for x in target.departments) or "не выбраны"
-    )
-    directions = ", ".join(x.direction.name for x in target.directions) or "не выбраны"
-    telegram = f"@{target.username}" if target.username else str(target.telegram_id)
-    body = f"""📝 Заявка #{target.id}
-
-👤 {target.first_name} {target.last_name or ""}
-
-🎂 Возраст: {target.age or "не указан"}
-📍 Город: {target.city or "не указан"}
-📱 Телефон: {target.phone or "не указан"}
-📧 Email: {target.email or "не указан"}
-💬 Telegram: {telegram}
-
-🎓 Учёба / работа
-{target.education_work or "не указано"}
-
-💼 Занятие
-{target.occupation or "не указано"}
-
-🏛 Департаменты: {departments}
-📌 Направления: {directions}
-⏳ Доступное время: {target.available_time or "не указано"}
-🧭 Желаемый путь: {target.desired_path or "не указан"}
-
-✨ Мотивация
-{target.motivation or "не указана"}"""
-    await send_long_text(
-        call.message, body, reply_markup=application_actions(target.id)
-    )
+    await send_admin_user_card(call.message, session, target, mode="application")
 
 
 @router.callback_query(F.data.startswith("admin:approve_user:"))
@@ -362,34 +334,13 @@ async def approve_user(
     target = await session.get(User, int(call.data.rsplit(":", 1)[-1]))
     if target is None:
         return
-    if target.application_status == ApplicationStatus.APPROVED:
-        await call.message.answer(
-            "Эта заявка уже одобрена — повторное уведомление участнику не отправлено"
-        )
+    result = await approve_application(session, target, actor_id=user.id if user else None)
+    if result.code == "already_approved":
+        await call.message.answer("Эта заявка уже одобрена — повторное уведомление участнику не отправлено")
         return
-    old = target.application_status
-    target.application_status = ApplicationStatus.APPROVED
-    target.role = Role.PARTICIPANT
-    target.participation_status = ParticipationStatus.NEW_MEMBER
-    await add_points(
-        session,
-        user_id=target.id,
-        points=5,
-        reason="Регистрация в боте",
-        approved_by=user.id if user else None,
-        source_type="registration_approval",
-        source_id=target.id,
-        idempotency_key=f"registration_approval:{target.id}",
-    )
-    await audit(
-        session,
-        actor_id=user.id if user else None,
-        action="user.approved",
-        entity_type="user",
-        entity_id=target.id,
-        old_value={"application_status": old},
-        new_value={"application_status": target.application_status},
-    )
+    if result.code == "already_rejected":
+        await call.message.answer("Эта заявка уже отклонена — повторно одобрить её нельзя")
+        return
     await call.message.answer(
         f"Заявка одобрена ✅\n\n{target.first_name} получил доступ к функциям участника"
     )
@@ -1263,17 +1214,25 @@ async def review_comment(
     if kind == "user":
         target = await session.get(User, entity_id)
         if target:
-            target.application_status = (
-                ApplicationStatus.REJECTED
-                if action == "reject"
-                else ApplicationStatus.NEEDS_INFO
-            )
-            notice = (
-                f"{texts.APPLICATION_REJECTED}\n\nКомментарий: {comment}"
-                if action == "reject"
-                else texts.APPLICATION_NEEDS_INFO.format(comment=comment)
-            )
-            await safe_send(bot, target.telegram_id, notice)
+            if action == "reject":
+                result = await reject_application(
+                    session,
+                    target,
+                    actor_id=user.id if user else None,
+                    comment=comment,
+                )
+                if result.code == "already_approved":
+                    await message.answer("Заявка уже одобрена — отклонить её нельзя")
+                    await state.clear()
+                    return
+                if result.code == "already_rejected":
+                    await message.answer("Заявка уже отклонена — повторное уведомление не отправлено")
+                    await state.clear()
+                    return
+                await safe_send(bot, target.telegram_id, f"{texts.APPLICATION_REJECTED}\n\nКомментарий: {comment}")
+            else:
+                target.application_status = ApplicationStatus.NEEDS_INFO
+                await safe_send(bot, target.telegram_id, texts.APPLICATION_NEEDS_INFO.format(comment=comment))
     elif kind == "proof":
         proof = await session.get(AttendanceProof, entity_id)
         if proof:

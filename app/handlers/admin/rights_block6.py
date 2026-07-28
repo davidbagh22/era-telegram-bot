@@ -5,15 +5,14 @@ from datetime import datetime
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import PermissionGrant, PointTransaction, PortfolioItem, User
+from app.database.models import PermissionGrant, User
 from app.keyboards.participant import main_menu
 from app.services.audit_service import audit
 from app.services.authorization_service import (
-    active_permissions,
     can_change_access_status,
     can_change_permission,
     can_change_role,
@@ -22,9 +21,9 @@ from app.services.authorization_service import (
     can_view_people,
 )
 from app.services.notification_service import safe_send
+from app.services.admin_user_card import send_admin_user_card
 from app.utils import texts
 from app.utils.constants import (
-    PERMISSION_LABELS,
     PERMISSIONS,
     PRIVILEGED_ROLES,
     ROLE_LABELS,
@@ -142,47 +141,6 @@ def _permissions_keyboard(target_id: int, active: set[str]) -> InlineKeyboardMar
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def _send_user_card(message: Message, session: AsyncSession, target: User) -> None:
-    departments = ", ".join(link.department.name for link in target.departments) or "не выбраны"
-    directions = ", ".join(link.direction.name for link in target.directions) or "не выбраны"
-    telegram = f"@{target.username}" if target.username else str(target.telegram_id)
-    points = int(
-        await session.scalar(
-            select(func.coalesce(func.sum(PointTransaction.points), 0)).where(
-                PointTransaction.user_id == target.id
-            )
-        )
-        or 0
-    )
-    portfolio_count = int(
-        await session.scalar(
-            select(func.count()).select_from(PortfolioItem).where(PortfolioItem.user_id == target.id)
-        )
-        or 0
-    )
-    target_permissions = active_permissions(target)
-    rights = ", ".join(PERMISSION_LABELS.get(item, item) for item in target_permissions) or "нет отдельных прав"
-    text = (
-        f"👤 Участник #{target.id}\n\n"
-        f"{target.first_name} {target.last_name or ''}\n"
-        f"Telegram: {telegram}\n\n"
-        f"Роль: {_role_label(target.role)}\n"
-        f"Статус: {_status_label(target.participation_status)}\n"
-        f"Блокировка: {'да' if target.is_blocked else 'нет'}\n"
-        f"Архив: {'да' if target.is_archived else 'нет'}\n\n"
-        f"Возраст: {target.age or 'не указан'}\n"
-        f"Город: {target.city or 'не указан'}\n"
-        f"Телефон: {target.phone or 'не указан'}\n"
-        f"Email: {target.email or 'не указан'}\n\n"
-        f"Департаменты: {departments}\n"
-        f"Направления: {directions}\n\n"
-        f"Баланс: {points} баллов\n"
-        f"Портфолио: {portfolio_count}\n"
-        f"Права: {rights}"
-    )
-    await message.answer(text, reply_markup=_user_actions(target))
-
-
 @router.callback_query(F.data.regexp(r"^admin:user:\d+$"))
 async def user_card(
     call: CallbackQuery,
@@ -198,7 +156,7 @@ async def user_card(
     if not target:
         await call.message.answer("Участник не найден")
         return
-    await _send_user_card(call.message, session, target)
+    await send_admin_user_card(call.message, session, target, mode="profile")
 
 
 @router.callback_query(F.data.regexp(r"^admin:user:role:\d+$"))
