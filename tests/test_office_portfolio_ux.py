@@ -27,6 +27,15 @@ def test_office_management_router_precedes_legacy_panel() -> None:
     assert source.index("offices_management.router") < source.index("panel.router")
 
 
+def test_office_list_is_owned_by_modern_router_and_exposes_delete() -> None:
+    source = (ROOT / "app/handlers/admin/offices_management.py").read_text(encoding="utf-8")
+
+    assert '@router.callback_query(F.data == "admin:offices")' in source
+    assert 'text="🗑"' in source
+    assert 'callback_data=f"admin:office:delete:{office.id}"' in source
+    assert "Кнопка 🗑 справа" in source
+
+
 def test_office_delete_is_soft_and_keeps_assignment_history() -> None:
     source = (ROOT / "app/handlers/admin/offices_management.py").read_text(encoding="utf-8")
 
@@ -45,3 +54,16 @@ def test_office_view_keeps_assignment_end_action() -> None:
     assert 'callback_data=f"admin:office:remove:{assignment_id}"' in source
     assert "Завершить:" in source
     assert "🗑 Удалить должность" in source
+
+
+def test_runtime_version_command_is_admin_only_and_wired() -> None:
+    admin_init = (ROOT / "app/handlers/admin/__init__.py").read_text(encoding="utf-8")
+    version_source = (ROOT / "app/handlers/admin/version_command.py").read_text(encoding="utf-8")
+    webapp = (ROOT / "app/webapp.py").read_text(encoding="utf-8")
+
+    assert "version_command.router" in admin_init
+    assert 'Command("version")' in version_source
+    assert "can_manage_people" in version_source
+    assert "RENDER_GIT_COMMIT" in version_source
+    assert 'BotCommand(command="version"' in webapp
+    assert '"commit": DEPLOYED_COMMIT' in webapp
