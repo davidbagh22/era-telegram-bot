@@ -558,3 +558,39 @@ CI:
 
 Следующий блок:
 - аудит автоматических уведомлений и повторной доставки: где бот может прислать одно и то же событие несколько раз или потерять статус доставки.
+
+#### Блок 4. Планировщик и повторная доставка
+
+Проверено:
+- event reminders перед мероприятием;
+- monthly surveys из планировщика;
+- напоминания админам по площадке проекта;
+- task reminders участникам и создателю задачи;
+- контракт передачи клавиатуры в `broadcast_detailed(...)`.
+
+Найдено:
+- напоминания могли считаться отправленными даже при временной ошибке Telegram;
+- monthly survey закрывал месяц после попытки отправки, даже если доставка временно не прошла;
+- venue reminders шли только по `settings.admin_ids`, без активных админов из базы и дедупликации;
+- свежий survey broadcast передавал клавиатуру позиционно, хотя сервис принимает `reply_markup` только именованно.
+
+Сделано:
+- добавлен общий критерий завершённой доставки для планировщика;
+- временные ошибки оставляют reminder/survey на повторную попытку;
+- успешная доставка или permanent failure продвигает счётчик, чтобы не создавать бесконечный цикл;
+- monthly surveys и task reminders переведены на `broadcast_detailed(...)`;
+- venue reminders используют `admin_notification_recipients(...)` и дедупликацию;
+- исправлена передача `reply_markup` в ручной отправке опроса.
+
+Тесты:
+- добавлен `tests/test_scheduler_notification_delivery.py`;
+- расширен контракт `tests/test_broadcast_service.py`.
+
+Проверка:
+- `python -m pytest tests/test_scheduler_notification_delivery.py tests/test_broadcast_service.py tests/test_admin_surveys.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py` — 33 passed;
+- `python -m pytest` — 178 passed.
+
+PR: pending.
+
+Следующий блок:
+- оставшиеся прямые media/file sends вне планировщика: admin user cards, task media publication и Excel/doc отправки.

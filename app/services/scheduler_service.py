@@ -20,7 +20,12 @@ from app.database.models import (
 from app.keyboards.admin import project_review_actions
 from app.services.birthday_service import send_birthday_greetings
 from app.services.event_service import event_datetime
-from app.services.notification_service import safe_send
+from app.services.notification_service import (
+    BroadcastResult,
+    admin_notification_recipients,
+    broadcast_detailed,
+    safe_send,
+)
 from app.services.survey_service import (
     MONTHLY_SURVEY_DESCRIPTION,
     MONTHLY_SURVEY_QUESTIONS,
@@ -45,6 +50,10 @@ WEEKLY_MESSAGES = {
         "Лидерская сверка недели: проверьте участников, задачи, проекты, мероприятия и отчёты. Определите, кому нужна поддержка и какой результат должен быть достигнут к концу недели."
     ),
 }
+
+
+def _delivery_finished(result: BroadcastResult) -> bool:
+    return result.sent > 0 or (result.failed > 0 and result.temporary_failed == 0)
 
 
 def _reminder_text(event: Event, stage: int) -> str:
@@ -105,9 +114,14 @@ async def send_event_reminders(bot: Bot, settings: Settings, session_factory) ->
                         ]
                     ]
                 )
-                await safe_send(
-                    bot, user.telegram_id, _reminder_text(event, target_stage), keyboard
+                result = await broadcast_detailed(
+                    bot,
+                    [user.telegram_id],
+                    _reminder_text(event, target_stage),
+                    reply_markup=keyboard,
                 )
+                if not _delivery_finished(result):
+                    continue
             registration.reminder_stage = target_stage
             registration.last_reminder_at = now
         await session.commit()
@@ -161,13 +175,21 @@ async def send_monthly_surveys(bot: Bot, settings: Settings, session_factory) ->
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(text="Ответить на опрос", callback_data=f"survey:start:{survey.id}")]]
         )
-        for participant in recipients:
-            await safe_send(
-                bot,
-                participant.telegram_id,
-                f"🗳 {survey.title}\n\n{survey.description}\n\nОтвет займёт несколько минут",
-                keyboard,
+        result = await broadcast_detailed(
+            bot,
+            [participant.telegram_id for participant in recipients],
+            f"🗳 {survey.title}\n\n{survey.description}\n\nОтвет займёт несколько минут",
+            reply_markup=keyboard,
+        )
+        if not _delivery_finished(result):
+            logger.warning(
+                "Monthly survey delivery postponed: sent=%s failed=%s temporary=%s",
+                result.sent,
+                result.failed,
+                result.temporary_failed,
             )
+            await session.commit()
+            return
         survey.status = "sent"
         survey.sent_at = now
         survey.last_sent_month = current_month
@@ -204,13 +226,14 @@ async def send_project_venue_reminders(
                 f"Напоминание {project.venue_reminder_count + 1} из 5\n\n"
                 "Выберите решение или перенесите напоминание"
             )
-            for telegram_id in settings.admin_ids:
-                await safe_send(
-                    bot,
-                    telegram_id,
-                    text,
-                    project_review_actions(project.id, ProjectStatus.VENUE_REVIEW),
-                )
+            result = await broadcast_detailed(
+                bot,
+                await admin_notification_recipients(settings),
+                text,
+                reply_markup=project_review_actions(project.id, ProjectStatus.VENUE_REVIEW),
+            )
+            if not _delivery_finished(result):
+                continue
             project.venue_reminder_count += 1
             project.venue_remind_at = (
                 now + timedelta(days=1) if project.venue_reminder_count < 5 else None
@@ -244,24 +267,33 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
             )
             if task.assignee_id:
                 participant_ids.add(task.assignee_id)
+            telegram_ids: list[int] = []
             for user_id in participant_ids:
                 target = await session.get(User, user_id)
                 if target:
-                    await safe_send(
-                        bot,
-                        target.telegram_id,
-                        f"⏳ Напоминание о задании\n\n{task.title}\n\n"
-                        f"Дедлайн: {task.deadline:%d.%m.%Y %H:%M}\n"
-                        "Откройте «Мой путь» → «Мои задания», чтобы продолжить",
-                    )
+                    telegram_ids.append(target.telegram_id)
+            participant_result = await broadcast_detailed(
+                bot,
+                telegram_ids,
+                f"⏳ Напоминание о задании\n\n{task.title}\n\n"
+                f"Дедлайн: {task.deadline:%d.%m.%Y %H:%M}\n"
+                "Откройте «Мой путь» → «Мои задания», чтобы продолжить",
+            )
             creator = await session.get(User, task.creator_id)
+            creator_result = BroadcastResult()
             if creator:
-                await safe_send(
+                creator_result = await broadcast_detailed(
                     bot,
-                    creator.telegram_id,
+                    [creator.telegram_id],
                     f"⏳ По заданию «{task.title}» приближается дедлайн: "
                     f"{task.deadline:%d.%m.%Y %H:%M}",
                 )
+            if not (
+                _delivery_finished(participant_result)
+                or _delivery_finished(creator_result)
+                or (not telegram_ids and creator is None)
+            ):
+                continue
             task.reminder_count += 1
             task.remind_at = (
                 now + timedelta(days=1) if task.reminder_count < 5 else None

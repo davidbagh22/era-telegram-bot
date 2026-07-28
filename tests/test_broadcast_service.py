@@ -110,6 +110,7 @@ def test_survey_broadcast_uses_detailed_delivery_result() -> None:
     assert "from app.services.notification_service import broadcast_detailed" in source
     assert "result = await broadcast_detailed(" in source
     assert "participant.telegram_id for participant in recipients" in source
+    assert "reply_markup=keyboard" in source
     assert "result.duplicates" in source
     assert "result.temporary_failed" in source
     assert "result.permanent_failed" in source
