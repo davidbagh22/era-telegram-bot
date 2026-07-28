@@ -42,6 +42,7 @@ ADMIN_COMMANDS = USER_COMMANDS + [
     BotCommand(command="admin_partners", description="Партнёры"),
     BotCommand(command="admin_tasks", description="Задачи"),
     BotCommand(command="admin_rights", description="Должности и права"),
+    BotCommand(command="version", description="Версия запущенного бота"),
 ]
 
 
