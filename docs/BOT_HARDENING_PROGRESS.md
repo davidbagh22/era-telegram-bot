@@ -426,9 +426,12 @@ CI:
 - `python -c "... alembic upgrade head"` на локальной SQLite async базе — успешно;
 - `git diff --check` — успешно.
 
-PR: будет создан после push.
+PR: #86.
 
 Merge commit: ожидает merge.
+
+CI:
+- Tests/Bot checks: success on `3ea4b390b7756c08a60ad089a9688734f6186ef3`.
 
 Следующий блок:
 - рассылки и уведомления.
