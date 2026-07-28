@@ -12,12 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import Event, EventActivity, EventActivitySubmission, PointTransaction, User
 from app.handlers.admin.events_block6 import guard
-from app.services.notification_service import safe_send
+from app.services.notification_service import safe_answer_media, safe_send
 from app.services.points_service import add_points
 from app.utils.validators import clean_text
 
 router = Router(name="admin_event_activities_block15")
-ALLOWED_TYPES = {"photo", "link", "text", "file", "manual"}
+ALLOWED_TYPES = {"photo", "link", "text", "file", "video", "manual"}
 
 
 class ActivitySetupStates(StatesGroup):
@@ -169,12 +169,12 @@ async def _submission_card(message: Message, session: AsyncSession, submission: 
         reply_markup=_review_keyboard(submission.id),
     )
     if submission.file_id:
-        try:
-            if submission.file_type == "photo":
-                await message.answer_photo(submission.file_id, caption="Подтверждение активности")
-            else:
-                await message.answer_document(submission.file_id, caption="Подтверждение активности")
-        except Exception:
+        if not await safe_answer_media(
+            message,
+            submission.file_id,
+            media_type=submission.file_type,
+            caption="Подтверждение активности",
+        ):
             await message.answer("Файл сохранён, но Telegram не смог открыть его повторно.")
 
 

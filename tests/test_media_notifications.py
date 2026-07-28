@@ -8,6 +8,7 @@ from aiogram.methods import SendDocument, SendPhoto, SendVideo
 
 from app.services.notification_service import (
     safe_answer_document,
+    safe_answer_media,
     safe_answer_photo,
     safe_answer_video,
     safe_send_document,
@@ -99,6 +100,13 @@ def test_safe_answer_media_helpers_swallow_telegram_delivery_errors() -> None:
     assert asyncio.run(safe_answer_video(FakeMediaMessage(fail="video"), "video-id")) is False
 
 
+def test_safe_answer_media_tries_preferred_type_then_fallback() -> None:
+    message = FakeMediaMessage(fail="photo")
+
+    assert asyncio.run(safe_answer_media(message, "media-id", media_type="photo")) is True
+    assert message.calls == [("photo", "media-id"), ("video", "media-id")]
+
+
 def test_submission_media_notifications_use_safe_helpers() -> None:
     task_source = (ROOT / "app/handlers/participant/task_block2.py").read_text(encoding="utf-8")
     activity_source = (ROOT / "app/handlers/participant/event_activities_block15.py").read_text(encoding="utf-8")
@@ -121,6 +129,7 @@ def test_submission_media_notifications_use_safe_helpers() -> None:
     assert "await bot.send_document(chat_id, BufferedInputFile" not in project_source
 
     assert "safe_send_photo" in event_card_source
+    assert "safe_answer_photo" in event_card_source
     assert "safe_send(bot, chat_id, text" in event_card_source
 
 
@@ -151,3 +160,16 @@ def test_admin_cards_tasks_and_exports_use_safe_media_layer() -> None:
     assert "safe_send_document" in admin_panel_source
     assert "Файл доставлен" in admin_panel_source
     assert "await bot.send_document(" not in admin_panel_source
+
+
+def test_preview_media_answers_are_centralized_in_safe_layer() -> None:
+    offenders = []
+    for path in (ROOT / "app").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        if path.as_posix().endswith("app/services/notification_service.py"):
+            continue
+        for media_method in ("answer_photo", "answer_document", "answer_video"):
+            if f"await call.message.{media_method}(" in source or f"await message.{media_method}(" in source:
+                offenders.append(f"{path.relative_to(ROOT)}:{media_method}")
+
+    assert offenders == []

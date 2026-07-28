@@ -140,6 +140,34 @@ async def safe_answer_video(message, video, *, caption: str | None = None, reply
         return False
 
 
+async def safe_answer_media(
+    message,
+    media,
+    *,
+    media_type: str | None = None,
+    caption: str | None = None,
+    reply_markup=None,
+) -> bool:
+    preferred = media_type if media_type in {"photo", "video", "document"} else None
+    order = [preferred] if preferred else []
+    order.extend(item for item in ("photo", "video", "document") if item not in order)
+
+    for item in order:
+        if item == "photo" and await safe_answer_photo(
+            message, media, caption=caption, reply_markup=reply_markup
+        ):
+            return True
+        if item == "video" and await safe_answer_video(
+            message, media, caption=caption, reply_markup=reply_markup
+        ):
+            return True
+        if item == "document" and await safe_answer_document(
+            message, media, caption=caption, reply_markup=reply_markup
+        ):
+            return True
+    return False
+
+
 async def admin_notification_recipients(settings: Settings) -> set[int]:
     recipients = set(settings.admin_ids)
     recipients.update(await _database_admin_ids(settings))

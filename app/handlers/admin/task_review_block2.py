@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import PointTransaction, Task, TaskParticipant, TaskSubmission, User
-from app.services.notification_service import safe_send
+from app.services.notification_service import safe_answer_media, safe_send
 from app.services.points_service import add_points
 from app.utils import texts
 from app.utils.constants import Role, TaskStatus
@@ -76,19 +76,7 @@ async def _already_awarded(session: AsyncSession, user_id: int, task_id: int) ->
 
 
 async def _send_file(message: Message, file_id: str) -> None:
-    try:
-        await message.answer_photo(file_id, caption="Файл результата")
-        return
-    except Exception:
-        pass
-    try:
-        await message.answer_video(file_id, caption="Файл результата")
-        return
-    except Exception:
-        pass
-    try:
-        await message.answer_document(file_id, caption="Файл результата")
-    except Exception:
+    if not await safe_answer_media(message, file_id, caption="Файл результата"):
         await message.answer("Файл прикреплён, но Telegram не дал открыть его повторно.")
 
 

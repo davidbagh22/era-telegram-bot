@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import Event, EventActivity, EventActivitySubmission, PointTransaction, User
 from app.handlers.admin.event_activities_block15 import ActivitySetupStates
-from app.services.notification_service import safe_send
+from app.services.notification_service import safe_answer_media, safe_send
 from app.services.points_service import add_points
 from app.utils import texts
 from app.utils.constants import EventStatus, Role
@@ -76,14 +76,12 @@ def _review_keyboard(submission_id: int) -> InlineKeyboardMarkup:
 async def _send_file(message: Message, submission: EventActivitySubmission) -> None:
     if not submission.file_id:
         return
-    try:
-        if submission.file_type == "photo":
-            await message.answer_photo(submission.file_id, caption="Подтверждение активности")
-        elif submission.file_type == "video":
-            await message.answer_video(submission.file_id, caption="Подтверждение активности")
-        else:
-            await message.answer_document(submission.file_id, caption="Подтверждение активности")
-    except Exception:
+    if not await safe_answer_media(
+        message,
+        submission.file_id,
+        media_type=submission.file_type,
+        caption="Подтверждение активности",
+    ):
         await message.answer("Файл сохранён, но Telegram не смог открыть его повторно")
 
 

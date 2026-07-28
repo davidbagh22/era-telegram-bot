@@ -5,7 +5,7 @@ from typing import Any
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, Message
 
-from app.services.notification_service import safe_send, safe_send_photo
+from app.services.notification_service import safe_answer_photo, safe_send, safe_send_photo
 
 
 PHOTO_CAPTION_LIMIT = 1000
@@ -86,15 +86,13 @@ async def send_event_card(
     )
     poster_file_id = getattr(event, "poster_file_id", None)
     if poster_file_id:
-        try:
-            if len(text) <= PHOTO_CAPTION_LIMIT:
-                await target.answer_photo(poster_file_id, caption=text, reply_markup=keyboard)
-            else:
-                await target.answer_photo(poster_file_id, caption=event.title)
+        if len(text) <= PHOTO_CAPTION_LIMIT:
+            if await safe_answer_photo(target, poster_file_id, caption=text, reply_markup=keyboard):
+                return
+        else:
+            if await safe_answer_photo(target, poster_file_id, caption=event.title):
                 await target.answer(text, reply_markup=keyboard)
-            return
-        except Exception:
-            pass
+                return
     await target.answer(text, reply_markup=keyboard)
 
 
