@@ -235,11 +235,13 @@ class SystemWideAuditTests(unittest.TestCase):
 
     def test_replaced_project_event_handlers_are_removed(self) -> None:
         removed = [
+            "app/handlers/participant/addons.py",
             "app/handlers/participant/project_control_addon.py",
             "app/handlers/participant/project_event_flow.py",
             "app/handlers/participant/project_event_stability.py",
             "app/handlers/participant/project_team_addon.py",
             "app/handlers/participant/project_team_search_addon.py",
+            "app/handlers/participant/portfolio_navigation.py",
         ]
         existing = [rel for rel in removed if (ROOT / rel).exists()]
         self.assertFalse(
