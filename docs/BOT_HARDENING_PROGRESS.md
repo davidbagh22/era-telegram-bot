@@ -272,6 +272,35 @@ CI:
 - `python -m pytest` — 149 passed;
 - `git diff --check` — успешно.
 
+PR: #80.
+
+Merge commit: `412124862c373dc2090cf1c93caa761fc707131f`.
+
+CI:
+- Tests: success on `5b93b4b4e0a3583f2b45f8503b1175041349b9dd`;
+- Bot checks: success on `5b93b4b4e0a3583f2b45f8503b1175041349b9dd`.
+
+#### Блок опросов
+
+Проверено:
+- пользовательский вход в опрос `survey:start:*`;
+- сохранение ответа после старта FSM;
+- админские статусы опросов `draft`, `active`, `sent`, `archived`.
+
+Найдено:
+- участник мог открыть черновик опроса прямым callback `survey:start:*`;
+- если опрос архивировали после старта, FSM всё равно мог сохранить финальный ответ.
+
+Сделано:
+- участникам доступны только статусы `active` и `sent`;
+- перед сохранением ответа статус опроса проверяется повторно;
+- добавлен контракт-тест, который закрывает доступ к `draft` и `archived`.
+
+Проверка:
+- `python -m pytest tests/test_admin_surveys.py tests/test_admin_analytics_filters.py tests/test_system_wide_audit.py` — 22 passed;
+- `python -m pytest` — 150 passed;
+- `git diff --check` — успешно.
+
 PR: pending.
 
 Merge commit: pending.

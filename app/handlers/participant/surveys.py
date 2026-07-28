@@ -16,6 +16,7 @@ from app.utils.constants import ApplicationStatus
 from app.utils.validators import clean_text
 
 router = Router(name="participant_surveys")
+SURVEY_PARTICIPANT_STATUSES = {"active", "sent"}
 
 
 class SurveyAnswerStates(StatesGroup):
@@ -35,6 +36,10 @@ def _is_ready(user: User | None) -> bool:
         and not user.is_blocked
         and not user.is_archived
     )
+
+
+def _survey_available_to_participants(survey: AdminSurvey | None) -> bool:
+    return bool(survey and survey.status in SURVEY_PARTICIPANT_STATUSES)
 
 
 async def _ask(message: Message, survey: AdminSurvey, index: int, state: FSMContext) -> None:
@@ -62,7 +67,7 @@ async def start_survey(
         return
     survey_id = int(call.data.rsplit(":", 1)[-1])
     survey = await session.get(AdminSurvey, survey_id)
-    if not survey or survey.status not in {"draft", "active", "sent"}:
+    if not _survey_available_to_participants(survey):
         await call.message.answer("Этот опрос уже недоступен")
         return
     questions = survey_questions(survey)
@@ -100,9 +105,9 @@ async def collect_answer(
         return
     data = await state.get_data()
     survey = await session.get(AdminSurvey, int(data.get("survey_id", 0)))
-    if not survey:
+    if not _survey_available_to_participants(survey):
         await state.clear()
-        await message.answer("Опрос не найден, попробуйте открыть его заново")
+        await message.answer("Опрос уже недоступен, ответы не сохранены")
         return
     questions = list(data.get("survey_questions") or survey_questions(survey))
     index = int(data.get("survey_index", 0))
