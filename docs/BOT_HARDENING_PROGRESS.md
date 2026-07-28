@@ -18,7 +18,7 @@
 
 Этап 5: мероприятия — завершён и смержен в `main`.
 
-Этап 6: задачи, проекты, опросы, портфолио — в работе.
+Этап 6: задачи, проекты, опросы, портфолио — завершён и смержен в `main`.
 
 ## Завершённые этапы
 
@@ -331,10 +331,10 @@ CI:
 - `python -m pytest` — 150 passed;
 - `git diff --check` — успешно.
 
-PR: pending.
+PR: #82.
 
-Merge commit: pending.
+Merge commit: `cc499beb83642a5f43aca8f16dc0344de822a2cc`.
 
 CI:
-- Tests: pending;
-- Bot checks: pending.
+- Tests: success on `c57cc94dacf70a77d449d294138e06acef836ad1`;
+- Bot checks: success on `c57cc94dacf70a77d449d294138e06acef836ad1`.
