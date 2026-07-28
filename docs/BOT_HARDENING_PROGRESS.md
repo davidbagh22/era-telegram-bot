@@ -515,7 +515,7 @@ CI:
 
 PR: #90.
 
-Merge commit: ожидает merge.
+Merge commit: `7151d9658cc8d11da0a3351e57543f4b820500c1`.
 
 CI:
 - Tests/Bot checks: success on `1bb38b3b71f34582e45ef458d3b8adf7ef10243a`.
