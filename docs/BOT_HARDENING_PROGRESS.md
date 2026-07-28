@@ -473,7 +473,7 @@ CI:
 
 PR: #88.
 
-Merge commit: ожидает merge.
+Merge commit: `792f3928bdef73f591479ed423d5edc3710611b0`.
 
 CI:
 - Tests/Bot checks: success on `6d6c5258503b2e6cd67cd4b2916eee69e0eeffcc`.
