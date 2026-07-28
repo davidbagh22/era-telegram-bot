@@ -37,7 +37,7 @@ def main_inline_keyboard(privileged: bool = False, admin: bool = False) -> Inlin
         ],
         [
             InlineKeyboardButton(text="✅ Задачи", callback_data="cabinet:tasks"),
-            InlineKeyboardButton(text="⭐ Возможности", callback_data="rewards:menu"),
+            InlineKeyboardButton(text="⭐ Возможности", callback_data="offers:menu"),
         ],
         [InlineKeyboardButton(text="💬 Связь", callback_data="contact:menu")],
     ]
@@ -53,7 +53,7 @@ def about_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="📅 Афиша", callback_data="events:list")],
             [InlineKeyboardButton(text="✅ Задачи", callback_data="cabinet:tasks")],
             [InlineKeyboardButton(text="💡 Проекты", callback_data="projects:menu")],
-            [InlineKeyboardButton(text="⭐ Возможности", callback_data="rewards:menu")],
+            [InlineKeyboardButton(text="⭐ Возможности", callback_data="offers:menu")],
             [InlineKeyboardButton(text="💬 Связь", callback_data="contact:menu")],
         ]
     )
@@ -93,6 +93,7 @@ def journey_keyboard(
         inline_keyboard=[
             [InlineKeyboardButton(text="⚙️ Мои данные", callback_data="cabinet:profile")],
             [InlineKeyboardButton(text="✅ Задачи", callback_data="cabinet:tasks")],
+            [InlineKeyboardButton(text="🎓 Портфолио", callback_data="cabinet:portfolio")],
             [InlineKeyboardButton(text="🏆 Баллы", callback_data="cabinet:points_hub")],
             [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
         ]
@@ -120,6 +121,7 @@ def profile_sections_keyboard(
             [InlineKeyboardButton(text="✏️ Изменить данные", callback_data="profile:settings")],
             [InlineKeyboardButton(text="📅 Мероприятия", callback_data="cabinet:events")],
             [InlineKeyboardButton(text="💡 Проекты", callback_data="cabinet:projects")],
+            [InlineKeyboardButton(text="🎓 Портфолио", callback_data="cabinet:portfolio")],
             [InlineKeyboardButton(text="🧩 Направления", callback_data="cabinet:departments")],
             [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
         ]
@@ -249,10 +251,10 @@ def portfolio_keyboard(items: Iterable = ()) -> InlineKeyboardMarkup:
     del items
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="👁 Просмотреть портфолио", callback_data="portfolio:view")],
+            [InlineKeyboardButton(text="👁 Что войдёт в портфолио", callback_data="portfolio:view")],
             [InlineKeyboardButton(text="📎 Добавить достижение", callback_data="portfolio:upload")],
-            [InlineKeyboardButton(text="📄 Скачать резюме ЭРА", callback_data="portfolio:resume")],
-            [InlineKeyboardButton(text="← Мои данные", callback_data="cabinet:profile")],
+            [InlineKeyboardButton(text="📄 Скачать портфолио PDF", callback_data="portfolio:resume")],
+            [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
         ]
     )
 

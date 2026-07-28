@@ -50,7 +50,7 @@ class V2ScenarioTests(unittest.TestCase):
         labels = _labels(journey_keyboard())
         self.assertEqual(
             labels,
-            ["⚙️ Мои данные", "✅ Задачи", "🏆 Баллы", "← Главное меню"],
+            ["⚙️ Мои данные", "✅ Задачи", "🎓 Портфолио", "🏆 Баллы", "← Главное меню"],
         )
         points_labels = _labels(points_hub_keyboard())
         self.assertIn("🏅 Достижения и знаки", points_labels)

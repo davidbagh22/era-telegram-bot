@@ -47,7 +47,10 @@ async def _send_event_list(message: Message, user: User | None, session: AsyncSe
     events = await published_events(session)
     if not events:
         await message.answer(
-            "📅 Афиша\n\nСейчас нет открытых мероприятий. Как только команда ЭРА опубликует новое событие, оно появится здесь"
+            "📅 Афиша\n\nСейчас нет открытых мероприятий. Как только команда ЭРА опубликует новое событие, оно появится здесь",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")]]
+            ),
         )
         return
     await message.answer(ux_texts.EVENTS_LIST_HEADER, reply_markup=event_list_keyboard(events))
