@@ -241,6 +241,37 @@ CI:
 - `python -m pytest` — 147 passed;
 - `git diff --check` — успешно.
 
+PR: #79.
+
+Merge commit: `a2e1569d1253bad0ec9e21310c6169b9658e6741`.
+
+CI:
+- Tests: success on `6eca24f74ac9074b589d41bf1effffc1dd119849`;
+- Bot checks: success on `6eca24f74ac9074b589d41bf1effffc1dd119849`.
+
+#### Блок проектов: создание мероприятия из проекта
+
+Проверено:
+- активный поток `project:event:*` и порядок подключения router в `app/handlers/participant/__init__.py`;
+- сценарий создания мероприятия из одобренного проекта через `project_event_photo_flow.py`;
+- старые project add-ons, которые дублировали список проектов, удаление, отправку, поиск команды и создание мероприятия.
+
+Найдено:
+- несколько обработчиков могли владеть одним callback `project:event:*`;
+- старые неподключённые add-ons сохраняли устаревшую логику проекта рядом с актуальным кодом;
+- актуальный поток с афишей брал дату/время из `form_data` раньше структурных полей проекта.
+
+Сделано:
+- единственным владельцем `project:event:*` оставлен `project_event_photo_flow.py`;
+- дата и время мероприятия теперь берутся из структурных полей проекта раньше старых `form_data`;
+- проверка уже созданного мероприятия учитывает и `events.project_id`, и старый marker `[ERA_PROJECT_ID:*]`;
+- старые duplicate project handlers удалены и закреплены системным аудит-тестом.
+
+Проверка:
+- `python -m pytest tests/test_project_to_event_flow.py tests/test_event_photo_contracts.py tests/test_stability_bindchat_projects.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py` — 28 passed;
+- `python -m pytest` — 149 passed;
+- `git diff --check` — успешно.
+
 PR: pending.
 
 Merge commit: pending.

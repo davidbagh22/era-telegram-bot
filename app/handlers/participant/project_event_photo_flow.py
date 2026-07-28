@@ -63,6 +63,15 @@ def _time_string(value) -> str | None:
     return parsed.strftime("%H:%M") if parsed else None
 
 
+async def _existing_project_event(session: AsyncSession, project_id: int) -> Event | None:
+    marker = f"[ERA_PROJECT_ID:{project_id}]"
+    return await session.scalar(
+        select(Event).where(
+            (Event.project_id == project_id) | (Event.additional_info.contains(marker))
+        )
+    )
+
+
 def _additional_info(project_id: int, chat_url: str | None, conditions: str | None) -> str:
     lines = [f"[ERA_PROJECT_ID:{project_id}]"]
     if chat_url:
@@ -163,7 +172,7 @@ async def project_event_start(
     if not project or project.status not in {ProjectStatus.APPROVED, ProjectStatus.IN_PROGRESS}:
         await call.message.answer("Оформить мероприятие можно после одобрения проекта")
         return
-    existing = await session.scalar(select(Event).where(Event.project_id == project.id))
+    existing = await _existing_project_event(session, project.id)
     if existing:
         await call.message.answer(f"Мероприятие уже создано: «{existing.title}»")
         return
@@ -173,8 +182,8 @@ async def project_event_start(
         project_id=project.id,
         event_title=data.get("title") or project.title,
         event_description=data.get("announcement") or data.get("idea") or project.short_description,
-        event_date=_date_string(data.get("proposed_date") or project.proposed_date),
-        event_time=_time_string(data.get("proposed_time") or project.proposed_time),
+        event_date=_date_string(project.proposed_date or data.get("proposed_date")),
+        event_time=_time_string(project.proposed_time or data.get("proposed_time")),
         event_location=data.get("venue_request") or "",
         event_format=data.get("format") or project.format or "",
     )
@@ -302,7 +311,7 @@ async def project_event_confirm(
         await state.clear()
         await call.message.answer(texts.NO_ACCESS)
         return
-    existing = await session.scalar(select(Event).where(Event.project_id == project.id))
+    existing = await _existing_project_event(session, project.id)
     if existing:
         await state.clear()
         await call.message.answer(f"Мероприятие уже создано: «{existing.title}»")
