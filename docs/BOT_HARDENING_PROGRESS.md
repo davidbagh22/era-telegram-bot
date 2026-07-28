@@ -301,6 +301,36 @@ CI:
 - `python -m pytest` — 150 passed;
 - `git diff --check` — успешно.
 
+PR: #81.
+
+Merge commit: `4614f1618cac5d98619889d354fb29c9aa21e3d1`.
+
+CI:
+- Tests: success on `d940c07389c212af4c7e586a44cca13664703e03`;
+- Bot checks: success on `d940c07389c212af4c7e586a44cca13664703e03`.
+
+#### Блок портфолио
+
+Проверено:
+- callbacks `portfolio:view`, `portfolio:upload`, `portfolio:item:*`, `portfolio:file:*`, `portfolio:resume`;
+- порядок подключения participant router;
+- старые participant add-ons, которые дублировали профиль, достижения, портфолио и task callbacks.
+
+Найдено:
+- `portfolio_navigation.py` перехватывал `portfolio:upload` раньше реального upload-flow;
+- `participant/addons.py` хранил неподключённые дубли профиля, достижений и портфолио;
+- в `growth.py` оставались старые task callbacks, хотя задачи уже принадлежат `task_block2.py`.
+
+Сделано:
+- `portfolio:upload` теперь открывает реальную загрузку достижения в `growth.py`;
+- просмотр портфолио остаётся в активных owner-модулях кабинета/достижений;
+- старые duplicate portfolio/task add-ons удалены и закреплены системным аудит-тестом.
+
+Проверка:
+- `python -m pytest tests/test_participant_tasks_cabinet.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py tests/test_v2_scenarios.py` — 29 passed;
+- `python -m pytest` — 150 passed;
+- `git diff --check` — успешно.
+
 PR: pending.
 
 Merge commit: pending.
