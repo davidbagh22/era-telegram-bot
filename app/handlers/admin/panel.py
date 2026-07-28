@@ -77,7 +77,7 @@ from app.services.chat_access_service import sync_user_chat_access
 from app.services.event_service import can_change_event_status
 from app.services.excel_service import build_analytics_workbook
 from app.services.maintenance_service import reset_operational_data, reset_preview
-from app.services.notification_service import broadcast, safe_send
+from app.services.notification_service import broadcast, broadcast_detailed, safe_send
 from app.services.points_service import add_points, add_portfolio_item, make_idempotency_key, total_points
 from app.services.redemption_service import exchange_redemption, reject_redemption
 from app.states.admin import (
@@ -4099,7 +4099,7 @@ async def broadcast_finish(
     )
     session.add(item)
     await session.flush()
-    sent, failed = await broadcast(bot, (x.telegram_id for x in recipients), item.text)
+    result = await broadcast_detailed(bot, (x.telegram_id for x in recipients), item.text)
     item.status = "sent"
     item.sent_at = datetime.now().astimezone()
     await audit(
@@ -4108,11 +4108,19 @@ async def broadcast_finish(
         action="broadcast.sent",
         entity_type="broadcast",
         entity_id=item.id,
-        new_value={"sent": sent, "failed": failed},
+        new_value={
+            "sent": result.sent,
+            "failed": result.failed,
+            "duplicates": result.duplicates,
+            "temporary_failed": result.temporary_failed,
+            "permanent_failed": result.permanent_failed,
+        },
     )
     await state.clear()
     await call.message.answer(
-        f"Рассылка завершена. Доставлено: {sent}. Ошибок: {failed}."
+        "Рассылка завершена.\n"
+        f"Получателей: {result.total}. Доставлено: {result.sent}. Ошибок: {result.failed}.\n"
+        f"Дублей пропущено: {result.duplicates}. Временных ошибок: {result.temporary_failed}. Постоянных: {result.permanent_failed}."
     )
 
 
@@ -4824,11 +4832,13 @@ async def decide_leader_broadcast(
         )
     )
     recipients = (await session.scalars(query)).unique().all()
-    sent, failed = await broadcast(bot, (x.telegram_id for x in recipients), item.text)
+    result = await broadcast_detailed(bot, (x.telegram_id for x in recipients), item.text)
     item.status = "sent"
     item.sent_at = datetime.now().astimezone()
     await call.message.answer(
-        f"Рассылка отправлена. Доставлено: {sent}. Ошибок: {failed}."
+        "Рассылка отправлена.\n"
+        f"Получателей: {result.total}. Доставлено: {result.sent}. Ошибок: {result.failed}.\n"
+        f"Дублей пропущено: {result.duplicates}. Временных ошибок: {result.temporary_failed}. Постоянных: {result.permanent_failed}."
     )
 
 

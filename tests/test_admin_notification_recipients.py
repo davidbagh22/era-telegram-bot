@@ -23,6 +23,14 @@ class AdminNotificationRecipientTests(unittest.TestCase):
         self.assertIn("return sent, failed", source)
         self.assertIn("no recipients configured", source)
 
+    def test_broadcast_has_deduplication_rate_limit_and_retry_contracts(self) -> None:
+        source = (ROOT / "app/services/notification_service.py").read_text(encoding="utf-8")
+        self.assertIn("broadcast_detailed", source)
+        self.assertIn("_dedupe_recipients", source)
+        self.assertIn("asyncio.Semaphore", source)
+        self.assertIn("TelegramRetryAfter", source)
+        self.assertIn("TelegramForbiddenError", source)
+
 
 if __name__ == "__main__":
     unittest.main()
