@@ -787,7 +787,9 @@ CI: passed on commit `86ed536`.
 Проверка:
 - `python -m pytest tests/test_media_notifications.py tests/test_event_photo_contracts.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py` — 29 passed.
 
-PR: pending.
+PR: #100.
+Merge commit: `c56d754`.
+CI: passed on commit `4dafcda`.
 
 Следующий блок:
 - полный прогон тестов, PR/CI/merge этого cleanup-блока; затем аудит оставшихся крупных дублей admin/leader handlers без массового удаления рабочих legacy-веток.
