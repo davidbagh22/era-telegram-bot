@@ -590,7 +590,12 @@ CI:
 - `python -m pytest tests/test_scheduler_notification_delivery.py tests/test_broadcast_service.py tests/test_admin_surveys.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py` — 33 passed;
 - `python -m pytest` — 178 passed.
 
-PR: pending.
+PR: #94.
+
+Merge commit: `34d6ba9`.
+
+CI:
+- Tests/Bot checks: success on `7a46f46`.
 
 Следующий блок:
 - оставшиеся прямые media/file sends вне планировщика: admin user cards, task media publication и Excel/doc отправки.
