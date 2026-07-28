@@ -549,7 +549,12 @@ CI:
 - `python -m pytest tests/test_broadcast_service.py tests/test_admin_notification_recipients.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py` — 27 passed;
 - `python -m pytest` — 175 passed.
 
-PR: pending.
+PR: #92.
+
+Merge commit: `6ef0d2c`.
+
+CI:
+- Tests/Bot checks: success on `5447666`.
 
 Следующий блок:
 - аудит автоматических уведомлений и повторной доставки: где бот может прислать одно и то же событие несколько раз или потерять статус доставки.
