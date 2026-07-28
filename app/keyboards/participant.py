@@ -121,7 +121,10 @@ def profile_sections_keyboard(
             [InlineKeyboardButton(text="✏️ Изменить данные", callback_data="profile:settings")],
             [InlineKeyboardButton(text="📅 Мероприятия", callback_data="cabinet:events")],
             [InlineKeyboardButton(text="💡 Проекты", callback_data="cabinet:projects")],
-            [InlineKeyboardButton(text="🎓 Портфолио", callback_data="cabinet:portfolio")],
+            [
+                InlineKeyboardButton(text="🎓 Портфолио", callback_data="cabinet:portfolio"),
+                InlineKeyboardButton(text="📄 Скачать PDF", callback_data="portfolio:resume"),
+            ],
             [InlineKeyboardButton(text="🧩 Направления", callback_data="cabinet:departments")],
             [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
         ]
