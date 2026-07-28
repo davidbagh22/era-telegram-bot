@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Event, EventActivity, EventActivitySubmission, EventRegistration, PointTransaction, User
-from app.services.notification_service import safe_send
+from app.services.notification_service import safe_answer_media, safe_send
 from app.services.points_service import add_points
 from app.utils import texts
 from app.utils.constants import RegistrationStatus, Role
@@ -182,14 +182,12 @@ async def send_submission_card(message: Message, session: AsyncSession, sub: Eve
         reply_markup=review_buttons(sub.id),
     )
     if sub.file_id:
-        try:
-            if sub.file_type == "photo":
-                await message.answer_photo(sub.file_id, caption="Материал участника")
-            elif sub.file_type == "video":
-                await message.answer_video(sub.file_id, caption="Материал участника")
-            else:
-                await message.answer_document(sub.file_id, caption="Материал участника")
-        except Exception:
+        if not await safe_answer_media(
+            message,
+            sub.file_id,
+            media_type=sub.file_type,
+            caption="Материал участника",
+        ):
             await message.answer("Файл прикреплён, но Telegram не дал открыть его повторно")
 
 

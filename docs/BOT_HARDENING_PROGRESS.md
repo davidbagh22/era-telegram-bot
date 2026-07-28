@@ -762,3 +762,32 @@ CI: passed on commit `86ed536`.
 
 Следующий блок:
 - legacy cleanup дублирующих participant handlers и оставшихся preview media paths после отдельного аудита роутеров.
+
+#### Блок 6. Legacy preview media и порядок participant роутеров
+
+Проверено:
+- оставшиеся прямые `answer_photo/answer_document/answer_video` в preview flows;
+- participant router order для новых блоков, которые перекрывают legacy handlers;
+- event poster preview, task file preview, portfolio item preview;
+- admin/leader review previews для активностей, selfie proof и task submission files.
+
+Найдено:
+- preview media paths всё ещё использовали прямые `message.answer_*` и локальные `try/except`;
+- новый `auction_block17` подключался после legacy-аукциона в `growth`, что оставляло риск перехвата callback-ов старым обработчиком;
+- `event_activities_block15` обрабатывал video-preview ниже по коду, но `video` отсутствовал в `ALLOWED_TYPES`.
+
+Сделано:
+- добавлен общий `safe_answer_media` с preferred media type и fallback-порядком `photo -> video -> document`;
+- portfolio item, task material, event poster и review previews переведены на safe media layer;
+- admin/leader moderation previews больше не используют прямые `answer_*`;
+- `auction_block17.router` подключается до `growth.router`;
+- добавлен regression-test на порядок modern participant routers перед legacy overlaps;
+- добавлен regression-test, запрещающий прямые preview media answers вне notification layer.
+
+Проверка:
+- `python -m pytest tests/test_media_notifications.py tests/test_event_photo_contracts.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py` — 29 passed.
+
+PR: pending.
+
+Следующий блок:
+- полный прогон тестов, PR/CI/merge этого cleanup-блока; затем аудит оставшихся крупных дублей admin/leader handlers без массового удаления рабочих legacy-веток.

@@ -183,6 +183,23 @@ class SystemWideAuditTests(unittest.TestCase):
         missing += [m for m in admin_required if m not in admin]
         self.assertFalse(missing, "Critical routers are not wired: " + ", ".join(missing))
 
+    def test_modern_participant_routers_precede_legacy_overlaps(self) -> None:
+        participant = read(APP / "handlers" / "participant" / "__init__.py")
+        order_pairs = [
+            ("task_block2.router", "cabinet.router"),
+            ("events_stability_block8.router", "events.router"),
+            ("event_activities_block15.router", "event_activities_block7.router"),
+            ("auction_block17.router", "growth.router"),
+            ("directions_block7.router", "departments.router"),
+            ("projects_block5.router", "projects.router"),
+        ]
+        failures = [
+            f"{newer} must be before {legacy}"
+            for newer, legacy in order_pairs
+            if participant.index(newer) > participant.index(legacy)
+        ]
+        self.assertFalse(failures, "Participant legacy router order changed:\n" + "\n".join(failures))
+
     def test_points_sensitive_flows_have_idempotency_markers(self) -> None:
         targets = {
             "app/handlers/admin/task_review_block2.py": ["add_points", "approved"],

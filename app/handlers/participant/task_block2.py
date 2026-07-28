@@ -7,7 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import Task, TaskParticipant, TaskSubmission, User
 from app.keyboards.participant import tasks_keyboard
-from app.services.notification_service import notify_admins, safe_send_document, safe_send_photo, safe_send_video
+from app.services.notification_service import (
+    notify_admins,
+    safe_answer_media,
+    safe_send_document,
+    safe_send_photo,
+    safe_send_video,
+)
 from app.states.growth import TaskSubmissionStates
 from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus, TASK_STATUS_LABELS
@@ -98,19 +104,7 @@ def _is_open_public_task(task: Task, joined_ids: set[int], user: User) -> bool:
 async def _send_task_file(call: CallbackQuery, task: Task) -> None:
     if not task.file_id:
         return
-    try:
-        await call.message.answer_photo(task.file_id, caption="Материал к заданию")
-        return
-    except Exception:
-        pass
-    try:
-        await call.message.answer_video(task.file_id, caption="Материал к заданию")
-        return
-    except Exception:
-        pass
-    try:
-        await call.message.answer_document(task.file_id, caption="Материал к заданию")
-    except Exception:
+    if not await safe_answer_media(call.message, task.file_id, caption="Материал к заданию"):
         await call.message.answer("К заданию прикреплён файл, но Telegram не дал открыть его повторно.")
 
 

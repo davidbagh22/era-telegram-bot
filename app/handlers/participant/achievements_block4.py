@@ -1,5 +1,4 @@
 from aiogram import F, Router
-from aiogram.exceptions import TelegramAPIError
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +7,7 @@ from app.database.models import Badge, PointTransaction, PortfolioItem, User, Us
 from app.keyboards.common import back_keyboard
 from app.keyboards.participant import portfolio_keyboard
 from app.repositories.users import user_stats
+from app.services.notification_service import safe_answer_media
 from app.services.points_service import total_points
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, ROLE_LABELS, STATUS_LABELS
@@ -103,12 +103,5 @@ async def portfolio_item(call: CallbackQuery, user: User | None, session: AsyncS
         body += f"\n\nСсылка: {item.url}"
     await call.message.answer(body, reply_markup=back_keyboard("portfolio:view"))
     if item.file_id:
-        try:
-            await call.message.answer_photo(item.file_id, caption="Материал портфолио")
-            return
-        except TelegramAPIError:
-            pass
-        try:
-            await call.message.answer_document(item.file_id, caption="Материал портфолио")
-        except TelegramAPIError:
+        if not await safe_answer_media(call.message, item.file_id, caption="Материал портфолио"):
             await call.message.answer("Файл прикреплён, но Telegram не дал открыть его повторно.")

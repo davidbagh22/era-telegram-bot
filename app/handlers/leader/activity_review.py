@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Event, EventActivity, EventActivitySubmission, User
-from app.services.notification_service import notify_admins, safe_send
+from app.services.notification_service import notify_admins, safe_answer_media, safe_send
 from app.utils import texts
 from app.utils.constants import PRIVILEGED_ROLES
 
@@ -51,14 +51,12 @@ async def leader_activity_list(call: CallbackQuery, user: User | None, session: 
             reply_markup=actions(sub.id),
         )
         if sub.file_id:
-            try:
-                if sub.file_type == "photo":
-                    await call.message.answer_photo(sub.file_id, caption="Материал участника")
-                elif sub.file_type == "video":
-                    await call.message.answer_video(sub.file_id, caption="Материал участника")
-                else:
-                    await call.message.answer_document(sub.file_id, caption="Материал участника")
-            except Exception:
+            if not await safe_answer_media(
+                call.message,
+                sub.file_id,
+                media_type=sub.file_type,
+                caption="Материал участника",
+            ):
                 await call.message.answer("Файл не удалось открыть повторно")
 
 

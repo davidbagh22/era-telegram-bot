@@ -81,6 +81,7 @@ from app.services.notification_service import (
     broadcast,
     broadcast_detailed,
     safe_answer_document,
+    safe_answer_media,
     safe_send,
     safe_send_document,
 )
@@ -693,9 +694,14 @@ async def pending_attendance(
             f"Селфи #{proof.id}\n{target.first_name if target else 'Участник'}\n"
             f"Мероприятие: {event.title if event else proof.event_id}"
         )
-        await call.message.answer_photo(
-            proof.photo_file_id, caption=caption, reply_markup=keyboard
-        )
+        if not await safe_answer_media(
+            call.message,
+            proof.photo_file_id,
+            media_type="photo",
+            caption=caption,
+            reply_markup=keyboard,
+        ):
+            await call.message.answer(caption, reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "admin:event_activities")
@@ -1497,10 +1503,14 @@ async def portfolio_help(
             f"Название: {item.title}\n\n{item.description or ''}"
         )
         if item.file_id:
-            try:
-                await call.message.answer_document(item.file_id, caption=caption, reply_markup=keyboard)
-            except Exception:
-                await call.message.answer_photo(item.file_id, caption=caption, reply_markup=keyboard)
+            if not await safe_answer_media(
+                call.message,
+                item.file_id,
+                media_type=getattr(item, "file_type", None),
+                caption=caption,
+                reply_markup=keyboard,
+            ):
+                await call.message.answer(caption, reply_markup=keyboard)
         else:
             await call.message.answer(caption, reply_markup=keyboard)
 
