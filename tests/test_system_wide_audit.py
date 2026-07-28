@@ -200,6 +200,54 @@ class SystemWideAuditTests(unittest.TestCase):
         ]
         self.assertFalse(failures, "Participant legacy router order changed:\n" + "\n".join(failures))
 
+    def test_modern_admin_routers_precede_legacy_panel_overlaps(self) -> None:
+        admin = read(APP / "handlers" / "admin" / "__init__.py")
+        order_pairs = [
+            ("dashboard_block_a.router", "panel.router"),
+            ("task_review_block2.router", "panel.router"),
+            ("rights_block6.router", "panel.router"),
+            ("user_profile_block3_safe.router", "panel.router"),
+            ("projects_block5_list.router", "panel.router"),
+            ("projects_block5_decision.router", "panel.router"),
+            ("events_block6.router", "panel.router"),
+            ("event_registration_block14.router", "panel.router"),
+            ("event_activities_stability.router", "panel.router"),
+            ("auction_block17.router", "panel.router"),
+            ("partner_offers_block16.router", "panel.router"),
+            ("approval_bonus_fix.router", "panel.router"),
+            ("chat_binding_stability.router", "panel.router"),
+        ]
+        failures = [
+            f"{newer} must be before {legacy}"
+            for newer, legacy in order_pairs
+            if admin.index(newer) > admin.index(legacy)
+        ]
+        self.assertFalse(failures, "Admin legacy router order changed:\n" + "\n".join(failures))
+
+    def test_modern_leader_routers_precede_legacy_panel_overlaps(self) -> None:
+        leader = read(APP / "handlers" / "leader" / "__init__.py")
+        order_pairs = [
+            ("open_tasks.router", "panel.router"),
+            ("events_block6.router", "panel.router"),
+            ("event_activities_block7.router", "panel.router"),
+            ("task_deadline_buttons.router", "panel.router"),
+        ]
+        failures = [
+            f"{newer} must be before {legacy}"
+            for newer, legacy in order_pairs
+            if leader.index(newer) > leader.index(legacy)
+        ]
+        self.assertFalse(failures, "Leader legacy router order changed:\n" + "\n".join(failures))
+
+    def test_inactive_legacy_alias_routers_stay_unwired(self) -> None:
+        admin = read(APP / "handlers" / "admin" / "__init__.py")
+        leader = read(APP / "handlers" / "leader" / "__init__.py")
+        self.assertNotIn("dashboard_start", admin)
+        self.assertNotIn("reward_exchange", admin)
+        self.assertNotIn("activity_review", leader)
+        self.assertNotIn(" act", leader)
+        self.assertNotIn("act.router", leader)
+
     def test_points_sensitive_flows_have_idempotency_markers(self) -> None:
         targets = {
             "app/handlers/admin/task_review_block2.py": ["add_points", "approved"],

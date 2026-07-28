@@ -793,3 +793,30 @@ CI: passed on commit `4dafcda`.
 
 Следующий блок:
 - полный прогон тестов, PR/CI/merge этого cleanup-блока; затем аудит оставшихся крупных дублей admin/leader handlers без массового удаления рабочих legacy-веток.
+
+#### Блок 7. Admin/leader legacy router audit
+
+Проверено:
+- пересечения callback/message handlers внутри `admin` и `leader`;
+- порядок подключения новых модулей перед legacy `panel`;
+- неактивные legacy aliases, которые существуют в коде, но не подключены в root router.
+
+Найдено:
+- большинство admin-дублей безопасно перекрываются порядком: новые блоки подключены до большого `panel`;
+- `dashboard_start` и `reward_exchange` в admin сейчас не подключены и остаются legacy-кандидатами;
+- `leader/activity_review.py` и alias `leader/act.py` не подключены, активный путь идёт через `event_activities_block7`;
+- удалять эти файлы в одном шаге рискованно: часть тестов и исторических контрактов ещё ссылаются на них.
+
+Сделано:
+- добавлены regression-tests на порядок modern admin routers перед legacy `panel`;
+- добавлены regression-tests на порядок modern leader routers перед legacy `panel`;
+- добавлен regression-test, что неактивные legacy aliases не подключаются случайно.
+
+Проверка:
+- `python -m pytest tests/test_system_wide_audit.py` — 16 passed.
+- `python -m pytest` — 200 passed.
+
+PR: pending.
+
+Следующий блок:
+- после PR/CI/merge можно отдельно разобрать legacy-кандидаты `dashboard_start`, `reward_exchange`, `leader/activity_review.py`, `leader/act.py`: либо удалить с миграцией тестов, либо оставить как явно deprecated.
