@@ -420,7 +420,7 @@ async def send_survey(
         bot,
         [participant.telegram_id for participant in recipients],
         f"🗳 {survey.title}\n\n{survey.description or 'Команда ЭРА собирает обратную связь, чтобы принимать решения точнее'}\n\nОтвет займёт несколько минут",
-        keyboard,
+        reply_markup=keyboard,
     )
     now = datetime.now(ZoneInfo(settings.timezone))
     survey.status = "sent"
