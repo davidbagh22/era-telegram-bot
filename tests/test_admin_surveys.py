@@ -7,6 +7,7 @@ from app.config import Settings
 from app.database import Base
 from app.database.management_models import AdminSurvey, AdminSurveyResponse
 from app.database.models import User
+from app.handlers.participant.surveys import _survey_available_to_participants
 from app.services.scheduler_service import create_scheduler
 from app.services.survey_excel_service import build_survey_workbook
 from app.services.survey_service import MONTHLY_SURVEY_QUESTIONS, parse_survey_text, questions_payload
@@ -63,3 +64,11 @@ def test_scheduler_includes_monthly_surveys_job() -> None:
     settings = Settings(bot_token="1234567890:ABC", admin_ids=[1], timezone="Asia/Yerevan")
     scheduler = create_scheduler(object(), settings, object())
     assert "monthly-surveys" in {job.id for job in scheduler.get_jobs()}
+
+
+def test_participants_cannot_open_draft_or_archived_surveys() -> None:
+    assert _survey_available_to_participants(AdminSurvey(status="active")) is True
+    assert _survey_available_to_participants(AdminSurvey(status="sent")) is True
+    assert _survey_available_to_participants(AdminSurvey(status="draft")) is False
+    assert _survey_available_to_participants(AdminSurvey(status="archived")) is False
+    assert _survey_available_to_participants(None) is False
