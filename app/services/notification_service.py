@@ -113,6 +113,33 @@ async def safe_send_video(bot: Bot, chat_id: int, video, *, caption: str | None 
         return False
 
 
+async def safe_answer_photo(message, photo, *, caption: str | None = None, reply_markup=None) -> bool:
+    try:
+        await message.answer_photo(photo, caption=caption, reply_markup=reply_markup)
+        return True
+    except TelegramAPIError:
+        logger.exception("Could not answer with photo")
+        return False
+
+
+async def safe_answer_document(message, document, *, caption: str | None = None, reply_markup=None) -> bool:
+    try:
+        await message.answer_document(document, caption=caption, reply_markup=reply_markup)
+        return True
+    except TelegramAPIError:
+        logger.exception("Could not answer with document")
+        return False
+
+
+async def safe_answer_video(message, video, *, caption: str | None = None, reply_markup=None) -> bool:
+    try:
+        await message.answer_video(video, caption=caption, reply_markup=reply_markup)
+        return True
+    except TelegramAPIError:
+        logger.exception("Could not answer with video")
+        return False
+
+
 async def admin_notification_recipients(settings: Settings) -> set[int]:
     recipients = set(settings.admin_ids)
     recipients.update(await _database_admin_ids(settings))

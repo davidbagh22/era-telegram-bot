@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Project, User
+from app.services.notification_service import safe_answer_document
 from app.services.project_builder import render_project_document
 from app.utils import texts
 from app.utils.constants import PROJECT_STATUS_LABELS, ProjectStatus, Role
@@ -88,4 +89,9 @@ async def project_file(call: CallbackQuery, user: User | None, settings: Setting
     author = await _author(session, project)
     document = _document(project, author)
     project.generated_document = document
-    await call.message.answer_document(BufferedInputFile(BytesIO(document.encode("utf-8")).getvalue(), filename=f"ERA_project_{project.id}.txt"), caption=f"Полный проект #{project.id}: {project.title}")
+    if not await safe_answer_document(
+        call.message,
+        BufferedInputFile(BytesIO(document.encode("utf-8")).getvalue(), filename=f"ERA_project_{project.id}.txt"),
+        caption=f"Полный проект #{project.id}: {project.title}",
+    ):
+        await call.message.answer("Файл проекта собран, но Telegram не дал отправить его. Попробуйте ещё раз.")

@@ -100,6 +100,26 @@ def test_admin_user_routes_use_single_presenter() -> None:
     assert "send_admin_user_card(call.message, session, target, mode=\"profile\")" in rights
 
 
+def test_admin_user_card_media_uses_safe_delivery() -> None:
+    source = (ROOT / "app/services/admin_user_card.py").read_text(encoding="utf-8")
+
+    assert "safe_answer_photo" in source
+    assert "safe_send_photo" in source
+    assert "safe_send(bot, chat_id, card.text" in source
+    assert "bot.send_photo" not in source
+    assert "bot.send_message" not in source
+
+
+def test_admin_task_media_publication_uses_safe_fallback() -> None:
+    source = (ROOT / "app/handlers/admin/addons.py").read_text(encoding="utf-8")
+
+    assert "safe_send_photo(bot, target.telegram_id, task.file_id" in source
+    assert "safe_send_document(bot, target.telegram_id, task.file_id" in source
+    assert "delivered = await safe_send(bot, target.telegram_id, notice)" in source
+    assert "await bot.send_photo(target.telegram_id" not in source
+    assert "await bot.send_document(target.telegram_id" not in source
+
+
 def test_approve_application_is_idempotent_and_blocks_rejected() -> None:
     session = AsyncMock()
     target = _user(application_status=ApplicationStatus.PENDING)

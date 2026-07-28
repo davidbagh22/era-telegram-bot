@@ -18,7 +18,7 @@ from app.keyboards.participant import (
     project_result_keyboard,
 )
 from app.services.audit_service import audit
-from app.services.notification_service import notify_admins
+from app.services.notification_service import notify_admins, safe_answer_document
 from app.services.project_builder import (
     PROJECT_QUESTIONS,
     question_text,
@@ -200,13 +200,15 @@ async def project_answer(
     await send_long_text(
         message, document, reply_markup=project_result_keyboard(project.id)
     )
-    await message.answer_document(
+    if not await safe_answer_document(
+        message,
         BufferedInputFile(
             BytesIO(document.encode("utf-8")).getvalue(),
             filename=f"ERA_project_{project.id}.txt",
         ),
         caption="Копия проекта — файл останется в этом чате",
-    )
+    ):
+        await message.answer("Проект собран, но Telegram не дал отправить копию файлом. Текстовая версия выше сохранена.")
 
 
 @router.callback_query(ProjectStates.answer, F.data.startswith("project:hint:"))

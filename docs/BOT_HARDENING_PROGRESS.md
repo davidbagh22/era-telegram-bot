@@ -718,3 +718,45 @@ P2 — nice to have:
 
 Следующий блок после PR:
 - оставшиеся прямые media/file sends вне планировщика: admin user cards, task media publication, Excel exports, document exports и восстановленный portfolio PDF.
+
+#### Блок 5. Оставшиеся media/file sends
+
+Проверено:
+- admin user cards с фото участника;
+- application cards для админов;
+- создание приватной задачи админом с прикреплённым файлом;
+- выдача сертификатов участникам;
+- PDF-портфолио участника;
+- Excel exports аналитики и опросов;
+- проектные документы участника и админа;
+- оставшиеся `answer_photo/answer_document/answer_video` в review/previews.
+
+Найдено:
+- admin user card мог упасть на недоступном `photo_file_id` до показа текстовой карточки;
+- application card использовал прямые `bot.send_photo/bot.send_message`;
+- задача с media отправлялась участнику прямым `bot.send_photo/send_document` без понятного результата доставки;
+- сертификаты участникам отправлялись прямым `bot.send_document`, без счётчика доставок;
+- Excel/PDF/project exports не имели единого safe wrapper для Telegram errors;
+- часть прямых media-просмотров осталась в review flows, но это локальный preview в текущем чате с fallback-текстом или будет отдельным legacy cleanup.
+
+Сделано:
+- добавлены `safe_answer_photo`, `safe_answer_document`, `safe_answer_video` в общий notification layer;
+- admin user cards используют safe photo и всегда показывают текстовую карточку;
+- application cards используют `safe_send_photo` + `safe_send`;
+- task media publication использует `safe_send_photo/safe_send_document` и fallback на текст;
+- certificate delivery использует `safe_send_document` и показывает delivered/failed;
+- portfolio PDF, analytics Excel, survey Excel и project documents используют `safe_answer_document`;
+- экспорт по-прежнему идёт через `BufferedInputFile`, временные локальные файлы не создаются.
+
+Тесты:
+- расширен `tests/test_media_notifications.py`;
+- расширен `tests/test_admin_user_card.py`.
+
+Проверка:
+- `python -m pytest tests/test_media_notifications.py tests/test_admin_user_card.py tests/test_portfolio_resume_export.py tests/test_admin_surveys.py tests/test_strong_excel_analytics.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py` — 48 passed.
+- `python -m pytest` — 194 passed.
+
+PR: pending.
+
+Следующий блок:
+- legacy cleanup дублирующих participant handlers и оставшихся preview media paths после отдельного аудита роутеров.
