@@ -22,6 +22,7 @@ from app.handlers.admin import (
     partners_admin,
     approval_bonus_fix,
     chat_binding_stability,
+    offices_management,
     panel,
 )
 
@@ -50,6 +51,7 @@ router.include_router(partner_offers_block16.router)
 router.include_router(partners_admin.router)
 router.include_router(approval_bonus_fix.router)
 router.include_router(chat_binding_stability.router)
+router.include_router(offices_management.router)
 router.include_router(panel.router)
 
 __all__ = ["router"]
