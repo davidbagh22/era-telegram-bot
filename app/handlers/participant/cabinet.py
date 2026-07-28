@@ -2,6 +2,8 @@ from datetime import date
 
 from aiogram import F, Router
 from aiogram.filters import Command
+import logging
+
 from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
@@ -29,6 +31,7 @@ from app.keyboards.participant import (
     tasks_keyboard,
 )
 from app.repositories.users import rating, user_stats
+from app.services.portfolio_service import build_portfolio_data, portfolio_summary_text
 from app.services.resume_service import build_era_resume
 from app.utils import texts
 from app.utils.constants import (
@@ -41,6 +44,7 @@ from app.utils.constants import (
 from app.utils.telegram import send_long_text
 
 router = Router(name="cabinet")
+logger = logging.getLogger(__name__)
 
 
 async def _guard(call: CallbackQuery, user: User | None) -> bool:
@@ -251,30 +255,11 @@ async def portfolio(
 ) -> None:
     if not await _guard(call, user):
         return
-    items = (
-        await session.scalars(
-            select(PortfolioItem)
-            .where(
-                PortfolioItem.user_id == user.id,
-                PortfolioItem.status.in_(["verified", "pending"]),
-            )
-            .order_by(desc(PortfolioItem.created_at))
-        )
-    ).all()
-    if not items:
-        await call.message.answer(
-            texts.PORTFOLIO_EMPTY, reply_markup=portfolio_keyboard()
-        )
-        return
-    lines = "\n".join(
-        f"• {item.title} — {item.description or item.item_type}"
-        + (" · на проверке" if item.status == "pending" else "")
-        for item in items
-    )
+    data = await build_portfolio_data(session, user)
     await send_long_text(
         call.message,
-        f"{texts.PORTFOLIO}\n\n{lines}",
-        reply_markup=portfolio_keyboard(items),
+        portfolio_summary_text(data),
+        reply_markup=portfolio_keyboard(data.uploaded_items),
     )
 
 
@@ -303,28 +288,30 @@ async def portfolio_file(
 async def resume(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
     if not await _guard(call, user):
         return
-    items = (
-        await session.scalars(
-            select(PortfolioItem).where(
-                PortfolioItem.user_id == user.id,
-                PortfolioItem.status == "verified",
-            )
-        )
-    ).all()
-    stats = await user_stats(session, user.id)
+    await call.message.answer("Собираю Ваше портфолио в PDF. Это займёт несколько секунд")
     try:
-        content = build_era_resume(user, items, stats)
-    except RuntimeError:
+        data = await build_portfolio_data(session, user)
+        content = build_era_resume(data)
+    except Exception:
+        logger.exception("Could not build ERA resume for user %s", user.id)
         await call.message.answer(
             "Не удалось собрать PDF прямо сейчас. Попробуйте ещё раз немного позже",
             reply_markup=back_keyboard("cabinet:portfolio"),
         )
         return
-    await call.message.answer_document(
-        BufferedInputFile(content, filename=f"ERA_resume_{user.id}.pdf"),
-        caption="Ваше резюме ЭРА готово — его можно сохранить и отправить партнёрам или организаторам",
-        reply_markup=back_keyboard("cabinet:portfolio"),
-    )
+    filename_name = "_".join(part for part in data.full_name.split() if part) or "participant"
+    try:
+        await call.message.answer_document(
+            BufferedInputFile(content, filename=f"ERA_portfolio_{filename_name}.pdf"),
+            caption="Ваше портфолио ЭРА готово. Его можно сохранить и отправить партнёрам или организаторам",
+            reply_markup=back_keyboard("cabinet:portfolio"),
+        )
+    except TelegramAPIError:
+        logger.exception("Could not send ERA resume to user %s", user.id)
+        await call.message.answer(
+            "PDF собран, но Telegram не дал отправить файл. Попробуйте ещё раз немного позже",
+            reply_markup=back_keyboard("cabinet:portfolio"),
+        )
 
 
 @router.callback_query(F.data == "cabinet:projects")
