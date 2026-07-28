@@ -1,4 +1,5 @@
 from datetime import date, time
+from pathlib import Path
 
 from sqlalchemy import create_engine, inspect
 
@@ -15,6 +16,15 @@ def test_bind_command_covers_all_operational_chats() -> None:
     assert CHAT_KEYS["external"][0] == "external_department_chat_id"
     assert CHAT_KEYS["leaders"][0] == "leaders_chat_id"
     assert CHAT_KEYS["channel"][0] == "era_channel_id"
+
+
+def test_pending_join_requests_have_migration_and_model() -> None:
+    model = Path("app/database/chat_moderation.py").read_text(encoding="utf-8")
+    migration = Path("alembic/versions/0011_pending_chat_join_requests.py").read_text(encoding="utf-8")
+
+    assert "class PendingChatJoinRequest" in model
+    assert "pending_chat_join_requests" in migration
+    assert "UniqueConstraint(\"chat_id\", \"user_id\")" in migration
 
 
 def test_project_event_uses_structured_date_and_time_first() -> None:

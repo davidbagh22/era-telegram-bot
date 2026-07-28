@@ -20,7 +20,9 @@
 
 Этап 6: задачи, проекты, опросы, портфолио — завершён и смержен в `main`.
 
-Дополнительный продуктовый блок: заявка участника и единая admin user card — в работе.
+Дополнительный продуктовый блок: заявка участника и единая admin user card — завершён и смержен в `main`.
+
+Дополнительный продуктовый блок: доступ в чаты после регистрации и approval — в работе.
 
 ## Завершённые этапы
 
@@ -384,3 +386,49 @@ CI:
 
 Следующий блок:
 - chat access / join approval / restrictions.
+
+### Дополнительный продуктовый блок. Chat access / join approval / restrictions
+
+Проверено:
+- текущий `/bind general/internal/external/leaders/channel`;
+- хранение chat IDs в `Settings`, `AppSetting`, `ChatGreeting`;
+- старый group moderation flow в `app/handlers/chat.py`;
+- Telegram events `chat_join_request` и `new_chat_members`;
+- точки изменения пользователя: approval, role change, block/unblock, archive/unarchive.
+
+Найдено:
+- доработанная модерация могла удалять сообщения, но не управляла Telegram permissions;
+- `leaders`-чат раньше использовал ban/unban вместо ограничения права писать;
+- join request не обрабатывался как отдельный Telegram flow;
+- не было следа pending join request для пользователя, который уже запросил вход, но ещё не одобрен администратором;
+- смена роли/блокировка/архив не пересчитывали права в уже привязанных чатах.
+
+Сделано:
+- добавлен единый сервис `app/services/chat_access_service.py`;
+- доступ определяется по существующим `/bind` chat IDs: `general`, `internal`, `external`, `leaders`;
+- `general` открыт всем approved пользователям;
+- `internal` и `external` зависят от выбранного департамента;
+- `leaders` открыт только privileged roles и администраторам;
+- незарегистрированные и не approved пользователи получают понятное личное сообщение и не получают доступ;
+- rejected/blocked/archived/wrong role users отклоняются или ограничиваются;
+- новый `chat_join_request` handler использует `approve_chat_join_request` / `decline_chat_join_request`;
+- обход через прямое попадание в чат закрывается через `restrict_chat_member` с выключенными send permissions;
+- после approval/смены роли/блокировки/архива запускается синхронизация прав по привязанным чатам;
+- добавлена таблица `pending_chat_join_requests` и миграция `0011_pending_chat_join_requests`.
+
+Тесты:
+- добавлен `tests/test_chat_access_service.py`;
+- расширен `tests/test_stability_bindchat_projects.py`.
+
+Проверка:
+- `python -m pytest tests/test_chat_access_service.py tests/test_stability_bindchat_projects.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py` — 28 passed;
+- `python -m pytest` — 163 passed;
+- `python -c "... alembic upgrade head"` на локальной SQLite async базе — успешно;
+- `git diff --check` — успешно.
+
+PR: будет создан после push.
+
+Merge commit: ожидает merge.
+
+Следующий блок:
+- рассылки и уведомления.
