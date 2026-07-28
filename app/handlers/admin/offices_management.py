@@ -24,6 +24,53 @@ async def _guard(call: CallbackQuery, user: User | None, settings: Settings) -> 
     return True
 
 
+def _offices_keyboard(offices: list[Office]) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    for office in offices:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=office.title[:48],
+                    callback_data=f"admin:office:view:{office.id}",
+                ),
+                InlineKeyboardButton(
+                    text="🗑",
+                    callback_data=f"admin:office:delete:{office.id}",
+                ),
+            ]
+        )
+    rows.extend(
+        [
+            [InlineKeyboardButton(text="➕ Добавить должность", callback_data="admin:office:new")],
+            [InlineKeyboardButton(text="🔐 Делегировать права", callback_data="admin:permissions")],
+            [InlineKeyboardButton(text="← Назад", callback_data="admin:menu:system")],
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data == "admin:offices")
+async def offices_menu(
+    call: CallbackQuery,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+) -> None:
+    if not await _guard(call, user, settings):
+        return
+    offices = (
+        await session.scalars(
+            select(Office).where(Office.is_active.is_(True)).order_by(Office.sort_order, Office.title)
+        )
+    ).all()
+    await call.message.answer(
+        "👥 Должности и ответственность\n\n"
+        "Нажмите на название, чтобы открыть должность и назначения. "
+        "Кнопка 🗑 справа сразу открывает подтверждение удаления должности.",
+        reply_markup=_offices_keyboard(list(offices)),
+    )
+
+
 def _office_keyboard(office_id: int, assignments: list[tuple[int, str]]) -> InlineKeyboardMarkup:
     rows = [
         [
