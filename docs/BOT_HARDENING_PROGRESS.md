@@ -24,6 +24,8 @@
 
 Дополнительный продуктовый блок: доступ в чаты после регистрации и approval — завершён и смержен в `main`.
 
+Этап 7: рассылки и уведомления — в работе.
+
 ## Завершённые этапы
 
 ### Этап 1. База данных и транзакции
@@ -435,3 +437,46 @@ CI:
 
 Следующий блок:
 - рассылки и уведомления.
+
+### Этап 7. Рассылки и уведомления
+
+#### Блок 1. Устойчивое ядро массовых рассылок
+
+Проверено:
+- `app/services/notification_service.py`;
+- массовая админская рассылка `admin:broadcast`;
+- одобрение лидерской рассылки;
+- текущие прямые Telegram sends и существующий `safe_send`.
+
+Найдено:
+- старый `broadcast()` отправлял последовательно;
+- получатели не дедуплицировались на уровне сервиса;
+- `RetryAfter` и временные Telegram/network/server errors не retry-ились отдельно от permanent failures;
+- администратор видел только `sent/failed`, без дублей и типа ошибок.
+
+Сделано:
+- добавлен `broadcast_detailed(...)` с дедупликацией получателей;
+- добавлен лимит параллельности через `asyncio.Semaphore`;
+- `TelegramRetryAfter`, network и server errors retry-ятся ограниченно;
+- `Forbidden/BadRequest` считаются permanent failures и не retry-ятся;
+- старый `broadcast()` сохранён совместимым и возвращает `(sent, failed)`;
+- массовая админская рассылка и одобренная лидерская рассылка показывают total, sent, failed, duplicates, temporary/permanent failures.
+
+Тесты:
+- добавлен `tests/test_broadcast_service.py`;
+- расширен контракт `tests/test_admin_notification_recipients.py`.
+
+Проверка:
+- `python -m pytest tests/test_broadcast_service.py tests/test_admin_notification_recipients.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py` — 25 passed;
+- `python -m pytest` — 170 passed;
+- `git diff --check` — успешно.
+
+PR: #88.
+
+Merge commit: ожидает merge.
+
+CI:
+- Tests/Bot checks: success on `6d6c5258503b2e6cd67cd4b2916eee69e0eeffcc`.
+
+Следующий блок:
+- аудит автоматических уведомлений и прямых send_* с файлами/медиа.
