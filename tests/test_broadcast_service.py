@@ -102,3 +102,24 @@ def test_admin_mass_broadcast_uses_detailed_result() -> None:
     assert "result.duplicates" in source
     assert "result.temporary_failed" in source
     assert "result.permanent_failed" in source
+
+
+def test_survey_broadcast_uses_detailed_delivery_result() -> None:
+    source = (ROOT / "app/handlers/admin/surveys_analytics.py").read_text(encoding="utf-8")
+
+    assert "from app.services.notification_service import broadcast_detailed" in source
+    assert "result = await broadcast_detailed(" in source
+    assert "participant.telegram_id for participant in recipients" in source
+    assert "result.duplicates" in source
+    assert "result.temporary_failed" in source
+    assert "result.permanent_failed" in source
+    assert "for participant in recipients:\n        ok = await safe_send" not in source
+
+
+def test_chat_broadcast_uses_safe_send_contract() -> None:
+    source = (ROOT / "app/handlers/admin/management_ready.py").read_text(encoding="utf-8")
+
+    assert "from app.services.notification_service import safe_send" in source
+    assert "ok = await safe_send(bot, chat_id, text)" in source
+    assert "await bot.send_message(chat_id, text)" not in source
+    assert "TelegramAPIError" not in source

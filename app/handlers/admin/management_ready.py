@@ -4,7 +4,6 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Bot, Router
-from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -18,6 +17,7 @@ from app.database.models import Department, Direction, Event, PointTransaction, 
 from app.keyboards.admin import admin_panel_keyboard
 from app.services.audit_service import audit
 from app.services.excel_service import build_analytics_workbook
+from app.services.notification_service import safe_send
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, Role
 from app.utils.validators import clean_text
@@ -435,9 +435,8 @@ async def chat_broadcast_send(call: CallbackQuery, user: User | None, settings: 
     if not chat_id:
         await call.message.answer("ID этого чата ещё не привязан. Используйте /bind в нужном чате или настройки")
         return
-    try:
-        await bot.send_message(chat_id, text)
-    except TelegramAPIError:
+    ok = await safe_send(bot, chat_id, text)
+    if not ok:
         await call.message.answer("Telegram не дал отправить сообщение. Проверьте, что бот админ в этом чате")
         return
     await audit(session, actor_id=user.id if user else None, action="chat.broadcast_sent", entity_type="chat", entity_id=None, new_value={"chat": key})
