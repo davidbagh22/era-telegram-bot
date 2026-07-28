@@ -86,6 +86,33 @@ async def safe_send(bot: Bot, chat_id: int, text: str, reply_markup=None) -> boo
         return False
 
 
+async def safe_send_photo(bot: Bot, chat_id: int, photo, *, caption: str | None = None, reply_markup=None) -> bool:
+    try:
+        await bot.send_photo(chat_id, photo, caption=caption, reply_markup=reply_markup)
+        return True
+    except TelegramAPIError:
+        logger.exception("Could not deliver photo notification to chat %s", chat_id)
+        return False
+
+
+async def safe_send_document(bot: Bot, chat_id: int, document, *, caption: str | None = None, reply_markup=None) -> bool:
+    try:
+        await bot.send_document(chat_id, document, caption=caption, reply_markup=reply_markup)
+        return True
+    except TelegramAPIError:
+        logger.exception("Could not deliver document notification to chat %s", chat_id)
+        return False
+
+
+async def safe_send_video(bot: Bot, chat_id: int, video, *, caption: str | None = None, reply_markup=None) -> bool:
+    try:
+        await bot.send_video(chat_id, video, caption=caption, reply_markup=reply_markup)
+        return True
+    except TelegramAPIError:
+        logger.exception("Could not deliver video notification to chat %s", chat_id)
+        return False
+
+
 async def admin_notification_recipients(settings: Settings) -> set[int]:
     recipients = set(settings.admin_ids)
     recipients.update(await _database_admin_ids(settings))
