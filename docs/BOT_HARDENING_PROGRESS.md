@@ -756,7 +756,9 @@ P2 — nice to have:
 - `python -m pytest tests/test_media_notifications.py tests/test_admin_user_card.py tests/test_portfolio_resume_export.py tests/test_admin_surveys.py tests/test_strong_excel_analytics.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py` — 48 passed.
 - `python -m pytest` — 194 passed.
 
-PR: pending.
+PR: #98.
+Merge commit: `a8879f5`.
+CI: passed on commit `86ed536`.
 
 Следующий блок:
 - legacy cleanup дублирующих participant handlers и оставшихся preview media paths после отдельного аудита роутеров.
