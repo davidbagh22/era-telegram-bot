@@ -15,7 +15,7 @@ from app.config import Settings
 from app.database.management_models import AdminSurvey, AdminSurveyResponse
 from app.database.models import User
 from app.handlers.admin.management_ready import _analytics_payload, _guard
-from app.services.notification_service import safe_send
+from app.services.notification_service import broadcast_detailed
 from app.services.survey_excel_service import build_survey_workbook
 from app.services.survey_service import (
     MONTHLY_SURVEY_DESCRIPTION,
@@ -416,18 +416,12 @@ async def send_survey(
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="Ответить на опрос", callback_data=f"survey:start:{survey.id}")]]
     )
-    sent = failed = 0
-    for participant in recipients:
-        ok = await safe_send(
-            bot,
-            participant.telegram_id,
-            f"🗳 {survey.title}\n\n{survey.description or 'Команда ЭРА собирает обратную связь, чтобы принимать решения точнее'}\n\nОтвет займёт несколько минут",
-            keyboard,
-        )
-        if ok:
-            sent += 1
-        else:
-            failed += 1
+    result = await broadcast_detailed(
+        bot,
+        [participant.telegram_id for participant in recipients],
+        f"🗳 {survey.title}\n\n{survey.description or 'Команда ЭРА собирает обратную связь, чтобы принимать решения точнее'}\n\nОтвет займёт несколько минут",
+        keyboard,
+    )
     now = datetime.now(ZoneInfo(settings.timezone))
     survey.status = "sent"
     survey.sent_at = now
@@ -435,7 +429,15 @@ async def send_survey(
         survey.last_sent_month = now.strftime("%Y-%m")
     survey.updated_by = user.id if user else None
     await session.commit()
-    await call.message.answer(f"Опрос отправлен\n\nДоставлено: {sent}\nНе доставлено: {failed}")
+    await call.message.answer(
+        "Опрос отправлен\n\n"
+        f"Получателей: {result.total}\n"
+        f"Доставлено: {result.sent}\n"
+        f"Не доставлено: {result.failed}\n"
+        f"Дубли исключены: {result.duplicates}\n"
+        f"Временные ошибки: {result.temporary_failed}\n"
+        f"Постоянные ошибки: {result.permanent_failed}"
+    )
 
 
 @router.callback_query(F.data.startswith("admin:survey:results:"))

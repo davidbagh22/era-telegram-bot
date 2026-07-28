@@ -522,3 +522,34 @@ CI:
 
 Следующий блок:
 - survey/event/chat broadcast recipients and notification deduplication.
+
+#### Блок 3. Опросы и чат-рассылки
+
+Проверено:
+- отправка админских опросов участникам;
+- ручная отправка сообщения в выбранный чат;
+- публикация event cards в общий чат после предыдущего блока;
+- контракт дедупликации получателей в общем сервисе рассылок.
+
+Найдено:
+- опросы отправлялись отдельным циклом через `safe_send`, без дедупликации и детальной статистики;
+- администратор видел только доставлено/не доставлено, без дублей и типа ошибок;
+- чат-рассылка использовала прямой `bot.send_message`, отдельно от безопасного слоя уведомлений.
+
+Сделано:
+- отправка опросов переведена на `broadcast_detailed(...)`;
+- в отчёте по опросу показываются total, sent, failed, duplicates, temporary/permanent failures;
+- ручная отправка в выбранный чат переведена на `safe_send(...)`;
+- убран прямой Telegram exception path из чат-рассылки.
+
+Тесты:
+- расширен `tests/test_broadcast_service.py` контрактами для survey/chat broadcast flows.
+
+Проверка:
+- `python -m pytest tests/test_broadcast_service.py tests/test_admin_notification_recipients.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py` — 27 passed;
+- `python -m pytest` — 175 passed.
+
+PR: pending.
+
+Следующий блок:
+- аудит автоматических уведомлений и повторной доставки: где бот может прислать одно и то же событие несколько раз или потерять статус доставки.
