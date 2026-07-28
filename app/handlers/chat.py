@@ -2,9 +2,9 @@ from collections import defaultdict, deque
 from time import monotonic
 
 from aiogram import F, Bot, Router
-from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError
+from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import ChatJoinRequest, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,18 @@ from app.config import Settings
 from app.database.chat_moderation import ChatModerationSetting
 from app.database.models import ChatGreeting, User
 from app.repositories.users import get_user_by_telegram_id
+from app.services.chat_access_service import (
+    access_message,
+    approve_join_request,
+    chat_key_for_id,
+    check_chat_access,
+    close_join_request,
+    decline_join_request,
+    notify_user,
+    remember_join_request,
+    restrict_member,
+    unrestrict_member,
+)
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES
 
@@ -34,6 +46,49 @@ async def _moderation_enabled(session: AsyncSession, chat_id: int) -> bool:
 
 def _is_approved_member(user: User | None) -> bool:
     return bool(user and user.application_status == ApplicationStatus.APPROVED and not user.is_blocked and not user.is_archived)
+
+
+@router.chat_join_request()
+async def handle_chat_join_request(
+    request: ChatJoinRequest,
+    bot: Bot,
+    settings: Settings,
+    session: AsyncSession,
+) -> None:
+    chat_key = chat_key_for_id(settings, request.chat.id)
+    if chat_key is None:
+        return
+    user = await get_user_by_telegram_id(session, request.from_user.id)
+    decision = check_chat_access(user, chat_key)
+    if decision.allowed:
+        if await approve_join_request(bot, request.chat.id, request.from_user.id):
+            await close_join_request(
+                session,
+                chat_id=request.chat.id,
+                user_id=request.from_user.id,
+                status="approved",
+                reason="approved",
+            )
+        return
+
+    if decision.chat_key and decision.pending:
+        await remember_join_request(
+            session,
+            chat_id=request.chat.id,
+            user_id=request.from_user.id,
+            chat_key=decision.chat_key,
+            reason=decision.reason,
+        )
+    elif decision.chat_key:
+        await decline_join_request(bot, request.chat.id, request.from_user.id)
+        await close_join_request(
+            session,
+            chat_id=request.chat.id,
+            user_id=request.from_user.id,
+            status="declined",
+            reason=decision.reason,
+        )
+    await notify_user(bot, request.from_user.id, access_message(decision.reason))
 
 
 async def _soft_moderation(message: Message) -> None:
@@ -121,18 +176,20 @@ async def moderation_status(message: Message, session: AsyncSession) -> None:
 async def welcome_members(message: Message, bot: Bot, settings: Settings, session: AsyncSession) -> None:
     me = await bot.get_me()
     welcomed = []
+    chat_key = chat_key_for_id(settings, message.chat.id)
     for member in message.new_chat_members:
         if member.is_bot:
             continue
-        if message.chat.id == settings.leaders_chat_id:
-            joined_user = await get_user_by_telegram_id(session, member.id)
-            if not joined_user or joined_user.role not in PRIVILEGED_ROLES:
-                try:
-                    await bot.ban_chat_member(message.chat.id, member.id)
-                    await bot.unban_chat_member(message.chat.id, member.id, only_if_banned=True)
-                except TelegramAPIError:
-                    await message.answer("Не удалось автоматически ограничить доступ. Администратору чата нужно проверить права бота.")
-                continue
+        joined_user = await get_user_by_telegram_id(session, member.id)
+        decision = check_chat_access(joined_user, chat_key)
+        if not decision.allowed:
+            restricted = await restrict_member(bot, message.chat.id, member.id)
+            if not restricted:
+                await message.answer("Не удалось автоматически ограничить доступ. Администратору чата нужно проверить права бота.")
+            await notify_user(bot, member.id, access_message(decision.reason))
+            continue
+        if chat_key:
+            await unrestrict_member(bot, message.chat.id, member.id)
         welcomed.append(member.first_name)
     if not welcomed:
         return
@@ -160,16 +217,23 @@ async def rules_callback(call) -> None:
 
 
 @router.message(~F.chat.type.in_({"private"}))
-async def moderation_gate(message: Message, bot: Bot, user: User | None, session: AsyncSession) -> None:
+async def moderation_gate(message: Message, bot: Bot, user: User | None, settings: Settings, session: AsyncSession) -> None:
+    chat_key = chat_key_for_id(settings, message.chat.id)
+    decision = check_chat_access(user, chat_key)
     enabled = await _moderation_enabled(session, message.chat.id)
-    allowed = _is_approved_member(user) or bool(user and user.role in PRIVILEGED_ROLES and not user.is_blocked and not user.is_archived)
-    if enabled and not allowed and message.from_user:
+    allowed = decision.allowed if chat_key else (
+        _is_approved_member(user)
+        or bool(user and user.role in PRIVILEGED_ROLES and not user.is_blocked and not user.is_archived)
+    )
+    if (chat_key or enabled) and not allowed and message.from_user:
         try:
             member = await bot.get_chat_member(message.chat.id, message.from_user.id)
             allowed = member.status in {"administrator", "creator"}
         except TelegramAPIError:
             pass
-    if enabled and not allowed:
+    if (chat_key or enabled) and not allowed:
+        if chat_key and message.from_user:
+            await restrict_member(bot, message.chat.id, message.from_user.id)
         try:
             await message.delete()
         except TelegramAPIError:
@@ -182,10 +246,7 @@ async def moderation_gate(message: Message, bot: Bot, user: User | None, session
         if now - last_sent < _DM_NOTICE_COOLDOWN:
             return
         _dm_notice_sent[key] = now
-        try:
-            await bot.send_message(message.from_user.id, "Сначала пройдите регистрацию в боте ЭРА. После одобрения Вы сможете писать в общем чате.")
-        except TelegramForbiddenError:
-            pass
+        await notify_user(bot, message.from_user.id, access_message(decision.reason))
         return
     await _soft_moderation(message)
 

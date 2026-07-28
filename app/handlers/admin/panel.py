@@ -73,6 +73,7 @@ from app.keyboards.participant import main_menu
 from app.services.admin_user_card import send_admin_user_card
 from app.services.application_review_service import approve_application, reject_application
 from app.services.audit_service import audit
+from app.services.chat_access_service import sync_user_chat_access
 from app.services.event_service import can_change_event_status
 from app.services.excel_service import build_analytics_workbook
 from app.services.maintenance_service import reset_operational_data, reset_preview
@@ -355,6 +356,7 @@ async def approve_user(
         target.telegram_id,
         "Перед стартом — короткие правила сообщества\n\n" + texts.CHAT_RULES,
     )
+    await sync_user_chat_access(bot, settings, session, target)
 
 
 async def _start_user_review(

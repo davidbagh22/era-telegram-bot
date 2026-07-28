@@ -22,6 +22,7 @@ from app.services.authorization_service import (
 )
 from app.services.notification_service import safe_send
 from app.services.admin_user_card import send_admin_user_card
+from app.services.chat_access_service import sync_user_chat_access
 from app.utils import texts
 from app.utils.constants import (
     PERMISSIONS,
@@ -209,6 +210,7 @@ async def set_role(
         old_value={"role": old_role},
         new_value={"role": new_role.value},
     )
+    await sync_user_chat_access(bot, settings, session, target)
     await call.message.answer(f"Роль обновлена: {_role_label(new_role)}")
     await safe_send(
         bot,
@@ -319,6 +321,7 @@ async def block_toggle(
     user: User | None,
     settings: Settings,
     session: AsyncSession,
+    bot: Bot,
 ) -> None:
     if not await _guard(call, user, settings, manage=True):
         return
@@ -341,6 +344,7 @@ async def block_toggle(
         entity_type="user",
         entity_id=target.id,
     )
+    await sync_user_chat_access(bot, settings, session, target)
     await call.message.answer("Участник заблокирован" if target.is_blocked else "Участник разблокирован")
 
 
@@ -350,6 +354,7 @@ async def archive_toggle(
     user: User | None,
     settings: Settings,
     session: AsyncSession,
+    bot: Bot,
 ) -> None:
     if not await _guard(call, user, settings, manage=True):
         return
@@ -381,4 +386,5 @@ async def archive_toggle(
         entity_type="user",
         entity_id=target.id,
     )
+    await sync_user_chat_access(bot, settings, session, target)
     await call.message.answer(text)
