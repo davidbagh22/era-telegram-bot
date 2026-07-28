@@ -816,7 +816,9 @@ CI: passed on commit `4dafcda`.
 - `python -m pytest tests/test_system_wide_audit.py` — 16 passed.
 - `python -m pytest` — 200 passed.
 
-PR: pending.
+PR: #102.
+Merge commit: `941e27d`.
+CI: passed on commit `dab9a89`.
 
 Следующий блок:
 - после PR/CI/merge можно отдельно разобрать legacy-кандидаты `dashboard_start`, `reward_exchange`, `leader/activity_review.py`, `leader/act.py`: либо удалить с миграцией тестов, либо оставить как явно deprecated.
