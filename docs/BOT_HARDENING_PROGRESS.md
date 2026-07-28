@@ -638,7 +638,12 @@ CI:
 - `python -m pytest tests/test_portfolio_resume_export.py tests/test_v2_scenarios.py tests/test_ux_empty_states.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py` — 39 passed.
 - `python -m pytest` — 189 passed.
 
-PR: pending.
+PR: #96.
+
+Merge commit: `36ad396`.
+
+CI:
+- Tests/Bot checks: success on `a634a0f`.
 
 ### Product / UX audit
 
