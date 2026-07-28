@@ -17,7 +17,7 @@ from app.database.models import Department, Direction, Event, PointTransaction, 
 from app.keyboards.admin import admin_panel_keyboard
 from app.services.audit_service import audit
 from app.services.excel_service import build_analytics_workbook
-from app.services.notification_service import safe_send
+from app.services.notification_service import safe_answer_document, safe_send
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, Role
 from app.utils.validators import clean_text
@@ -229,10 +229,12 @@ async def analytics_excel(call: CallbackQuery, user: User | None, settings: Sett
         contacts=data["contacts"],
         sections=section_map.get(section),
     )
-    await call.message.answer_document(
+    if not await safe_answer_document(
+        call.message,
         BufferedInputFile(content, filename=f"ERA_analytics_{section}.xlsx"),
         caption="Готово. Таблица оформлена на русском и готова для работы",
-    )
+    ):
+        await call.message.answer("Таблица собрана, но Telegram не дал отправить файл. Попробуйте ещё раз.")
 
 
 @router.callback_query(F.data == "admin:goals")

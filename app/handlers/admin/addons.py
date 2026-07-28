@@ -13,7 +13,7 @@ from app.config import Settings
 from app.database.models import Badge, Task, User, UserBadge
 from app.keyboards.admin import admin_panel_keyboard, application_actions
 from app.services.audit_service import audit
-from app.services.notification_service import safe_send
+from app.services.notification_service import safe_send, safe_send_document, safe_send_photo
 from app.states.admin import AdminGrowthStates
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, Role
@@ -649,16 +649,23 @@ async def admin_task_finish(
         entity_id=task.id,
     )
     await state.clear()
-    await message.answer("Задание создано и отправлено участнику")
     notice = (
         f"✅ Новое задание ЭРА\n\n{task.title}\n\n{task.description}\n\n"
         f"Дедлайн: {task.deadline:%d.%m.%Y %H:%M}\nБаллы: {task.points}\n\n"
         "Откройте Личный кабинет → Мои задачи"
     )
+    delivered = False
+    media_delivered = False
     if task.file_id:
-        try:
-            await bot.send_photo(target.telegram_id, task.file_id, caption=notice)
-        except Exception:
-            await bot.send_document(target.telegram_id, task.file_id, caption=notice)
+        media_delivered = await safe_send_photo(bot, target.telegram_id, task.file_id, caption=notice)
+        if not media_delivered:
+            media_delivered = await safe_send_document(bot, target.telegram_id, task.file_id, caption=notice)
+        delivered = media_delivered
+    if not delivered:
+        delivered = await safe_send(bot, target.telegram_id, notice)
+    if delivered and (not task.file_id or media_delivered):
+        await message.answer("Задание создано и отправлено участнику")
+    elif delivered:
+        await message.answer("Задание создано и отправлено участнику, но прикреплённый файл не доставился. Участник всё равно увидит задание в личном кабинете.")
     else:
-        await safe_send(bot, target.telegram_id, notice)
+        await message.answer("Задание создано, но Telegram не дал отправить уведомление участнику. Задание доступно в личном кабинете.")

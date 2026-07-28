@@ -4,7 +4,6 @@ from aiogram import F, Router
 from aiogram.filters import Command
 import logging
 
-from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from sqlalchemy import desc, or_, select
@@ -31,6 +30,7 @@ from app.keyboards.participant import (
     tasks_keyboard,
 )
 from app.repositories.users import rating, user_stats
+from app.services.notification_service import safe_answer_document, safe_answer_photo
 from app.services.portfolio_service import build_portfolio_data, portfolio_summary_text
 from app.services.resume_service import build_era_resume
 from app.utils import texts
@@ -278,10 +278,11 @@ async def portfolio_file(
     ):
         await call.message.answer("Файл недоступен")
         return
-    try:
-        await call.message.answer_document(item.file_id, caption=item.title)
-    except TelegramAPIError:
-        await call.message.answer_photo(item.file_id, caption=item.title)
+    if await safe_answer_document(call.message, item.file_id, caption=item.title):
+        return
+    if await safe_answer_photo(call.message, item.file_id, caption=item.title):
+        return
+    await call.message.answer("Файл прикреплён, но Telegram не дал открыть его повторно.")
 
 
 @router.callback_query(F.data == "portfolio:resume")
@@ -301,13 +302,16 @@ async def resume(call: CallbackQuery, user: User | None, session: AsyncSession) 
         return
     filename_name = "_".join(part for part in data.full_name.split() if part) or "participant"
     try:
-        await call.message.answer_document(
+        delivered = await safe_answer_document(
+            call.message,
             BufferedInputFile(content, filename=f"ERA_portfolio_{filename_name}.pdf"),
             caption="Ваше портфолио ЭРА готово. Его можно сохранить и отправить партнёрам или организаторам",
             reply_markup=back_keyboard("cabinet:portfolio"),
         )
-    except TelegramAPIError:
+    except Exception:
         logger.exception("Could not send ERA resume to user %s", user.id)
+        delivered = False
+    if not delivered:
         await call.message.answer(
             "PDF собран, но Telegram не дал отправить файл. Попробуйте ещё раз немного позже",
             reply_markup=back_keyboard("cabinet:portfolio"),

@@ -77,7 +77,13 @@ from app.services.chat_access_service import sync_user_chat_access
 from app.services.event_service import can_change_event_status
 from app.services.excel_service import build_analytics_workbook
 from app.services.maintenance_service import reset_operational_data, reset_preview
-from app.services.notification_service import broadcast, broadcast_detailed, safe_send
+from app.services.notification_service import (
+    broadcast,
+    broadcast_detailed,
+    safe_answer_document,
+    safe_send,
+    safe_send_document,
+)
 from app.services.points_service import add_points, add_portfolio_item, make_idempotency_key, total_points
 from app.services.redemption_service import exchange_redemption, reject_redemption
 from app.states.admin import (
@@ -1677,6 +1683,7 @@ async def certificate_file(
                 )
             ).all()
         )
+    delivered = failed = 0
     for target_id in target_ids:
         await add_portfolio_item(
             session,
@@ -1692,13 +1699,20 @@ async def certificate_file(
         )
         target = await session.get(User, target_id)
         if target:
-            await bot.send_document(
+            ok = await safe_send_document(
+                bot,
                 target.telegram_id,
                 file_id,
                 caption=f"В Ваше портфолио добавлен сертификат «{data['certificate_title']}» 🎓",
             )
+            delivered += int(ok)
+            failed += int(not ok)
     await state.clear()
-    await message.answer(f"Сертификат добавлен: {len(target_ids)} участникам")
+    await message.answer(
+        f"Сертификат добавлен: {len(target_ids)} участникам\n"
+        f"Файл доставлен: {delivered}\n"
+        f"Ошибок доставки: {failed}"
+    )
 
 
 @router.message(AdminCertificateStates.file)
@@ -3377,10 +3391,12 @@ async def analytics_excel(
         ).all()
     )
     content = build_analytics_workbook(users, events, projects, totals)
-    await call.message.answer_document(
+    if not await safe_answer_document(
+        call.message,
         BufferedInputFile(content, filename="ERA_analytics.xlsx"),
         caption="Аналитика ЭРА: участники, мероприятия и проекты",
-    )
+    ):
+        await call.message.answer("Таблица собрана, но Telegram не дал отправить файл. Попробуйте ещё раз.")
 
 
 @router.callback_query(F.data == "admin:offices")

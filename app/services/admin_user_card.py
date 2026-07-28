@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from datetime import date
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardMarkup, Message
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +13,12 @@ from app.config import Settings
 from app.database.models import Badge, PointTransaction, PortfolioItem, User, UserBadge
 from app.database.socials import SocialLink, SocialProfile
 from app.keyboards.admin import admin_user_actions, application_actions
-from app.services.notification_service import admin_notification_recipients
+from app.services.notification_service import (
+    admin_notification_recipients,
+    safe_answer_photo,
+    safe_send,
+    safe_send_photo,
+)
 from app.utils.constants import (
     APPLICATION_STATUS_LABELS,
     PERMISSION_LABELS,
@@ -198,7 +202,7 @@ async def send_admin_user_card(
 ) -> None:
     card = await build_admin_user_card(session, target, mode=mode)
     if card.photo_file_id:
-        await message.answer_photo(card.photo_file_id, caption="Фото участника")
+        await safe_answer_photo(message, card.photo_file_id, caption="Фото участника")
     await message.answer(card.text, reply_markup=card.reply_markup)
 
 
@@ -212,14 +216,12 @@ async def send_admin_application_cards(
     recipients = await admin_notification_recipients(settings)
     sent = failed = 0
     for chat_id in recipients:
-        try:
-            if card.photo_file_id:
-                await bot.send_photo(chat_id, card.photo_file_id, caption="Фото участника")
-            await bot.send_message(chat_id, card.text, reply_markup=card.reply_markup)
+        if card.photo_file_id:
+            await safe_send_photo(bot, chat_id, card.photo_file_id, caption="Фото участника")
+        if await safe_send(bot, chat_id, card.text, card.reply_markup):
             sent += 1
-        except TelegramAPIError:
+        else:
             failed += 1
-            logger.exception("Could not deliver application card to admin chat %s", chat_id)
     if not recipients:
         logger.error("Application card was not sent: no admin recipients found")
     return sent, failed

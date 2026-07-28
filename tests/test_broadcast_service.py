@@ -120,7 +120,7 @@ def test_survey_broadcast_uses_detailed_delivery_result() -> None:
 def test_chat_broadcast_uses_safe_send_contract() -> None:
     source = (ROOT / "app/handlers/admin/management_ready.py").read_text(encoding="utf-8")
 
-    assert "from app.services.notification_service import safe_send" in source
+    assert "safe_send" in source
     assert "ok = await safe_send(bot, chat_id, text)" in source
     assert "await bot.send_message(chat_id, text)" not in source
     assert "TelegramAPIError" not in source

@@ -15,7 +15,7 @@ from app.config import Settings
 from app.database.management_models import AdminSurvey, AdminSurveyResponse
 from app.database.models import User
 from app.handlers.admin.management_ready import _analytics_payload, _guard
-from app.services.notification_service import broadcast_detailed
+from app.services.notification_service import broadcast_detailed, safe_answer_document
 from app.services.survey_excel_service import build_survey_workbook
 from app.services.survey_service import (
     MONTHLY_SURVEY_DESCRIPTION,
@@ -182,10 +182,12 @@ async def survey_excel(call: CallbackQuery, user: User | None, settings: Setting
         return
     surveys, responses, users = await _load_surveys_with_responses(session)
     workbook = build_survey_workbook(surveys, responses, users)
-    await call.message.answer_document(
+    if not await safe_answer_document(
+        call.message,
         BufferedInputFile(workbook, filename="ERA_surveys.xlsx"),
         caption="🗳 Опросы и обратная связь ЭРА",
-    )
+    ):
+        await call.message.answer("Excel собран, но Telegram не дал отправить файл. Попробуйте ещё раз.")
 
 
 @router.message(Command("admin_surveys"))
