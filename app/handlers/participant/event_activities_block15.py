@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Event, EventActivity, EventActivitySubmission, EventRegistration, User
-from app.services.notification_service import notify_admins
+from app.services.notification_service import notify_admins, safe_send_document, safe_send_photo
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, RegistrationStatus
 from app.utils.validators import clean_text
@@ -111,14 +111,16 @@ async def _notify_proof(
     recipients = set(settings.admin_ids)
     if settings.leaders_chat_id:
         recipients.add(settings.leaders_chat_id)
+    media_sent = media_failed = 0
     for chat_id in recipients:
-        try:
-            if submission.file_type == "photo":
-                await bot.send_photo(chat_id, submission.file_id, caption="Подтверждение активности")
-            else:
-                await bot.send_document(chat_id, submission.file_id, caption="Подтверждение активности")
-        except Exception:
-            continue
+        if submission.file_type == "photo":
+            ok = await safe_send_photo(bot, chat_id, submission.file_id, caption="Подтверждение активности")
+        else:
+            ok = await safe_send_document(bot, chat_id, submission.file_id, caption="Подтверждение активности")
+        media_sent += int(ok)
+        media_failed += int(not ok)
+    if media_failed:
+        await notify_admins(bot, settings, f"Не удалось доставить файл активности части получателей. Доставлено: {media_sent}. Ошибок: {media_failed}.")
 
 
 @router.callback_query(F.data.startswith("event:activities:"))

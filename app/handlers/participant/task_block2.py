@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import Task, TaskParticipant, TaskSubmission, User
 from app.keyboards.participant import tasks_keyboard
-from app.services.notification_service import notify_admins
+from app.services.notification_service import notify_admins, safe_send_document, safe_send_photo, safe_send_video
 from app.states.growth import TaskSubmissionStates
 from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus, TASK_STATUS_LABELS
@@ -294,13 +294,15 @@ async def task_result_save(message: Message, user: User, session: AsyncSession, 
     telegram = f"@{user.username}" if user.username else str(user.telegram_id)
     await notify_admins(bot, settings, f"📥 Новый результат задания\n\n{task.title}\nУчастник: {user.first_name} {user.last_name or ''}\nTelegram: {telegram}\n\n{submission.text or 'Материал прикреплён файлом'}", reply_markup=_review_keyboard(submission.id))
     if file_id:
+        media_sent = media_failed = 0
         for chat_id in set(settings.admin_ids):
-            try:
-                if file_type == "photo":
-                    await bot.send_photo(chat_id, file_id, caption="Файл результата")
-                elif file_type == "video":
-                    await bot.send_video(chat_id, file_id, caption="Файл результата")
-                else:
-                    await bot.send_document(chat_id, file_id, caption="Файл результата")
-            except Exception:
-                pass
+            if file_type == "photo":
+                ok = await safe_send_photo(bot, chat_id, file_id, caption="Файл результата")
+            elif file_type == "video":
+                ok = await safe_send_video(bot, chat_id, file_id, caption="Файл результата")
+            else:
+                ok = await safe_send_document(bot, chat_id, file_id, caption="Файл результата")
+            media_sent += int(ok)
+            media_failed += int(not ok)
+        if media_failed:
+            await notify_admins(bot, settings, f"Не удалось доставить файл результата задания части админов. Доставлено: {media_sent}. Ошибок: {media_failed}.")

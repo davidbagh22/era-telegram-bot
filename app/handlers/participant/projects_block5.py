@@ -12,7 +12,7 @@ from app.config import Settings
 from app.database.models import Project, User
 from app.keyboards.participant import project_menu_keyboard
 from app.services.audit_service import audit
-from app.services.notification_service import safe_send
+from app.services.notification_service import safe_send, safe_send_document
 from app.services.project_builder import render_project_document
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PROJECT_STATUS_LABELS, ProjectStatus
@@ -165,9 +165,19 @@ async def project_submit_full(call: CallbackQuery, session: AsyncSession, user: 
     recipients = set(settings.admin_ids)
     if settings.leaders_chat_id:
         recipients.add(settings.leaders_chat_id)
+    document_sent = document_failed = 0
     for chat_id in recipients:
         await safe_send(bot, chat_id, summary, reply_markup=_admin_project_keyboard(project.id))
-        await bot.send_document(chat_id, BufferedInputFile(BytesIO(document.encode("utf-8")).getvalue(), filename=f"ERA_project_{project.id}.txt"), caption=f"Полный проект #{project.id}")
+        ok = await safe_send_document(
+            bot,
+            chat_id,
+            BufferedInputFile(BytesIO(document.encode("utf-8")).getvalue(), filename=f"ERA_project_{project.id}.txt"),
+            caption=f"Полный проект #{project.id}",
+        )
+        document_sent += int(ok)
+        document_failed += int(not ok)
+    if document_failed:
+        await safe_send(bot, user.telegram_id, f"Проект отправлен, но файл проекта дошёл не всем проверяющим. Доставлено: {document_sent}. Ошибок: {document_failed}.")
 
 
 @router.callback_query(F.data.startswith("project:team:"))

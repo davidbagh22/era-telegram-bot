@@ -480,3 +480,45 @@ CI:
 
 Следующий блок:
 - аудит автоматических уведомлений и прямых send_* с файлами/медиа.
+
+#### Блок 2. Медиа и файловые уведомления
+
+Проверено:
+- прямые `bot.send_photo/send_video/send_document` в task submissions;
+- отправка proof-файлов активностей после мероприятий;
+- отправка файла проекта на рассмотрение;
+- публикация event cards с poster photo в чат;
+- текущие silent `except Exception: pass` вокруг Telegram media sends.
+
+Найдено:
+- часть media sends молча глотала любые ошибки;
+- сбой доставки файла одному админу не фиксировался в результате;
+- project submission мог упасть на прямом `bot.send_document` после уже сохранённой заявки;
+- event card fallback был без логируемого safe wrapper.
+
+Сделано:
+- добавлены `safe_send_photo`, `safe_send_video`, `safe_send_document`;
+- task result media пересланы через safe helpers с подсчётом доставок/ошибок;
+- event activity proof media пересланы через safe helpers с подсчётом доставок/ошибок;
+- project review document отправляется через safe document helper;
+- event cards в чат используют safe photo/text helpers;
+- silent media failures заменены на контролируемый fallback/уведомление.
+
+Тесты:
+- добавлен `tests/test_media_notifications.py`;
+- обновлён `tests/test_event_photo_contracts.py`.
+
+Проверка:
+- `python -m pytest tests/test_media_notifications.py tests/test_event_photo_contracts.py tests/test_broadcast_service.py tests/test_full_bot_flow.py tests/test_system_wide_audit.py` — 29 passed;
+- `python -m pytest` — 173 passed;
+- `git diff --check` — успешно.
+
+PR: #90.
+
+Merge commit: ожидает merge.
+
+CI:
+- Tests/Bot checks: success on `1bb38b3b71f34582e45ef458d3b8adf7ef10243a`.
+
+Следующий блок:
+- survey/event/chat broadcast recipients and notification deduplication.

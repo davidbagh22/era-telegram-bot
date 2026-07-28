@@ -17,8 +17,8 @@ class EventPosterContractTests(unittest.TestCase):
 
     def test_event_card_to_chat_uses_send_photo(self) -> None:
         source = inspect.getsource(event_card.send_event_card_to_chat)
-        self.assertIn("send_photo", source)
-        self.assertIn("send_message", source)
+        self.assertIn("safe_send_photo", source)
+        self.assertIn("safe_send", source)
 
     def test_project_event_flow_saves_project_id_and_poster(self) -> None:
         source = inspect.getsource(project_event_photo_flow.project_event_confirm)
