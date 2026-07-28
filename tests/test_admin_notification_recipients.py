@@ -11,6 +11,7 @@ class AdminNotificationRecipientTests(unittest.TestCase):
     def test_notifications_include_database_admins(self) -> None:
         source = (ROOT / "app/services/notification_service.py").read_text(encoding="utf-8")
         self.assertIn("_database_admin_ids", source)
+        self.assertIn("admin_notification_recipients", source)
         self.assertIn("User.role == Role.ADMIN", source)
         self.assertIn("User.is_blocked.is_(False)", source)
         self.assertIn("User.is_archived.is_(False)", source)
