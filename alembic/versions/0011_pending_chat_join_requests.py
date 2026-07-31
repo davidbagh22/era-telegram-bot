@@ -4,7 +4,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0011_pending_chat_join_requests"
-down_revision = "0010_merge_surveys_and_points_heads"
+down_revision = "0010_merge_heads"
 branch_labels = None
 depends_on = None
 
