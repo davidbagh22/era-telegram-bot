@@ -1,6 +1,6 @@
 """Merge surveys and points idempotency heads."""
 
-revision = "0010_merge_surveys_and_points_heads"
+revision = "0010_merge_heads"
 down_revision = ("0009_points_idempotency", "0003_admin_surveys")
 branch_labels = None
 depends_on = None
