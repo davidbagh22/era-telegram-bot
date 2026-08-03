@@ -6,10 +6,11 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `1a040973a9782264e01f940998ad4b34c6a0c9a5` (PR #108 merge,
-  fast-forward).
-- Previous base commit: `36098e985e407f806f7a0134dafc36152a9f71a8` (origin/main,
-  PR #107 merge).
+- Current `main` commit: `905c0acf61be80108d63b78820972d9d08e1677e` (PR #109
+  merge, fast-forward).
+- Previous: `1a040973a9782264e01f940998ad4b34c6a0c9a5` (PR #108 merge),
+  `36098e985e407f806f7a0134dafc36152a9f71a8` (PR #107 merge, pre-platform
+  baseline).
 - Bot Hardening phase (v2) is complete: 209 tests passing, single Alembic
   head (`0011_pending_chat_join_requests`), see `docs/ERA_V2_ARCHITECTURE.md`
   and `docs/ERA_V2_AUDIT.md` for the domain model this platform builds on.
@@ -115,6 +116,11 @@ the files touched by the current block. Do not re-audit the whole repo.
 deep-link helpers yet; no product analytics events yet.
 
 ### PR 1b — bundle the Mini App into the existing deploy (merged)
+
+Branch: `era-platform-pr1b-deploy-miniapp`. PR:
+[#109](https://github.com/davidbagh22/era-telegram-bot/pull/109). Merge
+commit: `905c0acf61be80108d63b78820972d9d08e1677e`. Both CI checks green
+before merge.
 
 The user asked for the change to actually be live on Render, not just
 merged as code. PR 1 built the frontend but never deployed it anywhere,
