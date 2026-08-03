@@ -746,12 +746,81 @@ Opportunities/Partners/Communications/Surveys), per the "Final product
 decision" and known limitations recorded in PR 7 above — confirm against
 any updated brief before starting.
 
+### PR 9 — Leader Mode: scope overview + open tasks (merged)
+
+Branch: `era-platform-pr9-leader-mode`. See PR link and merge commit
+recorded in the follow-up progress-doc-only commit once merged.
+
+- New `app/services/leader_service.py`, extracted from
+  `app/handlers/leader/panel.py` and `app/handlers/leader/open_tasks.py`
+  (previously untested inline query/FSM logic, now covered by
+  `tests/test_leader_service.py`): `scope_ids()` (department/direction
+  scope, admin bypass — same rule the Bot's `leader:participants`/
+  `leader:events`/`leader:projects` callbacks already used),
+  `list_scope_participants/events/projects()`, `list_created_tasks()`,
+  `create_assigned_task()`, `create_open_task()`,
+  `list_open_tasks_with_applications()`, `decide_task_application()`
+  (accept/reject with the same capacity guard and Bot notification text
+  as before, plus an explicit "only the task's creator may decide"
+  check that previously lived only in the handler).
+- The Bot handlers were refactored to call these functions instead of
+  inline SQLAlchemy queries/FSM logic — verified behavior-preserving via
+  the full test suite (416 passed) before anything new was added; no
+  user-facing Bot text changed.
+- New `GET /api/v1/leader/overview` (scope participants/events/projects
+  + the leader's own created tasks + department/direction names),
+  `GET/POST /api/v1/leader/open-tasks` (list with nested applications /
+  publish a new open task in one call — the Mini App collects all
+  fields at once rather than mirroring the Bot's multi-step deadline
+  picker FSM), and
+  `POST /api/v1/leader/open-tasks/{id}/applications/{user_id}/decide`
+  (accept/reject, same rules as the Bot). Gated by
+  `user.role in PRIVILEGED_ROLES` (`require_leader`), the same set the
+  Bot's `_guard()` checks in both handler files.
+- Frontend: `LeaderScreen` (Обзор / Открытые задачи tabs) replaces the
+  plain `HomeScreen` fallback that leaders saw with no deep link — the
+  last remaining "leader sees the participant Home screen" gap. Overview
+  shows scope + participants/events/projects/own-tasks; Open Tasks shows
+  existing open tasks with per-applicant accept/reject and a form to
+  publish a new one.
+- Tests: `tests/test_leader_service.py` (12 cases, real
+  `sqlite+aiosqlite` — scope filtering incl. admin bypass, points/
+  max_participants validation, capacity guard, non-owner rejection),
+  `tests/test_leader_api.py` (9 cases, dependency overrides + mocked
+  service calls — permission gate, response shapes, 404/409/403
+  mapping). Full suite: 416 passed via `pytest -q`, 331 via
+  `python -m unittest discover -s tests` (matches CI), 0 regressions.
+  Verified in a real browser (mobile viewport) against a temporary
+  local mock server (not committed): overview renders, open-task
+  creation and accept/reject both round-trip through the mocked API
+  correctly; `frontend/.env.local` and the mock server were removed
+  after verification.
+- No migrations — pure service extraction + API + UI on top of the
+  existing schema.
+
+**Known limitation:** This PR covers scope overview (read-only) and open
+(unassigned) tasks only. Assigning a task to one specific member (the
+Bot's user-search FSM), AI-assisted event creation, leader proposals
+(points/status/office/badge/portfolio nominations), leader reports, and
+leader department/direction broadcasts all stay Bot-only for now — they
+either need a nontrivial user-search UI or duplicate the AI service
+integration, and were judged out of scope for this block. The
+`create_assigned_task` service function already exists (extracted from
+the Bot's task-assignment flow) but has no Mini App route yet, so
+wiring an API endpoint for it later needs no further extraction.
+
+**Next block:** PR 10 per the 12-PR plan — remaining Admin content-
+management surfaces (Events/Tasks/Opportunities/Partners/
+Communications/Surveys) or the leader actions deferred above, per the
+known limitations in PR 7, PR 8 and PR 9 — confirm against any updated
+brief before starting.
+
 ## Progress vs. the 12-PR plan
 
-- Completed: 8 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
+- Completed: 9 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
   hotfix; PR 2; PR 3; PR 4; PR 5 Project Workspace, delivered through
   PR #114, PR #115 and PR #116; PR 6 Opportunities; PR 7 Admin Mode
-  foundation; PR 8 Profile + Portfolio).
-- Current stage: PR 9 (scope to be confirmed at the start of the next
-  session — see known limitations in PR 7 and PR 8 above).
+  foundation; PR 8 Profile + Portfolio; PR 9 Leader Mode foundation).
+- Current stage: PR 10 (scope to be confirmed at the start of the next
+  session — see known limitations in PR 7, PR 8 and PR 9 above).
 - Next stage after PR 6: PR 7 — Admin Mode + moderation dashboards.

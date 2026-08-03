@@ -4,13 +4,12 @@ from zoneinfo import ZoneInfo
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import Task, TaskParticipant, User
-from app.services.audit_service import audit
-from app.services.notification_service import notify_admins, safe_send
+from app.database.models import Task, User
+from app.services import leader_service
+from app.services.notification_service import notify_admins
 from app.states.open_task import OpenTaskStates
 from app.utils import texts
 from app.utils.constants import PRIVILEGED_ROLES
@@ -266,25 +265,14 @@ async def open_task_finish(
         await message.answer("Укажите число от 1 до 50.")
         return
     data = await state.get_data()
-    task = Task(
+    task = await leader_service.create_open_task(
+        session,
+        creator=user,
         title=data["open_task_title"],
         description=data["open_task_description"],
-        assignee_id=None,
-        creator_id=user.id,
         deadline=data["open_task_deadline"],
         points=data["open_task_points"],
-        task_type="challenge",
-        status="published",
         max_participants=max_participants,
-    )
-    session.add(task)
-    await session.flush()
-    await audit(
-        session,
-        actor_id=user.id,
-        action="task.open_published",
-        entity_type="task",
-        entity_id=task.id,
     )
     await state.clear()
     await message.answer(
@@ -301,24 +289,14 @@ async def open_task_finish(
 async def open_task_applications(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
     if not await _guard(call, user):
         return
-    tasks = (
-        await session.scalars(
-            select(Task)
-            .where(Task.creator_id == user.id, Task.task_type == "challenge")
-            .order_by(Task.deadline)
-        )
-    ).all()
-    if not tasks:
+    results = await leader_service.list_open_tasks_with_applications(session, user)
+    if not results:
         await call.message.answer("Открытых задач с заявками пока нет.")
         return
     found = False
-    for task in tasks:
-        participants = (
-            await session.scalars(
-                select(TaskParticipant).where(TaskParticipant.task_id == task.id)
-            )
-        ).all()
-        if not participants:
+    for result in results:
+        task = result.task
+        if not result.applications:
             continue
         found = True
         lines = [
@@ -328,10 +306,9 @@ async def open_task_applications(call: CallbackQuery, user: User | None, session
             "",
             "Отклики:",
         ]
-        for participant in participants:
-            person = await session.get(User, participant.user_id)
-            if not person:
-                continue
+        for application in result.applications:
+            person = application.applicant
+            participant = application.participant
             username = f"@{person.username}" if person.username else "без username"
             status = {
                 "pending": "на рассмотрении",
@@ -367,47 +344,17 @@ async def open_task_application_action(
     if task is None or target is None or task.creator_id != user.id:
         await call.message.answer(texts.NO_ACCESS)
         return
-    participant = await session.scalar(
-        select(TaskParticipant).where(
-            TaskParticipant.task_id == task.id,
-            TaskParticipant.user_id == target.id,
+    try:
+        await leader_service.decide_task_application(
+            session, task=task, target=target, action=action, actor=user, bot=bot
         )
-    )
-    if participant is None:
-        await call.message.answer("Заявка уже не найдена.")
+    except ValueError as exc:
+        if str(exc) == "capacity_reached":
+            await call.message.answer("Команда уже набрана. Увеличьте лимит или отклоните лишние заявки.")
+        else:
+            await call.message.answer("Заявка уже не найдена.")
         return
     if action == "accept":
-        accepted = (
-            await session.scalars(
-                select(TaskParticipant).where(
-                    TaskParticipant.task_id == task.id,
-                    TaskParticipant.status.in_(["accepted", "joined"]),
-                )
-            )
-        ).all()
-        if task.max_participants and len(accepted) >= task.max_participants:
-            await call.message.answer("Команда уже набрана. Увеличьте лимит или отклоните лишние заявки.")
-            return
-        participant.status = "accepted"
-        await safe_send(
-            bot,
-            target.telegram_id,
-            f"Вас приняли в открытую задачу ЭРА.\n\n{task.title}\n\nОткройте Личный кабинет → Мои задачи и отправьте результат после выполнения.",
-        )
         await call.message.answer(f"Заявка принята: {target.first_name} {target.last_name or ''}")
     else:
-        participant.status = "rejected"
-        await safe_send(
-            bot,
-            target.telegram_id,
-            f"Заявка на открытую задачу не была принята.\n\n{task.title}\n\nБудут новые возможности — выбирайте следующую задачу в личном кабинете.",
-        )
         await call.message.answer(f"Заявка отклонена: {target.first_name} {target.last_name or ''}")
-    await audit(
-        session,
-        actor_id=user.id,
-        action=f"task.application_{action}",
-        entity_type="task",
-        entity_id=task.id,
-        new_value={"user_id": target.id},
-    )

@@ -14,6 +14,7 @@ import type {
   ProjectForModeration,
 } from "../types/admin";
 import type { HomeSnapshot } from "../types/home";
+import type { LeaderOpenTask, LeaderOverview, OpenTaskCreatePayload } from "../types/leader";
 import type { Opportunity, OpportunityScope } from "../types/opportunity";
 import type { Profile } from "../types/profile";
 import type {
@@ -381,6 +382,29 @@ export function decideProject(
     action,
     comment,
   });
+}
+
+export function fetchLeaderOverview(): Promise<LeaderOverview> {
+  return authorizedGet<LeaderOverview>("/api/v1/leader/overview");
+}
+
+export function fetchLeaderOpenTasks(): Promise<LeaderOpenTask[]> {
+  return authorizedGet<LeaderOpenTask[]>("/api/v1/leader/open-tasks");
+}
+
+export function createLeaderOpenTask(payload: OpenTaskCreatePayload): Promise<LeaderOpenTask> {
+  return authorizedPost<LeaderOpenTask>("/api/v1/leader/open-tasks", payload);
+}
+
+export function decideLeaderApplication(
+  taskId: number,
+  userId: number,
+  action: "accept" | "reject",
+): Promise<LeaderOpenTask> {
+  return authorizedPost<LeaderOpenTask>(
+    `/api/v1/leader/open-tasks/${taskId}/applications/${userId}/decide`,
+    { action },
+  );
 }
 
 export function fetchProfile(): Promise<Profile> {

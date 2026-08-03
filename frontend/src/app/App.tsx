@@ -9,6 +9,7 @@ import { ActivityScreen } from "../screens/ActivityScreen";
 import { AuthErrorScreen } from "../screens/AuthErrorScreen";
 import { BlockedScreen } from "../screens/BlockedScreen";
 import { HomeScreen } from "../screens/HomeScreen";
+import { LeaderScreen } from "../screens/LeaderScreen";
 import { OpportunitiesScreen } from "../screens/OpportunitiesScreen";
 import { PendingScreen } from "../screens/PendingScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
@@ -72,7 +73,7 @@ export function App() {
   if (user.is_leader) {
     return (
       <LeaderLayout>
-        {initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <HomeScreen user={user} />}
+        {initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <LeaderScreen />}
       </LeaderLayout>
     );
   }
