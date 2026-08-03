@@ -6,9 +6,10 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `905c0acf61be80108d63b78820972d9d08e1677e` (PR #109
-  merge, fast-forward).
-- Previous: `1a040973a9782264e01f940998ad4b34c6a0c9a5` (PR #108 merge),
+- Current `main` commit: `b3a4e2a521158da92afbc10f379535081c8f6c0a` (PR #110
+  hotfix merge, fast-forward).
+- Previous: `905c0acf61be80108d63b78820972d9d08e1677e` (PR #109 merge),
+  `1a040973a9782264e01f940998ad4b34c6a0c9a5` (PR #108 merge),
   `36098e985e407f806f7a0134dafc36152a9f71a8` (PR #107 merge, pre-platform
   baseline).
 - Bot Hardening phase (v2) is complete: 209 tests passing, single Alembic
@@ -151,6 +152,23 @@ so this follow-up closes that gap without adding a second service:
   `dist/`, and a real `TestClient` request against `app.webapp.app` serves
   `/app/` (200, real `index.html`) side by side with the existing
   `/health` (200, unchanged). Full suite: 246 passed, 0 regressions.
+
+### Hotfix — .dockerignore blocked the miniapp-build stage (merged)
+
+PR [#110](https://github.com/davidbagh22/era-telegram-bot/pull/110), merge
+commit `b3a4e2a521158da92afbc10f379535081c8f6c0a`. The Render build for PR
+1b failed: `.dockerignore` had a pre-existing blanket `frontend` entry
+(predates this platform work) that excluded the whole directory from the
+Docker build context, so the new `miniapp-build` stage's
+`COPY frontend/ ./` had nothing to copy —
+`"/frontend/package.json": not found`. Fixed by narrowing the exclusion to
+`frontend/node_modules` and `frontend/dist` only. Added
+`tests/test_dockerignore_allows_frontend_source.py` as a regression guard,
+since the Python test suite otherwise can't catch a Docker-build-context
+bug like this. **Docker itself is not available in this environment — the
+actual Render build was never re-verified end-to-end from here.** Confirm
+the next Render deploy succeeds before assuming the Mini App is really
+live.
 
 **Next block:** PR 2 — design system + bottom navigation + Home screen
 (rule-based "next step" recommendation) + Growth Level display, per
