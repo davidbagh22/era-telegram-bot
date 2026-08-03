@@ -6,7 +6,9 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Confirmed base commit: `36098e985e407f806f7a0134dafc36152a9f71a8` (origin/main,
+- Current `main` commit: `1a040973a9782264e01f940998ad4b34c6a0c9a5` (PR #108 merge,
+  fast-forward).
+- Previous base commit: `36098e985e407f806f7a0134dafc36152a9f71a8` (origin/main,
   PR #107 merge).
 - Bot Hardening phase (v2) is complete: 209 tests passing, single Alembic
   head (`0011_pending_chat_join_requests`), see `docs/ERA_V2_ARCHITECTURE.md`
@@ -57,7 +59,17 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## PR log
 
-### PR 1 — ERA Platform foundation (in progress)
+### PR 1 — ERA Platform foundation (merged)
+
+- Branch: `era-platform-pr1-foundation`. PR: [#108](https://github.com/davidbagh22/era-telegram-bot/pull/108).
+  Merge commit: `1a040973a9782264e01f940998ad4b34c6a0c9a5`. Both CI checks
+  (Tests, Bot checks) green before merge.
+- Full suite after merge: 239 passed via `pytest -q` (209 pre-existing + 30
+  new, 0 regressions), 156 passed via `python -m unittest discover -s tests`
+  (the exact command CI runs).
+- Render deploy of this commit not verified from this environment (no
+  hardcoded service hostname in the repo) — confirm `/health` reports
+  commit `1a04097` before relying on the Mini App endpoints in production.
 
 - `docs/ERA_PLATFORM_PROGRESS.md` created (this file).
 - `app/api/security.py` — Telegram `initData` HMAC verification +
@@ -98,6 +110,6 @@ section 7.1 of the platform brief.
 
 ## Progress vs. the 12-PR plan
 
-- Completed: 0 of 12 full PRs merged (PR 1 in progress in this session).
-- Current stage: PR 1 — foundation.
-- Next stage: PR 2 — design system, navigation, Home, Growth.
+- Completed: 1 of 12 full PRs merged (PR 1 — foundation).
+- Current stage: PR 2 — design system, navigation, Home, Growth (not started).
+- Next stage after PR 2: PR 3 — Activity (Events, Tasks, Calendar, History).
