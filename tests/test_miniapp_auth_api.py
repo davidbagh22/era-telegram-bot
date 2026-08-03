@@ -45,8 +45,12 @@ def _user(**overrides) -> SimpleNamespace:
 def _build_app(settings: Settings) -> FastAPI:
     app = FastAPI()
     app.include_router(api_router)
+
+    async def _session_override():
+        yield SimpleNamespace()
+
     app.dependency_overrides[get_settings] = lambda: settings
-    app.dependency_overrides[get_session] = lambda: iter([SimpleNamespace()])
+    app.dependency_overrides[get_session] = _session_override
     return app
 
 

@@ -52,8 +52,11 @@ class HomeApiTests(unittest.TestCase):
     def _build_app(self) -> FastAPI:
         app = FastAPI()
         app.include_router(api_router)
+        async def _session_override():
+            yield SimpleNamespace()
+
         app.dependency_overrides[get_settings] = lambda: _settings()
-        app.dependency_overrides[get_session] = lambda: iter([SimpleNamespace()])
+        app.dependency_overrides[get_session] = _session_override
         return app
 
     def test_home_requires_auth(self) -> None:

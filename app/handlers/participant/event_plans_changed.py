@@ -5,12 +5,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Event, EventActivity, EventActivitySubmission, EventRegistration, User
 from app.keyboards.common import back_keyboard
+from app.services.event_registration_service import (
+    can_change_registration_plans,
+    mark_not_coming,
+)
 from app.utils import texts
 from app.utils.constants import (
     ApplicationStatus,
     EVENT_STATUS_LABELS,
     REGISTRATION_STATUS_LABELS,
-    EventStatus,
     RegistrationStatus,
 )
 
@@ -34,12 +37,6 @@ async def _guard(call: CallbackQuery, user: User | None) -> bool:
     return True
 
 
-def _can_change_plans(registration: EventRegistration, event: Event) -> bool:
-    return registration.status in {RegistrationStatus.REGISTERED, RegistrationStatus.WILL_COME} and event.status not in {
-        EventStatus.COMPLETED,
-        EventStatus.CANCELLED,
-        EventStatus.REPORT_SUBMITTED,
-    }
 
 
 @router.callback_query(F.data == "cabinet:events")
@@ -70,7 +67,7 @@ async def my_events(call: CallbackQuery, user: User | None, session: AsyncSessio
         )
         lines.append(f"  Статус мероприятия: {EVENT_STATUS_LABELS.get(event.status, 'Уточняется')}")
 
-        if _can_change_plans(registration, event):
+        if can_change_registration_plans(registration, event):
             keyboard_rows.append(
                 [
                     InlineKeyboardButton(
@@ -136,14 +133,13 @@ async def plans_changed(call: CallbackQuery, user: User | None, session: AsyncSe
         await call.message.answer("Регистрация на мероприятие не найдена.", reply_markup=back_keyboard("cabinet:events"))
         return
 
-    if not _can_change_plans(registration, event):
+    if not mark_not_coming(registration, event):
         await call.message.answer(
             "Статус этой регистрации уже нельзя изменить через бот.",
             reply_markup=back_keyboard("cabinet:events"),
         )
         return
 
-    registration.status = RegistrationStatus.NOT_COMING
     await call.message.answer(
         f"Поняли. Отметили, что вы не сможете прийти на «{event.title}».\n\nСпасибо, что сообщили заранее.",
         reply_markup=back_keyboard("cabinet:events"),

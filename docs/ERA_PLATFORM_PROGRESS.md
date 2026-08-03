@@ -223,12 +223,92 @@ before merge.
   `tsc` + `vite build` + manual browser check, same as PR 1) — worth adding
   when component logic gets non-trivial enough to justify it.
 
-**Next block:** PR 3 — Activity (Events, Tasks, Calendar, History), including
-the Bot submission handoff described in section 15 of the brief.
+### PR 3 — Activity (Events, Tasks, Calendar, History) + Bot submission handoff
+
+- **Refactored two existing bot handlers into shared services before
+  building the API on top of them** (this is the "extract *Service before
+  write-enabled API" step from section 16 of the brief):
+  - `app/services/event_registration_service.py` gained
+    `can_change_registration_plans()` / `mark_not_coming()`, moved out of
+    `app/handlers/participant/event_plans_changed.py`'s private
+    `_can_change_plans()`.
+  - `app/services/task_service.py` is new: `list_for_user`, `can_view`,
+    `can_submit`, `is_open_public_task`, `claim`, etc., moved out of
+    `app/handlers/participant/task_block2.py`'s private helpers (`_can_view`,
+    `_can_submit`, `_tasks_for_user`, the inline `task:join` logic, ...).
+  - Both refactors are behavior-preserving — full suite (267 tests at that
+    point) still passed unchanged before any new feature code was added.
+    One existing test (`test_participant_tasks_cabinet.py`) asserted on a
+    literal private function name via `inspect.getsource`; updated it to
+    assert on the new shared-service call instead, since the underlying
+    guarantee (audience filtering happens) is unchanged, only relocated.
+- `app/services/activity_service.py` — `list_events` (all/for_me/mine/past),
+  `list_tasks` (available/mine/review/completed), `calendar_items` (events +
+  task deadlines, sorted, horizon-limited), `history_entries` (attended
+  events, completed tasks, verified `PortfolioItem`s only — unverified ones
+  are deliberately excluded per the brief's "don't show unverified data as
+  confirmed" rule, points transactions).
+  - `for_me` is an alias of `all`: `Event.access_type` exists on the model
+    but nothing reads it anywhere in the bot today, so there is no real
+    targeting rule to reuse yet — faking one would violate "no mock
+    production data." Real personalization is future work.
+  - Opportunities reuse the existing `PartnerInitiative` /
+    `PartnerOfferApplication` tables (same as Home in PR 2) — still no new
+    model for this domain.
+- `app/api/v1/events.py` (`GET /events`, `GET /events/{id}`,
+  `POST /events/{id}/register`, `POST /events/{id}/cancel`),
+  `app/api/v1/tasks.py` (`GET /tasks`, `GET /tasks/{id}`,
+  `POST /tasks/{id}/claim`), `app/api/v1/activity.py`
+  (`GET /activity/calendar`, `GET /activity/history`) — all thin, all
+  delegating to the services above.
+- **Bot submission handoff** (section 15): `app/utils/deep_links.py` builds
+  `https://t.me/<bot_username>?start=task_submit_<id>`.
+  `app/handlers/start.py` parses that payload (`CommandObject.args`) and, if
+  `task_service.can_submit()` allows it, jumps straight into the existing
+  `TaskSubmissionStates.result` FSM instead of showing the home menu —
+  uploads still only ever happen inside the Bot. Not cryptographically
+  signed: the same `can_submit()` permission check that already gates the
+  in-bot "📤 Отправить результат" button gates this too, so an unsigned task
+  id cannot grant access beyond what that check allows. `TaskOut` includes
+  `submit_deep_link` (null unless `can_submit` and `BOT_USERNAME` is set) so
+  the frontend never needs its own copy of the bot username.
+- Frontend: `ActivityScreen` with 4 pill-tab sub-sections
+  (События/Задачи/Календарь/История, `frontend/src/screens/activity/`),
+  register/cancel/claim actions wired to the new endpoints, task submission
+  is a plain link to the bot deep link (opens Telegram). New generic
+  `useAsync` hook and `PillTabs` component reused across all 4 tabs.
+  Verified in a real browser against an extended local mock server (not
+  committed): all 4 tabs render, register/cancel/claim buttons appear per
+  the correct rules, the deep link renders as an actual `https://t.me/...`
+  href.
+- **Found and fixed a real bug in my own earlier test helpers while writing
+  new ones**: `app.dependency_overrides[get_session] = lambda: iter([...])`
+  (used in `test_home_api.py` and `test_miniapp_auth_api.py` from PR 2) is
+  wrong for FastAPI's async-generator dependency protocol — it happened to
+  work there only because those particular routes never actually touched
+  `session`. The new Events/Tasks route tests do, which surfaced it
+  immediately (`AttributeError: 'list_iterator' object has no attribute
+  'get'`). Fixed all three test files to override with a proper
+  `async def _session_override(): yield session`.
+- Tests: `tests/test_activity_service.py` (integration, real
+  `sqlite+aiosqlite`), `tests/test_activity_api.py` (routes, dependency
+  overrides), `tests/test_task_submit_deep_link.py` (deep link parsing +
+  the handoff predicate). Full suite: 302 passed via `pytest -q`, 219 via
+  `python -m unittest discover -s tests` (matches CI), 0 regressions.
+- No migrations — no new tables needed.
+
+**Known limitation:** "decline a task after joining" (section 7.2's
+"отказаться по правилам") is not implemented — no such rule exists
+anywhere in the bot today (only leaders can reject a participant, via
+`app/handlers/leader/open_tasks.py`), so there is no existing business
+rule to reuse and none was invented here.
+
+**Next block:** PR 4 — Projects read/create/edit + workflow.
 
 ## Progress vs. the 12-PR plan
 
-- Completed: 2 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up + hotfix;
-  PR 2).
-- Current stage: PR 3 — Activity (not started).
-- Next stage after PR 3: PR 4 — Projects read/create/edit + workflow.
+- Completed: 3 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up + hotfix;
+  PR 2; PR 3).
+- Current stage: PR 4 — Projects read/create/edit + workflow (not started).
+- Next stage after PR 4: PR 5 — Project Workspace (ProjectMember,
+  ProjectRole, Team, Tasks, Milestones, contribution).
