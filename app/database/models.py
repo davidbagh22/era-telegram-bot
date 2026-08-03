@@ -323,6 +323,90 @@ class Project(TimestampMixin, Base):
     )
     admin_comment: Mapped[str | None] = mapped_column(Text)
 
+    roles: Mapped[list[ProjectRole]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", lazy="selectin"
+    )
+    members: Mapped[list[ProjectMember]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", lazy="selectin"
+    )
+    milestones: Mapped[list[ProjectMilestone]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class ProjectRole(TimestampMixin, Base):
+    __tablename__ = "project_roles"
+    __table_args__ = (
+        UniqueConstraint("project_id", "title", name="uq_project_roles_project_title"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(Text)
+    requirements: Mapped[str | None] = mapped_column(Text)
+    capacity: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32), default="open", index=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+
+    project: Mapped[Project] = relationship(back_populates="roles")
+    members: Mapped[list[ProjectMember]] = relationship(back_populates="role")
+
+
+class ProjectMember(TimestampMixin, Base):
+    __tablename__ = "project_members"
+    __table_args__ = (
+        UniqueConstraint("project_id", "user_id", name="uq_project_members_project_user"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    role_id: Mapped[int | None] = mapped_column(ForeignKey("project_roles.id"), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    application_text: Mapped[str | None] = mapped_column(Text)
+    joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    contribution_status: Mapped[str] = mapped_column(
+        String(32), default="unconfirmed", index=True
+    )
+    contribution_summary: Mapped[str | None] = mapped_column(Text)
+    contribution_role_title: Mapped[str | None] = mapped_column(String(120))
+    contribution_result: Mapped[str | None] = mapped_column(Text)
+    contribution_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    contribution_confirmed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    project: Mapped[Project] = relationship(back_populates="members")
+    role: Mapped[ProjectRole | None] = relationship(back_populates="members")
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+
+
+class ProjectMilestone(TimestampMixin, Base):
+    __tablename__ = "project_milestones"
+    __table_args__ = (
+        UniqueConstraint("project_id", "sort_order", name="uq_project_milestones_order"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    responsible_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    project: Mapped[Project] = relationship(back_populates="milestones")
+
 
 class Task(TimestampMixin, Base):
     __tablename__ = "tasks"
@@ -330,6 +414,7 @@ class Task(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), index=True)
     assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
     creator_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))

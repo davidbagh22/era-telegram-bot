@@ -12,10 +12,11 @@ export function Card({ children, gradient = false, style }: CardProps) {
   return (
     <div
       style={{
-        borderRadius: "1rem",
+        borderRadius: "var(--era-radius-card)",
         padding: "1rem",
         border: gradient ? "none" : "1px solid var(--era-border)",
-        background: gradient ? "var(--era-gradient)" : "var(--era-bg-subtle)",
+        background: gradient ? "var(--era-gradient)" : "var(--era-surface)",
+        boxShadow: gradient ? "none" : "var(--era-shadow-soft)",
         color: gradient ? "#fff" : "var(--era-text)",
         ...style,
       }}
