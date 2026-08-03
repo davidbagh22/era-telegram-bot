@@ -6,11 +6,15 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `d983849385b5a14dd271c9ec4d7635ec2d2e7e66`
-  (progress doc update after PR #113 merge).
+- Current `main` commit: `ba8ff8c0052259dc4325548dac2053d8db0b271d`
+  (PR #114 merge: Project Workspace foundation).
+- PR #114 merge commit:
+  `ba8ff8c0052259dc4325548dac2053d8db0b271d`.
 - PR #113 merge commit:
   `5218911a35f5f6b5e2d1cff23f8e51d641ca3375`.
-- Previous: `edc173035aec2ee6235af4441f0bc926009c1168` (PR #112 merge),
+- Previous: `d983849385b5a14dd271c9ec4d7635ec2d2e7e66`
+  (progress doc update after PR #113 merge),
+  `edc173035aec2ee6235af4441f0bc926009c1168` (PR #112 merge),
   `48212168f316b6b43b4f14aea913648693c12954` (PR #111 merge),
   `b3a4e2a521158da92afbc10f379535081c8f6c0a` (PR #110 hotfix),
   `905c0acf61be80108d63b78820972d9d08e1677e` (PR #109 merge),
@@ -435,11 +439,12 @@ from the Mini App yet for the same reason.
 Team, Milestones, contribution) — this is the first PR expected to need a
 migration.
 
-### PR 5 — Project Workspace foundation (ready in PR #114)
+### PR 5 — Project Workspace foundation (merged)
 
 Branch: `pr5-project-workspace-foundation`. PR:
-[#114](https://github.com/davidbagh22/era-telegram-bot/pull/114). CI green
-on commit `aac474d`.
+[#114](https://github.com/davidbagh22/era-telegram-bot/pull/114). Merge
+commit: `ba8ff8c0052259dc4325548dac2053d8db0b271d`. Both CI checks green
+before merge.
 
 Scope of this foundation block:
 
@@ -490,11 +495,48 @@ Next PR 5 block:
   milestones, task assignment by project, event linking, contribution
   confirmation, and exact Mini App deep links in project notifications.
 
+### PR 5 — Project Workspace API/service actions (ready in PR #115)
+
+Branch: `pr5-project-workspace-actions`. PR:
+[#115](https://github.com/davidbagh22/era-telegram-bot/pull/115).
+
+Scope in this block:
+
+- `project_workspace_service` added as the single backend layer for Workspace
+  actions and permission checks. It supports project role open/close,
+  applications, approve/reject, direct member add, role changes, milestone
+  create/complete/status updates, project task create/assign, event linking,
+  contribution confirmation and team messaging through the existing safe Bot
+  delivery layer.
+- Backend permissions are enforced server-side: project author or project
+  reviewer/admin can manage; accepted/active/completed members and users
+  viewing open projects can read. `projects.review` permission is read via an
+  explicit async query, not lazy relationship loading.
+- `/api/v1/projects/{project_id}/workspace` endpoints expose overview,
+  roles, members/applications, milestones, project tasks, linked events and
+  team messages.
+- Existing project create/edit/submit/cancel API mutations now explicitly
+  commit the session, so Mini App changes persist instead of only being
+  reflected in the immediate response object.
+- Exact Mini App deep-link helpers were added for project, project
+  application, project task and admin moderation routes. Review/application/
+  task notifications use URL buttons to the exact object when the Mini App URL
+  is configured.
+- No old Telegram project FSM removal in this block.
+
+Checks so far:
+
+- `python -m pytest tests/test_project_workspace_service.py tests/test_project_workspace_foundation.py tests/test_projects_api.py tests/test_task_submit_deep_link.py`
+  — 36 passed, 1 existing FastAPI/TestClient warning.
+- `python -m compileall app/services/project_workspace_service.py app/api/v1/projects.py app/utils/deep_links.py tests/test_project_workspace_service.py tests/test_projects_api.py tests/test_task_submit_deep_link.py`
+  — passed.
+- `git diff --check` — passed.
+- `python -m pytest` — 336 passed, 1 existing FastAPI/TestClient warning.
+
 ## Progress vs. the 12-PR plan
 
 - Completed: 4 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
-  hotfix; PR 2; PR 3; PR 4).
-- Current stage: PR 5 — Project Workspace foundation in progress:
-  design decision, models and migration first; API/UI workspace actions next.
+  hotfix; PR 2; PR 3; PR 4), plus PR 5 foundation merged in PR #114.
+- Current stage: PR 5 — Project Workspace API/service actions in progress.
 - Next stage after PR 5: PR 6 — Opportunities + applications +
   recommendations.

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 TASK_SUBMIT_PREFIX = "task_submit_"
 
 
@@ -25,3 +27,33 @@ def parse_task_submit_payload(payload: str) -> int | None:
         return int(payload[len(TASK_SUBMIT_PREFIX) :])
     except ValueError:
         return None
+
+
+def miniapp_path_url(
+    miniapp_url: str, path: str, params: dict[str, str | int] | None = None
+) -> str:
+    """Build an exact Mini App object URL without requiring server routes for
+    every client-side screen. The hash path keeps `/app/` reload-safe while
+    giving the frontend a stable deep-link contract to parse later."""
+    if not miniapp_url:
+        return ""
+    normalized_path = path.strip("/")
+    query = f"?{urlencode(params)}" if params else ""
+    return f"{miniapp_url.rstrip('/')}/#/{normalized_path}{query}"
+
+
+def miniapp_project_url(miniapp_url: str, project_id: int) -> str:
+    return miniapp_path_url(miniapp_url, f"projects/{project_id}")
+
+
+def miniapp_project_application_url(
+    miniapp_url: str, project_id: int, application_id: int
+) -> str:
+    return miniapp_path_url(
+        miniapp_url,
+        f"projects/{project_id}/team/applications/{application_id}",
+    )
+
+
+def miniapp_admin_project_url(miniapp_url: str, project_id: int) -> str:
+    return miniapp_path_url(miniapp_url, f"admin/projects/{project_id}")

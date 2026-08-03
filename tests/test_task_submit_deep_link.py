@@ -6,7 +6,14 @@ from unittest.mock import AsyncMock
 
 from app.handlers.start import _try_start_task_submission_from_deep_link
 from app.states.growth import TaskSubmissionStates
-from app.utils.deep_links import parse_task_submit_payload, task_submit_deep_link
+from app.utils.deep_links import (
+    miniapp_admin_project_url,
+    miniapp_path_url,
+    miniapp_project_application_url,
+    miniapp_project_url,
+    parse_task_submit_payload,
+    task_submit_deep_link,
+)
 
 
 class DeepLinkHelperTests(unittest.TestCase):
@@ -22,6 +29,27 @@ class DeepLinkHelperTests(unittest.TestCase):
 
     def test_malformed_id_returns_none(self) -> None:
         self.assertIsNone(parse_task_submit_payload("task_submit_abc"))
+
+    def test_miniapp_project_deep_links_use_hash_routes(self) -> None:
+        base_url = "https://era.example/app/"
+        self.assertEqual(
+            miniapp_project_url(base_url, 7),
+            "https://era.example/app/#/projects/7",
+        )
+        self.assertEqual(
+            miniapp_project_application_url(base_url, 7, 15),
+            "https://era.example/app/#/projects/7/team/applications/15",
+        )
+        self.assertEqual(
+            miniapp_admin_project_url(base_url, 7),
+            "https://era.example/app/#/admin/projects/7",
+        )
+
+    def test_miniapp_path_url_adds_query_params(self) -> None:
+        self.assertEqual(
+            miniapp_path_url("https://era.example/app", "projects/7/tasks/3", {"tab": "tasks"}),
+            "https://era.example/app/#/projects/7/tasks/3?tab=tasks",
+        )
 
 
 class TrySubmissionHandoffTests(unittest.IsolatedAsyncioTestCase):
