@@ -1,14 +1,38 @@
+import { useState } from "react";
+import type { TabKey } from "../components/BottomNavigation";
 import { useAuth } from "../hooks/useAuth";
 import { AdminLayout } from "../layouts/AdminLayout";
 import { LeaderLayout } from "../layouts/LeaderLayout";
 import { UserLayout } from "../layouts/UserLayout";
 import { AuthErrorScreen } from "../screens/AuthErrorScreen";
 import { BlockedScreen } from "../screens/BlockedScreen";
-import { HomePlaceholder } from "../screens/HomePlaceholder";
+import { HomeScreen } from "../screens/HomeScreen";
 import { PendingScreen } from "../screens/PendingScreen";
+import { StatusBanner } from "../components/StatusBanner";
+import type { MiniAppUserSummary } from "../types/auth";
+
+const COMING_SOON_TITLES: Record<Exclude<TabKey, "home">, string> = {
+  activity: "Активность",
+  projects: "Проекты",
+  opportunities: "Возможности",
+  profile: "Профиль",
+};
+
+function renderTab(tab: TabKey, user: MiniAppUserSummary) {
+  if (tab === "home") {
+    return <HomeScreen user={user} />;
+  }
+  return (
+    <StatusBanner
+      title={COMING_SOON_TITLES[tab]}
+      description="Этот раздел появится в одном из следующих обновлений ЭРА."
+    />
+  );
+}
 
 export function App() {
   const auth = useAuth();
+  const [activeTab, setActiveTab] = useState<TabKey>("home");
 
   if (auth.status === "loading") {
     return null;
@@ -27,12 +51,24 @@ export function App() {
     return <BlockedScreen />;
   }
 
-  const content = <HomePlaceholder user={user} />;
   if (user.is_admin) {
-    return <AdminLayout>{content}</AdminLayout>;
+    return (
+      <AdminLayout>
+        <HomeScreen user={user} />
+      </AdminLayout>
+    );
   }
   if (user.is_leader) {
-    return <LeaderLayout>{content}</LeaderLayout>;
+    return (
+      <LeaderLayout>
+        <HomeScreen user={user} />
+      </LeaderLayout>
+    );
   }
-  return <UserLayout>{content}</UserLayout>;
+
+  return (
+    <UserLayout activeTab={activeTab} onTabChange={setActiveTab}>
+      {renderTab(activeTab, user)}
+    </UserLayout>
+  );
 }

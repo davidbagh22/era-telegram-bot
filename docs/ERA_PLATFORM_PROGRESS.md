@@ -170,13 +170,59 @@ actual Render build was never re-verified end-to-end from here.** Confirm
 the next Render deploy succeeds before assuming the Mini App is really
 live.
 
-**Next block:** PR 2 — design system + bottom navigation + Home screen
-(rule-based "next step" recommendation) + Growth Level display, per
-section 7.1 of the platform brief.
+### PR 2 — design system, bottom navigation, Home, Growth Level
+
+- **Growth Level** (`app/services/growth_service.py`) is computed, not a new
+  column: `participation_status` (an existing 6-tier field already
+  maintained by admin/leader flows) maps to the 3-tier
+  Участник/Активный/Лидер shown on Home via a plain dict
+  (`GROWTH_LEVEL_BY_PARTICIPATION_STATUS`) — that dict is the "configurable
+  criteria" point mentioned in the brief; no migration needed. Promotion to
+  "Лидер" still requires a human to move `participation_status` via the
+  existing flows — this module only computes the display tier, it does not
+  add a new approval workflow.
+- **Home aggregation** (`app/services/home_service.py`, `GET /api/v1/home`)
+  computes, from real data only: points balance (sum of `PointTransaction`),
+  nearest registered upcoming event, active/overdue assigned task, an
+  authored project needing action (draft or needs-revision), up to 3
+  not-yet-applied active `PartnerInitiative` rows (the existing "partner
+  offers" tables — this **is** the Opportunities domain model, no new table
+  needed), and a rule-based `next_step` following the brief's priority
+  order (task → event → project → growth nudge → opportunity). Deliberately
+  **not** built: "attention items" (would just restate next_step for a
+  plain participant) and "recent activity" (needs the `UserActivityEvent`
+  model planned for the Analytics PR) — left out rather than faked.
+- **Frontend**: `frontend/src/components/` gained `Card`, `ProgressBar`,
+  `MetricCard`, `StatusBadge`, `EmptyState`, and a hand-drawn outline icon
+  set (`icons.tsx`, no icon-library dependency, no emoji). `BottomNavigation`
+  drives 5 tabs (Главная/Активность/Проекты/Возможности/Профиль) via plain
+  React state in `App.tsx` — no router added yet; one is worth introducing
+  once deep links (section 15 of the brief) need real URLs. Only Home has
+  real content; the other 4 tabs render a "coming soon" placeholder.
+  `HomeScreen` replaces `HomePlaceholder` and consumes `GET /api/v1/home`
+  with loading/error/empty states per section.
+- Verified in a real browser against a temporary local mock HTTP server
+  (not committed) standing in for the backend, since spinning up
+  Postgres/Redis/a real bot token wasn't practical here: auth handshake,
+  full Home render (all 6 sections + empty states), and bottom-nav tab
+  switching all confirmed working end-to-end.
+- Tests: `tests/test_growth_service.py` (pure mapping logic),
+  `tests/test_home_service.py` (integration tests against a real
+  `sqlite+aiosqlite` in-memory DB — priority ordering, past-event exclusion,
+  applied/expired opportunity exclusion, points summation),
+  `tests/test_home_api.py` (route auth + response shape via `TestClient`).
+  New dependency: `aiosqlite` (async SQLite driver, test-only in practice),
+  added to `requirements.txt`.
+- **Known gap:** no frontend test runner is configured yet (verification is
+  `tsc` + `vite build` + manual browser check, same as PR 1) — worth adding
+  when component logic gets non-trivial enough to justify it.
+
+**Next block:** PR 3 — Activity (Events, Tasks, Calendar, History), including
+the Bot submission handoff described in section 15 of the brief.
 
 ## Progress vs. the 12-PR plan
 
-- Completed: 1 of 12 full PRs merged (PR 1 — foundation, plus its PR 1b
-  deploy follow-up).
-- Current stage: PR 2 — design system, navigation, Home, Growth (not started).
-- Next stage after PR 2: PR 3 — Activity (Events, Tasks, Calendar, History).
+- Completed: 2 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up + hotfix;
+  PR 2).
+- Current stage: PR 3 — Activity (not started).
+- Next stage after PR 3: PR 4 — Projects read/create/edit + workflow.

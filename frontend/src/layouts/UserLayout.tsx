@@ -1,10 +1,25 @@
 import type { ReactNode } from "react";
+import { BottomNavigation, type TabKey } from "../components/BottomNavigation";
 
 interface UserLayoutProps {
   children: ReactNode;
+  activeTab: TabKey;
+  onTabChange: (tab: TabKey) => void;
 }
 
-// Bottom navigation and AppHeader land in PR 2 alongside the design system.
-export function UserLayout({ children }: UserLayoutProps) {
-  return <div style={{ minHeight: "100vh" }}>{children}</div>;
+// AppHeader (profile summary, notifications) is deferred until a screen
+// actually needs one — Home covers that ground itself for now.
+export function UserLayout({ children, activeTab, onTabChange }: UserLayoutProps) {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div style={{ flex: 1 }}>{children}</div>
+      <BottomNavigation active={activeTab} onChange={onTabChange} />
+    </div>
+  );
 }
