@@ -1,4 +1,5 @@
 import type { ApiErrorBody, MiniAppAuthResponse, MiniAppUserSummary } from "../types/auth";
+import type { HomeSnapshot } from "../types/home";
 
 // Empty string means "same origin as the frontend" — set VITE_API_BASE_URL
 // when the Mini App is hosted separately from the FastAPI backend.
@@ -40,17 +41,25 @@ export async function authenticate(initData: string): Promise<MiniAppAuthRespons
   return data;
 }
 
-export async function fetchMe(): Promise<MiniAppUserSummary> {
+async function authorizedGet<T>(path: string): Promise<T> {
   if (!sessionToken) {
     throw new ApiError(401, "missing_token");
   }
-  const response = await fetch(`${API_BASE_URL}/api/v1/me`, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: { Authorization: `Bearer ${sessionToken}` },
   });
   if (!response.ok) {
     throw new ApiError(response.status, await parseErrorDetail(response));
   }
-  return (await response.json()) as MiniAppUserSummary;
+  return (await response.json()) as T;
+}
+
+export function fetchMe(): Promise<MiniAppUserSummary> {
+  return authorizedGet<MiniAppUserSummary>("/api/v1/me");
+}
+
+export function fetchHome(): Promise<HomeSnapshot> {
+  return authorizedGet<HomeSnapshot>("/api/v1/home");
 }
 
 export function hasSession(): boolean {
