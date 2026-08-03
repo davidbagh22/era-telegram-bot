@@ -9,8 +9,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
+from app.api.v1.projects import _notify_reviewers
 from app.api.v1.router import api_router
 from app.config import Settings
+from app.services.project_workspace_service import ProjectWorkspaceSnapshot
 
 
 def _user(**overrides) -> SimpleNamespace:
@@ -113,9 +115,42 @@ class ProjectDetailApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
 
 
+class ProjectWorkspaceApiTests(unittest.TestCase):
+    def test_workspace_route_returns_snapshot(self) -> None:
+        session = SimpleNamespace()
+        app = _build_app(session)
+        client = TestClient(app)
+        project = _project(id=10, author_id=1, status="approved")
+        snapshot = ProjectWorkspaceSnapshot(
+            project=project,
+            can_manage=True,
+            viewer_membership_status=None,
+            roles=[],
+            members=[],
+            milestones=[],
+            tasks=[],
+            events=[],
+        )
+        with (
+            patch(
+                "app.api.v1.projects.project_workspace_service.require_project",
+                new=AsyncMock(return_value=project),
+            ),
+            patch(
+                "app.api.v1.projects.project_workspace_service.workspace_snapshot",
+                new=AsyncMock(return_value=snapshot),
+            ),
+        ):
+            response = client.get("/api/v1/projects/10/workspace")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["project"]["id"], 10)
+        self.assertEqual(response.json()["progress_percent"], 0)
+
+
 class ProjectCreateApiTests(unittest.TestCase):
     def test_create_returns_new_draft(self) -> None:
-        session = SimpleNamespace()
+        session = SimpleNamespace(commit=AsyncMock())
         app = _build_app(session)
         client = TestClient(app)
         with patch(
@@ -125,6 +160,7 @@ class ProjectCreateApiTests(unittest.TestCase):
             response = client.post("/api/v1/projects", json={"idea": "Новая идея"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["id"], 20)
+        session.commit.assert_awaited_once()
 
 
 class ProjectUpdateApiTests(unittest.TestCase):
@@ -221,6 +257,51 @@ class ProjectCancelApiTests(unittest.TestCase):
         client = TestClient(app)
         response = client.post("/api/v1/projects/10/cancel")
         self.assertEqual(response.status_code, 409)
+
+
+class FakeBot:
+    def __init__(self) -> None:
+        self.messages = []
+        self.documents = []
+
+    async def send_message(self, chat_id, text, reply_markup=None) -> None:
+        self.messages.append(
+            {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
+        )
+
+    async def send_document(self, chat_id, document, caption=None, reply_markup=None) -> None:
+        self.documents.append(
+            {
+                "chat_id": chat_id,
+                "document": document,
+                "caption": caption,
+                "reply_markup": reply_markup,
+            }
+        )
+
+
+class ProjectNotificationDeepLinkTests(unittest.IsolatedAsyncioTestCase):
+    async def test_review_notification_links_to_exact_admin_project(self) -> None:
+        bot = FakeBot()
+        settings = Settings(
+            bot_token="1234567890:test-token",
+            admin_ids=[100],
+            miniapp_auth_secret="secret",
+            miniapp_url="https://era.example/app/",
+        )
+
+        await _notify_reviewers(
+            bot,
+            settings,
+            _project(id=10, title="Media Lab"),
+            _user(username="leader"),
+            "DOCUMENT",
+        )
+
+        self.assertEqual(bot.messages[0]["chat_id"], 100)
+        button = bot.messages[0]["reply_markup"].inline_keyboard[0][0]
+        self.assertEqual(button.text, "Открыть модерацию")
+        self.assertEqual(button.url, "https://era.example/app/#/admin/projects/10")
 
 
 if __name__ == "__main__":
