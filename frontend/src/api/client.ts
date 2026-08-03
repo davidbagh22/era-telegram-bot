@@ -8,6 +8,7 @@ import type {
 } from "../types/activity";
 import type { ApiErrorBody, MiniAppAuthResponse, MiniAppUserSummary } from "../types/auth";
 import type { HomeSnapshot } from "../types/home";
+import type { Opportunity, OpportunityScope } from "../types/opportunity";
 import type {
   ProjectDetail,
   ProjectEvent,
@@ -310,6 +311,26 @@ export function messageProjectTeam(projectId: number, text: string): Promise<Tea
   return authorizedPost<TeamMessageResult>(`/api/v1/projects/${projectId}/workspace/team/message`, {
     text,
   });
+}
+
+export function fetchOpportunities(scope: OpportunityScope): Promise<Opportunity[]> {
+  return authorizedGet<Opportunity[]>(`/api/v1/opportunities?scope=${scope}`);
+}
+
+export function fetchOpportunity(offerId: number): Promise<Opportunity> {
+  return authorizedGet<Opportunity>(`/api/v1/opportunities/${offerId}`);
+}
+
+export function applyToOpportunity(offerId: number): Promise<Opportunity> {
+  return authorizedPost<Opportunity>(`/api/v1/opportunities/${offerId}/apply`);
+}
+
+export function saveOpportunity(offerId: number): Promise<Opportunity> {
+  return authorizedPost<Opportunity>(`/api/v1/opportunities/${offerId}/save`);
+}
+
+export function unsaveOpportunity(offerId: number): Promise<Opportunity> {
+  return authorizedPost<Opportunity>(`/api/v1/opportunities/${offerId}/unsave`);
 }
 
 export function hasSession(): boolean {

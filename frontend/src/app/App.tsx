@@ -8,13 +8,16 @@ import { ActivityScreen } from "../screens/ActivityScreen";
 import { AuthErrorScreen } from "../screens/AuthErrorScreen";
 import { BlockedScreen } from "../screens/BlockedScreen";
 import { HomeScreen } from "../screens/HomeScreen";
+import { OpportunitiesScreen } from "../screens/OpportunitiesScreen";
 import { PendingScreen } from "../screens/PendingScreen";
 import { ProjectsScreen } from "../screens/ProjectsScreen";
 import { StatusBanner } from "../components/StatusBanner";
 import type { MiniAppUserSummary } from "../types/auth";
 
-const COMING_SOON_TITLES: Record<Exclude<TabKey, "home" | "activity" | "projects">, string> = {
-  opportunities: "Возможности",
+const COMING_SOON_TITLES: Record<
+  Exclude<TabKey, "home" | "activity" | "projects" | "opportunities">,
+  string
+> = {
   profile: "Профиль",
 };
 
@@ -36,6 +39,9 @@ function renderTab(tab: TabKey, user: MiniAppUserSummary, initialProjectId: numb
   }
   if (tab === "projects") {
     return <ProjectsScreen initialProjectId={initialProjectId} />;
+  }
+  if (tab === "opportunities") {
+    return <OpportunitiesScreen />;
   }
   return (
     <StatusBanner
