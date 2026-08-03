@@ -6,10 +6,11 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `fe4e5f6676c4f80c3e5b9fc4f10f75d6d63969bb`
-  (PR #120 merge: Profile + Portfolio).
-- Prior merges, newest first: `446fd1890` (PR #119, Admin Mode +
-  moderation dashboards), `9a0548c` (PR #118, Opportunities),
+- Current `main` commit: `c417f3aa78411a4d3249334d2a253fbc8136e90a`
+  (PR #121 merge: Leader Mode — scope overview + open tasks).
+- Prior merges, newest first: `fe4e5f667` (PR #120, Profile +
+  Portfolio), `446fd1890` (PR #119, Admin Mode + moderation
+  dashboards), `9a0548c` (PR #118, Opportunities),
   `3c3807b` (PR #117, progress-doc-only), `7900a0e` (PR #116, Project
   Workspace UI), `05a04ea` (PR #115, Project Workspace API actions),
   `ba8ff8c` (PR #114, Project Workspace foundation), `5218911` (PR #113,
@@ -748,8 +749,10 @@ any updated brief before starting.
 
 ### PR 9 — Leader Mode: scope overview + open tasks (merged)
 
-Branch: `era-platform-pr9-leader-mode`. See PR link and merge commit
-recorded in the follow-up progress-doc-only commit once merged.
+Branch: `era-platform-pr9-leader-mode`. PR:
+[#121](https://github.com/davidbagh22/era-telegram-bot/pull/121). Merge
+commit: `c417f3aa78411a4d3249334d2a253fbc8136e90a`. Both CI checks green
+before merge.
 
 - New `app/services/leader_service.py`, extracted from
   `app/handlers/leader/panel.py` and `app/handlers/leader/open_tasks.py`
