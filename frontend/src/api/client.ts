@@ -8,6 +8,7 @@ import type {
 } from "../types/activity";
 import type { ApiErrorBody, MiniAppAuthResponse, MiniAppUserSummary } from "../types/auth";
 import type { HomeSnapshot } from "../types/home";
+import type { ProjectDetail, ProjectQuestion, ProjectScope, ProjectSummary } from "../types/project";
 
 // Empty string means "same origin as the frontend" — set VITE_API_BASE_URL
 // when the Mini App is hosted separately from the FastAPI backend.
@@ -62,18 +63,34 @@ async function authorizedGet<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function authorizedPost<T>(path: string): Promise<T> {
+async function authorizedSend<T>(
+  method: "POST" | "PATCH",
+  path: string,
+  body?: unknown,
+): Promise<T> {
   if (!sessionToken) {
     throw new ApiError(401, "missing_token");
   }
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${sessionToken}` },
+    method,
+    headers: {
+      Authorization: `Bearer ${sessionToken}`,
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!response.ok) {
     throw new ApiError(response.status, await parseErrorDetail(response));
   }
   return (await response.json()) as T;
+}
+
+function authorizedPost<T>(path: string, body?: unknown): Promise<T> {
+  return authorizedSend<T>("POST", path, body);
+}
+
+function authorizedPatch<T>(path: string, body: unknown): Promise<T> {
+  return authorizedSend<T>("PATCH", path, body);
 }
 
 export function fetchMe(): Promise<MiniAppUserSummary> {
@@ -110,6 +127,37 @@ export function fetchCalendar(): Promise<CalendarItem[]> {
 
 export function fetchHistory(): Promise<HistoryEntry[]> {
   return authorizedGet<HistoryEntry[]>("/api/v1/activity/history");
+}
+
+export function fetchProjects(scope: ProjectScope): Promise<ProjectSummary[]> {
+  return authorizedGet<ProjectSummary[]>(`/api/v1/projects?scope=${scope}`);
+}
+
+export function fetchProjectQuestions(): Promise<ProjectQuestion[]> {
+  return authorizedGet<ProjectQuestion[]>("/api/v1/projects/questions");
+}
+
+export function fetchProject(projectId: number): Promise<ProjectDetail> {
+  return authorizedGet<ProjectDetail>(`/api/v1/projects/${projectId}`);
+}
+
+export function createProject(idea: string): Promise<ProjectDetail> {
+  return authorizedPost<ProjectDetail>("/api/v1/projects", { idea });
+}
+
+export function updateProject(
+  projectId: number,
+  answers: Record<string, string>,
+): Promise<ProjectDetail> {
+  return authorizedPatch<ProjectDetail>(`/api/v1/projects/${projectId}`, { answers });
+}
+
+export function submitProject(projectId: number): Promise<ProjectDetail> {
+  return authorizedPost<ProjectDetail>(`/api/v1/projects/${projectId}/submit`);
+}
+
+export function cancelProject(projectId: number): Promise<ProjectDetail> {
+  return authorizedPost<ProjectDetail>(`/api/v1/projects/${projectId}/cancel`);
 }
 
 export function hasSession(): boolean {

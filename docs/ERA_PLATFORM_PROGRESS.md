@@ -309,12 +309,78 @@ anywhere in the bot today (only leaders can reject a participant, via
 `app/handlers/leader/open_tasks.py`), so there is no existing business
 rule to reuse and none was invented here.
 
-**Next block:** PR 4 — Projects read/create/edit + workflow.
+### PR 4 — Projects read/create/edit + workflow
+
+- Discovered `app/services/project_service.py::create_project` is dead code
+  — nothing calls it. The real project-creation flow
+  (`app/handlers/participant/projects.py::project_start` +
+  `project_answer`) builds a `Project` directly and fills it in through an
+  18-question guided FSM wizard with AI-hint prompts
+  (`app/services/project_builder.py::PROJECT_QUESTIONS`). Left the dead
+  code alone — unrelated to this block, not blocking anything.
+- **Did not rebuild the 18-step AI-hint wizard in the Mini App.** That is a
+  real, separate UI investment (per-question hints, block grouping) and
+  deserves its own focused work rather than a rushed clone bolted onto this
+  PR. Instead: `app/services/project_workflow_service.py` exposes the same
+  question set as a single scrollable form (all 16 free-text questions;
+  `proposed_date`/`proposed_time` excluded — the Bot wizard parses those
+  into typed `Project` columns, the Mini App's `update_answers()` only
+  writes plain strings into `form_data`, so mixing the two would silently
+  produce a worse result than just leaving those two Bot-only for now).
+  `GET /api/v1/projects/questions` serves the question copy from
+  `PROJECT_QUESTIONS` directly so the frontend never hand-maintains a
+  second copy of the wording.
+- Extracted shared logic from `app/handlers/participant/projects_block5.py`
+  into `project_workflow_service.py` before adding the API (same pattern as
+  PR 3): `can_edit` / `can_submit_for_review` / `can_delete` gates,
+  `submit_for_review()` (status transition + document generation + audit,
+  returns the document text), `cancel_project()`. The Bot handler's
+  Telegram-specific notification broadcast to admins/leaders stays in the
+  Bot handler — only the state transition moved. Full suite passed
+  unchanged before any new feature code was added.
+- New `GET/POST/PATCH /api/v1/projects*` routes. Four scopes:
+  `mine` (all of the author's non-cancelled projects — was already how the
+  Bot works), `proposals` and `completed` (subsets of `mine`, split out for
+  the UI tabs the brief asks for), and `open` — **genuinely new**: a
+  directory of all authors' `approved`/`in_progress` projects. No
+  participant-facing feature like this existed before (the Bot only ever
+  shows a participant their own projects); it's a real query with no
+  fabricated data, and PR 5's "find a team" workspace needs something to
+  browse.
+- Submitting a project via the Mini App triggers the **same** admin/leader
+  Telegram notification the Bot's submit flow sends — not a second, silent
+  path — because the FastAPI process and the Bot share one `aiogram.Bot`
+  instance (`app.api.deps.get_bot()` reads `request.app.state.bot`, which
+  the shared lifespan already sets up). Falls back to skipping the
+  notification (never crashing) when no bot is attached, e.g. in tests.
+- Frontend: `ProjectsScreen` (list with 4 scope tabs + inline "create
+  draft" box) and `ProjectDetail` (status, admin comment, the 16-field edit
+  form when `can_edit`, submit/cancel actions gated by the same
+  `can_submit`/`can_delete` flags the backend computes). Verified in a
+  browser against an extended local mock server: list renders, detail
+  loads with prefilled answers, submitting flips status and correctly
+  hides the now-inapplicable edit/submit controls.
+- Tests: `tests/test_project_workflow_service.py` (integration, real
+  `sqlite+aiosqlite` — scope filtering, edit/submit/delete gates, document
+  reuse-vs-regenerate), `tests/test_projects_api.py` (routes, including a
+  regression test that `GET /projects/questions` isn't shadowed by
+  `GET /projects/{project_id}` — a real FastAPI route-ordering trap).
+  Full suite: 325 passed via `pytest -q`, 242 via
+  `python -m unittest discover -s tests` (matches CI), 0 regressions.
+- No migrations — no new tables needed.
+
+**Known limitations:** no AI-hint feature in the Mini App edit form (Bot
+wizard only, see above); `proposed_date`/`proposed_time` are not editable
+from the Mini App yet for the same reason.
+
+**Next block:** PR 5 — Project Workspace (ProjectMember, ProjectRole,
+Team, Milestones, contribution) — this is the first PR expected to need a
+migration.
 
 ## Progress vs. the 12-PR plan
 
-- Completed: 3 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up + hotfix;
-  PR 2; PR 3).
-- Current stage: PR 4 — Projects read/create/edit + workflow (not started).
-- Next stage after PR 4: PR 5 — Project Workspace (ProjectMember,
-  ProjectRole, Team, Tasks, Milestones, contribution).
+- Completed: 4 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
+  hotfix; PR 2; PR 3; PR 4).
+- Current stage: PR 5 — Project Workspace (not started).
+- Next stage after PR 5: PR 6 — Opportunities + applications +
+  recommendations.

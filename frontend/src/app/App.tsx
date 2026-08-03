@@ -9,11 +9,11 @@ import { AuthErrorScreen } from "../screens/AuthErrorScreen";
 import { BlockedScreen } from "../screens/BlockedScreen";
 import { HomeScreen } from "../screens/HomeScreen";
 import { PendingScreen } from "../screens/PendingScreen";
+import { ProjectsScreen } from "../screens/ProjectsScreen";
 import { StatusBanner } from "../components/StatusBanner";
 import type { MiniAppUserSummary } from "../types/auth";
 
-const COMING_SOON_TITLES: Record<Exclude<TabKey, "home" | "activity">, string> = {
-  projects: "Проекты",
+const COMING_SOON_TITLES: Record<Exclude<TabKey, "home" | "activity" | "projects">, string> = {
   opportunities: "Возможности",
   profile: "Профиль",
 };
@@ -24,6 +24,9 @@ function renderTab(tab: TabKey, user: MiniAppUserSummary) {
   }
   if (tab === "activity") {
     return <ActivityScreen />;
+  }
+  if (tab === "projects") {
+    return <ProjectsScreen />;
   }
   return (
     <StatusBanner

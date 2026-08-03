@@ -1,4 +1,3 @@
-from datetime import datetime
 from io import BytesIO
 
 from aiogram import F, Bot, Router
@@ -11,9 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import Project, User
 from app.keyboards.participant import project_menu_keyboard
-from app.services.audit_service import audit
+from app.services import project_workflow_service
 from app.services.notification_service import safe_send, safe_send_document
-from app.services.project_builder import render_project_document
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PROJECT_STATUS_LABELS, ProjectStatus
 from app.utils.validators import clean_text
@@ -32,14 +30,6 @@ def _approved(user: User | None) -> bool:
 async def _load_owned(session: AsyncSession, project_id: int, user: User) -> Project | None:
     project = await session.get(Project, project_id)
     return project if project and project.author_id == user.id else None
-
-
-def _project_document(project: Project, author: User) -> str:
-    if project.generated_document:
-        return project.generated_document
-    author_name = f"{author.first_name} {author.last_name or ''}".strip()
-    telegram = f"@{author.username}" if author.username else str(author.telegram_id)
-    return render_project_document(project.form_data or {}, author_name, telegram)
 
 
 def _admin_project_keyboard(project_id: int) -> InlineKeyboardMarkup:
@@ -101,7 +91,7 @@ async def project_delete_first(call: CallbackQuery, user: User | None, session: 
     if not _approved(user):
         return
     project = await _load_owned(session, int(call.data.rsplit(":", 1)[-1]), user)
-    if not project or project.status not in {ProjectStatus.DRAFT, ProjectStatus.NEEDS_REVISION, ProjectStatus.REJECTED, ProjectStatus.POSTPONED}:
+    if not project or not project_workflow_service.can_delete(project):
         await call.message.answer("Удалить можно только черновик, доработку, отклонённый или перенесённый проект")
         return
     await call.message.answer(
@@ -151,14 +141,10 @@ async def project_submit_full(call: CallbackQuery, session: AsyncSession, user: 
     if project is None:
         await call.message.answer(texts.NO_ACCESS)
         return
-    if project.status not in {ProjectStatus.DRAFT, ProjectStatus.NEEDS_REVISION}:
+    if not project_workflow_service.can_submit_for_review(project):
         await call.message.answer("Проект уже отправлен на рассмотрение")
         return
-    project.status = ProjectStatus.INITIAL_REVIEW
-    project.submitted_at = datetime.now().astimezone()
-    document = _project_document(project, user)
-    project.generated_document = document
-    await audit(session, actor_id=user.id, action="project.submitted", entity_type="project", entity_id=project.id)
+    document = await project_workflow_service.submit_for_review(session, project, user)
     await call.message.answer(texts.PROJECT_SUBMITTED)
     telegram = f"@{user.username}" if user.username else str(user.telegram_id)
     summary = f"💡 Новый проект на рассмотрении\n\n{project.title}\nАвтор: {user.first_name} {user.last_name or ''} ({telegram})\n\nПолный файл проекта прикреплён ниже."
