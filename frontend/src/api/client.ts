@@ -1,3 +1,11 @@
+import type {
+  CalendarItem,
+  EventItem,
+  EventScope,
+  HistoryEntry,
+  TaskItem,
+  TaskScope,
+} from "../types/activity";
 import type { ApiErrorBody, MiniAppAuthResponse, MiniAppUserSummary } from "../types/auth";
 import type { HomeSnapshot } from "../types/home";
 
@@ -54,12 +62,54 @@ async function authorizedGet<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function authorizedPost<T>(path: string): Promise<T> {
+  if (!sessionToken) {
+    throw new ApiError(401, "missing_token");
+  }
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseErrorDetail(response));
+  }
+  return (await response.json()) as T;
+}
+
 export function fetchMe(): Promise<MiniAppUserSummary> {
   return authorizedGet<MiniAppUserSummary>("/api/v1/me");
 }
 
 export function fetchHome(): Promise<HomeSnapshot> {
   return authorizedGet<HomeSnapshot>("/api/v1/home");
+}
+
+export function fetchEvents(scope: EventScope): Promise<EventItem[]> {
+  return authorizedGet<EventItem[]>(`/api/v1/events?scope=${scope}`);
+}
+
+export function registerForEvent(eventId: number): Promise<EventItem> {
+  return authorizedPost<EventItem>(`/api/v1/events/${eventId}/register`);
+}
+
+export function cancelEventRegistration(eventId: number): Promise<EventItem> {
+  return authorizedPost<EventItem>(`/api/v1/events/${eventId}/cancel`);
+}
+
+export function fetchTasks(scope: TaskScope): Promise<TaskItem[]> {
+  return authorizedGet<TaskItem[]>(`/api/v1/tasks?scope=${scope}`);
+}
+
+export function claimTask(taskId: number): Promise<TaskItem> {
+  return authorizedPost<TaskItem>(`/api/v1/tasks/${taskId}/claim`);
+}
+
+export function fetchCalendar(): Promise<CalendarItem[]> {
+  return authorizedGet<CalendarItem[]>("/api/v1/activity/calendar");
+}
+
+export function fetchHistory(): Promise<HistoryEntry[]> {
+  return authorizedGet<HistoryEntry[]>("/api/v1/activity/history");
 }
 
 export function hasSession(): boolean {

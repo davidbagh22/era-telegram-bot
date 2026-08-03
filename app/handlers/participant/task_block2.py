@@ -1,12 +1,12 @@
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import Task, TaskParticipant, TaskSubmission, User
+from app.database.models import Task, TaskSubmission, User
 from app.keyboards.participant import tasks_keyboard
+from app.services import task_service
 from app.services.notification_service import (
     notify_admins,
     safe_answer_media,
@@ -20,7 +20,7 @@ from app.utils.constants import ApplicationStatus, TASK_STATUS_LABELS
 from app.utils.validators import clean_text
 
 router = Router(name="participant_task_block2")
-ARCHIVE_STATUSES = {"completed", "cancelled", "rejected"}
+ARCHIVE_STATUSES = task_service.ARCHIVE_STATUSES
 
 
 def _approved(user: User | None) -> bool:
@@ -42,63 +42,6 @@ def _review_keyboard(submission_id: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="💬 Вернуть на доработку", callback_data=f"admin:tasksub:revision:{submission_id}")],
         [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:tasksub:reject:{submission_id}")],
     ])
-
-
-async def _membership(session: AsyncSession, task_id: int, user_id: int) -> TaskParticipant | None:
-    return await session.scalar(select(TaskParticipant).where(TaskParticipant.task_id == task_id, TaskParticipant.user_id == user_id))
-
-
-async def _can_view(session: AsyncSession, task: Task, user: User) -> bool:
-    if task.assignee_id == user.id:
-        return True
-    item = await _membership(session, task.id, user.id)
-    if item and item.status in {"pending", "accepted", "joined"}:
-        return True
-    return task.task_type == "challenge" and task.status == "published" and _matches_task_audience(task, user)
-
-
-async def _can_submit(session: AsyncSession, task: Task, user: User) -> bool:
-    if task.assignee_id == user.id:
-        return True
-    item = await _membership(session, task.id, user.id)
-    return bool(item and item.status in {"accepted", "joined"})
-
-
-async def _tasks_for_user(session: AsyncSession, user: User) -> list[Task]:
-    direct_tasks = (await session.scalars(
-        select(Task).where(or_(Task.assignee_id == user.id, ((Task.task_type == "challenge") & (Task.status == "published"))))
-    )).all()
-    memberships = (await session.scalars(select(TaskParticipant).where(TaskParticipant.user_id == user.id))).all()
-    tasks_by_id = {task.id: task for task in direct_tasks}
-    for membership in memberships:
-        task = await session.get(Task, membership.task_id)
-        if task and membership.status in {"pending", "accepted", "joined"}:
-            tasks_by_id[task.id] = task
-    tasks = sorted(tasks_by_id.values(), key=lambda item: item.deadline)
-    return [
-        task for task in tasks
-        if task.assignee_id == user.id
-        or task.id in {membership.task_id for membership in memberships if membership.status in {"pending", "accepted", "joined"}}
-        or _matches_task_audience(task, user)
-    ]
-
-
-def _matches_task_audience(task: Task, user: User) -> bool:
-    role = (task.audience_filter_json or {}).get("role")
-    return not role or role == user.role
-
-
-def _is_joined_or_assigned(task: Task, joined_ids: set[int], user: User) -> bool:
-    return task.assignee_id == user.id or task.id in joined_ids
-
-
-def _is_open_public_task(task: Task, joined_ids: set[int], user: User) -> bool:
-    return (
-        task.task_type == "challenge"
-        and task.status == "published"
-        and not _is_joined_or_assigned(task, joined_ids, user)
-        and _matches_task_audience(task, user)
-    )
 
 
 async def _send_task_file(call: CallbackQuery, task: Task) -> None:
@@ -133,20 +76,21 @@ async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSessi
         await call.message.answer(texts.APPLICATION_PENDING)
         return
     mode = call.data.rsplit(":", 1)[-1]
-    all_tasks = await _tasks_for_user(session, user)
-    participants = (await session.scalars(select(TaskParticipant).where(TaskParticipant.user_id == user.id, TaskParticipant.task_id.in_([task.id for task in all_tasks] or [-1])))).all()
-    joined_ids = {item.task_id for item in participants if item.status in {"pending", "accepted", "joined"}}
-    joined_ids.update(task.id for task in all_tasks if task.assignee_id == user.id)
+    all_tasks = await task_service.list_for_user(session, user)
+    joined_ids = await task_service.joined_task_ids(session, user, all_tasks)
     if mode == "archive":
         tasks = [
             task
             for task in all_tasks
-            if task.status in ARCHIVE_STATUSES and _is_joined_or_assigned(task, joined_ids, user)
+            if task.status in ARCHIVE_STATUSES
+            and task_service.is_joined_or_assigned(task, joined_ids, user)
         ]
         title = "🗂 Архив задач"
         empty = ux_texts.TASKS_EMPTY_ARCHIVE
     elif mode == "open":
-        tasks = [task for task in all_tasks if _is_open_public_task(task, joined_ids, user)]
+        tasks = [
+            task for task in all_tasks if task_service.is_open_public_task(task, joined_ids, user)
+        ]
         title = "🌐 Общие задачи"
         empty = "Сейчас нет открытых общих задач. Как только команда опубликует набор, он появится здесь."
     else:
@@ -154,7 +98,7 @@ async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSessi
             task
             for task in all_tasks
             if task.status not in ARCHIVE_STATUSES
-            and _is_joined_or_assigned(task, joined_ids, user)
+            and task_service.is_joined_or_assigned(task, joined_ids, user)
         ]
         title = "🟢 Задачи в работе"
         empty = ux_texts.TASKS_EMPTY_ACTIVE
@@ -168,50 +112,25 @@ async def task_join(call: CallbackQuery, user: User | None, session: AsyncSessio
     if not _approved(user):
         return
     task = await session.get(Task, int(call.data.rsplit(":", 1)[-1]))
-    if (
-        task is None
-        or task.task_type != "challenge"
-        or task.status != "published"
-        or not _matches_task_audience(task, user)
-    ):
+    _, reason = await task_service.claim(session, task, user)
+    back_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="← Мои задачи", callback_data="cabinet:tasks")]]
+    )
+    if reason == "closed":
         await call.message.answer("Набор на это задание уже закрыт")
         return
-    current = (
-        await session.scalars(
-            select(TaskParticipant).where(TaskParticipant.task_id == task.id)
-        )
-    ).all()
-    accepted = [item for item in current if item.status in {"accepted", "joined"}]
-    if task.max_participants and len(accepted) >= task.max_participants:
+    if reason == "full":
         await call.message.answer("Команда уже набрана")
         return
-    existing = next((item for item in current if item.user_id == user.id), None)
-    if existing:
-        if existing.status == "rejected":
-            existing.status = "pending"
-        elif existing.status == "pending":
-            await call.message.answer(
-                "Ваша заявка уже у лидера на рассмотрении.",
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="← Мои задачи", callback_data="cabinet:tasks")]]
-                ),
-            )
-            return
-        else:
-            await call.message.answer(
-                "Вы уже в команде этой задачи.",
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="← Мои задачи", callback_data="cabinet:tasks")]]
-                ),
-            )
-            return
-    else:
-        session.add(TaskParticipant(task_id=task.id, user_id=user.id, status="pending"))
+    if reason == "already_pending":
+        await call.message.answer("Ваша заявка уже у лидера на рассмотрении.", reply_markup=back_keyboard)
+        return
+    if reason == "already_joined":
+        await call.message.answer("Вы уже в команде этой задачи.", reply_markup=back_keyboard)
+        return
     await call.message.answer(
         "Заявка отправлена лидеру 🙌\n\nЕсли лидер примет Вас в команду, задача появится как активная в личном кабинете.",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="← Мои задачи", callback_data="cabinet:tasks")]]
-        ),
+        reply_markup=back_keyboard,
     )
 
 
@@ -221,18 +140,18 @@ async def task_view(call: CallbackQuery, user: User | None, session: AsyncSessio
     if not _approved(user):
         return
     task = await session.get(Task, int(call.data.rsplit(":", 1)[-1]))
-    if task is None or not await _can_view(session, task, user):
+    if task is None or not await task_service.can_view(session, task, user):
         await call.message.answer(texts.NO_ACCESS)
         return
-    membership = await _membership(session, task.id, user.id)
+    membership = await task_service.get_membership(session, task.id, user.id)
     rows = []
-    if await _can_submit(session, task, user) and task.status not in ARCHIVE_STATUSES:
+    if await task_service.can_submit(session, task, user) and task.status not in ARCHIVE_STATUSES:
         rows.append([InlineKeyboardButton(text="📤 Отправить результат", callback_data=f"task:result:{task.id}")])
     elif membership and membership.status == "pending":
         rows.append([InlineKeyboardButton(text="⏳ Заявка на рассмотрении", callback_data="cabinet:tasks")])
     elif task.task_type == "challenge" and task.status == "published":
         rows.append([InlineKeyboardButton(text="🙌 Хочу помочь", callback_data=f"task:join:{task.id}")])
-    if task.chat_url and await _can_submit(session, task, user):
+    if task.chat_url and await task_service.can_submit(session, task, user):
         rows.append([InlineKeyboardButton(text="💬 Чат команды", url=task.chat_url)])
     rows.append([InlineKeyboardButton(text="← Мои задачи", callback_data="cabinet:tasks")])
     await call.message.answer(
@@ -248,7 +167,7 @@ async def task_result_start(call: CallbackQuery, user: User | None, state: FSMCo
     if not _approved(user):
         return
     task = await session.get(Task, int(call.data.rsplit(":", 1)[-1]))
-    if task is None or task.status in ARCHIVE_STATUSES or not await _can_submit(session, task, user):
+    if task is None or task.status in ARCHIVE_STATUSES or not await task_service.can_submit(session, task, user):
         await call.message.answer(texts.NO_ACCESS)
         return
     await state.set_state(TaskSubmissionStates.result)
@@ -260,7 +179,7 @@ async def task_result_start(call: CallbackQuery, user: User | None, state: FSMCo
 async def task_result_save(message: Message, user: User, session: AsyncSession, state: FSMContext, bot: Bot, settings: Settings) -> None:
     data = await state.get_data()
     task = await session.get(Task, int(data["task_id"]))
-    if task is None or not await _can_submit(session, task, user):
+    if task is None or not await task_service.can_submit(session, task, user):
         await state.clear()
         await message.answer(texts.NO_ACCESS)
         return

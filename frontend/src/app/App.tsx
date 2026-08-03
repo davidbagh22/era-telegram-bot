@@ -4,6 +4,7 @@ import { useAuth } from "../hooks/useAuth";
 import { AdminLayout } from "../layouts/AdminLayout";
 import { LeaderLayout } from "../layouts/LeaderLayout";
 import { UserLayout } from "../layouts/UserLayout";
+import { ActivityScreen } from "../screens/ActivityScreen";
 import { AuthErrorScreen } from "../screens/AuthErrorScreen";
 import { BlockedScreen } from "../screens/BlockedScreen";
 import { HomeScreen } from "../screens/HomeScreen";
@@ -11,8 +12,7 @@ import { PendingScreen } from "../screens/PendingScreen";
 import { StatusBanner } from "../components/StatusBanner";
 import type { MiniAppUserSummary } from "../types/auth";
 
-const COMING_SOON_TITLES: Record<Exclude<TabKey, "home">, string> = {
-  activity: "Активность",
+const COMING_SOON_TITLES: Record<Exclude<TabKey, "home" | "activity">, string> = {
   projects: "Проекты",
   opportunities: "Возможности",
   profile: "Профиль",
@@ -21,6 +21,9 @@ const COMING_SOON_TITLES: Record<Exclude<TabKey, "home">, string> = {
 function renderTab(tab: TabKey, user: MiniAppUserSummary) {
   if (tab === "home") {
     return <HomeScreen user={user} />;
+  }
+  if (tab === "activity") {
+    return <ActivityScreen />;
   }
   return (
     <StatusBanner
