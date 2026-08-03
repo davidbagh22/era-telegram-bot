@@ -6,15 +6,16 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `9a0548cc2fdb756c05abad796031aba0d01d996a`
-  (PR #118 merge: Opportunities + applications + recommendations).
-- Prior merges, newest first: `3c3807b` (PR #117, progress-doc-only),
-  `7900a0e` (PR #116, Project Workspace UI), `05a04ea` (PR #115, Project
-  Workspace API actions), `ba8ff8c` (PR #114, Project Workspace
-  foundation), `5218911` (PR #113, Projects read/create/edit), `edc1730`
-  (PR #112, Activity), `4821216` (PR #111, design system/Home/Growth),
-  `b3a4e2a` (PR #110 hotfix), `905c0ac`/`1a04097` (PR #109/#108, Mini App
-  foundation + deploy), `36098e9` (PR #107 merge, pre-platform baseline).
+- Current `main` commit: `446fd1890e6908f4d7f5a9e1ca478eb795ad051a`
+  (PR #119 merge: Admin Mode + moderation dashboards).
+- Prior merges, newest first: `9a0548c` (PR #118, Opportunities),
+  `3c3807b` (PR #117, progress-doc-only), `7900a0e` (PR #116, Project
+  Workspace UI), `05a04ea` (PR #115, Project Workspace API actions),
+  `ba8ff8c` (PR #114, Project Workspace foundation), `5218911` (PR #113,
+  Projects read/create/edit), `edc1730` (PR #112, Activity), `4821216`
+  (PR #111, design system/Home/Growth), `b3a4e2a` (PR #110 hotfix),
+  `905c0ac`/`1a04097` (PR #109/#108, Mini App foundation + deploy),
+  `36098e9` (PR #107 merge, pre-platform baseline).
   Full hashes for any of these are in `git log` — not re-listing them all
   here to keep this file from growing without bound.
 - Bot Hardening phase (v2) is complete: 209 tests passing, single Alembic
@@ -615,7 +616,12 @@ before merge.
 reasoning as PR 3's task-decline gap: no such participant-initiated rule
 exists anywhere in the bot today, so nothing was invented for it here.
 
-### PR 7 — Admin Mode + moderation dashboards
+### PR 7 — Admin Mode + moderation dashboards (merged)
+
+Branch: `era-platform-pr7-admin-mode`. PR:
+[#119](https://github.com/davidbagh22/era-telegram-bot/pull/119). Merge
+commit: `446fd1890e6908f4d7f5a9e1ca478eb795ad051a`. Both CI checks green
+before merge.
 
 - Extracted three pieces of existing bot admin logic into services before
   building the API — same pattern as every prior PR:
