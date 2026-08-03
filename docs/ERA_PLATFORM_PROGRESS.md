@@ -435,9 +435,11 @@ from the Mini App yet for the same reason.
 Team, Milestones, contribution) — this is the first PR expected to need a
 migration.
 
-### PR 5 — Project Workspace foundation (in progress)
+### PR 5 — Project Workspace foundation (ready in PR #114)
 
-Branch: `pr5-project-workspace-foundation`. PR: pending.
+Branch: `pr5-project-workspace-foundation`. PR:
+[#114](https://github.com/davidbagh22/era-telegram-bot/pull/114). CI green
+on commit `aac474d`.
 
 Scope of this foundation block:
 
