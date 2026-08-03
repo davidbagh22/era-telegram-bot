@@ -5,6 +5,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
+    WebAppInfo,
 )
 
 
@@ -12,13 +13,18 @@ def main_menu(
     channel_url: str,
     privileged: bool = False,
     admin: bool = False,
+    miniapp_url: str = "",
 ) -> ReplyKeyboardMarkup:
     del channel_url
     rows = [
         [KeyboardButton(text="👤 Личный кабинет"), KeyboardButton(text="📅 Афиша")],
         [KeyboardButton(text="✅ Задачи"), KeyboardButton(text="⭐ Возможности")],
-        [KeyboardButton(text="💬 Связь")],
     ]
+    if miniapp_url:
+        rows.append(
+            [KeyboardButton(text="🔥 Открыть ЭРА", web_app=WebAppInfo(url=miniapp_url))]
+        )
+    rows.append([KeyboardButton(text="💬 Связь")])
     if privileged or admin:
         rows.append([KeyboardButton(text="⚙️ Панель")])
     return ReplyKeyboardMarkup(
