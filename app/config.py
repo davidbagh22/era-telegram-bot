@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     render_external_hostname: str = ""
     dev_auth_enabled: bool = False
     init_data_max_age_seconds: int = 86400
+    miniapp_url: str = ""
+    miniapp_auth_secret: str = ""
+    bot_username: str = ""
     database_url: str = "postgresql+asyncpg://era:era@db:5432/era"
     redis_url: str = "redis://redis:6379/0"
     openai_api_key: str = ""

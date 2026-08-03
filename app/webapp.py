@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from aiogram.types import BotCommand, BotCommandScopeChat, MenuButtonDefault, Update
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 
+from app.api.v1.router import api_router
 from app.bot import create_bot, create_dispatcher
 from app.config import get_settings
 from app.database.session import create_engine_and_sessionmaker
@@ -122,6 +123,9 @@ app = FastAPI(
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "version": "2.1.0", "commit": DEPLOYED_COMMIT}
+
+
+app.include_router(api_router)
 
 
 @app.post("/telegram/webhook", include_in_schema=False)

@@ -1,0 +1,39 @@
+/* ERA brand tokens. Unbounded/Golos Text are not bundled yet (no font
+   assets in the repo) — the stack below falls back to system fonts until
+   the real font files are added. See docs/ERA_PLATFORM_PROGRESS.md. */
+:root {
+  --era-red: #e8112d;
+  --era-violet: #6c4cf1;
+  --era-magenta: #d6299b;
+  --era-gradient: linear-gradient(135deg, var(--era-violet), var(--era-magenta), var(--era-red));
+
+  --era-bg: #ffffff;
+  --era-bg-subtle: #f7f7f9;
+  --era-text: #16161a;
+  --era-text-muted: #6b6b74;
+  --era-border: #e7e7ec;
+
+  --era-font-display: "Unbounded", "Segoe UI", system-ui, sans-serif;
+  --era-font-body: "Golos Text", "Segoe UI", system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --era-bg: #121114;
+    --era-bg-subtle: #1b1a1f;
+    --era-text: #f4f4f6;
+    --era-text-muted: #a3a3ad;
+    --era-border: #2b2a30;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--era-bg);
+  color: var(--era-text);
+  font-family: var(--era-font-body);
+}
