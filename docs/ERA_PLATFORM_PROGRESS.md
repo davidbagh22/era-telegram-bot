@@ -6,27 +6,17 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `7900a0ec3878e888bb6acfe41b044af6e04b626c`
-  (PR #116 merge: Project Workspace Mini App UI).
-- PR #116 merge commit:
-  `7900a0ec3878e888bb6acfe41b044af6e04b626c`.
-- PR #115 merge commit:
-  `05a04eaa7c1f7b95b2e76586bc09f986857d48cd`.
-- PR #114 merge commit:
-  `ba8ff8c0052259dc4325548dac2053d8db0b271d`.
-- PR #113 merge commit:
-  `5218911a35f5f6b5e2d1cff23f8e51d641ca3375`.
-- Previous: `05a04eaa7c1f7b95b2e76586bc09f986857d48cd` (PR #115 merge),
-  `ba8ff8c0052259dc4325548dac2053d8db0b271d` (PR #114 merge),
-  `d983849385b5a14dd271c9ec4d7635ec2d2e7e66`
-  (progress doc update after PR #113 merge),
-  `edc173035aec2ee6235af4441f0bc926009c1168` (PR #112 merge),
-  `48212168f316b6b43b4f14aea913648693c12954` (PR #111 merge),
-  `b3a4e2a521158da92afbc10f379535081c8f6c0a` (PR #110 hotfix),
-  `905c0acf61be80108d63b78820972d9d08e1677e` (PR #109 merge),
-  `1a040973a9782264e01f940998ad4b34c6a0c9a5` (PR #108 merge),
-  `36098e985e407f806f7a0134dafc36152a9f71a8` (PR #107 merge, pre-platform
-  baseline).
+- Current `main` commit: `9a0548cc2fdb756c05abad796031aba0d01d996a`
+  (PR #118 merge: Opportunities + applications + recommendations).
+- Prior merges, newest first: `3c3807b` (PR #117, progress-doc-only),
+  `7900a0e` (PR #116, Project Workspace UI), `05a04ea` (PR #115, Project
+  Workspace API actions), `ba8ff8c` (PR #114, Project Workspace
+  foundation), `5218911` (PR #113, Projects read/create/edit), `edc1730`
+  (PR #112, Activity), `4821216` (PR #111, design system/Home/Growth),
+  `b3a4e2a` (PR #110 hotfix), `905c0ac`/`1a04097` (PR #109/#108, Mini App
+  foundation + deploy), `36098e9` (PR #107 merge, pre-platform baseline).
+  Full hashes for any of these are in `git log` — not re-listing them all
+  here to keep this file from growing without bound.
 - Bot Hardening phase (v2) is complete: 209 tests passing, single Alembic
   head (`0011_pending_chat_join_requests`), see `docs/ERA_V2_ARCHITECTURE.md`
   and `docs/ERA_V2_AUDIT.md` for the domain model this platform builds on.
@@ -568,7 +558,12 @@ Checks so far:
   `Access denied` while loading Vite config.
 - `git diff --check` — passed.
 
-### PR 6 — Opportunities + applications + recommendations
+### PR 6 — Opportunities + applications + recommendations (merged)
+
+Branch: `era-platform-pr6-opportunities`. PR:
+[#118](https://github.com/davidbagh22/era-telegram-bot/pull/118). Merge
+commit: `9a0548cc2fdb756c05abad796031aba0d01d996a`. Both CI checks green
+before merge.
 
 - **Session-sync note**: this block started from a genuine cross-session
   race — a parallel Claude Code session on this same repo independently
