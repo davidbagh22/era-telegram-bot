@@ -13,6 +13,8 @@ services:
         sync: false
       - key: WEBHOOK_SECRET
         generateValue: true
+      - key: MINIAPP_AUTH_SECRET
+        generateValue: true
       - key: DATABASE_URL
         fromDatabase:
           name: era-postgres

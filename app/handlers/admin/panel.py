@@ -356,7 +356,7 @@ async def approve_user(
         bot,
         target.telegram_id,
         texts.APPLICATION_APPROVED,
-        main_menu(settings.era_channel_url, miniapp_url=settings.miniapp_url),
+        main_menu(settings.era_channel_url, miniapp_url=settings.effective_miniapp_url),
     )
     await safe_send(
         bot,
@@ -3214,7 +3214,7 @@ async def admin_user_set_role(
             settings.era_channel_url,
             privileged=value in {Role.LEADER, Role.HEAD, Role.COUNCIL, Role.ADMIN},
             admin=value == Role.ADMIN,
-            miniapp_url=settings.miniapp_url,
+            miniapp_url=settings.effective_miniapp_url,
         ),
     )
 

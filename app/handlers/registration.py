@@ -360,7 +360,7 @@ async def finish_registration(
     await state.clear()
     if user.application_status == ApplicationStatus.APPROVED:
         await call.message.answer(texts.APPLICATION_APPROVED)
-        await call.message.answer(texts.MAIN_MENU, reply_markup=main_menu(settings.era_channel_url, privileged=user.role in PRIVILEGED_ROLES, admin=user.role == Role.ADMIN, miniapp_url=settings.miniapp_url))
+        await call.message.answer(texts.MAIN_MENU, reply_markup=main_menu(settings.era_channel_url, privileged=user.role in PRIVILEGED_ROLES, admin=user.role == Role.ADMIN, miniapp_url=settings.effective_miniapp_url))
     else:
         await call.message.answer(texts.REG_DONE, reply_markup=pending_registration_keyboard(settings.era_channel_url))
         await send_admin_application_cards(bot, settings, session, user)
@@ -373,6 +373,6 @@ async def registration_status(call: CallbackQuery, user, settings: Settings) -> 
         await call.message.answer(texts.WELCOME)
         return
     if user.application_status == ApplicationStatus.APPROVED:
-        await call.message.answer(texts.APPLICATION_APPROVED, reply_markup=main_menu(settings.era_channel_url, privileged=user.role in PRIVILEGED_ROLES, admin=user.role == Role.ADMIN, miniapp_url=settings.miniapp_url))
+        await call.message.answer(texts.APPLICATION_APPROVED, reply_markup=main_menu(settings.era_channel_url, privileged=user.role in PRIVILEGED_ROLES, admin=user.role == Role.ADMIN, miniapp_url=settings.effective_miniapp_url))
         return
     await call.message.answer(texts.APPLICATION_PENDING, reply_markup=pending_registration_keyboard(settings.era_channel_url))

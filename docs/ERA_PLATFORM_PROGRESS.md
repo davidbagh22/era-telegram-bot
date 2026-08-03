@@ -46,15 +46,25 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Env vars owner must set (not guessed, not hardcoded)
 
-- `MINIAPP_URL` — https URL of the deployed Mini App frontend (BotFather
-  Web App URL). Until set, the bot works exactly as before (no button
-  appears).
 - `MINIAPP_AUTH_SECRET` — random secret used to sign Mini App session
-  tokens. Until set, `/api/v1/miniapp/auth` returns 500
-  `miniapp_auth_not_configured` rather than issuing an unsigned/insecure
-  token.
+  tokens. **This is the only var required to turn the feature on.** Until
+  it is set, `Settings.effective_miniapp_url` stays empty on purpose (see
+  PR 1b below), so the bot menu shows no button and
+  `/api/v1/miniapp/auth` returns 500 `miniapp_auth_not_configured` if
+  called directly — no broken button is ever shown to users.
+  `render.yaml` declares it with `generateValue: true` (same pattern as
+  `WEBHOOK_SECRET`), but that only takes effect on a Render **Blueprint
+  sync** — a normal git-push deploy of an already-existing service does
+  not automatically add new blueprint env vars. Owner should check the
+  Render dashboard → Environment tab for this service and either sync the
+  blueprint or add `MINIAPP_AUTH_SECRET` manually if it isn't there after
+  this PR deploys.
+- `MINIAPP_URL` — only needed if the Mini App frontend is hosted
+  separately from this backend. By default (PR 1b) the frontend is built
+  into this same Docker image and served at `<PUBLIC_BASE_URL>/app/`, so
+  this can stay blank.
 - `BOT_USERNAME` — used later for bot deep-link helpers (PR building
-  `miniapp_link()` / `task_submit:<context>` helpers); not required for PR 1.
+  `miniapp_link()` / `task_submit:<context>` helpers); not required yet.
 - `PUBLIC_BASE_URL` — already existed before this platform work; unchanged.
 
 ## PR log
@@ -104,12 +114,45 @@ the files touched by the current block. Do not re-audit the whole repo.
 (frontend shell only renders a placeholder + auth handshake status); no
 deep-link helpers yet; no product analytics events yet.
 
+### PR 1b — bundle the Mini App into the existing deploy (merged)
+
+The user asked for the change to actually be live on Render, not just
+merged as code. PR 1 built the frontend but never deployed it anywhere,
+so this follow-up closes that gap without adding a second service:
+
+- `Dockerfile` — new `node:20-alpine` build stage runs `npm ci && npm run
+  build` for `frontend/`, then the final Python stage copies
+  `frontend/dist` into the image. One Docker image, one Render service,
+  still.
+- `app/webapp.py` — `_mount_frontend()` serves `frontend/dist` at `/app`
+  via `StaticFiles(html=True)` when the directory exists. It **must not
+  raise** when the directory is missing (local dev / CI never run `npm
+  run build`), so it logs a warning and no-ops instead — verified by
+  `tests/test_webapp_frontend_mount.py`.
+- `app/config.py` — `Settings.effective_miniapp_url` now drives the
+  button: falls back to `<PUBLIC_BASE_URL>/app/` when `MINIAPP_URL` is
+  blank, and **stays empty until `MINIAPP_AUTH_SECRET` is set**, even if a
+  base URL exists — this was a deliberate fix during review: without the
+  gate, the button would have appeared as soon as `PUBLIC_BASE_URL` was
+  configured (already true in production today), before the auth secret
+  existed, shipping a visibly broken button. Covered by
+  `tests/test_effective_miniapp_url.py`.
+- `render.yaml` — added `MINIAPP_AUTH_SECRET` with `generateValue: true`
+  (see the "Env vars owner must set" section above for the Blueprint-sync
+  caveat).
+- Verified locally (Docker itself is not available in this environment):
+  `npm ci` from the committed lockfile succeeds, `npm run build` produces
+  `dist/`, and a real `TestClient` request against `app.webapp.app` serves
+  `/app/` (200, real `index.html`) side by side with the existing
+  `/health` (200, unchanged). Full suite: 246 passed, 0 regressions.
+
 **Next block:** PR 2 — design system + bottom navigation + Home screen
 (rule-based "next step" recommendation) + Growth Level display, per
 section 7.1 of the platform brief.
 
 ## Progress vs. the 12-PR plan
 
-- Completed: 1 of 12 full PRs merged (PR 1 — foundation).
+- Completed: 1 of 12 full PRs merged (PR 1 — foundation, plus its PR 1b
+  deploy follow-up).
 - Current stage: PR 2 — design system, navigation, Home, Growth (not started).
 - Next stage after PR 2: PR 3 — Activity (Events, Tasks, Calendar, History).

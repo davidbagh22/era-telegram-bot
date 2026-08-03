@@ -3,9 +3,11 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from aiogram.types import BotCommand, BotCommandScopeChat, MenuButtonDefault, Update
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import api_router
 from app.bot import create_bot, create_dispatcher
@@ -21,6 +23,25 @@ logger = logging.getLogger(__name__)
 # render.yaml configuration is needed. Falls back to "unknown" locally
 # or on any host that doesn't set it.
 DEPLOYED_COMMIT = os.environ.get("RENDER_GIT_COMMIT", "unknown")[:7]
+
+FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+
+def _mount_frontend(app: FastAPI, dist_dir: Path) -> None:
+    """Serve the built Mini App from the same service, when it was built.
+
+    `frontend/dist` only exists in the production Docker image (built by a
+    dedicated Node stage in the Dockerfile). Locally and in CI it is absent,
+    so this must not raise — the bot and API keep working without it.
+    """
+    if dist_dir.is_dir():
+        app.mount("/app", StaticFiles(directory=str(dist_dir), html=True), name="miniapp")
+    else:
+        logger.warning(
+            "Mini App static files not found at %s; run `npm run build` in "
+            "frontend/ to serve it locally",
+            dist_dir,
+        )
 
 
 USER_COMMANDS = [
@@ -126,6 +147,7 @@ async def health() -> dict[str, str]:
 
 
 app.include_router(api_router)
+_mount_frontend(app, FRONTEND_DIST)
 
 
 @app.post("/telegram/webhook", include_in_schema=False)

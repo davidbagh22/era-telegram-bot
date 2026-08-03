@@ -220,7 +220,7 @@ async def set_role(
             settings.era_channel_url,
             privileged=new_role in PRIVILEGED_ROLES,
             admin=new_role == Role.ADMIN,
-            miniapp_url=settings.miniapp_url,
+            miniapp_url=settings.effective_miniapp_url,
         ),
     )
 
