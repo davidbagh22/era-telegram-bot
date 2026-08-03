@@ -495,9 +495,10 @@ Next PR 5 block:
   milestones, task assignment by project, event linking, contribution
   confirmation, and exact Mini App deep links in project notifications.
 
-### PR 5 — Project Workspace API/service actions (in progress)
+### PR 5 — Project Workspace API/service actions (ready in PR #115)
 
-Branch: `pr5-project-workspace-actions`. PR: pending.
+Branch: `pr5-project-workspace-actions`. PR:
+[#115](https://github.com/davidbagh22/era-telegram-bot/pull/115).
 
 Scope in this block:
 
