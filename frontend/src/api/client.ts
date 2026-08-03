@@ -15,6 +15,7 @@ import type {
 } from "../types/admin";
 import type { HomeSnapshot } from "../types/home";
 import type { Opportunity, OpportunityScope } from "../types/opportunity";
+import type { Profile } from "../types/profile";
 import type {
   ProjectDetail,
   ProjectEvent,
@@ -380,6 +381,23 @@ export function decideProject(
     action,
     comment,
   });
+}
+
+export function fetchProfile(): Promise<Profile> {
+  return authorizedGet<Profile>("/api/v1/profile");
+}
+
+export async function downloadResumePdf(): Promise<Blob> {
+  if (!sessionToken) {
+    throw new ApiError(401, "missing_token");
+  }
+  const response = await fetch(`${API_BASE_URL}/api/v1/profile/resume.pdf`, {
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseErrorDetail(response));
+  }
+  return response.blob();
 }
 
 export function hasSession(): boolean {
