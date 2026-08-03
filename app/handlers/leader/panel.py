@@ -19,16 +19,13 @@ from app.database.models import (
     Department,
     Direction,
     Event,
-    Project,
     Proposal,
     Report,
-    Task,
     User,
-    UserDepartment,
-    UserDirection,
 )
 from app.keyboards.common import options_keyboard
 from app.keyboards.leader import leader_panel_keyboard
+from app.services import leader_service
 from app.services.ai_service import AIService, AIUnavailableError
 from app.services.audit_service import audit
 from app.services.notification_service import notify_admins
@@ -36,14 +33,12 @@ from app.states.event import EventStates
 from app.states.task import BroadcastStates, ProposalStates, ReportStates, TaskStates
 from app.utils import texts
 from app.utils.constants import (
-    ApplicationStatus,
     EVENT_STATUS_LABELS,
     EventStatus,
     PRIVILEGED_ROLES,
     PROJECT_STATUS_LABELS,
     STATUS_LABELS,
     TASK_STATUS_LABELS,
-    Role,
 )
 from app.utils.telegram import send_long_text
 from app.utils.validators import clean_text, parse_date, parse_time
@@ -61,13 +56,6 @@ async def _guard(event: Message | CallbackQuery, user: User | None) -> bool:
         await message.answer(texts.NO_ACCESS)
         return False
     return True
-
-
-def _scope_ids(user: User) -> tuple[set[int], set[int]]:
-    return (
-        {item.department_id for item in user.departments},
-        {item.direction_id for item in user.directions},
-    )
 
 
 @router.message(Command("leader"))
@@ -111,27 +99,7 @@ async def leader_participants(
 ) -> None:
     if not await _guard(call, user):
         return
-    if user.role == Role.ADMIN:
-        query = select(User).where(
-            User.application_status == ApplicationStatus.APPROVED
-        )
-    else:
-        department_ids, direction_ids = _scope_ids(user)
-        query = (
-            select(User)
-            .outerjoin(UserDepartment)
-            .outerjoin(UserDirection)
-            .where(
-                User.application_status == ApplicationStatus.APPROVED,
-                or_(
-                    UserDepartment.department_id.in_(department_ids or {-1}),
-                    UserDirection.direction_id.in_(direction_ids or {-1}),
-                ),
-            )
-        )
-    participants = (
-        (await session.scalars(query.order_by(User.first_name))).unique().all()
-    )
+    participants = await leader_service.list_scope_participants(session, user)
     body = (
         "\n".join(
             f"• {item.first_name} {item.last_name or ''} — "
@@ -149,19 +117,7 @@ async def leader_events(
 ) -> None:
     if not await _guard(call, user):
         return
-    query = select(Event)
-    if user.role != Role.ADMIN:
-        department_ids, direction_ids = _scope_ids(user)
-        query = query.where(
-            or_(
-                Event.department_id.in_(department_ids or {-1}),
-                Event.direction_id.in_(direction_ids or {-1}),
-                Event.created_by == user.id,
-            )
-        )
-    events = (
-        await session.scalars(query.order_by(Event.event_date.desc()).limit(30))
-    ).all()
+    events = await leader_service.list_scope_events(session, user)
     body = (
         "\n".join(
             f"• #{x.id} {x.title} — {EVENT_STATUS_LABELS.get(x.status, 'Статус уточняется')}"
@@ -423,18 +379,7 @@ async def leader_projects(
 ) -> None:
     if not await _guard(call, user):
         return
-    query = select(Project)
-    if user.role != Role.ADMIN:
-        department_ids, direction_ids = _scope_ids(user)
-        query = query.where(
-            or_(
-                Project.department_id.in_(department_ids or {-1}),
-                Project.direction_id.in_(direction_ids or {-1}),
-            )
-        )
-    projects = (
-        await session.scalars(query.order_by(Project.created_at.desc()).limit(30))
-    ).all()
+    projects = await leader_service.list_scope_projects(session, user)
     body = (
         "\n".join(
             f"• #{x.id} {x.title} — {PROJECT_STATUS_LABELS.get(x.status, 'Статус уточняется')}"
@@ -550,31 +495,20 @@ async def task_finish(
         await message.answer("Укажите число от 0 до 1000.")
         return
     data = await state.get_data()
-    task = Task(
+    assignee = await session.get(User, data["task_assignee_id"])
+    if assignee is None:
+        await state.clear()
+        await message.answer("Участник не найден — начните заново.")
+        return
+    await leader_service.create_assigned_task(
+        session,
+        creator=user,
+        assignee=assignee,
         title=data["task_title"],
         description=data["task_description"],
-        assignee_id=data["task_assignee_id"],
-        creator_id=user.id,
         deadline=data["task_deadline"],
         points=points,
-    )
-    session.add(task)
-    await session.flush()
-    target = await session.get(User, task.assignee_id)
-    if target:
-        from app.services.notification_service import safe_send
-
-        await safe_send(
-            bot,
-            target.telegram_id,
-            f"У Вас новая задача ЭРА.\n\n{task.title}\n{task.description}\n\nДедлайн: {task.deadline:%d.%m.%Y %H:%M}",
-        )
-    await audit(
-        session,
-        actor_id=user.id,
-        action="task.created",
-        entity_type="task",
-        entity_id=task.id,
+        bot=bot,
     )
     await state.clear()
     await message.answer("Задача создана и отправлена исполнителю.")
@@ -586,14 +520,7 @@ async def leader_tasks(
 ) -> None:
     if not await _guard(call, user):
         return
-    tasks = (
-        await session.scalars(
-            select(Task)
-            .where(Task.creator_id == user.id)
-            .order_by(Task.deadline)
-            .limit(30)
-        )
-    ).all()
+    tasks = await leader_service.list_created_tasks(session, user)
     body = (
         "\n".join(
             f"• #{x.id} {x.title} — {TASK_STATUS_LABELS.get(x.status, 'Статус уточняется')}"
@@ -810,7 +737,7 @@ async def leader_broadcast_finish(
     if not value:
         await message.answer(texts.INVALID_INPUT)
         return
-    department_ids, direction_ids = _scope_ids(user)
+    department_ids, direction_ids = leader_service.scope_ids(user)
     item = Broadcast(
         title="Рассылка лидера",
         text=value,
