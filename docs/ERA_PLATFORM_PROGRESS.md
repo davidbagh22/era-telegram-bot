@@ -6,15 +6,18 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `05a04eaa7c1f7b95b2e76586bc09f986857d48cd`
-  (PR #115 merge: Project Workspace API/service actions).
+- Current `main` commit: `7900a0ec3878e888bb6acfe41b044af6e04b626c`
+  (PR #116 merge: Project Workspace Mini App UI).
+- PR #116 merge commit:
+  `7900a0ec3878e888bb6acfe41b044af6e04b626c`.
 - PR #115 merge commit:
   `05a04eaa7c1f7b95b2e76586bc09f986857d48cd`.
 - PR #114 merge commit:
   `ba8ff8c0052259dc4325548dac2053d8db0b271d`.
 - PR #113 merge commit:
   `5218911a35f5f6b5e2d1cff23f8e51d641ca3375`.
-- Previous: `ba8ff8c0052259dc4325548dac2053d8db0b271d` (PR #114 merge),
+- Previous: `05a04eaa7c1f7b95b2e76586bc09f986857d48cd` (PR #115 merge),
+  `ba8ff8c0052259dc4325548dac2053d8db0b271d` (PR #114 merge),
   `d983849385b5a14dd271c9ec4d7635ec2d2e7e66`
   (progress doc update after PR #113 merge),
   `edc173035aec2ee6235af4441f0bc926009c1168` (PR #112 merge),
@@ -538,10 +541,12 @@ Checks so far:
 - `git diff --check` — passed.
 - `python -m pytest` — 336 passed, 1 existing FastAPI/TestClient warning.
 
-### PR 5 — Project Workspace UI (ready in PR #116)
+### PR 5 — Project Workspace UI (merged)
 
 Branch: `pr5-project-workspace-ui`. PR:
-[#116](https://github.com/davidbagh22/era-telegram-bot/pull/116).
+[#116](https://github.com/davidbagh22/era-telegram-bot/pull/116). Merge
+commit: `7900a0ec3878e888bb6acfe41b044af6e04b626c`. Both CI checks green
+before merge.
 
 Scope in this block:
 
@@ -565,9 +570,8 @@ Checks so far:
 
 ## Progress vs. the 12-PR plan
 
-- Completed: 4 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
-  hotfix; PR 2; PR 3; PR 4), plus PR 5 foundation merged in PR #114 and
-  Project Workspace API/service actions merged in PR #115.
-- Current stage: PR 5 — Project Workspace UI in progress.
-- Next stage after PR 5: PR 6 — Opportunities + applications +
-  recommendations.
+- Completed: 5 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
+  hotfix; PR 2; PR 3; PR 4; PR 5 Project Workspace, delivered through
+  PR #114, PR #115 and PR #116).
+- Current stage: PR 6 — Opportunities + applications + recommendations.
+- Next stage after PR 6: PR 7 — Admin Mode + moderation dashboards.
