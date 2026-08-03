@@ -615,14 +615,80 @@ before merge.
 reasoning as PR 3's task-decline gap: no such participant-initiated rule
 exists anywhere in the bot today, so nothing was invented for it here.
 
-**Next block:** PR 7 — Admin Mode + moderation dashboards (per the updated
-plan order; supersedes the original "Profile + Portfolio" PR 7 slot from
-the initial 12-PR sketch — Admin Mode was reprioritized after PR 5).
+### PR 7 — Admin Mode + moderation dashboards
+
+- Extracted three pieces of existing bot admin logic into services before
+  building the API — same pattern as every prior PR:
+  - `app/services/admin_dashboard_service.py`: `dashboard_metrics()` and
+    `has_dashboard_access()`, moved out of
+    `app/handlers/admin/dashboard_block_a.py`'s private `_metrics()` /
+    `_is_admin()`. Preserves the existing rule exactly — **any** active
+    permission grant unlocks the dashboard, not just the admin role.
+  - `app/services/application_review_service.py` gained
+    `request_more_info()` (the "needs info" transition), matching the
+    already-existing `approve_application()` / `reject_application()` in
+    that same file — `app/handlers/admin/panel.py`'s inline
+    `NEEDS_INFO` assignment now calls it, gaining an audit trail it didn't
+    have before.
+  - `app/services/project_workflow_service.py` gained `decide_project()`
+    and `list_projects_for_review()`, moved out of
+    `app/handlers/admin/projects_block5_decision.py`'s `decision_finish()`
+    — all 5 decisions (`initial_accept`/`venue_approve`/`revise`/
+    `postpone`/`reject`), including the `old_status != APPROVED` guard
+    that stops points/portfolio credit from being awarded twice on
+    re-approval. The Bot handler's permission check was also consolidated
+    onto `project_workspace_service.can_review_projects()` (PR 5's
+    function) instead of a fourth copy of the same admin-or-permission
+    check.
+  - All three refactors verified behavior-preserving against the full
+    suite before any new code was added.
+- New `GET/POST /api/v1/admin/*`: `/dashboard` (same metrics as the Bot
+  panel), `/applications` + approve/reject/request-info (registration
+  review — approval sends the **identical** notification sequence the Bot
+  sends: main menu message, community rules, `sync_user_chat_access()`,
+  via the shared `aiogram.Bot` instance), `/projects` + `/decide` (project
+  moderation queue, using the exact same 5 actions and notification text
+  as the Bot).
+- Permission model: `/dashboard` and `/applications/*` require
+  `has_dashboard_access()` (admin role, admin ID, or any active
+  permission — matches the Bot); `/projects/*` requires
+  `can_review_projects()` (admin or the specific `projects.review` grant —
+  narrower, matches the Bot's project-review gate exactly).
+- Frontend: `AdminScreen` (3 tabs: Дашборд/Заявки/Проекты) now renders by
+  default in Admin Mode, replacing the PR 1 placeholder that showed the
+  participant `HomeScreen` to admins. The existing `#/admin/projects/{id}`
+  deep link still takes priority and opens that exact project, unchanged
+  from PR 5.
+- Tests: `tests/test_admin_dashboard_service.py`,
+  `tests/test_application_review_service.py`,
+  `tests/test_project_moderation.py` (integration, real
+  `sqlite+aiosqlite`), `tests/test_admin_api.py` (routes, dependency
+  overrides). Full suite: 392 passed via `pytest -q`, 307 via
+  `python -m unittest discover -s tests` (matches CI), 0 regressions.
+  Verified in a real browser against an extended local mock server (not
+  committed): all 3 admin tabs render, approve/decide actions POST
+  correctly.
+- No migrations — no new tables needed. This block was pure service
+  extraction + API + UI on top of the existing schema.
+
+**Known limitation:** Admin Mode in this PR covers only the dashboard,
+registration applications, and project moderation — not the full Admin
+suite from the original brief (Events/Tasks/Opportunities/Partners
+content management, Points/Achievements, Communications, Surveys). Those
+stay Bot-only for now, per the brief's own phasing (originally PR 9/10,
+now folded into later blocks after this narrower "moderation dashboards"
+slot).
+
+**Next block:** PR 8 — continuing the Admin/Leader Mode buildout, or
+Profile + Portfolio (whichever the next session's brief specifies first —
+check for updated instructions before assuming).
 
 ## Progress vs. the 12-PR plan
 
-- Completed: 6 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
+- Completed: 7 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
   hotfix; PR 2; PR 3; PR 4; PR 5 Project Workspace, delivered through
-  PR #114, PR #115 and PR #116; PR 6 Opportunities).
-- Current stage: PR 7 — Admin Mode + moderation dashboards.
+  PR #114, PR #115 and PR #116; PR 6 Opportunities; PR 7 Admin Mode
+  foundation).
+- Current stage: PR 8 (scope to be confirmed at the start of the next
+  session — see known limitation above).
 - Next stage after PR 6: PR 7 — Admin Mode + moderation dashboards.

@@ -79,3 +79,29 @@ async def reject_application(
         new_value={"application_status": target.application_status, "comment": comment},
     )
     return ApplicationDecision(True, "rejected", old, target.application_status)
+
+
+async def request_more_info(
+    session: AsyncSession,
+    target: User,
+    *,
+    actor_id: int | None,
+    comment: str,
+) -> ApplicationDecision:
+    if target.application_status == ApplicationStatus.APPROVED:
+        return ApplicationDecision(False, "already_approved", target.application_status, target.application_status)
+    if target.application_status == ApplicationStatus.REJECTED:
+        return ApplicationDecision(False, "already_rejected", target.application_status, target.application_status)
+
+    old = target.application_status
+    target.application_status = ApplicationStatus.NEEDS_INFO
+    await audit(
+        session,
+        actor_id=actor_id,
+        action="user.needs_info",
+        entity_type="user",
+        entity_id=target.id,
+        old_value={"application_status": old},
+        new_value={"application_status": target.application_status, "comment": comment},
+    )
+    return ApplicationDecision(True, "needs_info", old, target.application_status)

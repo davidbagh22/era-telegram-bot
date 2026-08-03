@@ -7,6 +7,12 @@ import type {
   TaskScope,
 } from "../types/activity";
 import type { ApiErrorBody, MiniAppAuthResponse, MiniAppUserSummary } from "../types/auth";
+import type {
+  DashboardData,
+  PendingApplication,
+  ProjectDecisionAction,
+  ProjectForModeration,
+} from "../types/admin";
 import type { HomeSnapshot } from "../types/home";
 import type { Opportunity, OpportunityScope } from "../types/opportunity";
 import type {
@@ -331,6 +337,49 @@ export function saveOpportunity(offerId: number): Promise<Opportunity> {
 
 export function unsaveOpportunity(offerId: number): Promise<Opportunity> {
   return authorizedPost<Opportunity>(`/api/v1/opportunities/${offerId}/unsave`);
+}
+
+export function fetchAdminDashboard(): Promise<DashboardData> {
+  return authorizedGet<DashboardData>("/api/v1/admin/dashboard");
+}
+
+export function fetchAdminApplications(): Promise<PendingApplication[]> {
+  return authorizedGet<PendingApplication[]>("/api/v1/admin/applications");
+}
+
+export function approveApplication(userId: number): Promise<PendingApplication> {
+  return authorizedPost<PendingApplication>(`/api/v1/admin/applications/${userId}/approve`);
+}
+
+export function rejectApplication(userId: number, comment: string): Promise<PendingApplication> {
+  return authorizedPost<PendingApplication>(`/api/v1/admin/applications/${userId}/reject`, {
+    comment,
+  });
+}
+
+export function requestApplicationInfo(
+  userId: number,
+  comment: string,
+): Promise<PendingApplication> {
+  return authorizedPost<PendingApplication>(
+    `/api/v1/admin/applications/${userId}/request-info`,
+    { comment },
+  );
+}
+
+export function fetchAdminProjects(): Promise<ProjectForModeration[]> {
+  return authorizedGet<ProjectForModeration[]>("/api/v1/admin/projects");
+}
+
+export function decideProject(
+  projectId: number,
+  action: ProjectDecisionAction,
+  comment: string,
+): Promise<ProjectForModeration> {
+  return authorizedPost<ProjectForModeration>(`/api/v1/admin/projects/${projectId}/decide`, {
+    action,
+    comment,
+  });
 }
 
 export function hasSession(): boolean {

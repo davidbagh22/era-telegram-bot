@@ -4,6 +4,7 @@ import { useAuth } from "../hooks/useAuth";
 import { AdminLayout } from "../layouts/AdminLayout";
 import { LeaderLayout } from "../layouts/LeaderLayout";
 import { UserLayout } from "../layouts/UserLayout";
+import { AdminScreen } from "../screens/AdminScreen";
 import { ActivityScreen } from "../screens/ActivityScreen";
 import { AuthErrorScreen } from "../screens/AuthErrorScreen";
 import { BlockedScreen } from "../screens/BlockedScreen";
@@ -76,7 +77,7 @@ export function App() {
   if (user.is_admin) {
     return (
       <AdminLayout>
-        {initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <HomeScreen user={user} />}
+        {initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <AdminScreen />}
       </AdminLayout>
     );
   }

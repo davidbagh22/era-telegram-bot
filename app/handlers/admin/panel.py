@@ -71,7 +71,11 @@ from app.keyboards.admin import (
 )
 from app.keyboards.participant import main_menu
 from app.services.admin_user_card import send_admin_user_card
-from app.services.application_review_service import approve_application, reject_application
+from app.services.application_review_service import (
+    approve_application,
+    reject_application,
+    request_more_info,
+)
 from app.services.audit_service import audit
 from app.services.chat_access_service import sync_user_chat_access
 from app.services.event_service import can_change_event_status
@@ -1245,7 +1249,12 @@ async def review_comment(
                     return
                 await safe_send(bot, target.telegram_id, f"{texts.APPLICATION_REJECTED}\n\nКомментарий: {comment}")
             else:
-                target.application_status = ApplicationStatus.NEEDS_INFO
+                await request_more_info(
+                    session,
+                    target,
+                    actor_id=user.id if user else None,
+                    comment=comment,
+                )
                 await safe_send(bot, target.telegram_id, texts.APPLICATION_NEEDS_INFO.format(comment=comment))
     elif kind == "proof":
         proof = await session.get(AttendanceProof, entity_id)
