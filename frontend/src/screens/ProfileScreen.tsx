@@ -88,7 +88,7 @@ export function ProfileScreen() {
   const { data } = state;
 
   return (
-    <div style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
       <div>
         <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.375rem", margin: 0 }}>
           {data.full_name || data.first_name}
@@ -123,7 +123,12 @@ export function ProfileScreen() {
       )}
 
       <div>
-        <button type="button" disabled={downloading} onClick={handleDownloadResume}>
+        <button
+          type="button"
+          className="era-btn-primary"
+          disabled={downloading}
+          onClick={handleDownloadResume}
+        >
           {downloading ? "Формируем PDF…" : "Скачать резюме PDF"}
         </button>
         {downloadError && (

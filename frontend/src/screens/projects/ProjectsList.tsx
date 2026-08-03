@@ -57,7 +57,7 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
                 color: "var(--era-text)",
               }}
             />
-            <button type="button" disabled={creating} onClick={handleCreate}>
+            <button type="button" className="era-btn-primary" disabled={creating} onClick={handleCreate}>
               Создать черновик
             </button>
           </div>

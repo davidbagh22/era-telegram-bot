@@ -104,6 +104,7 @@ export function AdminApplicationsScreen() {
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <button
               type="button"
+              className="era-btn-primary"
               disabled={busyId === application.id}
               onClick={() => handleApprove(application.id)}
             >

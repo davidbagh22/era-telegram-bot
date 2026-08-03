@@ -47,12 +47,16 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
               flexDirection: "column",
               alignItems: "center",
               gap: "0.125rem",
+              minHeight: "auto",
               background: "none",
               border: "none",
               color,
               fontFamily: "var(--era-font-body)",
               fontSize: "0.6875rem",
+              fontWeight: isActive ? 700 : 500,
               padding: "0.25rem 0.5rem",
+              transform: isActive ? "translateY(-2px) scale(1.08)" : "translateY(0) scale(1)",
+              transition: "transform var(--era-motion-fast), color var(--era-motion-fast)",
             }}
           >
             <Icon />

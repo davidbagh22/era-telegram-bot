@@ -48,7 +48,12 @@ export function TasksTab() {
               До {new Date(task.deadline).toLocaleDateString("ru-RU")} · {task.points} баллов
             </p>
             {scope === "available" && !task.is_joined_or_assigned && (
-              <button type="button" disabled={pendingId === task.id} onClick={() => handleClaim(task.id)}>
+              <button
+                type="button"
+                className="era-btn-primary"
+                disabled={pendingId === task.id}
+                onClick={() => handleClaim(task.id)}
+              >
                 Хочу помочь
               </button>
             )}

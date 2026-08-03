@@ -16,13 +16,17 @@ export function PillTabs<T extends string>({ options, active, onChange }: PillTa
             onClick={() => onChange(option.value)}
             style={{
               flexShrink: 0,
+              minHeight: "auto",
               padding: "0.375rem 0.75rem",
               borderRadius: "999px",
               border: isActive ? "1px solid var(--era-red)" : "1px solid var(--era-border)",
-              background: isActive ? "var(--era-red)" : "transparent",
+              background: isActive ? "var(--era-gradient)" : "transparent",
               color: isActive ? "#fff" : "var(--era-text)",
               fontSize: "0.8125rem",
+              fontWeight: isActive ? 700 : 500,
               fontFamily: "var(--era-font-body)",
+              transform: isActive ? "scale(1.04)" : "scale(1)",
+              transition: "transform var(--era-motion-fast), background var(--era-motion-fast), color var(--era-motion-fast), border-color var(--era-motion-fast)",
             }}
           >
             {option.label}

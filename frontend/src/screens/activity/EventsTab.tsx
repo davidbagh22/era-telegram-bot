@@ -84,7 +84,12 @@ export function EventsTab() {
                     Планы изменились
                   </button>
                 ) : (
-                  <button type="button" disabled={pendingId === event.id} onClick={() => handleRegister(event.id)}>
+                  <button
+                    type="button"
+                    className="era-btn-primary"
+                    disabled={pendingId === event.id}
+                    onClick={() => handleRegister(event.id)}
+                  >
                     Зарегистрироваться
                   </button>
                 ))}

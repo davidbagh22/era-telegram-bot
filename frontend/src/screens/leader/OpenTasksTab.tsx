@@ -191,6 +191,7 @@ export function OpenTasksTab() {
                         <div style={{ display: "flex", gap: "0.375rem" }}>
                           <button
                             type="button"
+                            className="era-btn-primary"
                             disabled={pendingKey === key}
                             onClick={() => handleDecide(task.id, application.user_id, "accept")}
                           >

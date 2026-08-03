@@ -33,7 +33,7 @@ export function HomeScreen({ user }: HomeScreenProps) {
   const { data } = home;
 
   return (
-    <div style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
       <div>
         <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.375rem", margin: 0 }}>
           Привет, {user.first_name}

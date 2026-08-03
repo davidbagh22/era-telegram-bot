@@ -818,6 +818,48 @@ Communications/Surveys) or the leader actions deferred above, per the
 known limitations in PR 7, PR 8 and PR 9 — confirm against any updated
 brief before starting.
 
+### Design polish pass (frontend-only, merged)
+
+Branch: `era-platform-design-polish`. See PR link and merge commit
+recorded in the follow-up progress-doc-only commit once merged. Not a
+numbered block from the 12-PR plan — a cross-cutting visual pass across
+every screen built so far, requested directly ("красивый динамичный
+дизайн").
+
+- `frontend/index.html` now actually loads Unbounded (headings) and
+  Golos Text (body) from Google Fonts — the design system spec named
+  these fonts since PR 2, but no `<link>` ever loaded them, so every
+  screen was silently rendering in the system-font fallback until now.
+- `frontend/src/theme/tokens.css`: a default `button` style (rounded,
+  44px touch target, bordered surface, hover/press/disabled/
+  focus-visible states, smooth transitions) now applies automatically to
+  every plain `<button>` that had no inline style — this covered most of
+  the app (Opportunities, Activity, Profile, Leader open tasks, Admin
+  applications/projects decisions, Projects create/submit). Buttons that
+  already set inline styles (`ProjectWorkspace`, the open-task publish
+  button) are untouched, since inline style always wins over the CSS
+  element selector — verified no visual regression there. A new
+  `.era-btn-primary` class (ERA gradient, white text) was added by hand
+  to the one highest-emphasis action per screen (Подать заявку, Хочу
+  помочь, Зарегистрироваться, Скачать резюме PDF, Одобрить, Принять,
+  Создать черновик, Отправить на рассмотрение) so visual weight matches
+  how important each action actually is, rather than every button
+  looking the same. `.era-card` adds a hover lift + shadow to every
+  `Card`, and a `.era-page` fade-in-up animation now plays when each
+  screen mounts.
+- `PillTabs` and `BottomNavigation` active states now animate (scale +
+  gradient / scale + color) instead of snapping instantly.
+- Verified in a real browser (mobile viewport) against a temporary local
+  mock server: fonts load (`document.fonts` reports both `loaded`),
+  `.era-btn-primary` renders the gradient/white-text CTA look, plain
+  buttons render the new bordered look, active pill tabs get the
+  gradient + scale, `.era-page` fade-in fires on tab switches — captured
+  screenshots of Home and Activity confirming the look. Backend suite
+  (416 tests) re-run untouched to confirm this was a frontend-only
+  change; `frontend/.env.local` and the mock server removed afterward.
+- No backend/API/database changes, no new dependencies (fonts are
+  loaded from Google Fonts CDN, not bundled).
+
 ## Progress vs. the 12-PR plan
 
 - Completed: 9 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +

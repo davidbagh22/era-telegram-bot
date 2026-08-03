@@ -16,7 +16,7 @@ export function AdminScreen() {
   const [section, setSection] = useState<AdminSection>("dashboard");
 
   return (
-    <div style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
       <PillTabs options={SECTIONS} active={section} onChange={setSection} />
       {section === "dashboard" && <AdminDashboardScreen />}
       {section === "applications" && <AdminApplicationsScreen />}
