@@ -689,12 +689,66 @@ slot).
 Profile + Portfolio (whichever the next session's brief specifies first —
 check for updated instructions before assuming).
 
+### PR 8 — Profile + Portfolio + Growth + resume PDF (merged)
+
+Branch: `era-platform-pr8-profile-portfolio`. See PR link and merge commit
+recorded in the follow-up progress-doc-only commit once merged.
+
+- No new service needed — the portfolio aggregation
+  (`app/services/portfolio_service.py::build_portfolio_data`) and PDF
+  export (`app/services/resume_service.py::build_era_resume`) already
+  existed from the Bot's own `/portfolio` flow and are reused verbatim by
+  the API; `app/services/growth_service.py::growth_progress_for` (PR 2)
+  is reused unmodified for the Growth Level shown on this screen.
+- New `GET /api/v1/profile` (identity + Growth Level + the full portfolio:
+  projects, events, tasks, volunteer, leadership, badges, certificates,
+  recommendations, stats) and `GET /api/v1/profile/resume.pdf` (same PDF
+  bytes the Bot sends, returned as `application/pdf` with a
+  `Content-Disposition: attachment` header) in `app/api/v1/profile.py`.
+  Both require a valid session (`get_current_user`); no separate
+  permission check needed since a user's own portfolio is always
+  self-viewable, matching the Bot's `/portfolio` command.
+- Frontend: `ProfileScreen` replaces the "Профиль" bottom-nav placeholder
+  that had been open since PR 2 — this was the last remaining
+  `COMING_SOON_TITLES` gap, closing it fully. Shows the Growth Level
+  progress bar (reusing the PR 2 `ProgressBar` component), a stats grid
+  (`MetricCard` per stat), departments/directions, a "Скачать резюме PDF"
+  button (fetches the PDF as a `Blob` with the Authorization header via
+  `downloadResumePdf()` in `api/client.ts`, then triggers a client-side
+  download — a plain `<a href>` can't carry the bearer token), and one
+  section per non-empty portfolio category.
+- Tests: `tests/test_profile_api.py` (route shape, PDF content-type/
+  `Content-Disposition`, 401 without a token — dependency-override
+  pattern matching `tests/test_home_api.py`, including overriding
+  `get_settings` so the real `get_current_user` dependency chain
+  resolves instead of hitting `Settings()` validation). Full suite:
+  395 passed via `pytest -q`, 310 via `python -m unittest discover -s
+  tests` (matches CI), 0 regressions. Verified in a real browser
+  (mobile viewport) against a temporary local mock server (not
+  committed): stats, portfolio sections and the resume download request
+  all render/fire correctly; `frontend/.env.local` and the mock server
+  were removed after verification.
+- No migrations — pure read-only aggregation on top of the existing
+  schema.
+
+**Known limitation:** Profile/Portfolio is read-only in the Mini App for
+now (no in-app editing of profile fields like city/occupation/skills —
+that still goes through the Bot's existing edit flow). Achievements
+(`badges`) display whatever the Bot has already awarded; no new
+badge-granting logic was added in this block.
+
+**Next block:** PR 9 per the 12-PR plan — next candidate is Leader Mode
+or the remaining Admin content-management surfaces (Events/Tasks/
+Opportunities/Partners/Communications/Surveys), per the "Final product
+decision" and known limitations recorded in PR 7 above — confirm against
+any updated brief before starting.
+
 ## Progress vs. the 12-PR plan
 
-- Completed: 7 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
+- Completed: 8 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
   hotfix; PR 2; PR 3; PR 4; PR 5 Project Workspace, delivered through
   PR #114, PR #115 and PR #116; PR 6 Opportunities; PR 7 Admin Mode
-  foundation).
-- Current stage: PR 8 (scope to be confirmed at the start of the next
-  session — see known limitation above).
+  foundation; PR 8 Profile + Portfolio).
+- Current stage: PR 9 (scope to be confirmed at the start of the next
+  session — see known limitations in PR 7 and PR 8 above).
 - Next stage after PR 6: PR 7 — Admin Mode + moderation dashboards.

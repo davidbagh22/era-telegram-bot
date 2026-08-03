@@ -11,16 +11,9 @@ import { BlockedScreen } from "../screens/BlockedScreen";
 import { HomeScreen } from "../screens/HomeScreen";
 import { OpportunitiesScreen } from "../screens/OpportunitiesScreen";
 import { PendingScreen } from "../screens/PendingScreen";
+import { ProfileScreen } from "../screens/ProfileScreen";
 import { ProjectsScreen } from "../screens/ProjectsScreen";
-import { StatusBanner } from "../components/StatusBanner";
 import type { MiniAppUserSummary } from "../types/auth";
-
-const COMING_SOON_TITLES: Record<
-  Exclude<TabKey, "home" | "activity" | "projects" | "opportunities">,
-  string
-> = {
-  profile: "Профиль",
-};
 
 function projectIdFromHash(): number | null {
   const match = window.location.hash.match(/^#\/(?:admin\/)?projects\/(\d+)/);
@@ -44,12 +37,7 @@ function renderTab(tab: TabKey, user: MiniAppUserSummary, initialProjectId: numb
   if (tab === "opportunities") {
     return <OpportunitiesScreen />;
   }
-  return (
-    <StatusBanner
-      title={COMING_SOON_TITLES[tab]}
-      description="Этот раздел появится в одном из следующих обновлений ЭРА."
-    />
-  );
+  return <ProfileScreen />;
 }
 
 export function App() {
