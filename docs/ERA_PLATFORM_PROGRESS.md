@@ -538,9 +538,10 @@ Checks so far:
 - `git diff --check` — passed.
 - `python -m pytest` — 336 passed, 1 existing FastAPI/TestClient warning.
 
-### PR 5 — Project Workspace UI (in progress)
+### PR 5 — Project Workspace UI (ready in PR #116)
 
-Branch: `pr5-project-workspace-ui`. PR: pending.
+Branch: `pr5-project-workspace-ui`. PR:
+[#116](https://github.com/davidbagh22/era-telegram-bot/pull/116).
 
 Scope in this block:
 
