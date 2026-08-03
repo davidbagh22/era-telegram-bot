@@ -6,9 +6,9 @@ import { StatusBadge } from "../../components/StatusBadge";
 import { useAsync } from "../../hooks/useAsync";
 import type { ProjectDecisionAction } from "../../types/admin";
 
-const DECISIONS: { action: ProjectDecisionAction; label: string }[] = [
-  { action: "initial_accept", label: "Принять в работу" },
-  { action: "venue_approve", label: "Одобрить" },
+const DECISIONS: { action: ProjectDecisionAction; label: string; primary?: boolean }[] = [
+  { action: "initial_accept", label: "Принять в работу", primary: true },
+  { action: "venue_approve", label: "Одобрить", primary: true },
   { action: "revise", label: "На доработку" },
   { action: "postpone", label: "Перенести" },
   { action: "reject", label: "Отклонить" },
@@ -77,10 +77,11 @@ export function AdminProjectsScreen() {
             }}
           />
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            {DECISIONS.map(({ action, label }) => (
+            {DECISIONS.map(({ action, label, primary }) => (
               <button
                 key={action}
                 type="button"
+                className={primary ? "era-btn-primary" : undefined}
                 disabled={busyId === project.id}
                 onClick={() => handleDecide(project.id, action)}
               >

@@ -1,6 +1,7 @@
-/* ERA brand tokens. Unbounded/Golos Text are not bundled yet (no font
-   assets in the repo) — the stack below falls back to system fonts until
-   the real font files are added. See docs/ERA_PLATFORM_PROGRESS.md. */
+/* ERA brand tokens. Unbounded/Golos Text load from Google Fonts via a
+   <link> in index.html — the stack below falls back to system fonts only
+   while that request is in flight or blocked. See
+   docs/ERA_PLATFORM_PROGRESS.md. */
 :root {
   --era-red: #e52b24;
   --era-violet: #742cc4;
@@ -17,7 +18,11 @@
   --era-warning: #c77a00;
   --era-error: #d92d20;
   --era-shadow-soft: 0 8px 28px rgba(43, 22, 54, 0.06);
+  --era-shadow-lift: 0 12px 32px rgba(43, 22, 54, 0.12);
   --era-radius-card: 20px;
+  --era-radius-control: 0.875rem;
+  --era-motion-fast: 0.15s ease;
+  --era-motion: 0.25s ease;
 
   --era-font-display: "Unbounded", "Segoe UI", system-ui, sans-serif;
   --era-font-body: "Golos Text", "Segoe UI", system-ui, sans-serif;
@@ -32,4 +37,86 @@ body {
   background: var(--era-bg);
   color: var(--era-text);
   font-family: var(--era-font-body);
+}
+
+/* Default look for every plain <button> in the app. Components that set
+   their own inline `style` (ProjectWorkspace, LeaderScreen's publish
+   button, etc.) override this via normal CSS-vs-inline precedence, so
+   this only upgrades buttons that were previously unstyled browser
+   defaults. */
+button {
+  font-family: var(--era-font-body);
+  font-size: 0.875rem;
+  font-weight: 600;
+  min-height: 2.75rem;
+  padding: 0.625rem 1rem;
+  border-radius: var(--era-radius-control);
+  border: 1px solid var(--era-border);
+  background: var(--era-surface);
+  color: var(--era-text);
+  cursor: pointer;
+  transition:
+    transform var(--era-motion-fast),
+    box-shadow var(--era-motion-fast),
+    background var(--era-motion-fast),
+    border-color var(--era-motion-fast),
+    opacity var(--era-motion-fast);
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--era-violet);
+  box-shadow: var(--era-shadow-soft);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--era-violet);
+  outline-offset: 2px;
+}
+
+/* Applied to the highest-emphasis call-to-action per screen (submit,
+   approve, register, download) so visual weight matches how often and
+   how important the action actually is — not every button should shout. */
+.era-btn-primary {
+  border: none;
+  background: var(--era-gradient);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(116, 44, 196, 0.25);
+}
+
+.era-btn-primary:hover:not(:disabled) {
+  box-shadow: 0 8px 24px rgba(116, 44, 196, 0.35);
+  border-color: transparent;
+}
+
+.era-card {
+  transition: box-shadow var(--era-motion), transform var(--era-motion);
+}
+
+.era-card:hover {
+  box-shadow: var(--era-shadow-lift);
+  transform: translateY(-2px);
+}
+
+@keyframes era-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.era-page {
+  animation: era-fade-in var(--era-motion);
 }

@@ -11,6 +11,7 @@ interface CardProps {
 export function Card({ children, gradient = false, style }: CardProps) {
   return (
     <div
+      className="era-card"
       style={{
         borderRadius: "var(--era-radius-card)",
         padding: "1rem",

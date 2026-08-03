@@ -157,7 +157,7 @@ export function ProjectDetail({ projectId, initialTab = "form", onBack }: Projec
           )}
 
           {project.can_submit && (
-            <button type="button" disabled={busy} onClick={handleSubmit}>
+            <button type="button" className="era-btn-primary" disabled={busy} onClick={handleSubmit}>
               Отправить на рассмотрение
             </button>
           )}

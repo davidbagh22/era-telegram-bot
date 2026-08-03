@@ -59,7 +59,7 @@ export function OpportunitiesScreen() {
   );
 
   return (
-    <div style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
       <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.375rem", margin: 0 }}>
         Возможности
       </h1>
@@ -98,7 +98,12 @@ export function OpportunitiesScreen() {
               </p>
               <div style={{ display: "flex", gap: "0.5rem" }}>
                 {!applied && (
-                  <button type="button" disabled={pendingId === offer.id} onClick={() => handleApply(offer.id)}>
+                  <button
+                    type="button"
+                    className="era-btn-primary"
+                    disabled={pendingId === offer.id}
+                    onClick={() => handleApply(offer.id)}
+                  >
                     Подать заявку
                   </button>
                 )}
