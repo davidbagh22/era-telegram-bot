@@ -18,7 +18,16 @@ const COMING_SOON_TITLES: Record<Exclude<TabKey, "home" | "activity" | "projects
   profile: "Профиль",
 };
 
-function renderTab(tab: TabKey, user: MiniAppUserSummary) {
+function projectIdFromHash(): number | null {
+  const match = window.location.hash.match(/^#\/(?:admin\/)?projects\/(\d+)/);
+  if (!match) {
+    return null;
+  }
+  const projectId = Number(match[1]);
+  return Number.isFinite(projectId) ? projectId : null;
+}
+
+function renderTab(tab: TabKey, user: MiniAppUserSummary, initialProjectId: number | null) {
   if (tab === "home") {
     return <HomeScreen user={user} />;
   }
@@ -26,7 +35,7 @@ function renderTab(tab: TabKey, user: MiniAppUserSummary) {
     return <ActivityScreen />;
   }
   if (tab === "projects") {
-    return <ProjectsScreen />;
+    return <ProjectsScreen initialProjectId={initialProjectId} />;
   }
   return (
     <StatusBanner
@@ -38,7 +47,8 @@ function renderTab(tab: TabKey, user: MiniAppUserSummary) {
 
 export function App() {
   const auth = useAuth();
-  const [activeTab, setActiveTab] = useState<TabKey>("home");
+  const initialProjectId = projectIdFromHash();
+  const [activeTab, setActiveTab] = useState<TabKey>(initialProjectId ? "projects" : "home");
 
   if (auth.status === "loading") {
     return null;
@@ -60,21 +70,21 @@ export function App() {
   if (user.is_admin) {
     return (
       <AdminLayout>
-        <HomeScreen user={user} />
+        {initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <HomeScreen user={user} />}
       </AdminLayout>
     );
   }
   if (user.is_leader) {
     return (
       <LeaderLayout>
-        <HomeScreen user={user} />
+        {initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <HomeScreen user={user} />}
       </LeaderLayout>
     );
   }
 
   return (
     <UserLayout activeTab={activeTab} onTabChange={setActiveTab}>
-      {renderTab(activeTab, user)}
+      {renderTab(activeTab, user, initialProjectId)}
     </UserLayout>
   );
 }

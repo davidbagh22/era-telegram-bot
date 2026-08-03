@@ -1,9 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ProjectDetail } from "./projects/ProjectDetail";
 import { ProjectsList } from "./projects/ProjectsList";
 
-export function ProjectsScreen() {
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+interface ProjectsScreenProps {
+  initialProjectId?: number | null;
+}
+
+export function ProjectsScreen({ initialProjectId = null }: ProjectsScreenProps) {
+  const [selectedId, setSelectedId] = useState<number | null>(initialProjectId);
+
+  useEffect(() => {
+    if (initialProjectId) {
+      setSelectedId(initialProjectId);
+    }
+  }, [initialProjectId]);
 
   return (
     <div style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -13,7 +23,11 @@ export function ProjectsScreen() {
       {selectedId === null ? (
         <ProjectsList onSelect={setSelectedId} />
       ) : (
-        <ProjectDetail projectId={selectedId} onBack={() => setSelectedId(null)} />
+        <ProjectDetail
+          projectId={selectedId}
+          initialTab={initialProjectId ? "workspace" : "form"}
+          onBack={() => setSelectedId(null)}
+        />
       )}
     </div>
   );

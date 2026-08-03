@@ -8,7 +8,19 @@ import type {
 } from "../types/activity";
 import type { ApiErrorBody, MiniAppAuthResponse, MiniAppUserSummary } from "../types/auth";
 import type { HomeSnapshot } from "../types/home";
-import type { ProjectDetail, ProjectQuestion, ProjectScope, ProjectSummary } from "../types/project";
+import type {
+  ProjectDetail,
+  ProjectEvent,
+  ProjectMember,
+  ProjectMilestone,
+  ProjectQuestion,
+  ProjectRole,
+  ProjectScope,
+  ProjectSummary,
+  ProjectTask,
+  ProjectWorkspace,
+  TeamMessageResult,
+} from "../types/project";
 
 // Empty string means "same origin as the frontend" — set VITE_API_BASE_URL
 // when the Mini App is hosted separately from the FastAPI backend.
@@ -158,6 +170,146 @@ export function submitProject(projectId: number): Promise<ProjectDetail> {
 
 export function cancelProject(projectId: number): Promise<ProjectDetail> {
   return authorizedPost<ProjectDetail>(`/api/v1/projects/${projectId}/cancel`);
+}
+
+export function fetchProjectWorkspace(projectId: number): Promise<ProjectWorkspace> {
+  return authorizedGet<ProjectWorkspace>(`/api/v1/projects/${projectId}/workspace`);
+}
+
+export function createProjectRole(
+  projectId: number,
+  payload: { title: string; description?: string; requirements?: string; capacity?: number },
+): Promise<ProjectRole> {
+  return authorizedPost<ProjectRole>(`/api/v1/projects/${projectId}/workspace/roles`, payload);
+}
+
+export function setProjectRoleStatus(
+  projectId: number,
+  roleId: number,
+  status: "open" | "closed",
+): Promise<ProjectRole> {
+  return authorizedPatch<ProjectRole>(`/api/v1/projects/${projectId}/workspace/roles/${roleId}`, {
+    status,
+  });
+}
+
+export function applyToProjectRole(
+  projectId: number,
+  payload: { role_id?: number; text?: string },
+): Promise<ProjectMember> {
+  return authorizedPost<ProjectMember>(
+    `/api/v1/projects/${projectId}/workspace/applications`,
+    payload,
+  );
+}
+
+export function approveProjectApplication(
+  projectId: number,
+  memberId: number,
+): Promise<ProjectMember> {
+  return authorizedPost<ProjectMember>(
+    `/api/v1/projects/${projectId}/workspace/applications/${memberId}/approve`,
+  );
+}
+
+export function rejectProjectApplication(
+  projectId: number,
+  memberId: number,
+): Promise<ProjectMember> {
+  return authorizedPost<ProjectMember>(
+    `/api/v1/projects/${projectId}/workspace/applications/${memberId}/reject`,
+  );
+}
+
+export function addProjectMember(
+  projectId: number,
+  payload: { user_id: number; role_id?: number },
+): Promise<ProjectMember> {
+  return authorizedPost<ProjectMember>(`/api/v1/projects/${projectId}/workspace/members`, payload);
+}
+
+export function changeProjectMemberRole(
+  projectId: number,
+  memberId: number,
+  roleId?: number,
+): Promise<ProjectMember> {
+  return authorizedPatch<ProjectMember>(
+    `/api/v1/projects/${projectId}/workspace/members/${memberId}`,
+    { role_id: roleId },
+  );
+}
+
+export function confirmProjectContribution(
+  projectId: number,
+  memberId: number,
+  payload: { summary: string; result?: string },
+): Promise<ProjectMember> {
+  return authorizedPost<ProjectMember>(
+    `/api/v1/projects/${projectId}/workspace/members/${memberId}/contribution/confirm`,
+    payload,
+  );
+}
+
+export function createProjectMilestone(
+  projectId: number,
+  payload: {
+    title: string;
+    description?: string;
+    deadline?: string;
+    responsible_id?: number;
+  },
+): Promise<ProjectMilestone> {
+  return authorizedPost<ProjectMilestone>(
+    `/api/v1/projects/${projectId}/workspace/milestones`,
+    payload,
+  );
+}
+
+export function setProjectMilestoneStatus(
+  projectId: number,
+  milestoneId: number,
+  status: "pending" | "in_progress" | "blocked" | "completed",
+): Promise<ProjectMilestone> {
+  return authorizedPatch<ProjectMilestone>(
+    `/api/v1/projects/${projectId}/workspace/milestones/${milestoneId}`,
+    { status },
+  );
+}
+
+export function createProjectTask(
+  projectId: number,
+  payload: {
+    title: string;
+    description: string;
+    deadline: string;
+    assignee_id?: number;
+    points?: number;
+  },
+): Promise<ProjectTask> {
+  return authorizedPost<ProjectTask>(`/api/v1/projects/${projectId}/workspace/tasks`, payload);
+}
+
+export function assignProjectTask(
+  projectId: number,
+  taskId: number,
+  assigneeId?: number,
+): Promise<ProjectTask> {
+  return authorizedPost<ProjectTask>(
+    `/api/v1/projects/${projectId}/workspace/tasks/${taskId}/assign`,
+    { assignee_id: assigneeId },
+  );
+}
+
+export function linkProjectEvent(projectId: number, eventId: number): Promise<ProjectEvent> {
+  return authorizedPost<ProjectEvent>(
+    `/api/v1/projects/${projectId}/workspace/events/${eventId}/link`,
+  );
+}
+
+export function messageProjectTeam(projectId: number, text: string): Promise<TeamMessageResult> {
+  return authorizedPost<TeamMessageResult>(`/api/v1/projects/${projectId}/workspace/team/message`, {
+    text,
+  });
 }
 
 export function hasSession(): boolean {

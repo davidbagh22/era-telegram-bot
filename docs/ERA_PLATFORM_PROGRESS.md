@@ -6,13 +6,16 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `ba8ff8c0052259dc4325548dac2053d8db0b271d`
-  (PR #114 merge: Project Workspace foundation).
+- Current `main` commit: `05a04eaa7c1f7b95b2e76586bc09f986857d48cd`
+  (PR #115 merge: Project Workspace API/service actions).
+- PR #115 merge commit:
+  `05a04eaa7c1f7b95b2e76586bc09f986857d48cd`.
 - PR #114 merge commit:
   `ba8ff8c0052259dc4325548dac2053d8db0b271d`.
 - PR #113 merge commit:
   `5218911a35f5f6b5e2d1cff23f8e51d641ca3375`.
-- Previous: `d983849385b5a14dd271c9ec4d7635ec2d2e7e66`
+- Previous: `ba8ff8c0052259dc4325548dac2053d8db0b271d` (PR #114 merge),
+  `d983849385b5a14dd271c9ec4d7635ec2d2e7e66`
   (progress doc update after PR #113 merge),
   `edc173035aec2ee6235af4441f0bc926009c1168` (PR #112 merge),
   `48212168f316b6b43b4f14aea913648693c12954` (PR #111 merge),
@@ -495,10 +498,12 @@ Next PR 5 block:
   milestones, task assignment by project, event linking, contribution
   confirmation, and exact Mini App deep links in project notifications.
 
-### PR 5 — Project Workspace API/service actions (ready in PR #115)
+### PR 5 — Project Workspace API/service actions (merged)
 
 Branch: `pr5-project-workspace-actions`. PR:
-[#115](https://github.com/davidbagh22/era-telegram-bot/pull/115).
+[#115](https://github.com/davidbagh22/era-telegram-bot/pull/115). Merge
+commit: `05a04eaa7c1f7b95b2e76586bc09f986857d48cd`. Both CI checks green
+before merge.
 
 Scope in this block:
 
@@ -533,10 +538,35 @@ Checks so far:
 - `git diff --check` — passed.
 - `python -m pytest` — 336 passed, 1 existing FastAPI/TestClient warning.
 
+### PR 5 — Project Workspace UI (in progress)
+
+Branch: `pr5-project-workspace-ui`. PR: pending.
+
+Scope in this block:
+
+- Mini App `ProjectDetail` now has a Workspace tab next to the existing form.
+- Workspace UI reads the real `/api/v1/projects/{project_id}/workspace`
+  snapshot and exposes the core leader actions: roles, applications,
+  members, contribution confirmation, milestones, project tasks, event
+  linking and team messages.
+- Project hash deep links like `#/projects/{id}/...` and
+  `#/admin/projects/{id}` open the Projects section directly on the target
+  project workspace, so Bot notifications do not force the user to search
+  again after opening the Mini App.
+- No mock project workspace data is used.
+
+Checks so far:
+
+- `npm.cmd run typecheck` — passed.
+- `npm.cmd run build` — passed outside sandbox after esbuild hit sandbox
+  `Access denied` while loading Vite config.
+- `git diff --check` — passed.
+
 ## Progress vs. the 12-PR plan
 
 - Completed: 4 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
-  hotfix; PR 2; PR 3; PR 4), plus PR 5 foundation merged in PR #114.
-- Current stage: PR 5 — Project Workspace API/service actions in progress.
+  hotfix; PR 2; PR 3; PR 4), plus PR 5 foundation merged in PR #114 and
+  Project Workspace API/service actions merged in PR #115.
+- Current stage: PR 5 — Project Workspace UI in progress.
 - Next stage after PR 5: PR 6 — Opportunities + applications +
   recommendations.
