@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
+from aiogram import Bot
 from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +21,14 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     session_factory = request.app.state.session_factory
     async with session_factory() as session:
         yield session
+
+
+def get_bot(request: Request) -> Bot | None:
+    """The same aiogram Bot instance the webhook uses (bot and API share one
+    process/deploy — see docs/ERA_PLATFORM_PROGRESS.md). None outside the
+    app's lifespan (e.g. in tests), so callers must handle that instead of
+    assuming a bot is always available."""
+    return getattr(request.app.state, "bot", None)
 
 
 async def get_current_user(
