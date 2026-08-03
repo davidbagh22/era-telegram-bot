@@ -568,10 +568,66 @@ Checks so far:
   `Access denied` while loading Vite config.
 - `git diff --check` — passed.
 
+### PR 6 — Opportunities + applications + recommendations
+
+- **Session-sync note**: this block started from a genuine cross-session
+  race — a parallel Claude Code session on this same repo independently
+  completed PR 5 as PR #114/#115/#116/#117 while this session was
+  mid-draft on the identical scope. Verified against actual `origin/main`
+  and `gh pr list` before continuing (not taken on faith), stashed the
+  now-superseded local draft, and resumed from the real merged state. No
+  code from that stale draft was reused.
+- Extracted `app/services/opportunity_service.py` from the existing
+  participant bot handler
+  (`app/handlers/participant/partner_offers_block16.py`) before adding the
+  API — same pattern as PR 3/PR 4/PR 5: `list_active_offers`,
+  `remaining_slots`, `apply_to_offer`, `list_my_applications`. Behavior
+  preserving, verified against the full suite before new code was added.
+  Admin approve/reject (which is where points actually get deducted) stays
+  Bot-only for now — that's Admin Mode territory (PR 7), not this block.
+- `SavedOpportunity` (`saved_opportunities` table, migration
+  `0013_saved_opportunities`) is genuinely new: no bookmark/favorite
+  mechanism existed anywhere in the bot before this. Additive, reversible,
+  smoke-tested both directions against a fresh SQLite DB
+  (`alembic upgrade head` / `alembic downgrade -1`) before being trusted.
+- Recommendations (`opportunity_service.recommended_offers`, the "Для
+  тебя" tab) use only signals that are actually computable today:
+  affordable by current points balance, has open slots, not already
+  applied. The brief's suggested reasons ("совпадает направление",
+  "подходит возраст", "подходит город") are **not implemented** —
+  `PartnerInitiative` has no department/direction/age/city columns
+  anywhere in the schema, so claiming that kind of match would be
+  fabricated data. Same honesty rule as PR 3's `for_me` event scope and
+  PR 4's project targeting.
+- New `GET/POST /api/v1/opportunities*`: 4 scopes (`for_me` = real
+  recommendations, `all`, `saved`, `mine` = own applications),
+  apply/save/unsave. Applying still only ever notifies admins (via the
+  same shared `aiogram.Bot` instance pattern from PR 4/PR 5) — it never
+  touches points, matching the Bot's existing "баллы спишутся только
+  после одобрения" rule exactly.
+- Frontend: `OpportunitiesScreen` with the 4 pill tabs, apply/save actions
+  wired to the real endpoints, recommendation reasons rendered inline.
+  Wired into the bottom nav's "Возможности" tab, replacing the coming-soon
+  placeholder from PR 2.
+- Tests: `tests/test_opportunity_service.py` (integration, real
+  `sqlite+aiosqlite`), `tests/test_opportunities_api.py` (routes,
+  dependency overrides). Full suite: 358 passed via `pytest -q`, 273 via
+  `python -m unittest discover -s tests` (matches CI), 0 regressions.
+  Verified in a real browser against an extended local mock server (not
+  committed): all 4 tabs render, apply/save actions POST correctly.
+
+**Known limitation:** no "withdraw a pending application" feature — same
+reasoning as PR 3's task-decline gap: no such participant-initiated rule
+exists anywhere in the bot today, so nothing was invented for it here.
+
+**Next block:** PR 7 — Admin Mode + moderation dashboards (per the updated
+plan order; supersedes the original "Profile + Portfolio" PR 7 slot from
+the initial 12-PR sketch — Admin Mode was reprioritized after PR 5).
+
 ## Progress vs. the 12-PR plan
 
-- Completed: 5 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
+- Completed: 6 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
   hotfix; PR 2; PR 3; PR 4; PR 5 Project Workspace, delivered through
-  PR #114, PR #115 and PR #116).
-- Current stage: PR 6 — Opportunities + applications + recommendations.
+  PR #114, PR #115 and PR #116; PR 6 Opportunities).
+- Current stage: PR 7 — Admin Mode + moderation dashboards.
 - Next stage after PR 6: PR 7 — Admin Mode + moderation dashboards.

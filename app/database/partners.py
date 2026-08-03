@@ -52,6 +52,19 @@ class PartnerOfferApplication(TimestampMixin, Base):
     admin_comment: Mapped[str | None] = mapped_column(Text)
 
 
+class SavedOpportunity(TimestampMixin, Base):
+    """A participant's bookmark on a PartnerInitiative — the "Сохранённые"
+    tab in Opportunities. No prior bookmark mechanism existed anywhere in
+    the bot; this is a genuinely new, minimal table."""
+
+    __tablename__ = "saved_opportunities"
+    __table_args__ = (UniqueConstraint("initiative_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    initiative_id: Mapped[int] = mapped_column(ForeignKey("partner_initiatives.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+
 class PartnerTask(TimestampMixin, Base):
     __tablename__ = "partner_tasks"
 

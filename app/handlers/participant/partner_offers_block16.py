@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from aiogram import F, Bot, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import User
-from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
+from app.database.partners import Partner, PartnerInitiative
+from app.services import opportunity_service
 from app.services.notification_service import notify_admins
 from app.services.points_service import total_points
 from app.utils import texts
@@ -61,20 +59,7 @@ async def offers_list(call: CallbackQuery, user: User | None, session: AsyncSess
     if not approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    now = datetime.now(timezone.utc)
-    result = await session.execute(
-        select(PartnerInitiative, Partner)
-        .join(Partner, Partner.id == PartnerInitiative.partner_id)
-        .where(
-            PartnerInitiative.is_active.is_(True),
-            PartnerInitiative.is_archived.is_(False),
-            Partner.is_active.is_(True),
-            Partner.is_archived.is_(False),
-            (PartnerInitiative.expires_at.is_(None) | (PartnerInitiative.expires_at >= now)),
-        )
-        .order_by(Partner.name, PartnerInitiative.title)
-    )
-    rows = list(result.all())
+    rows = await opportunity_service.list_active_offers(session)
     if not rows:
         await call.message.answer(
             "🤝 Партнёрские предложения\n\nВозможности пока формируются. ЭРА собирает сертификаты, рекомендации, приглашения и специальные предложения для активных участников.",
@@ -98,18 +83,9 @@ async def offer_view(call: CallbackQuery, user: User | None, session: AsyncSessi
         await call.message.answer("Это предложение сейчас недоступно.")
         return
     partner = await session.get(Partner, offer.partner_id)
-    application = await session.scalar(select(PartnerOfferApplication).where(
-        PartnerOfferApplication.initiative_id == offer.id,
-        PartnerOfferApplication.user_id == user.id,
-    ))
-    applied = bool(application and application.status in {"pending", "approved"})
-    remaining = "без ограничения"
-    if offer.quantity is not None:
-        used = int(await session.scalar(select(func.count(PartnerOfferApplication.id)).where(
-            PartnerOfferApplication.initiative_id == offer.id,
-            PartnerOfferApplication.status.in_(["pending", "approved"]),
-        )) or 0)
-        remaining = str(max(offer.quantity - used, 0))
+    applied = await opportunity_service.has_active_application(session, offer.id, user.id)
+    slots = await opportunity_service.remaining_slots(session, offer)
+    remaining = "без ограничения" if slots is None else str(slots)
     text = (
         f"🤝 {partner.name if partner else 'Партнёр ЭРА'}\n\n"
         f"{offer.title}\n\n{offer.description}\n\n"
@@ -138,37 +114,23 @@ async def offer_apply(call: CallbackQuery, user: User | None, session: AsyncSess
         await call.message.answer(texts.APPLICATION_PENDING)
         return
     offer = await session.get(PartnerInitiative, int(call.data.rsplit(":", 1)[-1]))
-    if not offer or not offer.is_active or offer.is_archived:
+    if not offer:
         await call.message.answer("Это предложение сейчас недоступно.")
         return
-    existing = await session.scalar(select(PartnerOfferApplication).where(
-        PartnerOfferApplication.initiative_id == offer.id,
-        PartnerOfferApplication.user_id == user.id,
-    ))
-    if existing and existing.status in {"pending", "approved"}:
+    _, error = await opportunity_service.apply_to_offer(session, offer, user)
+    if error == "offer_unavailable":
+        await call.message.answer("Это предложение сейчас недоступно.")
+        return
+    if error == "already_applied":
         await call.message.answer("Заявка уже отправлена.")
         return
-    balance = await total_points(session, user.id)
-    if balance < offer.point_cost:
+    if error == "insufficient_points":
+        balance = await total_points(session, user.id)
         await call.message.answer(f"Недостаточно баллов. Нужно: {offer.point_cost}. Ваш баланс: {balance}.")
         return
-    if offer.quantity is not None:
-        used = int(await session.scalar(select(func.count(PartnerOfferApplication.id)).where(
-            PartnerOfferApplication.initiative_id == offer.id,
-            PartnerOfferApplication.status.in_(["pending", "approved"]),
-        )) or 0)
-        if used >= offer.quantity:
-            await call.message.answer("Свободных мест по этому предложению больше нет.")
-            return
-    if existing:
-        existing.status = "pending"
-        existing.reviewed_by = None
-        existing.admin_comment = None
-        application = existing
-    else:
-        application = PartnerOfferApplication(initiative_id=offer.id, user_id=user.id, status="pending")
-        session.add(application)
-    await session.flush()
+    if error == "no_slots":
+        await call.message.answer("Свободных мест по этому предложению больше нет.")
+        return
     await call.message.answer("Заявка отправлена. Баллы спишутся только после одобрения администратором.")
     await notify_admins(
         bot,
@@ -186,13 +148,7 @@ async def my_offer_applications(call: CallbackQuery, user: User | None, session:
     if not approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    result = await session.execute(
-        select(PartnerOfferApplication, PartnerInitiative)
-        .join(PartnerInitiative, PartnerInitiative.id == PartnerOfferApplication.initiative_id)
-        .where(PartnerOfferApplication.user_id == user.id)
-        .order_by(PartnerOfferApplication.created_at.desc())
-    )
-    rows = list(result.all())
+    rows = await opportunity_service.list_my_applications(session, user)
     if not rows:
         await call.message.answer("📜 Мои заявки\n\nЗаявок пока нет.", reply_markup=opportunities_keyboard())
         return
