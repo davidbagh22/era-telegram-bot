@@ -6,9 +6,10 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `b3a4e2a521158da92afbc10f379535081c8f6c0a` (PR #110
-  hotfix merge, fast-forward).
-- Previous: `905c0acf61be80108d63b78820972d9d08e1677e` (PR #109 merge),
+- Current `main` commit: `48212168f316b6b43b4f14aea913648693c12954` (PR #111
+  merge, fast-forward).
+- Previous: `b3a4e2a521158da92afbc10f379535081c8f6c0a` (PR #110 hotfix),
+  `905c0acf61be80108d63b78820972d9d08e1677e` (PR #109 merge),
   `1a040973a9782264e01f940998ad4b34c6a0c9a5` (PR #108 merge),
   `36098e985e407f806f7a0134dafc36152a9f71a8` (PR #107 merge, pre-platform
   baseline).
@@ -170,7 +171,12 @@ actual Render build was never re-verified end-to-end from here.** Confirm
 the next Render deploy succeeds before assuming the Mini App is really
 live.
 
-### PR 2 — design system, bottom navigation, Home, Growth Level
+### PR 2 — design system, bottom navigation, Home, Growth Level (merged)
+
+Branch: `era-platform-pr2-home-growth`. PR:
+[#111](https://github.com/davidbagh22/era-telegram-bot/pull/111). Merge
+commit: `48212168f316b6b43b4f14aea913648693c12954`. Both CI checks green
+before merge.
 
 - **Growth Level** (`app/services/growth_service.py`) is computed, not a new
   column: `participation_status` (an existing 6-tier field already
