@@ -2,29 +2,25 @@
    assets in the repo) — the stack below falls back to system fonts until
    the real font files are added. See docs/ERA_PLATFORM_PROGRESS.md. */
 :root {
-  --era-red: #e8112d;
-  --era-violet: #6c4cf1;
-  --era-magenta: #d6299b;
-  --era-gradient: linear-gradient(135deg, var(--era-violet), var(--era-magenta), var(--era-red));
+  --era-red: #e52b24;
+  --era-violet: #742cc4;
+  --era-magenta: #be268f;
+  --era-gradient: linear-gradient(135deg, #742cc4 0%, #b529a6 48%, #e52b24 100%);
 
-  --era-bg: #ffffff;
-  --era-bg-subtle: #f7f7f9;
-  --era-text: #16161a;
-  --era-text-muted: #6b6b74;
-  --era-border: #e7e7ec;
+  --era-bg: #f8f6f9;
+  --era-bg-subtle: #ffffff;
+  --era-surface: #ffffff;
+  --era-text: #1b1720;
+  --era-text-muted: #756e7a;
+  --era-border: #eae5ed;
+  --era-success: #16845b;
+  --era-warning: #c77a00;
+  --era-error: #d92d20;
+  --era-shadow-soft: 0 8px 28px rgba(43, 22, 54, 0.06);
+  --era-radius-card: 20px;
 
   --era-font-display: "Unbounded", "Segoe UI", system-ui, sans-serif;
   --era-font-body: "Golos Text", "Segoe UI", system-ui, sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --era-bg: #121114;
-    --era-bg-subtle: #1b1a1f;
-    --era-text: #f4f4f6;
-    --era-text-muted: #a3a3ad;
-    --era-border: #2b2a30;
-  }
 }
 
 * {

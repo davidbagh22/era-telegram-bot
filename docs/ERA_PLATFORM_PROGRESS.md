@@ -6,8 +6,10 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `5218911a35f5f6b5e2d1cff23f8e51d641ca3375` (PR #113
-  merge, fast-forward).
+- Current `main` commit: `d983849385b5a14dd271c9ec4d7635ec2d2e7e66`
+  (progress doc update after PR #113 merge).
+- PR #113 merge commit:
+  `5218911a35f5f6b5e2d1cff23f8e51d641ca3375`.
 - Previous: `edc173035aec2ee6235af4441f0bc926009c1168` (PR #112 merge),
   `48212168f316b6b43b4f14aea913648693c12954` (PR #111 merge),
   `b3a4e2a521158da92afbc10f379535081c8f6c0a` (PR #110 hotfix),
@@ -48,6 +50,56 @@ the files touched by the current block. Do not re-audit the whole repo.
   optional `miniapp_url` kwarg that appends a `🔥 Открыть ЭРА` WebApp button
   when `MINIAPP_URL` is configured; every existing button, callback and
   test contract is unchanged.
+
+## Final product decision for Projects
+
+- Mini App is the primary project-management interface once functional
+  parity is reached. Project creation, draft saving, editing, review
+  submission, revision handling, status management, Project Workspace,
+  team, roles, applications, tasks, milestones, events, materials,
+  contribution, reports, analytics, admin moderation and curator assignment
+  belong in the Mini App.
+- Telegram Bot must not keep growing into a second project-management
+  workspace. After parity, it keeps project notifications, object-specific
+  deep links into the Mini App, simple confirmations that are genuinely
+  faster in Telegram, and file/video/document/report uploads where Telegram
+  is the better upload surface.
+- In PR 5, the old Telegram project FSM is **not removed**. Project
+  Workspace and Admin Project Management are not complete yet, so the FSM
+  remains a legacy fallback. Do not add new project-management features to
+  that FSM; new project work is Mini-App-first and should reuse shared
+  services.
+- A separate Project Bot Cleanup PR comes only after Project Workspace,
+  Leader Mode and Admin Project Moderation reach parity. That PR should
+  replace project create/manage buttons with WebApp/deep-link buttons, keep
+  notifications/uploads, migrate regression coverage to API/service/Mini
+  App flows, and only then remove the legacy FSM.
+- Project notifications must deep-link to the exact object: a returned
+  project opens that project, a team application opens that application,
+  and an admin moderation notice opens the exact project in Admin Mode.
+
+## Mini App design decision
+
+- Visual direction: "energy turning into growth" — official, modern,
+  movement-oriented, strong enough to show partners. Avoid a stock Telegram
+  WebView, Bootstrap admin look, government portal feel, crypto aesthetics,
+  childish game styling, random purple UI, and repetitive white-card grids.
+- Brand colors are fixed in `frontend/src/theme/tokens.css`: ERA Red
+  `#E52B24`, ERA Violet `#742CC4`, ERA Magenta `#BE268F`, main gradient
+  `linear-gradient(135deg, #742CC4 0%, #B529A6 48%, #E52B24 100%)`,
+  background `#F8F6F9`, surface `#FFFFFF`, text `#1B1720`, secondary text
+  `#756E7A`, border `#EAE5ED`, success `#16845B`, warning `#C77A00`,
+  error `#D92D20`.
+- Red is for primary CTAs, active states and urgency. Violet is for growth,
+  level and leader-oriented functions. Magenta is rare and used as a brand
+  transition/accent. The gradient is reserved for splash/hero/journey/pass
+  and major achievements, not for every button or card.
+- Typography remains Unbounded for short headers, levels, branded labels and
+  large numbers; Golos Text for UI, forms, descriptions, tables and buttons.
+  Do not use Unbounded for long text.
+- UI is mobile-first, 8px-grid based, with 16px horizontal padding, 24px
+  major section spacing, 44px minimum touch targets, soft 18-22px cards,
+  safe-area handling, and loading/empty/error/retry/success states.
 
 ## Env vars owner must set (not guessed, not hardcoded)
 
@@ -383,10 +435,66 @@ from the Mini App yet for the same reason.
 Team, Milestones, contribution) — this is the first PR expected to need a
 migration.
 
+### PR 5 — Project Workspace foundation (ready in PR #114)
+
+Branch: `pr5-project-workspace-foundation`. PR:
+[#114](https://github.com/davidbagh22/era-telegram-bot/pull/114). CI green
+on commit `aac474d`.
+
+Scope of this foundation block:
+
+- Product decision fixed: Mini App is the primary project workspace; Bot
+  project FSM remains a legacy fallback in PR 5 and must not receive new
+  project-management features.
+- Design tokens updated to the approved ERA red/violet/magenta system;
+  regular cards now use the shared surface/radius/shadow tokens.
+- Database foundation added:
+  - `ProjectRole` — stable function in a project, not a task;
+  - `ProjectMember` — application/participation state plus contribution
+    confirmation audit trail;
+  - `ProjectMilestone` — ordered project stages;
+  - `Task.project_id` — project task link without duplicating `Task`.
+- `PortfolioService` now includes confirmed project contribution only when
+  the member is accepted/active/completed and `contribution_status` is
+  `confirmed`. Pending applications and unverified claims stay out.
+- No old Telegram project FSM removal in this block.
+
+Checks:
+
+- `python -m pytest tests/test_project_workspace_foundation.py tests/test_alembic_revision_ids.py tests/test_project_workflow_service.py tests/test_projects_api.py tests/test_domain.py`
+  — 40 passed.
+- Alembic SQLite smoke:
+  `python -m alembic upgrade head` — passed.
+- Alembic SQLite smoke:
+  `python -m alembic downgrade 0011_pending_chat_join_requests` — passed.
+- `npm.cmd run typecheck` — passed.
+- `npm.cmd run build` — passed outside sandbox after esbuild hit sandbox
+  `Access denied` while loading Vite config.
+- `python -m pytest` — 328 passed, 1 existing FastAPI/TestClient warning.
+- `git diff --check` — passed.
+
+Known notes:
+
+- `npm.cmd ci` installed frontend dependencies from the committed lockfile;
+  `npm audit` reports 2 dependency vulnerabilities (1 moderate, 1 high).
+  No `npm audit fix --force` was run because it may introduce breaking
+  dependency changes outside this block.
+- SQLite downgrade skips dropping `tasks.project_id` because historical
+  `0001_initial` uses current `Base.metadata.create_all()`, so a fresh
+  SQLite migration already has the new FK before revision `0012`. Production
+  Postgres downgrade still drops the FK/index/column from `tasks`.
+
+Next PR 5 block:
+
+- Project Workspace API/service actions: roles, applications, members,
+  milestones, task assignment by project, event linking, contribution
+  confirmation, and exact Mini App deep links in project notifications.
+
 ## Progress vs. the 12-PR plan
 
 - Completed: 4 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
   hotfix; PR 2; PR 3; PR 4).
-- Current stage: PR 5 — Project Workspace (not started).
+- Current stage: PR 5 — Project Workspace foundation in progress:
+  design decision, models and migration first; API/UI workspace actions next.
 - Next stage after PR 5: PR 6 — Opportunities + applications +
   recommendations.

@@ -8,16 +8,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
     Badge,
+    Department,
+    Direction,
     Event,
     EventActivitySubmission,
     EventRegistration,
     Office,
     PortfolioItem,
     Project,
+    ProjectMember,
+    ProjectRole,
     Task,
     TaskSubmission,
     User,
     UserBadge,
+    UserDepartment,
+    UserDirection,
     UserOffice,
 )
 from app.repositories.users import user_stats
@@ -135,6 +141,44 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
             )
         ).all()
     )
+    contribution_rows = list(
+        (
+            await session.execute(
+                select(ProjectMember, Project, ProjectRole)
+                .join(Project, Project.id == ProjectMember.project_id)
+                .outerjoin(ProjectRole, ProjectRole.id == ProjectMember.role_id)
+                .where(
+                    ProjectMember.user_id == user.id,
+                    ProjectMember.status.in_(["accepted", "active", "completed"]),
+                    ProjectMember.contribution_status == "confirmed",
+                )
+                .order_by(
+                    desc(ProjectMember.contribution_confirmed_at),
+                    desc(ProjectMember.id),
+                )
+            )
+        ).all()
+    )
+    departments = list(
+        (
+            await session.scalars(
+                select(Department.name)
+                .join(UserDepartment, UserDepartment.department_id == Department.id)
+                .where(UserDepartment.user_id == user.id)
+                .order_by(Department.name)
+            )
+        ).all()
+    )
+    directions = list(
+        (
+            await session.scalars(
+                select(Direction.name)
+                .join(UserDirection, UserDirection.direction_id == Direction.id)
+                .where(UserDirection.user_id == user.id)
+                .order_by(Direction.name)
+            )
+        ).all()
+    )
     event_rows = list(
         (
             await session.execute(
@@ -198,8 +242,8 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
         full_name=_name(user),
         role=ROLE_LABELS.get(user.role, _clean(user.role)),
         participation_status=STATUS_LABELS.get(user.participation_status, _clean(user.participation_status)),
-        departments=[item.department.name for item in user.departments if item.department],
-        directions=[item.direction.name for item in user.directions if item.direction],
+        departments=[_clean(item) for item in departments if _clean(item)],
+        directions=[_clean(item) for item in directions if _clean(item)],
         period=_period(user),
         city=_clean(user.city),
         email=_clean(user.email),
@@ -219,6 +263,26 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                     category="project",
                 )
                 for project in projects
+            ]
+            + [
+                PortfolioEntry(
+                    title=_clean(project.title),
+                    description=(
+                        _clean(member.contribution_summary)
+                        or _clean(member.contribution_result)
+                        or _clean(project.short_description)
+                    ),
+                    status="вклад подтверждён",
+                    date_label=_date_label(
+                        member.contribution_confirmed_at
+                        or member.joined_at
+                        or project.created_at
+                    ),
+                    category=_clean(member.contribution_role_title)
+                    or _clean(role.title if role else "")
+                    or "project_contribution",
+                )
+                for member, project, role in contribution_rows
             ]
         ),
         events=_limited(
