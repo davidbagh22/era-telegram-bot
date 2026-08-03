@@ -6,9 +6,10 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `446fd1890e6908f4d7f5a9e1ca478eb795ad051a`
-  (PR #119 merge: Admin Mode + moderation dashboards).
-- Prior merges, newest first: `9a0548c` (PR #118, Opportunities),
+- Current `main` commit: `fe4e5f6676c4f80c3e5b9fc4f10f75d6d63969bb`
+  (PR #120 merge: Profile + Portfolio).
+- Prior merges, newest first: `446fd1890` (PR #119, Admin Mode +
+  moderation dashboards), `9a0548c` (PR #118, Opportunities),
   `3c3807b` (PR #117, progress-doc-only), `7900a0e` (PR #116, Project
   Workspace UI), `05a04ea` (PR #115, Project Workspace API actions),
   `ba8ff8c` (PR #114, Project Workspace foundation), `5218911` (PR #113,
@@ -691,8 +692,10 @@ check for updated instructions before assuming).
 
 ### PR 8 — Profile + Portfolio + Growth + resume PDF (merged)
 
-Branch: `era-platform-pr8-profile-portfolio`. See PR link and merge commit
-recorded in the follow-up progress-doc-only commit once merged.
+Branch: `era-platform-pr8-profile-portfolio`. PR:
+[#120](https://github.com/davidbagh22/era-telegram-bot/pull/120). Merge
+commit: `fe4e5f6676c4f80c3e5b9fc4f10f75d6d63969bb`. Both CI checks green
+before merge.
 
 - No new service needed — the portfolio aggregation
   (`app/services/portfolio_service.py::build_portfolio_data`) and PDF
