@@ -80,6 +80,27 @@ class Settings(BaseSettings):
         return ""
 
     @property
+    def effective_miniapp_url(self) -> str:
+        """URL for the bot's "Open ERA" WebApp button.
+
+        Defaults to the Mini App bundled and served by this same service
+        (see app/webapp.py::_mount_frontend) at "<base url>/app/". Set
+        MINIAPP_URL explicitly only when the frontend is hosted elsewhere.
+
+        Stays empty (button hidden) until MINIAPP_AUTH_SECRET is set, even
+        if a base/miniapp URL is configured — without the secret, opening
+        the Mini App would only show an auth error, so it is safer to keep
+        the button hidden than to ship a visibly broken one.
+        """
+        if not self.miniapp_auth_secret:
+            return ""
+        if self.miniapp_url:
+            return self.miniapp_url.rstrip("/")
+        if self.effective_base_url:
+            return f"{self.effective_base_url}/app/"
+        return ""
+
+    @property
     def effective_webhook_secret(self) -> str:
         if not self.webhook_secret:
             return ""

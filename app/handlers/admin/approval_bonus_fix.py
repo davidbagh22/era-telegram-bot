@@ -50,6 +50,6 @@ async def approve_user_with_100_points(
         await call.message.answer("Эта заявка уже отклонена — повторно одобрить её нельзя")
         return
     await call.message.answer(f"Заявка одобрена ✅\n\n{target.first_name} получил доступ к функциям участника")
-    await safe_send(bot, target.telegram_id, texts.APPLICATION_APPROVED, main_menu(settings.era_channel_url, miniapp_url=settings.miniapp_url))
+    await safe_send(bot, target.telegram_id, texts.APPLICATION_APPROVED, main_menu(settings.era_channel_url, miniapp_url=settings.effective_miniapp_url))
     await safe_send(bot, target.telegram_id, "Перед стартом — короткие правила сообщества\n\n" + texts.CHAT_RULES)
     await sync_user_chat_access(bot, settings, session, target)

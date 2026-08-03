@@ -43,7 +43,7 @@ async def show_home(message: Message, user: User, settings: Settings) -> None:
                 grant.is_active
                 for grant in (getattr(user, "permission_grants", None) or [])
             ),
-            miniapp_url=settings.miniapp_url,
+            miniapp_url=settings.effective_miniapp_url,
         ),
     )
 
