@@ -6,9 +6,10 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `c417f3aa78411a4d3249334d2a253fbc8136e90a`
-  (PR #121 merge: Leader Mode — scope overview + open tasks).
-- Prior merges, newest first: `fe4e5f667` (PR #120, Profile +
+- Current `main` commit: `908896e804f7c21eefa384918309fd653e587b8e`
+  (PR #122 merge: frontend design polish pass).
+- Prior merges, newest first: `c417f3aa` (PR #121, Leader Mode —
+  scope overview + open tasks), `fe4e5f667` (PR #120, Profile +
   Portfolio), `446fd1890` (PR #119, Admin Mode + moderation
   dashboards), `9a0548c` (PR #118, Opportunities),
   `3c3807b` (PR #117, progress-doc-only), `7900a0e` (PR #116, Project
@@ -820,11 +821,12 @@ brief before starting.
 
 ### Design polish pass (frontend-only, merged)
 
-Branch: `era-platform-design-polish`. See PR link and merge commit
-recorded in the follow-up progress-doc-only commit once merged. Not a
-numbered block from the 12-PR plan — a cross-cutting visual pass across
-every screen built so far, requested directly ("красивый динамичный
-дизайн").
+Branch: `era-platform-design-polish`. PR:
+[#122](https://github.com/davidbagh22/era-telegram-bot/pull/122). Merge
+commit: `908896e804f7c21eefa384918309fd653e587b8e`. Both CI checks green
+before merge. Not a numbered block from the 12-PR plan — a cross-cutting
+visual pass across every screen built so far, requested directly
+("красивый динамичный дизайн").
 
 - `frontend/index.html` now actually loads Unbounded (headings) and
   Golos Text (body) from Google Fonts — the design system spec named
@@ -865,7 +867,10 @@ every screen built so far, requested directly ("красивый динамич�
 - Completed: 9 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
   hotfix; PR 2; PR 3; PR 4; PR 5 Project Workspace, delivered through
   PR #114, PR #115 and PR #116; PR 6 Opportunities; PR 7 Admin Mode
-  foundation; PR 8 Profile + Portfolio; PR 9 Leader Mode foundation).
+  foundation; PR 8 Profile + Portfolio; PR 9 Leader Mode foundation),
+  plus the unnumbered PR #122 Mini App design polish pass.
 - Current stage: PR 10 (scope to be confirmed at the start of the next
   session — see known limitations in PR 7, PR 8 and PR 9 above).
-- Next stage after PR 6: PR 7 — Admin Mode + moderation dashboards.
+- Next stage after PR 10: PR 11 — analytics/growth/reporting surfaces,
+  unless the PR 10 scope decision splits admin content management into
+  smaller follow-up PRs.
