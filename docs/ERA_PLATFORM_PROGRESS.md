@@ -6,9 +6,10 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `48212168f316b6b43b4f14aea913648693c12954` (PR #111
+- Current `main` commit: `edc173035aec2ee6235af4441f0bc926009c1168` (PR #112
   merge, fast-forward).
-- Previous: `b3a4e2a521158da92afbc10f379535081c8f6c0a` (PR #110 hotfix),
+- Previous: `48212168f316b6b43b4f14aea913648693c12954` (PR #111 merge),
+  `b3a4e2a521158da92afbc10f379535081c8f6c0a` (PR #110 hotfix),
   `905c0acf61be80108d63b78820972d9d08e1677e` (PR #109 merge),
   `1a040973a9782264e01f940998ad4b34c6a0c9a5` (PR #108 merge),
   `36098e985e407f806f7a0134dafc36152a9f71a8` (PR #107 merge, pre-platform
@@ -223,7 +224,12 @@ before merge.
   `tsc` + `vite build` + manual browser check, same as PR 1) — worth adding
   when component logic gets non-trivial enough to justify it.
 
-### PR 3 — Activity (Events, Tasks, Calendar, History) + Bot submission handoff
+### PR 3 — Activity (Events, Tasks, Calendar, History) + Bot submission handoff (merged)
+
+Branch: `era-platform-pr3-activity`. PR:
+[#112](https://github.com/davidbagh22/era-telegram-bot/pull/112). Merge
+commit: `edc173035aec2ee6235af4441f0bc926009c1168`. Both CI checks green
+before merge.
 
 - **Refactored two existing bot handlers into shared services before
   building the API on top of them** (this is the "extract *Service before
