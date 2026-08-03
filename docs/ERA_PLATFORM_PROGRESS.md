@@ -6,9 +6,10 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `edc173035aec2ee6235af4441f0bc926009c1168` (PR #112
+- Current `main` commit: `5218911a35f5f6b5e2d1cff23f8e51d641ca3375` (PR #113
   merge, fast-forward).
-- Previous: `48212168f316b6b43b4f14aea913648693c12954` (PR #111 merge),
+- Previous: `edc173035aec2ee6235af4441f0bc926009c1168` (PR #112 merge),
+  `48212168f316b6b43b4f14aea913648693c12954` (PR #111 merge),
   `b3a4e2a521158da92afbc10f379535081c8f6c0a` (PR #110 hotfix),
   `905c0acf61be80108d63b78820972d9d08e1677e` (PR #109 merge),
   `1a040973a9782264e01f940998ad4b34c6a0c9a5` (PR #108 merge),
@@ -309,7 +310,12 @@ anywhere in the bot today (only leaders can reject a participant, via
 `app/handlers/leader/open_tasks.py`), so there is no existing business
 rule to reuse and none was invented here.
 
-### PR 4 — Projects read/create/edit + workflow
+### PR 4 — Projects read/create/edit + workflow (merged)
+
+Branch: `era-platform-pr4-projects`. PR:
+[#113](https://github.com/davidbagh22/era-telegram-bot/pull/113). Merge
+commit: `5218911a35f5f6b5e2d1cff23f8e51d641ca3375`. Both CI checks green
+before merge.
 
 - Discovered `app/services/project_service.py::create_project` is dead code
   — nothing calls it. The real project-creation flow
