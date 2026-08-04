@@ -6,9 +6,10 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `908896e804f7c21eefa384918309fd653e587b8e`
-  (PR #122 merge: frontend design polish pass).
-- Prior merges, newest first: `c417f3aa` (PR #121, Leader Mode —
+- Current `main` commit: `3211d21a5631f393d2a5e75ba7b5fe5a9ab76000`
+  (PR #124 merge: Admin Event Moderation).
+- Prior merges, newest first: `908896e80` (PR #122, frontend design
+  polish pass), `c417f3aa` (PR #121, Leader Mode —
   scope overview + open tasks), `fe4e5f667` (PR #120, Profile +
   Portfolio), `446fd1890` (PR #119, Admin Mode + moderation
   dashboards), `9a0548c` (PR #118, Opportunities),
@@ -864,8 +865,10 @@ visual pass across every screen built so far, requested directly
 
 ### PR 10 — Admin Event Moderation (merged)
 
-Branch: `era-platform-pr10-event-moderation`. See PR link and merge
-commit recorded in the follow-up progress-doc-only commit once merged.
+Branch: `era-platform-pr10-event-moderation`. PR:
+[#124](https://github.com/davidbagh22/era-telegram-bot/pull/124). Merge
+commit: `3211d21a5631f393d2a5e75ba7b5fe5a9ab76000`. Both CI checks green
+before merge.
 
 - New `can_manage_events()` in `app/services/authorization_service.py`,
   matching the exact `is_full_admin(...) or "events.manage" in
