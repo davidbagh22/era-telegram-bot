@@ -8,6 +8,7 @@ from app.services.authorization_service import (
     can_change_access_status,
     can_change_permission,
     can_change_role,
+    can_manage_events,
     can_manage_people,
     can_view_people,
 )
@@ -126,3 +127,21 @@ def test_blocked_user_loses_delegated_permissions_immediately() -> None:
     assert active_permissions(blocked) == {"people.manage"}
     assert not can_view_people(blocked, settings, blocked.telegram_id)
     assert not can_manage_people(blocked, settings, blocked.telegram_id)
+
+
+def test_can_manage_events_requires_admin_or_specific_grant() -> None:
+    settings = Settings(bot_token="1234567890:test", admin_ids=[])
+    admin = _user(role=Role.ADMIN)
+    grantee = _user(permissions=("events.manage",))
+    bystander = _user(permissions=("people.manage",))
+
+    assert can_manage_events(admin, settings, admin.telegram_id)
+    assert can_manage_events(grantee, settings, grantee.telegram_id)
+    assert not can_manage_events(bystander, settings, bystander.telegram_id)
+
+
+def test_can_manage_events_denied_when_blocked() -> None:
+    settings = Settings(bot_token="1234567890:test", admin_ids=[])
+    blocked = _user(blocked=True, permissions=("events.manage",))
+
+    assert not can_manage_events(blocked, settings, blocked.telegram_id)
