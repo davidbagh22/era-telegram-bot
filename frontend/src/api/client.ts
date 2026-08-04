@@ -14,6 +14,8 @@ import type {
   PendingApplication,
   ProjectDecisionAction,
   ProjectForModeration,
+  TaskReviewAction,
+  TaskSubmissionForReview,
 } from "../types/admin";
 import type { HomeSnapshot } from "../types/home";
 import type { LeaderOpenTask, LeaderOverview, OpenTaskCreatePayload } from "../types/leader";
@@ -399,6 +401,21 @@ export function decideEvent(
     action,
     comment,
   });
+}
+
+export function fetchAdminTaskSubmissions(): Promise<TaskSubmissionForReview[]> {
+  return authorizedGet<TaskSubmissionForReview[]>("/api/v1/admin/task-submissions");
+}
+
+export function decideTaskSubmission(
+  submissionId: number,
+  action: TaskReviewAction,
+  comment: string,
+): Promise<TaskSubmissionForReview> {
+  return authorizedPost<TaskSubmissionForReview>(
+    `/api/v1/admin/task-submissions/${submissionId}/decide`,
+    { action, comment },
+  );
 }
 
 export function fetchLeaderOverview(): Promise<LeaderOverview> {

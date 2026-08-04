@@ -8,16 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.config import Settings
-from app.database.models import Event, Project, User
+from app.database.models import Event, Project, Task, TaskSubmission, User
 from app.keyboards.participant import main_menu
-from app.services import event_moderation_service, project_workflow_service
+from app.services import event_moderation_service, project_workflow_service, task_review_service
 from app.services.admin_dashboard_service import dashboard_metrics, has_dashboard_access
 from app.services.application_review_service import (
     approve_application,
     reject_application,
     request_more_info,
 )
-from app.services.authorization_service import can_manage_events
+from app.services.authorization_service import can_manage_events, can_manage_tasks
 from app.services.chat_access_service import sync_user_chat_access
 from app.services.notification_service import safe_send
 from app.services.project_workspace_service import can_review_projects
@@ -314,3 +314,97 @@ async def decide_event_endpoint(
     if bot is not None and result.owner is not None:
         await safe_send(bot, result.owner.telegram_id, result.notice)
     return _to_event_moderation_out(event)
+
+
+class TaskSubmissionOut(BaseModel):
+    id: int
+    task_id: int
+    task_title: str
+    points: int
+    participant_id: int
+    participant_name: str
+    text: str | None
+    file_id: str | None
+    status: str
+    admin_comment: str | None
+
+
+def _to_submission_out(
+    submission: TaskSubmission, task: Task, participant: User
+) -> TaskSubmissionOut:
+    return TaskSubmissionOut(
+        id=submission.id,
+        task_id=task.id,
+        task_title=task.title,
+        points=task.points,
+        participant_id=participant.id,
+        participant_name=f"{participant.first_name} {participant.last_name or ''}".strip(),
+        text=submission.text,
+        file_id=submission.file_id,
+        status=submission.status,
+        admin_comment=submission.admin_comment,
+    )
+
+
+async def require_task_reviewer(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    if not can_manage_tasks(user, settings, user.telegram_id):
+        raise HTTPException(status_code=403, detail="task_reviewer_access_required")
+    return user
+
+
+@router.get("/task-submissions", response_model=list[TaskSubmissionOut])
+async def read_task_submissions(
+    _reviewer: User = Depends(require_task_reviewer),
+    session: AsyncSession = Depends(get_session),
+) -> list[TaskSubmissionOut]:
+    submissions = await task_review_service.list_pending_submissions(session)
+    result: list[TaskSubmissionOut] = []
+    for submission in submissions:
+        task = await session.get(Task, submission.task_id)
+        participant = await session.get(User, submission.user_id)
+        if task is None or participant is None:
+            continue
+        result.append(_to_submission_out(submission, task, participant))
+    return result
+
+
+class TaskSubmissionDecisionIn(BaseModel):
+    action: str
+    comment: str = ""
+
+
+@router.post("/task-submissions/{submission_id}/decide", response_model=TaskSubmissionOut)
+async def decide_task_submission_endpoint(
+    submission_id: int,
+    payload: TaskSubmissionDecisionIn,
+    reviewer: User = Depends(require_task_reviewer),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+) -> TaskSubmissionOut:
+    submission = await session.get(TaskSubmission, submission_id)
+    if submission is None:
+        raise HTTPException(status_code=404, detail="submission_not_found")
+    task = await session.get(Task, submission.task_id)
+    participant = await session.get(User, submission.user_id)
+    if task is None or participant is None:
+        raise HTTPException(status_code=404, detail="submission_not_found")
+    if payload.action not in task_review_service.TASK_REVIEW_ACTIONS:
+        raise HTTPException(status_code=422, detail="invalid_action")
+    try:
+        result = await task_review_service.decide_submission(
+            session,
+            submission,
+            task,
+            participant,
+            action=payload.action,
+            comment=payload.comment,
+            actor=reviewer,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if bot is not None and result.participant_notice:
+        await safe_send(bot, participant.telegram_id, result.participant_notice)
+    return _to_submission_out(submission, task, participant)

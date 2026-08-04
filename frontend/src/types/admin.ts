@@ -43,3 +43,18 @@ export interface EventForModeration {
   location: string;
   status: string;
 }
+
+export type TaskReviewAction = "approve" | "revision" | "reject";
+
+export interface TaskSubmissionForReview {
+  id: number;
+  task_id: number;
+  task_title: string;
+  points: number;
+  participant_id: number;
+  participant_name: string;
+  text: string | null;
+  file_id: string | null;
+  status: string;
+  admin_comment: string | null;
+}

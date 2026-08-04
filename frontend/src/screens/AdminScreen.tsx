@@ -4,14 +4,16 @@ import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
 import { AdminProjectsScreen } from "./admin/AdminProjectsScreen";
+import { AdminTasksScreen } from "./admin/AdminTasksScreen";
 
-type AdminSection = "dashboard" | "applications" | "projects" | "events";
+type AdminSection = "dashboard" | "applications" | "projects" | "events" | "tasks";
 
 const SECTIONS: { value: AdminSection; label: string }[] = [
   { value: "dashboard", label: "Дашборд" },
   { value: "applications", label: "Заявки" },
   { value: "projects", label: "Проекты" },
   { value: "events", label: "Мероприятия" },
+  { value: "tasks", label: "Задания" },
 ];
 
 export function AdminScreen() {
@@ -24,6 +26,7 @@ export function AdminScreen() {
       {section === "applications" && <AdminApplicationsScreen />}
       {section === "projects" && <AdminProjectsScreen />}
       {section === "events" && <AdminEventsScreen />}
+      {section === "tasks" && <AdminTasksScreen />}
     </div>
   );
 }

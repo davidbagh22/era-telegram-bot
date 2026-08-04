@@ -928,13 +928,76 @@ management surfaces (Tasks/Opportunities/Partners/Communications/
 Surveys) or the event/leader actions deferred above — confirm against
 any updated brief before starting.
 
+### PR 11 — Admin Task Submission Review (merged)
+
+Branch: `era-platform-pr11-task-review`. See PR link and merge commit
+recorded in the follow-up progress-doc-only commit once merged.
+
+- New `can_manage_tasks()` in `app/services/authorization_service.py`,
+  same pattern as PR 10's `can_manage_events()` — replaces an inline
+  copy in `app/handlers/admin/task_review_block2.py` that had the same
+  `is_archived` inconsistency on the admin-role branch.
+- New `app/services/task_review_service.py`: `list_pending_submissions()`
+  and `decide_submission()` (approve/revision/reject). Approve is
+  idempotent on two axes exactly as the Bot already guaranteed — it
+  no-ops with an "already approved" notice if `submission.status` is
+  already `approved`, and separately no-ops (still marks approved, no
+  second notice) if a point transaction for that user+task already
+  exists — and reproduces the private-vs-open-task completion rule (a
+  `challenge` task only completes once every accepted `TaskParticipant`
+  has an approved submission; a `private` task completes on its own
+  approval). Extracted from `approve_submission` /
+  `revision_finish` / `reject_finish`, which now call the service.
+  `tests/test_system_wide_audit.py`'s
+  `test_points_sensitive_flows_have_idempotency_markers` contract was
+  retargeted from the handler file to this service file, since that's
+  where the `add_points` call and idempotency guarantee actually live
+  now — the invariant it guards is unchanged, only its address moved.
+- New `GET /api/v1/admin/task-submissions` and
+  `POST /api/v1/admin/task-submissions/{id}/decide` in
+  `app/api/v1/admin.py`, gated by `require_task_reviewer`
+  (`can_manage_tasks()`) — same shape as PR 10's event-review routes.
+- Frontend: `AdminTasksScreen` adds a fifth "Задания" tab to
+  `AdminScreen`, mirroring `AdminEventsScreen`'s
+  list-with-comment-and-decision-buttons layout; "Одобрить и начислить
+  баллы" gets `.era-btn-primary`.
+- Tests: `tests/test_task_review_service.py` (8 cases, real
+  `sqlite+aiosqlite` — private-task completion + point award,
+  approve-idempotency, open-task completion only when every member is
+  approved, revision/reject comment validation, review-queue
+  filtering), `tests/test_admin_task_submissions_api.py` (6 cases,
+  dependency overrides + mocked service calls), plus 1 new
+  `can_manage_tasks` case in `tests/test_authorization_service.py`.
+  Full suite: 445 passed via `pytest -q`, 357 via
+  `python -m unittest discover -s tests` (matches CI), 0 regressions.
+  Verified in a real browser against a temporary local mock server: the
+  Задания tab lists a pending submission, "Одобрить и начислить баллы"
+  round-trips through the mocked API; `.env.local` and the mock server
+  removed afterward.
+- No migrations — pure service extraction + API + UI on top of the
+  existing schema.
+
+**Known limitation:** Only task-submission review (approve/revision/
+reject) is in the Mini App. Creating tasks/open challenges from Admin
+Mode (as opposed to the Leader Mode open-task creation from PR 9),
+partner/opportunity content management, communications/broadcasts, and
+surveys all stay Bot-only for now — each is its own coherent surface
+better suited to a dedicated future block.
+
+**Next block:** PR 12 per the 12-PR plan — remaining Admin content-
+management surfaces (Opportunities/Partners/Communications/Surveys) or
+the event/leader/task actions deferred above — confirm against any
+updated brief before starting.
+
 ## Progress vs. the 12-PR plan
 
-- Completed: 10 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
+- Completed: 11 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
   hotfix; PR 2; PR 3; PR 4; PR 5 Project Workspace, delivered through
   PR #114, PR #115 and PR #116; PR 6 Opportunities; PR 7 Admin Mode
   foundation; PR 8 Profile + Portfolio; PR 9 Leader Mode foundation;
-  PR 10 Admin Event Moderation), plus the unnumbered PR #122 Mini App
+  PR 10 Admin Event Moderation; PR 11 Admin Task Submission Review),
+  plus the unnumbered PR #122 Mini App
   design polish pass.
-- Current stage: PR 11 (scope to be confirmed at the start of the next
-  session — see known limitations in PR 7, PR 8, PR 9 and PR 10 above).
+- Current stage: PR 12 (scope to be confirmed at the start of the next
+  session — see known limitations in PR 7, PR 8, PR 9, PR 10 and PR 11
+  above).

@@ -2,15 +2,14 @@ from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import PointTransaction, Task, TaskParticipant, TaskSubmission, User
+from app.database.models import Task, TaskSubmission, User
+from app.services import task_review_service
+from app.services.authorization_service import can_manage_tasks
 from app.services.notification_service import safe_answer_media, safe_send
-from app.services.points_service import add_points
 from app.utils import texts
-from app.utils.constants import Role, TaskStatus
 
 router = Router(name="admin_task_review_block2")
 
@@ -21,14 +20,7 @@ class TaskReviewStates(StatesGroup):
 
 
 def _is_admin(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    return bool(
-        telegram_id in settings.admin_ids
-        or (user and user.role == Role.ADMIN and not user.is_blocked)
-        or (
-            user and not user.is_blocked and not user.is_archived
-            and any(grant.is_active and grant.permission == "tasks.manage" for grant in (user.permission_grants or []))
-        )
-    )
+    return can_manage_tasks(user, settings, telegram_id)
 
 
 async def _guard(event: CallbackQuery | Message, user: User | None, settings: Settings) -> bool:
@@ -70,11 +62,6 @@ async def _context(session: AsyncSession, submission_id: int) -> tuple[TaskSubmi
     return submission, task, participant
 
 
-async def _already_awarded(session: AsyncSession, user_id: int, task_id: int) -> bool:
-    previous = await session.scalar(select(PointTransaction).where(PointTransaction.user_id == user_id, PointTransaction.related_task_id == task_id, PointTransaction.points > 0))
-    return previous is not None
-
-
 async def _send_file(message: Message, file_id: str) -> None:
     if not await safe_answer_media(message, file_id, caption="Файл результата"):
         await message.answer("Файл прикреплён, но Telegram не дал открыть его повторно.")
@@ -114,7 +101,7 @@ async def tasks_menu(call: CallbackQuery, user: User | None, settings: Settings)
 async def task_submissions(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await _guard(call, user, settings):
         return
-    submissions = (await session.scalars(select(TaskSubmission).where(TaskSubmission.status == "pending").order_by(TaskSubmission.created_at.desc()).limit(30))).all()
+    submissions = await task_review_service.list_pending_submissions(session)
     if not submissions:
         await call.message.answer("Результатов заданий на проверке пока нет.", reply_markup=_task_menu())
         return
@@ -131,29 +118,12 @@ async def approve_submission(call: CallbackQuery, user: User | None, settings: S
     if not submission or not task or not participant:
         await call.message.answer("Результат не найден")
         return
-    if submission.status == "approved":
-        await call.message.answer("Этот результат уже одобрен. Повторно баллы не начисляются.")
-        return
-    submission.status = "approved"
-    submission.reviewed_by = user.id if user else None
-    if await _already_awarded(session, participant.id, task.id):
-        await call.message.answer("Результат принят. Баллы за это задание уже начислялись ранее.")
-        return
-    await add_points(session, user_id=participant.id, points=task.points, reason=f"Выполнение задания: {task.title}", approved_by=user.id if user else None, related_task_id=task.id, source_type="task_submission", source_id=submission.id, idempotency_key=f"task_submission:{submission.id}:approval")
-    if task.task_type == "private":
-        task.status = TaskStatus.COMPLETED
-    else:
-        member_ids = set((await session.scalars(select(TaskParticipant.user_id).where(
-            TaskParticipant.task_id == task.id,
-            TaskParticipant.status.in_(["accepted", "joined"]),
-        ))).all())
-        approved_ids = set((await session.scalars(select(TaskSubmission.user_id).where(
-            TaskSubmission.task_id == task.id,
-            TaskSubmission.status == "approved",
-        ))).all())
-        task.status = TaskStatus.COMPLETED if member_ids and member_ids.issubset(approved_ids) else TaskStatus.IN_PROGRESS
-    await safe_send(bot, participant.telegram_id, f"Ваш результат по заданию одобрен.\n\n{task.title}\n\nНачислено: {task.points} баллов")
-    await call.message.answer("Результат одобрен. Баллы начислены один раз.")
+    result = await task_review_service.decide_submission(
+        session, submission, task, participant, action="approve", comment="", actor=user
+    )
+    if result.participant_notice:
+        await safe_send(bot, participant.telegram_id, result.participant_notice)
+    await call.message.answer(result.admin_notice)
 
 
 @router.callback_query(F.data.startswith("admin:tasksub:revision:"))
@@ -179,13 +149,13 @@ async def revision_finish(message: Message, user: User | None, settings: Setting
     if not comment:
         await message.answer("Комментарий обязателен")
         return
-    submission.status = "needs_revision"
-    submission.admin_comment = comment
-    submission.reviewed_by = user.id if user else None
-    task.status = TaskStatus.IN_PROGRESS
-    await safe_send(bot, participant.telegram_id, f"Комментарий по заданию:\n\n{task.title}\n\n{comment}\n\nДоработайте результат и отправьте его повторно через Личный кабинет → Мои задачи.")
+    result = await task_review_service.decide_submission(
+        session, submission, task, participant, action="revision", comment=comment, actor=user
+    )
+    if result.participant_notice:
+        await safe_send(bot, participant.telegram_id, result.participant_notice)
     await state.clear()
-    await message.answer("Комментарий отправлен. Задание возвращено на доработку.")
+    await message.answer(result.admin_notice)
 
 
 @router.callback_query(F.data.startswith("admin:tasksub:reject:"))
@@ -211,9 +181,10 @@ async def reject_finish(message: Message, user: User | None, settings: Settings,
     if not comment:
         await message.answer("Причина обязательна")
         return
-    submission.status = "rejected"
-    submission.admin_comment = comment
-    submission.reviewed_by = user.id if user else None
-    await safe_send(bot, participant.telegram_id, f"Результат по заданию не принят.\n\n{task.title}\n\nПричина: {comment}\n\nБаллы не начислены.")
+    result = await task_review_service.decide_submission(
+        session, submission, task, participant, action="reject", comment=comment, actor=user
+    )
+    if result.participant_notice:
+        await safe_send(bot, participant.telegram_id, result.participant_notice)
     await state.clear()
-    await message.answer("Результат отклонён. Баллы не начислены.")
+    await message.answer(result.admin_notice)
