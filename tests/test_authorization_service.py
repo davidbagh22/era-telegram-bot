@@ -10,6 +10,7 @@ from app.services.authorization_service import (
     can_change_role,
     can_manage_events,
     can_manage_people,
+    can_manage_tasks,
     can_view_people,
 )
 from app.utils.constants import Role
@@ -145,3 +146,14 @@ def test_can_manage_events_denied_when_blocked() -> None:
     blocked = _user(blocked=True, permissions=("events.manage",))
 
     assert not can_manage_events(blocked, settings, blocked.telegram_id)
+
+
+def test_can_manage_tasks_requires_admin_or_specific_grant() -> None:
+    settings = Settings(bot_token="1234567890:test", admin_ids=[])
+    admin = _user(role=Role.ADMIN)
+    grantee = _user(permissions=("tasks.manage",))
+    bystander = _user(permissions=("events.manage",))
+
+    assert can_manage_tasks(admin, settings, admin.telegram_id)
+    assert can_manage_tasks(grantee, settings, grantee.telegram_id)
+    assert not can_manage_tasks(bystander, settings, bystander.telegram_id)

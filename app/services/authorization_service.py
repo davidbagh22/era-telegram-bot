@@ -66,6 +66,14 @@ def can_manage_events(user: User | None, settings: Settings, telegram_id: int) -
     return "events.manage" in active_permissions(user)
 
 
+def can_manage_tasks(user: User | None, settings: Settings, telegram_id: int) -> bool:
+    if is_full_admin(user, settings, telegram_id):
+        return True
+    if not user or user.is_blocked or user.is_archived:
+        return False
+    return "tasks.manage" in active_permissions(user)
+
+
 async def active_full_admin_count(session: AsyncSession, settings: Settings) -> int:
     admin_conditions = [User.role == Role.ADMIN]
     if settings.admin_ids:
