@@ -8,15 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.config import Settings
-from app.database.models import Project, User
+from app.database.models import Event, Project, User
 from app.keyboards.participant import main_menu
-from app.services import project_workflow_service
+from app.services import event_moderation_service, project_workflow_service
 from app.services.admin_dashboard_service import dashboard_metrics, has_dashboard_access
 from app.services.application_review_service import (
     approve_application,
     reject_application,
     request_more_info,
 )
+from app.services.authorization_service import can_manage_events
 from app.services.chat_access_service import sync_user_chat_access
 from app.services.notification_service import safe_send
 from app.services.project_workspace_service import can_review_projects
@@ -244,3 +245,72 @@ async def decide_project_endpoint(
                 f"💡 {result.notice}\n\nПроект: {project.title}\n\nКомментарий команды ЭРА:\n{payload.comment}",
             )
     return _to_moderation_out(project)
+
+
+class EventModerationOut(BaseModel):
+    id: int
+    title: str
+    description: str
+    event_date: str
+    event_time: str
+    location: str
+    status: str
+
+
+def _to_event_moderation_out(event: Event) -> EventModerationOut:
+    return EventModerationOut(
+        id=event.id,
+        title=event.title,
+        description=event.description,
+        event_date=event.event_date.isoformat(),
+        event_time=event.event_time.isoformat(),
+        location=event.location,
+        status=event.status,
+    )
+
+
+async def require_event_reviewer(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    if not can_manage_events(user, settings, user.telegram_id):
+        raise HTTPException(status_code=403, detail="event_reviewer_access_required")
+    return user
+
+
+@router.get("/events", response_model=list[EventModerationOut])
+async def read_events_for_review(
+    _reviewer: User = Depends(require_event_reviewer),
+    session: AsyncSession = Depends(get_session),
+) -> list[EventModerationOut]:
+    events = await event_moderation_service.list_events_for_review(session)
+    return [_to_event_moderation_out(event) for event in events]
+
+
+class EventDecisionIn(BaseModel):
+    action: str
+    comment: str = ""
+
+
+@router.post("/events/{event_id}/decide", response_model=EventModerationOut)
+async def decide_event_endpoint(
+    event_id: int,
+    payload: EventDecisionIn,
+    reviewer: User = Depends(require_event_reviewer),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+) -> EventModerationOut:
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    if payload.action not in event_moderation_service.EVENT_DECISION_ACTIONS:
+        raise HTTPException(status_code=422, detail="invalid_action")
+    try:
+        result = await event_moderation_service.decide_event(
+            session, event, action=payload.action, comment=payload.comment, actor=reviewer
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if bot is not None and result.owner is not None:
+        await safe_send(bot, result.owner.telegram_id, result.notice)
+    return _to_event_moderation_out(event)

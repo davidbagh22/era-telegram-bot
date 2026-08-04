@@ -2,14 +2,16 @@ import { useState } from "react";
 import { PillTabs } from "../components/PillTabs";
 import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
+import { AdminEventsScreen } from "./admin/AdminEventsScreen";
 import { AdminProjectsScreen } from "./admin/AdminProjectsScreen";
 
-type AdminSection = "dashboard" | "applications" | "projects";
+type AdminSection = "dashboard" | "applications" | "projects" | "events";
 
 const SECTIONS: { value: AdminSection; label: string }[] = [
   { value: "dashboard", label: "Дашборд" },
   { value: "applications", label: "Заявки" },
   { value: "projects", label: "Проекты" },
+  { value: "events", label: "Мероприятия" },
 ];
 
 export function AdminScreen() {
@@ -21,6 +23,7 @@ export function AdminScreen() {
       {section === "dashboard" && <AdminDashboardScreen />}
       {section === "applications" && <AdminApplicationsScreen />}
       {section === "projects" && <AdminProjectsScreen />}
+      {section === "events" && <AdminEventsScreen />}
     </div>
   );
 }

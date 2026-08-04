@@ -862,15 +862,76 @@ visual pass across every screen built so far, requested directly
 - No backend/API/database changes, no new dependencies (fonts are
   loaded from Google Fonts CDN, not bundled).
 
+### PR 10 — Admin Event Moderation (merged)
+
+Branch: `era-platform-pr10-event-moderation`. See PR link and merge
+commit recorded in the follow-up progress-doc-only commit once merged.
+
+- New `can_manage_events()` in `app/services/authorization_service.py`,
+  matching the exact `is_full_admin(...) or "events.manage" in
+  active_permissions(...)` pattern already used by `can_view_people`/
+  `can_manage_people` — replaces a slightly-diverging inline copy of the
+  same check that used to live only in
+  `app/handlers/admin/events_block6.py` (that copy didn't check
+  `is_archived` on the admin-role branch, an inconsistency with every
+  other admin gate in the codebase; normalizing it here is a minor
+  correctness fix, not a new restriction on any real, non-archived
+  admin).
+- New `app/services/event_moderation_service.py`: `list_events_for_review()`
+  (events with `status == pending_approval`) and `decide_event()`
+  (approve/revise/reject — approve sets `APPROVED` + `approved_by` and
+  keeps the existing audit-log entry; revise/reject require a non-empty
+  comment, matching the Bot's FSM validation, and return the exact same
+  notice text the Bot already sent to the event's owner). Extracted from
+  `events_block6.py`'s `approve_event` / `event_decision_finish`
+  handlers, which now call the service — the 2-step broadcast
+  prepare/publish flow, registration/status lifecycle, participant
+  management and post-event activities in that same file are untouched
+  and still handled inline in the Bot (see known limitation below).
+- New `GET /api/v1/admin/events` (review queue) and
+  `POST /api/v1/admin/events/{id}/decide` (action: approve/revise/reject
+  + comment) in `app/api/v1/admin.py`, gated by a new
+  `require_event_reviewer` dependency using `can_manage_events()` — same
+  pattern as `require_project_reviewer` from PR 7.
+- Frontend: `AdminEventsScreen` adds a fourth "Мероприятия" tab to
+  `AdminScreen`, mirroring `AdminProjectsScreen`'s list-with-comment-and-
+  decision-buttons layout; "Одобрить" gets the `.era-btn-primary` look
+  from the design-polish pass, "На доработку"/"Отклонить" stay neutral.
+- Tests: `tests/test_event_moderation_service.py` (6 cases, real
+  `sqlite+aiosqlite` — approve/revise/reject transitions, comment
+  validation, review-queue filtering), `tests/test_admin_events_api.py`
+  (6 cases, dependency overrides + mocked service calls — permission
+  gate, 404/422 mapping, notification on approve), plus 2 new
+  `can_manage_events` cases in `tests/test_authorization_service.py`.
+  Full suite: 430 passed via `pytest -q`, 343 via
+  `python -m unittest discover -s tests` (matches CI), 0 regressions.
+  Verified in a real browser against a temporary local mock server:
+  the Мероприятия tab lists a pending event, "Одобрить" round-trips
+  through the mocked API and updates the status shown; `.env.local` and
+  the mock server removed afterward.
+- No migrations — pure service extraction + API + UI on top of the
+  existing schema.
+
+**Known limitation:** Only the initial approve/revise/reject decision is
+in the Mini App. The 2-step chat broadcast (prepare/publish), the
+post-approval status lifecycle (open/close registration, mark active/
+completed), participant & attendance management, and post-event
+activities all stay Bot-only — they're Telegram-chat-specific or
+substantially larger surfaces better suited to a dedicated future block,
+consistent with how PR 7 phased project moderation.
+
+**Next block:** PR 11 per the 12-PR plan — remaining Admin content-
+management surfaces (Tasks/Opportunities/Partners/Communications/
+Surveys) or the event/leader actions deferred above — confirm against
+any updated brief before starting.
+
 ## Progress vs. the 12-PR plan
 
-- Completed: 9 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
+- Completed: 10 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
   hotfix; PR 2; PR 3; PR 4; PR 5 Project Workspace, delivered through
   PR #114, PR #115 and PR #116; PR 6 Opportunities; PR 7 Admin Mode
-  foundation; PR 8 Profile + Portfolio; PR 9 Leader Mode foundation),
-  plus the unnumbered PR #122 Mini App design polish pass.
-- Current stage: PR 10 (scope to be confirmed at the start of the next
-  session — see known limitations in PR 7, PR 8 and PR 9 above).
-- Next stage after PR 10: PR 11 — analytics/growth/reporting surfaces,
-  unless the PR 10 scope decision splits admin content management into
-  smaller follow-up PRs.
+  foundation; PR 8 Profile + Portfolio; PR 9 Leader Mode foundation;
+  PR 10 Admin Event Moderation), plus the unnumbered PR #122 Mini App
+  design polish pass.
+- Current stage: PR 11 (scope to be confirmed at the start of the next
+  session — see known limitations in PR 7, PR 8, PR 9 and PR 10 above).

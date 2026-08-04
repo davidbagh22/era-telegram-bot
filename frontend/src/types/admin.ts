@@ -31,3 +31,15 @@ export interface ProjectForModeration {
   submitted_at: string | null;
   admin_comment: string | null;
 }
+
+export type EventDecisionAction = "approve" | "revise" | "reject";
+
+export interface EventForModeration {
+  id: number;
+  title: string;
+  description: string;
+  event_date: string;
+  event_time: string;
+  location: string;
+  status: string;
+}

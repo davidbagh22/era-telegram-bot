@@ -9,6 +9,8 @@ import type {
 import type { ApiErrorBody, MiniAppAuthResponse, MiniAppUserSummary } from "../types/auth";
 import type {
   DashboardData,
+  EventDecisionAction,
+  EventForModeration,
   PendingApplication,
   ProjectDecisionAction,
   ProjectForModeration,
@@ -379,6 +381,21 @@ export function decideProject(
   comment: string,
 ): Promise<ProjectForModeration> {
   return authorizedPost<ProjectForModeration>(`/api/v1/admin/projects/${projectId}/decide`, {
+    action,
+    comment,
+  });
+}
+
+export function fetchAdminEvents(): Promise<EventForModeration[]> {
+  return authorizedGet<EventForModeration[]>("/api/v1/admin/events");
+}
+
+export function decideEvent(
+  eventId: number,
+  action: EventDecisionAction,
+  comment: string,
+): Promise<EventForModeration> {
+  return authorizedPost<EventForModeration>(`/api/v1/admin/events/${eventId}/decide`, {
     action,
     comment,
   });

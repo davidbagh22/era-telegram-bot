@@ -7,11 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Event, User
+from app.services import event_moderation_service
 from app.services.audit_service import audit
+from app.services.authorization_service import can_manage_events
 from app.services.event_card import format_event_text, send_event_card, send_event_card_to_chat
 from app.services.notification_service import safe_send
 from app.utils import texts
-from app.utils.constants import EVENT_STATUS_LABELS, EventStatus, Role
+from app.utils.constants import EVENT_STATUS_LABELS, EventStatus
 from app.utils.validators import clean_text
 
 router = Router(name="admin_events_block6")
@@ -23,13 +25,7 @@ class EventDecisionStates(StatesGroup):
 
 
 def is_admin(user: User | None, settings: Settings, tg_id: int) -> bool:
-    return bool(
-        tg_id in settings.admin_ids
-        or (user and user.role == Role.ADMIN and not user.is_blocked)
-        or (user and not user.is_blocked and not user.is_archived and any(
-            g.is_active and g.permission == "events.manage" for g in (user.permission_grants or [])
-        ))
-    )
+    return can_manage_events(user, settings, tg_id)
 
 
 async def guard(call: CallbackQuery, user: User | None, settings: Settings) -> bool:
@@ -102,12 +98,11 @@ async def approve_event(call: CallbackQuery, user: User | None, settings: Settin
     if not event:
         await call.message.answer("Мероприятие не найдено")
         return
-    event.status = EventStatus.APPROVED
-    event.approved_by = user.id if user else None
-    await audit(session, actor_id=user.id if user else None, action="event.approved_without_broadcast", entity_type="event", entity_id=event.id)
-    owner = await session.get(User, event.created_by)
-    if owner:
-        await safe_send(bot, owner.telegram_id, f"Мероприятие «{event.title}» одобрено. Рассылка будет только после отдельного подтверждения админа.")
+    result = await event_moderation_service.decide_event(
+        session, event, action="approve", comment="", actor=user
+    )
+    if result.owner:
+        await safe_send(bot, result.owner.telegram_id, result.notice)
     await send_event_card(
         call.message,
         event,
@@ -199,13 +194,14 @@ async def event_decision_finish(message: Message, user: User | None, settings: S
     if not event:
         await state.clear()
         return
-    revise = data["event_decision_action"] == "revise"
-    event.status = EventStatus.DRAFT if revise else EventStatus.CANCELLED
-    owner = await session.get(User, event.created_by)
-    if owner:
+    action = data["event_decision_action"]
+    result = await event_moderation_service.decide_event(
+        session, event, action=action, comment=comment, actor=user
+    )
+    if result.owner:
         markup = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="✏️ Исправить мероприятие", callback_data=f"leader:event:revise:{event.id}")
-        ]]) if revise else None
-        await safe_send(bot, owner.telegram_id, f"Мероприятие «{event.title}» {'возвращено на доработку' if revise else 'отклонено'}\n\n{comment}", reply_markup=markup)
+        ]]) if action == "revise" else None
+        await safe_send(bot, result.owner.telegram_id, result.notice, reply_markup=markup)
     await state.clear()
     await message.answer("Решение сохранено")
