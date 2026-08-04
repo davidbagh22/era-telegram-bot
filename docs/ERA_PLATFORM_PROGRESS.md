@@ -6,9 +6,10 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `3211d21a5631f393d2a5e75ba7b5fe5a9ab76000`
-  (PR #124 merge: Admin Event Moderation).
-- Prior merges, newest first: `908896e80` (PR #122, frontend design
+- Current `main` commit: `e05d1e2ad530d51845c6366dc022a1e5e4731c3c`
+  (PR #125 merge: Admin Task Submission Review).
+- Prior merges, newest first: `3211d21a5` (PR #124, Admin Event
+  Moderation), `908896e80` (PR #122, frontend design
   polish pass), `c417f3aa` (PR #121, Leader Mode —
   scope overview + open tasks), `fe4e5f667` (PR #120, Profile +
   Portfolio), `446fd1890` (PR #119, Admin Mode + moderation
@@ -930,8 +931,10 @@ any updated brief before starting.
 
 ### PR 11 — Admin Task Submission Review (merged)
 
-Branch: `era-platform-pr11-task-review`. See PR link and merge commit
-recorded in the follow-up progress-doc-only commit once merged.
+Branch: `era-platform-pr11-task-review`. PR:
+[#125](https://github.com/davidbagh22/era-telegram-bot/pull/125). Merge
+commit: `e05d1e2ad530d51845c6366dc022a1e5e4731c3c`. Both CI checks green
+before merge.
 
 - New `can_manage_tasks()` in `app/services/authorization_service.py`,
   same pattern as PR 10's `can_manage_events()` — replaces an inline
