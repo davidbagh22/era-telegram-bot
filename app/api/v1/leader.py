@@ -4,16 +4,32 @@ from datetime import datetime
 from typing import Literal
 
 from aiogram import Bot
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_current_user, get_session
+from app.api.rate_limit import enforce_rate_limit
 from app.database.models import Task, User
 from app.services import leader_service
 from app.utils.constants import PRIVILEGED_ROLES
 
 router = APIRouter(prefix="/leader", tags=["leader"])
+
+# Same rationale as app/api/v1/admin.py's ADMIN_ACTION_RATE_LIMIT — a
+# stolen leader token shouldn't be able to spam task creation/decisions
+# unbounded. See docs/PRODUCTION_READINESS_AUDIT.md finding #11.
+LEADER_ACTION_RATE_LIMIT = 30
+LEADER_ACTION_RATE_LIMIT_WINDOW_SECONDS = 60
+
+
+async def enforce_leader_action_rate_limit(request: Request) -> None:
+    await enforce_rate_limit(
+        request,
+        key_prefix="leader_action",
+        limit=LEADER_ACTION_RATE_LIMIT,
+        window_seconds=LEADER_ACTION_RATE_LIMIT_WINDOW_SECONDS,
+    )
 
 
 async def require_leader(user: User = Depends(get_current_user)) -> User:
@@ -121,6 +137,7 @@ async def create_assigned_task(
     leader: User = Depends(require_leader),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_leader_action_rate_limit),
 ) -> TaskOut:
     assignee = await session.get(User, payload.assignee_id)
     if assignee is None:
@@ -210,6 +227,7 @@ async def create_open_task(
     payload: OpenTaskCreateIn,
     leader: User = Depends(require_leader),
     session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_leader_action_rate_limit),
 ) -> OpenTaskOut:
     try:
         task = await leader_service.create_open_task(
@@ -238,6 +256,7 @@ async def decide_application(
     leader: User = Depends(require_leader),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_leader_action_rate_limit),
 ) -> OpenTaskOut:
     task = await session.get(Task, task_id)
     target = await session.get(User, user_id)

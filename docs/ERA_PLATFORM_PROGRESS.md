@@ -1343,6 +1343,40 @@ decision races, file/portfolio upload, and the chat/registration
 addendum's own scenario list are explicitly out of scope here, covered
 by other, dedicated blocks instead of being folded into this one.
 
+### PR 17 — Rate Limiting on Remaining Admin/Leader Endpoints (merged)
+
+Branch: `era-platform-pr17-rate-limiting`. Closes audit finding #11
+("decide-endpoints in Admin/Leader Mode still without limits" — PR13 had
+only covered `/api/v1/miniapp/auth`).
+
+- New `enforce_admin_action_rate_limit` (`app/api/v1/admin.py`) applied
+  to all 7 mutating endpoints: application approve/reject/request-info,
+  and project/event/task-submission/offer-application decide. New
+  `enforce_leader_action_rate_limit` (`app/api/v1/leader.py`) applied to
+  all 3: assigned-task create, open-task create, open-task application
+  decide. Both reuse the existing `app/api/rate_limit.py` helper (Redis
+  fixed-window, fails open) from PR13 — same shared-budget-per-router
+  design as the auth endpoint's limiter, so rotating between an admin's
+  different decide endpoints doesn't reset the budget. 30 requests/60s —
+  generous enough that no real admin working through a queue by hand
+  would ever hit it, tight enough to blunt a stolen-token spam scenario.
+- Tests (`tests/test_admin_leader_rate_limiting.py`): under/over-limit
+  behavior for both dependencies, plus a dependency-wiring check that
+  actually inspects each router's registered `POST` routes and asserts
+  the rate-limit dependency is present on all 7 (admin) / 3 (leader) of
+  them — not just that the function works in isolation, which would have
+  silently passed even if a route forgot to declare it.
+- Verification: `ruff`/`compileall` clean; full `pytest -q` re-run — see
+  PR for the exact count, zero regressions expected (additive dependency
+  only, no endpoint behavior changed for requests under the limit).
+
+**Known limitation / explicit backlog**: participant-facing mutations
+(event registration/cancellation, task claim, opportunity apply/save,
+project creation) remain unlimited — audit finding #11 scoped this to
+Admin/Leader Mode specifically, since a compromised participant token
+has far less blast radius than a compromised admin/leader one; extending
+coverage there is a natural, low-risk follow-up if ever prioritized.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

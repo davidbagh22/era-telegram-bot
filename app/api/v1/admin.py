@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from aiogram import Bot
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
+from app.api.rate_limit import enforce_rate_limit
 from app.config import Settings
 from app.database.models import Event, Project, Task, TaskSubmission, User
 from app.database.partners import PartnerInitiative, PartnerOfferApplication
@@ -32,6 +33,24 @@ from app.utils import texts
 from app.utils.constants import ApplicationStatus
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+# Blunt defense against a stolen/leaked admin token being used to hammer
+# decide-endpoints (approve/reject/moderate) — see
+# docs/PRODUCTION_READINESS_AUDIT.md finding #11. Shared across all decide
+# actions in this router (not per-endpoint) so rotating between them
+# doesn't reset the budget. Generous enough that no real admin reviewing a
+# queue by hand would ever hit it.
+ADMIN_ACTION_RATE_LIMIT = 30
+ADMIN_ACTION_RATE_LIMIT_WINDOW_SECONDS = 60
+
+
+async def enforce_admin_action_rate_limit(request: Request) -> None:
+    await enforce_rate_limit(
+        request,
+        key_prefix="admin_action",
+        limit=ADMIN_ACTION_RATE_LIMIT,
+        window_seconds=ADMIN_ACTION_RATE_LIMIT_WINDOW_SECONDS,
+    )
 
 
 async def require_dashboard_access(
@@ -110,6 +129,7 @@ async def approve_user_application(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
     bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
 ) -> ApplicationOut:
     target = await session.get(User, user_id)
     if target is None:
@@ -140,6 +160,7 @@ async def reject_user_application(
     admin: User = Depends(require_dashboard_access),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
 ) -> ApplicationOut:
     if not payload.comment.strip():
         raise HTTPException(status_code=422, detail="comment_required")
@@ -165,6 +186,7 @@ async def request_more_info_endpoint(
     admin: User = Depends(require_dashboard_access),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
 ) -> ApplicationOut:
     if not payload.comment.strip():
         raise HTTPException(status_code=422, detail="comment_required")
@@ -232,6 +254,7 @@ async def decide_project_endpoint(
     reviewer: User = Depends(require_project_reviewer),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
 ) -> ProjectModerationOut:
     if not payload.comment.strip():
         raise HTTPException(status_code=422, detail="comment_required")
@@ -306,6 +329,7 @@ async def decide_event_endpoint(
     reviewer: User = Depends(require_event_reviewer),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
 ) -> EventModerationOut:
     event = await session.get(Event, event_id)
     if event is None:
@@ -390,6 +414,7 @@ async def decide_task_submission_endpoint(
     reviewer: User = Depends(require_task_reviewer),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
 ) -> TaskSubmissionOut:
     submission = await session.get(TaskSubmission, submission_id)
     if submission is None:
@@ -483,6 +508,7 @@ async def decide_offer_application_endpoint(
     reviewer: User = Depends(require_offer_reviewer),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
 ) -> OfferApplicationOut:
     application = await session.get(PartnerOfferApplication, application_id)
     if application is None:
