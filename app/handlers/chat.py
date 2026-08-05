@@ -12,6 +12,7 @@ from app.config import Settings
 from app.database.chat_moderation import ChatModerationSetting
 from app.database.models import ChatGreeting, User
 from app.repositories.users import get_user_by_telegram_id
+from app.services.audit_service import audit
 from app.services.chat_access_service import (
     access_message,
     approve_join_request,
@@ -69,6 +70,17 @@ async def handle_chat_join_request(
                 status="approved",
                 reason="approved",
             )
+            await audit(
+                session,
+                actor_id=user.id if user else None,
+                action="chat_access.join_request_approved",
+                entity_type="chat_join_request",
+                new_value={
+                    "chat_id": request.chat.id,
+                    "telegram_id": request.from_user.id,
+                    "chat_key": chat_key,
+                },
+            )
         return
 
     if decision.chat_key and decision.pending:
@@ -87,6 +99,18 @@ async def handle_chat_join_request(
             user_id=request.from_user.id,
             status="declined",
             reason=decision.reason,
+        )
+        await audit(
+            session,
+            actor_id=user.id if user else None,
+            action="chat_access.join_request_declined",
+            entity_type="chat_join_request",
+            new_value={
+                "chat_id": request.chat.id,
+                "telegram_id": request.from_user.id,
+                "chat_key": decision.chat_key,
+                "reason": decision.reason,
+            },
         )
     await notify_user(bot, request.from_user.id, access_message(decision.reason))
 

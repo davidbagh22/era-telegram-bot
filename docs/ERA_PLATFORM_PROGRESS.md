@@ -1059,6 +1059,89 @@ every other "Known limitation" recorded in PR 7 through PR 11 above,
 are the natural backlog for whichever numbered or unnumbered block comes
 next.
 
+### PR 13 — Production Readiness Audit + Critical Hardening (merged)
+
+Branch: `era-platform-pr13-production-readiness`. See PR link and merge
+commit recorded in the follow-up progress-doc-only commit once merged.
+Not part of the 12-PR plan — a full audit + hardening block requested
+after the plan closed, scoped down honestly from a much larger brief
+(7 PRs, E2E suites, external monitoring, legal review) to what a single
+session can genuinely implement and verify, with the rest documented as
+backlog rather than faked.
+
+- New `docs/PRODUCTION_READINESS_AUDIT.md` — full findings table with
+  severity/status per item, not a theoretical list; every "Fixed" item
+  has a real diff and test in this PR.
+- **Real bug found and fixed**: `app/handlers/admin/rights_block6.py`
+  used `PERMISSION_LABELS` without importing it — a `NameError` on every
+  admin open of a user's permissions screen. Found by adding a
+  correctness-only `ruff` pass (`E9,F` rules) to CI, which is exactly
+  why that check was worth adding. Fixed with a regression test
+  (`tests/test_rights_block6_permissions_keyboard.py`).
+- Security fixes: `hmac.compare_digest` for the Telegram webhook secret
+  (was a plain `!=`); a startup guard (`Settings.assert_safe_for_deployment`)
+  that refuses to start if `DEV_AUTH_ENABLED=true` on a Render deployment
+  (would otherwise let anyone bypass `initData` verification); a new
+  `/ready` endpoint that actually checks database connectivity (`/health`
+  stays a dependency-free liveness check); `init_data_max_age_seconds`
+  default reduced from 24h to 1h; a Redis-backed rate limiter
+  (`app/api/rate_limit.py`, fails open) on `/api/v1/miniapp/auth`; basic
+  security response headers (`X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`, HSTS on HTTPS).
+- Audit logging added for chat-access actions that weren't previously
+  recorded: `sync_user_chat_access` now writes one summary `AuditLog` row
+  per sync (`chat_access.synced`, including a `failed` count so admins
+  can see when a Telegram API hiccup left permissions out of sync), and
+  `handle_chat_join_request` logs `chat_access.join_request_approved`/
+  `_declined`. The existing, already-mature chat-moderation system
+  (join-request handling, auto-restrict on join, real-time per-message
+  moderation gate, `sync_user_chat_access` wired into every
+  approve/block/unblock flow) needed this one gap closed, not a rebuild
+  — see the audit doc for the full assessment of what was already solid.
+- CI (`.github/workflows/ci.yml`) now also: builds and type-checks the
+  frontend (`npm run build`) in a new `frontend` job — previously CI
+  never touched `frontend/` at all; runs `ruff check app --select E9,F`
+  (blocking); runs `pip-audit --strict` (blocking — currently clean, 0
+  known vulnerabilities); runs `npm audit --audit-level=high`
+  (non-blocking for now — found one real moderate/high dev-only
+  `esbuild`/vite advisory that needs a breaking Vite major-version
+  upgrade, tracked as backlog rather than force-failing this PR over an
+  unrelated pre-existing issue).
+- New `docs/AUTHORIZATION_MATRIX.md` (Mini App/API-layer object-level
+  authorization per endpoint, cross-referencing the existing
+  `docs/ROLE_PERMISSION_MATRIX.md` for the bot's grant model),
+  `docs/DEPLOYMENT_RUNBOOK.md` (env vars, migrations, smoke test,
+  rollback, troubleshooting table — grounded in the real `render.yaml`/
+  `Dockerfile`), `docs/DATA_INVENTORY.md` (real field-by-field inventory
+  of `users` and related tables, explicit unresolved gaps: no
+  `consent_log` table, no minors/age-gating logic despite `birth_date`
+  being collected — flagged as the platform owner's decision, not
+  something a technical PR can resolve unilaterally).
+- `docs/BACKUP_AND_RECOVERY.md` already existed (from a parallel session)
+  and is already real and thorough — daily automated backup +
+  isolated-Postgres restore verification in CI, not just documented as a
+  plan. Left as-is, referenced from the new docs above.
+- Tests: 15 new cases across `tests/test_config_deployment_safety.py`,
+  `tests/test_rate_limit.py`, `tests/test_chat_access_audit.py`,
+  `tests/test_rights_block6_permissions_keyboard.py`. Full suite: 471
+  passed via `pytest -q`, 0 regressions. `ruff check app --select E9,F`
+  clean. Frontend build clean. Alembic: unchanged, one head
+  (`0013_saved_opportunities`) — no migrations in this PR.
+
+**Known limitation / explicit backlog** (see the audit doc for full
+detail, not repeated here): no E2E test suite, no external error
+monitoring (Sentry-class tooling), no real production domain/TLS setup
+from this environment (needs the owner's Render access), rate limiting
+not yet extended to every admin/leader decide-endpoint, Vite major-version
+upgrade for the `esbuild` advisory, and the two explicitly-flagged
+organizational/legal items (consent-log schema needs real policy text
+from the owner; minors/age-gating needs an owner + legal decision before
+any technical fix is meaningful).
+
+**Next block:** whichever of the above the owner prioritizes next —
+this audit intentionally did not invent a "PR 14" scope on its own,
+since the backlog above already spans several independently-sized blocks.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

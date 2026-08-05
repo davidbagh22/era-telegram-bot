@@ -24,7 +24,6 @@ from app.utils.constants import (
     PERMISSION_LABELS,
     ROLE_LABELS,
     STATUS_LABELS,
-    Role,
 )
 
 logger = logging.getLogger(__name__)

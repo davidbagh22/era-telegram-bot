@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable
-from datetime import date, datetime, time
+from datetime import datetime, time
 from io import BytesIO
 from typing import Any
 
@@ -86,9 +86,6 @@ def build_analytics_workbook(
 
     purple = "6F2DBD"
     red = "E63946"
-    green = "2A9D8F"
-    amber = "F4A261"
-    light = "F6F0FA"
     border = Border(bottom=Side(style="thin", color="DDD4E0"))
     table_index = 0
 

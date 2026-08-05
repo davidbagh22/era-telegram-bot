@@ -25,6 +25,7 @@ from app.services.admin_user_card import send_admin_user_card
 from app.services.chat_access_service import sync_user_chat_access
 from app.utils import texts
 from app.utils.constants import (
+    PERMISSION_LABELS,
     PERMISSIONS,
     PRIVILEGED_ROLES,
     ROLE_LABELS,

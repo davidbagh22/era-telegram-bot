@@ -9,7 +9,6 @@ from app.config import Settings
 from app.database.models import Event, EventRegistration, User
 from app.handlers.admin.events_block6 import guard
 from app.services.event_registration_service import (
-    ACTIVE_REGISTRATION_STATUSES,
     event_points_already_awarded,
     registration_stats,
 )

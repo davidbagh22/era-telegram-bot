@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -8,6 +9,7 @@ from pathlib import Path
 from aiogram.types import BotCommand, BotCommandScopeChat, MenuButtonDefault, Update
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from app.api.v1.router import api_router
 from app.bot import create_bot, create_dispatcher
@@ -71,6 +73,7 @@ ADMIN_COMMANDS = USER_COMMANDS + [
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    settings.assert_safe_for_deployment()
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -141,9 +144,47 @@ app = FastAPI(
 )
 
 
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    # Baseline hardening headers. No CORS header is set here on purpose —
+    # the Mini App is served same-origin in production (see
+    # _mount_frontend below), so cross-origin requests should keep failing
+    # closed by default rather than being explicitly allowed. If the
+    # frontend is ever hosted on a separate domain, add an explicit
+    # allowlisted CORSMiddleware then — never a wildcard.
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=63072000; includeSubDomains"
+        )
+    return response
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
+    """Liveness only — must stay cheap and dependency-free so it keeps
+    answering even if the database or Redis are degraded. Use /ready for
+    an actual dependency check."""
     return {"status": "ok", "version": "2.1.0", "commit": DEPLOYED_COMMIT}
+
+
+@app.get("/ready")
+async def ready(request: Request) -> dict[str, str]:
+    """Readiness check: verifies the database is actually reachable,
+    without leaking connection details in the response."""
+    session_factory = getattr(request.app.state, "session_factory", None)
+    if session_factory is None:
+        raise HTTPException(status_code=503, detail="not_ready")
+    try:
+        async with session_factory() as session:
+            await session.execute(text("SELECT 1"))
+    except Exception:
+        logger.exception("Readiness check failed: database unreachable")
+        raise HTTPException(status_code=503, detail="database_unavailable")
+    return {"status": "ready"}
 
 
 app.include_router(api_router)
@@ -157,7 +198,7 @@ async def telegram_webhook(
     secret: str | None = Header(default=None, alias="X-Telegram-Bot-Api-Secret-Token"),
 ) -> dict[str, bool]:
     expected_secret = request.app.state.settings.effective_webhook_secret
-    if expected_secret and secret != expected_secret:
+    if expected_secret and not hmac.compare_digest(secret or "", expected_secret):
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
     payload = await request.json()
     update = Update.model_validate(payload, context={"bot": request.app.state.bot})

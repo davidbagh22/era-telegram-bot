@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.chat_moderation import PendingChatJoinRequest
 from app.database.models import User
+from app.services.audit_service import audit
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
 
 logger = logging.getLogger(__name__)
@@ -264,4 +265,24 @@ async def sync_user_chat_access(
         )
         fixed += int(ok)
         failed += int(not ok)
+
+    # One summary row per sync, not one per chat — enough to answer "was
+    # this user's chat access actually synced, and did anything fail" from
+    # the audit log, without flooding it. `failed > 0` is the signal admins
+    # need to know a Telegram-API hiccup left chat permissions stale even
+    # though the approval itself (audited separately by the caller) went
+    # through.
+    if fixed or failed:
+        await audit(
+            session,
+            actor_id=user.id,
+            action="chat_access.synced",
+            entity_type="user",
+            entity_id=user.id,
+            new_value={
+                "telegram_id": user.telegram_id,
+                "fixed": fixed,
+                "failed": failed,
+            },
+        )
     return fixed, failed
