@@ -6,7 +6,7 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `f01e570d49b4f7390de7a4bda0cffbb117554d2d`
+- Current `main` commit: `2066103f48eceed70837586ebcdc48d73194be7f`
   (PR #126 merge: Admin Opportunity Application Review — the 12th and
   final PR in the original 12-PR plan).
 - Prior merges, newest first: `e05d1e2ad` (PR #125, Admin Task
@@ -1061,8 +1061,9 @@ next.
 
 ### PR 13 — Production Readiness Audit + Critical Hardening (merged)
 
-Branch: `era-platform-pr13-production-readiness`. See PR link and merge
-commit recorded in the follow-up progress-doc-only commit once merged.
+Branch: `era-platform-pr13-production-readiness`. PR:
+https://github.com/davidbagh22/era-telegram-bot/pull/127. Merge commit:
+`2066103f48eceed70837586ebcdc48d73194be7f`.
 Not part of the 12-PR plan — a full audit + hardening block requested
 after the plan closed, scoped down honestly from a much larger brief
 (7 PRs, E2E suites, external monitoring, legal review) to what a single
