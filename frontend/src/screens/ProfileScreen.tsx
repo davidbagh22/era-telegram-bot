@@ -132,7 +132,7 @@ export function ProfileScreen() {
           {downloading ? "Формируем PDF…" : "Скачать резюме PDF"}
         </button>
         {downloadError && (
-          <p style={{ color: "var(--era-error, #E5342B)", fontSize: "0.8125rem", margin: "0.5rem 0 0" }}>
+          <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: "0.5rem 0 0" }}>
             Не удалось скачать резюме. Попробуйте ещё раз.
           </p>
         )}

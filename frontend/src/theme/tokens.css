@@ -28,6 +28,25 @@
   --era-font-body: "Golos Text", "Segoe UI", system-ui, sans-serif;
 }
 
+/* Applied to <html> by telegram/webApp.ts's applyTelegramTheme(), mirroring
+   Telegram's own colorScheme ("themeChanged" event keeps it live). Brand
+   colors (red/violet/magenta/gradient) stay the same in both themes —
+   they're already saturated enough to read on a dark surface; only
+   surface/text/border/shadow tokens need a dark variant. */
+:root[data-theme="dark"] {
+  --era-bg: #17121d;
+  --era-bg-subtle: #1f1926;
+  --era-surface: #241d2c;
+  --era-text: #f3eff6;
+  --era-text-muted: #a99fb0;
+  --era-border: #362c40;
+  --era-success: #3ecf96;
+  --era-warning: #e8a23d;
+  --era-error: #f0655c;
+  --era-shadow-soft: 0 8px 28px rgba(0, 0, 0, 0.35);
+  --era-shadow-lift: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
 * {
   box-sizing: border-box;
 }

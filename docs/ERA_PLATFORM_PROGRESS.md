@@ -1139,9 +1139,62 @@ organizational/legal items (consent-log schema needs real policy text
 from the owner; minors/age-gating needs an owner + legal decision before
 any technical fix is meaningful).
 
-**Next block:** whichever of the above the owner prioritizes next —
-this audit intentionally did not invent a "PR 14" scope on its own,
-since the backlog above already spans several independently-sized blocks.
+**Next block:** owner directed a continuous run through the remaining
+backlog (design system → functional stabilization → E2E → rate limiting →
+file security → consent/minors technical scaffolding → dependency
+upgrade → live chat/broadcast re-verification → production
+acceptance), reported per-PR below rather than re-planned from scratch.
+
+### PR 14 — Unified Design System + Mobile/Telegram Theming (merged)
+
+Branch: `era-platform-pr14-design-system`. Frontend-only — no backend/API
+change, no migration.
+
+- **Real gap found and fixed**: `getColorScheme()` (`telegram/webApp.ts`)
+  existed since PR2 but was never called anywhere — the Mini App ignored
+  Telegram's dark theme entirely and always rendered light, even inside a
+  dark-themed Telegram client. Added `applyTelegramTheme()`, called once
+  synchronously in `main.tsx` (avoids a flash of the wrong theme) and
+  again from `initTelegramWebApp()` (`useAuth.ts`), which also subscribes
+  to Telegram's `themeChanged` event so switching theme mid-session
+  updates live. `tokens.css` gained a `:root[data-theme="dark"]` block
+  overriding surface/text/border/shadow/status tokens; brand colors
+  (red/violet/magenta/gradient) are unchanged in dark mode — verified in
+  a local browser session (`document.documentElement.dataset.theme`
+  toggle) that computed `background-color`/`color`/`--era-error` all
+  flip correctly.
+- Fixed two inline style fallbacks (`OpenTasksTab.tsx`, `ProfileScreen.tsx`)
+  that hardcoded `var(--era-error, #E5342B)` where the fallback hex
+  didn't match the real token (`#d92d20`) — the fallback was dead code
+  with a wrong value, since `tokens.css` is always loaded globally;
+  simplified to `var(--era-error)`.
+- Added `env(safe-area-inset-top, 0px)` top padding to `UserLayout`,
+  `AdminLayout`, `LeaderLayout`, and `StatusBanner` (used standalone by
+  Pending/Blocked/AuthError screens). `index.html` sets
+  `viewport-fit=cover`, so content can render under a device notch/status
+  bar without this — bottom nav already handled the equivalent bottom
+  inset, top was missing for every layout.
+- Audited all 17 screens/tabs using the `useAsync` loading pattern:
+  confirmed every one renders distinct loading/error/empty-ready states
+  (no screen silently shows nothing or leaves an unhandled rejection) —
+  this closes the "per-screen loading/error/empty audit" item PR13 had
+  left as an explicit, unchecked backlog item.
+- New `docs/UI_DESIGN_SYSTEM.md` — the token table, component-usage
+  table, the loading/error/empty pattern contract, and the documented
+  exceptions (literal `#fff` on brand-color backgrounds; the safe-area
+  additions above).
+- Verification: `npm run build` (tsc + vite) clean; manual browser check
+  at a 375×812 mobile viewport confirmed light theme renders correctly
+  and toggling `data-theme` to `"dark"` correctly flips computed
+  `background-color`/`color`/CSS custom properties; full backend
+  `pytest -q` re-run as a regression check (frontend-only change, but no
+  surprises) — see PR for the exact count.
+
+**Known limitation / explicit backlog**: no Storybook/visual-regression
+tooling — screen consistency is enforced by `docs/UI_DESIGN_SYSTEM.md` +
+code review, not automated; loading state stays a plain "Загрузка…" text
+(no spinner/skeleton) — consistent everywhere already, a skeleton
+upgrade is a separate cosmetic decision, not a production-readiness gap.
 
 ## Progress vs. the 12-PR plan
 

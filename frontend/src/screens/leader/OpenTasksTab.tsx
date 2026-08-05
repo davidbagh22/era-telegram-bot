@@ -142,7 +142,7 @@ export function OpenTasksTab() {
               style={inputStyle}
             />
             {formError && (
-              <p style={{ color: "var(--era-error, #E5342B)", fontSize: "0.8125rem", margin: 0 }}>
+              <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>
                 Заполните название, описание и дедлайн.
               </p>
             )}
