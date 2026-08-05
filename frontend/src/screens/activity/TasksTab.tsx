@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { claimTask, fetchTasks } from "../../api/client";
+import { claimTask, describeActionError, fetchTasks } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { PillTabs } from "../../components/PillTabs";
@@ -18,12 +18,16 @@ export function TasksTab() {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchTasks(scope), [scope, refreshKey]);
   const [pendingId, setPendingId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const handleClaim = useCallback(async (taskId: number) => {
     setPendingId(taskId);
+    setActionError(null);
     try {
       await claimTask(taskId);
       setRefreshKey((key) => key + 1);
+    } catch (error) {
+      setActionError(describeActionError(error));
     } finally {
       setPendingId(null);
     }
@@ -32,6 +36,10 @@ export function TasksTab() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <PillTabs options={SCOPES} active={scope} onChange={setScope} />
+
+      {actionError && (
+        <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
+      )}
 
       {state.status === "loading" && (
         <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>

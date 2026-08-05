@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createProject, fetchProjects } from "../../api/client";
+import { createProject, describeActionError, fetchProjects } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { PillTabs } from "../../components/PillTabs";
@@ -22,14 +22,18 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
   const [scope, setScope] = useState<ProjectScope>("mine");
   const [idea, setIdea] = useState("");
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const state = useAsync(() => fetchProjects(scope), [scope]);
 
   const handleCreate = async () => {
     setCreating(true);
+    setCreateError(null);
     try {
       const project = await createProject(idea);
       setIdea("");
       onSelect(project.id);
+    } catch (error) {
+      setCreateError(describeActionError(error));
     } finally {
       setCreating(false);
     }
@@ -60,6 +64,9 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
             <button type="button" className="era-btn-primary" disabled={creating} onClick={handleCreate}>
               Создать черновик
             </button>
+            {createError && (
+              <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{createError}</p>
+            )}
           </div>
         </Card>
       )}

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { decideTaskSubmission, fetchAdminTaskSubmissions } from "../../api/client";
+import { decideTaskSubmission, describeActionError, fetchAdminTaskSubmissions } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { useAsync } from "../../hooks/useAsync";
@@ -16,6 +16,7 @@ export function AdminTasksScreen() {
   const state = useAsync(() => fetchAdminTaskSubmissions(), [refreshKey]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [comments, setComments] = useState<Record<number, string>>({});
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
@@ -24,9 +25,12 @@ export function AdminTasksScreen() {
       const comment = (comments[submissionId] ?? "").trim();
       if (action !== "approve" && !comment) return;
       setBusyId(submissionId);
+      setActionError(null);
       try {
         await decideTaskSubmission(submissionId, action, comment);
         refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
       } finally {
         setBusyId(null);
       }
@@ -46,6 +50,9 @@ export function AdminTasksScreen() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      {actionError && (
+        <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
+      )}
       {state.data.map((submission) => (
         <Card key={submission.id}>
           <strong>{submission.task_title}</strong>

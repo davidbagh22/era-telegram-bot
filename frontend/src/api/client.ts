@@ -54,6 +54,58 @@ export class ApiError extends Error {
   }
 }
 
+// Backend error `detail` values are machine codes (see app/api/v1/*.py),
+// not sentences — this is the one place that turns them into Russian text
+// for the handful of mutating actions (approve/reject/register/claim/apply)
+// that can fail for a reason the user should actually see (someone else
+// already decided it, no slots left, etc.), instead of failing silently.
+// Not exhaustive by design: an unmapped code still shows a readable
+// message with the raw code attached, rather than nothing at all.
+const ACTION_ERROR_MESSAGES: Record<string, string> = {
+  user_not_found: "Пользователь не найден — возможно, запись уже изменилась.",
+  already_approved: "Заявка уже была одобрена ранее.",
+  already_rejected: "Заявка уже была отклонена ранее.",
+  comment_required: "Добавьте комментарий перед отправкой решения.",
+  admin_access_required: "Недостаточно прав администратора для этого действия.",
+  reviewer_access_required: "Недостаточно прав для проверки проектов.",
+  event_reviewer_access_required: "Недостаточно прав для проверки мероприятий.",
+  task_reviewer_access_required: "Недостаточно прав для проверки заданий.",
+  offer_reviewer_access_required: "Недостаточно прав для проверки заявок на возможности.",
+  leader_access_required: "Недостаточно прав лидера для этого действия.",
+  invalid_action: "Такое решение недоступно для текущего статуса — обновите список.",
+  project_not_found: "Проект не найден — возможно, его уже удалили.",
+  event_not_found: "Мероприятие не найдено — возможно, его уже удалили.",
+  submission_not_found: "Результат задания не найден — возможно, его уже проверили.",
+  application_not_found: "Заявка не найдена — возможно, её уже обработали.",
+  opportunity_not_found: "Возможность не найдена — возможно, её уже сняли с публикации.",
+  offer_unavailable: "Эта возможность больше недоступна.",
+  already_applied: "Вы уже подавали заявку на эту возможность.",
+  insufficient_points: "Недостаточно баллов для этой заявки.",
+  no_slots: "Свободных мест больше нет.",
+  registration_not_found: "Регистрация не найдена — возможно, вы уже отменили её.",
+  cannot_change_plans: "Отменить регистрацию уже нельзя — до мероприятия слишком мало времени.",
+  closed: "Регистрация на это мероприятие закрыта.",
+  already: "Вы уже зарегистрированы на это мероприятие.",
+  full: "Свободных мест на это мероприятие больше нет.",
+  assignee_not_found: "Участник не найден.",
+  not_found: "Не найдено — возможно, запись уже изменилась.",
+  task_closed: "Задача уже закрыта.",
+  task_full: "Набор помощников на эту задачу уже завершён.",
+  already_joined: "Вы уже откликнулись на эту задачу.",
+  task_not_found: "Задача не найдена — возможно, её уже удалили.",
+  rate_limited: "Слишком много попыток подряд — подождите немного и попробуйте снова.",
+};
+
+export function describeActionError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return (
+      ACTION_ERROR_MESSAGES[error.message] ??
+      `Не удалось выполнить действие (код: ${error.message}).`
+    );
+  }
+  return "Не удалось выполнить действие. Проверьте соединение и попробуйте ещё раз.";
+}
+
 async function parseErrorDetail(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as ApiErrorBody;

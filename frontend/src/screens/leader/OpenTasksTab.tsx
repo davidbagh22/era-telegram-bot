@@ -1,6 +1,11 @@
 import { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
-import { createLeaderOpenTask, decideLeaderApplication, fetchLeaderOpenTasks } from "../../api/client";
+import {
+  createLeaderOpenTask,
+  decideLeaderApplication,
+  describeActionError,
+  fetchLeaderOpenTasks,
+} from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { useAsync } from "../../hooks/useAsync";
@@ -50,6 +55,7 @@ export function OpenTasksTab() {
   const [points, setPoints] = useState("10");
   const [maxParticipants, setMaxParticipants] = useState("1");
   const [formError, setFormError] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
@@ -59,6 +65,7 @@ export function OpenTasksTab() {
       return;
     }
     setFormError(false);
+    setActionError(null);
     setPendingKey("create");
     try {
       await createLeaderOpenTask({
@@ -75,8 +82,12 @@ export function OpenTasksTab() {
       setMaxParticipants("1");
       setShowForm(false);
       refresh();
-    } catch {
-      setFormError(true);
+    } catch (error) {
+      // Distinct from formError above: this is a real server-side failure
+      // on a form that already passed client-side validation, so reusing
+      // "Заполните название, описание и дедлайн" here would be actively
+      // misleading — the fields are filled in, something else went wrong.
+      setActionError(describeActionError(error));
     } finally {
       setPendingKey(null);
     }
@@ -85,9 +96,12 @@ export function OpenTasksTab() {
   const handleDecide = useCallback(
     async (taskId: number, userId: number, action: "accept" | "reject") => {
       setPendingKey(`${taskId}:${userId}`);
+      setActionError(null);
       try {
         await decideLeaderApplication(taskId, userId, action);
         refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
       } finally {
         setPendingKey(null);
       }
@@ -151,6 +165,10 @@ export function OpenTasksTab() {
             </button>
           </div>
         </Card>
+      )}
+
+      {actionError && (
+        <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
       )}
 
       {state.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>}
