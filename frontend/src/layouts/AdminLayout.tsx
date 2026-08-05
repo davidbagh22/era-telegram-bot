@@ -6,7 +6,7 @@ interface AdminLayoutProps {
 
 export function AdminLayout({ children }: AdminLayoutProps) {
   return (
-    <div style={{ minHeight: "100vh" }}>
+    <div style={{ minHeight: "100vh", paddingTop: "env(safe-area-inset-top, 0px)" }}>
       <div
         style={{
           padding: "0.5rem 1rem",

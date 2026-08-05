@@ -16,6 +16,7 @@ export function UserLayout({ children, activeTab, onTabChange }: UserLayoutProps
         minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
+        paddingTop: "env(safe-area-inset-top, 0px)",
       }}
     >
       <div style={{ flex: 1 }}>{children}</div>

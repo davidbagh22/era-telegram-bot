@@ -6,7 +6,7 @@ interface LeaderLayoutProps {
 
 export function LeaderLayout({ children }: LeaderLayoutProps) {
   return (
-    <div style={{ minHeight: "100vh" }}>
+    <div style={{ minHeight: "100vh", paddingTop: "env(safe-area-inset-top, 0px)" }}>
       <div
         style={{
           padding: "0.5rem 1rem",

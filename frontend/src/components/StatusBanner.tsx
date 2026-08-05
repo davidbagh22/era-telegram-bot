@@ -12,7 +12,7 @@ export function StatusBanner({ title, description }: StatusBannerProps) {
         gap: "0.75rem",
         alignItems: "center",
         textAlign: "center",
-        padding: "2.5rem 1.5rem",
+        padding: "calc(2.5rem + env(safe-area-inset-top, 0px)) 1.5rem 2.5rem",
         maxWidth: "28rem",
         margin: "0 auto",
       }}
