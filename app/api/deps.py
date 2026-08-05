@@ -18,9 +18,28 @@ def get_settings(request: Request) -> Settings:
 
 
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """Yields a request-scoped session and commits on a clean exit.
+
+    Without the explicit commit, `async with session_factory()` only ever
+    closes the session — SQLAlchemy rolls back anything uncommitted on
+    close. Every mutating Mini App endpoint (admin decisions, event
+    registration, leader task creation, offer applications, ...) computed
+    the right in-memory result and returned 200, but the write never
+    reached the database: the next request opened a fresh session that
+    never saw it. `app/api/v1/projects.py` had already independently
+    worked around this per-endpoint (`_commit_if_possible`); this fixes it
+    at the source for every route instead. Found by PR16's E2E suite: a
+    seeded pending applicant kept coming back as pending after a real,
+    200-OK "approve" call.
+    """
     session_factory = request.app.state.session_factory
     async with session_factory() as session:
-        yield session
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 def get_bot(request: Request) -> Bot | None:

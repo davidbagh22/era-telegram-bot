@@ -1259,15 +1259,16 @@ real (throwaway, file-based) SQLite database, and the actual production
 frontend build served exactly as `app/webapp.py` serves it in production
 (`/app/`) — no mocked API layer.
 
-- **Critical bug found by this suite itself, not by manual review** (audit
-  finding #18): `index.html` referenced its JS/CSS bundle at an absolute
-  root path (`/assets/index-....js`), but `app/webapp.py::_mount_frontend`
-  only mounts static files at `/app`, never at the domain root. A real
-  browser resolves an absolute path against the origin root regardless of
-  what page it's on, so that request always 404'd — **the Mini App most
-  likely never rendered any UI for a real user**, just an empty
-  `<div id="root">`. Confirmed directly against the live production
-  domain both ways: `GET .../assets/index-g9wS8NyS.js` → 404,
+- **Critical bug #1 found by this suite itself, not by manual review**
+  (audit finding #18): `index.html` referenced its JS/CSS bundle at an
+  absolute root path (`/assets/index-....js`), but
+  `app/webapp.py::_mount_frontend` only mounts static files at `/app`,
+  never at the domain root. A real browser resolves an absolute path
+  against the origin root regardless of what page it's on, so that
+  request always 404'd — **the Mini App most likely never rendered any
+  UI for a real user**, just an empty `<div id="root">`. Confirmed
+  directly against the live production domain both ways:
+  `GET .../assets/index-g9wS8NyS.js` → 404,
   `GET .../app/assets/index-g9wS8NyS.js` → 200. Fixed with one line —
   `base: "/app/"` in `frontend/vite.config.ts` — which makes Vite rewrite
   both the bundle paths and the `<link rel="icon">` favicon path
@@ -1275,9 +1276,31 @@ frontend build served exactly as `app/webapp.py` serves it in production
   `/app/assets/...` throughout. This was invisible to every prior
   verification step in PR13/14/15 because those only checked that
   `/app/` returned HTML with the right commit/asset hash — never that the
-  referenced asset URL itself actually loaded. Lesson applied going
-  forward: verification must follow the actual asset chain a browser
-  would, not just the entry HTML response.
+  referenced asset URL itself actually loaded.
+- **Critical bug #2, the most serious finding of the entire audit series,
+  also found by this suite and not by manual review** (audit finding
+  #19): after fixing bug #1, the admin/leader E2E specs still failed —
+  an admin's "approve" call returned `200 OK`, but re-fetching the
+  pending queue in the same test still showed the applicant as pending.
+  Root cause: `app/api/deps.py::get_session()` opened a session and
+  yielded it, but **never called `session.commit()`**. SQLAlchemy rolls
+  back anything uncommitted when a session closes — so **every mutating
+  Mini App endpoint except `app/api/v1/projects.py`** (which already had
+  its own independent workaround, `_commit_if_possible`, apparently added
+  earlier for exactly this reason but never generalized) **computed the
+  correct result and returned 200, but never actually wrote it to the
+  database**: admin approve/reject/decide across applications, events,
+  tasks, and offers; event registration/cancellation; task claiming;
+  leader open-task creation and decisions. All of it looked successful in
+  the UI and reverted the instant the request ended. The existing 471
+  unit/API tests never caught this because their `get_session` override
+  reuses one long-lived session object for the whole test — a session
+  sees its own uncommitted changes without needing a commit, which
+  perfectly masked the missing commit in the real dependency. Fixed by
+  adding `await session.commit()` after `yield` (and `rollback()` on
+  exception) directly in `get_session()` — one fix for every route,
+  instead of requiring every handler to remember a manual commit. Full
+  `pytest -q` re-run afterward confirmed zero regressions.
 - **Login without a real Telegram session**: `useAuth.ts` now reads an
   optional `?devTelegramId=<id>` query param and forwards it to
   `POST /api/v1/miniapp/auth`. The backend only honors that field when
