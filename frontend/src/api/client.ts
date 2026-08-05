@@ -115,11 +115,18 @@ async function parseErrorDetail(response: Response): Promise<string> {
   }
 }
 
-export async function authenticate(initData: string): Promise<MiniAppAuthResponse> {
+export async function authenticate(
+  initData: string,
+  devTelegramId?: number,
+): Promise<MiniAppAuthResponse> {
   const response = await fetch(`${API_BASE_URL}/api/v1/miniapp/auth`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ initData }),
+    // devTelegramId is a no-op unless the backend has DEV_AUTH_ENABLED set,
+    // which app/config.py's assert_safe_for_deployment() refuses to allow
+    // on a Render deployment (see PR13) — safe to always include when
+    // present in the URL, real Telegram clients never set it.
+    body: JSON.stringify({ initData, devTelegramId }),
   });
   if (!response.ok) {
     throw new ApiError(response.status, await parseErrorDetail(response));

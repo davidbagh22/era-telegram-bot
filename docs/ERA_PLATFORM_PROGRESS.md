@@ -1251,6 +1251,98 @@ error handling was also spot-checked in this block and found already
 correct (`cabinet.py`'s PDF-generation failure path logs and notifies the
 user; no bot-side silent-failure pattern found).
 
+### PR 16 — E2E Test Suite (Participant/Leader/Admin) (merged)
+
+Branch: `era-platform-pr16-e2e-tests`. Closes the audit's #13 backlog item
+("no E2E test infrastructure"). Real end-to-end: a real FastAPI backend, a
+real (throwaway, file-based) SQLite database, and the actual production
+frontend build served exactly as `app/webapp.py` serves it in production
+(`/app/`) — no mocked API layer.
+
+- **Critical bug #1 found by this suite itself, not by manual review**
+  (audit finding #18): `index.html` referenced its JS/CSS bundle at an
+  absolute root path (`/assets/index-....js`), but
+  `app/webapp.py::_mount_frontend` only mounts static files at `/app`,
+  never at the domain root. A real browser resolves an absolute path
+  against the origin root regardless of what page it's on, so that
+  request always 404'd — **the Mini App most likely never rendered any
+  UI for a real user**, just an empty `<div id="root">`. Confirmed
+  directly against the live production domain both ways:
+  `GET .../assets/index-g9wS8NyS.js` → 404,
+  `GET .../app/assets/index-g9wS8NyS.js` → 200. Fixed with one line —
+  `base: "/app/"` in `frontend/vite.config.ts` — which makes Vite rewrite
+  both the bundle paths and the `<link rel="icon">` favicon path
+  correctly; rebuilt and confirmed the new `dist/index.html` references
+  `/app/assets/...` throughout. This was invisible to every prior
+  verification step in PR13/14/15 because those only checked that
+  `/app/` returned HTML with the right commit/asset hash — never that the
+  referenced asset URL itself actually loaded.
+- **Critical bug #2, the most serious finding of the entire audit series,
+  also found by this suite and not by manual review** (audit finding
+  #19): after fixing bug #1, the admin/leader E2E specs still failed —
+  an admin's "approve" call returned `200 OK`, but re-fetching the
+  pending queue in the same test still showed the applicant as pending.
+  Root cause: `app/api/deps.py::get_session()` opened a session and
+  yielded it, but **never called `session.commit()`**. SQLAlchemy rolls
+  back anything uncommitted when a session closes — so **every mutating
+  Mini App endpoint except `app/api/v1/projects.py`** (which already had
+  its own independent workaround, `_commit_if_possible`, apparently added
+  earlier for exactly this reason but never generalized) **computed the
+  correct result and returned 200, but never actually wrote it to the
+  database**: admin approve/reject/decide across applications, events,
+  tasks, and offers; event registration/cancellation; task claiming;
+  leader open-task creation and decisions. All of it looked successful in
+  the UI and reverted the instant the request ended. The existing 471
+  unit/API tests never caught this because their `get_session` override
+  reuses one long-lived session object for the whole test — a session
+  sees its own uncommitted changes without needing a commit, which
+  perfectly masked the missing commit in the real dependency. Fixed by
+  adding `await session.commit()` after `yield` (and `rollback()` on
+  exception) directly in `get_session()` — one fix for every route,
+  instead of requiring every handler to remember a manual commit. Full
+  `pytest -q` re-run afterward confirmed zero regressions.
+- **Login without a real Telegram session**: `useAuth.ts` now reads an
+  optional `?devTelegramId=<id>` query param and forwards it to
+  `POST /api/v1/miniapp/auth`. The backend only honors that field when
+  `DEV_AUTH_ENABLED=true`, which `Settings.assert_safe_for_deployment()`
+  (PR13) refuses to allow on a Render deployment — so this is inert
+  against the real deployed bot regardless of what's in a URL, verified
+  by reading `app/api/v1/auth.py`'s exact gating logic before adding it.
+- `scripts/e2e_seed.py` — seeds a throwaway SQLite DB via
+  `Base.metadata.create_all` (the same approach the existing unit test
+  suite already uses against SQLite, not the real Alembic chain — several
+  accumulated migrations aren't wrapped in `batch_alter_table()` and
+  SQLite's limited `ALTER TABLE` support would break them; migration
+  correctness is verified separately against real Postgres) with four
+  fixed-ID users (participant/leader/admin/a pending applicant) and one
+  future open-registration event.
+- `frontend/e2e/{participant,leader,admin}.spec.ts` (Playwright) — one
+  scenario per role, each exercising a real state change through the
+  full stack, not just a page render: participant registers for the
+  seeded event; leader creates a real open task through the form; admin
+  approves the seeded pending applicant and sees them leave the queue.
+  See `frontend/e2e/README.md` for the full scope note and how to run
+  locally.
+- New CI job `e2e` (`.github/workflows/ci.yml`): spins up a `redis:7`
+  service container (the app's FSM storage needs a reachable Redis even
+  for this), seeds the DB, builds and serves the real frontend, starts
+  the real backend, waits on `/health`, runs the three specs, uploads
+  the Playwright report as an artifact on failure.
+- Verification: `npm run build` clean with the new devDependency;
+  `ruff`/`compileall` clean on the new `scripts/e2e_seed.py`; ran the
+  seed script locally against a throwaway SQLite file end-to-end
+  (confirmed the four users and event are created correctly) — the full
+  server+Playwright run itself needs a local Redis this environment
+  doesn't have, so it's verified by CI rather than locally; full backend
+  `pytest -q` re-run as a regression check.
+
+**Known limitation / explicit backlog**: three scenarios, one per role —
+not full coverage of every screen/action (that's what PR15's manual
+audit + the existing 471 unit/integration tests are for). Concurrent-
+decision races, file/portfolio upload, and the chat/registration
+addendum's own scenario list are explicitly out of scope here, covered
+by other, dedicated blocks instead of being folded into this one.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy
