@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import {
   approveApplication,
+  describeActionError,
   fetchAdminApplications,
   rejectApplication,
   requestApplicationInfo,
@@ -14,15 +15,19 @@ export function AdminApplicationsScreen() {
   const state = useAsync(() => fetchAdminApplications(), [refreshKey]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [comments, setComments] = useState<Record<number, string>>({});
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
   const handleApprove = useCallback(
     async (userId: number) => {
       setBusyId(userId);
+      setActionError(null);
       try {
         await approveApplication(userId);
         refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
       } finally {
         setBusyId(null);
       }
@@ -35,9 +40,12 @@ export function AdminApplicationsScreen() {
       const comment = (comments[userId] ?? "").trim();
       if (!comment) return;
       setBusyId(userId);
+      setActionError(null);
       try {
         await rejectApplication(userId, comment);
         refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
       } finally {
         setBusyId(null);
       }
@@ -50,9 +58,12 @@ export function AdminApplicationsScreen() {
       const comment = (comments[userId] ?? "").trim();
       if (!comment) return;
       setBusyId(userId);
+      setActionError(null);
       try {
         await requestApplicationInfo(userId, comment);
         refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
       } finally {
         setBusyId(null);
       }
@@ -72,6 +83,9 @@ export function AdminApplicationsScreen() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      {actionError && (
+        <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
+      )}
       {state.data.map((application) => (
         <Card key={application.id}>
           <strong>

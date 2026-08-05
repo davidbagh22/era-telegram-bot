@@ -1196,6 +1196,61 @@ code review, not automated; loading state stays a plain "Загрузка…" te
 (no spinner/skeleton) — consistent everywhere already, a skeleton
 upgrade is a separate cosmetic decision, not a production-readiness gap.
 
+### PR 15 — Functional/UX Stabilization: Silent Action Failures (merged)
+
+Branch: `era-platform-pr15-functional-stabilization`. Frontend-only — no
+backend/API change, no migration. Distinct from PR14: that closed the
+*fetch-time* loading/error/empty gap; this closes a separate,
+*mutation-time* gap the audit hadn't looked at yet.
+
+- **Real bug found and fixed, repeated across 9 screens**: every mutating
+  action (approve/reject/request-info, event/project/task/offer
+  moderation decisions, event registration/cancellation, task claim,
+  opportunity apply/save, project creation, leader open-task
+  create/decide) called its API function inside `try { ... } finally`
+  with **no `catch`**. On failure — a network error, a permission edge
+  case, or exactly the "two admins decide the same item at once"
+  concurrency scenario the ТЗ calls out explicitly — the promise
+  rejection propagated unhandled: the button silently stopped being
+  "busy" and the screen gave zero indication anything had gone wrong.
+  From the user's perspective this is functionally a dead button.
+  Affected: `AdminApplicationsScreen`, `AdminEventsScreen`,
+  `AdminOffersScreen`, `AdminProjectsScreen`, `AdminTasksScreen`,
+  `OpportunitiesScreen`, `ProjectsList`, `activity/EventsTab`,
+  `activity/TasksTab`, `leader/OpenTasksTab`.
+- Added `describeActionError()` (`api/client.ts`) — backend error
+  `detail` values are machine codes (`already_approved`, `no_slots`,
+  `insufficient_points`, `cannot_change_plans`, etc., enumerated from
+  every `HTTPException` in `app/api/v1/*.py` touched by these screens),
+  not sentences. This translates the known ones to Russian and falls
+  back to a readable generic message with the raw code attached for
+  anything unmapped, instead of either a raw code or silence.
+- Each affected screen now has an `actionError` (or per-form) state:
+  cleared before the call, set from `describeActionError()` on failure,
+  rendered as a small error line near the action. `leader/OpenTasksTab`
+  additionally had a *wrong*-message bug fixed: its create-task form
+  reused the client-side validation message ("Заполните название,
+  описание и дедлайн") for server-side failures too — so a real backend
+  error after valid input would misleadingly tell the leader their form
+  was incomplete. Split into separate `formError`/`actionError` states.
+- Verification: `npm run build` clean; re-grepped the whole
+  `frontend/src` tree for any remaining `async` function without a
+  `catch` — none found; spot-checked `ProjectDetail.tsx`/
+  `ProjectWorkspace.tsx` (not flagged by the original grep) to confirm
+  they already had correct error handling via their own `run()`
+  wrapper/`.catch()` — no regression risk there; full backend
+  `pytest -q` re-run (frontend-only change) — see PR for the exact count.
+
+**Known limitation / explicit backlog**: the error-code dictionary
+covers the codes these 10 specific screens can actually receive, not
+every code in the codebase (e.g. `ProjectWorkspace`'s ~25 `WorkspaceError`
+codes are untouched — that screen already had its own generic-but-honest
+error handling, just not code-specific messages); extending coverage
+there is a natural follow-up, not a blocker. Bot-side (aiogram handler)
+error handling was also spot-checked in this block and found already
+correct (`cabinet.py`'s PDF-generation failure path logs and notifies the
+user; no bot-side silent-failure pattern found).
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

@@ -1,5 +1,10 @@
 import { useCallback, useState } from "react";
-import { cancelEventRegistration, fetchEvents, registerForEvent } from "../../api/client";
+import {
+  cancelEventRegistration,
+  describeActionError,
+  fetchEvents,
+  registerForEvent,
+} from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { PillTabs } from "../../components/PillTabs";
@@ -21,15 +26,19 @@ export function EventsTab() {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchEvents(scope), [scope, refreshKey]);
   const [pendingId, setPendingId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
   const handleRegister = useCallback(
     async (eventId: number) => {
       setPendingId(eventId);
+      setActionError(null);
       try {
         await registerForEvent(eventId);
         refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
       } finally {
         setPendingId(null);
       }
@@ -40,9 +49,12 @@ export function EventsTab() {
   const handleCancel = useCallback(
     async (eventId: number) => {
       setPendingId(eventId);
+      setActionError(null);
       try {
         await cancelEventRegistration(eventId);
         refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
       } finally {
         setPendingId(null);
       }
@@ -53,6 +65,10 @@ export function EventsTab() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <PillTabs options={SCOPES} active={scope} onChange={setScope} />
+
+      {actionError && (
+        <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
+      )}
 
       {state.status === "loading" && (
         <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>

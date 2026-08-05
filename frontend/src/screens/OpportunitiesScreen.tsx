@@ -1,5 +1,11 @@
 import { useCallback, useState } from "react";
-import { applyToOpportunity, fetchOpportunities, saveOpportunity, unsaveOpportunity } from "../api/client";
+import {
+  applyToOpportunity,
+  describeActionError,
+  fetchOpportunities,
+  saveOpportunity,
+  unsaveOpportunity,
+} from "../api/client";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { PillTabs } from "../components/PillTabs";
@@ -25,15 +31,19 @@ export function OpportunitiesScreen() {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchOpportunities(scope), [scope, refreshKey]);
   const [pendingId, setPendingId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
   const handleApply = useCallback(
     async (offerId: number) => {
       setPendingId(offerId);
+      setActionError(null);
       try {
         await applyToOpportunity(offerId);
         refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
       } finally {
         setPendingId(null);
       }
@@ -44,6 +54,7 @@ export function OpportunitiesScreen() {
   const handleToggleSave = useCallback(
     async (offerId: number, isSaved: boolean) => {
       setPendingId(offerId);
+      setActionError(null);
       try {
         if (isSaved) {
           await unsaveOpportunity(offerId);
@@ -51,6 +62,8 @@ export function OpportunitiesScreen() {
           await saveOpportunity(offerId);
         }
         refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
       } finally {
         setPendingId(null);
       }
@@ -64,6 +77,10 @@ export function OpportunitiesScreen() {
         Возможности
       </h1>
       <PillTabs options={SCOPES} active={scope} onChange={setScope} />
+
+      {actionError && (
+        <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
+      )}
 
       {state.status === "loading" && (
         <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>

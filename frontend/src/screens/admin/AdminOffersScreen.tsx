@@ -1,5 +1,9 @@
 import { useCallback, useState } from "react";
-import { decideOfferApplication, fetchAdminOfferApplications } from "../../api/client";
+import {
+  decideOfferApplication,
+  describeActionError,
+  fetchAdminOfferApplications,
+} from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { useAsync } from "../../hooks/useAsync";
@@ -9,15 +13,19 @@ export function AdminOffersScreen() {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchAdminOfferApplications(), [refreshKey]);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
   const handleDecide = useCallback(
     async (applicationId: number, action: OfferApplicationAction) => {
       setBusyId(applicationId);
+      setActionError(null);
       try {
         await decideOfferApplication(applicationId, action);
         refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
       } finally {
         setBusyId(null);
       }
@@ -37,6 +45,9 @@ export function AdminOffersScreen() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      {actionError && (
+        <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
+      )}
       {state.data.map((application) => (
         <Card key={application.id}>
           <strong>{application.offer_title}</strong>
