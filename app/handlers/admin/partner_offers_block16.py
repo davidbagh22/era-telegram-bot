@@ -13,8 +13,9 @@ from app.config import Settings
 from app.database.models import User
 from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
 from app.handlers.admin.partners_admin import admin_ok
+from app.services import opportunity_service
 from app.services.notification_service import safe_send
-from app.services.points_service import add_points, total_points
+from app.services.points_service import total_points
 from app.utils.validators import clean_text
 
 router = Router(name="admin_partner_offers_block16")
@@ -205,7 +206,7 @@ async def application_approve(call: CallbackQuery, user: User | None, settings: 
     if not admin_ok(user, settings, call.from_user.id):
         return
     application = await session.get(PartnerOfferApplication, int(call.data.rsplit(":", 1)[-1]))
-    if not application or application.status != "pending":
+    if not application:
         await call.message.answer("Заявка уже обработана.")
         return
     offer = await session.get(PartnerInitiative, application.initiative_id)
@@ -213,26 +214,12 @@ async def application_approve(call: CallbackQuery, user: User | None, settings: 
     if not offer or not participant:
         await call.message.answer("Предложение или участник не найдены.")
         return
-    balance = await total_points(session, participant.id)
-    if balance < offer.point_cost:
-        await call.message.answer("У участника уже недостаточно баллов. Заявка не одобрена.")
-        return
-    if offer.point_cost:
-        await add_points(
-            session,
-            user_id=participant.id,
-            points=-offer.point_cost,
-            reason=f"Партнёрское предложение: {offer.title}",
-            approved_by=user.id if user else None,
-            source_type="partner_offer",
-            source_id=application.id,
-            idempotency_key=f"partner_offer:{application.id}:approval",
-        )
-    application.status = "approved"
-    application.reviewed_by = user.id if user else None
-    await session.flush()
-    await safe_send(bot, participant.telegram_id, f"Ваша заявка «{offer.title}» одобрена. Списано: {offer.point_cost} баллов. Команда ЭРА свяжется с Вами.")
-    await call.message.answer("Заявка одобрена. Баллы списаны один раз.")
+    result = await opportunity_service.decide_offer_application(
+        session, application, offer, participant, action="approve", actor=user
+    )
+    if result.participant_notice:
+        await safe_send(bot, participant.telegram_id, result.participant_notice)
+    await call.message.answer(result.admin_notice)
 
 
 @router.callback_query(F.data.startswith("admin:offerapp:reject:"))
@@ -241,14 +228,17 @@ async def application_reject(call: CallbackQuery, user: User | None, settings: S
     if not admin_ok(user, settings, call.from_user.id):
         return
     application = await session.get(PartnerOfferApplication, int(call.data.rsplit(":", 1)[-1]))
-    if not application or application.status != "pending":
+    if not application:
         await call.message.answer("Заявка уже обработана.")
         return
     offer = await session.get(PartnerInitiative, application.initiative_id)
     participant = await session.get(User, application.user_id)
-    application.status = "rejected"
-    application.reviewed_by = user.id if user else None
-    await session.flush()
-    if participant and offer:
-        await safe_send(bot, participant.telegram_id, f"Заявка «{offer.title}» отклонена. Баллы не списаны.")
-    await call.message.answer("Заявка отклонена. Баллы не списаны.")
+    if not offer or not participant:
+        await call.message.answer("Предложение или участник не найдены.")
+        return
+    result = await opportunity_service.decide_offer_application(
+        session, application, offer, participant, action="reject", actor=user
+    )
+    if result.participant_notice:
+        await safe_send(bot, participant.telegram_id, result.participant_notice)
+    await call.message.answer(result.admin_notice)

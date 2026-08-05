@@ -19,9 +19,10 @@ class PartnerOffersBlock16Tests(unittest.TestCase):
             'F.data == "admin:offers:add"',
             'F.data == "admin:offers:applications"',
             'F.data.startswith("admin:offerapp:approve:")',
-            "points=-offer.point_cost",
         ):
             self.assertIn(token, text)
+        service_text = Path("app/services/opportunity_service.py").read_text(encoding="utf-8")
+        self.assertIn("points=-offer.point_cost", service_text)
 
     def test_schema_contract(self) -> None:
         text = Path("app/database/partners.py").read_text(encoding="utf-8")

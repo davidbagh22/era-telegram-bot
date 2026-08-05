@@ -58,3 +58,16 @@ export interface TaskSubmissionForReview {
   status: string;
   admin_comment: string | null;
 }
+
+export type OfferApplicationAction = "approve" | "reject";
+
+export interface OfferApplicationForReview {
+  id: number;
+  offer_id: number;
+  offer_title: string;
+  point_cost: number;
+  participant_id: number;
+  participant_name: string;
+  participant_balance: number;
+  status: string;
+}

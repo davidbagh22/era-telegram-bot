@@ -9,6 +9,7 @@ from app.services.authorization_service import (
     can_change_permission,
     can_change_role,
     can_manage_events,
+    can_manage_partners,
     can_manage_people,
     can_manage_tasks,
     can_view_people,
@@ -157,3 +158,14 @@ def test_can_manage_tasks_requires_admin_or_specific_grant() -> None:
     assert can_manage_tasks(admin, settings, admin.telegram_id)
     assert can_manage_tasks(grantee, settings, grantee.telegram_id)
     assert not can_manage_tasks(bystander, settings, bystander.telegram_id)
+
+
+def test_can_manage_partners_requires_admin_or_specific_grant() -> None:
+    settings = Settings(bot_token="1234567890:test", admin_ids=[])
+    admin = _user(role=Role.ADMIN)
+    grantee = _user(permissions=("partners.manage",))
+    bystander = _user(permissions=("tasks.manage",))
+
+    assert can_manage_partners(admin, settings, admin.telegram_id)
+    assert can_manage_partners(grantee, settings, grantee.telegram_id)
+    assert not can_manage_partners(bystander, settings, bystander.telegram_id)

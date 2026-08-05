@@ -9,17 +9,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.config import Settings
 from app.database.models import Event, Project, Task, TaskSubmission, User
+from app.database.partners import PartnerInitiative, PartnerOfferApplication
 from app.keyboards.participant import main_menu
-from app.services import event_moderation_service, project_workflow_service, task_review_service
+from app.services import (
+    event_moderation_service,
+    opportunity_service,
+    project_workflow_service,
+    task_review_service,
+)
 from app.services.admin_dashboard_service import dashboard_metrics, has_dashboard_access
 from app.services.application_review_service import (
     approve_application,
     reject_application,
     request_more_info,
 )
-from app.services.authorization_service import can_manage_events, can_manage_tasks
+from app.services.authorization_service import can_manage_events, can_manage_partners, can_manage_tasks
 from app.services.chat_access_service import sync_user_chat_access
 from app.services.notification_service import safe_send
+from app.services.points_service import total_points
 from app.services.project_workspace_service import can_review_projects
 from app.utils import texts
 from app.utils.constants import ApplicationStatus
@@ -408,3 +415,91 @@ async def decide_task_submission_endpoint(
     if bot is not None and result.participant_notice:
         await safe_send(bot, participant.telegram_id, result.participant_notice)
     return _to_submission_out(submission, task, participant)
+
+
+class OfferApplicationOut(BaseModel):
+    id: int
+    offer_id: int
+    offer_title: str
+    point_cost: int
+    participant_id: int
+    participant_name: str
+    participant_balance: int
+    status: str
+
+
+def _to_offer_application_out(
+    application: PartnerOfferApplication,
+    offer: PartnerInitiative,
+    participant: User,
+    balance: int,
+) -> OfferApplicationOut:
+    return OfferApplicationOut(
+        id=application.id,
+        offer_id=offer.id,
+        offer_title=offer.title,
+        point_cost=offer.point_cost,
+        participant_id=participant.id,
+        participant_name=f"{participant.first_name} {participant.last_name or ''}".strip(),
+        participant_balance=balance,
+        status=application.status,
+    )
+
+
+async def require_offer_reviewer(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    if not can_manage_partners(user, settings, user.telegram_id):
+        raise HTTPException(status_code=403, detail="offer_reviewer_access_required")
+    return user
+
+
+@router.get("/offer-applications", response_model=list[OfferApplicationOut])
+async def read_offer_applications(
+    _reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+) -> list[OfferApplicationOut]:
+    applications = await opportunity_service.list_pending_offer_applications(session)
+    result: list[OfferApplicationOut] = []
+    for application in applications:
+        offer = await session.get(PartnerInitiative, application.initiative_id)
+        participant = await session.get(User, application.user_id)
+        if offer is None or participant is None:
+            continue
+        balance = await total_points(session, participant.id)
+        result.append(_to_offer_application_out(application, offer, participant, balance))
+    return result
+
+
+class OfferApplicationDecisionIn(BaseModel):
+    action: str
+
+
+@router.post("/offer-applications/{application_id}/decide", response_model=OfferApplicationOut)
+async def decide_offer_application_endpoint(
+    application_id: int,
+    payload: OfferApplicationDecisionIn,
+    reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+) -> OfferApplicationOut:
+    application = await session.get(PartnerOfferApplication, application_id)
+    if application is None:
+        raise HTTPException(status_code=404, detail="application_not_found")
+    offer = await session.get(PartnerInitiative, application.initiative_id)
+    participant = await session.get(User, application.user_id)
+    if offer is None or participant is None:
+        raise HTTPException(status_code=404, detail="application_not_found")
+    if payload.action not in opportunity_service.OFFER_APPLICATION_ACTIONS:
+        raise HTTPException(status_code=422, detail="invalid_action")
+    try:
+        result = await opportunity_service.decide_offer_application(
+            session, application, offer, participant, action=payload.action, actor=reviewer
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if bot is not None and result.participant_notice:
+        await safe_send(bot, participant.telegram_id, result.participant_notice)
+    balance = await total_points(session, participant.id)
+    return _to_offer_application_out(application, offer, participant, balance)
