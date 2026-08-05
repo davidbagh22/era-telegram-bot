@@ -12,6 +12,13 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "line" : "list",
+  // The three specs share one SQLite-backed server (see e2e/README.md) —
+  // SQLite locks the whole file on a write, so concurrent workers racing
+  // to approve/register/create against it intermittently fail with
+  // "database is locked", not a real bug in the app under test. Postgres
+  // wouldn't have this limitation; SQLite was chosen here specifically to
+  // avoid needing a DB service container just for E2E fixtures.
+  workers: 1,
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:8000",
     trace: "retain-on-failure",
