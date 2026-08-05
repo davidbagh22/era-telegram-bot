@@ -8,6 +8,7 @@ from app.config import Settings
 from app.database.models import User
 from app.database.partners import Partner
 from app.keyboards.partners import admin_partner_card_keyboard, admin_partners_keyboard
+from app.services.authorization_service import can_manage_partners
 from app.states.partners_admin import PartnerAdminStates
 from app.utils.constants import Role
 
@@ -34,18 +35,7 @@ def _has_any_admin_access(user: User | None, settings: Settings, telegram_id: in
 
 
 def admin_ok(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    return bool(
-        _is_admin(user, settings, telegram_id)
-        or (
-            user
-            and not user.is_blocked
-            and not user.is_archived
-            and any(
-                grant.is_active and grant.permission == "partners.manage"
-                for grant in (user.permission_grants or [])
-            )
-        )
-    )
+    return can_manage_partners(user, settings, telegram_id)
 
 
 @router.callback_query(F.data == "admin:menu:growth")

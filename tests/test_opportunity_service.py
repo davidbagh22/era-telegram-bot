@@ -292,6 +292,127 @@ class OpportunityServiceTests(unittest.IsolatedAsyncioTestCase):
             recommended = await opportunity_service.recommended_offers(session, user)
             self.assertEqual(recommended, [])
 
+    async def test_decide_offer_application_approve_deducts_points_once(self) -> None:
+        async with self.session_factory() as session:
+            admin = await self._make_user(session, telegram_id=1)
+            participant = await self._make_user(session, telegram_id=2)
+            await self._grant_points(session, participant.id, 100, "k1")
+            partner = self._partner()
+            session.add(partner)
+            await session.flush()
+            offer = self._offer(partner_id=partner.id, point_cost=30)
+            session.add(offer)
+            await session.flush()
+            application = PartnerOfferApplication(
+                initiative_id=offer.id, user_id=participant.id, status="pending"
+            )
+            session.add(application)
+            await session.flush()
+
+            result = await opportunity_service.decide_offer_application(
+                session, application, offer, participant, action="approve", actor=admin
+            )
+
+            self.assertEqual(application.status, "approved")
+            self.assertEqual(result.points_charged, 30)
+            self.assertIn("одобрена", result.participant_notice)
+
+            second = await opportunity_service.decide_offer_application(
+                session, application, offer, participant, action="approve", actor=admin
+            )
+            self.assertEqual(second.points_charged, 0)
+            self.assertIsNone(second.participant_notice)
+
+    async def test_decide_offer_application_insufficient_balance_leaves_pending(self) -> None:
+        async with self.session_factory() as session:
+            admin = await self._make_user(session, telegram_id=1)
+            participant = await self._make_user(session, telegram_id=2)
+            partner = self._partner()
+            session.add(partner)
+            await session.flush()
+            offer = self._offer(partner_id=partner.id, point_cost=50)
+            session.add(offer)
+            await session.flush()
+            application = PartnerOfferApplication(
+                initiative_id=offer.id, user_id=participant.id, status="pending"
+            )
+            session.add(application)
+            await session.flush()
+
+            result = await opportunity_service.decide_offer_application(
+                session, application, offer, participant, action="approve", actor=admin
+            )
+
+            self.assertEqual(application.status, "pending")
+            self.assertEqual(result.points_charged, 0)
+            self.assertIn("недостаточно", result.admin_notice)
+
+    async def test_decide_offer_application_reject(self) -> None:
+        async with self.session_factory() as session:
+            admin = await self._make_user(session, telegram_id=1)
+            participant = await self._make_user(session, telegram_id=2)
+            partner = self._partner()
+            session.add(partner)
+            await session.flush()
+            offer = self._offer(partner_id=partner.id, point_cost=10)
+            session.add(offer)
+            await session.flush()
+            application = PartnerOfferApplication(
+                initiative_id=offer.id, user_id=participant.id, status="pending"
+            )
+            session.add(application)
+            await session.flush()
+
+            result = await opportunity_service.decide_offer_application(
+                session, application, offer, participant, action="reject", actor=admin
+            )
+
+            self.assertEqual(application.status, "rejected")
+            self.assertIn("отклонена", result.participant_notice)
+
+    async def test_decide_offer_application_unknown_action_raises(self) -> None:
+        async with self.session_factory() as session:
+            admin = await self._make_user(session, telegram_id=1)
+            participant = await self._make_user(session, telegram_id=2)
+            partner = self._partner()
+            session.add(partner)
+            await session.flush()
+            offer = self._offer(partner_id=partner.id)
+            session.add(offer)
+            await session.flush()
+            application = PartnerOfferApplication(
+                initiative_id=offer.id, user_id=participant.id, status="pending"
+            )
+            session.add(application)
+            await session.flush()
+
+            with self.assertRaises(ValueError):
+                await opportunity_service.decide_offer_application(
+                    session, application, offer, participant, action="nope", actor=admin
+                )
+
+    async def test_list_pending_offer_applications_filters_by_status(self) -> None:
+        async with self.session_factory() as session:
+            participant_a = await self._make_user(session, telegram_id=2)
+            participant_b = await self._make_user(session, telegram_id=3)
+            partner = self._partner()
+            session.add(partner)
+            await session.flush()
+            offer = self._offer(partner_id=partner.id)
+            session.add(offer)
+            await session.flush()
+            pending = PartnerOfferApplication(
+                initiative_id=offer.id, user_id=participant_a.id, status="pending"
+            )
+            approved = PartnerOfferApplication(
+                initiative_id=offer.id, user_id=participant_b.id, status="approved"
+            )
+            session.add_all([pending, approved])
+            await session.flush()
+
+            rows = await opportunity_service.list_pending_offer_applications(session)
+            self.assertEqual([a.id for a in rows], [pending.id])
+
 
 if __name__ == "__main__":
     unittest.main()

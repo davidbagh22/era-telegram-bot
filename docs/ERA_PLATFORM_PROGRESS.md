@@ -992,15 +992,89 @@ management surfaces (Opportunities/Partners/Communications/Surveys) or
 the event/leader/task actions deferred above — confirm against any
 updated brief before starting.
 
+### PR 12 — Admin Opportunity Application Review (merged)
+
+Branch: `era-platform-pr12-opportunity-review`. See PR link and merge
+commit recorded in the follow-up progress-doc-only commit once merged.
+This closes the 12-PR plan.
+
+- New `can_manage_partners()` in `app/services/authorization_service.py`,
+  same pattern as PR 10/PR 11's `can_manage_events()`/`can_manage_tasks()`.
+  `app/handlers/admin/partners_admin.py::admin_ok()` (shared by both
+  partner-management handler files) now delegates to it instead of a
+  local inline copy — this one already checked `is_archived` correctly,
+  so this is a pure DRY consolidation, not a bugfix like PR 10/11's.
+- Extended the existing `app/services/opportunity_service.py` (from
+  PR 6) rather than creating a new file, since offer-application review
+  is squarely part of the Opportunities domain it already owns:
+  `list_pending_offer_applications()` and `decide_offer_application()`
+  (approve/reject). Approve reproduces the Bot's exact two-step guard —
+  a non-pending application short-circuits with an "already processed"
+  notice, and an approve with an insufficient point balance leaves the
+  application `pending` (so an admin can retry once the participant
+  earns more points) rather than silently failing. Extracted from
+  `application_approve`/`application_reject` in
+  `app/handlers/admin/partner_offers_block16.py`, which now call the
+  service. Two source-text contract tests
+  (`tests/test_partner_offers_block16.py::test_admin_flow_contract` and
+  `tests/test_system_wide_audit.py::test_points_sensitive_flows_have_idempotency_markers`)
+  were retargeted from the handler file to `opportunity_service.py`,
+  since that's where the `add_points` idempotency guarantee they check
+  for actually lives now — same pattern as the PR 11 retarget, the
+  invariant itself is unchanged.
+- New `GET /api/v1/admin/offer-applications` and
+  `POST /api/v1/admin/offer-applications/{id}/decide` in
+  `app/api/v1/admin.py`, gated by `require_offer_reviewer`
+  (`can_manage_partners()`).
+- Frontend: `AdminOffersScreen` adds a sixth "Возможности" tab to
+  `AdminScreen` — list of pending applications with participant name,
+  offer cost and current balance, plus approve/reject buttons
+  (`.era-btn-primary` on approve).
+- Tests: 9 new cases added to `tests/test_opportunity_service.py`
+  (approve deducts points exactly once and is idempotent on retry,
+  insufficient-balance leaves the application pending, reject, unknown
+  action raises, review-queue filtering) — bringing that file to 18
+  cases total; `tests/test_admin_offer_applications_api.py` (5 cases,
+  dependency overrides + mocked service calls); plus 1 new
+  `can_manage_partners` case in `tests/test_authorization_service.py`.
+  Full suite: 456 passed via `pytest -q`, matching count via
+  `python -m unittest discover -s tests` (CI parity confirmed), 0
+  regressions. Verified in a real browser against a temporary local
+  mock server: the Возможности tab lists a pending application and
+  "Одобрить и списать баллы" round-trips through the mocked API and
+  updates the shown status; `.env.local` and the mock server removed
+  afterward.
+- No migrations — pure service extension + API + UI on top of the
+  existing schema.
+
+**Known limitation:** Only offer-application review (approve/reject) is
+in the Mini App. Creating/editing partners and partner offers (currently
+a pipe-delimited text form in the Bot), communications/broadcasts, and
+surveys all remain Bot-only — each is a distinct, non-trivial UI surface
+that was judged out of scope for closing out the 12-PR plan. These, plus
+every other "Known limitation" recorded in PR 7 through PR 11 above,
+are the natural backlog for whichever numbered or unnumbered block comes
+next.
+
 ## Progress vs. the 12-PR plan
 
-- Completed: 11 of 12 full PRs merged (PR 1 + PR 1b deploy follow-up +
-  hotfix; PR 2; PR 3; PR 4; PR 5 Project Workspace, delivered through
-  PR #114, PR #115 and PR #116; PR 6 Opportunities; PR 7 Admin Mode
-  foundation; PR 8 Profile + Portfolio; PR 9 Leader Mode foundation;
-  PR 10 Admin Event Moderation; PR 11 Admin Task Submission Review),
-  plus the unnumbered PR #122 Mini App
-  design polish pass.
-- Current stage: PR 12 (scope to be confirmed at the start of the next
-  session — see known limitations in PR 7, PR 8, PR 9, PR 10 and PR 11
-  above).
+- **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy
+  follow-up + hotfix; PR 2; PR 3; PR 4; PR 5 Project Workspace,
+  delivered through PR #114, PR #115 and PR #116; PR 6 Opportunities;
+  PR 7 Admin Mode foundation; PR 8 Profile + Portfolio; PR 9 Leader
+  Mode foundation; PR 10 Admin Event Moderation; PR 11 Admin Task
+  Submission Review; PR 12 Admin Opportunity Application Review), plus
+  the unnumbered PR #122 Mini App design polish pass.
+- The original 12-PR plan is now complete. The Mini App covers Home,
+  Activity (Events/Tasks/Calendar/History), Projects + Project
+  Workspace, Opportunities, Profile + Portfolio, Leader Mode (scope
+  overview + open tasks), and Admin Mode (dashboard, registration
+  applications, project/event moderation, task-submission review,
+  offer-application review) — all built by extracting/reusing the
+  Bot's existing services, with the Bot itself unchanged in behavior
+  throughout.
+- Remaining work is the accumulated "Known limitation" backlog from
+  PR 7 through PR 12 (see each section above) rather than anything from
+  the original numbered plan — future sessions should treat that
+  backlog, plus any new brief from the project owner, as the source of
+  truth for what comes next.

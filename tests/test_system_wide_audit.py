@@ -253,7 +253,7 @@ class SystemWideAuditTests(unittest.TestCase):
             "app/services/task_review_service.py": ["add_points", "approved"],
             "app/handlers/admin/event_registration_block14.py": ["add_points", "ATTENDED"],
             "app/handlers/admin/event_activities_block15.py": ["add_points", "approved"],
-            "app/handlers/admin/partner_offers_block16.py": ["add_points", "approved"],
+            "app/services/opportunity_service.py": ["add_points", "approved"],
             "app/handlers/admin/auction_block17.py": ["points=-bid.amount", "winner"],
         }
         failures = []

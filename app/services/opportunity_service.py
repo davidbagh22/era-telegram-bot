@@ -14,9 +14,10 @@ from app.database.partners import (
     PartnerOfferApplication,
     SavedOpportunity,
 )
-from app.services.points_service import total_points
+from app.services.points_service import add_points, total_points
 
 OpportunityScope = Literal["for_me", "all", "saved", "mine"]
+OFFER_APPLICATION_ACTIONS = ("approve", "reject")
 
 ACTIVE_APPLICATION_STATUSES = {"pending", "approved"}
 
@@ -193,3 +194,83 @@ async def recommended_offers(
         if len(recommended) >= limit:
             break
     return recommended
+
+
+@dataclass(frozen=True)
+class OfferApplicationResult:
+    application: PartnerOfferApplication
+    admin_notice: str
+    participant_notice: str | None
+    points_charged: int
+
+
+async def list_pending_offer_applications(
+    session: AsyncSession,
+) -> list[PartnerOfferApplication]:
+    rows = await session.scalars(
+        select(PartnerOfferApplication)
+        .where(PartnerOfferApplication.status == "pending")
+        .order_by(PartnerOfferApplication.created_at)
+    )
+    return list(rows.all())
+
+
+async def decide_offer_application(
+    session: AsyncSession,
+    application: PartnerOfferApplication,
+    offer: PartnerInitiative,
+    participant: User,
+    *,
+    action: str,
+    actor: User,
+) -> OfferApplicationResult:
+    if action not in OFFER_APPLICATION_ACTIONS:
+        raise ValueError(f"unknown offer application action: {action!r}")
+    if application.status != "pending":
+        return OfferApplicationResult(
+            application=application,
+            admin_notice="Заявка уже обработана.",
+            participant_notice=None,
+            points_charged=0,
+        )
+
+    if action == "approve":
+        balance = await total_points(session, participant.id)
+        if balance < offer.point_cost:
+            return OfferApplicationResult(
+                application=application,
+                admin_notice="У участника уже недостаточно баллов. Заявка не одобрена.",
+                participant_notice=None,
+                points_charged=0,
+            )
+        if offer.point_cost:
+            await add_points(
+                session,
+                user_id=participant.id,
+                points=-offer.point_cost,
+                reason=f"Партнёрское предложение: {offer.title}",
+                approved_by=actor.id,
+                source_type="partner_offer",
+                source_id=application.id,
+                idempotency_key=f"partner_offer:{application.id}:approval",
+            )
+        application.status = "approved"
+        application.reviewed_by = actor.id
+        return OfferApplicationResult(
+            application=application,
+            admin_notice="Заявка одобрена. Баллы списаны один раз.",
+            participant_notice=(
+                f"Ваша заявка «{offer.title}» одобрена. Списано: {offer.point_cost} баллов. "
+                "Команда ЭРА свяжется с Вами."
+            ),
+            points_charged=offer.point_cost,
+        )
+
+    application.status = "rejected"
+    application.reviewed_by = actor.id
+    return OfferApplicationResult(
+        application=application,
+        admin_notice="Заявка отклонена. Баллы не списаны.",
+        participant_notice=f"Заявка «{offer.title}» отклонена. Баллы не списаны.",
+        points_charged=0,
+    )

@@ -3,10 +3,11 @@ import { PillTabs } from "../components/PillTabs";
 import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
+import { AdminOffersScreen } from "./admin/AdminOffersScreen";
 import { AdminProjectsScreen } from "./admin/AdminProjectsScreen";
 import { AdminTasksScreen } from "./admin/AdminTasksScreen";
 
-type AdminSection = "dashboard" | "applications" | "projects" | "events" | "tasks";
+type AdminSection = "dashboard" | "applications" | "projects" | "events" | "tasks" | "offers";
 
 const SECTIONS: { value: AdminSection; label: string }[] = [
   { value: "dashboard", label: "Дашборд" },
@@ -14,6 +15,7 @@ const SECTIONS: { value: AdminSection; label: string }[] = [
   { value: "projects", label: "Проекты" },
   { value: "events", label: "Мероприятия" },
   { value: "tasks", label: "Задания" },
+  { value: "offers", label: "Возможности" },
 ];
 
 export function AdminScreen() {
@@ -27,6 +29,7 @@ export function AdminScreen() {
       {section === "projects" && <AdminProjectsScreen />}
       {section === "events" && <AdminEventsScreen />}
       {section === "tasks" && <AdminTasksScreen />}
+      {section === "offers" && <AdminOffersScreen />}
     </div>
   );
 }

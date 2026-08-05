@@ -11,6 +11,8 @@ import type {
   DashboardData,
   EventDecisionAction,
   EventForModeration,
+  OfferApplicationAction,
+  OfferApplicationForReview,
   PendingApplication,
   ProjectDecisionAction,
   ProjectForModeration,
@@ -415,6 +417,20 @@ export function decideTaskSubmission(
   return authorizedPost<TaskSubmissionForReview>(
     `/api/v1/admin/task-submissions/${submissionId}/decide`,
     { action, comment },
+  );
+}
+
+export function fetchAdminOfferApplications(): Promise<OfferApplicationForReview[]> {
+  return authorizedGet<OfferApplicationForReview[]>("/api/v1/admin/offer-applications");
+}
+
+export function decideOfferApplication(
+  applicationId: number,
+  action: OfferApplicationAction,
+): Promise<OfferApplicationForReview> {
+  return authorizedPost<OfferApplicationForReview>(
+    `/api/v1/admin/offer-applications/${applicationId}/decide`,
+    { action },
   );
 }
 
