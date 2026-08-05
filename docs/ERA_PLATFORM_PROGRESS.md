@@ -1251,6 +1251,56 @@ error handling was also spot-checked in this block and found already
 correct (`cabinet.py`'s PDF-generation failure path logs and notifies the
 user; no bot-side silent-failure pattern found).
 
+### PR 16 — E2E Test Suite (Participant/Leader/Admin) (merged)
+
+Branch: `era-platform-pr16-e2e-tests`. Closes the audit's #13 backlog item
+("no E2E test infrastructure"). Real end-to-end: a real FastAPI backend, a
+real (throwaway, file-based) SQLite database, and the actual production
+frontend build served exactly as `app/webapp.py` serves it in production
+(`/app/`) — no mocked API layer.
+
+- **Login without a real Telegram session**: `useAuth.ts` now reads an
+  optional `?devTelegramId=<id>` query param and forwards it to
+  `POST /api/v1/miniapp/auth`. The backend only honors that field when
+  `DEV_AUTH_ENABLED=true`, which `Settings.assert_safe_for_deployment()`
+  (PR13) refuses to allow on a Render deployment — so this is inert
+  against the real deployed bot regardless of what's in a URL, verified
+  by reading `app/api/v1/auth.py`'s exact gating logic before adding it.
+- `scripts/e2e_seed.py` — seeds a throwaway SQLite DB via
+  `Base.metadata.create_all` (the same approach the existing unit test
+  suite already uses against SQLite, not the real Alembic chain — several
+  accumulated migrations aren't wrapped in `batch_alter_table()` and
+  SQLite's limited `ALTER TABLE` support would break them; migration
+  correctness is verified separately against real Postgres) with four
+  fixed-ID users (participant/leader/admin/a pending applicant) and one
+  future open-registration event.
+- `frontend/e2e/{participant,leader,admin}.spec.ts` (Playwright) — one
+  scenario per role, each exercising a real state change through the
+  full stack, not just a page render: participant registers for the
+  seeded event; leader creates a real open task through the form; admin
+  approves the seeded pending applicant and sees them leave the queue.
+  See `frontend/e2e/README.md` for the full scope note and how to run
+  locally.
+- New CI job `e2e` (`.github/workflows/ci.yml`): spins up a `redis:7`
+  service container (the app's FSM storage needs a reachable Redis even
+  for this), seeds the DB, builds and serves the real frontend, starts
+  the real backend, waits on `/health`, runs the three specs, uploads
+  the Playwright report as an artifact on failure.
+- Verification: `npm run build` clean with the new devDependency;
+  `ruff`/`compileall` clean on the new `scripts/e2e_seed.py`; ran the
+  seed script locally against a throwaway SQLite file end-to-end
+  (confirmed the four users and event are created correctly) — the full
+  server+Playwright run itself needs a local Redis this environment
+  doesn't have, so it's verified by CI rather than locally; full backend
+  `pytest -q` re-run as a regression check.
+
+**Known limitation / explicit backlog**: three scenarios, one per role —
+not full coverage of every screen/action (that's what PR15's manual
+audit + the existing 471 unit/integration tests are for). Concurrent-
+decision races, file/portfolio upload, and the chat/registration
+addendum's own scenario list are explicitly out of scope here, covered
+by other, dedicated blocks instead of being folded into this one.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

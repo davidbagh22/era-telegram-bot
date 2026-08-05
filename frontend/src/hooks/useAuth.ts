@@ -18,7 +18,17 @@ export function useAuth(): AuthState {
     async function run() {
       try {
         const initData = getInitData();
-        const result = await authenticate(initData);
+        // E2E-only hook: a real Telegram client never sets this query
+        // param, and the backend ignores it entirely unless
+        // DEV_AUTH_ENABLED is set (never true in production — see
+        // Settings.assert_safe_for_deployment). Lets Playwright drive the
+        // real built frontend as a specific seeded test user without a
+        // real Telegram session.
+        const devTelegramIdParam = new URLSearchParams(window.location.search).get(
+          "devTelegramId",
+        );
+        const devTelegramId = devTelegramIdParam ? Number(devTelegramIdParam) : undefined;
+        const result = await authenticate(initData, devTelegramId);
         if (!cancelled) {
           setState({ status: "ready", user: result.user });
         }
