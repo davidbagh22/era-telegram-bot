@@ -1259,6 +1259,25 @@ real (throwaway, file-based) SQLite database, and the actual production
 frontend build served exactly as `app/webapp.py` serves it in production
 (`/app/`) — no mocked API layer.
 
+- **Critical bug found by this suite itself, not by manual review** (audit
+  finding #18): `index.html` referenced its JS/CSS bundle at an absolute
+  root path (`/assets/index-....js`), but `app/webapp.py::_mount_frontend`
+  only mounts static files at `/app`, never at the domain root. A real
+  browser resolves an absolute path against the origin root regardless of
+  what page it's on, so that request always 404'd — **the Mini App most
+  likely never rendered any UI for a real user**, just an empty
+  `<div id="root">`. Confirmed directly against the live production
+  domain both ways: `GET .../assets/index-g9wS8NyS.js` → 404,
+  `GET .../app/assets/index-g9wS8NyS.js` → 200. Fixed with one line —
+  `base: "/app/"` in `frontend/vite.config.ts` — which makes Vite rewrite
+  both the bundle paths and the `<link rel="icon">` favicon path
+  correctly; rebuilt and confirmed the new `dist/index.html` references
+  `/app/assets/...` throughout. This was invisible to every prior
+  verification step in PR13/14/15 because those only checked that
+  `/app/` returned HTML with the right commit/asset hash — never that the
+  referenced asset URL itself actually loaded. Lesson applied going
+  forward: verification must follow the actual asset chain a browser
+  would, not just the entry HTML response.
 - **Login without a real Telegram session**: `useAuth.ts` now reads an
   optional `?devTelegramId=<id>` query param and forwards it to
   `POST /api/v1/miniapp/auth`. The backend only honors that field when
