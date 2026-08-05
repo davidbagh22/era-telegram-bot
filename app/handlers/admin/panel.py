@@ -57,7 +57,6 @@ from app.keyboards.admin import (
     admin_user_actions,
     admin_users_keyboard,
     age_filters_keyboard,
-    application_actions,
     applications_keyboard,
     entity_actions,
     event_management_keyboard,

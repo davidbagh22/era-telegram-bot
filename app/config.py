@@ -27,7 +27,10 @@ class Settings(BaseSettings):
     webhook_secret: str = ""
     render_external_hostname: str = ""
     dev_auth_enabled: bool = False
-    init_data_max_age_seconds: int = 86400
+    # Telegram regenerates initData fresh every time the Mini App is opened,
+    # so this only needs to cover slow clients/networks — not multi-hour
+    # reuse. Kept in line with the session token TTL (see auth.py).
+    init_data_max_age_seconds: int = 3600
     miniapp_url: str = ""
     miniapp_auth_secret: str = ""
     bot_username: str = ""
@@ -105,6 +108,25 @@ class Settings(BaseSettings):
         if not self.webhook_secret:
             return ""
         return hashlib.sha256(self.webhook_secret.encode()).hexdigest()
+
+    @property
+    def is_render_deployment(self) -> bool:
+        """True when running on Render, which sets RENDER_EXTERNAL_HOSTNAME
+        for every deployed service. Used only to guard against accidentally
+        leaving a developer-only bypass enabled in production — never to
+        gate real authorization decisions."""
+        return bool(self.render_external_hostname)
+
+    def assert_safe_for_deployment(self) -> None:
+        """Fail loudly at startup instead of silently accepting a dangerous
+        configuration. Called once from app/webapp.py's lifespan."""
+        if self.dev_auth_enabled and self.is_render_deployment:
+            raise RuntimeError(
+                "DEV_AUTH_ENABLED=true on a Render deployment would let anyone "
+                "bypass Telegram initData verification by posting an arbitrary "
+                "devTelegramId to /api/v1/miniapp/auth. Refusing to start — "
+                "unset DEV_AUTH_ENABLED in the Render service environment."
+            )
 
 
 @lru_cache

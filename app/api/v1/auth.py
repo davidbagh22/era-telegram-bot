@@ -2,15 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session, get_settings
+from app.api.rate_limit import enforce_rate_limit
 from app.api.security import InitDataError, create_session_token, verify_init_data
 from app.api.v1.schemas import MiniAppUserSummary, summarize_user
 from app.config import Settings
 from app.repositories.users import get_user_by_telegram_id
+
+# Generous enough for a user re-opening the Mini App repeatedly, tight
+# enough to blunt a scripted attempt to mint sessions for many Telegram IDs.
+AUTH_RATE_LIMIT = 20
+AUTH_RATE_LIMIT_WINDOW_SECONDS = 60
 
 router = APIRouter(tags=["miniapp-auth"])
 
@@ -32,10 +38,17 @@ class MiniAppAuthResponse(BaseModel):
 
 @router.post("/miniapp/auth", response_model=MiniAppAuthResponse)
 async def authenticate(
+    request: Request,
     payload: MiniAppAuthRequest,
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> MiniAppAuthResponse:
+    await enforce_rate_limit(
+        request,
+        key_prefix="miniapp_auth",
+        limit=AUTH_RATE_LIMIT,
+        window_seconds=AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    )
     if settings.dev_auth_enabled and payload.dev_telegram_id is not None:
         telegram_id = payload.dev_telegram_id
     else:

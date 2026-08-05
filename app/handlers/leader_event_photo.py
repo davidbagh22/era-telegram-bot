@@ -14,7 +14,6 @@ from app.database.models import Department, Direction, Event, User
 from app.services.audit_service import audit
 from app.services.event_card import send_event_card, send_event_card_to_chat
 from app.states.event import EventStates
-from app.utils import texts
 from app.utils.constants import EventStatus
 from app.utils.validators import clean_text
 
