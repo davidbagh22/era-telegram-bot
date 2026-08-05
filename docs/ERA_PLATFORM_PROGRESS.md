@@ -6,9 +6,11 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `e05d1e2ad530d51845c6366dc022a1e5e4731c3c`
-  (PR #125 merge: Admin Task Submission Review).
-- Prior merges, newest first: `3211d21a5` (PR #124, Admin Event
+- Current `main` commit: `f01e570d49b4f7390de7a4bda0cffbb117554d2d`
+  (PR #126 merge: Admin Opportunity Application Review — the 12th and
+  final PR in the original 12-PR plan).
+- Prior merges, newest first: `e05d1e2ad` (PR #125, Admin Task
+  Submission Review), `3211d21a5` (PR #124, Admin Event
   Moderation), `908896e80` (PR #122, frontend design
   polish pass), `c417f3aa` (PR #121, Leader Mode —
   scope overview + open tasks), `fe4e5f667` (PR #120, Profile +
@@ -994,9 +996,10 @@ updated brief before starting.
 
 ### PR 12 — Admin Opportunity Application Review (merged)
 
-Branch: `era-platform-pr12-opportunity-review`. See PR link and merge
-commit recorded in the follow-up progress-doc-only commit once merged.
-This closes the 12-PR plan.
+Branch: `era-platform-pr12-opportunity-review`. PR:
+[#126](https://github.com/davidbagh22/era-telegram-bot/pull/126). Merge
+commit: `f01e570d49b4f7390de7a4bda0cffbb117554d2d`. Both CI checks green
+before merge. This closes the 12-PR plan.
 
 - New `can_manage_partners()` in `app/services/authorization_service.py`,
   same pattern as PR 10/PR 11's `can_manage_events()`/`can_manage_tasks()`.
