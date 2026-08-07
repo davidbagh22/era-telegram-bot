@@ -14,7 +14,14 @@ test("admin logs in and approves the seeded pending applicant", async ({ page })
   const applicantCard = page.getByText("E2E Pending Applicant");
   await expect(applicantCard).toBeVisible();
 
-  await page.getByRole("button", { name: "Одобрить" }).click();
+  // Scoped to this applicant's own card, not a bare global lookup: the
+  // queue can (and, once pending_sync.spec.ts's own fixture is also
+  // pending, does) hold more than one applicant at once, each with an
+  // identical "Одобрить" button.
+  await page
+    .locator(".era-card", { hasText: "E2E Pending Applicant" })
+    .getByRole("button", { name: "Одобрить" })
+    .click();
 
   // A real approval through application_review_service → DB, not a UI-only
   // removal — verified by the applicant disappearing after the screen
