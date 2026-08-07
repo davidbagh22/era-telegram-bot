@@ -48,9 +48,11 @@ Email: {user.email or 'не указан'}
 
 
 @router.message(Command("menu"), F.chat.type == "private")
-async def menu_command(message: Message, user: User | None, state: FSMContext) -> None:
+async def menu_command(
+    message: Message, user: User | None, state: FSMContext, settings: Settings
+) -> None:
     await state.clear()
-    await _send_main_menu(message, user)
+    await _send_main_menu(message, user, settings)
 
 
 @router.message(Command("profile"), F.chat.type == "private")

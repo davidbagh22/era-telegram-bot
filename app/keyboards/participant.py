@@ -35,7 +35,9 @@ def main_menu(
     )
 
 
-def main_inline_keyboard(privileged: bool = False, admin: bool = False) -> InlineKeyboardMarkup:
+def main_inline_keyboard(
+    privileged: bool = False, admin: bool = False, miniapp_url: str = ""
+) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(text="👤 Личный кабинет", callback_data="cabinet:open"),
@@ -47,6 +49,14 @@ def main_inline_keyboard(privileged: bool = False, admin: bool = False) -> Inlin
         ],
         [InlineKeyboardButton(text="💬 Связь", callback_data="contact:menu")],
     ]
+    # Was missing here even though main_menu() (the reply keyboard shown
+    # on /start) already had it — /menu and "🧭 Главное меню" landed on
+    # this inline keyboard instead and never showed a Mini App entry
+    # point at all, regardless of the chat menu button fix.
+    if miniapp_url:
+        rows.append(
+            [InlineKeyboardButton(text="🔥 Открыть ЭРА", web_app=WebAppInfo(url=miniapp_url))]
+        )
     if privileged or admin:
         rows.append([InlineKeyboardButton(text="⚙️ Панель", callback_data="panel:open")])
     return InlineKeyboardMarkup(inline_keyboard=rows)

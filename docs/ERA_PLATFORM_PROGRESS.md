@@ -1600,6 +1600,81 @@ request after the PR13–19 block closed.
 - Verification: `pytest -q` full suite re-run, `ruff`/`compileall` clean,
   no migration in this PR.
 
+### PR 21 — Live Menu Button Investigation: the Real Root Cause (merged)
+
+Branch: `era-platform-pr21-live-menu-button-fix`. The owner reported that,
+after PR20's deploy, nothing visibly changed for a real user in Telegram.
+Rather than re-asserting deploy success, this block re-investigated from
+scratch, and found a real bug PR20 did not touch.
+
+**Root cause, found by reading actual router registration order, not
+assumed**: `app/bot.py::create_dispatcher` registers `emergency.router`
+*before* `start.router` (confirmed intentional — there's a pre-existing
+test, `test_emergency_router_is_first`, asserting exactly this). Aiogram
+resolves an update against the *first* fully-matching handler across the
+whole router tree, in registration order, then stops. `emergency.py`'s
+`rescue_start` is registered for `CommandStart()`/`Command("menu")` with
+`StateFilter("*")`, which (confirmed by reading aiogram's own filter
+source) matches unconditionally, for every state including none. This
+means **`rescue_start` — not `start.py`'s more complete `start()` — is
+what a real user's `/start` and `/menu` have actually been reaching all
+along**, regardless of any of PR13–20's changes to `start.py`/`main_menu()`.
+
+`rescue_start`'s call to `_send_main_menu()` never passed `settings`, and
+`_send_main_menu()` renders `main_inline_keyboard()` — a *different*
+keyboard from `main_menu()` (the one with the Mini App reply-keyboard
+button, tested since the original 12-PR plan) — which had **no Mini App
+button of any kind**, chat-menu-button fix or not. This is why PR20's fix
+was invisible: the actual code path serving real `/start` never had a
+button to begin with.
+
+- Fixed `main_inline_keyboard()` (`app/keyboards/participant.py`) to
+  accept `miniapp_url` and add the same "🔥 Открыть ЭРА" `web_app` button
+  `main_menu()` already had. Threaded `settings` through every caller of
+  `_send_main_menu()`: `emergency.py` (`rescue_start`, `cancel_any`,
+  `rescue_menu_button`), `navigation.py` ("🧭 Главное меню"),
+  `commands_ready.py` (`/menu`).
+- **Startup self-verification** (`app/webapp.py`): after
+  `setChatMenuButton`, calls `getChatMenuButton` and compares against
+  what was requested via new `_menu_button_matches()` — logs ERROR (not
+  just assumed success) on any mismatch, INFO with the bot's real
+  username on success. New `/diag` HTTP endpoint exposes the cached
+  result (`bot_username`, `menu_button_type`, `menu_button_verified`,
+  `miniapp_configured`, `webhook_host` — no tokens/secrets) so this can
+  be checked externally via `curl`, without `BOT_TOKEN` or a Telegram
+  session.
+- **Extended `/version` admin bot command** (`app/handlers/admin/
+  version_command.py`) with live checks: `bot.get_me()`,
+  `bot.get_chat_menu_button()`, `bot.get_webhook_info()`, and a real `SELECT
+  1` — the same diagnostic surface, reachable from inside Telegram by an
+  admin.
+- **Investigated and ruled out** (not assumed) a per-chat menu-button
+  override: searched the entire codebase and its full git history for
+  any `set_chat_menu_button` call with an explicit `chat_id` — none
+  exists, anywhere, ever. The global default is genuinely the only
+  configuration that has ever been set.
+- **Confirmed single source of truth**: only `app/webapp.py` calls
+  `set_chat_menu_button`/`set_my_commands`. New
+  `tests/test_chat_menu_button.py::SingleSourceOfTruthTests` enforces
+  this going forward by parsing (not grepping) every file under `app/`.
+- New regression test
+  (`tests/test_fsm_global_recovery.py::test_rescue_start_real_menu_includes_miniapp_button`)
+  calls `rescue_start` **without** mocking `_send_main_menu` away — the
+  only test in the suite that exercises the actual router-selected
+  handler end to end — and asserts the real reply contains the Mini App
+  button. This is the one test that would have caught the original bug;
+  every other existing test mocked `_send_main_menu` out entirely.
+
+**What this does not and cannot prove from this environment**: that a
+real Telegram client visually shows the button — verifying that requires
+either the owner's own check or a connected browser session (see PR18c's
+same limitation). What it does prove, with evidence gathered by actually
+reading router source and aiogram's filter implementation rather than
+re-running the same checks and hoping for a different answer: the code
+path a real `/start` actually executes now includes the Mini App button,
+where before this PR it structurally could not have, no matter what
+`main_menu()` itself looked like.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

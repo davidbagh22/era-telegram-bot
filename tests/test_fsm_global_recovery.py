@@ -127,8 +127,9 @@ class FsmRecoveryTests(unittest.IsolatedAsyncioTestCase):
         state = FakeState()
         state.current = events_block6.EventBlock6States.date
         message = FakeMessage("/cancel")
+        settings = SimpleNamespace(era_channel_url="https://t.me/example")
         with patch.object(emergency, "_send_main_menu", AsyncMock()):
-            await emergency.cancel_any(message, approved_user(), state)
+            await emergency.cancel_any(message, approved_user(), settings, state)
         self.assertEqual(state.clear_count, 1)
         self.assertIn("Текущее действие отменено", message.answers[0][0])
 
@@ -178,6 +179,31 @@ class FsmRecoveryTests(unittest.IsolatedAsyncioTestCase):
         await chat.welcome_members(message, FakeBot(), settings, session)
         self.assertEqual(len(message.answers), 1)
         self.assertIn("Добро пожаловать в ЭРА", message.answers[0][0])
+
+    async def test_rescue_start_real_menu_includes_miniapp_button(self):
+        # Regression test for the actual live-config bug: emergency.router
+        # is registered first (see test_emergency_router_is_first below,
+        # which is itself intentional, not a bug), so rescue_start — not
+        # start.py's start() — is what a real approved user's /start
+        # actually reaches. rescue_start's call to _send_main_menu()
+        # dropped `settings`, so the Mini App button never appeared no
+        # matter how many times main_menu()/main_inline_keyboard() were
+        # fixed — this is the only test in the whole suite that exercises
+        # the real router-selected handler without mocking _send_main_menu
+        # away, so it is the only one that would have caught this.
+        state = FakeState()
+        message = FakeMessage("/start")
+        settings = SimpleNamespace(
+            era_channel_url="https://t.me/example",
+            effective_miniapp_url="https://era-telegram-bot.onrender.com/app/",
+        )
+        with patch.object(emergency, "_subscription_ok", AsyncMock(return_value=True)):
+            await emergency.rescue_start(message, FakeBot(), approved_user(), settings, state)
+        markup = message.answers[-1][1]["reply_markup"]
+        buttons = [button for row in markup.inline_keyboard for button in row]
+        miniapp_button = next((b for b in buttons if b.text == "🔥 Открыть ЭРА"), None)
+        self.assertIsNotNone(miniapp_button, "Mini App button missing from the real /start reply")
+        self.assertEqual(miniapp_button.web_app.url, settings.effective_miniapp_url)
 
     def test_emergency_router_is_first(self):
         source = inspect.getsource(bot_module.create_dispatcher)

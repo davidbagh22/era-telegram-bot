@@ -92,6 +92,19 @@ def _chat_menu_button(miniapp_url: str) -> MenuButtonWebApp | MenuButtonDefault:
     return MenuButtonWebApp(text="Открыть ЭРА", web_app=WebAppInfo(url=miniapp_url))
 
 
+def _menu_button_matches(expected, actual) -> bool:
+    """Compares what we asked Telegram to set against what
+    `getChatMenuButton` actually reports back. Setting a menu button is a
+    fire-and-forget API call — this is the only way to know Telegram
+    genuinely accepted and stored it, rather than assuming success from
+    "the call didn't raise"."""
+    if expected.type != actual.type:
+        return False
+    if expected.type == "web_app":
+        return expected.web_app.url == actual.web_app.url
+    return True
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -128,6 +141,7 @@ async def lifespan(app: FastAPI):
     scheduler = create_scheduler(bot, settings, session_factory)
     scheduler.start()
     app.state.scheduler = scheduler
+    app.state.bot_diagnostics = {"error": "webhook_not_configured"}
 
     try:
         base_url = settings.effective_base_url
@@ -139,9 +153,38 @@ async def lifespan(app: FastAPI):
                 allowed_updates=dispatcher.resolve_used_update_types(),
                 drop_pending_updates=False,
             )
-            await bot.set_chat_menu_button(
-                menu_button=_chat_menu_button(settings.effective_miniapp_url)
-            )
+            expected_menu_button = _chat_menu_button(settings.effective_miniapp_url)
+            await bot.set_chat_menu_button(menu_button=expected_menu_button)
+            # Fire-and-forget setChatMenuButton succeeding is not proof
+            # Telegram actually stored it — read it back and compare.
+            # Logged, not just asserted, so a real mismatch is visible in
+            # production logs immediately after every deploy, not
+            # discovered later by a confused user.
+            actual_menu_button = await bot.get_chat_menu_button()
+            menu_button_verified = _menu_button_matches(expected_menu_button, actual_menu_button)
+            me = await bot.get_me()
+            if menu_button_verified:
+                logger.info(
+                    "Chat menu button verified: bot=@%s type=%s",
+                    me.username,
+                    actual_menu_button.type,
+                )
+            else:
+                logger.error(
+                    "Chat menu button mismatch: bot=@%s expected type=%s got type=%s "
+                    "— Telegram did not store the configuration we sent",
+                    me.username,
+                    expected_menu_button.type,
+                    actual_menu_button.type,
+                )
+            app.state.bot_diagnostics = {
+                "bot_id": me.id,
+                "bot_username": me.username,
+                "menu_button_type": actual_menu_button.type,
+                "menu_button_verified": menu_button_verified,
+                "miniapp_configured": bool(settings.effective_miniapp_url),
+                "webhook_host": base_url,
+            }
             await bot.set_my_commands(USER_COMMANDS)
             for admin_id in settings.admin_ids:
                 await bot.set_my_commands(
@@ -209,6 +252,24 @@ async def ready(request: Request) -> dict[str, str]:
         logger.exception("Readiness check failed: database unreachable")
         raise HTTPException(status_code=503, detail="database_unavailable")
     return {"status": "ready"}
+
+
+@app.get("/diag")
+async def diag(request: Request) -> dict:
+    """Non-sensitive bot-configuration diagnostics, cached at startup (see
+    lifespan()'s menu-button verification) — not a live Telegram call per
+    request. Exists so "is the running process actually the bot I'm
+    talking to, correctly configured" can be checked from the outside
+    (e.g. `curl`) without needing BOT_TOKEN or a Telegram session — the
+    same fields are also available live, in more detail, via the /version
+    bot command for admins. No token, secret, or connection string is
+    ever included: bot_id/bot_username are public (Telegram search finds
+    them), webhook_host is a domain, not the secret validated separately
+    via the webhook's header token."""
+    return {
+        "commit": DEPLOYED_COMMIT,
+        **getattr(request.app.state, "bot_diagnostics", {"error": "not_available"}),
+    }
 
 
 app.include_router(api_router)
