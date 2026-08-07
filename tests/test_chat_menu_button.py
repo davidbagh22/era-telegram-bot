@@ -4,7 +4,7 @@ import ast
 import unittest
 from pathlib import Path
 
-from aiogram.types import MenuButtonDefault, MenuButtonWebApp, WebAppInfo
+from aiogram.types import MenuButtonCommands, MenuButtonDefault, MenuButtonWebApp, WebAppInfo
 
 from app.webapp import _chat_menu_button, _menu_button_matches
 
@@ -55,6 +55,18 @@ class MenuButtonVerificationTests(unittest.TestCase):
 
     def test_matches_when_both_are_default(self) -> None:
         self.assertTrue(_menu_button_matches(MenuButtonDefault(), MenuButtonDefault()))
+
+    def test_default_matches_telegrams_own_commands_normalization(self) -> None:
+        # Confirmed against real production behavior: sending `default`
+        # (no explicit choice) makes Telegram report back `commands` for
+        # a bot with registered commands — its own normalization, not a
+        # failure to apply our setting. Discovered via /diag after PR21;
+        # without this, every deploy would log a false ERROR forever.
+        self.assertTrue(_menu_button_matches(MenuButtonDefault(), MenuButtonCommands()))
+
+    def test_web_app_expected_but_default_returned_is_still_a_real_mismatch(self) -> None:
+        expected = MenuButtonWebApp(text="Открыть ЭРА", web_app=WebAppInfo(url="https://era.example/app/"))
+        self.assertFalse(_menu_button_matches(expected, MenuButtonCommands()))
 
 
 class SingleSourceOfTruthTests(unittest.TestCase):
