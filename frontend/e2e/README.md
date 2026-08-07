@@ -42,10 +42,12 @@ CI (`.github/workflows/ci.yml`, `e2e` job) runs exactly this sequence with a
 ## Fixtures
 
 Seeded by `scripts/e2e_seed.py`, fixed Telegram IDs so specs can reference
-them directly: participant `900001`, leader `900002`, admin `900003`, and a
-`900004` pending applicant for the admin-approval scenario. One future,
-`registration_open` event so the participant spec has something to
-register for.
+them directly: participant `900001`, leader `900002`, admin `900003`, a
+`900004` pending applicant for the admin-approval scenario, and a `900005`
+pending applicant dedicated to the live-sync scenario (kept separate from
+`900004` so the two specs never contend over the Admin UI's single global
+"Одобрить" button). One future, `registration_open` event so the
+participant spec has something to register for.
 
 ## Scope
 
@@ -59,6 +61,13 @@ stack (not just a page render):
   a new open task through the real form, sees it appear in the list.
 - **Admin** (`admin.spec.ts`): logs in, opens Applications, approves the
   seeded pending applicant, sees them disappear from the pending queue.
+- **Pending sync** (`pending_sync.spec.ts`): a second, dedicated pending
+  applicant's Mini App page is opened once and never reloaded; approval is
+  driven through the real API (a separate admin session) rather than the
+  Admin UI; back on the never-reloaded applicant page, triggering the same
+  re-check `useAuth.ts`'s visibility/focus listeners perform flips it
+  straight to Home — proving the live-sync fix, not just that a fresh page
+  load would eventually show the right thing.
 
 Not covered here (see `docs/PRODUCTION_READINESS_AUDIT.md` backlog):
 concurrent-decision races, file/portfolio upload, and the chat/registration
