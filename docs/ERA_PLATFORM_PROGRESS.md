@@ -1446,6 +1446,31 @@ kind based on `is_minor()`. All of the above require the platform
 owner's decision (and likely counsel) first — a technical PR cannot and
 should not make that call unilaterally, and this one doesn't pretend to.
 
+### PR 18b — Vite/esbuild Dependency Upgrade (merged)
+
+Branch: `era-platform-pr18b-vite-upgrade`. Closes audit finding #7c
+(PR13's non-blocking `esbuild`/Vite dev-server-only advisory).
+
+- Vite `^5.4.11` → `^8.2.1`, `@vitejs/plugin-react` `^4.3.4` → `^6.0.5`
+  (the version Vite 8 actually requires as a peer dependency).
+  `npm audit` — clean, 0 vulnerabilities (was 1 moderate + 1 high).
+- Verification: `npm run build` clean (57 modules, same output shape);
+  `npm run typecheck` clean; started the Vite 8 dev server and checked it
+  in the browser — same expected `AuthErrorScreen` render outside a real
+  Telegram session as before the upgrade, no new console/server errors;
+  `vite.config.ts` needed no changes (`base: "/app/"` and `server.host`
+  are stable across this range).
+- CI: `npm audit --audit-level=high` in `.github/workflows/ci.yml` is
+  blocking again — the non-blocking `|| echo "::warning..."` fallback
+  from PR13 existed specifically to avoid failing CI over this exact
+  advisory before a fix was available; now that it's fixed, leaving it
+  non-blocking would just mask the *next* real advisory.
+
+**Known limitation**: this PR's own CI run is the regression check for
+the frontend — no backend files changed, so the full backend `pytest`
+suite wasn't re-run locally for this one (CI's `test` job still runs it
+before merge, per the existing gate).
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

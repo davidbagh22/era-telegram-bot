@@ -50,7 +50,9 @@ jobs:
       - name: Type check and build
         run: npm run build
       - name: Dependency audit
-        run: npm audit --audit-level=high || echo "::warning::npm audit found issues — see job log"
+        # Blocking again as of PR18b — the esbuild/vite advisory that made
+        # this non-blocking in PR13 is fixed (Vite upgraded past it).
+        run: npm audit --audit-level=high
 
   e2e:
     runs-on: ubuntu-latest
