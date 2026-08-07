@@ -1377,6 +1377,27 @@ Admin/Leader Mode specifically, since a compromised participant token
 has far less blast radius than a compromised admin/leader one; extending
 coverage there is a natural, low-risk follow-up if ever prioritized.
 
+### PR 17b — File/Portfolio Upload Security Review (docs only, no code change)
+
+A deliberate deep-dive re-check of audit finding #10, not a rubber-stamp:
+searched the entire `app/` tree for any place that downloads Telegram
+file content to local disk (`bot.download_file`/`download_file`) —
+found none. Confirmed the text fields around portfolio uploads
+(`portfolio_upload_title`/`_description` in
+`app/handlers/participant/growth.py`) already use `clean_text()` with
+length caps (255/1500 chars). Traced `PortfolioItem.url` — present in
+the model and exposed in the Mini App API's `PortfolioEntryOut` — through
+every one of its ~10 creation call sites and confirmed none of them ever
+sets it, and `frontend/src/screens/ProfileScreen.tsx` never renders it;
+it's a genuinely dead field, not an XSS vector waiting to happen.
+
+**Result: no issue found.** Recorded as audit finding #20 with the exact
+grep/trace evidence rather than skipped or asserted without checking.
+No code change — the dead `url` field was deliberately left alone rather
+than removed, since dropping a DB column needs a migration for a purely
+cosmetic cleanup, which is unnecessary architectural churn for zero
+security benefit.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy
