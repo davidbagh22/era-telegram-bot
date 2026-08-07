@@ -1398,6 +1398,54 @@ than removed, since dropping a DB column needs a migration for a purely
 cosmetic cleanup, which is unnecessary architectural churn for zero
 security benefit.
 
+### PR 18 — Consent Log Technical Foundation + Minors Scaffolding (merged)
+
+Branch: `era-platform-pr18-consent-minors-scaffolding`. Closes audit
+findings #16/#17 as "technical foundation ready", explicitly **not** as
+"legally compliant" — that distinction is the whole point of this PR.
+
+- New `ConsentLog` model (`app/database/models.py`) + additive migration
+  `0014_consent_log` (upgrade/downgrade smoke-tested against a temp
+  SQLite DB before merging, per the project's migration-PR convention).
+  Does not touch `users.personal_data_consent`, which remains the bool
+  actually checked anywhere in the app.
+- `app/services/consent_service.py`: `record_consent()`/`latest_consent()`.
+  `CURRENT_POLICY_VERSION` is a plain placeholder string
+  (`"unset-v1"`) — the module's docstring is explicit that nothing here
+  writes, validates, or defines policy *content*; it only makes sure
+  that once real policy text exists, one constant change is enough to
+  start versioning consent against it, with every prior record still
+  showing what it was actually given under. Wired into
+  `app/repositories/users.py::create_user_from_registration` — one
+  additive `record_consent()` call after the existing user creation,
+  no change to registration behavior or text the user sees.
+- `app/services/minors_service.py::is_minor(age)` — a pure function
+  returning `True`/`False`/`None` (unknown when age wasn't collected).
+  Not used for any access control, gating, or restriction anywhere.
+  Its one call site is a new, admin-only informational line
+  ("Несовершеннолетний (по анкете)") in
+  `app/services/admin_user_card.py` — visible to admins reviewing a
+  user's card, changes nothing about what anyone can do. Explicitly the
+  boundary the ТЗ drew: prepare the technical capability, leave the
+  legal/organizational decision to the owner.
+- Tests (`tests/test_consent_and_minors.py`, 10 cases): `is_minor()`
+  edge cases (unknown/minor/adult/custom threshold); `record_consent`/
+  `latest_consent` against a real SQLite session; a dedicated
+  integration test proving the registration wiring actually writes a
+  `ConsentLog` row (not just that `record_consent()` works in
+  isolation); three admin-card tests confirming the new label renders
+  correctly for minor/adult/unknown-age cases.
+- Verification: `ruff`/`compileall` clean; `alembic heads` — single
+  head; upgrade/downgrade smoke test passed; full `pytest -q` re-run —
+  see PR for the exact count.
+
+**Explicit, deliberate non-scope** (see `docs/DATA_INVENTORY.md` §5–6):
+no real policy text, no consent UI/flow changes, no age-gating at
+registration, no legal-guardian consent flow, no restriction of any
+kind based on `is_minor()`. All of the above require the platform
+owner's decision (and likely counsel) first — a technical PR cannot and
+should not make that call unilaterally, and this one doesn't pretend to.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

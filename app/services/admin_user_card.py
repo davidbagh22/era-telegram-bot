@@ -13,6 +13,7 @@ from app.config import Settings
 from app.database.models import Badge, PointTransaction, PortfolioItem, User, UserBadge
 from app.database.socials import SocialLink, SocialProfile
 from app.keyboards.admin import admin_user_actions, application_actions
+from app.services.minors_service import is_minor
 from app.services.notification_service import (
     admin_notification_recipients,
     safe_answer_photo,
@@ -55,6 +56,13 @@ def _telegram(user: User) -> str:
 
 def _date_text(value: date | None) -> str:
     return value.strftime("%d.%m.%Y") if value else "не указана"
+
+
+def _minor_label(age: int | None) -> str | None:
+    minor = is_minor(age)
+    if minor is None:
+        return None
+    return "да" if minor else "нет"
 
 
 def _lines(title: str, rows: list[tuple[str, str | None]]) -> str:
@@ -137,6 +145,11 @@ async def build_admin_user_card(
         ("Telegram", _telegram(target)),
         ("Дата рождения", _date_text(getattr(target, "birth_date", None))),
         ("Возраст", str(target.age) if target.age else None),
+        # Informational only — see app/services/minors_service.py. Does not
+        # gate or restrict anything; the platform owner has not yet made a
+        # decision on minors handling (docs/PRODUCTION_READINESS_AUDIT.md
+        # finding #17).
+        ("Несовершеннолетний (по анкете)", _minor_label(target.age)),
         ("Город", target.city),
         ("Телефон", target.phone),
         ("Email", target.email),
