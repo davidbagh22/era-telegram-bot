@@ -1,9 +1,11 @@
 interface StatusBannerProps {
   title: string;
   description: string;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
-export function StatusBanner({ title, description }: StatusBannerProps) {
+export function StatusBanner({ title, description, actionLabel, onAction }: StatusBannerProps) {
   return (
     <div
       style={{
@@ -21,6 +23,16 @@ export function StatusBanner({ title, description }: StatusBannerProps) {
         {title}
       </h1>
       <p style={{ color: "var(--era-text-muted)", margin: 0 }}>{description}</p>
+      {actionLabel && onAction && (
+        <button
+          type="button"
+          className="era-btn-primary"
+          onClick={onAction}
+          style={{ marginTop: "0.5rem" }}
+        >
+          {actionLabel}
+        </button>
+      )}
     </div>
   );
 }
