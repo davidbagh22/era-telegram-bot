@@ -1534,6 +1534,37 @@ not a substitute for the owner clicking through the real bot once.**
 
 No code change — this block found no regression to fix.
 
+### PR 19 — Final Production Acceptance (merged)
+
+Branch: `era-platform-pr19-production-acceptance`. The closing PR of the
+PR13–PR19 hardening block.
+
+- New `docs/FINAL_PRODUCTION_ACCEPTANCE.md` — the single document that
+  states plainly what "production ready" does and doesn't cover, per the
+  block's own rule that phrase is only used when no unresolved Critical
+  or High finding remains. Corrected two stale statuses in
+  `docs/PRODUCTION_READINESS_AUDIT.md` while confirming this: finding #3
+  (rate limiting) updated to **Fixed** (PR17 closed the "остальные —
+  Backlog" part), finding #13 (E2E infra) updated to **Fixed** (PR16
+  built it, and it immediately found both Critical findings #18/#19 —
+  not hypothetical value, realized value).
+- Final regression, run immediately before opening this PR: `alembic
+  heads` (single head), `ruff check app --select E9,F` (clean),
+  `compileall` (clean), `pip-audit --strict` (clean), `npm audit
+  --audit-level=high` (clean), `npm run build` (clean), full `pytest -q`
+  — **489 passed, 7 subtests passed, 0 failures**.
+- Explicit, named owner action items (not faked as done): production
+  domain/TLS from this environment, external error monitoring, real
+  consent-policy text, the minors/age-gating legal decision, and
+  confirming the bot's admin rights in the real Telegram chat(s) —
+  each stated once, precisely, in the new document rather than implied
+  away or silently dropped.
+
+**This closes the PR13–19 block.** Everything in it is merged to `main`,
+deployed to the real Render service, and verified against the live
+`/health`/`/ready` endpoints and (where the built frontend changed) the
+actual served asset URLs — not just "code exists."
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy
