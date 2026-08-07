@@ -6,7 +6,14 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from aiogram.types import BotCommand, BotCommandScopeChat, MenuButtonDefault, Update
+from aiogram.types import (
+    BotCommand,
+    BotCommandScopeChat,
+    MenuButtonDefault,
+    MenuButtonWebApp,
+    Update,
+    WebAppInfo,
+)
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
@@ -70,6 +77,21 @@ ADMIN_COMMANDS = USER_COMMANDS + [
 ]
 
 
+def _chat_menu_button(miniapp_url: str) -> MenuButtonWebApp | MenuButtonDefault:
+    """The persistent button next to the message input (Telegram's "chat
+    menu button" — distinct from the "🔥 Открыть ЭРА" reply-keyboard button
+    in main_menu(), which only appears after main_menu() has been sent at
+    least once). Opens the Mini App in one tap from anywhere once it's
+    actually configured (`miniapp_url` is `Settings.effective_miniapp_url`,
+    already empty until `MINIAPP_AUTH_SECRET` is set); falls back to the
+    plain commands list otherwise, rather than shipping a button that
+    would error.
+    """
+    if not miniapp_url:
+        return MenuButtonDefault()
+    return MenuButtonWebApp(text="Открыть ЭРА", web_app=WebAppInfo(url=miniapp_url))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -117,7 +139,9 @@ async def lifespan(app: FastAPI):
                 allowed_updates=dispatcher.resolve_used_update_types(),
                 drop_pending_updates=False,
             )
-            await bot.set_chat_menu_button(menu_button=MenuButtonDefault())
+            await bot.set_chat_menu_button(
+                menu_button=_chat_menu_button(settings.effective_miniapp_url)
+            )
             await bot.set_my_commands(USER_COMMANDS)
             for admin_id in settings.admin_ids:
                 await bot.set_my_commands(
