@@ -147,6 +147,27 @@ class DepartmentApplication(TimestampMixin, Base):
     admin_comment: Mapped[str | None] = mapped_column(Text)
 
 
+class ConsentLog(TimestampMixin, Base):
+    """Technical foundation for consent auditability — see
+    docs/DATA_INVENTORY.md section 5. `User.personal_data_consent` stays a
+    bare bool (still the field actually checked anywhere), this table adds
+    a real audit trail alongside it: which consent, what policy text
+    version, when, granted or withdrawn. `policy_version` is a plain
+    string placeholder (see app.services.consent_service) until the
+    platform owner supplies real policy text — this table records consent
+    *events*, it does not itself define or validate policy content, which
+    is explicitly not a decision a technical PR can make unilaterally."""
+
+    __tablename__ = "consent_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    consent_type: Mapped[str] = mapped_column(String(64), index=True)
+    policy_version: Mapped[str] = mapped_column(String(32))
+    granted: Mapped[bool] = mapped_column(Boolean)
+    source: Mapped[str] = mapped_column(String(16))
+
+
 class Event(TimestampMixin, Base):
     __tablename__ = "events"
     __table_args__ = (Index("ix_events_status_date", "status", "event_date"),)

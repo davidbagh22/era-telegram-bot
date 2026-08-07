@@ -17,6 +17,7 @@ from app.database.models import (
     UserDepartment,
     UserDirection,
 )
+from app.services.consent_service import record_consent
 from app.utils.validators import calculate_age
 
 
@@ -75,6 +76,16 @@ async def create_user_from_registration(
     )
     session.add(user)
     await session.flush()
+    # Additive audit trail alongside personal_data_consent above — see
+    # app/services/consent_service.py. Does not change registration
+    # behavior or what the user sees.
+    await record_consent(
+        session,
+        user_id=user.id,
+        consent_type="registration",
+        granted=True,
+        source="bot",
+    )
     await assign_interests(
         session,
         user,
