@@ -93,7 +93,7 @@ async def rescue_start(
     if user is None:
         await message.answer(texts.WELCOME, reply_markup=registration_keyboard())
         return
-    await _send_main_menu(message, user)
+    await _send_main_menu(message, user, settings)
 
 
 @router.message(StateFilter("*"), Command("cancel"), F.chat.type == "private")
@@ -101,12 +101,13 @@ async def rescue_start(
 async def cancel_any(
     message: Message,
     user: User | None,
+    settings: Settings,
     state: FSMContext,
 ) -> None:
     await state.clear()
     if _approved(user):
         await message.answer("Текущее действие отменено. Выберите раздел в меню ниже.")
-        await _send_main_menu(message, user)
+        await _send_main_menu(message, user, settings)
         return
     if user is None:
         await message.answer(texts.WELCOME, reply_markup=registration_keyboard())
@@ -171,4 +172,4 @@ async def rescue_menu_button(
             return
         await message.answer(texts.NO_ACCESS)
         return
-    await _send_main_menu(message, user)
+    await _send_main_menu(message, user, settings)

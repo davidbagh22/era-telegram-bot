@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import ast
 import unittest
+from pathlib import Path
 
-from aiogram.types import MenuButtonDefault, MenuButtonWebApp
+from aiogram.types import MenuButtonDefault, MenuButtonWebApp, WebAppInfo
 
-from app.webapp import _chat_menu_button
+from app.webapp import _chat_menu_button, _menu_button_matches
+
+APP_ROOT = Path(__file__).resolve().parents[1] / "app"
+GUARDED_CALLS = {"set_chat_menu_button", "set_my_commands", "delete_my_commands"}
+ALLOWED_FILE = APP_ROOT / "webapp.py"
 
 
 class ChatMenuButtonTests(unittest.TestCase):
@@ -24,6 +30,50 @@ class ChatMenuButtonTests(unittest.TestCase):
         # button that would open a broken Mini App.
         button = _chat_menu_button("")
         self.assertIsInstance(button, MenuButtonDefault)
+
+
+class MenuButtonVerificationTests(unittest.TestCase):
+    """Setting a menu button is fire-and-forget — this is the logic that
+    turns Telegram's own getChatMenuButton response into a real pass/fail,
+    used by lifespan() to log an ERROR (not just assume success) when
+    Telegram doesn't actually store what was requested."""
+
+    def test_matches_when_both_are_web_app_with_same_url(self) -> None:
+        expected = MenuButtonWebApp(text="Открыть ЭРА", web_app=WebAppInfo(url="https://era.example/app/"))
+        actual = MenuButtonWebApp(text="Открыть ЭРА", web_app=WebAppInfo(url="https://era.example/app/"))
+        self.assertTrue(_menu_button_matches(expected, actual))
+
+    def test_mismatch_when_urls_differ(self) -> None:
+        expected = MenuButtonWebApp(text="Открыть ЭРА", web_app=WebAppInfo(url="https://era.example/app/"))
+        actual = MenuButtonWebApp(text="Открыть ЭРА", web_app=WebAppInfo(url="https://old-host.example/app/"))
+        self.assertFalse(_menu_button_matches(expected, actual))
+
+    def test_mismatch_when_types_differ(self) -> None:
+        expected = MenuButtonWebApp(text="Открыть ЭРА", web_app=WebAppInfo(url="https://era.example/app/"))
+        actual = MenuButtonDefault()
+        self.assertFalse(_menu_button_matches(expected, actual))
+
+    def test_matches_when_both_are_default(self) -> None:
+        self.assertTrue(_menu_button_matches(MenuButtonDefault(), MenuButtonDefault()))
+
+
+class SingleSourceOfTruthTests(unittest.TestCase):
+    """Item 4 of the live-config investigation: confirms, by actually
+    parsing every .py file under app/ (not just trusting a one-time grep),
+    that no handler anywhere re-configures the chat menu button or bot
+    commands after lifespan() sets them — a second call site would win or
+    race depending on execution order and silently undo this fix."""
+
+    def test_no_other_file_calls_menu_or_command_setters(self) -> None:
+        offending: list[str] = []
+        for path in APP_ROOT.rglob("*.py"):
+            if path == ALLOWED_FILE:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Attribute) and node.attr in GUARDED_CALLS:
+                    offending.append(f"{path.relative_to(APP_ROOT.parent)}: {node.attr}")
+        self.assertEqual(offending, [])
 
 
 if __name__ == "__main__":

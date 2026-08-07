@@ -61,13 +61,16 @@ def _cabinet_text(user: User, stats: dict[str, int], place: int | str) -> str:
 Выберите, что открыть"""
 
 
-async def _send_main_menu(message: Message, user: User | None) -> None:
+async def _send_main_menu(
+    message: Message, user: User | None, settings: Settings | None = None
+) -> None:
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
     await message.answer(
         ux_texts.MAIN_INLINE_MENU,
         reply_markup=main_inline_keyboard(
+            miniapp_url=settings.effective_miniapp_url if settings else "",
             privileged=user.role in PRIVILEGED_ROLES,
             admin=_has_admin_access(user),
         ),
@@ -229,6 +232,8 @@ async def panel_callback(call: CallbackQuery, user: User | None) -> None:
 
 
 @router.message(F.text == "🧭 Главное меню")
-async def main_menu_message(message: Message, user: User | None, state: FSMContext) -> None:
+async def main_menu_message(
+    message: Message, user: User | None, state: FSMContext, settings: Settings
+) -> None:
     await state.clear()
-    await _send_main_menu(message, user)
+    await _send_main_menu(message, user, settings)
