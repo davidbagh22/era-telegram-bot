@@ -97,12 +97,19 @@ def _menu_button_matches(expected, actual) -> bool:
     `getChatMenuButton` actually reports back. Setting a menu button is a
     fire-and-forget API call — this is the only way to know Telegram
     genuinely accepted and stored it, rather than assuming success from
-    "the call didn't raise"."""
-    if expected.type != actual.type:
-        return False
+    "the call didn't raise".
+
+    Confirmed against real production behavior (not assumed): when we
+    send `default` (meaning "no explicit choice, let Telegram decide"),
+    Telegram's own client — since this bot has commands registered via
+    `setMyCommands` — normalizes that into reporting back type `commands`.
+    That's Telegram's own documented behavior, not a failure to apply our
+    setting, so it must not be treated as a mismatch; only a mismatch
+    against an explicitly requested `web_app` is a real problem.
+    """
     if expected.type == "web_app":
-        return expected.web_app.url == actual.web_app.url
-    return True
+        return actual.type == "web_app" and expected.web_app.url == actual.web_app.url
+    return actual.type in ("default", "commands")
 
 
 @asynccontextmanager

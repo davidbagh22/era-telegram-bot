@@ -1675,6 +1675,56 @@ path a real `/start` actually executes now includes the Mini App button,
 where before this PR it structurally could not have, no matter what
 `main_menu()` itself looked like.
 
+### PR 22 — The Actual Final Blocker, Found by PR21's Own Diagnostics (merged)
+
+Branch: `era-platform-pr22-menu-button-verification-fix`. Minutes after
+PR21 deployed, its own new `/diag` endpoint was queried for real
+confirmation — and it surfaced the true, final answer:
+
+```
+GET /diag →
+{"commit":"8eb0404","bot_id":8481922061,"bot_username":"ERA_1bot",
+ "menu_button_type":"commands","menu_button_verified":false,
+ "miniapp_configured":false,"webhook_host":"https://era-telegram-bot.onrender.com"}
+```
+
+**`"miniapp_configured": false` on the real production service.**
+`Settings.effective_miniapp_url` (`app/config.py`) returns `""` whenever
+`MINIAPP_AUTH_SECRET` (or an explicit `MINIAPP_URL`) isn't actually set
+— by design, to avoid shipping a button that opens a broken Mini App.
+This means the Mini App button has been absent **in every form at once**
+(chat menu button, `main_menu()`'s reply-keyboard button, PR21's
+`main_inline_keyboard()` fix) not because of any code bug, but because
+this one environment variable is missing on the real Render service.
+`docs/DEPLOYMENT_RUNBOOK.md` had already documented this exact risk back
+in PR13 as a *theoretical* caveat (`render.yaml`'s `generateValue: true`
+only applies on Blueprint sync, not a normal deploy) — PR22 is that
+theoretical risk **empirically confirmed** against the live service,
+using the diagnostic tooling PR21 built specifically to stop guessing.
+
+- Fixed a real false-positive discovered in the same `/diag` output:
+  `menu_button_verified: false` even though nothing was actually wrong —
+  `_menu_button_matches()` treated Telegram's own normalization of
+  `default` → `commands` (confirmed real behavior: a bot with registered
+  commands reports `commands` back for an unset menu button) as a
+  mismatch. Only a real, requested `web_app` button not being honored is
+  now flagged as an error.
+- `docs/DEPLOYMENT_RUNBOOK.md` updated with the confirmed (not
+  theoretical) finding and the exact one-step fix: set
+  `MINIAPP_AUTH_SECRET` in Render Dashboard → Environment for
+  `era-telegram-bot`, or sync the Blueprint. Verifiable afterward via
+  `curl https://<host>/diag` → `"miniapp_configured": true`.
+- Tests added for the normalization fix
+  (`tests/test_chat_menu_button.py`).
+
+**This is the actual, final, root-cause answer to "why doesn't the
+button show up"**: PR21's router-shadowing fix was real and necessary
+(without it, the button would still be missing even once this variable
+is set), but this missing environment variable is what has kept the
+button hidden through every prior deploy, and it is **outside this
+environment's reach** — no Render dashboard access exists here. One
+concrete action item for the owner, stated precisely, not guessed at.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy
