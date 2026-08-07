@@ -51,13 +51,13 @@ export function App() {
   }
 
   if (auth.status === "error") {
-    return <AuthErrorScreen code={auth.code} detail={auth.detail} />;
+    return <AuthErrorScreen code={auth.code} detail={auth.detail} onRetry={auth.refresh} />;
   }
 
   const { user } = auth;
 
   if (user.application_status === "pending" || user.application_status === "needs_info") {
-    return <PendingScreen />;
+    return <PendingScreen onRefresh={auth.refresh} />;
   }
   if (user.application_status === "rejected" || user.is_blocked) {
     return <BlockedScreen />;

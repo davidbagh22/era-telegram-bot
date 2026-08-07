@@ -1725,6 +1725,69 @@ button hidden through every prior deploy, and it is **outside this
 environment's reach** — no Render dashboard access exists here. One
 concrete action item for the owner, stated precisely, not guessed at.
 
+## PR 23 — Mini App Live Sync: no more "press /start again" (merged)
+
+Reported live by the project owner right after PR22's `MINIAPP_AUTH_SECRET`
+fix went in: a participant who finishes registration (or is approved) sees
+**no change in an already-open Mini App** — it just tells them to go press
+`/start` in the bot again, which feels broken even though nothing is
+technically wrong server-side.
+
+**Root cause, found by reading the actual auth flow rather than guessing**:
+`useAuth.ts` checked auth exactly once, on the very first mount. Telegram
+clients frequently keep a Mini App's WebView alive in the background instead
+of reloading it every time it's reopened from the chat menu button — so a
+status change that happens while the app is backgrounded (an admin
+approving the application, or the participant finishing registration in the
+bot a moment after opening the Mini App) is never picked up. Two dead-end
+screens made this worse:
+
+- `PendingScreen` literally instructed the user to "open ERA again after
+  that" — pure manual polling by the human, with no actual mechanism behind
+  it.
+- `AuthErrorScreen` (shown for `user_not_registered`/`401`/other auth
+  failures) had no way to retry at all short of fully closing and reopening
+  Telegram.
+
+**Fix** (`frontend/src/hooks/useAuth.ts` rewritten, no backend changes
+needed — `GET /api/v1/me` already existed and is exactly the lightweight
+recheck this needed):
+
+- Re-checks auth automatically whenever the WebView regains focus/visibility
+  (`visibilitychange` + `focus` listeners), not just on first mount.
+- While `application_status` is `pending`/`needs_info`, polls
+  `GET /api/v1/me` every 15s (only while the tab is visible) so an approval
+  is picked up on its own, no user action required.
+- The re-check itself is cheap and safe: it reuses the existing session
+  token against `/api/v1/me` first, only falling back to a full
+  `POST /miniapp/auth` (re-verifying Telegram `initData`) if the token
+  actually expired — avoids replaying stale `initData` unnecessarily.
+- A transient failure (offline, 5xx) during a background re-check no longer
+  downgrades a working screen to an error — only a real 401 triggers
+  re-authentication, everything else just keeps showing what's already on
+  screen.
+- `PendingScreen` and `AuthErrorScreen` both gained a real "Обновить" /
+  "Проверить сейчас" button wired to the same `refresh()`, so there's always
+  a manual escape hatch too, not just silent polling.
+- `StatusBanner` (shared by both screens, and others) gained an optional
+  `actionLabel`/`onAction` button.
+
+**Test**: `frontend/e2e/pending_sync.spec.ts` — a real, two-session
+end-to-end proof, not a unit-level mock: a pending applicant's Mini App page
+is opened once and never reloaded; a second, independent admin session
+approves them through the real UI; back on the applicant's still-open page,
+clicking "Проверить сейчас" (the same path the automatic listeners use)
+flips it straight to the Home screen. This is the exact scenario reported
+live, reproduced and proven fixed end-to-end.
+
+**Scope note**: this fixes the pending→approved and any other
+already-registered status transition. Opening the Mini App from the
+persistent chat-menu button *before* a brand-new user has ever started
+registration still correctly shows `AuthErrorScreen`'s "откройте бота и
+нажмите /start" message (there is genuinely no user row yet) — now with a
+working "Обновить" button to retry immediately after they do, instead of a
+dead end.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

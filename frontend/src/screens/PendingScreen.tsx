@@ -1,10 +1,16 @@
 import { StatusBanner } from "../components/StatusBanner";
 
-export function PendingScreen() {
+interface PendingScreenProps {
+  onRefresh: () => void;
+}
+
+export function PendingScreen({ onRefresh }: PendingScreenProps) {
   return (
     <StatusBanner
       title="Заявка на рассмотрении"
-      description="Как только администратор примет решение, вы получите сообщение от бота. Откройте ЭРА снова после этого."
+      description="Как только администратор примет решение, приложение обновится само — обычно в течение минуты, — и вы получите сообщение от бота. Не хотите ждать — нажмите «Проверить сейчас»."
+      actionLabel="Проверить сейчас"
+      onAction={onRefresh}
     />
   );
 }

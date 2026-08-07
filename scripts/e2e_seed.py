@@ -34,6 +34,14 @@ PARTICIPANT_TELEGRAM_ID = 900001
 LEADER_TELEGRAM_ID = 900002
 ADMIN_TELEGRAM_ID = 900003
 PENDING_APPLICANT_TELEGRAM_ID = 900004
+# Dedicated fixture for pending_sync.spec.ts, kept separate from
+# PENDING_APPLICANT_TELEGRAM_ID above: admin.spec.ts approves that one
+# through the Admin UI's single global "Одобрить" button, which would
+# become ambiguous (Playwright strict-mode violation) if a second pending
+# application were visible in the same queue at the same time. This one is
+# approved by pending_sync.spec.ts directly through the API instead, so it
+# never appears next to the other one in the Admin UI.
+PENDING_SYNC_APPLICANT_TELEGRAM_ID = 900005
 
 
 async def seed() -> None:
@@ -73,6 +81,15 @@ async def seed() -> None:
                     occupation="Тестировщик",
                     motivation="Хочу помогать проверять ЭРА",
                 ),
+                User(
+                    telegram_id=PENDING_SYNC_APPLICANT_TELEGRAM_ID,
+                    first_name="E2E Sync Applicant",
+                    role=Role.PARTICIPANT,
+                    application_status=ApplicationStatus.PENDING,
+                    city="Ереван",
+                    occupation="Тестировщик",
+                    motivation="Проверяю автообновление Mini App",
+                ),
             ]
         )
         await session.flush()  # assigns admin.id, used as the event's creator
@@ -95,7 +112,8 @@ async def seed() -> None:
     print(
         "E2E fixtures seeded: "
         f"participant={PARTICIPANT_TELEGRAM_ID}, leader={LEADER_TELEGRAM_ID}, "
-        f"admin={ADMIN_TELEGRAM_ID}, pending_applicant={PENDING_APPLICANT_TELEGRAM_ID}"
+        f"admin={ADMIN_TELEGRAM_ID}, pending_applicant={PENDING_APPLICANT_TELEGRAM_ID}, "
+        f"pending_sync_applicant={PENDING_SYNC_APPLICANT_TELEGRAM_ID}"
     )
 
 
