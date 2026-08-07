@@ -1565,6 +1565,41 @@ deployed to the real Render service, and verified against the live
 `/health`/`/ready` endpoints and (where the built frontend changed) the
 actual served asset URLs — not just "code exists."
 
+### PR 20 — Chat Menu Button → Direct Mini App Launch + Privacy Policy Draft (merged)
+
+Branch: `era-platform-pr20-menu-button-privacy-draft`. Direct follow-up
+request after the PR13–19 block closed.
+
+- **Real, user-visible fix**: Telegram's "chat menu button" (the button
+  next to the message input — distinct from the "🔥 Открыть ЭРА"
+  reply-keyboard button in `main_menu()`, which only appears after
+  `main_menu()` has been sent at least once) was set to
+  `MenuButtonDefault()` (plain commands list) on every startup. New
+  `app/webapp.py::_chat_menu_button()` switches it to
+  `MenuButtonWebApp` — opens the Mini App in one tap — whenever
+  `Settings.effective_miniapp_url` is actually configured (confirmed
+  live: `MINIAPP_AUTH_SECRET` is set on production — a real, non-garbage
+  `initData` parsing error came back from `/api/v1/miniapp/auth`, not
+  the `miniapp_auth_not_configured` 500 that would mean otherwise).
+  Falls back to the commands list if it isn't configured, matching the
+  existing safety pattern for the reply-keyboard button. Tests:
+  `tests/test_chat_menu_button.py`.
+- New `docs/PRIVACY_POLICY_DRAFT.md` — a draft personal-data-processing
+  policy and short consent text, built from the real field inventory in
+  `docs/DATA_INVENTORY.md`, not invented. Explicitly and repeatedly
+  marked as a **draft requiring legal review** — jurisdiction isn't even
+  determined in the document (first placeholder to fill in). **Not wired
+  into the live bot/registration flow** — showing unreviewed
+  legal-sounding text to real users as if it were the actual policy
+  would be worse than the current honest gap, and changing what
+  real people see during registration without the owner's sign-off
+  isn't a call a technical assistant should make unilaterally.
+  `consent_service.CURRENT_POLICY_VERSION` stays the placeholder
+  (`"unset-v1"`) until the owner approves real text — swapping it is a
+  one-line change once that happens.
+- Verification: `pytest -q` full suite re-run, `ruff`/`compileall` clean,
+  no migration in this PR.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy
