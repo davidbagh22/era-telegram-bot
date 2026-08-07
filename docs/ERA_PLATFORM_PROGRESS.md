@@ -1471,6 +1471,69 @@ the frontend — no backend files changed, so the full backend `pytest`
 suite wasn't re-run locally for this one (CI's `test` job still runs it
 before merge, per the existing gate).
 
+### PR 18c — Chat/Registration/Broadcast 12-Point Re-Verification (docs only)
+
+Re-checks the addendum's 12-point checklist against the current code
+(after PR14–18b's changes), the way it's actually possible to verify in
+this environment — see "explicit capability gap" below for what isn't.
+
+1. **Незарегистрированный/неполная регистрация/pending не может писать** —
+   `check_chat_access()` (`app/services/chat_access_service.py`): `user is
+   None` → `not_registered`; `application_status != APPROVED` →
+   `not_approved`, both `pending=True`. Confirmed unchanged since PR13.
+2. **Одобрение открывает права автоматически** — every approval call site
+   (`app/api/v1/admin.py`, `app/handlers/admin/panel.py`) calls
+   `sync_user_chat_access()` immediately after `approve_application()`.
+3. **Отклонение сохраняет ограничение** — `application_status ==
+   REJECTED` returns `allowed=False` explicitly, not merely "not yet
+   approved".
+4. **Повторный вход не обходит проверку** — `check_chat_access()` always
+   re-derives from current DB state keyed by `telegram_id`, never cached;
+   a rejoin/relogin re-evaluates from scratch every time.
+5. **Ручная блокировка имеет приоритет** — confirmed by reading
+   `app/handlers/admin/rights_block6.py::block_toggle`: sets
+   `is_blocked` then calls `sync_user_chat_access()` immediately, and
+   `check_chat_access()` checks `is_blocked` *before* `application_status`
+   — an approved-and-blocked user is restricted, not treated as approved.
+6. **Приветствия не дублируются** — `welcome_members()` fires once per
+   Telegram `new_chat_members` update (Telegram's own event, not
+   re-triggerable by this code); the private-chat approval welcome has an
+   explicit `already_approved` short-circuit in `panel.py` that skips
+   re-sending it.
+7. **Личные уведомления не попадают в общий чат / общая рассылка
+   действительно уходит в общий чат / комбинированная не дублирует** —
+   `broadcast_detailed()`'s `_dedupe_recipients()` (`notification_service.py`)
+   dedupes the recipient list before sending; delivery is explicitly
+   per-`chat_id` (a personal notification's `chat_id` is the user's
+   Telegram ID, a group broadcast's is the configured chat ID — the
+   function has no code path that mixes the two without the caller
+   explicitly listing both).
+8. **Бот имеет административные права в чате** — **could not check**, see
+   below.
+
+Verification run: `tests/test_admin_notification_recipients.py`,
+`test_broadcast_service.py`, `test_chat_access_service.py`,
+`test_chat_access_audit.py`, `test_fsm_global_recovery.py`,
+`test_scheduler_notification_delivery.py` — 34 passed + 7 subtests,
+targeted re-run.
+
+**Explicit capability gap, not a finding of "works"**: verifying items
+1–7 *live* — a real unregistered account trying to post, a real pending
+applicant, a real block taking effect in a live chat — needs multiple
+real Telegram test accounts this environment doesn't have. Item 8 (bot's
+actual admin rights in the real chat) needs either the bot's own
+`BOT_TOKEN` (not available here) or a connected browser with the owner's
+real Telegram session (`list_connected_browsers` returned empty — no
+browser connected in this session). Sending a real broadcast to the real
+general chat to prove item 7's delivery would affect real chat members
+and wasn't done without the owner's explicit per-action confirmation
+(see the safety boundary stated at the start of this platform-hardening
+sequence). **What's reported above is code-level re-verification against
+the actual shipped implementation, backed by passing automated tests —
+not a substitute for the owner clicking through the real bot once.**
+
+No code change — this block found no regression to fix.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy
