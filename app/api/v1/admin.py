@@ -11,12 +11,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.rate_limit import enforce_rate_limit
 from app.config import Settings
-from app.database.models import Badge, Event, EventRegistration, Project, Task, TaskSubmission, User
+from app.database.models import (
+    Badge,
+    Event,
+    EventRegistration,
+    Office,
+    Project,
+    Task,
+    TaskSubmission,
+    User,
+    UserOffice,
+)
 from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
 from app.keyboards.participant import main_menu
 from app.services import (
     event_moderation_service,
     event_registration_service,
+    office_management_service,
     opportunity_service,
     project_workflow_service,
     task_review_service,
@@ -1412,3 +1423,153 @@ async def award_user_badge(
     if bot is not None:
         await safe_send(bot, target.telegram_id, f"Вы получили знак «{badge.name}» 🌟\n\n{reason}")
     return BadgeOut(id=badge.id, name=badge.name)
+
+
+# ---------------------------------------------------------------------------
+# Offices — "Должности и ответственность". The Mini App equivalent of
+# app/handlers/admin/offices_management.py (list/view/delete) and the
+# office_assign/office_remove/office_new handlers in panel.py — one
+# cohesive feature split across two Bot files, kept together here.
+# ---------------------------------------------------------------------------
+
+
+class OfficeAssignmentOut(BaseModel):
+    assignment_id: int
+    user_id: int
+    user_name: str
+
+
+class OfficeOut(BaseModel):
+    id: int
+    title: str
+    description: str | None
+    is_active: bool
+    assignments: list[OfficeAssignmentOut]
+
+
+async def _to_office_out(session: AsyncSession, office) -> OfficeOut:
+    rows = await office_management_service.list_assignments(session, office.id)
+    return OfficeOut(
+        id=office.id,
+        title=office.title,
+        description=office.description,
+        is_active=office.is_active,
+        assignments=[
+            OfficeAssignmentOut(
+                assignment_id=assignment.id,
+                user_id=user.id,
+                user_name=f"{user.first_name} {user.last_name or ''}".strip(),
+            )
+            for assignment, user in rows
+        ],
+    )
+
+
+@router.get("/offices", response_model=list[OfficeOut])
+async def list_offices_endpoint(
+    _manager: User = Depends(require_people_manager),
+    session: AsyncSession = Depends(get_session),
+) -> list[OfficeOut]:
+    offices = await office_management_service.list_offices(session)
+    return [await _to_office_out(session, office) for office in offices]
+
+
+class OfficeCreateIn(BaseModel):
+    title: str
+    description: str = ""
+
+
+@router.post("/offices", response_model=OfficeOut)
+async def create_office_endpoint(
+    payload: OfficeCreateIn,
+    _manager: User = Depends(require_people_manager),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> OfficeOut:
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="title_required")
+    office = await office_management_service.create_office(
+        session, title=title[:150], description=payload.description.strip()[:1000] or None
+    )
+    return await _to_office_out(session, office)
+
+
+@router.post("/offices/{office_id}/delete", response_model=OfficeOut)
+async def delete_office_endpoint(
+    office_id: int,
+    manager: User = Depends(require_people_manager),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> OfficeOut:
+    office = await session.get(Office, office_id)
+    if office is None:
+        raise HTTPException(status_code=404, detail="office_not_found")
+    await office_management_service.delete_office(session, office, actor_id=manager.id)
+    return await _to_office_out(session, office)
+
+
+@router.get("/offices/assignable-users", response_model=list[UserListItemOut])
+async def search_assignable_users_endpoint(
+    query: str = "",
+    _manager: User = Depends(require_people_manager),
+    session: AsyncSession = Depends(get_session),
+) -> list[UserListItemOut]:
+    if not query.strip():
+        return []
+    users = await office_management_service.search_assignable_users(session, query)
+    return [
+        UserListItemOut(
+            id=u.id,
+            telegram_id=u.telegram_id,
+            first_name=u.first_name,
+            last_name=u.last_name,
+            username=u.username,
+            role=u.role,
+            application_status=u.application_status,
+            is_blocked=u.is_blocked,
+            is_archived=u.is_archived,
+        )
+        for u in users
+    ]
+
+
+class OfficeAssignIn(BaseModel):
+    user_id: int
+
+
+@router.post("/offices/{office_id}/assign", response_model=OfficeOut)
+async def assign_office_endpoint(
+    office_id: int,
+    payload: OfficeAssignIn,
+    manager: User = Depends(require_people_manager),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> OfficeOut:
+    office = await session.get(Office, office_id)
+    if office is None:
+        raise HTTPException(status_code=404, detail="office_not_found")
+    target = await session.get(User, payload.user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    await office_management_service.assign_office(
+        session, office_id=office_id, user_id=payload.user_id, appointed_by_id=manager.id
+    )
+    return await _to_office_out(session, office)
+
+
+@router.post("/offices/assignments/{assignment_id}/remove", response_model=OfficeOut)
+async def remove_office_assignment_endpoint(
+    assignment_id: int,
+    _manager: User = Depends(require_people_manager),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> OfficeOut:
+    assignment = await session.get(UserOffice, assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="assignment_not_found")
+    office = await session.get(Office, assignment.office_id)
+    if office is None:
+        raise HTTPException(status_code=404, detail="office_not_found")
+    office_management_service.remove_assignment(assignment)
+    return await _to_office_out(session, office)

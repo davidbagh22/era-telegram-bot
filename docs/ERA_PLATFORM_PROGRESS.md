@@ -1911,6 +1911,46 @@ these now — before a Mini App equivalent exists — would be a feature
 regression, not cleanup, so the Bot-cleanup pass is sequenced to happen
 only after every admin capability has a working Mini App counterpart.
 
+## PR 26 — Admin: "Должности и ответственность" (offices) (merged)
+
+Closes the office/department-assignment gap flagged in PR 25. Ported
+without changing behavior — this feature is split across two Bot files
+(`app/handlers/admin/offices_management.py` for list/view/delete,
+`office_assign`/`office_remove`/`office_new` in `panel.py` for the
+assignment flow) and was investigated as one cohesive feature rather than
+assumed to be two separate ones or dead code shadowing each other (unlike
+the router-precedence bug found in PR21) — both files' handlers are live
+and simply divide the work.
+
+**Backend** (`app/services/office_management_service.py`, new):
+`list_offices`, `create_office`, `list_assignments`,
+`search_assignable_users` (mirrors `panel.py::office_assign_find`'s name/
+username/Telegram-ID search exactly), `assign_office` (idempotent — a
+second assignment attempt for the same person is a no-op, matching the
+Bot's own de-duplication check), `remove_assignment`, `delete_office`
+(soft-delete: ends every active assignment and writes the same audit
+entry as the Bot's `office_delete`).
+
+**API**: `GET/POST /admin/offices`, `POST /admin/offices/{id}/delete`,
+`GET /admin/offices/assignable-users`, `POST /admin/offices/{id}/assign`,
+`POST /admin/offices/assignments/{id}/remove` — all behind
+`require_people_manager` (`can_manage_people`), matching the Bot's own
+guard on both files' handlers.
+
+**Frontend**: new "Должности" tab in `AdminScreen` → `AdminOfficesScreen`
+— create a position, see current assignees inline, search-and-assign a
+person, end an assignment, delete a position.
+
+**Tests**: `test_office_management_service.py` (7, real SQLite DB),
+`test_admin_offices_api.py` (11, guard boundaries + happy path + one
+conflict), `frontend/e2e/admin_offices.spec.ts` (real stack: admin creates
+an office, assigns the seeded participant, sees the assignment appear).
+`test_admin_leader_rate_limiting.py`: updated hardcoded admin POST route
+count (25 → 29).
+
+**Remaining before the Bot admin-cleanup pass**: auctions and surveys/
+analytics export are still Bot-only.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy
