@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Task, TaskSubmission, User
-from app.keyboards.participant import tasks_keyboard
+from app.keyboards.participant import open_app_button, tasks_keyboard
 from app.services import task_service
 from app.services.notification_service import (
     notify_admins,
@@ -33,14 +33,6 @@ def _task_menu() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🌐 Общие задачи", callback_data="tasks:list:open")],
         [InlineKeyboardButton(text="🗂 Архив задач", callback_data="tasks:list:archive")],
         [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
-    ])
-
-
-def _review_keyboard(submission_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Одобрить и начислить баллы", callback_data=f"admin:tasksub:approve:{submission_id}")],
-        [InlineKeyboardButton(text="💬 Вернуть на доработку", callback_data=f"admin:tasksub:revision:{submission_id}")],
-        [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:tasksub:reject:{submission_id}")],
     ])
 
 
@@ -205,7 +197,12 @@ async def task_result_save(message: Message, user: User, session: AsyncSession, 
     await state.clear()
     await message.answer("Результат отправлен на проверку. После решения админа Вы получите уведомление.")
     telegram = f"@{user.username}" if user.username else str(user.telegram_id)
-    await notify_admins(bot, settings, f"📥 Новый результат задания\n\n{task.title}\nУчастник: {user.first_name} {user.last_name or ''}\nTelegram: {telegram}\n\n{submission.text or 'Материал прикреплён файлом'}", reply_markup=_review_keyboard(submission.id))
+    await notify_admins(
+        bot,
+        settings,
+        f"📥 Новый результат задания\n\n{task.title}\nУчастник: {user.first_name} {user.last_name or ''}\nTelegram: {telegram}\n\n{submission.text or 'Материал прикреплён файлом'}\n\nПроверка — в приложении ЭРА.",
+        reply_markup=open_app_button(settings.effective_miniapp_url),
+    )
     if file_id:
         media_sent = media_failed = 0
         for chat_id in set(settings.admin_ids):

@@ -62,6 +62,22 @@ def main_inline_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def open_app_button(
+    miniapp_url: str, label: str = "Открыть в приложении ЭРА"
+) -> InlineKeyboardMarkup | None:
+    """A single WebApp button, used on admin notifications that used to
+    carry admin: callback buttons (approve/reject/etc.) — that review now
+    happens in the Mini App, not in a bot chat flow. Returns None (send no
+    keyboard) rather than a broken one if the Mini App isn't configured,
+    mirroring the `if miniapp_url:` guard already used in main_menu() and
+    main_inline_keyboard() above."""
+    if not miniapp_url:
+        return None
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=label, web_app=WebAppInfo(url=miniapp_url))]]
+    )
+
+
 def about_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[

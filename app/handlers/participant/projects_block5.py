@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Project, User
-from app.keyboards.participant import project_menu_keyboard
+from app.keyboards.participant import open_app_button, project_menu_keyboard
 from app.services import project_workflow_service
 from app.services.notification_service import safe_send, safe_send_document
 from app.utils import texts
@@ -30,15 +30,6 @@ def _approved(user: User | None) -> bool:
 async def _load_owned(session: AsyncSession, project_id: int, user: User) -> Project | None:
     project = await session.get(Project, project_id)
     return project if project and project.author_id == user.id else None
-
-
-def _admin_project_keyboard(project_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📄 Полный файл проекта", callback_data=f"admin:project:file:{project_id}")],
-        [InlineKeyboardButton(text="✅ Принять в работу", callback_data=f"admin:project:review:initial_accept:{project_id}")],
-        [InlineKeyboardButton(text="✏️ На доработку", callback_data=f"admin:project:review:revise:{project_id}")],
-        [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:project:review:reject:{project_id}")],
-    ])
 
 
 def _projects_keyboard(projects: list[Project]) -> InlineKeyboardMarkup:
@@ -147,13 +138,13 @@ async def project_submit_full(call: CallbackQuery, session: AsyncSession, user: 
     document = await project_workflow_service.submit_for_review(session, project, user)
     await call.message.answer(texts.PROJECT_SUBMITTED)
     telegram = f"@{user.username}" if user.username else str(user.telegram_id)
-    summary = f"💡 Новый проект на рассмотрении\n\n{project.title}\nАвтор: {user.first_name} {user.last_name or ''} ({telegram})\n\nПолный файл проекта прикреплён ниже."
+    summary = f"💡 Новый проект на рассмотрении\n\n{project.title}\nАвтор: {user.first_name} {user.last_name or ''} ({telegram})\n\nПолный файл проекта прикреплён ниже. Решение — в приложении ЭРА."
     recipients = set(settings.admin_ids)
     if settings.leaders_chat_id:
         recipients.add(settings.leaders_chat_id)
     document_sent = document_failed = 0
     for chat_id in recipients:
-        await safe_send(bot, chat_id, summary, reply_markup=_admin_project_keyboard(project.id))
+        await safe_send(bot, chat_id, summary, reply_markup=open_app_button(settings.effective_miniapp_url))
         ok = await safe_send_document(
             bot,
             chat_id,
@@ -199,12 +190,6 @@ async def team_submit(message: Message, user: User, state: FSMContext, session: 
     await state.clear()
     await message.answer("Публикация для поиска команды отправлена админу на утверждение.")
     telegram = f"@{user.username}" if user.username else str(user.telegram_id)
-    admin_text = f"🔍 Поиск команды на модерации\n\nПроект: {project.title}\nАвтор: {user.first_name} {user.last_name or ''} ({telegram})\n\nПредпросмотр:\n{text}"
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👁 Предпросмотр", callback_data=f"admin:team_post:preview:{project.id}")],
-        [InlineKeyboardButton(text="✅ Одобрить 1/2", callback_data=f"admin:team_post:prepare:{project.id}")],
-        [InlineKeyboardButton(text="✏️ Отредактировать", callback_data=f"admin:team_post:edit:{project.id}")],
-        [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:team_post:reject:{project.id}")],
-    ])
+    admin_text = f"🔍 Поиск команды на модерации\n\nПроект: {project.title}\nАвтор: {user.first_name} {user.last_name or ''} ({telegram})\n\nПредпросмотр:\n{text}\n\nМодерация — в приложении ЭРА."
     for chat_id in set(settings.admin_ids):
-        await safe_send(bot, chat_id, admin_text, reply_markup=keyboard)
+        await safe_send(bot, chat_id, admin_text, reply_markup=open_app_button(settings.effective_miniapp_url))

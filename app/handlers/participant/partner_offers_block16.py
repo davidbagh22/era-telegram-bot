@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import User
 from app.database.partners import Partner, PartnerInitiative
+from app.keyboards.participant import open_app_button
 from app.services import opportunity_service
 from app.services.notification_service import notify_admins
 from app.services.points_service import total_points
@@ -135,10 +136,8 @@ async def offer_apply(call: CallbackQuery, user: User | None, session: AsyncSess
     await notify_admins(
         bot,
         settings,
-        f"Новая заявка на партнёрское предложение\n\n{offer.title}\nУчастник: {user.first_name} {user.last_name or ''}\nСтоимость: {offer.point_cost} баллов",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Открыть заявки", callback_data="admin:offers:applications")]
-        ]),
+        f"Новая заявка на партнёрское предложение\n\n{offer.title}\nУчастник: {user.first_name} {user.last_name or ''}\nСтоимость: {offer.point_cost} баллов\n\nРассмотрение — в приложении ЭРА.",
+        reply_markup=open_app_button(settings.effective_miniapp_url),
     )
 
 
