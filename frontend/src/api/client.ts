@@ -8,6 +8,7 @@ import type {
 } from "../types/activity";
 import type { ApiErrorBody, MiniAppAuthResponse, MiniAppUserSummary } from "../types/auth";
 import type {
+  BadgeItem,
   DashboardData,
   EventDecisionAction,
   EventForModeration,
@@ -18,6 +19,8 @@ import type {
   ProjectForModeration,
   TaskReviewAction,
   TaskSubmissionForReview,
+  UserDetail,
+  UserListResult,
 } from "../types/admin";
 import type { HomeSnapshot } from "../types/home";
 import type { LeaderOpenTask, LeaderOverview, OpenTaskCreatePayload } from "../types/leader";
@@ -491,6 +494,60 @@ export function decideOfferApplication(
     `/api/v1/admin/offer-applications/${applicationId}/decide`,
     { action },
   );
+}
+
+export interface AdminUsersQuery {
+  query?: string;
+  role?: string;
+  includeArchived?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export function fetchAdminUsers(params: AdminUsersQuery = {}): Promise<UserListResult> {
+  const search = new URLSearchParams();
+  if (params.query) search.set("query", params.query);
+  if (params.role) search.set("role", params.role);
+  if (params.includeArchived) search.set("include_archived", "true");
+  if (params.limit) search.set("limit", String(params.limit));
+  if (params.offset) search.set("offset", String(params.offset));
+  const qs = search.toString();
+  return authorizedGet<UserListResult>(`/api/v1/admin/users${qs ? `?${qs}` : ""}`);
+}
+
+export function fetchAdminUserDetail(userId: number): Promise<UserDetail> {
+  return authorizedGet<UserDetail>(`/api/v1/admin/users/${userId}`);
+}
+
+export function changeUserRole(userId: number, role: string): Promise<UserDetail> {
+  return authorizedPost<UserDetail>(`/api/v1/admin/users/${userId}/role`, { role });
+}
+
+export function setUserBlocked(userId: number, blocked: boolean): Promise<UserDetail> {
+  return authorizedPost<UserDetail>(`/api/v1/admin/users/${userId}/block`, { blocked });
+}
+
+export function setUserArchived(userId: number, archived: boolean): Promise<UserDetail> {
+  return authorizedPost<UserDetail>(`/api/v1/admin/users/${userId}/archive`, { archived });
+}
+
+export function toggleUserPermission(
+  userId: number,
+  permission: string,
+): Promise<{ permission: string; enabled: boolean }> {
+  return authorizedPost(`/api/v1/admin/users/${userId}/permissions/${permission}`);
+}
+
+export function awardUserPoints(
+  userId: number,
+  amount: number,
+  reason: string,
+): Promise<{ balance: number }> {
+  return authorizedPost(`/api/v1/admin/users/${userId}/points`, { amount, reason });
+}
+
+export function awardUserBadge(userId: number, badgeId: number, reason: string): Promise<BadgeItem> {
+  return authorizedPost(`/api/v1/admin/users/${userId}/badges/${badgeId}`, { reason });
 }
 
 export function fetchLeaderOverview(): Promise<LeaderOverview> {
