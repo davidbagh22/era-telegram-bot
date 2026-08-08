@@ -175,5 +175,86 @@ class ProjectWorkflowServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual({p.id for p in open_projects}, {others_open.id})
 
 
+class TeamSearchPostTests(unittest.IsolatedAsyncioTestCase):
+    """"Looking for a team" broadcast moderation — mirrors
+    app/handlers/admin/projects_block5_team.py exactly, including the
+    form_data-key storage (no dedicated column) so the bot and the Mini App
+    can't drift into two different ideas of where a post's state lives."""
+
+    async def asyncSetUp(self) -> None:
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def asyncTearDown(self) -> None:
+        await self.engine.dispose()
+
+    async def _make_user(self, session, telegram_id: int = 1) -> User:
+        user = User(telegram_id=telegram_id, first_name="Author")
+        session.add(user)
+        await session.flush()
+        return user
+
+    def _project(self, *, author_id: int, **form_data) -> Project:
+        return Project(
+            author_id=author_id,
+            title="Idea",
+            short_description="d",
+            status=ProjectStatus.APPROVED,
+            form_data=form_data,
+        )
+
+    def test_team_post_state_none_when_no_post(self) -> None:
+        project = self._project(author_id=1)
+        self.assertIsNone(project_workflow_service.team_post_state(project))
+
+    def test_team_post_state_reflects_form_data(self) -> None:
+        project = self._project(author_id=1, team_search_post="text", team_search_status="pending")
+        state = project_workflow_service.team_post_state(project)
+        self.assertEqual(state.text, "text")
+        self.assertEqual(state.status, "pending")
+
+    async def test_list_pending_only_returns_pending_or_edited(self) -> None:
+        async with self.session_factory() as session:
+            author = await self._make_user(session)
+            pending = self._project(author_id=author.id, team_search_post="a", team_search_status="pending")
+            edited = self._project(author_id=author.id, team_search_post="b", team_search_status="edited")
+            published = self._project(author_id=author.id, team_search_post="c", team_search_status="published")
+            no_post = self._project(author_id=author.id)
+            session.add_all([pending, edited, published, no_post])
+            await session.flush()
+
+            rows = await project_workflow_service.list_projects_with_pending_team_post(session)
+            self.assertEqual({p.id for p in rows}, {pending.id, edited.id})
+
+    def test_prepare_requires_existing_post(self) -> None:
+        project = self._project(author_id=1)
+        self.assertFalse(project_workflow_service.prepare_team_post(project))
+        project = self._project(author_id=1, team_search_post="x", team_search_status="pending")
+        self.assertTrue(project_workflow_service.prepare_team_post(project))
+        self.assertEqual(project.form_data["team_search_status"], "prepared")
+
+    def test_edit_updates_text_and_status(self) -> None:
+        project = self._project(author_id=1, team_search_post="old", team_search_status="pending")
+        self.assertTrue(project_workflow_service.edit_team_post(project, "new text"))
+        self.assertEqual(project.form_data["team_search_post"], "new text")
+        self.assertEqual(project.form_data["team_search_status"], "edited")
+
+    def test_reject_sets_status(self) -> None:
+        project = self._project(author_id=1, team_search_post="x", team_search_status="pending")
+        self.assertTrue(project_workflow_service.reject_team_post(project))
+        self.assertEqual(project.form_data["team_search_status"], "rejected")
+
+    def test_publish_requires_prepared_first(self) -> None:
+        project = self._project(author_id=1, team_search_post="x", team_search_status="pending")
+        self.assertIsNone(project_workflow_service.publish_team_post(project))
+
+        project.form_data = {**project.form_data, "team_search_status": "prepared"}
+        text = project_workflow_service.publish_team_post(project)
+        self.assertEqual(text, "x")
+        self.assertEqual(project.form_data["team_search_status"], "published")
+
+
 if __name__ == "__main__":
     unittest.main()

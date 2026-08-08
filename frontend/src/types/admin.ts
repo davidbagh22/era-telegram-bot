@@ -99,6 +99,57 @@ export interface SocialLinkItem {
   url: string;
 }
 
+export interface TeamPost {
+  project_id: number;
+  project_title: string;
+  author_name: string;
+  text: string;
+  status: string;
+}
+
+export interface OperationalEvent {
+  id: number;
+  title: string;
+  event_date: string;
+  event_time: string;
+  location: string;
+  status: string;
+  points_for_visit: number;
+  registered: number;
+  free: number | string;
+}
+
+export interface EventParticipant {
+  registration_id: number;
+  participant_id: number;
+  participant_name: string;
+  status: string;
+}
+
+export interface Partner {
+  id: number;
+  name: string;
+  description: string;
+  source_url: string | null;
+  is_active: boolean;
+  is_archived: boolean;
+}
+
+export interface OfferAdmin {
+  id: number;
+  partner_id: number;
+  partner_name: string;
+  title: string;
+  description: string;
+  point_cost: number;
+  quantity: number | null;
+  expires_at: string | null;
+  instruction: string | null;
+  source_url: string | null;
+  is_active: boolean;
+  is_archived: boolean;
+}
+
 export interface UserDetail {
   id: number;
   telegram_id: number;

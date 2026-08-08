@@ -77,10 +77,11 @@ class RateLimitDependencyWiringTests(unittest.TestCase):
 
     def test_every_admin_post_route_has_rate_limiting(self) -> None:
         post_routes = [r for r in admin_api.router.routes if r.methods and "POST" in r.methods]
-        # 7 original decide/approve/reject routes + 6 People routes added in
-        # ERA Platform PR 24 (role, block, archive, permission toggle,
-        # points, badge award).
-        self.assertEqual(len(post_routes), 13, "expected 13 admin decide/approve/reject/people routes")
+        # 7 original decide/approve/reject routes + 6 People routes (PR 24:
+        # role, block, archive, permission toggle, points, badge award) + 12
+        # routes added in PR 25 (4 team-post: prepare/edit/reject/publish;
+        # 2 event attendance/points; 3 partner CRUD; 3 offer CRUD).
+        self.assertEqual(len(post_routes), 25, "expected 25 admin mutation routes")
         for route in post_routes:
             deps = [d.call for d in route.dependant.dependencies]
             self.assertIn(
