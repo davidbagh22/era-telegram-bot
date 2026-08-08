@@ -20,8 +20,9 @@ test("admin searches the people directory, opens a participant, and awards point
   await page.getByRole("button", { name: "Применить" }).click();
 
   // A real award through the full stack (API → user_management_service →
-  // DB), not a UI-only counter bump — verified by the balance line
-  // reflecting the freshly refetched detail after the award.
-  await expect(page.getByText(/Баланс/)).toContainText("баллов");
+  // DB), not a UI-only counter bump — verified by the balance <dd>
+  // reflecting the freshly refetched detail after the award. The label
+  // ("Баланс") and value ("15 баллов") are separate <dt>/<dd> elements, so
+  // this checks the value directly rather than the label's own text.
   await expect(page.getByText("15 баллов")).toBeVisible();
 });
