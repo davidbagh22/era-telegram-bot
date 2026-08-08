@@ -27,3 +27,15 @@ export interface Auction {
   ends_at: string;
   is_open: boolean;
 }
+
+export interface Survey {
+  id: number;
+  title: string;
+  description: string | null;
+  questions: string[];
+  completed: boolean;
+}
+
+export interface SurveyDetail extends Survey {
+  answers: string[] | null;
+}

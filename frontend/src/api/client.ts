@@ -23,6 +23,8 @@ import type {
   PendingApplication,
   ProjectDecisionAction,
   ProjectForModeration,
+  SurveyAdmin,
+  SurveyResponseAdmin,
   TaskReviewAction,
   TaskSubmissionForReview,
   TeamPost,
@@ -32,7 +34,7 @@ import type {
 } from "../types/admin";
 import type { HomeSnapshot } from "../types/home";
 import type { LeaderOpenTask, LeaderOverview, OpenTaskCreatePayload } from "../types/leader";
-import type { Auction, Opportunity, OpportunityScope } from "../types/opportunity";
+import type { Auction, Opportunity, OpportunityScope, Survey, SurveyDetail } from "../types/opportunity";
 import type { Profile } from "../types/profile";
 import type {
   ProjectDetail,
@@ -433,6 +435,21 @@ export function placeBid(auctionId: number, amount: number): Promise<Auction> {
   return authorizedPost<Auction>(`/api/v1/auctions/${auctionId}/bid`, { amount });
 }
 
+// Surveys — the participant-facing half of
+// app/handlers/participant/surveys.py. The Bot answers one question at a
+// time in chat; the Mini App collects every answer in a single form.
+export function fetchSurveys(): Promise<Survey[]> {
+  return authorizedGet<Survey[]>("/api/v1/surveys");
+}
+
+export function fetchSurvey(surveyId: number): Promise<SurveyDetail> {
+  return authorizedGet<SurveyDetail>(`/api/v1/surveys/${surveyId}`);
+}
+
+export function submitSurvey(surveyId: number, answers: string[]): Promise<Survey> {
+  return authorizedPost<Survey>(`/api/v1/surveys/${surveyId}/submit`, { answers });
+}
+
 export function fetchAdminDashboard(): Promise<DashboardData> {
   return authorizedGet<DashboardData>("/api/v1/admin/dashboard");
 }
@@ -644,6 +661,44 @@ export function deliverAuction(auctionId: number): Promise<AuctionAdmin> {
 
 export function cancelAuction(auctionId: number): Promise<AuctionAdmin> {
   return authorizedPost<AuctionAdmin>(`/api/v1/admin/auctions/${auctionId}/cancel`);
+}
+
+// Admin survey management (app/handlers/admin/surveys_analytics.py) —
+// create/edit/send/archive a survey and view its responses. Excel export
+// of results is not ported yet; it remains a Bot-only capability for now.
+export function fetchAdminSurveys(): Promise<SurveyAdmin[]> {
+  return authorizedGet<SurveyAdmin[]>("/api/v1/admin/surveys");
+}
+
+export function getOrCreateMonthlySurvey(): Promise<SurveyAdmin> {
+  return authorizedPost<SurveyAdmin>("/api/v1/admin/surveys/monthly");
+}
+
+export function createSurvey(payload: {
+  title: string;
+  description: string | null;
+  questions: string[];
+}): Promise<SurveyAdmin> {
+  return authorizedPost<SurveyAdmin>("/api/v1/admin/surveys", payload);
+}
+
+export function updateSurvey(
+  surveyId: number,
+  payload: { title: string; description: string | null; questions: string[] },
+): Promise<SurveyAdmin> {
+  return authorizedPost<SurveyAdmin>(`/api/v1/admin/surveys/${surveyId}/edit`, payload);
+}
+
+export function archiveSurvey(surveyId: number): Promise<SurveyAdmin> {
+  return authorizedPost<SurveyAdmin>(`/api/v1/admin/surveys/${surveyId}/archive`);
+}
+
+export function sendSurvey(surveyId: number): Promise<SurveyAdmin> {
+  return authorizedPost<SurveyAdmin>(`/api/v1/admin/surveys/${surveyId}/send`);
+}
+
+export function fetchSurveyResponses(surveyId: number): Promise<SurveyResponseAdmin[]> {
+  return authorizedGet<SurveyResponseAdmin[]>(`/api/v1/admin/surveys/${surveyId}/responses`);
 }
 
 export interface AdminUsersQuery {

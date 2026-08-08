@@ -14,6 +14,7 @@ from app.api.v1 import (
     opportunities,
     profile,
     projects,
+    surveys,
     tasks,
 )
 
@@ -27,6 +28,7 @@ api_router.include_router(activity.router)
 api_router.include_router(projects.router)
 api_router.include_router(opportunities.router)
 api_router.include_router(auctions.router)
+api_router.include_router(surveys.router)
 api_router.include_router(admin.router)
 api_router.include_router(profile.router)
 api_router.include_router(leader.router)

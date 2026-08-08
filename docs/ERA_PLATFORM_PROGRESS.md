@@ -2002,6 +2002,95 @@ admin capability left. Once it's ported, every admin (and now every
 participant-facing) capability will have a Mini App equivalent, and the
 Bot-cleanup pass — removing the now-duplicated Bot handlers — can begin.
 
+## PR 28 — Mobile input polish: fix the auto-zoom-on-focus bug (merged)
+
+Fixes a real, user-reported UX bug: focusing any text input inside the
+Mini App made iOS Safari / Telegram's in-app WebView zoom the whole page
+in abruptly. Root cause: no screen set an explicit `font-size` on its
+`<input>`/`<textarea>`/`<select>` elements, so they fell back to the
+browser's UA stylesheet default (commonly ~13px) — both platforms zoom
+the page in whenever a focused form control's *computed* font-size is
+under 16px.
+
+**Frontend** (`frontend/src/theme/tokens.css`, the only file changed):
+added a single global rule setting every plain `input`/`textarea`/
+`select` to `font-size: 1rem` (16px) plus a consistent border/radius/
+padding/focus style, so the fix applies everywhere at once rather than
+touching every screen individually. Bundled in the same pass, since they
+were adjacent mobile-webview polish: `-webkit-tap-highlight-color:
+transparent` (kills the gray tap flash), `overscroll-behavior-y: none`
+(stops rubber-band scroll reading as the app "slipping"), and wrapping
+all `:hover` rules in `@media (hover: hover) and (pointer: fine)` (stops
+`:hover` state getting visually "stuck" after a tap on touch devices —
+this is a touch-only app).
+
+**Verification**: no local backend (no Redis available locally), so
+verified visually with a self-contained before/after comparison page
+served through the project's own Vite dev server, screenshotted to
+confirm the 16px sizing and styling actually apply; then confirmed live
+after deploy.
+
+## PR 29 — Surveys, participant + admin (merged)
+
+Closes the last Bot-only admin capability flagged at the end of PR 27.
+Ported the core survey lifecycle from
+`app/handlers/admin/surveys_analytics.py` (admin) and
+`app/handlers/participant/surveys.py` (participant). The Bot answers a
+survey one question at a time in a chat flow; the Mini App collects every
+answer in a single form and submits them all at once — simpler here,
+since there's no message history to scroll through.
+
+**Deliberately deferred, disclosed scope**: the five Excel-export buttons
+(`admin:analytics:excel:*`) in `surveys_analytics.py`/
+`analytics_filters.py` are not ported. They remain the one Bot-only
+admin capability left — everything else the Bot's admin surface could do
+now has a Mini App equivalent.
+
+**Backend**: `app/services/survey_service.py` extended with the
+participant-facing half — `list_visible_surveys` (statuses `active`/
+`sent`, mirroring the Bot's own `SURVEY_PARTICIPANT_STATUSES`),
+`get_response`, `submit_survey` (one row per survey/user, upserted on
+resubmission — same as the Bot). New `app/services/survey_admin_service.py`
+with the admin half: `list_surveys`, `response_count`,
+`get_or_create_monthly_survey` (idempotent — mirrors the Bot's
+get-or-create-monthly-template logic exactly), `create_survey`,
+`update_survey`, `archive_survey`, `send_recipients` (every approved,
+non-blocked, non-archived participant), `mark_sent`, `list_responses`.
+
+**API**: new `/api/v1/surveys` router (participant-facing: list with
+per-survey completion status, detail, submit-all-answers). `app/api/v1/
+admin.py` gains `GET/POST /admin/surveys`, `POST /admin/surveys/monthly`,
+`POST /admin/surveys/{id}/edit`, `.../archive`, `.../send` (triggers a
+real `broadcast_detailed` through the same Bot instance, using the same
+notification text as the Bot's own `send_survey` handler), `GET
+/admin/surveys/{id}/responses` — all behind `require_dashboard_access`
+(confirmed structurally identical to the Bot's own `_is_admin`/`_guard`
+in `management_ready.py`, so no new guard function was needed).
+
+**Frontend**: new "Опросы" tab in `OpportunitiesScreen` (participant —
+list surveys, open one to answer every question in a single form, see a
+"пройден"/"новый" badge) and a new top-level "Опросы" section in
+`AdminScreen` (admin — create/edit a survey by title + one question per
+line, get-or-create the monthly template, send, archive, view responses
+inline per survey).
+
+**Tests**: `test_survey_service.py` (4, real SQLite DB — visibility
+filtering, response upsert), `test_survey_admin_service.py` (7, real
+SQLite DB — monthly-template idempotency, recipient filtering, response
+listing), `test_surveys_api.py` (6, mocked service), `test_admin_surveys_api.py`
+(12, mocked service), `frontend/e2e/surveys.spec.ts` (real stack: admin
+creates and sends a survey, the seeded participant answers it, the admin
+sees the response after a refetch).
+`test_admin_leader_rate_limiting.py`: updated hardcoded admin POST route
+count (33 → 38).
+
+**Bot admin-cleanup pass can now begin** (next PR): every admin
+capability — including surveys — has a working, verified Mini App
+equivalent. Excel export is the sole exception and stays Bot-only for
+now; the cleanup pass will need to either leave a minimal Bot-only export
+command in place or explicitly decide to drop it, rather than silently
+losing the capability.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy
