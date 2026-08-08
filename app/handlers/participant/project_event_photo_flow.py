@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Event, Project, User
+from app.keyboards.participant import open_app_button
 from app.services.audit_service import audit
 from app.services.event_card import send_event_card, send_event_card_to_chat
 from app.utils import texts
@@ -341,7 +342,7 @@ async def project_event_confirm(
     await audit(session, actor_id=user.id, action="event.submitted_from_project", entity_type="event", entity_id=event.id)
     await state.clear()
     await call.message.answer(f"Мероприятие «{event.title}» отправлено администратору на проверку.")
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Открыть мероприятия", callback_data="admin:events")]])
+    keyboard = open_app_button(settings.effective_miniapp_url)
     recipients = set(settings.admin_ids)
     if settings.leaders_chat_id:
         recipients.add(settings.leaders_chat_id)

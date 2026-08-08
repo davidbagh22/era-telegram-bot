@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Department, Direction, Event, User
+from app.keyboards.participant import open_app_button
 from app.services.audit_service import audit
 from app.services.event_card import send_event_card, send_event_card_to_chat
 from app.states.event import EventStates
@@ -169,6 +170,6 @@ async def event_confirm(
         "Мероприятие отправлено администратору на утверждение.\n\n"
         "Фото/афиша сохранены и будут отображаться в карточке мероприятия."
     )
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Открыть мероприятия", callback_data="admin:events")]])
+    keyboard = open_app_button(settings.effective_miniapp_url)
     for chat_id in set(settings.admin_ids):
-        await send_event_card_to_chat(bot, chat_id, event, header="📅 Мероприятие на утверждении", keyboard=keyboard)
+        await send_event_card_to_chat(bot, chat_id, event, header="📅 Мероприятие на утверждении (утверждение — в приложении ЭРА)", keyboard=keyboard)

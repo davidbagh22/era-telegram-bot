@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Event, EventActivity, User
+from app.keyboards.participant import open_app_button
 from app.services.notification_service import notify_admins
 from app.utils import texts
 from app.utils.constants import EventStatus, PRIVILEGED_ROLES
@@ -223,4 +224,9 @@ async def event_finish(message: Message, user: User | None, state: FSMContext, s
         session.add(EventActivity(event_id=event.id, title=title, description="Отправьте результат по заданию в боте", submission_type=kind, points=points, is_active=True))
     await state.clear()
     await message.answer("Мероприятие отправлено админу на утверждение.")
-    await notify_admins(bot, settings, f"📅 Новое мероприятие на утверждении\n\n{event.title}\n{event.event_date:%d.%m.%Y} в {event.event_time:%H:%M}\nМесто: {event.location}", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Открыть мероприятия", callback_data="admin:events")]]))
+    await notify_admins(
+        bot,
+        settings,
+        f"📅 Новое мероприятие на утверждении\n\n{event.title}\n{event.event_date:%d.%m.%Y} в {event.event_time:%H:%M}\nМесто: {event.location}\n\nУтверждение — в приложении ЭРА.",
+        reply_markup=open_app_button(settings.effective_miniapp_url),
+    )

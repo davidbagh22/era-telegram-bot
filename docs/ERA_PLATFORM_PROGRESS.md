@@ -2091,6 +2091,91 @@ now; the cleanup pass will need to either leave a minimal Bot-only export
 command in place or explicitly decide to drop it, rather than silently
 losing the capability.
 
+## PR 30 — Bot admin-cleanup, step 1: repoint admin notification buttons (merged)
+
+The owner asked for the Bot's admin surface to be fully removed once
+everything had a Mini App equivalent. Investigating how to do that safely
+surfaced more structure than "delete a few files":
+
+- `app/handlers/admin/panel.py` (5220 lines) is the Bot's actual `/admin`
+  menu tree, and it isn't reachable purely through its own registrations —
+  `app/handlers/admin/__init__.py`'s `router.include_router(...)` order
+  means several other admin files (`dashboard_block_a.py` for `/admin`
+  itself and `admin:panel`; `management_ready.py` for `admin:menu:system`/
+  `admin:menu:communications`; `offices_management.py` for `admin:offices`)
+  register the *same* command/callback earlier and win, leaving the
+  matching code inside `panel.py` already dead — pre-existing shadowing
+  from earlier bot development, unrelated to the Mini App port. Untangling
+  this needs the same router-precedence check used for `emergency.py`
+  earlier in the project, file by file.
+- Several `admin:*` callback buttons are not reachable only through the
+  `/admin` menu — they're also sent directly on notifications the Bot
+  fires when a participant/leader does something needing review: a new
+  task submission, a new project, a team-search post, a new event, a
+  partner-offer application. Deleting the handler files those buttons
+  point to, without first changing the buttons themselves, would silently
+  break live admin workflows real people use today.
+- Auditing those notification call sites surfaced **two admin
+  capabilities this project had not scoped or ported at all**:
+  **Rewards & Redemptions** (`RewardItem`/`RewardRedemption` — a
+  points-shop catalog with admin approval, distinct from the points-based
+  Auctions ported in PR 27) and **Event Activities**
+  (`EventActivity`/`EventActivitySubmission` — proof-of-participation
+  tasks tied to an event, approved for bonus points, distinct from Event
+  moderation itself). Neither has a Mini App screen. Per this project's
+  own standing rule — no Bot admin capability gets touched until a
+  verified replacement exists — their notification buttons and handler
+  files (`app/handlers/participant/growth.py`'s and
+  `reward_pending_addon.py`'s `admin:redemption:*`,
+  `event_activities_block15.py`'s and
+  `app/handlers/leader/event_activities_block7.py`'s `admin:activity:*`/
+  `admin:event_activities:*`) were **left untouched** in this PR.
+
+**What this PR actually does**: adds `open_app_button()` to
+`app/keyboards/participant.py` — a single WebApp button opening the Mini
+App, replacing the multi-button admin: callback keyboards that used to
+sit on these notifications. Repointed the 5 notification call sites that
+*do* have a verified Mini App equivalent:
+`app/handlers/participant/task_block2.py` (new task submission → task
+review, PR 11), `app/handlers/participant/projects_block5.py` (new
+project → project review PR 7; team-search post → moderation PR 25),
+`app/handlers/leader/event_builder.py`,
+`app/handlers/leader_event_photo.py`, and
+`app/handlers/participant/project_event_photo_flow.py` (new event →
+event moderation, PR 10), and
+`app/handlers/participant/partner_offers_block16.py` (offer application →
+PR 25's applications panel). No handler files were deleted yet — the old
+`admin:*` handlers are still registered but are now unreachable from
+these notifications (though some may still be reachable through the
+`/admin` menu tree, which is untouched in this PR).
+
+**Tests**: `test_open_app_button.py` (4, new). Full `pytest -q` and the
+existing suites covering the changed files
+(`test_partner_offers_block16.py`, `test_system_wide_audit.py`,
+`test_v2_scenarios.py`) all green — none of them asserted on the specific
+callback_data strings that were replaced.
+
+**Still remaining before "bot admin functions fully removed"**:
+1. Port Rewards & Redemptions and Event Activities to the Mini App (two
+   more PRs, same shape as PR 24-29).
+2. Untangle and replace the `/admin` menu tree itself (`panel.py`,
+   `dashboard_block_a.py`, `management_ready.py`, `commands_ready.py`)
+   with a short "use the Mini App" message + WebApp button, using the
+   router-precedence map above to know exactly what's live vs. already
+   dead.
+3. Only then delete the now-fully-unreachable handler files: the bulk of
+   `panel.py`, `rights_block6.py`/`rights_block6_block_menu.py`,
+   `user_profile_block3_safe.py`, `offices_management.py`,
+   `surveys_analytics.py`/`analytics_filters.py` (minus whatever Excel
+   export ends up staying, per PR 29's disclosed gap),
+   `partners_admin.py`, `partner_offers_block16.py`'s admin half,
+   `auction_block17.py`'s admin half, `projects_block5_team.py`'s admin
+   half, `event_registration_block14.py`, `task_review_block2.py`,
+   `events_block6.py`, `approval_bonus_fix.py`, `chat_binding_stability.py`.
+   Every participant-facing flow, `safe_send`/`broadcast_detailed`
+   notification logic, and the webhook/dispatcher wiring must be
+   preserved exactly.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy
