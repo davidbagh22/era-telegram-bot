@@ -32,6 +32,96 @@ def _active_offer_filters(now: datetime):
     )
 
 
+async def list_partners(session: AsyncSession, *, include_archived: bool = False) -> list[Partner]:
+    conditions = [] if include_archived else [Partner.is_archived.is_(False)]
+    return list(
+        (await session.scalars(select(Partner).where(*conditions).order_by(Partner.name))).all()
+    )
+
+
+async def create_partner(
+    session: AsyncSession, *, name: str, description: str, source_url: str | None, created_by_id: int | None
+) -> Partner:
+    partner = Partner(name=name, description=description, source_url=source_url, created_by=created_by_id)
+    session.add(partner)
+    await session.flush()
+    return partner
+
+
+def set_partner_active(partner: Partner, active: bool) -> None:
+    partner.is_active = active
+
+
+def archive_partner(partner: Partner) -> None:
+    partner.is_active = False
+    partner.is_archived = True
+
+
+async def list_offers_admin(
+    session: AsyncSession, *, include_archived: bool = False
+) -> list[tuple[PartnerInitiative, Partner]]:
+    """The admin catalog view — every offer (active or hidden), not just the
+    currently-bookable ones list_active_offers returns for participants."""
+    conditions = [] if include_archived else [PartnerInitiative.is_archived.is_(False)]
+    result = await session.execute(
+        select(PartnerInitiative, Partner)
+        .join(Partner, Partner.id == PartnerInitiative.partner_id)
+        .where(*conditions)
+        .order_by(Partner.name, PartnerInitiative.title)
+    )
+    return list(result.all())
+
+
+async def get_offer_with_partner(
+    session: AsyncSession, offer_id: int
+) -> tuple[PartnerInitiative, Partner] | None:
+    offer = await session.get(PartnerInitiative, offer_id)
+    if offer is None:
+        return None
+    partner = await session.get(Partner, offer.partner_id)
+    if partner is None:
+        return None
+    return offer, partner
+
+
+async def create_offer(
+    session: AsyncSession,
+    *,
+    partner_id: int,
+    title: str,
+    description: str,
+    point_cost: int,
+    quantity: int | None,
+    expires_at: datetime | None,
+    instruction: str | None,
+    source_url: str | None,
+) -> PartnerInitiative:
+    offer = PartnerInitiative(
+        partner_id=partner_id,
+        title=title,
+        description=description,
+        point_cost=point_cost,
+        quantity=quantity,
+        expires_at=expires_at,
+        instruction=instruction,
+        source_url=source_url,
+        is_active=True,
+        is_archived=False,
+    )
+    session.add(offer)
+    await session.flush()
+    return offer
+
+
+def set_offer_active(offer: PartnerInitiative, active: bool) -> None:
+    offer.is_active = active
+
+
+def archive_offer(offer: PartnerInitiative) -> None:
+    offer.is_active = False
+    offer.is_archived = True
+
+
 async def list_active_offers(session: AsyncSession) -> list[tuple[PartnerInitiative, Partner]]:
     """Mirrors app/handlers/participant/partner_offers_block16.py::offers_list —
     the shared source of truth for "what counts as an active offer"."""

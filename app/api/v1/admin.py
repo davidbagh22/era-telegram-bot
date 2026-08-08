@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from aiogram import Bot
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -9,11 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.rate_limit import enforce_rate_limit
 from app.config import Settings
-from app.database.models import Badge, Event, Project, Task, TaskSubmission, User
-from app.database.partners import PartnerInitiative, PartnerOfferApplication
+from app.database.models import Badge, Event, EventRegistration, Project, Task, TaskSubmission, User
+from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
 from app.keyboards.participant import main_menu
 from app.services import (
     event_moderation_service,
+    event_registration_service,
     opportunity_service,
     project_workflow_service,
     task_review_service,
@@ -288,6 +291,132 @@ async def decide_project_endpoint(
     return _to_moderation_out(project)
 
 
+# "Looking for a team" post moderation — approve/edit/reject/publish, the
+# Mini App equivalent of app/handlers/admin/projects_block5_team.py.
+# Distinct from ProjectWorkspace's in-app roles/applications (PR5): this
+# broadcasts to the general Telegram chat, reaching people who aren't
+# necessarily browsing the Mini App.
+
+
+class TeamPostOut(BaseModel):
+    project_id: int
+    project_title: str
+    author_name: str
+    text: str
+    status: str
+
+
+async def _to_team_post_out(session: AsyncSession, project: Project) -> TeamPostOut:
+    state = project_workflow_service.team_post_state(project)
+    author = await session.get(User, project.author_id)
+    return TeamPostOut(
+        project_id=project.id,
+        project_title=project.title,
+        author_name=f"{author.first_name} {author.last_name or ''}".strip() if author else "—",
+        text=state.text if state else "",
+        status=state.status if state else "",
+    )
+
+
+@router.get("/projects/team-posts", response_model=list[TeamPostOut])
+async def read_pending_team_posts(
+    _reviewer: User = Depends(require_project_reviewer),
+    session: AsyncSession = Depends(get_session),
+) -> list[TeamPostOut]:
+    projects = await project_workflow_service.list_projects_with_pending_team_post(session)
+    return [await _to_team_post_out(session, project) for project in projects]
+
+
+@router.post("/projects/{project_id}/team-post/prepare", response_model=TeamPostOut)
+async def prepare_team_post_endpoint(
+    project_id: int,
+    _reviewer: User = Depends(require_project_reviewer),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> TeamPostOut:
+    project = await session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project_not_found")
+    if not project_workflow_service.prepare_team_post(project):
+        raise HTTPException(status_code=409, detail="no_team_post")
+    return await _to_team_post_out(session, project)
+
+
+class TeamPostEditIn(BaseModel):
+    text: str
+
+
+@router.post("/projects/{project_id}/team-post/edit", response_model=TeamPostOut)
+async def edit_team_post_endpoint(
+    project_id: int,
+    payload: TeamPostEditIn,
+    _reviewer: User = Depends(require_project_reviewer),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> TeamPostOut:
+    text = payload.text.strip()
+    if len(text) < 30:
+        raise HTTPException(status_code=422, detail="text_too_short")
+    project = await session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project_not_found")
+    if not project_workflow_service.edit_team_post(project, text):
+        raise HTTPException(status_code=409, detail="no_team_post")
+    return await _to_team_post_out(session, project)
+
+
+@router.post("/projects/{project_id}/team-post/reject", response_model=TeamPostOut)
+async def reject_team_post_endpoint(
+    project_id: int,
+    _reviewer: User = Depends(require_project_reviewer),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> TeamPostOut:
+    project = await session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project_not_found")
+    if not project_workflow_service.reject_team_post(project):
+        raise HTTPException(status_code=409, detail="no_team_post")
+    if bot is not None:
+        author = await session.get(User, project.author_id)
+        if author is not None:
+            await safe_send(
+                bot,
+                author.telegram_id,
+                f"Публикация для поиска команды по проекту «{project.title}» отклонена.",
+            )
+    return await _to_team_post_out(session, project)
+
+
+@router.post("/projects/{project_id}/team-post/publish", response_model=TeamPostOut)
+async def publish_team_post_endpoint(
+    project_id: int,
+    _reviewer: User = Depends(require_project_reviewer),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> TeamPostOut:
+    project = await session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project_not_found")
+    text = project_workflow_service.publish_team_post(project)
+    if text is None:
+        raise HTTPException(status_code=409, detail="not_prepared")
+    if bot is not None:
+        if settings.general_chat_id:
+            await safe_send(bot, settings.general_chat_id, f"Команда для проекта ЭРА\n\n{project.title}\n\n{text}")
+        author = await session.get(User, project.author_id)
+        if author is not None:
+            await safe_send(
+                bot,
+                author.telegram_id,
+                f"Публикация для поиска команды по проекту «{project.title}» одобрена.",
+            )
+    return await _to_team_post_out(session, project)
+
+
 class EventModerationOut(BaseModel):
     id: int
     title: str
@@ -356,6 +485,134 @@ async def decide_event_endpoint(
     if bot is not None and result.owner is not None:
         await safe_send(bot, result.owner.telegram_id, result.notice)
     return _to_event_moderation_out(event)
+
+
+# Post-moderation event operations — participants, attendance, points —
+# the Mini App equivalent of
+# app/handlers/admin/event_registration_block14.py. Distinct from the
+# moderation queue above: these apply to events that are already
+# approved/published, not ones still awaiting a decision.
+
+
+class OperationalEventOut(BaseModel):
+    id: int
+    title: str
+    event_date: str
+    event_time: str
+    location: str
+    status: str
+    points_for_visit: int
+    registered: int
+    free: int | str
+
+
+@router.get("/events/operational", response_model=list[OperationalEventOut])
+async def read_operational_events(
+    _reviewer: User = Depends(require_event_reviewer),
+    session: AsyncSession = Depends(get_session),
+) -> list[OperationalEventOut]:
+    events = await event_registration_service.list_operational_events(session)
+    result: list[OperationalEventOut] = []
+    for event in events:
+        stats = await event_registration_service.registration_stats(session, event)
+        result.append(
+            OperationalEventOut(
+                id=event.id,
+                title=event.title,
+                event_date=event.event_date.isoformat(),
+                event_time=event.event_time.isoformat(),
+                location=event.location,
+                status=event.status,
+                points_for_visit=event.points_for_visit,
+                registered=stats["registered"],
+                free=stats["free"],
+            )
+        )
+    return result
+
+
+class EventParticipantOut(BaseModel):
+    registration_id: int
+    participant_id: int
+    participant_name: str
+    status: str
+
+
+def _to_participant_out(registration: EventRegistration, participant: User) -> EventParticipantOut:
+    return EventParticipantOut(
+        registration_id=registration.id,
+        participant_id=participant.id,
+        participant_name=f"{participant.first_name} {participant.last_name or ''}".strip(),
+        status=registration.status,
+    )
+
+
+@router.get("/events/{event_id}/participants", response_model=list[EventParticipantOut])
+async def read_event_participants(
+    event_id: int,
+    _reviewer: User = Depends(require_event_reviewer),
+    session: AsyncSession = Depends(get_session),
+) -> list[EventParticipantOut]:
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    rows = await event_registration_service.list_participants(session, event_id)
+    return [_to_participant_out(registration, participant) for registration, participant in rows]
+
+
+class AttendanceIn(BaseModel):
+    attended: bool
+
+
+@router.post(
+    "/events/{event_id}/registrations/{registration_id}/attendance",
+    response_model=EventParticipantOut,
+)
+async def set_event_attendance_endpoint(
+    event_id: int,
+    registration_id: int,
+    payload: AttendanceIn,
+    _reviewer: User = Depends(require_event_reviewer),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> EventParticipantOut:
+    registration = await session.get(EventRegistration, registration_id)
+    if registration is None or registration.event_id != event_id:
+        raise HTTPException(status_code=404, detail="registration_not_found")
+    participant = await session.get(User, registration.user_id)
+    if participant is None:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    event_registration_service.set_attendance(registration, payload.attended)
+    return _to_participant_out(registration, participant)
+
+
+class AttendanceAwardOut(BaseModel):
+    awarded_count: int
+
+
+@router.post("/events/{event_id}/award-attendance-points", response_model=AttendanceAwardOut)
+async def award_event_attendance_points_endpoint(
+    event_id: int,
+    reviewer: User = Depends(require_event_reviewer),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> AttendanceAwardOut:
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    newly_awarded = await event_registration_service.award_attendance_points(
+        session, event, approved_by_id=reviewer.id
+    )
+    if bot is not None:
+        for participant in newly_awarded:
+            await safe_send(
+                bot,
+                participant.telegram_id,
+                f"Участие в мероприятии «{event.title}» подтверждено.\n"
+                f"Начислено: +{event.points_for_visit} баллов.",
+            )
+    return AttendanceAwardOut(awarded_count=len(newly_awarded))
 
 
 class TaskSubmissionOut(BaseModel):
@@ -540,6 +797,230 @@ async def decide_offer_application_endpoint(
         await safe_send(bot, participant.telegram_id, result.participant_notice)
     balance = await total_points(session, participant.id)
     return _to_offer_application_out(application, offer, participant, balance)
+
+
+# ---------------------------------------------------------------------------
+# Partners + offer catalog management — the Mini App equivalent of
+# app/handlers/admin/partners_admin.py and the create/list/toggle/archive
+# half of app/handlers/admin/partner_offers_block16.py. The application
+# review above only ever covered reviewing participants' applications to
+# offers that already existed — there was no way to actually create or
+# manage a partner or an offer itself from the Mini App.
+# ---------------------------------------------------------------------------
+
+
+class PartnerOut(BaseModel):
+    id: int
+    name: str
+    description: str
+    source_url: str | None
+    is_active: bool
+    is_archived: bool
+
+
+def _to_partner_out(partner: Partner) -> PartnerOut:
+    return PartnerOut(
+        id=partner.id,
+        name=partner.name,
+        description=partner.description,
+        source_url=partner.source_url,
+        is_active=partner.is_active,
+        is_archived=partner.is_archived,
+    )
+
+
+@router.get("/partners", response_model=list[PartnerOut])
+async def list_partners_endpoint(
+    _reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+) -> list[PartnerOut]:
+    partners = await opportunity_service.list_partners(session)
+    return [_to_partner_out(partner) for partner in partners]
+
+
+class PartnerCreateIn(BaseModel):
+    name: str
+    description: str
+    source_url: str = ""
+
+
+@router.post("/partners", response_model=PartnerOut)
+async def create_partner_endpoint(
+    payload: PartnerCreateIn,
+    reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> PartnerOut:
+    name = payload.name.strip()
+    description = payload.description.strip()
+    if not name or not description:
+        raise HTTPException(status_code=422, detail="name_and_description_required")
+    partner = await opportunity_service.create_partner(
+        session,
+        name=name[:255],
+        description=description,
+        source_url=payload.source_url.strip()[:500] or None,
+        created_by_id=reviewer.id,
+    )
+    return _to_partner_out(partner)
+
+
+class PartnerActiveIn(BaseModel):
+    active: bool
+
+
+@router.post("/partners/{partner_id}/active", response_model=PartnerOut)
+async def set_partner_active_endpoint(
+    partner_id: int,
+    payload: PartnerActiveIn,
+    _reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> PartnerOut:
+    partner = await session.get(Partner, partner_id)
+    if partner is None:
+        raise HTTPException(status_code=404, detail="partner_not_found")
+    opportunity_service.set_partner_active(partner, payload.active)
+    return _to_partner_out(partner)
+
+
+@router.post("/partners/{partner_id}/archive", response_model=PartnerOut)
+async def archive_partner_endpoint(
+    partner_id: int,
+    _reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> PartnerOut:
+    partner = await session.get(Partner, partner_id)
+    if partner is None:
+        raise HTTPException(status_code=404, detail="partner_not_found")
+    opportunity_service.archive_partner(partner)
+    return _to_partner_out(partner)
+
+
+class OfferAdminOut(BaseModel):
+    id: int
+    partner_id: int
+    partner_name: str
+    title: str
+    description: str
+    point_cost: int
+    quantity: int | None
+    expires_at: str | None
+    instruction: str | None
+    source_url: str | None
+    is_active: bool
+    is_archived: bool
+
+
+def _to_offer_admin_out(offer: PartnerInitiative, partner: Partner) -> OfferAdminOut:
+    return OfferAdminOut(
+        id=offer.id,
+        partner_id=partner.id,
+        partner_name=partner.name,
+        title=offer.title,
+        description=offer.description,
+        point_cost=offer.point_cost,
+        quantity=offer.quantity,
+        expires_at=offer.expires_at.isoformat() if offer.expires_at else None,
+        instruction=offer.instruction,
+        source_url=offer.source_url,
+        is_active=offer.is_active,
+        is_archived=offer.is_archived,
+    )
+
+
+@router.get("/offers", response_model=list[OfferAdminOut])
+async def list_offers_endpoint(
+    _reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+) -> list[OfferAdminOut]:
+    rows = await opportunity_service.list_offers_admin(session)
+    return [_to_offer_admin_out(offer, partner) for offer, partner in rows]
+
+
+class OfferCreateIn(BaseModel):
+    partner_id: int
+    title: str
+    description: str
+    point_cost: int
+    quantity: int | None = None
+    expires_at: str | None = None
+    instruction: str = ""
+    source_url: str = ""
+
+
+@router.post("/offers", response_model=OfferAdminOut)
+async def create_offer_endpoint(
+    payload: OfferCreateIn,
+    _reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> OfferAdminOut:
+    title = payload.title.strip()
+    description = payload.description.strip()
+    if not title or not description:
+        raise HTTPException(status_code=422, detail="title_and_description_required")
+    if payload.point_cost < 0:
+        raise HTTPException(status_code=422, detail="invalid_point_cost")
+    if payload.quantity is not None and payload.quantity < 1:
+        raise HTTPException(status_code=422, detail="invalid_quantity")
+    partner = await session.get(Partner, payload.partner_id)
+    if partner is None or partner.is_archived:
+        raise HTTPException(status_code=404, detail="partner_not_found")
+    expires_at = None
+    if payload.expires_at:
+        try:
+            expires_at = datetime.strptime(payload.expires_at, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=422, detail="invalid_expires_at") from None
+    offer = await opportunity_service.create_offer(
+        session,
+        partner_id=partner.id,
+        title=title[:255],
+        description=description[:3000],
+        point_cost=payload.point_cost,
+        quantity=payload.quantity,
+        expires_at=expires_at,
+        instruction=payload.instruction.strip()[:3000] or None,
+        source_url=payload.source_url.strip()[:500] or None,
+    )
+    return _to_offer_admin_out(offer, partner)
+
+
+class OfferActiveIn(BaseModel):
+    active: bool
+
+
+@router.post("/offers/{offer_id}/active", response_model=OfferAdminOut)
+async def set_offer_active_endpoint(
+    offer_id: int,
+    payload: OfferActiveIn,
+    _reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> OfferAdminOut:
+    row = await opportunity_service.get_offer_with_partner(session, offer_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="offer_not_found")
+    offer, partner = row
+    opportunity_service.set_offer_active(offer, payload.active)
+    return _to_offer_admin_out(offer, partner)
+
+
+@router.post("/offers/{offer_id}/archive", response_model=OfferAdminOut)
+async def archive_offer_endpoint(
+    offer_id: int,
+    _reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> OfferAdminOut:
+    row = await opportunity_service.get_offer_with_partner(session, offer_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="offer_not_found")
+    offer, partner = row
+    opportunity_service.archive_offer(offer)
+    return _to_offer_admin_out(offer, partner)
 
 
 # ---------------------------------------------------------------------------

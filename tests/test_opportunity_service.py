@@ -413,6 +413,107 @@ class OpportunityServiceTests(unittest.IsolatedAsyncioTestCase):
             rows = await opportunity_service.list_pending_offer_applications(session)
             self.assertEqual([a.id for a in rows], [pending.id])
 
+    # -- admin catalog CRUD: mirrors app/handlers/admin/partners_admin.py and
+    # the create/list/toggle/archive half of partner_offers_block16.py -----
+
+    async def test_create_and_list_partners(self) -> None:
+        async with self.session_factory() as session:
+            admin = await self._make_user(session, 555)
+            partner = await opportunity_service.create_partner(
+                session, name="Acme", description="d", source_url=None, created_by_id=admin.id
+            )
+            self.assertIsNotNone(partner.id)
+
+            rows = await opportunity_service.list_partners(session)
+            self.assertEqual([p.id for p in rows], [partner.id])
+
+    async def test_archived_partner_excluded_by_default(self) -> None:
+        async with self.session_factory() as session:
+            admin = await self._make_user(session, 555)
+            partner = await opportunity_service.create_partner(
+                session, name="Acme", description="d", source_url=None, created_by_id=admin.id
+            )
+            opportunity_service.archive_partner(partner)
+            await session.flush()
+
+            self.assertEqual(await opportunity_service.list_partners(session), [])
+            self.assertEqual(
+                [p.id for p in await opportunity_service.list_partners(session, include_archived=True)],
+                [partner.id],
+            )
+            self.assertFalse(partner.is_active)
+
+    async def test_set_partner_active_toggles_flag(self) -> None:
+        partner = self._partner()
+        opportunity_service.set_partner_active(partner, False)
+        self.assertFalse(partner.is_active)
+        opportunity_service.set_partner_active(partner, True)
+        self.assertTrue(partner.is_active)
+
+    async def test_create_and_list_offers_admin(self) -> None:
+        async with self.session_factory() as session:
+            partner = self._partner()
+            session.add(partner)
+            await session.flush()
+
+            offer = await opportunity_service.create_offer(
+                session,
+                partner_id=partner.id,
+                title="Сертификат",
+                description="d",
+                point_cost=50,
+                quantity=10,
+                expires_at=None,
+                instruction="После одобрения",
+                source_url=None,
+            )
+            self.assertTrue(offer.is_active)
+            self.assertFalse(offer.is_archived)
+
+            rows = await opportunity_service.list_offers_admin(session)
+            self.assertEqual([(o.id, p.id) for o, p in rows], [(offer.id, partner.id)])
+
+    async def test_get_offer_with_partner(self) -> None:
+        async with self.session_factory() as session:
+            partner = self._partner()
+            session.add(partner)
+            await session.flush()
+            offer = self._offer(partner_id=partner.id)
+            session.add(offer)
+            await session.flush()
+
+            row = await opportunity_service.get_offer_with_partner(session, offer.id)
+            self.assertIsNotNone(row)
+            found_offer, found_partner = row
+            self.assertEqual(found_offer.id, offer.id)
+            self.assertEqual(found_partner.id, partner.id)
+
+            self.assertIsNone(await opportunity_service.get_offer_with_partner(session, 999999))
+
+    async def test_offer_active_and_archive_toggles(self) -> None:
+        offer = self._offer(partner_id=1)
+        opportunity_service.set_offer_active(offer, False)
+        self.assertFalse(offer.is_active)
+        opportunity_service.archive_offer(offer)
+        self.assertTrue(offer.is_archived)
+        self.assertFalse(offer.is_active)
+
+    async def test_list_offers_admin_excludes_archived_by_default(self) -> None:
+        async with self.session_factory() as session:
+            partner = self._partner()
+            session.add(partner)
+            await session.flush()
+            visible = self._offer(partner_id=partner.id)
+            archived = self._offer(partner_id=partner.id, is_archived=True)
+            session.add_all([visible, archived])
+            await session.flush()
+
+            rows = await opportunity_service.list_offers_admin(session)
+            self.assertEqual([o.id for o, _ in rows], [visible.id])
+
+            rows_all = await opportunity_service.list_offers_admin(session, include_archived=True)
+            self.assertEqual({o.id for o, _ in rows_all}, {visible.id, archived.id})
+
 
 if __name__ == "__main__":
     unittest.main()

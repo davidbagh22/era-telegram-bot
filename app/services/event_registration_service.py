@@ -3,8 +3,23 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Event, EventRegistration, PointTransaction
+from app.database.models import Event, EventRegistration, PointTransaction, User
+from app.services.points_service import add_points
 from app.utils.constants import EventStatus, RegistrationStatus
+
+# Events an admin can still run operations on after moderation — mirrors
+# app/handlers/admin/event_registration_block14.py, which never gated this
+# on status at all; excluding draft/pending/cancelled here just skips
+# events that plainly have no attendance to manage yet or ever will.
+OPERATIONAL_EVENT_STATUSES = (
+    EventStatus.APPROVED,
+    EventStatus.PUBLISHED,
+    EventStatus.REGISTRATION_OPEN,
+    EventStatus.REGISTRATION_CLOSED,
+    EventStatus.ACTIVE,
+    EventStatus.COMPLETED,
+    EventStatus.REPORT_SUBMITTED,
+)
 
 ACTIVE_REGISTRATION_STATUSES = {
     RegistrationStatus.REGISTERED,
@@ -74,3 +89,62 @@ def mark_not_coming(registration: EventRegistration, event: Event) -> bool:
         return False
     registration.status = RegistrationStatus.NOT_COMING
     return True
+
+
+async def list_operational_events(session: AsyncSession) -> list[Event]:
+    return list(
+        (
+            await session.scalars(
+                select(Event)
+                .where(Event.status.in_(OPERATIONAL_EVENT_STATUSES))
+                .order_by(Event.event_date.desc())
+            )
+        ).all()
+    )
+
+
+async def list_participants(
+    session: AsyncSession, event_id: int
+) -> list[tuple[EventRegistration, User]]:
+    result = await session.execute(
+        select(EventRegistration, User)
+        .join(User, User.id == EventRegistration.user_id)
+        .where(EventRegistration.event_id == event_id)
+        .order_by(EventRegistration.created_at)
+    )
+    return list(result.all())
+
+
+def set_attendance(registration: EventRegistration, attended: bool) -> None:
+    registration.status = RegistrationStatus.ATTENDED if attended else RegistrationStatus.NO_SHOW
+
+
+async def award_attendance_points(
+    session: AsyncSession, event: Event, *, approved_by_id: int | None
+) -> list[User]:
+    """Awards event.points_for_visit to every ATTENDED registration that
+    hasn't already been paid — mirrors
+    app/handlers/admin/event_registration_block14.py::award_event_points
+    exactly, including its idempotency key, so re-running this (e.g. after
+    marking one more person attended) never double-pays anyone. Returns the
+    participants newly awarded, so the caller can notify them."""
+    rows = await list_participants(session, event.id)
+    newly_awarded: list[User] = []
+    for registration, participant in rows:
+        if registration.status != RegistrationStatus.ATTENDED:
+            continue
+        if await event_points_already_awarded(session, event_id=event.id, user_id=participant.id):
+            continue
+        await add_points(
+            session,
+            user_id=participant.id,
+            points=event.points_for_visit,
+            reason=f"Посещение мероприятия: {event.title}",
+            approved_by=approved_by_id,
+            related_event_id=event.id,
+            source_type="event_attendance",
+            source_id=registration.id,
+            idempotency_key=f"event_attendance:{event.id}:{participant.id}",
+        )
+        newly_awarded.append(participant)
+    return newly_awarded

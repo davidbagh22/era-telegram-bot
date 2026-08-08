@@ -12,13 +12,18 @@ import type {
   DashboardData,
   EventDecisionAction,
   EventForModeration,
+  EventParticipant,
+  OfferAdmin,
   OfferApplicationAction,
   OfferApplicationForReview,
+  OperationalEvent,
+  Partner,
   PendingApplication,
   ProjectDecisionAction,
   ProjectForModeration,
   TaskReviewAction,
   TaskSubmissionForReview,
+  TeamPost,
   UserDetail,
   UserListResult,
 } from "../types/admin";
@@ -494,6 +499,103 @@ export function decideOfferApplication(
     `/api/v1/admin/offer-applications/${applicationId}/decide`,
     { action },
   );
+}
+
+// "Looking for a team" post moderation (app/handlers/admin/projects_block5_team.py) —
+// distinct from the in-app ProjectWorkspace roles/applications: this broadcasts
+// to the general Telegram chat.
+export function fetchTeamPosts(): Promise<TeamPost[]> {
+  return authorizedGet<TeamPost[]>("/api/v1/admin/projects/team-posts");
+}
+
+export function prepareTeamPost(projectId: number): Promise<TeamPost> {
+  return authorizedPost<TeamPost>(`/api/v1/admin/projects/${projectId}/team-post/prepare`);
+}
+
+export function editTeamPost(projectId: number, text: string): Promise<TeamPost> {
+  return authorizedPost<TeamPost>(`/api/v1/admin/projects/${projectId}/team-post/edit`, { text });
+}
+
+export function rejectTeamPost(projectId: number): Promise<TeamPost> {
+  return authorizedPost<TeamPost>(`/api/v1/admin/projects/${projectId}/team-post/reject`);
+}
+
+export function publishTeamPost(projectId: number): Promise<TeamPost> {
+  return authorizedPost<TeamPost>(`/api/v1/admin/projects/${projectId}/team-post/publish`);
+}
+
+// Post-moderation event operations (app/handlers/admin/event_registration_block14.py) —
+// participants, attendance, points, for events already approved/published.
+export function fetchOperationalEvents(): Promise<OperationalEvent[]> {
+  return authorizedGet<OperationalEvent[]>("/api/v1/admin/events/operational");
+}
+
+export function fetchEventParticipants(eventId: number): Promise<EventParticipant[]> {
+  return authorizedGet<EventParticipant[]>(`/api/v1/admin/events/${eventId}/participants`);
+}
+
+export function setEventAttendance(
+  eventId: number,
+  registrationId: number,
+  attended: boolean,
+): Promise<EventParticipant> {
+  return authorizedPost<EventParticipant>(
+    `/api/v1/admin/events/${eventId}/registrations/${registrationId}/attendance`,
+    { attended },
+  );
+}
+
+export function awardEventAttendancePoints(eventId: number): Promise<{ awarded_count: number }> {
+  return authorizedPost(`/api/v1/admin/events/${eventId}/award-attendance-points`);
+}
+
+// Partner + offer catalog management (app/handlers/admin/partners_admin.py,
+// the create/list/toggle/archive half of partner_offers_block16.py) —
+// distinct from offer-application review above, which only ever reviewed
+// applications to offers that already existed.
+export function fetchAdminPartners(): Promise<Partner[]> {
+  return authorizedGet<Partner[]>("/api/v1/admin/partners");
+}
+
+export function createPartner(payload: {
+  name: string;
+  description: string;
+  source_url?: string;
+}): Promise<Partner> {
+  return authorizedPost<Partner>("/api/v1/admin/partners", payload);
+}
+
+export function setPartnerActive(partnerId: number, active: boolean): Promise<Partner> {
+  return authorizedPost<Partner>(`/api/v1/admin/partners/${partnerId}/active`, { active });
+}
+
+export function archivePartner(partnerId: number): Promise<Partner> {
+  return authorizedPost<Partner>(`/api/v1/admin/partners/${partnerId}/archive`);
+}
+
+export function fetchAdminOffers(): Promise<OfferAdmin[]> {
+  return authorizedGet<OfferAdmin[]>("/api/v1/admin/offers");
+}
+
+export function createOffer(payload: {
+  partner_id: number;
+  title: string;
+  description: string;
+  point_cost: number;
+  quantity?: number | null;
+  expires_at?: string | null;
+  instruction?: string;
+  source_url?: string;
+}): Promise<OfferAdmin> {
+  return authorizedPost<OfferAdmin>("/api/v1/admin/offers", payload);
+}
+
+export function setOfferActive(offerId: number, active: boolean): Promise<OfferAdmin> {
+  return authorizedPost<OfferAdmin>(`/api/v1/admin/offers/${offerId}/active`, { active });
+}
+
+export function archiveOffer(offerId: number): Promise<OfferAdmin> {
+  return authorizedPost<OfferAdmin>(`/api/v1/admin/offers/${offerId}/archive`);
 }
 
 export interface AdminUsersQuery {
