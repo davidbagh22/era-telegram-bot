@@ -49,6 +49,21 @@
 
 * {
   box-sizing: border-box;
+  /* Kills the default gray flash Telegram's Android WebView and mobile
+     Chrome paint on every tap — this is a touch-only app (see
+     frontend/e2e/*.spec.ts's fixed 390x844 viewport). Buttons keep their
+     own explicit tap feedback (button:active below); hover styles are
+     scoped to real hover-capable pointers further down, so they can't
+     "stick" after a tap either. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  /* Telegram's WebView occasionally rubber-bands the whole page on a
+     vertical swipe that starts past the content edge, which reads as the
+     app "slipping" out from under a tap. Chained to body below too since
+     some WebKit builds only honor it on one or the other. */
+  overscroll-behavior-y: none;
 }
 
 body {
@@ -56,6 +71,7 @@ body {
   background: var(--era-bg);
   color: var(--era-text);
   font-family: var(--era-font-body);
+  overscroll-behavior-y: none;
 }
 
 /* Default look for every plain <button> in the app. Components that set
@@ -82,9 +98,26 @@ button {
     opacity var(--era-motion-fast);
 }
 
-button:hover:not(:disabled) {
-  border-color: var(--era-violet);
-  box-shadow: var(--era-shadow-soft);
+/* hover-capable pointer only: on tap, mobile WebKit/Chrome otherwise
+   "stick" a :hover style until the next unrelated tap, which reads as a
+   button or card staying highlighted after you've already moved on —
+   this is a touch-only app (no mouse), so real :hover only ever applies
+   on a device that actually has one. */
+@media (hover: hover) and (pointer: fine) {
+  button:hover:not(:disabled) {
+    border-color: var(--era-violet);
+    box-shadow: var(--era-shadow-soft);
+  }
+
+  .era-btn-primary:hover:not(:disabled) {
+    box-shadow: 0 8px 24px rgba(116, 44, 196, 0.35);
+    border-color: transparent;
+  }
+
+  .era-card:hover {
+    box-shadow: var(--era-shadow-lift);
+    transform: translateY(-2px);
+  }
 }
 
 button:active:not(:disabled) {
@@ -101,6 +134,64 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+/* Default look for every plain <input>/<textarea>/<select>. Screens set
+   layout-only inline styles (width, flex, margin) on top of this — see
+   e.g. PeopleList.tsx — so this is the one place font-size lives for form
+   controls. That matters beyond looks: iOS Safari and Telegram's in-app
+   WebView both zoom the whole page in when a focused input's font-size is
+   under 16px, which is exactly what was happening — form controls had no
+   font-size of their own and fell back to the browser's UA stylesheet
+   (often ~13px), not this file's 16px body-adjacent size. */
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select {
+  font-family: var(--era-font-body);
+  font-size: 1rem;
+  color: var(--era-text);
+  background: var(--era-bg-subtle);
+  border: 1px solid var(--era-border);
+  border-radius: var(--era-radius-control);
+  padding: 0.75rem 0.875rem;
+  min-height: 2.75rem;
+  width: 100%;
+  transition: border-color var(--era-motion-fast), box-shadow var(--era-motion-fast);
+}
+
+textarea {
+  min-height: 4.5rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--era-text-muted);
+  opacity: 1;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--era-violet);
+  box-shadow: 0 0 0 3px rgba(116, 44, 196, 0.15);
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+input[type="checkbox"] {
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: var(--era-violet);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
 /* Applied to the highest-emphasis call-to-action per screen (submit,
    approve, register, download) so visual weight matches how often and
    how important the action actually is — not every button should shout. */
@@ -111,18 +202,8 @@ button:focus-visible {
   box-shadow: 0 6px 18px rgba(116, 44, 196, 0.25);
 }
 
-.era-btn-primary:hover:not(:disabled) {
-  box-shadow: 0 8px 24px rgba(116, 44, 196, 0.35);
-  border-color: transparent;
-}
-
 .era-card {
   transition: box-shadow var(--era-motion), transform var(--era-motion);
-}
-
-.era-card:hover {
-  box-shadow: var(--era-shadow-lift);
-  transform: translateY(-2px);
 }
 
 @keyframes era-fade-in {
