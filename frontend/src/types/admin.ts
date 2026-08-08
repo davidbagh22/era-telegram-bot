@@ -150,6 +150,20 @@ export interface OfferAdmin {
   is_archived: boolean;
 }
 
+export interface OfficeAssignment {
+  assignment_id: number;
+  user_id: number;
+  user_name: string;
+}
+
+export interface Office {
+  id: number;
+  title: string;
+  description: string | null;
+  is_active: boolean;
+  assignments: OfficeAssignment[];
+}
+
 export interface UserDetail {
   id: number;
   telegram_id: number;

@@ -13,6 +13,7 @@ import type {
   EventDecisionAction,
   EventForModeration,
   EventParticipant,
+  Office,
   OfferAdmin,
   OfferApplicationAction,
   OfferApplicationForReview,
@@ -25,6 +26,7 @@ import type {
   TaskSubmissionForReview,
   TeamPost,
   UserDetail,
+  UserListItem,
   UserListResult,
 } from "../types/admin";
 import type { HomeSnapshot } from "../types/home";
@@ -650,6 +652,34 @@ export function awardUserPoints(
 
 export function awardUserBadge(userId: number, badgeId: number, reason: string): Promise<BadgeItem> {
   return authorizedPost(`/api/v1/admin/users/${userId}/badges/${badgeId}`, { reason });
+}
+
+// "Должности и ответственность" (app/handlers/admin/offices_management.py
+// + the office_assign/office_remove/office_new handlers in panel.py).
+export function fetchAdminOffices(): Promise<Office[]> {
+  return authorizedGet<Office[]>("/api/v1/admin/offices");
+}
+
+export function createOffice(title: string, description: string): Promise<Office> {
+  return authorizedPost<Office>("/api/v1/admin/offices", { title, description });
+}
+
+export function deleteOffice(officeId: number): Promise<Office> {
+  return authorizedPost<Office>(`/api/v1/admin/offices/${officeId}/delete`);
+}
+
+export function searchAssignableUsers(query: string): Promise<UserListItem[]> {
+  return authorizedGet<UserListItem[]>(
+    `/api/v1/admin/offices/assignable-users?query=${encodeURIComponent(query)}`,
+  );
+}
+
+export function assignOffice(officeId: number, userId: number): Promise<Office> {
+  return authorizedPost<Office>(`/api/v1/admin/offices/${officeId}/assign`, { user_id: userId });
+}
+
+export function removeOfficeAssignment(assignmentId: number): Promise<Office> {
+  return authorizedPost<Office>(`/api/v1/admin/offices/assignments/${assignmentId}/remove`);
 }
 
 export function fetchLeaderOverview(): Promise<LeaderOverview> {
