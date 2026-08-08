@@ -183,6 +183,24 @@ export interface AuctionAdmin {
   bids: AuctionBid[];
 }
 
+export interface SurveyAdmin {
+  id: number;
+  title: string;
+  description: string | null;
+  questions: string[];
+  status: string;
+  is_monthly: boolean;
+  sent_at: string | null;
+  response_count: number;
+}
+
+export interface SurveyResponseAdmin {
+  user_id: number;
+  user_name: string;
+  submitted_at: string | null;
+  answers: { question: string; answer: string }[];
+}
+
 export interface UserDetail {
   id: number;
   telegram_id: number;

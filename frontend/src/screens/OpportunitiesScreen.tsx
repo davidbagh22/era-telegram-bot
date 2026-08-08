@@ -12,9 +12,12 @@ import { PillTabs } from "../components/PillTabs";
 import { StatusBadge } from "../components/StatusBadge";
 import { useAsync } from "../hooks/useAsync";
 import { AuctionsPanel } from "./opportunities/AuctionsPanel";
+import { SurveysPanel } from "./opportunities/SurveysPanel";
 import type { OpportunityScope } from "../types/opportunity";
 
-type OpportunitiesTab = OpportunityScope | "auctions";
+type OpportunitiesTab = OpportunityScope | "auctions" | "surveys";
+
+const NON_LIST_TABS: OpportunitiesTab[] = ["auctions", "surveys"];
 
 const SCOPES: { value: OpportunitiesTab; label: string }[] = [
   { value: "for_me", label: "Для тебя" },
@@ -22,6 +25,7 @@ const SCOPES: { value: OpportunitiesTab; label: string }[] = [
   { value: "saved", label: "Сохранённые" },
   { value: "mine", label: "Мои заявки" },
   { value: "auctions", label: "Аукционы" },
+  { value: "surveys", label: "Опросы" },
 ];
 
 const APPLICATION_STATUS_LABELS: Record<string, string> = {
@@ -34,7 +38,7 @@ export function OpportunitiesScreen() {
   const [scope, setScope] = useState<OpportunitiesTab>("for_me");
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(
-    () => (scope === "auctions" ? Promise.resolve([]) : fetchOpportunities(scope)),
+    () => (NON_LIST_TABS.includes(scope) ? Promise.resolve([]) : fetchOpportunities(scope as OpportunityScope)),
     [scope, refreshKey],
   );
   const [pendingId, setPendingId] = useState<number | null>(null);
@@ -86,21 +90,22 @@ export function OpportunitiesScreen() {
       <PillTabs options={SCOPES} active={scope} onChange={setScope} />
 
       {scope === "auctions" && <AuctionsPanel />}
+      {scope === "surveys" && <SurveysPanel />}
 
-      {scope !== "auctions" && actionError && (
+      {!NON_LIST_TABS.includes(scope) && actionError && (
         <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
       )}
 
-      {scope !== "auctions" && state.status === "loading" && (
+      {!NON_LIST_TABS.includes(scope) && state.status === "loading" && (
         <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>
       )}
-      {scope !== "auctions" && state.status === "error" && (
+      {!NON_LIST_TABS.includes(scope) && state.status === "error" && (
         <EmptyState text="Не удалось загрузить возможности." />
       )}
-      {scope !== "auctions" && state.status === "ready" && state.data.length === 0 && (
+      {!NON_LIST_TABS.includes(scope) && state.status === "ready" && state.data.length === 0 && (
         <EmptyState text="В этом разделе пока пусто." />
       )}
-      {scope !== "auctions" &&
+      {!NON_LIST_TABS.includes(scope) &&
         state.status === "ready" &&
         state.data.map((offer) => {
           const applied = offer.application_status === "pending" || offer.application_status === "approved";

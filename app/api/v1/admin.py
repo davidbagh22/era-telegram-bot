@@ -24,6 +24,7 @@ from app.database.models import (
     User,
     UserOffice,
 )
+from app.database.management_models import AdminSurvey
 from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
 from app.keyboards.participant import main_menu
 from app.services import (
@@ -33,6 +34,8 @@ from app.services import (
     office_management_service,
     opportunity_service,
     project_workflow_service,
+    survey_admin_service,
+    survey_service,
     task_review_service,
     user_management_service,
 )
@@ -53,7 +56,7 @@ from app.services.authorization_service import (
     is_full_admin,
 )
 from app.services.chat_access_service import sync_user_chat_access
-from app.services.notification_service import safe_send
+from app.services.notification_service import broadcast_detailed, safe_send
 from app.services.points_service import total_points
 from app.services.project_workspace_service import can_review_projects
 from app.utils import texts
@@ -1748,3 +1751,191 @@ async def cancel_auction_endpoint(
         raise HTTPException(status_code=409, detail="bidding_still_open")
     await auction_service.cancel_auction(session, auction, actor_id=reviewer.id)
     return await _to_auction_admin_out(session, auction)
+
+
+# ---------------------------------------------------------------------------
+# Surveys — the Mini App equivalent of app/handlers/admin/surveys_analytics.py
+# (list/create/edit/send/archive, view responses). Excel export of results is
+# not ported yet — it remains a Bot-only capability for now (tracked in
+# docs/ERA_PLATFORM_PROGRESS.md).
+# ---------------------------------------------------------------------------
+
+
+class SurveyAdminOut(BaseModel):
+    id: int
+    title: str
+    description: str | None
+    questions: list[str]
+    status: str
+    is_monthly: bool
+    sent_at: str | None
+    response_count: int
+
+
+async def _to_survey_admin_out(session: AsyncSession, survey: AdminSurvey) -> SurveyAdminOut:
+    return SurveyAdminOut(
+        id=survey.id,
+        title=survey.title,
+        description=survey.description,
+        questions=survey_service.survey_questions(survey),
+        status=survey.status,
+        is_monthly=survey.is_monthly,
+        sent_at=survey.sent_at.isoformat() if survey.sent_at else None,
+        response_count=await survey_admin_service.response_count(session, survey.id),
+    )
+
+
+@router.get("/surveys", response_model=list[SurveyAdminOut])
+async def list_surveys_endpoint(
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> list[SurveyAdminOut]:
+    surveys = await survey_admin_service.list_surveys(session)
+    return [await _to_survey_admin_out(session, survey) for survey in surveys]
+
+
+@router.post("/surveys/monthly", response_model=SurveyAdminOut)
+async def get_or_create_monthly_survey_endpoint(
+    admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> SurveyAdminOut:
+    survey = await survey_admin_service.get_or_create_monthly_survey(session, created_by_id=admin.id)
+    return await _to_survey_admin_out(session, survey)
+
+
+class SurveyCreateIn(BaseModel):
+    title: str
+    description: str | None = None
+    questions: list[str]
+
+
+def _clean_questions(questions: list[str]) -> list[str]:
+    cleaned = [q.strip() for q in questions if q.strip()]
+    if not cleaned:
+        raise HTTPException(status_code=422, detail="questions_required")
+    return cleaned
+
+
+@router.post("/surveys", response_model=SurveyAdminOut)
+async def create_survey_endpoint(
+    payload: SurveyCreateIn,
+    admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> SurveyAdminOut:
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="title_required")
+    questions = _clean_questions(payload.questions)
+    survey = await survey_admin_service.create_survey(
+        session,
+        title=title[:255],
+        description=(payload.description or "").strip() or None,
+        questions=questions,
+        created_by_id=admin.id,
+    )
+    return await _to_survey_admin_out(session, survey)
+
+
+async def _get_survey_or_404(session: AsyncSession, survey_id: int) -> AdminSurvey:
+    survey = await session.get(AdminSurvey, survey_id)
+    if survey is None:
+        raise HTTPException(status_code=404, detail="survey_not_found")
+    return survey
+
+
+@router.post("/surveys/{survey_id}/edit", response_model=SurveyAdminOut)
+async def update_survey_endpoint(
+    survey_id: int,
+    payload: SurveyCreateIn,
+    admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> SurveyAdminOut:
+    survey = await _get_survey_or_404(session, survey_id)
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="title_required")
+    questions = _clean_questions(payload.questions)
+    survey_admin_service.update_survey(
+        survey,
+        title=title[:255],
+        description=(payload.description or "").strip() or None,
+        questions=questions,
+        updated_by_id=admin.id,
+    )
+    return await _to_survey_admin_out(session, survey)
+
+
+@router.post("/surveys/{survey_id}/archive", response_model=SurveyAdminOut)
+async def archive_survey_endpoint(
+    survey_id: int,
+    admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> SurveyAdminOut:
+    survey = await _get_survey_or_404(session, survey_id)
+    survey_admin_service.archive_survey(survey, updated_by_id=admin.id)
+    return await _to_survey_admin_out(session, survey)
+
+
+@router.post("/surveys/{survey_id}/send", response_model=SurveyAdminOut)
+async def send_survey_endpoint(
+    survey_id: int,
+    admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> SurveyAdminOut:
+    survey = await _get_survey_or_404(session, survey_id)
+    if survey.status == "archived":
+        raise HTTPException(status_code=409, detail="survey_archived")
+    questions = survey_service.survey_questions(survey)
+    if not questions:
+        raise HTTPException(status_code=422, detail="questions_required")
+    recipients = await survey_admin_service.send_recipients(session)
+    if bot is not None and recipients:
+        # Mirrors app/handlers/admin/surveys_analytics.py::send_survey's own
+        # text exactly, so a Mini App-triggered send reads identically to a
+        # Bot-triggered one.
+        await safe_send_survey_invites(bot, survey, recipients)
+    survey_admin_service.mark_sent(survey, timezone_name=settings.timezone, updated_by_id=admin.id)
+    return await _to_survey_admin_out(session, survey)
+
+
+async def safe_send_survey_invites(bot: Bot, survey: AdminSurvey, recipients: list[User]) -> None:
+    await broadcast_detailed(
+        bot,
+        [participant.telegram_id for participant in recipients],
+        f"🗳 {survey.title}\n\n"
+        f"{survey.description or 'Команда ЭРА собирает обратную связь, чтобы принимать решения точнее'}\n\n"
+        "Ответить можно в приложении ЭРА, вкладка «Опросы»",
+    )
+
+
+class SurveyResponseOut(BaseModel):
+    user_id: int
+    user_name: str
+    submitted_at: str | None
+    answers: list[dict[str, str]]
+
+
+@router.get("/surveys/{survey_id}/responses", response_model=list[SurveyResponseOut])
+async def list_survey_responses_endpoint(
+    survey_id: int,
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> list[SurveyResponseOut]:
+    await _get_survey_or_404(session, survey_id)
+    rows = await survey_admin_service.list_responses(session, survey_id)
+    return [
+        SurveyResponseOut(
+            user_id=respondent.id,
+            user_name=f"{respondent.first_name} {respondent.last_name or ''}".strip(),
+            submitted_at=response.submitted_at.isoformat() if response.submitted_at else None,
+            answers=survey_service.answer_items(response),
+        )
+        for response, respondent in rows
+    ]
