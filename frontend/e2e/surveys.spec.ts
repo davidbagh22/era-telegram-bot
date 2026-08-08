@@ -26,7 +26,9 @@ test("admin creates and sends a survey; the participant answers it and the admin
     const surveyCard = adminPage.locator(".era-card", { hasText: surveyTitle });
     await expect(surveyCard).toBeVisible();
     await surveyCard.getByRole("button", { name: "Отправить" }).click();
-    await expect(surveyCard.getByText("отправлен")).toBeVisible();
+    // exact match — "Отправлен: <date>" in the stats line below would also
+    // substring-match a case-insensitive "отправлен" lookup.
+    await expect(surveyCard.getByText("отправлен", { exact: true })).toBeVisible();
 
     await participantPage.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
     await participantPage.getByRole("button", { name: "Возможности" }).click();
