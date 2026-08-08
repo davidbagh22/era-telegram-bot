@@ -81,8 +81,9 @@ class RateLimitDependencyWiringTests(unittest.TestCase):
         # role, block, archive, permission toggle, points, badge award) + 12
         # routes from PR 25 (4 team-post: prepare/edit/reject/publish; 2
         # event attendance/points; 3 partner CRUD; 3 offer CRUD) + 4 Offices
-        # routes from PR 26 (create, delete, assign, remove assignment).
-        self.assertEqual(len(post_routes), 29, "expected 29 admin mutation routes")
+        # routes from PR 26 (create, delete, assign, remove assignment) + 4
+        # Auction routes from PR 27 (create, confirm-winner, deliver, cancel).
+        self.assertEqual(len(post_routes), 33, "expected 33 admin mutation routes")
         for route in post_routes:
             deps = [d.call for d in route.dependant.dependencies]
             self.assertIn(

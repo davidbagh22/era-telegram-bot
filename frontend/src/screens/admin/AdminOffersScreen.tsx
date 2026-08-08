@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { PillTabs } from "../../components/PillTabs";
+import { AuctionsPanel } from "./offers/AuctionsPanel";
 import { OfferApplicationsPanel } from "./offers/OfferApplicationsPanel";
 import { OffersPanel } from "./offers/OffersPanel";
 import { PartnersPanel } from "./offers/PartnersPanel";
 
-type OffersSection = "applications" | "offers" | "partners";
+type OffersSection = "applications" | "offers" | "partners" | "auctions";
 
 const SECTIONS: { value: OffersSection; label: string }[] = [
   { value: "applications", label: "Заявки" },
   { value: "offers", label: "Предложения" },
   { value: "partners", label: "Партнёры" },
+  { value: "auctions", label: "Аукционы" },
 ];
 
 export function AdminOffersScreen() {
@@ -21,6 +23,7 @@ export function AdminOffersScreen() {
       {section === "applications" && <OfferApplicationsPanel />}
       {section === "offers" && <OffersPanel />}
       {section === "partners" && <PartnersPanel />}
+      {section === "auctions" && <AuctionsPanel />}
     </div>
   );
 }

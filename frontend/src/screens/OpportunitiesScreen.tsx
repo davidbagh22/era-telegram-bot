@@ -11,13 +11,17 @@ import { EmptyState } from "../components/EmptyState";
 import { PillTabs } from "../components/PillTabs";
 import { StatusBadge } from "../components/StatusBadge";
 import { useAsync } from "../hooks/useAsync";
+import { AuctionsPanel } from "./opportunities/AuctionsPanel";
 import type { OpportunityScope } from "../types/opportunity";
 
-const SCOPES: { value: OpportunityScope; label: string }[] = [
+type OpportunitiesTab = OpportunityScope | "auctions";
+
+const SCOPES: { value: OpportunitiesTab; label: string }[] = [
   { value: "for_me", label: "Для тебя" },
   { value: "all", label: "Все" },
   { value: "saved", label: "Сохранённые" },
   { value: "mine", label: "Мои заявки" },
+  { value: "auctions", label: "Аукционы" },
 ];
 
 const APPLICATION_STATUS_LABELS: Record<string, string> = {
@@ -27,9 +31,12 @@ const APPLICATION_STATUS_LABELS: Record<string, string> = {
 };
 
 export function OpportunitiesScreen() {
-  const [scope, setScope] = useState<OpportunityScope>("for_me");
+  const [scope, setScope] = useState<OpportunitiesTab>("for_me");
   const [refreshKey, setRefreshKey] = useState(0);
-  const state = useAsync(() => fetchOpportunities(scope), [scope, refreshKey]);
+  const state = useAsync(
+    () => (scope === "auctions" ? Promise.resolve([]) : fetchOpportunities(scope)),
+    [scope, refreshKey],
+  );
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -78,18 +85,23 @@ export function OpportunitiesScreen() {
       </h1>
       <PillTabs options={SCOPES} active={scope} onChange={setScope} />
 
-      {actionError && (
+      {scope === "auctions" && <AuctionsPanel />}
+
+      {scope !== "auctions" && actionError && (
         <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
       )}
 
-      {state.status === "loading" && (
+      {scope !== "auctions" && state.status === "loading" && (
         <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>
       )}
-      {state.status === "error" && <EmptyState text="Не удалось загрузить возможности." />}
-      {state.status === "ready" && state.data.length === 0 && (
+      {scope !== "auctions" && state.status === "error" && (
+        <EmptyState text="Не удалось загрузить возможности." />
+      )}
+      {scope !== "auctions" && state.status === "ready" && state.data.length === 0 && (
         <EmptyState text="В этом разделе пока пусто." />
       )}
-      {state.status === "ready" &&
+      {scope !== "auctions" &&
+        state.status === "ready" &&
         state.data.map((offer) => {
           const applied = offer.application_status === "pending" || offer.application_status === "approved";
           return (
