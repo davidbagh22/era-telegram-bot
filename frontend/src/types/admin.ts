@@ -71,3 +71,57 @@ export interface OfferApplicationForReview {
   participant_balance: number;
   status: string;
 }
+
+export interface UserListItem {
+  id: number;
+  telegram_id: number;
+  first_name: string;
+  last_name: string | null;
+  username: string | null;
+  role: string;
+  application_status: string;
+  is_blocked: boolean;
+  is_archived: boolean;
+}
+
+export interface UserListResult {
+  items: UserListItem[];
+  total: number;
+}
+
+export interface BadgeItem {
+  id: number;
+  name: string;
+}
+
+export interface SocialLinkItem {
+  platform: string;
+  url: string;
+}
+
+export interface UserDetail {
+  id: number;
+  telegram_id: number;
+  first_name: string;
+  last_name: string | null;
+  username: string | null;
+  role: string;
+  application_status: string;
+  participation_status: string;
+  is_blocked: boolean;
+  is_archived: boolean;
+  city: string | null;
+  phone: string | null;
+  email: string | null;
+  occupation: string | null;
+  motivation: string | null;
+  points_balance: number;
+  portfolio_count: number;
+  badges: BadgeItem[];
+  available_badges: BadgeItem[];
+  permissions: Record<string, boolean>;
+  social_links: SocialLinkItem[];
+  can_manage: boolean;
+  can_manage_permissions: boolean;
+  can_award_points: boolean;
+}

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.rate_limit import enforce_rate_limit
 from app.config import Settings
-from app.database.models import Event, Project, Task, TaskSubmission, User
+from app.database.models import Badge, Event, Project, Task, TaskSubmission, User
 from app.database.partners import PartnerInitiative, PartnerOfferApplication
 from app.keyboards.participant import main_menu
 from app.services import (
@@ -17,6 +17,7 @@ from app.services import (
     opportunity_service,
     project_workflow_service,
     task_review_service,
+    user_management_service,
 )
 from app.services.admin_dashboard_service import dashboard_metrics, has_dashboard_access
 from app.services.application_review_service import (
@@ -24,13 +25,23 @@ from app.services.application_review_service import (
     reject_application,
     request_more_info,
 )
-from app.services.authorization_service import can_manage_events, can_manage_partners, can_manage_tasks
+from app.services.authorization_service import (
+    active_permissions,
+    can_manage_events,
+    can_manage_partners,
+    can_manage_people,
+    can_manage_permissions,
+    can_manage_tasks,
+    can_view_people,
+    is_full_admin,
+)
 from app.services.chat_access_service import sync_user_chat_access
 from app.services.notification_service import safe_send
 from app.services.points_service import total_points
 from app.services.project_workspace_service import can_review_projects
 from app.utils import texts
-from app.utils.constants import ApplicationStatus
+from app.utils.constants import PERMISSIONS, PRIVILEGED_ROLES, ROLE_LABELS, ApplicationStatus
+from app.utils.constants import Role as RoleEnum
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -529,3 +540,394 @@ async def decide_offer_application_endpoint(
         await safe_send(bot, participant.telegram_id, result.participant_notice)
     balance = await total_points(session, participant.id)
     return _to_offer_application_out(application, offer, participant, balance)
+
+
+# ---------------------------------------------------------------------------
+# People — user directory + profile actions. The Mini App equivalent of the
+# bot's admin:participants list and admin:user:* card
+# (app/handlers/admin/rights_block6.py, user_profile_block3_safe.py) — this
+# was the single biggest admin capability that had no Mini App equivalent at
+# all (search/list every user, not just pending applications; change role;
+# block/unblock; archive/unarchive; grant technical permissions; award
+# points or a badge directly).
+# ---------------------------------------------------------------------------
+
+
+async def require_people_viewer(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    if not can_view_people(user, settings, user.telegram_id):
+        raise HTTPException(status_code=403, detail="people_view_access_required")
+    return user
+
+
+async def require_people_manager(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    if not can_manage_people(user, settings, user.telegram_id):
+        raise HTTPException(status_code=403, detail="people_manage_access_required")
+    return user
+
+
+async def require_permissions_manager(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    if not can_manage_permissions(user, settings, user.telegram_id):
+        raise HTTPException(status_code=403, detail="permissions_manage_access_required")
+    return user
+
+
+async def require_points_awarder(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    # Mirrors user_profile_block3_safe.py::is_admin for points/badge actions:
+    # full admins always can; everyone else needs the dedicated
+    # points.award grant specifically — not people.manage, which is a
+    # separate, narrower grant on purpose (editing someone's role/status
+    # shouldn't automatically also let you move points).
+    if is_full_admin(user, settings, user.telegram_id) or "points.award" in active_permissions(user):
+        return user
+    raise HTTPException(status_code=403, detail="points_award_access_required")
+
+
+class UserListItemOut(BaseModel):
+    id: int
+    telegram_id: int
+    first_name: str
+    last_name: str | None
+    username: str | None
+    role: str
+    application_status: str
+    is_blocked: bool
+    is_archived: bool
+
+
+class UserListOut(BaseModel):
+    items: list[UserListItemOut]
+    total: int
+
+
+@router.get("/users", response_model=UserListOut)
+async def list_users_endpoint(
+    query: str = "",
+    role: str | None = None,
+    include_archived: bool = False,
+    limit: int = 30,
+    offset: int = 0,
+    _viewer: User = Depends(require_people_viewer),
+    session: AsyncSession = Depends(get_session),
+) -> UserListOut:
+    rows, total = await user_management_service.search_users(
+        session,
+        query=query,
+        role=role,
+        include_archived=include_archived,
+        limit=limit,
+        offset=offset,
+    )
+    return UserListOut(
+        items=[
+            UserListItemOut(
+                id=u.id,
+                telegram_id=u.telegram_id,
+                first_name=u.first_name,
+                last_name=u.last_name,
+                username=u.username,
+                role=u.role,
+                application_status=u.application_status,
+                is_blocked=u.is_blocked,
+                is_archived=u.is_archived,
+            )
+            for u in rows
+        ],
+        total=total,
+    )
+
+
+class BadgeOut(BaseModel):
+    id: int
+    name: str
+
+
+class SocialLinkOut(BaseModel):
+    platform: str
+    url: str
+
+
+class UserDetailOut(BaseModel):
+    id: int
+    telegram_id: int
+    first_name: str
+    last_name: str | None
+    username: str | None
+    role: str
+    application_status: str
+    participation_status: str
+    is_blocked: bool
+    is_archived: bool
+    city: str | None
+    phone: str | None
+    email: str | None
+    occupation: str | None
+    motivation: str | None
+    points_balance: int
+    portfolio_count: int
+    badges: list[BadgeOut]
+    available_badges: list[BadgeOut]
+    permissions: dict[str, bool]
+    social_links: list[SocialLinkOut]
+    can_manage: bool
+    can_manage_permissions: bool
+    can_award_points: bool
+
+
+async def _build_user_detail_out(
+    session: AsyncSession, target: User, viewer: User, settings: Settings
+) -> UserDetailOut:
+    balance = await total_points(session, target.id)
+    owned = await user_management_service.user_badges(session, target.id)
+    available = await user_management_service.available_badges(session, target.id)
+    links = await user_management_service.social_links(session, target.id)
+    active = user_management_service.active_permission_set(target)
+    return UserDetailOut(
+        id=target.id,
+        telegram_id=target.telegram_id,
+        first_name=target.first_name,
+        last_name=target.last_name,
+        username=target.username,
+        role=target.role,
+        application_status=target.application_status,
+        participation_status=target.participation_status,
+        is_blocked=target.is_blocked,
+        is_archived=target.is_archived,
+        city=target.city,
+        phone=target.phone,
+        email=target.email,
+        occupation=target.occupation,
+        motivation=target.motivation,
+        points_balance=balance,
+        portfolio_count=await user_management_service.portfolio_count(session, target.id),
+        badges=[BadgeOut(id=b.id, name=b.name) for b in owned],
+        available_badges=[BadgeOut(id=b.id, name=b.name) for b in available],
+        permissions={permission: permission in active for permission in PERMISSIONS},
+        social_links=[SocialLinkOut(platform=link.platform, url=link.url) for link in links],
+        can_manage=can_manage_people(viewer, settings, viewer.telegram_id),
+        can_manage_permissions=can_manage_permissions(viewer, settings, viewer.telegram_id),
+        can_award_points=is_full_admin(viewer, settings, viewer.telegram_id)
+        or "points.award" in active_permissions(viewer),
+    )
+
+
+@router.get("/users/{user_id}", response_model=UserDetailOut)
+async def read_user_detail(
+    user_id: int,
+    viewer: User = Depends(require_people_viewer),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+) -> UserDetailOut:
+    target = await session.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    return await _build_user_detail_out(session, target, viewer, settings)
+
+
+class RoleChangeIn(BaseModel):
+    role: str
+
+
+@router.post("/users/{user_id}/role", response_model=UserDetailOut)
+async def change_user_role(
+    user_id: int,
+    payload: RoleChangeIn,
+    manager: User = Depends(require_people_manager),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> UserDetailOut:
+    target = await session.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    try:
+        new_role = RoleEnum(payload.role)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="invalid_role") from None
+    decision = await user_management_service.change_role(
+        session,
+        actor=manager,
+        actor_telegram_id=manager.telegram_id,
+        target=target,
+        new_role=new_role,
+        settings=settings,
+    )
+    if not decision.allowed:
+        raise HTTPException(status_code=409, detail=decision.reason or "cannot_change_role")
+    if bot is not None:
+        await sync_user_chat_access(bot, settings, session, target)
+        await safe_send(
+            bot,
+            target.telegram_id,
+            f"Ваша роль в ЭРА обновлена: {ROLE_LABELS.get(new_role, new_role.value)}\n\n"
+            "Новые возможности уже доступны в меню",
+            main_menu(
+                settings.era_channel_url,
+                privileged=new_role in PRIVILEGED_ROLES,
+                admin=new_role == RoleEnum.ADMIN,
+                miniapp_url=settings.effective_miniapp_url,
+            ),
+        )
+    return await _build_user_detail_out(session, target, manager, settings)
+
+
+class BlockIn(BaseModel):
+    blocked: bool
+
+
+@router.post("/users/{user_id}/block", response_model=UserDetailOut)
+async def set_user_blocked(
+    user_id: int,
+    payload: BlockIn,
+    manager: User = Depends(require_people_manager),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> UserDetailOut:
+    target = await session.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    decision = await user_management_service.set_blocked(
+        session, actor=manager, target=target, settings=settings, blocked=payload.blocked
+    )
+    if not decision.allowed:
+        raise HTTPException(status_code=409, detail=decision.reason or "cannot_change_access")
+    if bot is not None:
+        await sync_user_chat_access(bot, settings, session, target)
+    return await _build_user_detail_out(session, target, manager, settings)
+
+
+class ArchiveIn(BaseModel):
+    archived: bool
+
+
+@router.post("/users/{user_id}/archive", response_model=UserDetailOut)
+async def set_user_archived(
+    user_id: int,
+    payload: ArchiveIn,
+    manager: User = Depends(require_people_manager),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> UserDetailOut:
+    target = await session.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    decision = await user_management_service.set_archived(
+        session, actor=manager, target=target, settings=settings, archived=payload.archived
+    )
+    if not decision.allowed:
+        raise HTTPException(status_code=409, detail=decision.reason or "cannot_change_access")
+    if bot is not None:
+        await sync_user_chat_access(bot, settings, session, target)
+    return await _build_user_detail_out(session, target, manager, settings)
+
+
+class PermissionToggleOut(BaseModel):
+    permission: str
+    enabled: bool
+
+
+@router.post("/users/{user_id}/permissions/{permission}", response_model=PermissionToggleOut)
+async def toggle_user_permission(
+    user_id: int,
+    permission: str,
+    manager: User = Depends(require_permissions_manager),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> PermissionToggleOut:
+    target = await session.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    decision, enabled = await user_management_service.toggle_permission(
+        session, actor=manager, target=target, permission=permission
+    )
+    if not decision.allowed:
+        raise HTTPException(status_code=409, detail=decision.reason or "cannot_change_permission")
+    return PermissionToggleOut(permission=permission, enabled=enabled)
+
+
+class PointsAwardIn(BaseModel):
+    amount: int
+    reason: str
+
+
+class PointsAwardOut(BaseModel):
+    balance: int
+
+
+@router.post("/users/{user_id}/points", response_model=PointsAwardOut)
+async def award_user_points(
+    user_id: int,
+    payload: PointsAwardIn,
+    awarder: User = Depends(require_points_awarder),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> PointsAwardOut:
+    reason = payload.reason.strip()
+    if payload.amount == 0 or abs(payload.amount) > user_management_service.MAX_POINTS_ADJUSTMENT:
+        raise HTTPException(status_code=422, detail="invalid_amount")
+    if not reason:
+        raise HTTPException(status_code=422, detail="comment_required")
+    target = await session.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    balance = await user_management_service.award_points(
+        session, target=target, amount=payload.amount, reason=reason, approved_by_id=awarder.id
+    )
+    if bot is not None:
+        await safe_send(
+            bot,
+            target.telegram_id,
+            f"Ваш баланс изменён на {payload.amount:+d} баллов\nПричина: {reason}\n\n"
+            f"Текущий баланс: {balance} баллов",
+        )
+    return PointsAwardOut(balance=balance)
+
+
+class BadgeAwardIn(BaseModel):
+    reason: str
+
+
+@router.post("/users/{user_id}/badges/{badge_id}", response_model=BadgeOut)
+async def award_user_badge(
+    user_id: int,
+    badge_id: int,
+    payload: BadgeAwardIn,
+    awarder: User = Depends(require_points_awarder),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> BadgeOut:
+    reason = payload.reason.strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="comment_required")
+    target = await session.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    badge = await session.get(Badge, badge_id)
+    if badge is None:
+        raise HTTPException(status_code=404, detail="badge_not_found")
+    awarded = await user_management_service.award_badge(
+        session, target=target, badge=badge, reason=reason, awarded_by_id=awarder.id
+    )
+    if not awarded:
+        raise HTTPException(status_code=409, detail="already_awarded")
+    if bot is not None:
+        await safe_send(bot, target.telegram_id, f"Вы получили знак «{badge.name}» 🌟\n\n{reason}")
+    return BadgeOut(id=badge.id, name=badge.name)

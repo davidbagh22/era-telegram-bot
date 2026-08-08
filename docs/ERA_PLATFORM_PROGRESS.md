@@ -1788,6 +1788,64 @@ registration still correctly shows `AuthErrorScreen`'s "откройте бот�
 working "Обновить" button to retry immediately after they do, instead of a
 dead end.
 
+## PR 24 — Admin Mode: People directory + profile actions (merged)
+
+**Owner request**: "функций не хватает в админ панели тоже, которые были в
+боте... админ панель главное исправь" — the Mini App's Admin Mode covered
+registration applications, project/event moderation, task-submission
+review, and offer-application review, but had **no equivalent at all** of
+the bot's `admin:participants` flow: searching/browsing every user (not
+just pending applications), viewing a full profile card, changing role,
+blocking/archiving, granting technical permissions, or awarding points/a
+badge directly. This was the single largest capability gap between the bot
+and the Mini App's admin surface.
+
+**Backend**: `app/services/user_management_service.py` (new) — extracted
+from `app/handlers/admin/rights_block6.py` and
+`app/handlers/admin/user_profile_block3_safe.py` without changing either
+bot handler's behavior: `search_users` (name/username/Telegram-ID search +
+role filter + pagination, backing the directory), `change_role`,
+`set_blocked`, `set_archived` (all reusing `authorization_service`'s
+existing decision functions — same "can't demote the last admin", "can't
+touch your own access" rules as the bot), `toggle_permission`,
+`award_points`, `award_badge` (mirrors the bot's amount/reason flow exactly,
+including the `-10000..10000` range rule).
+
+**API**: `app/api/v1/admin.py` — `GET /admin/users` (search+paginate),
+`GET /admin/users/{id}` (full profile: contact fields, balance, portfolio
+count, owned/available badges, per-permission map, social links, and
+`can_manage`/`can_manage_permissions`/`can_award_points` flags so the
+frontend renders exactly the actions the current admin is allowed), plus
+`POST .../role`, `.../block`, `.../archive`, `.../permissions/{permission}`,
+`.../points`, `.../badges/{badge_id}` — each behind its own guard
+(`can_view_people` / `can_manage_people` / `can_manage_permissions`, or the
+bot's own `points.award`-specific rule for points/badges — narrower than
+`people.manage` on purpose) and the same `enforce_admin_action_rate_limit`
+already covering every other Admin Mode mutation.
+
+**Frontend**: new "Участники" tab in `AdminScreen` →
+`AdminUsersScreen`/`PeopleList`/`PersonDetail` — search + role filter list,
+tap through to a full card with role selector, block/archive buttons,
+permission checkboxes, and a points/badge award form, each section only
+rendered if the current admin's `can_*` flags allow it.
+
+**Tests**: `tests/test_user_management_service.py` (14, real SQLite DB —
+search filters, role/block/archive authorization decisions, permission
+grant create-vs-toggle, points balance math, badge award idempotency),
+`tests/test_admin_people_api.py` (23, guard boundaries + happy path + one
+conflict per mutating endpoint), `frontend/e2e/admin_people.spec.ts` (real
+stack: admin searches the directory, opens a seeded participant, awards
+points, sees the refetched balance).
+
+**Known limitation carried forward**: partner-offer CRUD (creating/editing
+offers, not just reviewing applications to them), auctions, surveys, and
+per-event participant/attendance management — all bot-only via
+`app/handlers/admin/partners_admin.py`, `auction_block17.py`,
+`surveys_analytics.py`, `event_registration_block14.py` — remain
+unported; People management was the highest-impact single gap and is
+covered first. Visual redesign of the Mini App is tracked separately (see
+next section / owner request in this same message).
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

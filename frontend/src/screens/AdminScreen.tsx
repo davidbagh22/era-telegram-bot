@@ -6,12 +6,14 @@ import { AdminEventsScreen } from "./admin/AdminEventsScreen";
 import { AdminOffersScreen } from "./admin/AdminOffersScreen";
 import { AdminProjectsScreen } from "./admin/AdminProjectsScreen";
 import { AdminTasksScreen } from "./admin/AdminTasksScreen";
+import { AdminUsersScreen } from "./admin/AdminUsersScreen";
 
-type AdminSection = "dashboard" | "applications" | "projects" | "events" | "tasks" | "offers";
+type AdminSection = "dashboard" | "applications" | "people" | "projects" | "events" | "tasks" | "offers";
 
 const SECTIONS: { value: AdminSection; label: string }[] = [
   { value: "dashboard", label: "Дашборд" },
   { value: "applications", label: "Заявки" },
+  { value: "people", label: "Участники" },
   { value: "projects", label: "Проекты" },
   { value: "events", label: "Мероприятия" },
   { value: "tasks", label: "Задания" },
@@ -26,6 +28,7 @@ export function AdminScreen() {
       <PillTabs options={SECTIONS} active={section} onChange={setSection} />
       {section === "dashboard" && <AdminDashboardScreen />}
       {section === "applications" && <AdminApplicationsScreen />}
+      {section === "people" && <AdminUsersScreen />}
       {section === "projects" && <AdminProjectsScreen />}
       {section === "events" && <AdminEventsScreen />}
       {section === "tasks" && <AdminTasksScreen />}
