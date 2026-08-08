@@ -1846,6 +1846,71 @@ unported; People management was the highest-impact single gap and is
 covered first. Visual redesign of the Mini App is tracked separately (see
 next section / owner request in this same message).
 
+## PR 25 — Admin/Project operations: events, team-search posts, partner catalog (merged)
+
+**Owner request**: continue the bot-vs-Mini-App admin audit — "для админа
+и проекта все проанализируй что было в боте... необходимо добавить" — and
+close the next three gaps found.
+
+**Event operations** (`app/services/event_registration_service.py`):
+`list_operational_events` (events already approved/published, distinct
+from the moderation queue), `list_participants`, `set_attendance`,
+`award_attendance_points` — mirrors
+`app/handlers/admin/event_registration_block14.py` exactly, including its
+idempotency key, so re-running an award after marking one more attendee
+never double-pays anyone already paid.
+
+**Project "looking for a team" posts** (`app/services/project_workflow_service.py`):
+`team_post_state`, `list_projects_with_pending_team_post`,
+`prepare_team_post`, `edit_team_post`, `reject_team_post`,
+`publish_team_post` — mirrors `app/handlers/admin/projects_block5_team.py`'s
+approve/edit/reject/publish flow exactly, including its storage as two keys
+inside the existing `form_data` JSON blob rather than a new column, so the
+Bot and the Mini App can't drift into two different ideas of a post's
+state. Deliberately distinct from ProjectWorkspace's in-app roles/
+applications system (PR 5): this broadcasts to the general Telegram chat,
+reaching people who aren't necessarily browsing the Mini App at all —
+investigated and confirmed both mechanisms are still live and
+non-overlapping before porting this, not assumed redundant.
+
+**Partner + offer catalog** (`app/services/opportunity_service.py`):
+`list_partners`, `create_partner`, `set_partner_active`, `archive_partner`,
+`list_offers_admin`, `get_offer_with_partner`, `create_offer`,
+`set_offer_active`, `archive_offer` — mirrors
+`app/handlers/admin/partners_admin.py` and the create/list/toggle/archive
+half of `partner_offers_block16.py`. The Mini App's existing
+offer-application review (PR 12) only ever covered reviewing participants'
+applications to offers that already existed; there was no way to create or
+manage a partner or an offer itself without the Bot.
+
+**API**: 17 new endpoints on `app/api/v1/admin.py` (5 team-post, 4 event
+ops, 4 partner CRUD, 4 offer CRUD), each behind its existing area's guard
+(`require_project_reviewer` / `require_event_reviewer` /
+`require_offer_reviewer`) and the existing admin action rate limit.
+
+**Frontend**: `AdminProjectsScreen`, `AdminEventsScreen`, and
+`AdminOffersScreen` all split into sub-tabs via `PillTabs` — moderation
+queue vs. team-posts; moderation queue vs. live-event
+participants/attendance; applications vs. offers vs. partners — so the new
+operational actions sit next to, not instead of, the existing moderation
+screens.
+
+**Tests**: `test_event_registration_service.py` (3, new), team-post
+additions to `test_project_workflow_service.py` (8), partner/offer CRUD
+additions to `test_opportunity_service.py` (8), `test_admin_operations_api.py`
+(28, new — guard boundaries + happy path + one conflict per endpoint),
+`frontend/e2e/admin_catalog.spec.ts` (real stack: admin creates a partner,
+then an offer for it, sees both appear from the refetched list).
+
+**Not yet ported** (real gaps, not oversights — flagged for a follow-up
+PR before any Bot admin code is removed, per the owner's "очистить бота от
+дублей" request): auctions (`auction_block17.py`), surveys and analytics
+export (`surveys_analytics.py`, `analytics_filters.py`), office/department
+assignment (`offices_management.py`). Deleting the Bot's admin handlers for
+these now — before a Mini App equivalent exists — would be a feature
+regression, not cleanup, so the Bot-cleanup pass is sequenced to happen
+only after every admin capability has a working Mini App counterpart.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy
