@@ -16,12 +16,17 @@ test("admin creates an office and assigns the seeded participant to it", async (
   // appearing in the list after the screen refetches it from the API.
   await expect(page.getByText(officeTitle)).toBeVisible();
 
-  await page.getByRole("button", { name: "Назначить человека" }).click();
-  await page.getByPlaceholder("Имя, username или Telegram ID").fill("E2E Participant");
-  await page.getByRole("button", { name: "Найти" }).click();
-  await page.getByRole("button", { name: "E2E Participant" }).click();
+  // Scoped to this office's own card, not a bare global lookup: the app
+  // seeds a full set of reference-data offices on every boot
+  // (app/services/seed_service.py), so every one of them has an identical
+  // "Назначить человека" button.
+  const officeCard = page.locator(".era-card", { hasText: officeTitle });
+  await officeCard.getByRole("button", { name: "Назначить человека" }).click();
+  await officeCard.getByPlaceholder("Имя, username или Telegram ID").fill("E2E Participant");
+  await officeCard.getByRole("button", { name: "Найти" }).click();
+  await officeCard.getByRole("button", { name: "E2E Participant" }).click();
 
   // A real assignment through the full stack, verified by the participant's
-  // name appearing in the office's "Сейчас:" line after the refetch.
-  await expect(page.getByText(/Сейчас:.*E2E Participant/)).toBeVisible();
+  // name appearing in the office's own "Сейчас:" line after the refetch.
+  await expect(officeCard.getByText(/Сейчас:.*E2E Participant/)).toBeVisible();
 });
