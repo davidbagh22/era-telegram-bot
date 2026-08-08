@@ -12,6 +12,7 @@ import type {
   DashboardData,
   EventDecisionAction,
   EventForModeration,
+  AuctionAdmin,
   EventParticipant,
   Office,
   OfferAdmin,
@@ -31,7 +32,7 @@ import type {
 } from "../types/admin";
 import type { HomeSnapshot } from "../types/home";
 import type { LeaderOpenTask, LeaderOverview, OpenTaskCreatePayload } from "../types/leader";
-import type { Opportunity, OpportunityScope } from "../types/opportunity";
+import type { Auction, Opportunity, OpportunityScope } from "../types/opportunity";
 import type { Profile } from "../types/profile";
 import type {
   ProjectDetail,
@@ -416,6 +417,22 @@ export function unsaveOpportunity(offerId: number): Promise<Opportunity> {
   return authorizedPost<Opportunity>(`/api/v1/opportunities/${offerId}/unsave`);
 }
 
+// Points-based auctions — the participant-facing half of
+// app/handlers/participant/auction_block17.py. Distinct from offers above:
+// the cost is whatever the winning bid turns out to be, decided only
+// after bidding closes and an admin confirms a winner.
+export function fetchAuctions(): Promise<Auction[]> {
+  return authorizedGet<Auction[]>("/api/v1/auctions");
+}
+
+export function fetchAuction(auctionId: number): Promise<Auction> {
+  return authorizedGet<Auction>(`/api/v1/auctions/${auctionId}`);
+}
+
+export function placeBid(auctionId: number, amount: number): Promise<Auction> {
+  return authorizedPost<Auction>(`/api/v1/auctions/${auctionId}/bid`, { amount });
+}
+
 export function fetchAdminDashboard(): Promise<DashboardData> {
   return authorizedGet<DashboardData>("/api/v1/admin/dashboard");
 }
@@ -598,6 +615,35 @@ export function setOfferActive(offerId: number, active: boolean): Promise<OfferA
 
 export function archiveOffer(offerId: number): Promise<OfferAdmin> {
   return authorizedPost<OfferAdmin>(`/api/v1/admin/offers/${offerId}/archive`);
+}
+
+// Admin auction management (app/handlers/admin/auction_block17.py) —
+// create lots, confirm the winner once bidding closes, mark a lot
+// delivered, or cancel it without a winner.
+export function fetchAdminAuctions(): Promise<AuctionAdmin[]> {
+  return authorizedGet<AuctionAdmin[]>("/api/v1/admin/auctions");
+}
+
+export function createAuction(payload: {
+  title: string;
+  description: string;
+  minimum_bid: number;
+  bid_step: number;
+  ends_at: string;
+}): Promise<AuctionAdmin> {
+  return authorizedPost<AuctionAdmin>("/api/v1/admin/auctions", payload);
+}
+
+export function confirmAuctionWinner(auctionId: number): Promise<AuctionAdmin> {
+  return authorizedPost<AuctionAdmin>(`/api/v1/admin/auctions/${auctionId}/confirm-winner`);
+}
+
+export function deliverAuction(auctionId: number): Promise<AuctionAdmin> {
+  return authorizedPost<AuctionAdmin>(`/api/v1/admin/auctions/${auctionId}/deliver`);
+}
+
+export function cancelAuction(auctionId: number): Promise<AuctionAdmin> {
+  return authorizedPost<AuctionAdmin>(`/api/v1/admin/auctions/${auctionId}/cancel`);
 }
 
 export interface AdminUsersQuery {

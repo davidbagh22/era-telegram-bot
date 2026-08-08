@@ -43,11 +43,15 @@ CI (`.github/workflows/ci.yml`, `e2e` job) runs exactly this sequence with a
 
 Seeded by `scripts/e2e_seed.py`, fixed Telegram IDs so specs can reference
 them directly: participant `900001`, leader `900002`, admin `900003`, a
-`900004` pending applicant for the admin-approval scenario, and a `900005`
+`900004` pending applicant for the admin-approval scenario, a `900005`
 pending applicant dedicated to the live-sync scenario (kept separate from
 `900004` so the two specs never contend over the Admin UI's single global
-"Одобрить" button). One future, `registration_open` event so the
-participant spec has something to register for.
+"Одобрить" button), and a `900006` participant with a pre-seeded 1000-point
+balance dedicated to the auctions bidding scenario (kept separate from
+`900001` so admin_people.spec.ts's exact post-award balance assertion never
+has to account for points spent bidding elsewhere). One future,
+`registration_open` event so the participant spec has something to
+register for.
 
 ## Scope
 
@@ -68,6 +72,16 @@ stack (not just a page render):
   re-check `useAuth.ts`'s visibility/focus listeners perform flips it
   straight to Home — proving the live-sync fix, not just that a fresh page
   load would eventually show the right thing.
+- **Admin People** (`admin_people.spec.ts`): searches the People directory,
+  opens the seeded participant, awards points through the real form, sees
+  the refetched balance.
+- **Admin catalog** (`admin_catalog.spec.ts`): creates a partner, then an
+  offer for it, sees both appear from the refetched lists.
+- **Admin offices** (`admin_offices.spec.ts`): creates a position, assigns
+  the seeded participant to it, sees the assignment appear.
+- **Auctions** (`auctions.spec.ts`): admin publishes a lot; a separate,
+  dedicated bidder session places a real bid on it, sees it reflected as
+  "your bid" after the refetch.
 
 Not covered here (see `docs/PRODUCTION_READINESS_AUDIT.md` backlog):
 concurrent-decision races, file/portfolio upload, and the chat/registration

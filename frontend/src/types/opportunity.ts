@@ -14,3 +14,16 @@ export interface Opportunity {
   is_saved: boolean;
   reasons: string[];
 }
+
+export interface Auction {
+  id: number;
+  title: string;
+  description: string;
+  top_bid: number | null;
+  top_bidder: string | null;
+  my_bid: number | null;
+  next_minimum_bid: number;
+  bid_step: number;
+  ends_at: string;
+  is_open: boolean;
+}

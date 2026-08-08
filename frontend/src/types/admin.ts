@@ -164,6 +164,25 @@ export interface Office {
   assignments: OfficeAssignment[];
 }
 
+export interface AuctionBid {
+  bid_id: number;
+  bidder_id: number;
+  bidder_name: string;
+  amount: number;
+}
+
+export interface AuctionAdmin {
+  id: number;
+  title: string;
+  description: string;
+  status: string;
+  minimum_bid: number;
+  bid_step: number;
+  ends_at: string;
+  top_bid: number | null;
+  bids: AuctionBid[];
+}
+
 export interface UserDetail {
   id: number;
   telegram_id: number;

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -12,6 +13,7 @@ from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.rate_limit import enforce_rate_limit
 from app.config import Settings
 from app.database.models import (
+    Auction,
     Badge,
     Event,
     EventRegistration,
@@ -25,6 +27,7 @@ from app.database.models import (
 from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
 from app.keyboards.participant import main_menu
 from app.services import (
+    auction_service,
     event_moderation_service,
     event_registration_service,
     office_management_service,
@@ -1573,3 +1576,175 @@ async def remove_office_assignment_endpoint(
         raise HTTPException(status_code=404, detail="office_not_found")
     office_management_service.remove_assignment(assignment)
     return await _to_office_out(session, office)
+
+
+# ---------------------------------------------------------------------------
+# Auctions — the Mini App equivalent of the admin half of
+# app/handlers/admin/auction_block17.py (create lot, confirm winner, mark
+# delivered, cancel). The participant side (browse + bid) is
+# /api/v1/auctions, mounted separately since it's a participant-facing
+# feature, not an admin one.
+# ---------------------------------------------------------------------------
+
+
+class AuctionBidOut(BaseModel):
+    bid_id: int
+    bidder_id: int
+    bidder_name: str
+    amount: int
+
+
+class AuctionAdminOut(BaseModel):
+    id: int
+    title: str
+    description: str
+    status: str
+    minimum_bid: int
+    bid_step: int
+    ends_at: str
+    top_bid: int | None
+    bids: list[AuctionBidOut]
+
+
+async def _to_auction_admin_out(session: AsyncSession, auction) -> AuctionAdminOut:
+    rows = await auction_service.list_bids(session, auction.id)
+    top_bid, _ = await auction_service.top_bid_with_user(session, auction.id)
+    return AuctionAdminOut(
+        id=auction.id,
+        title=auction.title,
+        description=auction.description,
+        status=auction.status,
+        minimum_bid=auction.minimum_bid,
+        bid_step=auction.bid_step,
+        ends_at=auction.ends_at.isoformat(),
+        top_bid=top_bid.amount if top_bid else None,
+        bids=[
+            AuctionBidOut(
+                bid_id=bid.id,
+                bidder_id=bidder.id,
+                bidder_name=auction_service.bidder_name(bidder),
+                amount=bid.amount,
+            )
+            for bid, bidder in rows
+        ],
+    )
+
+
+@router.get("/auctions", response_model=list[AuctionAdminOut])
+async def list_auctions_endpoint(
+    _reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+) -> list[AuctionAdminOut]:
+    auctions = await auction_service.list_all_auctions(session)
+    return [await _to_auction_admin_out(session, auction) for auction in auctions]
+
+
+class AuctionCreateIn(BaseModel):
+    title: str
+    description: str
+    minimum_bid: int
+    bid_step: int
+    ends_at: str  # "YYYY-MM-DD HH:MM" in the server's configured timezone
+
+
+@router.post("/auctions", response_model=AuctionAdminOut)
+async def create_auction_endpoint(
+    payload: AuctionCreateIn,
+    reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> AuctionAdminOut:
+    title = payload.title.strip()
+    description = payload.description.strip()
+    if not title or not description:
+        raise HTTPException(status_code=422, detail="title_and_description_required")
+    if payload.minimum_bid <= 0 or payload.bid_step <= 0:
+        raise HTTPException(status_code=422, detail="invalid_bid_amount")
+    try:
+        local_value = datetime.strptime(payload.ends_at, "%Y-%m-%d %H:%M").replace(
+            tzinfo=ZoneInfo(settings.timezone)
+        )
+    except (ValueError, KeyError):
+        raise HTTPException(status_code=422, detail="invalid_ends_at") from None
+    ends_at = local_value.astimezone(timezone.utc)
+    if ends_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=422, detail="ends_at_must_be_future")
+    auction = await auction_service.create_auction(
+        session,
+        title=title[:255],
+        description=description[:3000],
+        minimum_bid=payload.minimum_bid,
+        bid_step=payload.bid_step,
+        ends_at=ends_at,
+        created_by_id=reviewer.id,
+    )
+    return await _to_auction_admin_out(session, auction)
+
+
+@router.post("/auctions/{auction_id}/confirm-winner", response_model=AuctionAdminOut)
+async def confirm_auction_winner_endpoint(
+    auction_id: int,
+    reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> AuctionAdminOut:
+    auction = await session.get(Auction, auction_id)
+    if auction is None:
+        raise HTTPException(status_code=404, detail="auction_not_found")
+    if auction.status != "active":
+        raise HTTPException(status_code=409, detail="auction_already_closed")
+    if datetime.now(timezone.utc) < auction.ends_at:
+        raise HTTPException(status_code=409, detail="bidding_still_open")
+    result = await auction_service.confirm_winner(session, auction, actor_id=reviewer.id)
+    if result is None:
+        raise HTTPException(status_code=409, detail="no_valid_bidder")
+    bid, winner = result
+    if bot is not None:
+        await safe_send(
+            bot,
+            winner.telegram_id,
+            f"Вы выиграли аукцион «{auction.title}».\nСписано: {bid.amount} баллов.\n"
+            "Команда ЭРА свяжется с Вами для передачи лота.",
+        )
+    return await _to_auction_admin_out(session, auction)
+
+
+@router.post("/auctions/{auction_id}/deliver", response_model=AuctionAdminOut)
+async def deliver_auction_endpoint(
+    auction_id: int,
+    _reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> AuctionAdminOut:
+    auction = await session.get(Auction, auction_id)
+    if auction is None:
+        raise HTTPException(status_code=404, detail="auction_not_found")
+    if auction.status != "completed":
+        raise HTTPException(status_code=409, detail="cannot_mark_delivered")
+    winner = await auction_service.mark_delivered(session, auction)
+    if bot is not None and winner is not None:
+        await safe_send(
+            bot, winner.telegram_id, f"Лот «{auction.title}» отмечен как переданный. Спасибо за участие в аукционе ЭРА."
+        )
+    return await _to_auction_admin_out(session, auction)
+
+
+@router.post("/auctions/{auction_id}/cancel", response_model=AuctionAdminOut)
+async def cancel_auction_endpoint(
+    auction_id: int,
+    reviewer: User = Depends(require_offer_reviewer),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> AuctionAdminOut:
+    auction = await session.get(Auction, auction_id)
+    if auction is None:
+        raise HTTPException(status_code=404, detail="auction_not_found")
+    if auction.status != "active":
+        raise HTTPException(status_code=409, detail="auction_already_closed")
+    if datetime.now(timezone.utc) < auction.ends_at:
+        raise HTTPException(status_code=409, detail="bidding_still_open")
+    await auction_service.cancel_auction(session, auction, actor_id=reviewer.id)
+    return await _to_auction_admin_out(session, auction)

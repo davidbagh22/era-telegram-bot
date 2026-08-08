@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     activity,
     admin,
+    auctions,
     auth,
     events,
     home,
@@ -25,6 +26,7 @@ api_router.include_router(tasks.router)
 api_router.include_router(activity.router)
 api_router.include_router(projects.router)
 api_router.include_router(opportunities.router)
+api_router.include_router(auctions.router)
 api_router.include_router(admin.router)
 api_router.include_router(profile.router)
 api_router.include_router(leader.router)

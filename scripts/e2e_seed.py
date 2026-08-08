@@ -24,7 +24,7 @@ from datetime import date, time, timedelta
 
 from app.config import get_settings
 from app.database.base import Base
-from app.database.models import Event, User
+from app.database.models import Event, PointTransaction, User
 from app.database.session import create_engine_and_sessionmaker
 from app.utils.constants import ApplicationStatus, EventStatus, Role
 
@@ -42,6 +42,11 @@ PENDING_APPLICANT_TELEGRAM_ID = 900004
 # approved by pending_sync.spec.ts directly through the API instead, so it
 # never appears next to the other one in the Admin UI.
 PENDING_SYNC_APPLICANT_TELEGRAM_ID = 900005
+# Dedicated fixture for auctions.spec.ts: a real bid needs a real points
+# balance, and PARTICIPANT_TELEGRAM_ID's balance must stay exactly 0 going
+# into admin_people.spec.ts (which asserts an exact post-award total). A
+# separate user avoids the two tests fighting over one balance.
+AUCTION_BIDDER_TELEGRAM_ID = 900006
 
 
 async def seed() -> None:
@@ -92,7 +97,23 @@ async def seed() -> None:
                 ),
             ]
         )
-        await session.flush()  # assigns admin.id, used as the event's creator
+        bidder = User(
+            telegram_id=AUCTION_BIDDER_TELEGRAM_ID,
+            first_name="E2E Auction Bidder",
+            role=Role.PARTICIPANT,
+            application_status=ApplicationStatus.APPROVED,
+        )
+        session.add(bidder)
+        await session.flush()  # assigns admin.id/bidder.id, used below
+        session.add(
+            PointTransaction(
+                user_id=bidder.id,
+                points=1000,
+                reason="E2E seed balance",
+                source_type="e2e_seed",
+                idempotency_key=f"e2e_seed:auction_bidder:{bidder.id}",
+            )
+        )
         session.add(
             Event(
                 title="E2E тестовое мероприятие",
@@ -113,7 +134,8 @@ async def seed() -> None:
         "E2E fixtures seeded: "
         f"participant={PARTICIPANT_TELEGRAM_ID}, leader={LEADER_TELEGRAM_ID}, "
         f"admin={ADMIN_TELEGRAM_ID}, pending_applicant={PENDING_APPLICANT_TELEGRAM_ID}, "
-        f"pending_sync_applicant={PENDING_SYNC_APPLICANT_TELEGRAM_ID}"
+        f"pending_sync_applicant={PENDING_SYNC_APPLICANT_TELEGRAM_ID}, "
+        f"auction_bidder={AUCTION_BIDDER_TELEGRAM_ID}"
     )
 
 

@@ -1951,6 +1951,57 @@ count (25 → 29).
 **Remaining before the Bot admin-cleanup pass**: auctions and surveys/
 analytics export are still Bot-only.
 
+## PR 27 — Points-based auctions, participant + admin (merged)
+
+Closes the auctions gap flagged in PR 25/26 — the last participant-facing
+feature (not just an admin one) that existed only in the Bot. Ported both
+halves: `app/handlers/participant/auction_block17.py` (browse, bid) and
+`app/handlers/admin/auction_block17.py` (create a lot, confirm the winner,
+mark delivered, cancel).
+
+**Backend** (`app/services/auction_service.py`, extended — the existing
+pure formatting helpers `format_local`/`remaining_time`/`bidder_name`/
+`top_bid_with_user`/`is_open` are untouched): `next_minimum_bid`,
+`list_active_auctions`, `list_all_auctions`, `get_user_bid`, `list_bids`,
+`place_bid` (same minimum-bid and balance checks, same upsert-by-user
+semantics as the Bot — a bid never touches points, only a confirmed win
+does), `create_auction`, `confirm_winner` (walks bids highest-first, skips
+— marks invalid — any bidder blocked/archived/short of balance since
+bidding, deducts points only from the actual winner, marks every other
+bid "lost"; mirrors the Bot's handler exactly, including its idempotency
+key), `mark_delivered`, `cancel_auction`.
+
+**API**: new `/api/v1/auctions` router (participant-facing: list/detail/
+bid, no role restriction beyond being an approved user — same as the
+Bot); `app/api/v1/admin.py` gains `GET/POST /admin/auctions`,
+`POST /admin/auctions/{id}/confirm-winner`, `.../deliver`, `.../cancel`,
+all behind `require_offer_reviewer` (`can_manage_partners`), matching the
+Bot's own `admin_ok` guard.
+
+**Frontend**: new "Аукционы" tab in `OpportunitiesScreen` (participant —
+browse lots, see the current top bid/leader, place a bid) and in
+`AdminOffersScreen` (admin — publish a lot, confirm winner/cancel once
+bidding closes, mark delivered).
+
+**Tests**: `test_auction_service.py` (11, real SQLite DB — including the
+"blocked bidder is skipped, runner-up wins" and "nobody qualifies" edge
+cases the Bot handler itself handles), `test_auctions_api.py` (14, both
+routers), `frontend/e2e/auctions.spec.ts` (real stack: admin publishes a
+lot, a dedicated seeded bidder places a real bid, sees it reflected after
+the refetch). `scripts/e2e_seed.py` gained a dedicated
+`AUCTION_BIDDER_TELEGRAM_ID` (900006) with a pre-seeded 1000-point
+balance — kept separate from the shared participant fixture (900001) so
+`admin_people.spec.ts`'s exact post-award balance assertion never has to
+account for points spent bidding elsewhere.
+`test_admin_leader_rate_limiting.py`: updated hardcoded admin POST route
+count (29 → 33).
+
+**Remaining before the Bot admin-cleanup pass**: surveys/analytics export
+(`surveys_analytics.py`, `analytics_filters.py`) is the only Bot-only
+admin capability left. Once it's ported, every admin (and now every
+participant-facing) capability will have a Mini App equivalent, and the
+Bot-cleanup pass — removing the now-duplicated Bot handlers — can begin.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy
