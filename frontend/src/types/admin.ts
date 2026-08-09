@@ -201,6 +201,26 @@ export interface SurveyResponseAdmin {
   answers: { question: string; answer: string }[];
 }
 
+export interface RewardAdmin {
+  id: number;
+  name: string;
+  description: string;
+  point_cost: number;
+  quantity: number | null;
+  is_active: boolean;
+}
+
+export interface RedemptionAdmin {
+  id: number;
+  reward_id: number;
+  reward_name: string;
+  user_id: number;
+  user_name: string;
+  points_spent: number;
+  status: string;
+  admin_comment: string | null;
+}
+
 export interface UserDetail {
   id: number;
   telegram_id: number;
