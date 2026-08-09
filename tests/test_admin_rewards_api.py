@@ -152,16 +152,24 @@ class AdminRewardsApiTests(unittest.TestCase):
         response = client.post("/api/v1/admin/redemptions/1/answer", json={"answer": "   "})
         self.assertEqual(response.status_code, 422)
 
-    def test_answer_redemption_fails_when_delivery_fails(self) -> None:
+    def test_answer_redemption_records_answer_even_when_delivery_fails(self) -> None:
+        # Fire-and-forget, like every other admin notification in this
+        # router — a transient Telegram delivery failure shouldn't block
+        # the admin from recording their reply (the Redemptions list
+        # isn't chat-mediated the way the Bot's own flow was).
         redemption = _redemption()
         reward = _reward()
         target = SimpleNamespace(id=2, telegram_id=777, first_name="A", last_name=None)
         session = SimpleNamespace(get=AsyncMock(side_effect=[redemption, reward, target]))
         app = _build_app(_admin(), session, bot=SimpleNamespace())
         client = TestClient(app)
-        with patch("app.api.v1.admin.safe_send", new=AsyncMock(return_value=False)):
+        with (
+            patch("app.api.v1.admin.safe_send", new=AsyncMock(return_value=False)),
+            patch("app.api.v1.admin.redemption_service.answer_redemption", new=AsyncMock()) as answer_mock,
+        ):
             response = client.post("/api/v1/admin/redemptions/1/answer", json={"answer": "ok"})
-        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.status_code, 200)
+        answer_mock.assert_awaited_once()
 
     def test_answer_redemption_success(self) -> None:
         redemption = _redemption()

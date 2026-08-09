@@ -2092,14 +2092,18 @@ async def answer_redemption_endpoint(
     if reward is None or target is None:
         raise HTTPException(status_code=404, detail="reward_or_user_not_found")
     if bot is not None:
-        delivered = await safe_send(
+        # Fire-and-forget, like every other admin notification in this
+        # router — the Bot's own chat flow refused to record an answer it
+        # couldn't deliver because the very next message *was* the
+        # delivery confirmation; the Mini App's Redemptions list isn't
+        # chat-mediated, so a transient Telegram delivery failure
+        # shouldn't block the admin from recording their reply here.
+        await safe_send(
             bot,
             target.telegram_id,
             f"🎁 Ответ по возможности «{reward.name}»\n\n{answer}\n\n"
             "Баллы пока не списаны — окончательное решение об обмене ещё не принято",
         )
-        if not delivered:
-            raise HTTPException(status_code=502, detail="delivery_failed")
     await redemption_service.answer_redemption(session, redemption, answer=answer, admin_id=awarder.id)
     return RedemptionAdminOut(
         id=redemption.id,

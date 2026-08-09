@@ -2199,12 +2199,19 @@ with the reward and user), `answer_redemption`. `exchange_redemption`/
 **API**: new `/api/v1/rewards` router (participant: list with per-reward
 `my_status`, redeem). `app/api/v1/admin.py` gains `GET/POST
 /admin/rewards`, `POST /admin/rewards/{id}/disable`, `GET
-/admin/redemptions`, `POST /admin/redemptions/{id}/answer` (delivers the
-reply via the same Bot instance before recording it — mirrors the Bot's
-own "don't record an answer nobody received" check), `.../exchange`,
+/admin/redemptions`, `POST /admin/redemptions/{id}/answer`, `.../exchange`,
 `.../reject` — all behind `require_points_awarder` (mirrors
 `user_profile_block3_safe.py`'s own guard: full admins always, everyone
-else needs the `points.award` grant specifically).
+else needs the `points.award` grant specifically). The Bot's own
+`redemption_answer_save` refused to record an answer it couldn't
+deliver — its "exchange" button was literally attached to the delivery
+confirmation message, so an undelivered answer meant there was nothing
+to attach it to. The Mini App's Redemptions list isn't chat-mediated the
+same way, so `.../answer` fires the Telegram notification the same
+fire-and-forget way every other admin endpoint in this router does,
+rather than blocking the reply from being recorded on a transient
+delivery failure — caught by `frontend/e2e/rewards.spec.ts` failing
+against the CI environment's fake bot token before this shipped.
 
 **Frontend**: new "Каталог" tab in `OpportunitiesScreen` (participant —
 browse rewards, see a status badge once a redemption is open, redeem)
