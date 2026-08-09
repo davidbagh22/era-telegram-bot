@@ -4,14 +4,16 @@ import { AuctionsPanel } from "./offers/AuctionsPanel";
 import { OfferApplicationsPanel } from "./offers/OfferApplicationsPanel";
 import { OffersPanel } from "./offers/OffersPanel";
 import { PartnersPanel } from "./offers/PartnersPanel";
+import { RewardsPanel } from "./offers/RewardsPanel";
 
-type OffersSection = "applications" | "offers" | "partners" | "auctions";
+type OffersSection = "applications" | "offers" | "partners" | "auctions" | "rewards";
 
 const SECTIONS: { value: OffersSection; label: string }[] = [
   { value: "applications", label: "Заявки" },
   { value: "offers", label: "Предложения" },
   { value: "partners", label: "Партнёры" },
   { value: "auctions", label: "Аукционы" },
+  { value: "rewards", label: "Каталог" },
 ];
 
 export function AdminOffersScreen() {
@@ -24,6 +26,7 @@ export function AdminOffersScreen() {
       {section === "offers" && <OffersPanel />}
       {section === "partners" && <PartnersPanel />}
       {section === "auctions" && <AuctionsPanel />}
+      {section === "rewards" && <RewardsPanel />}
     </div>
   );
 }

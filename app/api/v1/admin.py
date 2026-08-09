@@ -19,6 +19,8 @@ from app.database.models import (
     EventRegistration,
     Office,
     Project,
+    RewardItem,
+    RewardRedemption,
     Task,
     TaskSubmission,
     User,
@@ -34,6 +36,7 @@ from app.services import (
     office_management_service,
     opportunity_service,
     project_workflow_service,
+    redemption_service,
     survey_admin_service,
     survey_service,
     task_review_service,
@@ -1939,3 +1942,236 @@ async def list_survey_responses_endpoint(
         )
         for response, respondent in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Rewards & Redemptions — the Mini App equivalent of the admin:reward*/
+# admin:redemption* handlers in app/handlers/admin/panel.py (points-shop
+# catalog: create/disable a reward, answer a redemption request, then
+# confirm the exchange or reject it). A reward's cost is fixed up front,
+# distinct from Auctions where the cost is decided by bidding.
+# ---------------------------------------------------------------------------
+
+
+class RewardAdminOut(BaseModel):
+    id: int
+    name: str
+    description: str
+    point_cost: int
+    quantity: int | None
+    is_active: bool
+
+
+def _to_reward_admin_out(reward) -> RewardAdminOut:
+    return RewardAdminOut(
+        id=reward.id,
+        name=reward.name,
+        description=reward.description,
+        point_cost=reward.point_cost,
+        quantity=reward.quantity,
+        is_active=reward.is_active,
+    )
+
+
+@router.get("/rewards", response_model=list[RewardAdminOut])
+async def list_rewards_admin_endpoint(
+    _awarder: User = Depends(require_points_awarder),
+    session: AsyncSession = Depends(get_session),
+) -> list[RewardAdminOut]:
+    rewards = await redemption_service.list_rewards_admin(session, include_inactive=True)
+    return [_to_reward_admin_out(reward) for reward in rewards]
+
+
+class RewardCreateIn(BaseModel):
+    name: str
+    description: str
+    point_cost: int
+    quantity: int | None = None
+
+
+@router.post("/rewards", response_model=RewardAdminOut)
+async def create_reward_endpoint(
+    payload: RewardCreateIn,
+    awarder: User = Depends(require_points_awarder),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> RewardAdminOut:
+    name = payload.name.strip()
+    description = payload.description.strip()
+    if not name or not description:
+        raise HTTPException(status_code=422, detail="name_and_description_required")
+    if payload.point_cost <= 0:
+        raise HTTPException(status_code=422, detail="invalid_point_cost")
+    if payload.quantity is not None and payload.quantity < 0:
+        raise HTTPException(status_code=422, detail="invalid_quantity")
+    reward = await redemption_service.create_reward(
+        session,
+        name=name[:255],
+        description=description[:2000],
+        point_cost=payload.point_cost,
+        quantity=payload.quantity,
+        created_by_id=awarder.id,
+    )
+    return _to_reward_admin_out(reward)
+
+
+@router.post("/rewards/{reward_id}/disable", response_model=RewardAdminOut)
+async def disable_reward_endpoint(
+    reward_id: int,
+    _awarder: User = Depends(require_points_awarder),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> RewardAdminOut:
+    reward = await session.get(RewardItem, reward_id)
+    if reward is None:
+        raise HTTPException(status_code=404, detail="reward_not_found")
+    redemption_service.disable_reward(reward)
+    return _to_reward_admin_out(reward)
+
+
+class RedemptionAdminOut(BaseModel):
+    id: int
+    reward_id: int
+    reward_name: str
+    user_id: int
+    user_name: str
+    points_spent: int
+    status: str
+    admin_comment: str | None
+
+
+@router.get("/redemptions", response_model=list[RedemptionAdminOut])
+async def list_redemptions_endpoint(
+    _awarder: User = Depends(require_points_awarder),
+    session: AsyncSession = Depends(get_session),
+) -> list[RedemptionAdminOut]:
+    rows = await redemption_service.list_open_redemptions(session)
+    return [
+        RedemptionAdminOut(
+            id=redemption.id,
+            reward_id=reward.id,
+            reward_name=reward.name,
+            user_id=respondent.id,
+            user_name=f"{respondent.first_name} {respondent.last_name or ''}".strip(),
+            points_spent=redemption.points_spent,
+            status=redemption.status,
+            admin_comment=redemption.admin_comment,
+        )
+        for redemption, reward, respondent in rows
+    ]
+
+
+async def _get_redemption_or_404(session: AsyncSession, redemption_id: int) -> RewardRedemption:
+    redemption = await session.get(RewardRedemption, redemption_id)
+    if redemption is None:
+        raise HTTPException(status_code=404, detail="redemption_not_found")
+    return redemption
+
+
+class RedemptionAnswerIn(BaseModel):
+    answer: str
+
+
+@router.post("/redemptions/{redemption_id}/answer", response_model=RedemptionAdminOut)
+async def answer_redemption_endpoint(
+    redemption_id: int,
+    payload: RedemptionAnswerIn,
+    awarder: User = Depends(require_points_awarder),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> RedemptionAdminOut:
+    redemption = await _get_redemption_or_404(session, redemption_id)
+    if redemption.status not in redemption_service.OPEN_REDEMPTION_STATUSES:
+        raise HTTPException(status_code=409, detail="redemption_already_closed")
+    answer = payload.answer.strip()
+    if not answer:
+        raise HTTPException(status_code=422, detail="answer_required")
+    reward = await session.get(RewardItem, redemption.reward_id)
+    target = await session.get(User, redemption.user_id)
+    if reward is None or target is None:
+        raise HTTPException(status_code=404, detail="reward_or_user_not_found")
+    if bot is not None:
+        delivered = await safe_send(
+            bot,
+            target.telegram_id,
+            f"🎁 Ответ по возможности «{reward.name}»\n\n{answer}\n\n"
+            "Баллы пока не списаны — окончательное решение об обмене ещё не принято",
+        )
+        if not delivered:
+            raise HTTPException(status_code=502, detail="delivery_failed")
+    await redemption_service.answer_redemption(session, redemption, answer=answer, admin_id=awarder.id)
+    return RedemptionAdminOut(
+        id=redemption.id,
+        reward_id=reward.id,
+        reward_name=reward.name,
+        user_id=target.id,
+        user_name=f"{target.first_name} {target.last_name or ''}".strip(),
+        points_spent=redemption.points_spent,
+        status=redemption.status,
+        admin_comment=redemption.admin_comment,
+    )
+
+
+@router.post("/redemptions/{redemption_id}/exchange", response_model=RedemptionAdminOut)
+async def exchange_redemption_endpoint(
+    redemption_id: int,
+    awarder: User = Depends(require_points_awarder),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> RedemptionAdminOut:
+    result = await redemption_service.exchange_redemption(session, redemption_id=redemption_id, admin_id=awarder.id)
+    if result.code != "exchanged":
+        raise HTTPException(status_code=409, detail=result.code)
+    target = await session.get(User, result.redemption.user_id)
+    if bot is not None and target is not None:
+        balance = await total_points(session, result.redemption.user_id)
+        await safe_send(
+            bot,
+            target.telegram_id,
+            f"✅ Возможность «{result.reward.name}» подтверждена\n\n"
+            f"Списано: {result.redemption.points_spent} баллов\n"
+            f"Остаток: {balance} баллов\n\n"
+            "Команда ЭРА свяжется с Вами по дальнейшим шагам",
+        )
+    return RedemptionAdminOut(
+        id=result.redemption.id,
+        reward_id=result.reward.id,
+        reward_name=result.reward.name,
+        user_id=result.redemption.user_id,
+        user_name=f"{target.first_name} {target.last_name or ''}".strip() if target else "",
+        points_spent=result.redemption.points_spent,
+        status=result.redemption.status,
+        admin_comment=result.redemption.admin_comment,
+    )
+
+
+@router.post("/redemptions/{redemption_id}/reject", response_model=RedemptionAdminOut)
+async def reject_redemption_endpoint(
+    redemption_id: int,
+    awarder: User = Depends(require_points_awarder),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> RedemptionAdminOut:
+    result = await redemption_service.reject_redemption(session, redemption_id=redemption_id, admin_id=awarder.id)
+    if result.code != "rejected":
+        raise HTTPException(status_code=409, detail=result.code)
+    target = await session.get(User, result.redemption.user_id)
+    if bot is not None and target is not None and result.reward is not None:
+        await safe_send(
+            bot,
+            target.telegram_id,
+            f"Заявка на «{result.reward.name}» отклонена. Баллы с Вашего баланса не списывались",
+        )
+    return RedemptionAdminOut(
+        id=result.redemption.id,
+        reward_id=result.reward.id if result.reward else 0,
+        reward_name=result.reward.name if result.reward else "",
+        user_id=result.redemption.user_id,
+        user_name=f"{target.first_name} {target.last_name or ''}".strip() if target else "",
+        points_spent=result.redemption.points_spent,
+        status=result.redemption.status,
+        admin_comment=result.redemption.admin_comment,
+    )

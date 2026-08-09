@@ -2176,6 +2176,60 @@ callback_data strings that were replaced.
    notification logic, and the webhook/dispatcher wiring must be
    preserved exactly.
 
+## PR 31 — Rewards & Redemptions, participant + admin (merged)
+
+Ports the first of the two admin capabilities PR 30's investigation found
+missing entirely from the Mini App: the points-shop catalog
+(`RewardItem`/`RewardRedemption` — "Каталог возможностей" in the Bot).
+Distinct from Auctions (PR 27): a reward's cost is fixed up front, not
+decided by bidding, and every redemption goes through an admin reply
+before points are ever debited — the Bot's own `exchange_redemption`/
+`reject_redemption` in `app/services/redemption_service.py` already
+enforced this (row-locked, idempotent), so the Mini App port reuses that
+logic unchanged rather than re-implementing it.
+
+**Backend** (`app/services/redemption_service.py`, extended): participant
+half — `list_visible_rewards`, `get_user_redemption`, `redeem_reward`
+(same validation order as the Bot: unavailable → duplicate request →
+insufficient points); admin half — `list_rewards_admin`, `create_reward`,
+`disable_reward`, `list_open_redemptions` (pending + answered, joined
+with the reward and user), `answer_redemption`. `exchange_redemption`/
+`reject_redemption` were already there and untouched.
+
+**API**: new `/api/v1/rewards` router (participant: list with per-reward
+`my_status`, redeem). `app/api/v1/admin.py` gains `GET/POST
+/admin/rewards`, `POST /admin/rewards/{id}/disable`, `GET
+/admin/redemptions`, `POST /admin/redemptions/{id}/answer` (delivers the
+reply via the same Bot instance before recording it — mirrors the Bot's
+own "don't record an answer nobody received" check), `.../exchange`,
+`.../reject` — all behind `require_points_awarder` (mirrors
+`user_profile_block3_safe.py`'s own guard: full admins always, everyone
+else needs the `points.award` grant specifically).
+
+**Frontend**: new "Каталог" tab in `OpportunitiesScreen` (participant —
+browse rewards, see a status badge once a redemption is open, redeem)
+and in `AdminOffersScreen` (admin — publish a reward, disable it, answer
+an open redemption, then exchange or reject).
+
+**Tests**: `test_reward_admin_service.py` (9, real SQLite DB —
+duplicate/unavailable/insufficient-points validation, open-redemption
+listing, answer→exchange lifecycle), `test_rewards_api.py` (4, mocked
+service), `test_admin_rewards_api.py` (16, mocked service),
+`frontend/e2e/rewards.spec.ts` (real stack: admin publishes a reward, a
+dedicated seeded participant redeems it, the admin answers and exchanges
+it, confirmed by the redemption leaving the open-redemptions list).
+`scripts/e2e_seed.py` gained a dedicated `REWARD_REDEEMER_TELEGRAM_ID`
+(900007) with a pre-seeded 1000-point balance — a real exchange debits
+points, unlike placing an auction bid, so this couldn't reuse
+`AUCTION_BIDDER_TELEGRAM_ID` or the shared participant fixture.
+`test_admin_leader_rate_limiting.py`: updated hardcoded admin POST route
+count (38 → 43).
+
+**Remaining before the Bot admin-cleanup pass can finish**: Event
+Activities (`EventActivity`/`EventActivitySubmission`) is now the only
+unported admin capability, alongside the disclosed Excel-export gap from
+PR 29.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

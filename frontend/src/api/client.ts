@@ -23,6 +23,8 @@ import type {
   PendingApplication,
   ProjectDecisionAction,
   ProjectForModeration,
+  RedemptionAdmin,
+  RewardAdmin,
   SurveyAdmin,
   SurveyResponseAdmin,
   TaskReviewAction,
@@ -34,7 +36,7 @@ import type {
 } from "../types/admin";
 import type { HomeSnapshot } from "../types/home";
 import type { LeaderOpenTask, LeaderOverview, OpenTaskCreatePayload } from "../types/leader";
-import type { Auction, Opportunity, OpportunityScope, Survey, SurveyDetail } from "../types/opportunity";
+import type { Auction, Opportunity, OpportunityScope, Reward, Survey, SurveyDetail } from "../types/opportunity";
 import type { Profile } from "../types/profile";
 import type {
   ProjectDetail,
@@ -107,6 +109,9 @@ const ACTION_ERROR_MESSAGES: Record<string, string> = {
   already_joined: "Вы уже откликнулись на эту задачу.",
   task_not_found: "Задача не найдена — возможно, её уже удалили.",
   rate_limited: "Слишком много попыток подряд — подождите немного и попробуйте снова.",
+  reward_unavailable: "Эта возможность уже недоступна.",
+  already_requested: "Заявка на эту возможность уже отправлена.",
+  reward_not_found: "Возможность не найдена — возможно, её уже сняли с публикации.",
 };
 
 export function describeActionError(error: unknown): string {
@@ -450,6 +455,18 @@ export function submitSurvey(surveyId: number, answers: string[]): Promise<Surve
   return authorizedPost<Survey>(`/api/v1/surveys/${surveyId}/submit`, { answers });
 }
 
+// Points-shop catalog — the participant-facing half of the reward_*
+// handlers in app/handlers/participant/growth.py. Distinct from Auctions:
+// a reward's cost is fixed up front, and every redemption goes through an
+// admin reply before points are ever debited.
+export function fetchRewards(): Promise<Reward[]> {
+  return authorizedGet<Reward[]>("/api/v1/rewards");
+}
+
+export function redeemReward(rewardId: number): Promise<Reward> {
+  return authorizedPost<Reward>(`/api/v1/rewards/${rewardId}/redeem`);
+}
+
 export function fetchAdminDashboard(): Promise<DashboardData> {
   return authorizedGet<DashboardData>("/api/v1/admin/dashboard");
 }
@@ -699,6 +716,42 @@ export function sendSurvey(surveyId: number): Promise<SurveyAdmin> {
 
 export function fetchSurveyResponses(surveyId: number): Promise<SurveyResponseAdmin[]> {
   return authorizedGet<SurveyResponseAdmin[]>(`/api/v1/admin/surveys/${surveyId}/responses`);
+}
+
+// Admin rewards/redemptions management (the admin:reward*/admin:redemption*
+// handlers in app/handlers/admin/panel.py) — create/disable a reward, then
+// answer a redemption request before confirming the exchange or rejecting it.
+export function fetchAdminRewards(): Promise<RewardAdmin[]> {
+  return authorizedGet<RewardAdmin[]>("/api/v1/admin/rewards");
+}
+
+export function createReward(payload: {
+  name: string;
+  description: string;
+  point_cost: number;
+  quantity: number | null;
+}): Promise<RewardAdmin> {
+  return authorizedPost<RewardAdmin>("/api/v1/admin/rewards", payload);
+}
+
+export function disableReward(rewardId: number): Promise<RewardAdmin> {
+  return authorizedPost<RewardAdmin>(`/api/v1/admin/rewards/${rewardId}/disable`);
+}
+
+export function fetchAdminRedemptions(): Promise<RedemptionAdmin[]> {
+  return authorizedGet<RedemptionAdmin[]>("/api/v1/admin/redemptions");
+}
+
+export function answerRedemption(redemptionId: number, answer: string): Promise<RedemptionAdmin> {
+  return authorizedPost<RedemptionAdmin>(`/api/v1/admin/redemptions/${redemptionId}/answer`, { answer });
+}
+
+export function exchangeRedemption(redemptionId: number): Promise<RedemptionAdmin> {
+  return authorizedPost<RedemptionAdmin>(`/api/v1/admin/redemptions/${redemptionId}/exchange`);
+}
+
+export function rejectRedemption(redemptionId: number): Promise<RedemptionAdmin> {
+  return authorizedPost<RedemptionAdmin>(`/api/v1/admin/redemptions/${redemptionId}/reject`);
 }
 
 export interface AdminUsersQuery {

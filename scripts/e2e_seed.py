@@ -47,6 +47,11 @@ PENDING_SYNC_APPLICANT_TELEGRAM_ID = 900005
 # into admin_people.spec.ts (which asserts an exact post-award total). A
 # separate user avoids the two tests fighting over one balance.
 AUCTION_BIDDER_TELEGRAM_ID = 900006
+# Dedicated fixture for rewards.spec.ts: redeeming and exchanging a
+# catalog reward really does debit points (unlike placing an auction bid),
+# so this gets its own balance rather than reusing AUCTION_BIDDER_TELEGRAM_ID
+# or PARTICIPANT_TELEGRAM_ID.
+REWARD_REDEEMER_TELEGRAM_ID = 900007
 
 
 async def seed() -> None:
@@ -103,8 +108,14 @@ async def seed() -> None:
             role=Role.PARTICIPANT,
             application_status=ApplicationStatus.APPROVED,
         )
-        session.add(bidder)
-        await session.flush()  # assigns admin.id/bidder.id, used below
+        redeemer = User(
+            telegram_id=REWARD_REDEEMER_TELEGRAM_ID,
+            first_name="E2E Reward Redeemer",
+            role=Role.PARTICIPANT,
+            application_status=ApplicationStatus.APPROVED,
+        )
+        session.add_all([bidder, redeemer])
+        await session.flush()  # assigns admin.id/bidder.id/redeemer.id, used below
         session.add(
             PointTransaction(
                 user_id=bidder.id,
@@ -112,6 +123,15 @@ async def seed() -> None:
                 reason="E2E seed balance",
                 source_type="e2e_seed",
                 idempotency_key=f"e2e_seed:auction_bidder:{bidder.id}",
+            )
+        )
+        session.add(
+            PointTransaction(
+                user_id=redeemer.id,
+                points=1000,
+                reason="E2E seed balance",
+                source_type="e2e_seed",
+                idempotency_key=f"e2e_seed:reward_redeemer:{redeemer.id}",
             )
         )
         session.add(
@@ -135,7 +155,8 @@ async def seed() -> None:
         f"participant={PARTICIPANT_TELEGRAM_ID}, leader={LEADER_TELEGRAM_ID}, "
         f"admin={ADMIN_TELEGRAM_ID}, pending_applicant={PENDING_APPLICANT_TELEGRAM_ID}, "
         f"pending_sync_applicant={PENDING_SYNC_APPLICANT_TELEGRAM_ID}, "
-        f"auction_bidder={AUCTION_BIDDER_TELEGRAM_ID}"
+        f"auction_bidder={AUCTION_BIDDER_TELEGRAM_ID}, "
+        f"reward_redeemer={REWARD_REDEEMER_TELEGRAM_ID}"
     )
 
 

@@ -39,3 +39,12 @@ export interface Survey {
 export interface SurveyDetail extends Survey {
   answers: string[] | null;
 }
+
+export interface Reward {
+  id: number;
+  name: string;
+  description: string;
+  point_cost: number;
+  quantity: number | null;
+  my_status: string | null;
+}

@@ -12,12 +12,13 @@ import { PillTabs } from "../components/PillTabs";
 import { StatusBadge } from "../components/StatusBadge";
 import { useAsync } from "../hooks/useAsync";
 import { AuctionsPanel } from "./opportunities/AuctionsPanel";
+import { RewardsPanel } from "./opportunities/RewardsPanel";
 import { SurveysPanel } from "./opportunities/SurveysPanel";
 import type { OpportunityScope } from "../types/opportunity";
 
-type OpportunitiesTab = OpportunityScope | "auctions" | "surveys";
+type OpportunitiesTab = OpportunityScope | "auctions" | "surveys" | "rewards";
 
-const NON_LIST_TABS: OpportunitiesTab[] = ["auctions", "surveys"];
+const NON_LIST_TABS: OpportunitiesTab[] = ["auctions", "surveys", "rewards"];
 
 const SCOPES: { value: OpportunitiesTab; label: string }[] = [
   { value: "for_me", label: "Для тебя" },
@@ -25,6 +26,7 @@ const SCOPES: { value: OpportunitiesTab; label: string }[] = [
   { value: "saved", label: "Сохранённые" },
   { value: "mine", label: "Мои заявки" },
   { value: "auctions", label: "Аукционы" },
+  { value: "rewards", label: "Каталог" },
   { value: "surveys", label: "Опросы" },
 ];
 
@@ -90,6 +92,7 @@ export function OpportunitiesScreen() {
       <PillTabs options={SCOPES} active={scope} onChange={setScope} />
 
       {scope === "auctions" && <AuctionsPanel />}
+      {scope === "rewards" && <RewardsPanel />}
       {scope === "surveys" && <SurveysPanel />}
 
       {!NON_LIST_TABS.includes(scope) && actionError && (
