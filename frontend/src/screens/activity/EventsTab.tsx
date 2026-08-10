@@ -6,10 +6,13 @@ import {
   fetchEvents,
   registerForEvent,
 } from "../../api/client";
+import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { PillTabs } from "../../components/PillTabs";
+import { SkeletonList } from "../../components/Skeleton";
 import { StatusBadge } from "../../components/StatusBadge";
+import { useToast } from "../../components/Toast";
 import { useAsync } from "../../hooks/useAsync";
 import type { EventActivity, EventScope } from "../../types/activity";
 
@@ -96,6 +99,8 @@ export function EventsTab() {
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [expandedActivitiesId, setExpandedActivitiesId] = useState<number | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<{ id: number; title: string } | null>(null);
+  const toast = useToast();
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
@@ -106,13 +111,14 @@ export function EventsTab() {
       try {
         await registerForEvent(eventId);
         refresh();
+        toast.show("Вы зарегистрированы", "success");
       } catch (error) {
         setActionError(describeActionError(error));
       } finally {
         setPendingId(null);
       }
     },
-    [refresh],
+    [refresh, toast],
   );
 
   const handleCancel = useCallback(
@@ -122,13 +128,15 @@ export function EventsTab() {
       try {
         await cancelEventRegistration(eventId);
         refresh();
+        toast.show("Регистрация отменена", "info");
       } catch (error) {
         setActionError(describeActionError(error));
       } finally {
         setPendingId(null);
+        setCancelTarget(null);
       }
     },
-    [refresh],
+    [refresh, toast],
   );
 
   return (
@@ -139,9 +147,7 @@ export function EventsTab() {
         <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
       )}
 
-      {state.status === "loading" && (
-        <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>
-      )}
+      {state.status === "loading" && <SkeletonList count={3} />}
       {state.status === "error" && <EmptyState text="Не удалось загрузить мероприятия." />}
       {state.status === "ready" && state.data.length === 0 && (
         <EmptyState text="Мероприятий в этом разделе пока нет." />
@@ -166,7 +172,11 @@ export function EventsTab() {
               <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                 {scope !== "past" &&
                   (isRegistered ? (
-                    <button type="button" disabled={pendingId === event.id} onClick={() => handleCancel(event.id)}>
+                    <button
+                      type="button"
+                      disabled={pendingId === event.id}
+                      onClick={() => setCancelTarget({ id: event.id, title: event.title })}
+                    >
                       Планы изменились
                     </button>
                   ) : (
@@ -198,6 +208,30 @@ export function EventsTab() {
             </Card>
           );
         })}
+
+      <BottomSheet
+        open={cancelTarget !== null}
+        onClose={() => setCancelTarget(null)}
+        title="Отменить регистрацию?"
+      >
+        <p style={{ color: "var(--era-text-muted)", margin: "0 0 1rem" }}>
+          Вы больше не будете участвовать в «{cancelTarget?.title}». Место освободится для других.
+        </p>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button type="button" onClick={() => setCancelTarget(null)} style={{ flex: 1 }}>
+            Не отменять
+          </button>
+          <button
+            type="button"
+            className="era-btn-primary"
+            disabled={cancelTarget !== null && pendingId === cancelTarget.id}
+            onClick={() => cancelTarget && handleCancel(cancelTarget.id)}
+            style={{ flex: 1 }}
+          >
+            Отменить регистрацию
+          </button>
+        </div>
+      </BottomSheet>
     </div>
   );
 }

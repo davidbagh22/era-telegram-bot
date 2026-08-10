@@ -1,10 +1,13 @@
 import { useCallback, useState } from "react";
 import { downloadResumePdf, fetchProfile } from "../api/client";
+import { Avatar } from "../components/Avatar";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { MetricCard } from "../components/MetricCard";
 import { ProgressBar } from "../components/ProgressBar";
+import { Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
+import { useToast } from "../components/Toast";
 import { useAsync } from "../hooks/useAsync";
 import type { PortfolioEntry } from "../types/profile";
 
@@ -50,11 +53,10 @@ function PortfolioSection({ title, entries }: { title: string; entries: Portfoli
 export function ProfileScreen() {
   const state = useAsync(fetchProfile, []);
   const [downloading, setDownloading] = useState(false);
-  const [downloadError, setDownloadError] = useState(false);
+  const toast = useToast();
 
   const handleDownloadResume = useCallback(async () => {
     setDownloading(true);
-    setDownloadError(false);
     try {
       const blob = await downloadResumePdf();
       const url = URL.createObjectURL(blob);
@@ -65,15 +67,34 @@ export function ProfileScreen() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
+      toast.show("Резюме сохранено", "success");
     } catch {
-      setDownloadError(true);
+      toast.show("Не удалось скачать резюме. Попробуйте ещё раз.", "error");
     } finally {
       setDownloading(false);
     }
-  }, []);
+  }, [toast]);
 
   if (state.status === "loading") {
-    return <div style={{ padding: "1.5rem", color: "var(--era-text-muted)" }}>Загрузка…</div>;
+    return (
+      <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <Skeleton width={48} height={48} radius="50%" />
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+            <Skeleton height="1.125rem" width="55%" />
+            <Skeleton height="0.75rem" width="35%" />
+          </div>
+        </div>
+        <Skeleton height="2.5rem" radius="var(--era-radius-control)" />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.5rem" }}>
+          <Skeleton height="4rem" radius="var(--era-radius-card)" />
+          <Skeleton height="4rem" radius="var(--era-radius-card)" />
+          <Skeleton height="4rem" radius="var(--era-radius-card)" />
+        </div>
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+    );
   }
 
   if (state.status === "error") {
@@ -89,14 +110,17 @@ export function ProfileScreen() {
 
   return (
     <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <div>
-        <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.375rem", margin: 0 }}>
-          {data.full_name || data.first_name}
-        </h1>
-        <p style={{ color: "var(--era-text-muted)", margin: "0.25rem 0 0" }}>
-          Ваш уровень: {data.growth.label}
-          {data.city ? ` · ${data.city}` : ""}
-        </p>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <Avatar firstName={data.first_name} lastName={data.last_name} />
+        <div>
+          <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)", margin: 0 }}>
+            {data.full_name || data.first_name}
+          </h1>
+          <p style={{ color: "var(--era-text-muted)", margin: "0.25rem 0 0" }}>
+            Ваш уровень: {data.growth.label}
+            {data.city ? ` · ${data.city}` : ""}
+          </p>
+        </div>
       </div>
 
       <ProgressBar
@@ -131,11 +155,6 @@ export function ProfileScreen() {
         >
           {downloading ? "Формируем PDF…" : "Скачать резюме PDF"}
         </button>
-        {downloadError && (
-          <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: "0.5rem 0 0" }}>
-            Не удалось скачать резюме. Попробуйте ещё раз.
-          </p>
-        )}
       </div>
 
       <PortfolioSection title="Проекты" entries={data.projects} />

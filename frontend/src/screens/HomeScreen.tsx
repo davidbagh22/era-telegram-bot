@@ -1,7 +1,9 @@
+import { Avatar } from "../components/Avatar";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { MetricCard } from "../components/MetricCard";
 import { ProgressBar } from "../components/ProgressBar";
+import { Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { useHome } from "../hooks/useHome";
 import type { MiniAppUserSummary } from "../types/auth";
@@ -17,7 +19,19 @@ export function HomeScreen({ user }: HomeScreenProps) {
 
   if (home.status === "loading") {
     return (
-      <div style={{ padding: "1.5rem", color: "var(--era-text-muted)" }}>Загрузка…</div>
+      <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <Avatar firstName={user.first_name} lastName={user.last_name} />
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+            <Skeleton height="1.125rem" width="60%" />
+            <Skeleton height="0.75rem" width="40%" />
+          </div>
+        </div>
+        <Skeleton height="2.5rem" radius="var(--era-radius-control)" />
+        <Skeleton height="4.5rem" radius="var(--era-radius-card)" />
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
     );
   }
 
@@ -34,13 +48,16 @@ export function HomeScreen({ user }: HomeScreenProps) {
 
   return (
     <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <div>
-        <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.375rem", margin: 0 }}>
-          Привет, {user.first_name}
-        </h1>
-        <p style={{ color: "var(--era-text-muted)", margin: "0.25rem 0 0" }}>
-          Ваш уровень: {data.growth.label}
-        </p>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <Avatar firstName={user.first_name} lastName={user.last_name} />
+        <div>
+          <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)", margin: 0 }}>
+            Привет, {user.first_name}
+          </h1>
+          <p style={{ color: "var(--era-text-muted)", margin: "0.25rem 0 0" }}>
+            Ваш уровень: {data.growth.label}
+          </p>
+        </div>
       </div>
 
       <ProgressBar

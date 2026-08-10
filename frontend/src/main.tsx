@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
+import { ToastProvider } from "./components/Toast";
 import { applyTelegramTheme } from "./telegram/webApp";
 import "./theme/tokens.css";
 
@@ -17,6 +18,8 @@ if (!container) {
 
 createRoot(container).render(
   <StrictMode>
-    <App />
+    <ToastProvider>
+      <App />
+    </ToastProvider>
   </StrictMode>,
 );

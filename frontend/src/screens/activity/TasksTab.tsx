@@ -3,6 +3,7 @@ import { claimTask, describeActionError, fetchTasks } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { PillTabs } from "../../components/PillTabs";
+import { SkeletonList } from "../../components/Skeleton";
 import { useAsync } from "../../hooks/useAsync";
 import type { TaskScope } from "../../types/activity";
 
@@ -41,9 +42,7 @@ export function TasksTab() {
         <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
       )}
 
-      {state.status === "loading" && (
-        <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>
-      )}
+      {state.status === "loading" && <SkeletonList count={3} />}
       {state.status === "error" && <EmptyState text="Не удалось загрузить задачи." />}
       {state.status === "ready" && state.data.length === 0 && (
         <EmptyState text="Задач в этом разделе пока нет." />

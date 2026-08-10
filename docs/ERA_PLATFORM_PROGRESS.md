@@ -2612,6 +2612,66 @@ per-notification deep-link rewiring (PR 40), no visual/design-system work
 (PR 37), no Home/Profile/Portfolio content redesign (PR 38), no
 Leader/Admin Mini App UX polish (PR 39).
 
+## PR 37 — Complete UI design system (merged)
+
+`docs/UI_DESIGN_SYSTEM.md` rewritten (it already existed from PR 14 —
+extended, not replaced; PR 14's dark-theme mechanics, `useAsync`
+loading/error/empty discipline, deliberate `#fff`-over-gradient
+exceptions, and safe-area checklist are all preserved, just reorganized
+under the new component sections) to document what's actually
+implemented, then implemented the pieces PR 14 had explicitly deferred as
+"purely cosmetic, not a blocker": a real loading state, plus the pieces
+the owner's brief asked for that never existed at all (modals, bottom
+sheets, toasts, avatars).
+
+**Tokens** (`frontend/src/theme/tokens.css`): added a typography scale
+(`--era-text-xs` through `--era-text-3xl`) and a spacing scale
+(`--era-space-1` through `--era-space-8`, 4px base) as the documented
+source of truth for the rem values every screen already used ad hoc;
+`--era-radius-pill`/`--era-radius-sheet`/`--era-shadow-overlay`; shimmer/
+overlay/sheet/modal/toast keyframes (kept in CSS rather than inline
+styles — keyframes and the shimmer gradient can't be expressed as React
+inline style objects).
+
+**New components** (`frontend/src/components/`): `Avatar` (initials on
+the brand gradient — no photo pipeline exists into the Mini App API, so
+this is permanent, not a placeholder), `Skeleton`/`SkeletonText`/
+`SkeletonCard`/`SkeletonList` (the loading-state primitive), `Modal`
+(centered dialog), `BottomSheet` (slide-up sheet — the primary overlay
+for this touch-only app), `Toast`/`ToastProvider`/`useToast()` (top
+auto-dismissing notifications; this codebase never used a native
+`alert()`, mounted once at the app root in `main.tsx`).
+
+**Real usage, not just new files sitting unused**: `HomeScreen` and
+`ProfileScreen`'s loading states are now `Skeleton` compositions instead
+of plain "Загрузка…" text, and both gained an `Avatar` in their header.
+`EventsTab`/`TasksTab`'s loading states got the same treatment.
+`EventsTab`'s "Планы изменились" (cancel registration) — previously the
+only destructive action in the app with zero confirmation — now opens a
+`BottomSheet` confirm step first; register/cancel and the profile résumé
+download now show a `useToast()` notification instead of (register/
+download) nothing or (cancel/download-failure) inline text that's gone
+the moment the list re-renders.
+
+**Tests**: `frontend/e2e/event_cancel_confirmation.spec.ts` (new) —
+registers, opens the confirm sheet, backs out without cancelling
+(asserts the registration survives), then actually confirms and cancels
+through the real stack. Kept independent of `participant.spec.ts` (which
+only registers and stops) so it doesn't leave the shared seeded
+participant's registration state as a side effect for other specs.
+`tsc --noEmit` + `vite build` clean.
+
+**Deliberately not done in this pass**: a full re-skin of all ~45
+screens — that's PR 38 (core participant UX: Home/Profile/Portfolio/
+Projects/Opportunities) and PR 39 (Leader/Admin UX) touching each
+screen's actual content, at which point they extend this system rather
+than reinventing it. No photo-based Avatar (no backend support, and
+initials-on-gradient is a considered decision, not a stopgap). No
+generic `<Table>` primitive (the brief explicitly asks Admin Mode to
+stay card-based, not "огромные технические таблицы"). No
+Storybook/visual-regression tooling (this doc plus the components' own
+comments is the documentation layer this app's size warrants).
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

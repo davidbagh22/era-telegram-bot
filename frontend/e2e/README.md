@@ -82,6 +82,14 @@ stack (not just a page render):
 - **Auctions** (`auctions.spec.ts`): admin publishes a lot; a separate,
   dedicated bidder session places a real bid on it, sees it reflected as
   "your bid" after the refetch.
+- **Deep links** (`deep_links.spec.ts`, PR 36): navigating straight to
+  `#/tasks`, `#/events`, `#/opportunities` (the bot's quick-access
+  buttons' targets) lands on the right screen/tab instead of Home.
+- **Event cancel confirmation** (`event_cancel_confirmation.spec.ts`,
+  PR 37): registers and then cancels through the new BottomSheet confirm
+  step, including backing out without cancelling — independent of
+  `participant.spec.ts` so it doesn't leave the seeded participant's
+  registration state as a side effect for other specs.
 
 Not covered here (see `docs/PRODUCTION_READINESS_AUDIT.md` backlog):
 concurrent-decision races, file/portfolio upload, and the chat/registration

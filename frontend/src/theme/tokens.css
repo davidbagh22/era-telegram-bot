@@ -19,13 +19,43 @@
   --era-error: #d92d20;
   --era-shadow-soft: 0 8px 28px rgba(43, 22, 54, 0.06);
   --era-shadow-lift: 0 12px 32px rgba(43, 22, 54, 0.12);
+  --era-shadow-overlay: 0 -8px 32px rgba(43, 22, 54, 0.18);
+  --era-radius-sm: 0.625rem;
   --era-radius-card: 20px;
   --era-radius-control: 0.875rem;
+  --era-radius-pill: 999px;
+  --era-radius-sheet: 1.5rem;
   --era-motion-fast: 0.15s ease;
   --era-motion: 0.25s ease;
 
   --era-font-display: "Unbounded", "Segoe UI", system-ui, sans-serif;
   --era-font-body: "Golos Text", "Segoe UI", system-ui, sans-serif;
+
+  /* Typography scale — see docs/UI_DESIGN_SYSTEM.md. Screens still set
+     font-size inline per element (React inline styles, not utility
+     classes, is this codebase's established pattern — see PR 14's design
+     audit), but every one of those inline values should be drawn from
+     this scale rather than an arbitrary number, so the scale is the
+     single source of truth even though it isn't auto-applied by the
+     cascade. era-text-base doubles as the body default (see `body` rule
+     below). */
+  --era-text-xs: 0.75rem; /* micro labels, timestamps */
+  --era-text-sm: 0.8125rem; /* secondary text, captions */
+  --era-text-base: 0.875rem; /* body copy, buttons, inputs */
+  --era-text-lg: 1rem; /* card titles, list item titles */
+  --era-text-xl: 1.125rem; /* section headings */
+  --era-text-2xl: 1.375rem; /* screen titles */
+  --era-text-3xl: 1.75rem; /* hero numbers (points, level) */
+
+  /* Spacing scale — 4px base unit, matches the rem values already used
+     ad hoc across every screen (0.25/0.5/0.75/1/1.25/1.5/2rem). */
+  --era-space-1: 0.25rem;
+  --era-space-2: 0.5rem;
+  --era-space-3: 0.75rem;
+  --era-space-4: 1rem;
+  --era-space-5: 1.25rem;
+  --era-space-6: 1.5rem;
+  --era-space-8: 2rem;
 }
 
 /* Applied to <html> by telegram/webApp.ts's applyTelegramTheme(), mirroring
@@ -219,4 +249,90 @@ input[type="checkbox"] {
 
 .era-page {
   animation: era-fade-in var(--era-motion);
+}
+
+/* Skeleton / Toast / Modal / BottomSheet — see components/Skeleton.tsx,
+   components/Toast.tsx, components/Modal.tsx, components/BottomSheet.tsx
+   and docs/UI_DESIGN_SYSTEM.md. Kept here rather than inline styles
+   because keyframes and backdrop-filter can't be expressed as React
+   inline style objects. */
+@keyframes era-shimmer {
+  0% {
+    background-position: -120% 0;
+  }
+  100% {
+    background-position: 120% 0;
+  }
+}
+
+.era-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--era-border) 25%,
+    var(--era-bg-subtle) 50%,
+    var(--era-border) 75%
+  );
+  background-size: 200% 100%;
+  animation: era-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--era-radius-sm);
+}
+
+@keyframes era-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.era-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 12, 26, 0.5);
+  animation: era-overlay-in var(--era-motion-fast);
+  z-index: 40;
+}
+
+@keyframes era-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.era-bottom-sheet {
+  animation: era-sheet-in var(--era-motion) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes era-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.era-modal {
+  animation: era-modal-in var(--era-motion-fast);
+}
+
+@keyframes era-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.era-toast {
+  animation: era-toast-in var(--era-motion-fast);
 }
