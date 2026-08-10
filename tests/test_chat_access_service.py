@@ -113,8 +113,13 @@ def test_user_facing_access_messages_are_specific() -> None:
 def test_chat_handlers_use_join_requests_and_restrictions() -> None:
     chat_source = (ROOT / "app/handlers/chat.py").read_text(encoding="utf-8")
     service_source = (ROOT / "app/services/chat_access_service.py").read_text(encoding="utf-8")
+    # The live user-approval path is approval_bonus_fix.py::approve_user_with_100_points
+    # — panel.py had its own admin:approve_user: handler once, but it was
+    # already permanently shadowed by approval_bonus_fix.py's identical
+    # callback_data pattern (registered earlier in
+    # app/handlers/admin/__init__.py) and was removed as confirmed-dead
+    # code in PR 33; this assertion no longer applies to panel.py.
     approval_source = (ROOT / "app/handlers/admin/approval_bonus_fix.py").read_text(encoding="utf-8")
-    panel_source = (ROOT / "app/handlers/admin/panel.py").read_text(encoding="utf-8")
     rights_source = (ROOT / "app/handlers/admin/rights_block6.py").read_text(encoding="utf-8")
 
     assert "@router.chat_join_request()" in chat_source
@@ -126,5 +131,4 @@ def test_chat_handlers_use_join_requests_and_restrictions() -> None:
     assert "restrict_chat_member" in service_source
     assert "PendingChatJoinRequest" in service_source
     assert "sync_user_chat_access(bot, settings, session, target)" in approval_source
-    assert "sync_user_chat_access(bot, settings, session, target)" in panel_source
     assert "sync_user_chat_access(bot, settings, session, target)" in rights_source
