@@ -16,21 +16,53 @@ import { ProfileScreen } from "../screens/ProfileScreen";
 import { ProjectsScreen } from "../screens/ProjectsScreen";
 import type { MiniAppUserSummary } from "../types/auth";
 
-function projectIdFromHash(): number | null {
-  const match = window.location.hash.match(/^#\/(?:admin\/)?projects\/(\d+)/);
-  if (!match) {
-    return null;
-  }
-  const projectId = Number(match[1]);
-  return Number.isFinite(projectId) ? projectId : null;
+type ActivitySection = "events" | "tasks" | "calendar" | "history";
+
+interface DeepLink {
+  tab: TabKey;
+  projectId: number | null;
+  activitySection: ActivitySection | null;
 }
 
-function renderTab(tab: TabKey, user: MiniAppUserSummary, initialProjectId: number | null) {
+// PR 36 (Bot/Mini App role split): the bot's quick-access buttons
+// (📅 Ближайшее / ✅ Мои задачи / ⭐ Возможности, and notification
+// "Открыть …" buttons going forward) link straight into
+// `${miniapp_url}/#/<path>` — built server-side by
+// app/utils/deep_links.py's miniapp_*_url() helpers — instead of just
+// opening the Mini App at its home screen and making the user navigate
+// themselves. This is the one place that contract is parsed back out.
+function parseDeepLink(): DeepLink | null {
+  const hash = window.location.hash;
+  const projectMatch = hash.match(/^#\/(?:admin\/)?projects\/(\d+)/);
+  if (projectMatch) {
+    const projectId = Number(projectMatch[1]);
+    if (Number.isFinite(projectId)) {
+      return { tab: "projects", projectId, activitySection: null };
+    }
+  }
+  if (/^#\/tasks(\/|$)/.test(hash)) {
+    return { tab: "activity", projectId: null, activitySection: "tasks" };
+  }
+  if (/^#\/events(\/|$)/.test(hash)) {
+    return { tab: "activity", projectId: null, activitySection: "events" };
+  }
+  if (/^#\/opportunities(\/|$)/.test(hash)) {
+    return { tab: "opportunities", projectId: null, activitySection: null };
+  }
+  return null;
+}
+
+function renderTab(
+  tab: TabKey,
+  user: MiniAppUserSummary,
+  initialProjectId: number | null,
+  initialActivitySection: ActivitySection | null,
+) {
   if (tab === "home") {
     return <HomeScreen user={user} />;
   }
   if (tab === "activity") {
-    return <ActivityScreen />;
+    return <ActivityScreen initialSection={initialActivitySection ?? undefined} />;
   }
   if (tab === "projects") {
     return <ProjectsScreen initialProjectId={initialProjectId} />;
@@ -43,8 +75,9 @@ function renderTab(tab: TabKey, user: MiniAppUserSummary, initialProjectId: numb
 
 export function App() {
   const auth = useAuth();
-  const initialProjectId = projectIdFromHash();
-  const [activeTab, setActiveTab] = useState<TabKey>(initialProjectId ? "projects" : "home");
+  const [deepLink] = useState<DeepLink | null>(() => parseDeepLink());
+  const initialProjectId = deepLink?.projectId ?? null;
+  const [activeTab, setActiveTab] = useState<TabKey>(deepLink?.tab ?? "home");
 
   if (auth.status === "loading") {
     return null;
@@ -80,7 +113,7 @@ export function App() {
 
   return (
     <UserLayout activeTab={activeTab} onTabChange={setActiveTab}>
-      {renderTab(activeTab, user, initialProjectId)}
+      {renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null)}
     </UserLayout>
   );
 }

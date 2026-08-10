@@ -2534,6 +2534,84 @@ admin handler files — that remains a larger, not-yet-started piece of
 future work, distinct from the `panel.py`-vs-everyone-else analysis
 PR 33/34 already completed.
 
+## New mandate: ERA Platform final production launch (PR 36–42)
+
+At this point the project owner changed the task from incremental bot
+cleanup to a final push toward a launchable product, with an explicit
+principle: **the Bot and Mini App must stop being two parallel
+interfaces.** Bot = lightweight gateway (start/onboarding, notifications,
+broadcasts, quick actions, admin contact, deep links, general chat,
+service messages, emergency fallback). Mini App = the actual product
+(Home, profile, portfolio, activity, projects, opportunities, Leader
+Mode, Admin Mode). The owner also changed the working mode: no more
+per-PR "continue?" checkpoints — PR 36 through PR 42 ship back-to-back
+unless something is a genuine launch blocker, ending in a
+**ERA PLATFORM — FINAL PRODUCTION ACCEPTANCE** verdict (`READY FOR
+LAUNCH` or `NOT READY — <specific blockers>`).
+
+## PR 36 — Bot / Mini App role separation (merged)
+
+**Audit first**: `docs/BOT_VS_MINIAPP_AUDIT.md` (new) — a full table of
+every bot feature area (participant, leader, admin) against whether the
+Mini App already has a stable equivalent, whether it's a genuine
+duplicate, and where the primary UX should live going forward. Written
+before any code changed, per the owner's own instruction. Conclusion:
+the Mini App (built across the original 12-PR plan plus PR 29–35) already
+covers essentially everything except two disclosed gaps (Excel analytics
+export, leader-side event creation) — this PR's job was narrower than
+"build the Mini App," it was "stop the bot from advertising a second,
+competing interface to what already exists."
+
+**What changed**:
+- `app/keyboards/participant.py`'s `main_menu()`/`main_inline_keyboard()`
+  — replaced the old `👤 Личный кабинет / 📅 Афиша / ✅ Задачи /
+  ⭐ Возможности / [🔥 Открыть ЭРА] / 💬 Связь / [⚙️ Панель]` tree with
+  the brief's exact set when a Mini App URL is configured: `🔥 Открыть
+  ЭРА`, `📅 Ближайшее`, `✅ Мои задачи`, `⭐ Возможности`, `💬 Связь` —
+  three of which are now WebApp buttons that deep-link straight into the
+  right Mini App tab instead of opening a bot-side inline menu. The old
+  buttons (including `⚙️ Панель`) are preserved as the `else` branch,
+  shown only when no Mini App URL is configured — the explicit "резервный
+  сценарий, если Mini App временно недоступна" requirement. Admins/leaders
+  don't need a separate panel button when the Mini App is up: `🔥 Открыть
+  ЭРА` already routes them into Admin/Leader Mode via `App.tsx`'s
+  `is_admin`/`is_leader` checks.
+- `app/utils/deep_links.py` — added `miniapp_events_url()`,
+  `miniapp_tasks_url()`, `miniapp_opportunities_url()` (tab-level, used by
+  the new keyboard) and `miniapp_task_url()`/`miniapp_event_url()`/
+  `miniapp_opportunity_url()` (single-item, for PR 40's per-notification
+  deep links) — all thin wrappers around the existing `miniapp_path_url()`
+  helper (already used by the project-notification deep links from an
+  earlier PR).
+- `frontend/src/app/App.tsx` — generalized the existing
+  `projectIdFromHash()` (which only recognized `#/projects/{id}` and
+  `#/admin/projects/{id}`) into `parseDeepLink()`, which additionally
+  recognizes `#/tasks`, `#/events`, and `#/opportunities` and lands the
+  user on the right tab (and right Activity sub-section) instead of
+  always defaulting to Home.
+- `frontend/src/screens/ActivityScreen.tsx` — accepts an optional
+  `initialSection` prop so a deep link can open straight to the Tasks or
+  Events sub-tab instead of always defaulting to Events.
+
+**Tests**: `tests/test_participant_menu_miniapp_button.py` and
+`tests/test_main_inline_keyboard_miniapp_button.py` rewritten for the new
+button set and to explicitly assert the old menu tree no longer appears
+once a Mini App URL is configured (previously they asserted the
+*opposite* — that the old and new states had identical buttons — which
+was correct before PR 36 and is now the thing being deliberately changed).
+`frontend/e2e/deep_links.spec.ts` (new) — three specs proving `#/tasks`,
+`#/events`, and `#/opportunities` actually land on the right screen
+against the real seeded backend. Full `pytest -q` and `tsc --noEmit` +
+`vite build` both green.
+
+**Deliberately not touched in this pass**: no bot handler files were
+deleted (per the owner's own "не удаляй сразу" instruction — the old
+cabinet/panel trees stay as dead-but-present fallback code until PR 41's
+cleanup), no admin panel restructuring beyond the keyboard change, no
+per-notification deep-link rewiring (PR 40), no visual/design-system work
+(PR 37), no Home/Profile/Portfolio content redesign (PR 38), no
+Leader/Admin Mini App UX polish (PR 39).
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

@@ -76,3 +76,40 @@ def miniapp_project_application_url(
 
 def miniapp_admin_project_url(miniapp_url: str, project_id: int) -> str:
     return miniapp_path_url(miniapp_url, f"admin/projects/{project_id}")
+
+
+def miniapp_events_url(miniapp_url: str) -> str:
+    """Deep-links straight into the Mini App's Activity screen, Events tab
+    — used by the bot's "📅 Ближайшее" quick-access button (PR 36's Bot/Mini
+    App role split) instead of the old bot-side "📅 Афиша" inline menu."""
+    return miniapp_path_url(miniapp_url, "events")
+
+
+def miniapp_tasks_url(miniapp_url: str) -> str:
+    """Deep-links straight into the Mini App's Activity screen, Tasks tab —
+    used by the bot's "✅ Мои задачи" quick-access button."""
+    return miniapp_path_url(miniapp_url, "tasks")
+
+
+def miniapp_opportunities_url(miniapp_url: str) -> str:
+    """Deep-links straight into the Mini App's Opportunities screen — used
+    by the bot's "⭐ Возможности" quick-access button."""
+    return miniapp_path_url(miniapp_url, "opportunities")
+
+
+def miniapp_task_url(miniapp_url: str, task_id: int) -> str:
+    """Deep-links to a single task's detail inside the Activity screen's
+    Tasks tab — used by task-assigned/decided notifications (PR 40)."""
+    return miniapp_path_url(miniapp_url, f"tasks/{task_id}")
+
+
+def miniapp_event_url(miniapp_url: str, event_id: int) -> str:
+    """Deep-links to a single event's detail inside the Activity screen's
+    Events tab — used by event-related notifications (PR 40)."""
+    return miniapp_path_url(miniapp_url, f"events/{event_id}")
+
+
+def miniapp_opportunity_url(miniapp_url: str, opportunity_id: int) -> str:
+    """Deep-links to a single opportunity's detail in the Opportunities
+    screen — used by opportunity-related notifications (PR 40)."""
+    return miniapp_path_url(miniapp_url, f"opportunities/{opportunity_id}")
