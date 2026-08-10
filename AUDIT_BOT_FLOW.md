@@ -221,7 +221,7 @@ GitHub Actions должен выполнить:
 
 ```bash
 python -m compileall -q app
-python -m unittest discover -s tests -v
+python -m pytest -q
 ```
 
 Workflow: `Bot checks`.

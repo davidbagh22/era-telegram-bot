@@ -58,7 +58,7 @@ docker compose up --build -d
 ## Проверка
 
 ```bash
-python -m unittest discover -s tests -v
+python -m pytest -q
 ```
 
 GitHub Actions автоматически повторяет тесты после каждого обновления основной ветки.
