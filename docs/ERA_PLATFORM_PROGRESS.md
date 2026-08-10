@@ -2392,6 +2392,106 @@ itself (`dashboard_block_a.py`, `management_ready.py`,
 identified as likely fully superseded. Those remain future, similarly
 narrow-scoped passes — not a single risky mass-deletion.
 
+## PR 34 — Bot cleanup step 2: resolve `panel.py`'s 18 "maybe" entries (merged)
+
+Second deletion slice in the Bot admin-cleanup pass. PR 33's AST script
+could only extract `exact`/`startswith`/`regexp`/`Command`/`in_()`
+patterns; it flagged 18 registrations as "maybe" wherever a `regexp`
+was involved, because its prefix-overlap heuristic is shallow (it
+compares literal text before the first regex metacharacter, so e.g.
+`^admin:event:status:...` and `^admin:event:(revise|reject):...` both
+reduce to the same `admin:event:` prefix and get flagged, even though
+the actual patterns never collide). Every one of the 18 was resolved
+this pass by manually reading the actual decorator and body in both
+`panel.py` and the file the script named, plus checking
+`app/handlers/admin/__init__.py`'s registration order — no heuristics,
+no new tooling.
+
+**Result**: 8 of the 18 were false positives — genuinely live, kept
+untouched: `event_status_change`, `event_participants`,
+`event_attendance_confirm` (all shadow-guessed against
+`events_block6.py`'s `event_decision_start`, which only matches
+`revise`/`reject`, not `status`/`participants`/`attend`),
+`admin_user_status_menu`, `admin_user_set_status`,
+`admin_user_portfolio`, `admin_user_archive_confirm` (all
+shadow-guessed against `rights_block6.py`'s `archive_toggle`, which
+only matches `archive`/`unarchive`, not `status`/`setstatus`/
+`portfolio`/`archive_confirm` — and no earlier-registered file defines
+a real handler for those four patterns at all), and `permissions_start`
+(exact `admin:permissions`, never actually claimed by any earlier
+file — `offices_management.py` only points a button at it).
+
+**10 of the 18 were genuinely dead**, each confirmed via a real,
+independently-registered earlier handler with actual pattern overlap
+(not just a shared literal prefix):
+- `event_activity_decide` — `admin/event_activities_block7.py`'s
+  `approve`/`reject` (`admin:activity:approve:`/`admin:activity:reject:`
+  prefixes) already claim both halves of panel's
+  `^admin:activity:(approve|reject):\d+$`.
+- `project_review_start` — `projects_block5_decision.py`'s
+  `decision_start` (`startswith("admin:project:review:")`) claims
+  panel's narrower `^admin:project:review:[a-z_]+:\d+$` first.
+- `review_entity_start` — its `event` half is claimed by
+  `events_block6.py`'s `event_decision_start`
+  (`^admin:event:(revise|reject):\d+$`, an exact match); its `project`
+  half (`admin:project:revise:`/`admin:project:reject:`) is claimed by
+  nobody because no button anywhere in the codebase generates that
+  callback_data — either way, unreachable.
+- `admin_user_card` — `rights_block6.py`'s `user_card`
+  (`^admin:user:\d+$`, registered *before*
+  `user_profile_block3_safe.py`, which the AST script had actually
+  named — itself likely also now-shadowed, out of scope for this pass)
+  wins first.
+- `admin_user_role_menu`, `admin_user_set_role` — `rights_block6.py`'s
+  `role_menu`/`set_role` claim the same patterns; confirmed panel.py
+  itself never generates the `admin:user:role:`/`admin:user:setrole:`
+  buttons that would reach them — only `rights_block6.py` and
+  `user_profile_block3_safe.py` do, both pointing into
+  `rights_block6.py`'s own (winning) handlers.
+- `admin_user_archive_start` — `rights_block6.py`'s `archive_toggle`
+  (`^admin:user:(archive|unarchive):\d+$`) wins for
+  `admin:user:archive:{id}`.
+- `admin_user_archive_confirm` — **not itself shadowed**, but
+  `admin_user_archive_start` was its *only* generator of the
+  `admin:user:archive_confirm:` callback_data (confirmed via
+  repo-wide grep); once `archive_start` is gone, `archive_confirm`
+  can never be reached either. Removed as a pair — this is the one
+  case in this pass where "confirmed dead" required looking one hop
+  downstream instead of just at the shadowing table.
+- `office_view` — `offices_management.py`'s own `office_view`
+  (`^admin:office:view:\d+$`, registered right before `panel.py`) wins,
+  and is functionally a superset (it also handles a deleted/inactive
+  office gracefully, which panel's version didn't).
+- `permissions_user` — `rights_block6.py`'s `permissions_menu` is
+  registered on the *same* `admin:permissions:user:` pattern with no
+  state requirement, so it wins regardless of whether the caller is
+  actually mid-flow in panel's `AdminPermissionStates.person` state or
+  not. (`permissions_start`/`permissions_find`, panel's own entry point
+  into this flow, stay live — they just feed a dead end, so removing
+  them is a smaller future cleanup, not this pass.)
+- `permission_toggle` — `rights_block6.py`'s own `permission_toggle`
+  (identical pattern, registered earlier) wins; panel's version's only
+  button-generator was the now-dead `permissions_user`.
+
+`ruff --fix` then cleared 6 now-unused imports
+(`EventActivitySubmission`, `PermissionGrant`, `PointTransaction`,
+`user_role_keyboard`, `main_menu`, `PERMISSIONS`) — `panel.py` dropped
+from 137 to 126 registrations.
+
+**Tests**: `test_panel_dead_code_removed.py` extended — the 11 new
+names added to `REMOVED_NAMES`, plus a note explaining the
+`admin_user_archive_confirm` orphaning case. Full `pytest -q` green.
+
+**Deliberately not touched in this pass**: the ~77 confirmed-live
+functions from PR 33's original count, the 42 FSM-state handlers, the
+entire `/admin` menu tree, and the other ~10 admin handler files —
+including the now-suspected-but-unverified possibility that
+`user_profile_block3_safe.py`'s own `profile` handler
+(`is_profile_callback`) is itself shadowed by `rights_block6.py`'s
+`user_card`, which would be a cross-file dead-code case PR 33/34's
+panel.py-only scope never checked. That's a note for a future pass, not
+a finding acted on here.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy
