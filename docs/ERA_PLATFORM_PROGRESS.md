@@ -2492,6 +2492,48 @@ including the now-suspected-but-unverified possibility that
 panel.py-only scope never checked. That's a note for a future pass, not
 a finding acted on here.
 
+## PR 35 — Bot cleanup step 3: first cross-file dead-code case (merged)
+
+Acted on the note PR 34 left open. Confirmed
+`user_profile_block3_safe.py`'s own `profile` handler
+(`@router.callback_query(F.data.func(is_profile_callback))`, matching
+the same 3-part `admin:user:{id}` shape as `panel.py`'s already-removed
+`admin_user_card`) is permanently shadowed by `rights_block6.py`'s
+`user_card` (`^admin:user:\d+$`, an exact-equivalent pattern), because
+`rights_block6.py` is registered *before*
+`user_profile_block3_safe.py` in `app/handlers/admin/__init__.py`
+(index 40 vs. 42). The two handler bodies are functionally identical —
+both just call `send_admin_user_card(call.message, session, target,
+mode="profile")` — confirming this was a genuine duplicate, not a
+divergent implementation.
+
+**What got removed**: `user_profile_block3_safe.py`'s `profile`
+function only. `is_profile_callback` itself stayed — it's also used
+inside that file's own `is_admin()` permission check (a second,
+unrelated purpose), so removing the dead handler didn't make the
+helper unused. `ruff --fix` cleared one now-unused import
+(`send_admin_user_card`). The file's other handlers
+(`points_start`/`badge_start`/`badge_select` and their FSM
+continuations) were checked against `rights_block6.py` too and are
+genuinely live — `rights_block6.py` only *generates* buttons pointing
+at `admin:user:points:`/`admin:user:badge:`, it doesn't have its own
+handlers for them, so nothing shadows this file's remaining code.
+
+**Tests**: `test_admin_user_card.py`'s
+`test_admin_user_routes_use_single_presenter` updated — the assertion
+that `user_profile_block3_safe.py` contains its own `mode="profile"`
+call site no longer applies (that code is gone); `rights_block6.py` is
+now documented as the single live "profile" presenter. Full `pytest
+-q` green.
+
+**Deliberately not touched in this pass**: this was a narrowly-scoped
+follow-up on one specific lead, not a systematic cross-file sweep. The
+same kind of check (does an earlier-registered admin file already
+shadow this one?) has not yet been run pairwise across the other ~9
+admin handler files — that remains a larger, not-yet-started piece of
+future work, distinct from the `panel.py`-vs-everyone-else analysis
+PR 33/34 already completed.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy
