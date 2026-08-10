@@ -90,13 +90,18 @@ def test_admin_user_card_marks_missing_photo_and_socials() -> None:
 def test_admin_user_routes_use_single_presenter() -> None:
     registration = (ROOT / "app/handlers/registration.py").read_text(encoding="utf-8")
     panel = (ROOT / "app/handlers/admin/panel.py").read_text(encoding="utf-8")
-    profile = (ROOT / "app/handlers/admin/user_profile_block3_safe.py").read_text(encoding="utf-8")
+    # user_profile_block3_safe.py used to have its own `admin:user:{id}`
+    # profile-card handler too, but it was permanently shadowed by
+    # rights_block6.py's `user_card` (identical `^admin:user:\d+$` pattern,
+    # registered earlier in app/handlers/admin/__init__.py) and was removed
+    # as confirmed-dead code in PR 35 — rights_block6.py is now the single
+    # live "profile" presenter, alongside panel.py's separate "application"
+    # presenter for the registration-review flow.
     rights = (ROOT / "app/handlers/admin/rights_block6.py").read_text(encoding="utf-8")
 
     assert "send_admin_application_cards" in registration
     assert "_application_notification" not in registration
     assert "send_admin_user_card(call.message, session, target, mode=\"application\")" in panel
-    assert "send_admin_user_card(call.message, session, target, mode=\"profile\")" in profile
     assert "send_admin_user_card(call.message, session, target, mode=\"profile\")" in rights
 
 

@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Badge, User, UserBadge
-from app.services.admin_user_card import send_admin_user_card
 from app.services.notification_service import safe_send
 from app.services.points_service import add_points, add_portfolio_item, make_idempotency_key, total_points
 from app.utils import texts
@@ -199,15 +198,3 @@ async def badge_finish(message: Message, user: User | None, settings: Settings, 
     await state.clear()
     await message.answer("Знак выдан и добавлен в портфолио.", reply_markup=profile_kb(target.id))
     await safe_send(bot, target.telegram_id, f"Вы получили знак «{badge.name}» 🌟\n\n{reason}")
-
-
-@router.callback_query(F.data.func(is_profile_callback))
-async def profile(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext) -> None:
-    if not await guard(call, user, settings):
-        return
-    await state.clear()
-    target = await session.get(User, int(call.data.rsplit(":", 1)[-1]))
-    if not target:
-        await call.message.answer("Участник не найден")
-        return
-    await send_admin_user_card(call.message, session, target, mode="profile")
