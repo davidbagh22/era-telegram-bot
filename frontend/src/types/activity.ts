@@ -14,6 +14,16 @@ export interface EventItem {
   registration_status: string | null;
 }
 
+export interface EventActivity {
+  id: number;
+  title: string;
+  description: string;
+  submission_type: string;
+  points: number;
+  my_status: string | null;
+  submit_deep_link: string | null;
+}
+
 export type TaskScope = "available" | "mine" | "review" | "completed";
 
 export interface TaskItem {

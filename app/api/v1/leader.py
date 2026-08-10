@@ -8,10 +8,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_bot, get_current_user, get_session
+from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.rate_limit import enforce_rate_limit
-from app.database.models import Task, User
-from app.services import leader_service
+from app.config import Settings
+from app.database.models import Event, EventActivitySubmission, Task, User
+from app.keyboards.participant import open_app_button
+from app.services import event_activity_service, leader_service
+from app.services.notification_service import notify_admins, safe_send
 from app.utils.constants import PRIVILEGED_ROLES
 
 router = APIRouter(prefix="/leader", tags=["leader"])
@@ -276,3 +279,104 @@ async def decide_application(
         if result.task.id == task.id:
             return _to_open_task_out(result)
     return _to_open_task_out(leader_service.OpenTaskWithApplications(task=task, applications=[]))
+
+
+# ---------------------------------------------------------------------------
+# Event Activities — the Mini App equivalent of the leader pre-review step
+# in app/handlers/leader/event_activities_block7.py. A submission passes
+# through here before an admin can do the final points award; a leader
+# only ever sees submissions for events they're responsible for.
+# ---------------------------------------------------------------------------
+
+
+class ActivitySubmissionOut(BaseModel):
+    id: int
+    activity_id: int
+    activity_title: str
+    points: int
+    event_title: str
+    user_id: int
+    user_name: str
+    status: str
+    text: str | None
+    file_type: str | None
+
+
+def _to_activity_submission_out(row) -> ActivitySubmissionOut:
+    submission, activity, event, respondent = row
+    return ActivitySubmissionOut(
+        id=submission.id,
+        activity_id=activity.id,
+        activity_title=activity.title,
+        points=activity.points,
+        event_title=event.title,
+        user_id=respondent.id,
+        user_name=f"{respondent.first_name} {respondent.last_name or ''}".strip(),
+        status=submission.status,
+        text=submission.text,
+        file_type=submission.file_type,
+    )
+
+
+@router.get("/activities", response_model=list[ActivitySubmissionOut])
+async def read_leader_activities(
+    leader: User = Depends(require_leader),
+    session: AsyncSession = Depends(get_session),
+) -> list[ActivitySubmissionOut]:
+    rows = await event_activity_service.list_leader_pending(session, leader.id)
+    return [_to_activity_submission_out(row) for row in rows]
+
+
+class ActivityDecisionIn(BaseModel):
+    action: Literal["approve", "reject"]
+
+
+@router.post("/activities/{submission_id}/decide", response_model=ActivitySubmissionOut)
+async def decide_leader_activity(
+    submission_id: int,
+    payload: ActivityDecisionIn,
+    leader: User = Depends(require_leader),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    settings: Settings = Depends(get_settings),
+    _rate_limit: None = Depends(enforce_leader_action_rate_limit),
+) -> ActivitySubmissionOut:
+    submission = await session.get(EventActivitySubmission, submission_id)
+    if submission is None:
+        raise HTTPException(status_code=404, detail="submission_not_found")
+    activity = await event_activity_service.leader_decide(
+        session, submission, approve=payload.action == "approve", reviewer_id=leader.id
+    )
+    if activity is None:
+        raise HTTPException(status_code=409, detail="already_reviewed")
+    target = await session.get(User, submission.user_id)
+    event = await session.get(Event, activity.event_id)
+    event_title = event.title if event else ""
+    if bot is not None:
+        if payload.action == "approve":
+            if target:
+                await safe_send(
+                    bot,
+                    target.telegram_id,
+                    f"Ваш результат «{activity.title}» принят лидером и передан админу на финальное подтверждение.",
+                )
+            await notify_admins(
+                bot,
+                settings,
+                f"✨ Активность прошла лидерскую проверку\n\n{activity.title}\nТеперь админ может финально начислить баллы.",
+                reply_markup=open_app_button(settings.effective_miniapp_url),
+            )
+        elif target:
+            await safe_send(bot, target.telegram_id, f"Результат «{activity.title}» не прошёл лидерскую проверку.")
+    return ActivitySubmissionOut(
+        id=submission.id,
+        activity_id=activity.id,
+        activity_title=activity.title,
+        points=activity.points,
+        event_title=event_title,
+        user_id=submission.user_id,
+        user_name=f"{target.first_name} {target.last_name or ''}".strip() if target else "",
+        status=submission.status,
+        text=submission.text,
+        file_type=submission.file_type,
+    )

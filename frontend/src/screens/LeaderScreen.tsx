@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { PillTabs } from "../components/PillTabs";
+import { ActivitiesTab } from "./leader/ActivitiesTab";
 import { OpenTasksTab } from "./leader/OpenTasksTab";
 import { OverviewTab } from "./leader/OverviewTab";
 
-type LeaderSection = "overview" | "open-tasks";
+type LeaderSection = "overview" | "open-tasks" | "activities";
 
 const SECTIONS: { value: LeaderSection; label: string }[] = [
   { value: "overview", label: "Обзор" },
   { value: "open-tasks", label: "Открытые задачи" },
+  { value: "activities", label: "Активности" },
 ];
 
 export function LeaderScreen() {
@@ -21,6 +23,7 @@ export function LeaderScreen() {
       <PillTabs options={SECTIONS} active={section} onChange={setSection} />
       {section === "overview" && <OverviewTab />}
       {section === "open-tasks" && <OpenTasksTab />}
+      {section === "activities" && <ActivitiesTab />}
     </div>
   );
 }

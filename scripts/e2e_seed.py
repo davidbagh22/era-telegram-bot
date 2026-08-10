@@ -24,7 +24,7 @@ from datetime import date, time, timedelta
 
 from app.config import get_settings
 from app.database.base import Base
-from app.database.models import Event, PointTransaction, User
+from app.database.models import Event, EventActivity, EventActivitySubmission, PointTransaction, User
 from app.database.session import create_engine_and_sessionmaker
 from app.utils.constants import ApplicationStatus, EventStatus, Role
 
@@ -52,6 +52,10 @@ AUCTION_BIDDER_TELEGRAM_ID = 900006
 # so this gets its own balance rather than reusing AUCTION_BIDDER_TELEGRAM_ID
 # or PARTICIPANT_TELEGRAM_ID.
 REWARD_REDEEMER_TELEGRAM_ID = 900007
+# Dedicated fixture for event_activities.spec.ts: a real admin approval
+# awards points, same reasoning as REWARD_REDEEMER_TELEGRAM_ID above — this
+# submitter's balance must stay untouched by every other spec.
+ACTIVITY_SUBMITTER_TELEGRAM_ID = 900008
 
 
 async def seed() -> None:
@@ -67,6 +71,12 @@ async def seed() -> None:
             role=Role.ADMIN,
             application_status=ApplicationStatus.APPROVED,
         )
+        leader = User(
+            telegram_id=LEADER_TELEGRAM_ID,
+            first_name="E2E Leader",
+            role=Role.LEADER,
+            application_status=ApplicationStatus.APPROVED,
+        )
         session.add_all(
             [
                 User(
@@ -75,12 +85,7 @@ async def seed() -> None:
                     role=Role.PARTICIPANT,
                     application_status=ApplicationStatus.APPROVED,
                 ),
-                User(
-                    telegram_id=LEADER_TELEGRAM_ID,
-                    first_name="E2E Leader",
-                    role=Role.LEADER,
-                    application_status=ApplicationStatus.APPROVED,
-                ),
+                leader,
                 admin,
                 User(
                     telegram_id=PENDING_APPLICANT_TELEGRAM_ID,
@@ -114,8 +119,14 @@ async def seed() -> None:
             role=Role.PARTICIPANT,
             application_status=ApplicationStatus.APPROVED,
         )
-        session.add_all([bidder, redeemer])
-        await session.flush()  # assigns admin.id/bidder.id/redeemer.id, used below
+        activity_submitter = User(
+            telegram_id=ACTIVITY_SUBMITTER_TELEGRAM_ID,
+            first_name="E2E Activity Submitter",
+            role=Role.PARTICIPANT,
+            application_status=ApplicationStatus.APPROVED,
+        )
+        session.add_all([bidder, redeemer, activity_submitter])
+        await session.flush()  # assigns admin.id/leader.id/bidder.id/redeemer.id/activity_submitter.id, used below
         session.add(
             PointTransaction(
                 user_id=bidder.id,
@@ -147,6 +158,45 @@ async def seed() -> None:
                 created_by=admin.id,
             )
         )
+        # Completed event, run by the E2E leader, so event_activities.spec.ts
+        # can exercise the full leader -> admin review pipeline. A real
+        # bot-side proof submission needs a live Telegram client (out of
+        # reach for Playwright), so the "pending" submission below stands in
+        # for one — same gap the Task-submission deep link has, with no
+        # existing E2E coverage of that FSM either.
+        completed_event = Event(
+            title="E2E завершённое мероприятие",
+            description="Создано seed-скриптом для E2E-проверки активностей.",
+            event_date=date.today() - timedelta(days=1),
+            event_time=time(18, 0),
+            location="Онлайн",
+            format="online",
+            status=EventStatus.COMPLETED,
+            points_for_visit=5,
+            created_by=admin.id,
+            responsible_id=leader.id,
+        )
+        session.add(completed_event)
+        await session.flush()
+        activity = EventActivity(
+            event_id=completed_event.id,
+            title="E2E активность",
+            description="Проверка полного цикла: лидер -> админ.",
+            submission_type="text",
+            points=15,
+            requires_review=True,
+            is_active=True,
+        )
+        session.add(activity)
+        await session.flush()
+        session.add(
+            EventActivitySubmission(
+                activity_id=activity.id,
+                user_id=activity_submitter.id,
+                text="Готовый результат для E2E-проверки.",
+                status="pending",
+            )
+        )
         await session.commit()
 
     await engine.dispose()
@@ -156,7 +206,8 @@ async def seed() -> None:
         f"admin={ADMIN_TELEGRAM_ID}, pending_applicant={PENDING_APPLICANT_TELEGRAM_ID}, "
         f"pending_sync_applicant={PENDING_SYNC_APPLICANT_TELEGRAM_ID}, "
         f"auction_bidder={AUCTION_BIDDER_TELEGRAM_ID}, "
-        f"reward_redeemer={REWARD_REDEEMER_TELEGRAM_ID}"
+        f"reward_redeemer={REWARD_REDEEMER_TELEGRAM_ID}, "
+        f"activity_submitter={ACTIVITY_SUBMITTER_TELEGRAM_ID}"
     )
 
 

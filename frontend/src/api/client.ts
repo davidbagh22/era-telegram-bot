@@ -1,5 +1,6 @@
 import type {
   CalendarItem,
+  EventActivity,
   EventItem,
   EventScope,
   HistoryEntry,
@@ -8,8 +9,10 @@ import type {
 } from "../types/activity";
 import type { ApiErrorBody, MiniAppAuthResponse, MiniAppUserSummary } from "../types/auth";
 import type {
+  ActivitySubmissionAdmin,
   BadgeItem,
   DashboardData,
+  EventActivityAdmin,
   EventDecisionAction,
   EventForModeration,
   AuctionAdmin,
@@ -35,7 +38,12 @@ import type {
   UserListResult,
 } from "../types/admin";
 import type { HomeSnapshot } from "../types/home";
-import type { LeaderOpenTask, LeaderOverview, OpenTaskCreatePayload } from "../types/leader";
+import type {
+  ActivitySubmission,
+  LeaderOpenTask,
+  LeaderOverview,
+  OpenTaskCreatePayload,
+} from "../types/leader";
 import type { Auction, Opportunity, OpportunityScope, Reward, Survey, SurveyDetail } from "../types/opportunity";
 import type { Profile } from "../types/profile";
 import type {
@@ -215,6 +223,14 @@ export function registerForEvent(eventId: number): Promise<EventItem> {
 
 export function cancelEventRegistration(eventId: number): Promise<EventItem> {
   return authorizedPost<EventItem>(`/api/v1/events/${eventId}/cancel`);
+}
+
+// Event Activities — proof-of-participation tasks tied to a completed
+// event. Submitting proof (photo/link/text/file) stays a Bot-only FSM
+// (same handoff as task submission — see TaskOut.submit_deep_link),
+// so this only ever lists status and hands off to submit_deep_link.
+export function fetchEventActivities(eventId: number): Promise<EventActivity[]> {
+  return authorizedGet<EventActivity[]>(`/api/v1/events/${eventId}/activities`);
 }
 
 export function fetchTasks(scope: TaskScope): Promise<TaskItem[]> {
@@ -602,6 +618,39 @@ export function awardEventAttendancePoints(eventId: number): Promise<{ awarded_c
   return authorizedPost(`/api/v1/admin/events/${eventId}/award-attendance-points`);
 }
 
+// Event Activities — the admin half (create/send/review) of the *live*
+// handlers ported in app/services/event_activity_service.py (see that
+// file's docstring for the router-precedence investigation behind
+// "live", not app/handlers/admin/panel.py's own dead code).
+export function fetchAdminEventActivities(eventId: number): Promise<EventActivityAdmin[]> {
+  return authorizedGet<EventActivityAdmin[]>(`/api/v1/admin/events/${eventId}/activities`);
+}
+
+export function createEventActivities(
+  eventId: number,
+  lines: string,
+): Promise<{ created: number; rejected: number; activities: EventActivityAdmin[] }> {
+  return authorizedPost(`/api/v1/admin/events/${eventId}/activities`, { lines });
+}
+
+export function sendEventActivities(eventId: number): Promise<{ sent: number }> {
+  return authorizedPost(`/api/v1/admin/events/${eventId}/activities/send`);
+}
+
+export function fetchAdminActivitySubmissions(): Promise<ActivitySubmissionAdmin[]> {
+  return authorizedGet<ActivitySubmissionAdmin[]>("/api/v1/admin/activities/submissions");
+}
+
+export function decideActivitySubmission(
+  submissionId: number,
+  action: "approve" | "reject",
+): Promise<ActivitySubmissionAdmin> {
+  return authorizedPost<ActivitySubmissionAdmin>(
+    `/api/v1/admin/activities/submissions/${submissionId}/decide`,
+    { action },
+  );
+}
+
 // Partner + offer catalog management (app/handlers/admin/partners_admin.py,
 // the create/list/toggle/archive half of partner_offers_block16.py) —
 // distinct from offer-application review above, which only ever reviewed
@@ -857,6 +906,17 @@ export function decideLeaderApplication(
     `/api/v1/leader/open-tasks/${taskId}/applications/${userId}/decide`,
     { action },
   );
+}
+
+export function fetchLeaderActivities(): Promise<ActivitySubmission[]> {
+  return authorizedGet<ActivitySubmission[]>("/api/v1/leader/activities");
+}
+
+export function decideLeaderActivity(
+  submissionId: number,
+  action: "approve" | "reject",
+): Promise<ActivitySubmission> {
+  return authorizedPost<ActivitySubmission>(`/api/v1/leader/activities/${submissionId}/decide`, { action });
 }
 
 export function fetchProfile(): Promise<Profile> {

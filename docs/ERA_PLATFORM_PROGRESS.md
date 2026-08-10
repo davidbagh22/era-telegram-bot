@@ -2237,6 +2237,96 @@ Activities (`EventActivity`/`EventActivitySubmission`) is now the only
 unported admin capability, alongside the disclosed Excel-export gap from
 PR 29.
 
+## PR 32 — Event Activities, participant + leader + admin (merged)
+
+Ports the second (and last) admin capability PR 30's investigation found
+missing from the Mini App: proof-of-participation tasks tied to a
+completed event ("post a story", "write a review"), reviewed through an
+optional leader pre-check before an admin's final points award. The
+three-role shape (participant submits, leader pre-approves, admin
+confirms) makes this the most structurally involved port this session —
+comparable to Auctions/Rewards in size, plus a leader review step neither
+of those had.
+
+**Router-precedence archaeology first**: `app/handlers/admin/panel.py`'s
+own event-activity handlers (`event_activity_submissions`, the whole
+create-activity FSM, `event_activity_decide`) turned out to be dead code
+— shadowed by three *other* admin files registered earlier in
+`app/handlers/admin/__init__.py`: `event_activities_stability.py` (list/
+review/decide — including the `pending`/`leader_approved` review-status
+set panel.py's own version never knew about),
+`event_activities_block15.py` (create), and `event_activities_block7.py`
+(send-to-participants, with an idempotency marker in
+`Event.additional_info` blocking a second send). `app/services/
+event_activity_service.py` (new) is ported from these live handlers, not
+`panel.py`'s dead ones — see that file's own docstring for the full
+precedence chain.
+
+**Uploads stay Bot-only, by design, not by cut corner**: submitting proof
+(photo/link/text/file) needs a real file upload, and the Mini App
+deliberately never re-implements that — `app/api/v1/tasks.py`'s
+`TaskOut.submit_deep_link` already established the pattern (Mini App
+hands off to `https://t.me/<bot>?start=...`, the Bot's own FSM takes proof
+submission from there). This PR adds the same handoff for activities:
+`activity_submit_deep_link()`/`parse_activity_submit_payload()` in
+`app/utils/deep_links.py`, and
+`app/handlers/start.py::_try_start_activity_submission_from_deep_link`
+(mirrors `_try_start_task_submission_from_deep_link` exactly, including
+the "manual" proof type's immediate-submit short-circuit). No E2E spec
+covers that hand-off FSM, matching the existing (undocumented until now)
+gap for task submission — a real Telegram client is needed to exercise
+it, out of reach for Playwright either way.
+
+**Backend**: `app/services/event_activity_service.py` (new) — bulk-line
+parsing (`Title | points | type | description`, same format the Bot
+uses), admin CRUD/send/review, leader pre-review, participant browse/
+submit (participant's `submit_manual` only — everything else routes
+through the Bot FSM above).
+
+**API**: `GET /events/{id}/activities` (participant, in `events.py`).
+`GET /leader/activities`, `POST /leader/activities/{id}/decide` (in
+`leader.py`) — approving notifies the participant *and* re-notifies
+admins via `open_app_button()`, same pattern as PR 30's other repointed
+notifications. `GET/POST /admin/events/{id}/activities`, `POST
+.../activities/send`, `GET /admin/activities/submissions`, `POST
+/admin/activities/submissions/{id}/decide` (in `admin.py`, behind
+`require_event_reviewer` — mirrors the Bot's own `events.manage`
+permission check exactly).
+
+**Frontend**: participant — an expandable "✨ Активности" panel per
+registered event in the Activity screen's Events tab, listing status and
+a "Отправить результат в боте" deep-link button. Leader — new
+"Активности" tab in `LeaderScreen` (approve/reject a pre-review queue
+scoped to events they're responsible for). Admin — new "Активности" tab
+in `AdminEventsScreen`, split into a global review queue and a
+per-event create/send panel (reuses the existing `EventsList` component
+for event selection).
+
+**Tests**: `test_event_activity_service.py` (17, real SQLite DB —
+bulk-line parsing, send idempotency marker, admin/leader decide
+lifecycles, participant registration gating), `test_event_activities_api.py`
+(20, mocked service, all three routers), `test_activity_submit_deep_link.py`
+(12, mirrors `test_task_submit_deep_link.py`'s structure),
+`frontend/e2e/event_activities.spec.ts` (real stack: leader pre-approves
+a seeded pending submission, admin does the final approval, both
+verified by the submission leaving the respective queue after a
+refetch). `scripts/e2e_seed.py` gained a dedicated
+`ACTIVITY_SUBMITTER_TELEGRAM_ID` (900008, same reasoning as PR 31's
+`REWARD_REDEEMER_TELEGRAM_ID` — a real approval debits points), plus a
+completed event (responsible_id = the seeded leader) with one activity
+and one pending submission, since the actual Bot-side submission FSM is
+out of E2E's reach.
+`test_admin_leader_rate_limiting.py`: updated hardcoded route counts
+(43 → 46 admin, 3 → 4 leader).
+
+**Bot admin-cleanup pass can now genuinely finish**: every admin
+capability the Bot ever had — including both gaps this session's own
+investigation found (Rewards & Redemptions, Event Activities) — now has
+a verified Mini App equivalent. Excel export (PR 29's disclosed gap)
+remains the sole exception; the cleanup pass will need to explicitly
+decide whether to keep a minimal Bot-only export command or drop it,
+rather than silently losing the capability.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

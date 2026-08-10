@@ -62,3 +62,16 @@ export interface OpenTaskCreatePayload {
   points: number;
   max_participants: number;
 }
+
+export interface ActivitySubmission {
+  id: number;
+  activity_id: number;
+  activity_title: string;
+  points: number;
+  event_title: string;
+  user_id: number;
+  user_name: string;
+  status: string;
+  text: string | null;
+  file_type: string | null;
+}

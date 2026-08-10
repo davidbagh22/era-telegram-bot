@@ -5,11 +5,14 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_session
+from app.api.deps import get_current_user, get_session, get_settings
+from app.config import Settings
 from app.database.models import Event, EventRegistration, User
+from app.services import event_activity_service
 from app.services.activity_service import EventScope, list_events
 from app.services.event_registration_service import mark_not_coming
 from app.services.event_service import available_places, register_for_event
+from app.utils.deep_links import activity_submit_deep_link
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -109,3 +112,48 @@ async def cancel_event_registration(
     if not mark_not_coming(registration, event):
         raise HTTPException(status_code=409, detail="cannot_change_plans")
     return await _to_event_out(session, event, registration)
+
+
+class EventActivityOut(BaseModel):
+    id: int
+    title: str
+    description: str
+    submission_type: str
+    points: int
+    my_status: str | None
+    submit_deep_link: str | None
+
+
+@router.get("/{event_id}/activities", response_model=list[EventActivityOut])
+async def read_event_activities(
+    event_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> list[EventActivityOut]:
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    activities = await event_activity_service.list_activities_for_participant(session, event, user)
+    if activities is None:
+        raise HTTPException(status_code=409, detail="not_registered")
+    result: list[EventActivityOut] = []
+    for activity in activities:
+        submission = await event_activity_service.get_submission(session, activity.id, user.id)
+        can_submit = submission is None or submission.status not in {"approved", "pending"}
+        result.append(
+            EventActivityOut(
+                id=activity.id,
+                title=activity.title,
+                description=activity.description,
+                submission_type=activity.submission_type,
+                points=activity.points,
+                my_status=submission.status if submission else None,
+                submit_deep_link=(
+                    activity_submit_deep_link(settings.bot_username, activity.id)
+                    if can_submit and settings.bot_username
+                    else None
+                ),
+            )
+        )
+    return result
