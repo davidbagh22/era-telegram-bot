@@ -1,112 +1,226 @@
-# ERA Platform — UI Design System (Mini App)
+# ERA Mini App — UI Design System
 
-Единый источник правды по дизайн-токенам, примитивам и паттернам экранов
-Mini App (`frontend/src`). Написан по факту кода на момент PR14, а не по
-намерениям — если код и этот документ разойдутся, прав код, и это баг
-документа.
+**PR 37.** This documents what's actually implemented in
+`frontend/src/theme/tokens.css` and `frontend/src/components/` — not an
+aspirational spec sitting next to the code. Every token and component
+below is real, imported, and used somewhere in the app today. When PR 38
+and PR 39 redesign the remaining screen content, they extend this system
+rather than inventing new one-off styles — that's the whole point of
+having it.
 
-## 1. Токены (`frontend/src/theme/tokens.css`)
+## Brand direction
 
-Все цвета/радиусы/тени/шрифты — только через CSS-переменные `--era-*`,
-никогда не через захардкоженный hex внутри компонента (кроме одного
-осознанного исключения — см. раздел 4).
+ЭРА's own words: energy, movement, growth, a youth environment,
+modern, a light touch of elitism, technological. Concretely, that means:
 
-| Токен | Значение (light) | Назначение |
-|---|---|---|
-| `--era-red` / `--era-violet` / `--era-magenta` | `#e52b24` / `#742cc4` / `#be268f` | Основные брендовые акценты |
-| `--era-gradient` | `linear-gradient(135deg, #742cc4 0%, #b529a6 48%, #e52b24 100%)` | Primary-кнопки, бейджи активных вкладок, шапки Admin/Leader режимов |
-| `--era-bg` / `--era-surface` | фон страницы / фон карточек | |
-| `--era-text` / `--era-text-muted` | основной / вторичный текст | |
-| `--era-border` | разделители, обводки карточек/полей | |
-| `--era-success` / `--era-warning` / `--era-error` | статусные цвета | Используются в `StatusBadge`, сообщениях об ошибках |
-| `--era-radius-card` (20px) / `--era-radius-control` (0.875rem) | скругления карточек / кнопок-полей | |
-| `--era-motion-fast` (0.15s) / `--era-motion` (0.25s) | длительности переходов | |
-| `--era-font-display` (Unbounded) / `--era-font-body` (Golos Text) | заголовки / основной текст | |
+- **The gradient is the hero, used sparingly.** `--era-gradient` (violet
+  → magenta → red) appears on primary actions and one "spotlight" card
+  per screen (`<Card gradient>` — Home's "next step"), never as a
+  background wash or on more than one element at a time. That's what
+  keeps it feeling like an accent, not decoration.
+- **Everything else is quiet.** Flat white/near-black surfaces, one
+  border color, two shadow levels. No decorative gradients elsewhere, no
+  drop-shadow-everything "MVP dashboard" look.
+- **Typography carries the energy instead.** `Unbounded` (display,
+  geometric, confident) for headings and hero numbers; `Golos Text`
+  (body) for everything you actually read. The contrast between the two
+  is doing more of the "modern/youthful" work than color ever should.
 
-### 1.1. Тёмная тема (добавлено в PR14)
+## Tokens (`frontend/src/theme/tokens.css`)
 
-Telegram передаёt `colorScheme`/`themeChanged` через `window.Telegram.WebApp`.
-`telegram/webApp.ts::applyTelegramTheme()` пишет его в
-`document.documentElement.dataset.theme`, а `tokens.css` переопределяет
-`--era-bg/--era-surface/--era-text/--era-text-muted/--era-border/
---era-success/--era-warning/--era-error/--era-shadow-*` под
-`:root[data-theme="dark"]`. Брендовые цвета (`--era-red/violet/magenta`,
-`--era-gradient`) намеренно не меняются — они уже достаточно насыщены для
-тёмного фона.
+### Color
 
-Вызывается дважды: синхронно в `main.tsx` (до первого рендера — без этого
-был бы одно-кадровый "вспых" светлой темой в тёмном Telegram) и повторно в
-`initTelegramWebApp()` (`useAuth.ts`), которая также подписывается на
-`themeChanged`, чтобы тема менялась вживую, если пользователь переключит
-тему Telegram прямо во время открытого Mini App.
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| `--era-red` / `--era-violet` / `--era-magenta` | fixed, same in both themes | — | brand accents, never surfaces |
+| `--era-gradient` | `linear-gradient(135deg, violet → magenta → red)` | — | primary buttons, spotlight cards |
+| `--era-bg` | `#f8f6f9` | `#17121d` | page background |
+| `--era-bg-subtle` | `#ffffff` | `#1f1926` | recessed surfaces (inputs) |
+| `--era-surface` | `#ffffff` | `#241d2c` | cards, sheets, modals |
+| `--era-text` / `--era-text-muted` | — | — | primary / secondary text |
+| `--era-border` | `#eae5ed` | `#362c40` | the one border color in the app |
+| `--era-success` / `--era-warning` / `--era-error` | — | — | status semantics (StatusBadge, toasts) |
 
-До PR14 `getColorScheme()` существовал, но нигде не вызывался — тёмная
-тема Telegram полностью игнорировалась (обычный баг несогласованности,
-а не осознанное решение).
+Dark mode is driven by `:root[data-theme="dark"]`, set by
+`telegram/webApp.ts`'s `applyTelegramTheme()` mirroring Telegram's own
+`colorScheme` (kept live via the `themeChanged` event) — the Mini App
+never has its own light/dark toggle, it always matches the host app.
+Brand colors (`--era-red`/`--era-violet`/`--era-magenta`,
+`--era-gradient`) deliberately don't change between themes — they're
+already saturated enough to read on a dark surface. Called twice:
+synchronously in `main.tsx` before the first render (otherwise there's a
+one-frame flash of the light theme in dark Telegram), and again from
+`initTelegramWebApp()` (`useAuth.ts`), which also subscribes to
+`themeChanged` so the theme updates live if the user switches Telegram's
+own theme while the Mini App is open.
 
-## 2. Общие примитивы (`frontend/src/components/`)
+### Typography scale
 
-| Компонент | Когда использовать |
-|---|---|
-| `Card` | Контейнер контента с фоном/тенью/радиусом; `gradient` prop — для акцентных карточек (белый текст поверх `--era-gradient`) |
-| `EmptyState` | Единственный способ показать "здесь пусто" или "не удалось загрузить" внутри списка/таба |
-| `StatusBanner` | Полноэкранное сообщение о состоянии аккаунта (Pending/Blocked/AuthError) — не для списков |
-| `StatusBadge` | Цветной статус-лейбл (заявка/задача/проект) |
-| `MetricCard` | Числовая метрика в Home/Dashboard |
-| `ProgressBar` | Прогресс уровня/выполнения |
-| `PillTabs` | Переключатель вкладок внутри экрана (не путать с `BottomNavigation`) |
-| `BottomNavigation` | Только нижняя навигация обычного участника (5 вкладок) |
+`--era-text-xs` (0.75rem) through `--era-text-3xl` (1.75rem) — see the
+table in `tokens.css` for exact use per step. `--era-font-display`
+(Unbounded) is for headings/hero numbers only; `--era-font-body` (Golos
+Text) is everything else, including buttons and inputs.
 
-## 3. Паттерн загрузки данных
+This codebase's established pattern (PR 14's design audit) is React
+inline `style` objects, not utility classes — the scale isn't
+auto-applied by a CSS cascade the way Tailwind's would be. Every inline
+`fontSize` a screen sets should still be drawn from this scale rather
+than an arbitrary number; the scale's job is to be the single source of
+truth for "what sizes exist," not to enforce itself mechanically.
 
-Единственный принятый способ — хук `useAsync<T>(fetcher, deps)`
-(`frontend/src/hooks/useAsync.ts`), возвращающий
-`{status:"loading"} | {status:"ready", data} | {status:"error", detail}`.
+### Spacing scale
 
-Каждый экран, который читает данные с API, обязан отрисовать все три
-состояния явно:
+`--era-space-1` (0.25rem) through `--era-space-8` (2rem), 4px base unit —
+matches the rem values already used ad hoc across every screen's
+`gap`/`padding`/`margin`.
 
-- `loading` → короткий текст «Загрузка…» (без спиннера — осознанно,
-  единообразно, не требует доп. ассетов);
-- `error` → `EmptyState`/`StatusBanner` с понятным русским текстом,
-  никогда — пустой экран или необработанное исключение в консоли;
-- `ready` + пустой массив → отдельный `EmptyState` с текстом "пока
-  пусто", отличным от текста ошибки.
+### Radius
 
-Проверено при аудите PR14: все 17 экранов/табов, использующих
-`useAsync`, отрисовывают все три состояния (см.
-`docs/PRODUCTION_READINESS_AUDIT.md` для истории — на момент PR13 это
-было отмечено в бэклоге как непроверенное, PR14 закрывает эту проверку).
+- `--era-radius-sm` (0.625rem) — small chips, skeleton blocks
+- `--era-radius-control` (0.875rem) — buttons, inputs
+- `--era-radius-card` (20px) — cards, modals
+- `--era-radius-pill` (999px) — pill tabs, status badges, drag handles
+- `--era-radius-sheet` (1.5rem) — bottom sheet top corners only
 
-## 4. Осознанные исключения
+### Shadow & motion
+
+- `--era-shadow-soft` — resting card elevation
+- `--era-shadow-lift` — hover/active card elevation, modal elevation
+- `--era-shadow-overlay` — upward shadow for bottom sheets
+- `--era-motion-fast` (0.15s) — taps, hovers, overlay fade-in
+- `--era-motion` (0.25s) — page transitions, sheet slide-in
+
+## Components (`frontend/src/components/`)
+
+### Existing (pre-PR 37, unchanged)
+
+- **`Card`** — the base surface. `gradient` prop for the one
+  spotlight-per-screen case.
+- **`MetricCard`** — a single stat (label + big number).
+- **`ProgressBar`** — the growth-level stepper (Участник → Активный →
+  Лидер).
+- **`StatusBadge`** — small colored pill for a status word.
+- **`StatusBanner`** — full-screen **error state**: centered icon-less
+  title + description + optional retry action. Used by every screen's
+  `useAsync` error branch. This *is* the app's error-state component —
+  PR 37 didn't add a separate one because this already covers it well.
+- **`EmptyState`** — the app's **empty state**: a single centered line of
+  muted text, used when a list/query legitimately has zero results (not
+  the same as an error — `useAsync`'s "error" and "ready with []" are
+  rendered differently everywhere, on purpose).
+- **`PillTabs`** — the app's **tabs** primitive (Activity's
+  Events/Tasks/Calendar/History, Opportunities' scope switcher).
+- **`BottomNavigation`** — the app's primary **navigation** (mobile
+  bottom bar, `TabKey`-driven).
+- **`icons.tsx`** — the small inline-SVG icon set used by
+  BottomNavigation and a few cards.
+
+### New in PR 37
+
+- **`Avatar`** — initials on the brand gradient, 3 sizes (`sm`/`md`/`lg`).
+  ERA doesn't have a profile-photo pipeline into the Mini App API (see
+  `docs/BOT_VS_MINIAPP_AUDIT.md`), so this is a deliberate, permanent
+  design choice, not a placeholder for photos "coming later." Used in
+  `HomeScreen`'s greeting and `ProfileScreen`'s header.
+- **`Skeleton` / `SkeletonText` / `SkeletonCard` / `SkeletonList`** — the
+  app's **loading state** primitive, replacing the plain "Загрузка…"
+  text every screen used to render on its own. `Skeleton` is a single
+  shimmering block (`era-shimmer` keyframe in `tokens.css`); the other
+  three are compositions shaped like real content (a paragraph, a Card,
+  a list of Cards) so the layout doesn't visibly jump once real data
+  arrives. Wired into `HomeScreen`, `ProfileScreen`, `EventsTab`,
+  `TasksTab` in this PR; the remaining screens pick it up naturally as
+  PR 38/39 touch their content.
+- **`Modal`** — centered dialog with a backdrop, closes on backdrop
+  click or Escape. For content that genuinely wants to be centered
+  (first-load informational dialogs) rather than reached-for with a
+  thumb.
+- **`BottomSheet`** — slides up from the bottom, same backdrop mechanics
+  as `Modal`. This is the **primary** overlay for a touch-only app (see
+  `frontend/e2e/*.spec.ts`'s fixed mobile viewport) — prefer it over
+  `Modal` for anything attached to a card's own action (confirmations,
+  quick pickers, short in-context forms). First real usage: `EventsTab`'s
+  "Планы изменились" (cancel registration) now opens a confirm sheet
+  instead of cancelling on a single tap — a real UX fix (no destructive
+  action in the app previously had a confirmation step), not just a
+  design-system demo.
+- **`Toast` (`ToastProvider` / `useToast()`)** — top-of-screen, 3.5s
+  auto-dismissing notifications with a success/error/info tone (colored
+  left border). Mounted once at the app root (`main.tsx`). This codebase
+  never used a native `alert()`/`confirm()` (a WebView `alert()` blocks
+  and looks foreign inside Telegram) — `useToast()` is the replacement
+  pattern for "tell the user something happened" that isn't already
+  covered by a refetched list or a `StatusBanner`. First real usages:
+  `ProfileScreen`'s resume download (success/error), `EventsTab`'s
+  register/cancel actions.
+
+## Loading / error / empty discipline
+
+The one accepted way to read data is `useAsync<T>(fetcher, deps)`
+(`frontend/src/hooks/useAsync.ts`), returning `{status:"loading"} |
+{status:"ready", data} | {status:"error", detail}`. Every screen that
+reads from the API is expected to render all three states explicitly —
+verified across all `useAsync` call sites in PR 14's audit, extended to
+cover `Skeleton` in PR 37:
+
+- `loading` → `Skeleton`/`SkeletonList` (was plain "Загрузка…" text
+  before PR 37 — deliberately deferred then as "purely cosmetic, not a
+  production-readiness blocker," closed now).
+- `error` → `EmptyState` (panel-level) or `StatusBanner` (whole-screen),
+  never a blank screen or an unhandled exception in the console.
+- `ready` + empty array → its own `EmptyState`, textually distinct from
+  the error message.
+
+## Deliberate exceptions
 
 - `Card.tsx`, `PillTabs.tsx`, `layouts/AdminLayout.tsx`,
   `screens/leader/OpenTasksTab.tsx`, `screens/projects/ProjectWorkspace.tsx`
-  используют буквальный `#fff` для текста поверх `--era-gradient`/
-  `--era-red` — это не отдельный "цвет", а константа "белый текст на
-  насыщенном брендовом фоне", читается яснее токена и не нуждается в
-  тёмной теме (тёмная тема не меняет сами брендовые фоны).
-- До PR14 в `OpenTasksTab.tsx`/`ProfileScreen.tsx` были fallback-значения
-  `var(--era-error, #E5342B)`, где резервный hex расходился с реальным
-  токеном (`#d92d20`). Так как `tokens.css` подключается глобально и
-  переменная всегда доступна, fallback был мёртвым кодом с неверным
-  значением — убран, оставлен чистый `var(--era-error)`.
+  use a literal `#fff` for text over `--era-gradient`/`--era-red` — not a
+  separate "color," but the constant "white text on a saturated brand
+  background," which reads more clearly than a token would and doesn't
+  need a dark-theme variant (dark mode doesn't change the brand
+  backgrounds themselves).
+- Before PR 14, `OpenTasksTab.tsx`/`ProfileScreen.tsx` had
+  `var(--era-error, #E5342B)`-style fallback values whose hex had drifted
+  from the real token (`#d92d20`). Since `tokens.css` is loaded globally
+  and the variable is always available, the fallback was dead code with
+  a wrong value — removed, left as plain `var(--era-error)`.
 
-## 5. Safe area / мобильная корректность
+## Safe area
 
-`index.html` задаёт `viewport-fit=cover`, поэтому контент может уезжать
-под чёлку/статус-бар/домашний индикатор устройства. Обязательные точки:
+`index.html` sets `viewport-fit=cover`, so content can slide under a
+device's notch/status bar/home indicator. Required checkpoints:
+`BottomNavigation`'s `padding-bottom: calc(0.5rem +
+env(safe-area-inset-bottom, 0px))`; every layout
+(`UserLayout`/`AdminLayout`/`LeaderLayout`)'s root
+`padding-top: env(safe-area-inset-top, 0px)`; `StatusBanner` (renders
+outside any layout for Pending/Blocked/AuthError) has its own top padding
+increased by the same inset.
 
-- `BottomNavigation` — `padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px))` (было до PR14);
-- `UserLayout`/`AdminLayout`/`LeaderLayout` — `padding-top: env(safe-area-inset-top, 0px)` на корневом контейнере (добавлено в PR14 — отсутствовало для Admin/Leader и обычного User-layout);
-- `StatusBanner` (Pending/Blocked/AuthError, рендерятся без layout-обёртки) — верхний паддинг увеличен на `env(safe-area-inset-top, 0px)` (добавлено в PR14).
+## When to reach for what
 
-## 6. Известные ограничения (не в этом блоке)
+| Situation | Component |
+|---|---|
+| A list/query legitimately has zero results | `EmptyState` |
+| A fetch failed and the whole screen can't render | `StatusBanner` |
+| A fetch failed for one small panel inside an otherwise-working screen | inline muted/error text (see `EventActivitiesPanel` in `EventsTab.tsx`) — not every failure needs a full-screen treatment |
+| Data is still loading | `Skeleton`/`SkeletonList` (not plain text) |
+| Confirming a destructive or consequential action reached for with a thumb | `BottomSheet` |
+| A centered, non-thumb-reached dialog | `Modal` |
+| "Your action succeeded/failed" that isn't already obvious from the UI updating | `useToast()` |
+| Showing a person | `Avatar` |
 
-- Нет отдельного visual regression / Storybook — сверка "все экраны
-  выглядят единообразно" делается вручную по этому документу и код-ревью,
-  не автоматизирована.
-- Спиннер/skeleton вместо текстового «Загрузка…» не введён — решение
-  сознательно отложено, текущий вариант простой и уже единообразный
-  везде, замена — чисто косметическое отдельное решение, не блокирующее
-  production readiness.
+## Explicitly not building
+
+- **A photo-based Avatar.** No backend support, no product need stated
+  in the brief beyond "покажи фото" for Profile — initials-on-gradient
+  already reads as a real product decision (see Slack, Linear, many
+  others), not a placeholder.
+- **A generic `<Table>` primitive.** The brief is explicit: "Никаких
+  огромных технических таблиц по умолчанию" for Admin Mode — lists in
+  this app are card-based, and that's staying true everywhere, not just
+  in Admin.
+- **A component library documentation site (Storybook, etc.).** This
+  file plus the components' own doc comments is the documentation; a
+  separate rendering tool is more infrastructure than a ~45-screen app
+  built by one team needs right now.
