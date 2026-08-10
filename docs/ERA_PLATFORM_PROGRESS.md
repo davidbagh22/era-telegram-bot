@@ -2327,6 +2327,71 @@ remains the sole exception; the cleanup pass will need to explicitly
 decide whether to keep a minimal Bot-only export command or drop it,
 rather than silently losing the capability.
 
+## PR 33 — Bot cleanup step 1: remove `panel.py`'s confirmed-dead code (merged)
+
+First actual deletion in the Bot admin-cleanup pass, scoped deliberately
+narrow: only functions *proven* unreachable, not a wholesale rewrite of
+`panel.py` (5220 lines) or the `/admin` menu tree — that stays a
+separate, larger future pass.
+
+**Method**: wrote a one-off AST-based script (not committed — this was
+investigation tooling, not application code) that parses every
+`@router.message`/`@router.callback_query` decorator in all 25 files
+under `app/handlers/admin/`, extracts each filter's pattern (exact
+`callback_data`/text match, `startswith` prefix, `regexp`, `Command`
+name, or `in_()` set), and — using `app/handlers/admin/__init__.py`'s
+actual `router.include_router(...)` order — checks, for every one of
+`panel.py`'s 153 registrations, whether an earlier-registered file has
+an overlapping pattern that would always win the same Telegram update
+first. Extends the same shadowing logic PR 30 first found by hand
+(`offices_management.py`/`event_activities_stability.py` etc. already
+winning over parts of `panel.py`) into a systematic, file-by-file map
+instead of spot checks.
+
+**Result**: 77 registrations confirmed live (unique pattern), 15
+confirmed dead (exact/prefix match against an earlier file, high
+confidence), 18 flagged "maybe" (a regexp was involved — the heuristic
+can't fully resolve regex-vs-literal overlap, so these need manual
+per-case reading before any decision), and 42 are pure FSM-state
+handlers (`@router.message(SomeStates.field)` with no `callback_data`
+component, so cross-file collision isn't the same kind of question).
+
+**What got removed** (each individually confirmed dead — the winning
+file is a *different, disjoint* implementation the Mini App already
+has an equivalent of; every removed function's body was read in full
+first to rule out a shared helper a still-live function also depends
+on, e.g. `approve_user` was self-contained and didn't touch
+`_start_user_review`, which `reject_user_start`/`info_user_start` — both
+live — do use, so that helper stayed):
+`admin_command`/`admin_panel`/`admin_submenu` (shadowed by
+`dashboard_block_a.py`/`analytics_filters.py`), `approve_user`
+(`approval_bonus_fix.py`), `pending_events` (`events_block6.py`),
+`pending_projects` (`projects_block5_list.py`),
+`event_activity_submissions` (`event_activities_stability.py`),
+`approve_entity` (`events_block6.py`), `auctions_admin_menu`/
+`auction_results`/`auction_select_winner` (`auction_block17.py`),
+`tasks_for_review` (`task_review_block2.py`), `analytics`/
+`analytics_excel` (`analytics_filters.py`/`management_ready.py`),
+`offices_menu` (`offices_management.py`). `ruff --fix` then cleared 16
+now-genuinely-unused imports the removals left behind
+(`approve_application`, `sync_user_chat_access`,
+`build_analytics_workbook`, etc.) — `panel.py` dropped from 153 to 137
+registrations, no other behavior change.
+
+**Tests**: `test_panel_dead_code_removed.py` (new) — asserts the 15
+removed names stay gone from the `panel` module (catches the dead code
+silently creeping back), and that `_start_user_review` (the shared
+helper) survived. Full `pytest -q` green — nothing depended on any of
+this, exactly as the precedence analysis predicted.
+
+**Deliberately not touched in this pass**: the 18 "maybe" entries (need
+manual regex-vs-literal verification), the 42 FSM-state handlers, and
+the ~77 confirmed-live functions plus the entire `/admin` menu tree
+itself (`dashboard_block_a.py`, `management_ready.py`,
+`commands_ready.py`) and the other ~10 admin handler files PR 30
+identified as likely fully superseded. Those remain future, similarly
+narrow-scoped passes — not a single risky mass-deletion.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

@@ -5,7 +5,6 @@ from aiogram import F, Bot, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    BufferedInputFile,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -18,7 +17,6 @@ from app.config import Settings
 from app.database.models import (
     AttendanceProof,
     Auction,
-    AuctionBid,
     AppSetting,
     Badge,
     Broadcast,
@@ -49,20 +47,11 @@ from app.database.models import (
     UserOffice,
 )
 from app.keyboards.admin import (
-    admin_activity_keyboard,
-    admin_communications_keyboard,
-    admin_growth_keyboard,
-    admin_panel_keyboard,
-    admin_system_keyboard,
     admin_user_actions,
-    admin_users_keyboard,
     age_filters_keyboard,
     applications_keyboard,
-    entity_actions,
-    event_management_keyboard,
     people_filters_keyboard,
     people_list_keyboard,
-    project_review_actions,
     project_snooze_keyboard,
     role_filters_keyboard,
     user_role_keyboard,
@@ -71,19 +60,15 @@ from app.keyboards.admin import (
 from app.keyboards.participant import main_menu
 from app.services.admin_user_card import send_admin_user_card
 from app.services.application_review_service import (
-    approve_application,
     reject_application,
     request_more_info,
 )
 from app.services.audit_service import audit
-from app.services.chat_access_service import sync_user_chat_access
 from app.services.event_service import can_change_event_status
-from app.services.excel_service import build_analytics_workbook
 from app.services.maintenance_service import reset_operational_data, reset_preview
 from app.services.notification_service import (
     broadcast,
     broadcast_detailed,
-    safe_answer_document,
     safe_answer_media,
     safe_send,
     safe_send_document,
@@ -113,7 +98,6 @@ from app.utils.constants import (
     EventStatus,
     EVENT_STATUS_LABELS,
     ParticipationStatus,
-    PROJECT_STATUS_LABELS,
     PERMISSIONS,
     ProjectStatus,
     REPORT_STATUS_LABELS,
@@ -253,48 +237,6 @@ async def _guard(
     return True
 
 
-@router.message(Command("admin"))
-@router.message(F.text == "⚙️ Управление")
-async def admin_command(
-    message: Message, user: User | None, settings: Settings, state: FSMContext
-) -> None:
-    if not await _guard(message, user, settings):
-        return
-    await state.clear()
-    await message.answer(texts.ADMIN_PANEL, reply_markup=admin_panel_keyboard())
-
-
-@router.callback_query(F.data == "admin:panel")
-async def admin_panel(
-    call: CallbackQuery, user: User | None, settings: Settings
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    await call.message.edit_text(texts.ADMIN_PANEL, reply_markup=admin_panel_keyboard())
-
-
-@router.callback_query(F.data.startswith("admin:menu:"))
-async def admin_submenu(
-    call: CallbackQuery, user: User | None, settings: Settings
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    menus = {
-        "users": ("Участники и заявки", admin_users_keyboard()),
-        "activity": ("События и проекты", admin_activity_keyboard()),
-        "communications": ("Общение и рассылки", admin_communications_keyboard()),
-        "growth": ("Баллы и развитие", admin_growth_keyboard()),
-        "system": ("Аналитика и настройки", admin_system_keyboard()),
-    }
-    key = call.data.rsplit(":", 1)[-1]
-    item = menus.get(key)
-    if item is None:
-        await call.message.answer("Раздел не найден.")
-        return
-    title, keyboard = item
-    await call.message.edit_text(title, reply_markup=keyboard)
-
-
 @router.callback_query(F.data == "admin:applications")
 async def applications(
     call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession
@@ -332,43 +274,6 @@ async def application_detail(
     await send_admin_user_card(call.message, session, target, mode="application")
 
 
-@router.callback_query(F.data.startswith("admin:approve_user:"))
-async def approve_user(
-    call: CallbackQuery,
-    user: User | None,
-    settings: Settings,
-    session: AsyncSession,
-    bot: Bot,
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    target = await session.get(User, int(call.data.rsplit(":", 1)[-1]))
-    if target is None:
-        return
-    result = await approve_application(session, target, actor_id=user.id if user else None)
-    if result.code == "already_approved":
-        await call.message.answer("Эта заявка уже одобрена — повторное уведомление участнику не отправлено")
-        return
-    if result.code == "already_rejected":
-        await call.message.answer("Эта заявка уже отклонена — повторно одобрить её нельзя")
-        return
-    await call.message.answer(
-        f"Заявка одобрена ✅\n\n{target.first_name} получил доступ к функциям участника"
-    )
-    await safe_send(
-        bot,
-        target.telegram_id,
-        texts.APPLICATION_APPROVED,
-        main_menu(settings.era_channel_url, miniapp_url=settings.effective_miniapp_url),
-    )
-    await safe_send(
-        bot,
-        target.telegram_id,
-        "Перед стартом — короткие правила сообщества\n\n" + texts.CHAT_RULES,
-    )
-    await sync_user_chat_access(bot, settings, session, target)
-
-
 async def _start_user_review(
     call: CallbackQuery,
     state: FSMContext,
@@ -398,35 +303,6 @@ async def info_user_start(
     if not await _guard(call, user, settings):
         return
     await _start_user_review(call, state, "info", int(call.data.rsplit(":", 1)[-1]))
-
-
-@router.callback_query(F.data == "admin:events")
-async def pending_events(
-    call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    events = (
-        await session.scalars(
-            select(Event).order_by(Event.event_date.desc(), Event.event_time).limit(50)
-        )
-    ).all()
-    if not events:
-        await call.message.answer("Мероприятий пока нет")
-        return
-    for event in events:
-        actions = (
-            entity_actions("event", event.id)
-            if event.status == EventStatus.PENDING_APPROVAL
-            else event_management_keyboard(event.id, event.status)
-        )
-        await call.message.answer(
-            f"📅 {event.title}\n\n"
-            f"{event.event_date:%d.%m.%Y} в {event.event_time:%H:%M}\n"
-            f"Место: {event.location}\n"
-            f"Статус: {EVENT_STATUS_LABELS.get(event.status, event.status)}",
-            reply_markup=actions,
-        )
 
 
 @router.callback_query(F.data.regexp(r"^admin:event:status:[a-z_]+:\d+$"))
@@ -601,64 +477,6 @@ async def event_attendance_confirm(
         )
 
 
-@router.callback_query(F.data == "admin:projects")
-async def pending_projects(
-    call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    projects = (
-        await session.scalars(
-            select(Project)
-            .where(
-                Project.status.in_(
-                    [
-                        ProjectStatus.PENDING_REVIEW,
-                        ProjectStatus.INITIAL_REVIEW,
-                        ProjectStatus.VENUE_REVIEW,
-                    ]
-                )
-            )
-            .order_by(Project.submitted_at, Project.created_at)
-        )
-    ).all()
-    if not projects:
-        await call.message.answer("Проектов на рассмотрении нет.")
-        return
-    for project in projects:
-        author = await session.get(User, project.author_id)
-        data = project.form_data or {}
-        author_name = (
-            f"{author.first_name} {author.last_name or ''}".strip()
-            if author
-            else f"ID {project.author_id}"
-        )
-        username = (
-            f"@{author.username}" if author and author.username else "без username"
-        )
-        body = f"""💡 Проект #{project.id}
-
-{project.title}
-
-Автор: {author_name} ({username})
-Статус: {PROJECT_STATUS_LABELS.get(project.status, project.status)}
-
-Суть
-{project.short_description}
-
-Аудитория
-{data.get("target_audience", project.target_audience or "не указана")}
-
-Дата и время: {data.get("proposed_date", "не указана")}, {data.get("proposed_time", "не указано")}
-Площадка: {data.get("venue_request", "не указана")}
-Бюджет: {data.get("budget", "не указан")}"""
-        await send_long_text(
-            call.message,
-            body,
-            reply_markup=project_review_actions(project.id, project.status),
-        )
-
-
 @router.callback_query(F.data == "admin:attendance")
 async def pending_attendance(
     call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession
@@ -705,82 +523,6 @@ async def pending_attendance(
             reply_markup=keyboard,
         ):
             await call.message.answer(caption, reply_markup=keyboard)
-
-
-@router.callback_query(F.data == "admin:event_activities")
-async def event_activity_submissions(
-    call: CallbackQuery,
-    user: User | None,
-    settings: Settings,
-    session: AsyncSession,
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    submissions = (
-        await session.scalars(
-            select(EventActivitySubmission)
-            .where(EventActivitySubmission.status == "pending")
-            .order_by(EventActivitySubmission.created_at)
-            .limit(50)
-        )
-    ).all()
-    if not submissions:
-        await call.message.answer(
-            "✨ Активности после мероприятий\n\nНовых ответов на проверке нет",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="➕ Создать активность",
-                            callback_data="admin:activity:new",
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="← Назад", callback_data="admin:menu:activity"
-                        )
-                    ],
-                ]
-            ),
-        )
-        return
-    await call.message.answer(
-        "Ниже — ответы на проверке",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="➕ Создать активность", callback_data="admin:activity:new"
-                    )
-                ]
-            ]
-        ),
-    )
-    for submission in submissions:
-        activity = await session.get(EventActivity, submission.activity_id)
-        target = await session.get(User, submission.user_id)
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=f"Принять · +{activity.points}",
-                        callback_data=f"admin:activity:approve:{submission.id}",
-                    ),
-                    InlineKeyboardButton(
-                        text="Не принимать",
-                        callback_data=f"admin:activity:reject:{submission.id}",
-                    ),
-                ]
-            ]
-        )
-        body = (
-            f"✨ {activity.title}\n\n"
-            f"Участник: {target.first_name if target else submission.user_id} "
-            f"{target.last_name or '' if target else ''}\n"
-            f"Награда: {activity.points} баллов\n\n"
-            f"{submission.text or 'Материал прикреплён файлом'}"
-        )
-        await call.message.answer(body, reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "admin:activity:new")
@@ -1089,46 +831,6 @@ async def reject_proof_start(
         review_id=int(call.data.rsplit(":", 1)[-1]),
     )
     await call.message.answer("Напишите причину отклонения селфи.")
-
-
-@router.callback_query(F.data.startswith("admin:event:approve:"))
-async def approve_entity(
-    call: CallbackQuery,
-    user: User | None,
-    settings: Settings,
-    session: AsyncSession,
-    bot: Bot,
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    _, kind, _, raw_id = call.data.split(":")
-    entity_id = int(raw_id)
-    entity = await session.get(Event, entity_id)
-    if entity is None:
-        return
-    entity.status = EventStatus.PUBLISHED
-    entity.approved_by = user.id if user else None
-    await audit(
-        session,
-        actor_id=user.id if user else None,
-        action=f"{kind}.approved",
-        entity_type=kind,
-        entity_id=entity_id,
-    )
-    await call.message.answer("Решение сохранено: одобрено.")
-    owner_id = entity.created_by
-    owner = await session.get(User, owner_id)
-    if owner:
-        notice = f"Мероприятие «{entity.title}» одобрено и опубликовано."
-        await safe_send(bot, owner.telegram_id, notice)
-    if settings.general_chat_id:
-        await safe_send(
-            bot,
-            settings.general_chat_id,
-            f"Новое мероприятие ЭРА\n\n{entity.title}\n"
-            f"{entity.event_date:%d.%m.%Y} в {entity.event_time:%H:%M}\n"
-            f"Место: {entity.location}\n\n{entity.description}",
-        )
 
 
 @router.callback_query(F.data.regexp(r"^admin:project:review:[a-z_]+:\d+$"))
@@ -2098,45 +1800,6 @@ async def redemption_decide(
         )
 
 
-@router.callback_query(F.data == "admin:auctions")
-async def auctions_admin_menu(
-    call: CallbackQuery,
-    user: User | None,
-    settings: Settings,
-    session: AsyncSession,
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    auctions = (
-        await session.scalars(
-            select(Auction).order_by(Auction.created_at.desc()).limit(30)
-        )
-    ).all()
-    rows = [
-        [
-            InlineKeyboardButton(
-                text="➕ Новый аукцион", callback_data="admin:auction:new"
-            )
-        ]
-    ]
-    rows.extend(
-        [
-            InlineKeyboardButton(
-                text=f"{item.title} · {item.status}",
-                callback_data=f"admin:auction:view:{item.id}",
-            )
-        ]
-        for item in auctions
-    )
-    rows.append(
-        [InlineKeyboardButton(text="← Назад", callback_data="admin:menu:growth")]
-    )
-    await call.message.answer(
-        "🔨 Аукционы возможностей\n\nСоздайте лот, выберите аудиторию и срок. Победителя Вы подтверждаете вручную",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
-    )
-
-
 @router.callback_query(F.data == "admin:auction:new")
 async def auction_new_start(
     call: CallbackQuery,
@@ -2309,119 +1972,6 @@ async def auction_finish(
         f"Завершение: {auction.ends_at:%d.%m.%Y %H:%M}\n\n"
         "Откройте «Мой путь» → «Награды и аукционы», чтобы участвовать",
     )
-
-
-@router.callback_query(F.data.startswith("admin:auction:view:"))
-async def auction_results(
-    call: CallbackQuery,
-    user: User | None,
-    settings: Settings,
-    session: AsyncSession,
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    auction = await session.get(Auction, int(call.data.rsplit(":", 1)[-1]))
-    if auction is None:
-        return
-    can_select = datetime.now(ZoneInfo(settings.timezone)) >= auction.ends_at
-    if can_select and auction.status == "active":
-        auction.status = "ended"
-    bids = (
-        await session.scalars(
-            select(AuctionBid)
-            .where(AuctionBid.auction_id == auction.id, AuctionBid.status == "active")
-            .order_by(AuctionBid.amount.desc())
-        )
-    ).all()
-    if not bids:
-        await call.message.answer(f"🔨 {auction.title}\n\nСтавок пока нет")
-        return
-    for position, bid in enumerate(bids, 1):
-        target = await session.get(User, bid.user_id)
-        keyboard = (
-            InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="Выбрать победителем",
-                            callback_data=f"admin:auction:winner:{bid.id}",
-                        )
-                    ]
-                ]
-            )
-            if can_select
-            else None
-        )
-        await call.message.answer(
-            f"#{position} · {target.first_name} {target.last_name or ''}\n"
-            f"Ставка: {bid.amount} баллов"
-            + (
-                "\n\nВыбор победителя откроется после завершения"
-                if not can_select
-                else ""
-            ),
-            reply_markup=keyboard,
-        )
-
-
-@router.callback_query(F.data.startswith("admin:auction:winner:"))
-async def auction_select_winner(
-    call: CallbackQuery,
-    user: User | None,
-    settings: Settings,
-    session: AsyncSession,
-    bot: Bot,
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    bid = await session.get(AuctionBid, int(call.data.rsplit(":", 1)[-1]))
-    if bid is None or bid.status != "active":
-        await call.message.answer("Эта ставка уже обработана")
-        return
-    auction = await session.get(Auction, bid.auction_id)
-    if datetime.now(ZoneInfo(settings.timezone)) < auction.ends_at:
-        await call.message.answer(
-            "Победителя можно выбрать только после завершения аукциона"
-        )
-        return
-    selected = int(
-        await session.scalar(
-            select(func.count())
-            .select_from(AuctionBid)
-            .where(AuctionBid.auction_id == auction.id, AuctionBid.status == "won")
-        )
-        or 0
-    )
-    if selected >= auction.winner_count:
-        await call.message.answer("Все места победителей уже распределены")
-        return
-    balance = await total_points(session, bid.user_id)
-    if balance < bid.amount:
-        bid.status = "insufficient_points"
-        await call.message.answer("У участника уже недостаточно баллов — ставка снята")
-        return
-    await add_points(
-        session,
-        user_id=bid.user_id,
-        points=-bid.amount,
-        reason=f"Победа в аукционе: {auction.title}",
-        approved_by=user.id if user else None,
-        source_type="auction_win",
-        source_id=bid.id,
-        idempotency_key=f"auction_win:{auction.id}:{bid.id}",
-    )
-    bid.status = "won"
-    bid.selected_by = user.id if user else None
-    bid.selected_at = datetime.now().astimezone()
-    target = await session.get(User, bid.user_id)
-    await call.message.answer("Победитель подтверждён, баллы списаны")
-    if target:
-        await safe_send(
-            bot,
-            target.telegram_id,
-            f"Вы стали победителем аукциона «{auction.title}» 🎉\n\n"
-            f"Списано {bid.amount} баллов. Команда ЭРА свяжется с Вами по дальнейшим шагам",
-        )
 
 
 @router.message(Command("portfolio"))
@@ -3342,126 +2892,6 @@ async def admin_user_archive_confirm(
     await call.message.answer("Участник перемещён в архив")
 
 
-@router.callback_query(F.data == "admin:analytics")
-async def analytics(
-    call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-
-    async def count(model, *conditions) -> int:
-        return int(
-            await session.scalar(
-                select(func.count()).select_from(model).where(*conditions)
-            )
-            or 0
-        )
-
-    body = (
-        "Аналитика ЭРА\n\n"
-        f"Участников: {await count(User, User.application_status == ApplicationStatus.APPROVED)}\n"
-        f"Заявок: {await count(User, User.application_status == ApplicationStatus.PENDING)}\n"
-        f"Мероприятий: {await count(Event)}\n"
-        f"Проектов: {await count(Project)}\n"
-        f"Вопросов без ответа: {await count(UserQuestion, UserQuestion.status == 'new')}\n"
-        f"Материалов портфолио на проверке: {await count(PortfolioItem, PortfolioItem.status == 'pending')}"
-    )
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="📊 Скачать Excel", callback_data="admin:analytics:excel"
-                )
-            ],
-            [InlineKeyboardButton(text="← Назад", callback_data="admin:menu:system")],
-        ]
-    )
-    await call.message.answer(body, reply_markup=keyboard)
-
-
-@router.callback_query(F.data == "admin:analytics:excel")
-async def analytics_excel(
-    call: CallbackQuery,
-    user: User | None,
-    settings: Settings,
-    session: AsyncSession,
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    users = (
-        await session.scalars(
-            select(User)
-            .where(User.application_status == ApplicationStatus.APPROVED)
-            .order_by(User.first_name)
-        )
-    ).all()
-    events = (await session.scalars(select(Event).order_by(Event.event_date))).all()
-    projects = (
-        await session.scalars(select(Project).order_by(Project.created_at))
-    ).all()
-    totals = dict(
-        (
-            await session.execute(
-                select(
-                    PointTransaction.user_id,
-                    func.coalesce(func.sum(PointTransaction.points), 0),
-                ).group_by(PointTransaction.user_id)
-            )
-        ).all()
-    )
-    content = build_analytics_workbook(users, events, projects, totals)
-    if not await safe_answer_document(
-        call.message,
-        BufferedInputFile(content, filename="ERA_analytics.xlsx"),
-        caption="Аналитика ЭРА: участники, мероприятия и проекты",
-    ):
-        await call.message.answer("Таблица собрана, но Telegram не дал отправить файл. Попробуйте ещё раз.")
-
-
-@router.callback_query(F.data == "admin:offices")
-async def offices_menu(
-    call: CallbackQuery,
-    user: User | None,
-    settings: Settings,
-    session: AsyncSession,
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    offices = (
-        await session.scalars(
-            select(Office).where(Office.is_active.is_(True)).order_by(Office.sort_order)
-        )
-    ).all()
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=office.title, callback_data=f"admin:office:view:{office.id}"
-                )
-            ]
-            for office in offices
-        ]
-        + [
-            [
-                InlineKeyboardButton(
-                    text="➕ Добавить должность", callback_data="admin:office:new"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔐 Делегировать права", callback_data="admin:permissions"
-                )
-            ],
-            [InlineKeyboardButton(text="← Назад", callback_data="admin:menu:system")],
-        ]
-    )
-    await call.message.answer(
-        "👥 Должности и ответственность\n\n"
-        "Выберите должность, чтобы назначить человека или завершить полномочия",
-        reply_markup=keyboard,
-    )
-
-
 @router.callback_query(F.data.startswith("admin:office:view:"))
 async def office_view(
     call: CallbackQuery,
@@ -4273,69 +3703,6 @@ async def decide_department_application(
             else "Сейчас заявка в департамент не одобрена. Вы можете задать вопрос команде ЭРА."
         )
         await safe_send(bot, target.telegram_id, notice)
-
-
-@router.callback_query(F.data == "admin:tasks")
-async def tasks_for_review(
-    call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession
-) -> None:
-    if not await _guard(call, user, settings):
-        return
-    await call.message.answer(
-        "✅ Задания и конкурсы",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="➕ Создать задание или конкурс",
-                        callback_data="admin:task:new",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="← Назад", callback_data="admin:menu:activity"
-                    )
-                ],
-            ]
-        ),
-    )
-    submissions = (
-        await session.scalars(
-            select(TaskSubmission)
-            .where(TaskSubmission.status == "pending")
-            .order_by(TaskSubmission.created_at)
-        )
-    ).all()
-    if not submissions:
-        await call.message.answer(
-            "✅ Задания и конкурсы\n\nНовых результатов на проверке нет"
-        )
-        return
-    for submission in submissions:
-        task = await session.get(Task, submission.task_id)
-        target = await session.get(User, submission.user_id)
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=f"Принять · +{task.points}",
-                        callback_data=f"admin:task_submission:approve:{submission.id}",
-                    ),
-                    InlineKeyboardButton(
-                        text="Вернуть",
-                        callback_data=f"admin:task_submission:revise:{submission.id}",
-                    ),
-                ],
-            ]
-        )
-        await call.message.answer(
-            f"✅ Результат задания\n\n{task.title}\n\n"
-            f"Участник: {target.first_name if target else submission.user_id} "
-            f"{target.last_name or '' if target else ''}\n"
-            f"Награда: {task.points} баллов\n\n"
-            f"{submission.text or 'Результат прикреплён файлом'}",
-            reply_markup=keyboard,
-        )
 
 
 @router.callback_query(F.data == "admin:task:new")
