@@ -210,6 +210,28 @@ export interface RewardAdmin {
   is_active: boolean;
 }
 
+export interface EventActivityAdmin {
+  id: number;
+  title: string;
+  description: string;
+  submission_type: string;
+  points: number;
+  is_active: boolean;
+}
+
+export interface ActivitySubmissionAdmin {
+  id: number;
+  activity_id: number;
+  activity_title: string;
+  points: number;
+  event_title: string;
+  user_id: number;
+  user_name: string;
+  status: string;
+  text: string | null;
+  file_type: string | null;
+}
+
 export interface RedemptionAdmin {
   id: number;
   reward_id: number;

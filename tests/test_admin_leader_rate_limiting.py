@@ -85,8 +85,9 @@ class RateLimitDependencyWiringTests(unittest.TestCase):
         # Auction routes from PR 27 (create, confirm-winner, deliver, cancel) + 5
         # Survey routes from PR 29 (monthly template, create, edit, archive, send) + 5
         # Reward/Redemption routes from PR 31 (create reward, disable reward,
-        # answer/exchange/reject redemption).
-        self.assertEqual(len(post_routes), 43, "expected 43 admin mutation routes")
+        # answer/exchange/reject redemption) + 3 Event Activity routes from
+        # PR 32 (create, send, decide submission).
+        self.assertEqual(len(post_routes), 46, "expected 46 admin mutation routes")
         for route in post_routes:
             deps = [d.call for d in route.dependant.dependencies]
             self.assertIn(
@@ -97,7 +98,10 @@ class RateLimitDependencyWiringTests(unittest.TestCase):
 
     def test_every_leader_post_route_has_rate_limiting(self) -> None:
         post_routes = [r for r in leader_api.router.routes if r.methods and "POST" in r.methods]
-        self.assertEqual(len(post_routes), 3, "expected 3 leader create/decide routes")
+        # 3 original (create assigned task, create open task, decide
+        # application) + 1 Event Activity route from PR 32 (decide
+        # submission).
+        self.assertEqual(len(post_routes), 4, "expected 4 leader create/decide routes")
         for route in post_routes:
             deps = [d.call for d in route.dependant.dependencies]
             self.assertIn(

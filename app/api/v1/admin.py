@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
@@ -16,6 +17,7 @@ from app.database.models import (
     Auction,
     Badge,
     Event,
+    EventActivitySubmission,
     EventRegistration,
     Office,
     Project,
@@ -28,9 +30,10 @@ from app.database.models import (
 )
 from app.database.management_models import AdminSurvey
 from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
-from app.keyboards.participant import main_menu
+from app.keyboards.participant import main_menu, open_app_button
 from app.services import (
     auction_service,
+    event_activity_service,
     event_moderation_service,
     event_registration_service,
     office_management_service,
@@ -2178,4 +2181,200 @@ async def reject_redemption_endpoint(
         points_spent=result.redemption.points_spent,
         status=result.redemption.status,
         admin_comment=result.redemption.admin_comment,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Event Activities — the Mini App equivalent of the *live* (not
+# app/handlers/admin/panel.py's own dead, shadowed) admin handlers:
+# app/handlers/admin/event_activities_stability.py (list/review/decide),
+# event_activities_block15.py (create), event_activities_block7.py
+# (send-to-participants). Create/send/review is per-event; final review
+# also covers submissions a leader already pre-approved (see
+# app/api/v1/leader.py's own activities endpoints).
+# ---------------------------------------------------------------------------
+
+
+class EventActivityAdminOut(BaseModel):
+    id: int
+    title: str
+    description: str
+    submission_type: str
+    points: int
+    is_active: bool
+
+
+@router.get("/events/{event_id}/activities", response_model=list[EventActivityAdminOut])
+async def list_event_activities_endpoint(
+    event_id: int,
+    _reviewer: User = Depends(require_event_reviewer),
+    session: AsyncSession = Depends(get_session),
+) -> list[EventActivityAdminOut]:
+    activities = await event_activity_service.list_activities_admin(session, event_id)
+    return [
+        EventActivityAdminOut(
+            id=a.id, title=a.title, description=a.description, submission_type=a.submission_type,
+            points=a.points, is_active=a.is_active,
+        )
+        for a in activities
+    ]
+
+
+class EventActivityCreateIn(BaseModel):
+    lines: str
+
+
+class EventActivityCreateOut(BaseModel):
+    created: int
+    rejected: int
+    activities: list[EventActivityAdminOut]
+
+
+@router.post("/events/{event_id}/activities", response_model=EventActivityCreateOut)
+async def create_event_activities_endpoint(
+    event_id: int,
+    payload: EventActivityCreateIn,
+    _reviewer: User = Depends(require_event_reviewer),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> EventActivityCreateOut:
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    created, rejected = await event_activity_service.create_activities_bulk(session, event, payload.lines)
+    if not created:
+        raise HTTPException(status_code=422, detail="no_valid_activities")
+    activities = await event_activity_service.list_activities_admin(session, event_id)
+    return EventActivityCreateOut(
+        created=created,
+        rejected=rejected,
+        activities=[
+            EventActivityAdminOut(
+                id=a.id, title=a.title, description=a.description, submission_type=a.submission_type,
+                points=a.points, is_active=a.is_active,
+            )
+            for a in activities
+        ],
+    )
+
+
+@router.post("/events/{event_id}/activities/send")
+async def send_event_activities_endpoint(
+    event_id: int,
+    reviewer: User = Depends(require_event_reviewer),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> dict[str, int]:
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    if event_activity_service.activities_already_sent(event):
+        raise HTTPException(status_code=409, detail="already_sent")
+    activities = await event_activity_service.list_activities_admin(session, event_id)
+    active_activities = [a for a in activities if a.is_active]
+    if not active_activities:
+        raise HTTPException(status_code=422, detail="no_active_activities")
+    recipients = await event_activity_service.send_recipients(session, event_id)
+    sent = 0
+    if bot is not None:
+        for target in recipients:
+            for activity in active_activities:
+                await safe_send(
+                    bot,
+                    target.telegram_id,
+                    f"✨ Активность после мероприятия\n\n{event.title}\n\n{activity.title}\n{activity.description}\n\n"
+                    f"Формат: {activity.submission_type}\nБаллы: {activity.points}\n\n"
+                    "Открыть и отправить результат — в приложении ЭРА.",
+                    reply_markup=open_app_button(settings.effective_miniapp_url),
+                )
+            sent += 1
+    event_activity_service.mark_activities_sent(event)
+    return {"sent": sent}
+
+
+class ActivitySubmissionAdminOut(BaseModel):
+    id: int
+    activity_id: int
+    activity_title: str
+    points: int
+    event_title: str
+    user_id: int
+    user_name: str
+    status: str
+    text: str | None
+    file_type: str | None
+
+
+def _to_activity_submission_admin_out(row) -> ActivitySubmissionAdminOut:
+    submission, activity, event, respondent = row
+    return ActivitySubmissionAdminOut(
+        id=submission.id,
+        activity_id=activity.id,
+        activity_title=activity.title,
+        points=activity.points,
+        event_title=event.title,
+        user_id=respondent.id,
+        user_name=f"{respondent.first_name} {respondent.last_name or ''}".strip(),
+        status=submission.status,
+        text=submission.text,
+        file_type=submission.file_type,
+    )
+
+
+@router.get("/activities/submissions", response_model=list[ActivitySubmissionAdminOut])
+async def list_activity_submissions_endpoint(
+    _reviewer: User = Depends(require_event_reviewer),
+    session: AsyncSession = Depends(get_session),
+) -> list[ActivitySubmissionAdminOut]:
+    rows = await event_activity_service.list_reviewable_submissions(session)
+    return [_to_activity_submission_admin_out(row) for row in rows]
+
+
+class ActivityDecisionIn(BaseModel):
+    action: Literal["approve", "reject"]
+
+
+@router.post("/activities/submissions/{submission_id}/decide", response_model=ActivitySubmissionAdminOut)
+async def decide_activity_submission_endpoint(
+    submission_id: int,
+    payload: ActivityDecisionIn,
+    reviewer: User = Depends(require_event_reviewer),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> ActivitySubmissionAdminOut:
+    submission = await session.get(EventActivitySubmission, submission_id)
+    if submission is None:
+        raise HTTPException(status_code=404, detail="submission_not_found")
+    activity = await event_activity_service.admin_decide(
+        session, submission, approve=payload.action == "approve", reviewer_id=reviewer.id
+    )
+    if activity is None:
+        raise HTTPException(status_code=409, detail="already_reviewed")
+    target = await session.get(User, submission.user_id)
+    event = await session.get(Event, activity.event_id)
+    if bot is not None and target is not None:
+        if payload.action == "approve":
+            await safe_send(
+                bot, target.telegram_id, f"Активность «{activity.title}» одобрена. Начислено: +{activity.points} баллов"
+            )
+        else:
+            await safe_send(
+                bot,
+                target.telegram_id,
+                f"Результат «{activity.title}» пока не подтверждён. Вы можете уточнить причину у команды ЭРА",
+            )
+    return ActivitySubmissionAdminOut(
+        id=submission.id,
+        activity_id=activity.id,
+        activity_title=activity.title,
+        points=activity.points,
+        event_title=event.title if event else "",
+        user_id=submission.user_id,
+        user_name=f"{target.first_name} {target.last_name or ''}".strip() if target else "",
+        status=submission.status,
+        text=submission.text,
+        file_type=submission.file_type,
     )

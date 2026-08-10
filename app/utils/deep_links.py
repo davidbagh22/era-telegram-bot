@@ -3,6 +3,7 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 TASK_SUBMIT_PREFIX = "task_submit_"
+ACTIVITY_SUBMIT_PREFIX = "activity_submit_"
 
 
 def task_submit_deep_link(bot_username: str, task_id: int) -> str:
@@ -25,6 +26,24 @@ def parse_task_submit_payload(payload: str) -> int | None:
         return None
     try:
         return int(payload[len(TASK_SUBMIT_PREFIX) :])
+    except ValueError:
+        return None
+
+
+def activity_submit_deep_link(bot_username: str, activity_id: int) -> str:
+    """Mini App -> Bot handoff for Event Activity proof submission — same
+    rationale as task_submit_deep_link() above: uploads (photo/file) and
+    the free-text/link prompts stay a Bot-only FSM. Not cryptographically
+    signed for the same reason: the bot re-checks the participant's
+    active registration before entering the FSM."""
+    return f"https://t.me/{bot_username}?start={ACTIVITY_SUBMIT_PREFIX}{activity_id}"
+
+
+def parse_activity_submit_payload(payload: str) -> int | None:
+    if not payload.startswith(ACTIVITY_SUBMIT_PREFIX):
+        return None
+    try:
+        return int(payload[len(ACTIVITY_SUBMIT_PREFIX) :])
     except ValueError:
         return None
 
