@@ -14,8 +14,14 @@ const SECTIONS: { value: ActivitySection; label: string }[] = [
   { value: "history", label: "История" },
 ];
 
-export function ActivityScreen() {
-  const [section, setSection] = useState<ActivitySection>("events");
+interface ActivityScreenProps {
+  /** Lands the screen on a specific tab instead of the "events" default —
+   * used by the bot's "📅 Ближайшее"/"✅ Мои задачи" deep links (PR 36). */
+  initialSection?: ActivitySection;
+}
+
+export function ActivityScreen({ initialSection }: ActivityScreenProps = {}) {
+  const [section, setSection] = useState<ActivitySection>(initialSection ?? "events");
 
   return (
     <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>

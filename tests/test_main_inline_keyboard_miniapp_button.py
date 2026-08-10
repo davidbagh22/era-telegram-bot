@@ -37,9 +37,15 @@ class MainInlineKeyboardMiniAppButtonTests(unittest.TestCase):
         self.assertEqual(button.web_app.url, "https://era-app.example/")
         self.assertIsNone(button.callback_data)
 
-    def test_privileged_panel_row_still_appended_after_miniapp_button(self) -> None:
+    def test_panel_row_no_longer_shown_when_miniapp_is_configured(self) -> None:
+        # PR 36 (Bot/Mini App role split): "⚙️ Панель" (a callback into the
+        # bot's own app/handlers/admin/panel.py tree) is no longer
+        # advertised once the Mini App is configured — 🔥 Открыть ЭРА
+        # already routes an admin straight into Mini App Admin Mode (see
+        # frontend/src/app/App.tsx's is_admin branch), so a second,
+        # bot-side admin entry point would just be a duplicate UX.
         markup = main_inline_keyboard(admin=True, miniapp_url="https://era-app.example/")
-        self.assertIn("⚙️ Панель", _button_texts(markup))
+        self.assertNotIn("⚙️ Панель", _button_texts(markup))
 
 
 if __name__ == "__main__":
