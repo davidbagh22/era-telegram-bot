@@ -11,7 +11,7 @@ from app.api.deps import get_session, get_settings
 from app.api.security import create_session_token
 from app.api.v1.router import api_router
 from app.config import Settings
-from app.services.home_service import GrowthProgress, HomeSnapshot
+from app.services.home_service import ActivityStats, GrowthProgress, HomeSnapshot
 from app.utils.constants import ParticipationStatus
 
 SECRET = "test-secret"
@@ -40,6 +40,7 @@ def _snapshot() -> HomeSnapshot:
     return HomeSnapshot(
         growth=GrowthProgress(level="participant", label="Участник", level_index=0, level_count=3),
         points_balance=15,
+        activity=ActivityStats(points=15, projects=2, completed_tasks=3, portfolio_items=4),
         next_step=None,
         nearest_event=None,
         active_task=None,
@@ -82,6 +83,10 @@ class HomeApiTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["growth"]["level"], "participant")
         self.assertEqual(body["points_balance"], 15)
+        self.assertEqual(
+            body["activity"],
+            {"points": 15, "projects": 2, "completed_tasks": 3, "portfolio_items": 4},
+        )
         self.assertIsNone(body["next_step"])
 
 

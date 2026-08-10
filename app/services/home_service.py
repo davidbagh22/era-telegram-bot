@@ -3,11 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Event, EventRegistration, PointTransaction, Project, Task, User
+from app.database.models import Event, EventRegistration, Project, Task, User
 from app.database.partners import PartnerInitiative, PartnerOfferApplication
+from app.repositories.users import user_stats
 from app.services.growth_service import GrowthProgress, growth_progress_for
 from app.utils.constants import ProjectStatus, RegistrationStatus, TaskStatus
 
@@ -61,9 +62,31 @@ class OpportunitySummary:
 
 
 @dataclass(frozen=True)
+class ActivityStats:
+    """Powers Home's "Моя активность" section (PR 38) — the exact same
+    numbers profile_service/portfolio_service already compute for the
+    Profile screen's stat grid (app/repositories/users.py::user_stats()),
+    reused rather than duplicated so the two screens can never disagree.
+
+    `portfolio_items` is a total count of everything recorded to the
+    portfolio (projects/events/tasks/badges/certificates/etc — see
+    ProfileScreen's PortfolioSection groupings), not just badges. There's
+    no separate "achievement count" query anywhere in the app; rather
+    than invent one just for this stat (and risk it disagreeing with what
+    Profile itself shows), this reuses the same "В портфолио" number
+    Profile already displays."""
+
+    points: int
+    projects: int
+    completed_tasks: int
+    portfolio_items: int
+
+
+@dataclass(frozen=True)
 class HomeSnapshot:
     growth: GrowthProgress
     points_balance: int
+    activity: ActivityStats
     next_step: NextStep | None
     nearest_event: EventSummary | None
     active_task: TaskSummary | None
@@ -110,15 +133,6 @@ async def _active_project(session: AsyncSession, user_id: int) -> Project | None
         .order_by(Project.updated_at.desc())
         .limit(1)
     )
-
-
-async def _points_balance(session: AsyncSession, user_id: int) -> int:
-    total = await session.scalar(
-        select(func.coalesce(func.sum(PointTransaction.points), 0)).where(
-            PointTransaction.user_id == user_id
-        )
-    )
-    return int(total or 0)
 
 
 async def _top_opportunities(
@@ -198,7 +212,13 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
     active_project = await _active_project(session, user.id)
     growth = growth_progress_for(user)
     opportunities = await _top_opportunities(session, user.id)
-    points_balance = await _points_balance(session, user.id)
+    stats = await user_stats(session, user.id)
+    activity = ActivityStats(
+        points=stats["points"],
+        projects=stats["projects"],
+        completed_tasks=stats["tasks"],
+        portfolio_items=stats["portfolio"],
+    )
 
     next_step = _build_next_step(
         active_task=active_task,
@@ -239,7 +259,8 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
 
     return HomeSnapshot(
         growth=growth,
-        points_balance=points_balance,
+        points_balance=activity.points,
+        activity=activity,
         next_step=next_step,
         nearest_event=nearest_event_summary,
         active_task=active_task_summary,

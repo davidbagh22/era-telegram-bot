@@ -6,7 +6,15 @@ from datetime import date, datetime, time, timedelta, timezone
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.base import Base
-from app.database.models import Event, EventRegistration, PointTransaction, Project, Task, User
+from app.database.models import (
+    Event,
+    EventRegistration,
+    PointTransaction,
+    PortfolioItem,
+    Project,
+    Task,
+    User,
+)
 from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
 from app.services.home_service import build_home_snapshot
 from app.utils.constants import ParticipationStatus, ProjectStatus, RegistrationStatus, TaskStatus
@@ -262,6 +270,52 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
 
             snapshot = await build_home_snapshot(session, user)
             self.assertEqual(snapshot.points_balance, 7)
+
+    async def test_activity_stats_reuse_user_stats_not_a_second_query(self) -> None:
+        # PR 38: Home's "Моя активность" section reuses
+        # app/repositories/users.py::user_stats() — the same numbers
+        # Profile's stat grid shows — rather than a separate computation,
+        # so the two screens can never disagree.
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            session.add(
+                PointTransaction(
+                    user_id=user.id,
+                    points=25,
+                    reason="a",
+                    approved_by=user.id,
+                    source_type="test",
+                    source_id=1,
+                    idempotency_key="k1",
+                )
+            )
+            session.add(
+                Project(author_id=user.id, title="Idea", short_description="d", status=ProjectStatus.DRAFT)
+            )
+            session.add(
+                Task(
+                    title="Done task",
+                    description="d",
+                    assignee_id=user.id,
+                    creator_id=user.id,
+                    deadline=datetime.now(timezone.utc) + timedelta(days=1),
+                    points=5,
+                    status=TaskStatus.COMPLETED,
+                )
+            )
+            session.add(PortfolioItem(user_id=user.id, title="Item", item_type="badge"))
+            await session.flush()
+
+            snapshot = await build_home_snapshot(session, user)
+
+            self.assertEqual(snapshot.activity.points, 25)
+            self.assertEqual(snapshot.activity.projects, 1)
+            self.assertEqual(snapshot.activity.completed_tasks, 1)
+            self.assertEqual(snapshot.activity.portfolio_items, 1)
+            # points_balance stays in sync with activity.points (same
+            # underlying user_stats() call, not two separate queries that
+            # could drift).
+            self.assertEqual(snapshot.points_balance, snapshot.activity.points)
 
 
 if __name__ == "__main__":
