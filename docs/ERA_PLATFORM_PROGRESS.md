@@ -2672,6 +2672,61 @@ stay card-based, not "огромные технические таблицы"). 
 Storybook/visual-regression tooling (this doc plus the components' own
 comments is the documentation layer this app's size warrants).
 
+## PR 38 — Core user experience: Home restructured to the brief's spec (merged)
+
+The brief's section 6 asks for a specific Home structure: Верх (identity/
+level/progress) → Сегодня/ближайшее (event/task/deadline/opportunity) →
+Моя активность (points/projects/completed tasks/achievements) →
+Возможности (1-3 cards) → a single "быстрое действие". Home already had
+the top and the opportunities section; "Моя активность" didn't exist as
+a concept at all (only a lone points `MetricCard`), and "Сегодня" was
+four separate stacked sections ("Твой следующий шаг" / "Ближайшее
+мероприятие" / "Активная задача" / "Активный проект") rather than one
+coherent block.
+
+**Backend**: `app/services/home_service.py` gained `ActivityStats`
+(points/projects/completed_tasks/portfolio_items), populated by calling
+`app.repositories.users.user_stats()` — the *exact same* function
+`portfolio_service.py` already calls for Profile's own stat grid —
+rather than writing a second, parallel aggregation that could quietly
+drift from Profile's numbers. This also let `_points_balance()` (its own
+`PointTransaction` sum query) be deleted entirely; `user_stats()` was
+already computing the identical number, so `points_balance` now just
+reads `activity.points` — one query instead of two. `app/api/v1/home.py`
+gained the matching `ActivityStatsOut` schema field.
+
+**Frontend**: `HomeScreen.tsx` restructured into the brief's four
+sections (`Сегодня` merges next_step/nearest_event/active_task into one
+block instead of three; the old standalone "Активный проект" card was
+dropped — a project's own urgency already surfaces via `next_step` when
+it's the priority item, and a raw project count now lives in "Моя
+активность" instead, avoiding showing the same project two different
+ways). "Моя активность" is a 2×2 `MetricCard` grid. A "Посмотреть, что
+происходит в ЭРА" button switches to the Activity tab (`App.tsx`'s
+`renderTab()` now takes an `onTabChange` callback) rather than
+duplicating Activity's own list on Home — consistent with PR 36's
+anti-duplication principle applied to Bot-vs-Mini-App, now applied
+screen-to-screen too.
+
+**Tests**: `tests/test_home_service.py` — new
+`test_activity_stats_reuse_user_stats_not_a_second_query` asserts
+`points_balance == activity.points` (proving the shared-query claim, not
+just documenting it) alongside the individual stat values.
+`tests/test_home_api.py` updated for the new response shape. Full
+`pytest -q` and `tsc --noEmit` + `vite build` green.
+
+**Audited, not touched in this pass**: Profile, Portfolio, Projects, and
+Opportunities were each checked against the brief's sections 7-9 and 11
+structure (identity-card framing with editing kept separate; card-based
+catalogs with filters; project detail showing team/events/tasks/
+progress/role) — all four already substantially match what the brief
+asks for, built across the original 12-PR plan (`ProjectWorkspace.tsx`
+alone is 797 lines covering team/milestones/tasks) and PR 29-32's
+feature-parity work. No changes were made here to avoid restructuring
+already-working screens without a concrete gap driving the change; any
+gap found later becomes its own narrow follow-up rather than a
+speculative rewrite now.
+
 ## Progress vs. the 12-PR plan
 
 - **Completed: 12 of 12 full PRs merged** (PR 1 + PR 1b deploy

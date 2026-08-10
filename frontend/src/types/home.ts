@@ -40,9 +40,17 @@ export interface OpportunitySummary {
   expires_at: string | null;
 }
 
+export interface ActivityStats {
+  points: number;
+  projects: number;
+  completed_tasks: number;
+  portfolio_items: number;
+}
+
 export interface HomeSnapshot {
   growth: GrowthProgress;
   points_balance: number;
+  activity: ActivityStats;
   next_step: NextStep | null;
   nearest_event: EventSummary | null;
   active_task: TaskSummary | null;

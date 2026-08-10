@@ -20,6 +20,15 @@ class GrowthProgressOut(BaseModel):
     level_count: int
 
 
+class ActivityStatsOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    points: int
+    projects: int
+    completed_tasks: int
+    portfolio_items: int
+
+
 class NextStepOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -70,6 +79,7 @@ class HomeSnapshotOut(BaseModel):
 
     growth: GrowthProgressOut
     points_balance: int
+    activity: ActivityStatsOut
     next_step: NextStepOut | None
     nearest_event: EventSummaryOut | None
     active_task: TaskSummaryOut | None

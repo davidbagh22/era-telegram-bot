@@ -12,9 +12,14 @@ const GROWTH_LABELS = ["Участник", "Активный", "Лидер"];
 
 interface HomeScreenProps {
   user: MiniAppUserSummary;
+  /** PR 38: Home's "Посмотреть, что происходит в ЭРА" quick action —
+   * Home is the "где я / что происходит" view, Activity is the fuller
+   * "everything that's happening" view, so this just switches tabs
+   * rather than duplicating Activity's own list here. */
+  onOpenActivity?: () => void;
 }
 
-export function HomeScreen({ user }: HomeScreenProps) {
+export function HomeScreen({ user, onOpenActivity }: HomeScreenProps) {
   const home = useHome();
 
   if (home.status === "loading") {
@@ -45,9 +50,11 @@ export function HomeScreen({ user }: HomeScreenProps) {
   }
 
   const { data } = home;
+  const hasToday = Boolean(data.next_step || data.nearest_event || data.active_task);
 
   return (
-    <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+      {/* Верх: кто я, какой уровень, прогресс — see brief section 6. */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
         <Avatar firstName={user.first_name} lastName={user.last_name} />
         <div>
@@ -66,71 +73,65 @@ export function HomeScreen({ user }: HomeScreenProps) {
         labels={GROWTH_LABELS}
       />
 
-      <MetricCard label="Баллы" value={data.points_balance} />
-
-      <section>
-        <h2 style={{ fontSize: "0.875rem", color: "var(--era-text-muted)", margin: "0 0 0.5rem" }}>
-          Твой следующий шаг
+      {/* Сегодня / ближайшее: что требует внимания прямо сейчас. */}
+      <section style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <h2 style={{ fontSize: "var(--era-text-base)", color: "var(--era-text-muted)", margin: 0 }}>
+          Сегодня
         </h2>
-        {data.next_step ? (
-          <Card gradient>
-            <strong>{data.next_step.title}</strong>
-            <p style={{ margin: "0.25rem 0 0" }}>{data.next_step.description}</p>
-          </Card>
+        {hasToday ? (
+          <>
+            {data.next_step && (
+              <Card gradient>
+                <strong>{data.next_step.title}</strong>
+                <p style={{ margin: "0.25rem 0 0" }}>{data.next_step.description}</p>
+              </Card>
+            )}
+            {data.nearest_event && (
+              <Card>
+                <p style={{ margin: 0, fontSize: "var(--era-text-xs)", color: "var(--era-text-muted)" }}>
+                  📅 Ближайшее мероприятие
+                </p>
+                <strong>{data.nearest_event.title}</strong>
+                <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>
+                  {data.nearest_event.event_date} · {data.nearest_event.event_time} ·{" "}
+                  {data.nearest_event.location}
+                </p>
+              </Card>
+            )}
+            {data.active_task && (
+              <Card>
+                <p style={{ margin: 0, fontSize: "var(--era-text-xs)", color: "var(--era-text-muted)" }}>
+                  ✅ Задача
+                </p>
+                <strong>{data.active_task.title}</strong>
+                <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>
+                  Дедлайн: {new Date(data.active_task.deadline).toLocaleDateString("ru-RU")} ·{" "}
+                  {data.active_task.points} баллов
+                </p>
+              </Card>
+            )}
+          </>
         ) : (
           <EmptyState text="Сейчас нет срочных действий — загляните в «Возможности»." />
         )}
       </section>
 
-      <section>
-        <h2 style={{ fontSize: "0.875rem", color: "var(--era-text-muted)", margin: "0 0 0.5rem" }}>
-          Ближайшее мероприятие
+      {/* Моя активность: баллы/проекты/задачи/портфолио одним взглядом. */}
+      <section style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <h2 style={{ fontSize: "var(--era-text-base)", color: "var(--era-text-muted)", margin: 0 }}>
+          Моя активность
         </h2>
-        {data.nearest_event ? (
-          <Card>
-            <strong>{data.nearest_event.title}</strong>
-            <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>
-              {data.nearest_event.event_date} · {data.nearest_event.event_time} ·{" "}
-              {data.nearest_event.location}
-            </p>
-          </Card>
-        ) : (
-          <EmptyState text="Вы пока не зарегистрированы ни на одно мероприятие." />
-        )}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0.5rem" }}>
+          <MetricCard label="Баллы" value={data.activity.points} />
+          <MetricCard label="Проекты" value={data.activity.projects} />
+          <MetricCard label="Выполнено задач" value={data.activity.completed_tasks} />
+          <MetricCard label="В портфолио" value={data.activity.portfolio_items} />
+        </div>
       </section>
 
-      <section>
-        <h2 style={{ fontSize: "0.875rem", color: "var(--era-text-muted)", margin: "0 0 0.5rem" }}>
-          Активная задача
-        </h2>
-        {data.active_task ? (
-          <Card>
-            <strong>{data.active_task.title}</strong>
-            <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>
-              До {new Date(data.active_task.deadline).toLocaleDateString("ru-RU")} ·{" "}
-              {data.active_task.points} баллов
-            </p>
-          </Card>
-        ) : (
-          <EmptyState text="Нет активных задач." />
-        )}
-      </section>
-
-      <section>
-        <h2 style={{ fontSize: "0.875rem", color: "var(--era-text-muted)", margin: "0 0 0.5rem" }}>
-          Активный проект
-        </h2>
-        {data.active_project ? (
-          <Card>
-            <strong>{data.active_project.title}</strong>
-          </Card>
-        ) : (
-          <EmptyState text="Нет проектов, требующих действия." />
-        )}
-      </section>
-
-      <section>
-        <h2 style={{ fontSize: "0.875rem", color: "var(--era-text-muted)", margin: "0 0 0.5rem" }}>
+      {/* Возможности: 1-3 актуальные карточки. */}
+      <section style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <h2 style={{ fontSize: "var(--era-text-base)", color: "var(--era-text-muted)", margin: 0 }}>
           Возможности для вас
         </h2>
         {data.opportunities.length > 0 ? (
@@ -148,6 +149,12 @@ export function HomeScreen({ user }: HomeScreenProps) {
           <EmptyState text="Подходящих возможностей пока нет." />
         )}
       </section>
+
+      {onOpenActivity && (
+        <button type="button" className="era-btn-primary" onClick={onOpenActivity}>
+          Посмотреть, что происходит в ЭРА
+        </button>
+      )}
     </div>
   );
 }

@@ -57,9 +57,10 @@ function renderTab(
   user: MiniAppUserSummary,
   initialProjectId: number | null,
   initialActivitySection: ActivitySection | null,
+  onTabChange: (tab: TabKey) => void,
 ) {
   if (tab === "home") {
-    return <HomeScreen user={user} />;
+    return <HomeScreen user={user} onOpenActivity={() => onTabChange("activity")} />;
   }
   if (tab === "activity") {
     return <ActivityScreen initialSection={initialActivitySection ?? undefined} />;
@@ -113,7 +114,7 @@ export function App() {
 
   return (
     <UserLayout activeTab={activeTab} onTabChange={setActiveTab}>
-      {renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null)}
+      {renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, setActiveTab)}
     </UserLayout>
   );
 }
