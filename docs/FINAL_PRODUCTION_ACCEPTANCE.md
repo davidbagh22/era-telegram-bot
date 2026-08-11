@@ -2,17 +2,23 @@
 
 **NOT READY FOR LAUNCH**
 
-Checks: **217 / 300 PASS**
-FAIL: **25**
+*(Revised — see "Changed since the previous pass" below. Verdict is
+unchanged because the one Critical and two of the four original High
+findings that remain open are, by design, not closeable from this
+environment — see those sections. The other two High findings, and 15
+other previously-open items, closed this pass.)*
+
+Checks: **232 / 300 PASS**
+FAIL: **13**
 N/A: **24** (each with a stated reason, per the checklist's own rule)
-OWNER ACTION REQUIRED: **34**
+OWNER ACTION REQUIRED: **31**
 
 Critical open issues: **1**
-High open issues: **4**
+High open issues: **2**
 
-Production commit: `bb19003` (verified live via `/health`/`/diag` at the time this document was written — see §XX)
-Database migration: single Alembic head, `0014_consent_log` — verified via `python -m alembic heads`
-Backup timestamp: **none successful — see Critical finding below**
+Production commit: `86563ae` (verified live via `/health`/`/diag` at the time this document was written — see §XX)
+Database migration: single Alembic head, `0015_data_deletion_requests` — verified via `python -m alembic heads`
+Backup timestamp: **none successful — see Critical finding below (unchanged, still open)**
 Restore test: **FAIL** (never run — nothing to restore)
 Bot: **PASS** (live, correct identity/webhook/menu button per `/diag`)
 Mini App: **PASS** (live, builds clean, served at `/app`)
@@ -22,16 +28,52 @@ Admin E2E: **PASS** (CI)
 Chat restrictions: **PASS at code level** (re-verified PR18c); **not live-clicked-through this pass** — see §XVII
 Broadcasts: **PASS at code level**; not live-verified this pass
 Portfolio/files: **PASS architecturally** (no raw-upload endpoint exists — see §X); **upload/view/delete flow has no E2E coverage** — disclosed gap
-Data protection technical controls: **PASS (technical foundation only)** — see §VIII, §IX
-Legal review: **OWNER ACTION REQUIRED**
+Data protection technical controls: **PASS, including self-service export/deletion now implemented** — see §VIII
+Legal review: **OWNER ACTION REQUIRED (unchanged — needs a lawyer, not code)**
+
+## Changed since the previous pass (commit `bb19003` → `86563ae`)
+
+Closed this pass (full detail in the sections below, not just asserted
+here):
+
+- **CI test-runner blind spot** (old High #4) — merged PR #151: `ci.yml`
+  and `tests.yml` now run `pytest -q`, not `unittest discover`. Closes
+  #196's caveat and #257.
+- **Incident response documentation** (old High #2's documentation half —
+  the underlying single-admin risk itself is unchanged and still tracked
+  as OWNER ACTION REQUIRED below, this only closes "the doc doesn't
+  exist") — new `docs/INCIDENT_RESPONSE_RUNBOOK.md` (4 scenarios: token
+  leak, admin compromise, DB compromise, hosting outage) and
+  `docs/PRODUCTION_SERVICES_AND_OWNERS.md`. Closes #180, #278–283, #285.
+- **Self-service data export + deletion request** — closes #118, #119,
+  #120 (was: none of this existed; DATA_INVENTORY.md said so itself).
+- **CI secret scanning** — new `gitleaks` job, full git history, passing
+  on every PR since. Closes #186, #203.
+- **Per-request correlation ID** in logs (`X-Request-ID`) — closes #213.
+- **AuditLog now covers data export, not just deletion** — closes #221.
+
+Not touched this pass (still open, see their own sections — nothing
+below was fabricated or silently skipped): the Critical backup finding;
+Legal review (High); live device testing (High); retention-policy
+formalization (#117); named individual ownership/MFA/recovery codes
+(#14, #271–277); GitHub repo permissions/branch protection (#209 area —
+this session attempted to enable branch protection via `gh api
+.../branches/main/protection`; this tool's own permission classifier
+blocked it as a security-settings change, which is correct behavior on
+this tool's part, not a bug — the owner needs to do this one directly in
+GitHub Settings → Branches); multi-viewport E2E (#269); N+1/index audit
+(#229–230); unused-dependency audit (#208).
 
 ---
 
 ## Why NOT READY FOR LAUNCH
 
-One **Critical** and four **High** items are open. Per the checklist's own
+One **Critical** and two **High** items are open. Per the checklist's own
 stop-ship rule, that alone is disqualifying regardless of how many of the
-other 294 items pass. Named here first, in full, not buried in the tables:
+other 297 items pass. Named here first, in full, not buried in the tables.
+(Two other High findings from the previous pass — CI's test-runner blind
+spot, and missing incident-response documentation — closed this pass; see
+"Changed since the previous pass" above for what closed them.)
 
 ### CRITICAL
 
@@ -76,17 +118,9 @@ environment can create or read Render/GitHub secrets.
    `policy_version` is a placeholder constant `"unset-v1"`). No org/legal
    owner of data processing is named anywhere in the repo. Items #121–135
    are collectively not passable by a coding session — they need the
-   platform owner and, per the checklist's own rule, a lawyer.
-2. **No incident response / business-continuity documentation exists.**
-   `docs/` has no incident-response runbook; there is no documented
-   scenario for bot-token leak, admin-account compromise, DB compromise, or
-   hosting-provider outage (§XIX, items #279–283). `render.yaml`'s
-   `ADMIN_IDS` is a single Telegram ID — no evidence anywhere of a second
-   owner, MFA, or recovery codes for the accounts this platform depends on
-   (Render, GitHub, BotFather). This is a real single-point-of-failure risk
-   for a "must survive 24-48h unattended" requirement (#240), not a
-   theoretical one.
-3. **No live device/real-Telegram-client testing was performed in this
+   platform owner and, per the checklist's own rule, a lawyer. **Unchanged
+   this pass** — nothing in §IX below closed.
+2. **No live device/real-Telegram-client testing was performed in this
    pass.** This environment has no Telegram account, no BOT_TOKEN-holding
    session, and no physical/emulated device. Everything marked PASS in
    §IV/§XVIII that says "live" or "real Telegram client" is PASS *only* in
@@ -95,25 +129,29 @@ environment can create or read Render/GitHub secrets.
    genuinely not the same thing as a human opening the actual bot on an
    actual phone, and the checklist itself says so explicitly ("локально
    работает ≠ PASS... Необходима проверка production-версии"). Items
-   #267–269, #294–298 need the owner's own click-through.
-4. **CI's `test` job (and the separate `tests.yml`) still run
-   `python -m unittest discover`, which silently collects zero tests from
-   17 of the repository's test files** (any file not subclassing
-   `unittest.TestCase`). This was found and flagged mid-session as a
-   background task (`task_6f10a296`, "Switch CI test runner from unittest
-   discover to pytest") — the user started it in a separate session; as of
-   this document it has not landed (`.github/workflows/ci.yml` and
-   `tests.yml` both still say `unittest discover` as of commit `bb19003`).
-   This does not mean the code is broken — this session ran the *full*
-   `pytest -q` locally repeatedly (743 passed, most recently right before
-   merging PR 38) and every merged PR's local full-suite run was green
-   before merge — but it does mean **CI's own green checkmark has been
-   systematically incomplete**, and #196/#256/#257 can only be marked PASS
-   with that caveat stated, not silently.
+   #267–269, #294–298 need the owner's own click-through. **Unchanged this
+   pass** — this environment still has no Telegram client access.
 
-None of these four are "nice to have later" items. Per the checklist's own
-rule, this is `NOT READY FOR LAUNCH` until the Critical is closed and each
-High is either closed or the owner explicitly accepts the risk in writing.
+Two findings from the previous pass are no longer High:
+
+- *No incident response / business-continuity documentation existed* —
+  closed. `docs/INCIDENT_RESPONSE_RUNBOOK.md` now documents all four
+  named scenarios (token leak, admin compromise, DB compromise, hosting
+  outage) plus `docs/PRODUCTION_SERVICES_AND_OWNERS.md`. The underlying
+  risk the documentation describes — `render.yaml`'s `ADMIN_IDS` is a
+  single Telegram ID, no second named owner anywhere — is **still real**
+  and is still tracked below as OWNER ACTION REQUIRED (§XIX #271–277);
+  what closed is specifically "the runbook doesn't exist," which was the
+  literal High finding.
+- *CI's `test` job silently collected zero tests from 17 test files* —
+  closed. PR #151 (merged this pass, already in flight from a separate
+  session before this one started) switched `ci.yml`/`tests.yml` from
+  `unittest discover` to `pytest -q`. CI's green checkmark is no longer
+  systematically incomplete.
+
+Per the checklist's own rule, this is `NOT READY FOR LAUNCH` until the
+Critical is closed and each remaining High is either closed or the owner
+explicitly accepts the risk in writing.
 
 ---
 
@@ -134,13 +172,19 @@ doc's claim didn't hold up to a fresh check — noted inline where relevant):
 `UI_DESIGN_SYSTEM.md`, `BOT_VS_MINIAPP_AUDIT.md`, `ERA_PLATFORM_PROGRESS.md`
 (the full PR-by-PR history through PR 38).
 
-Fresh commands run for this document (all against commit `bb19003` unless
-noted): `python -m alembic heads`; `ruff check app --select E9,F`;
-`python -m compileall -q app`; `pip-audit -r requirements.txt --strict`;
-`npm audit --audit-level=high` (frontend); `gh run list
---workflow=database-backup.yml`; `gh secret list`; `gh run view <id>
---log-failed`; `git grep` for hardcoded secrets, `console.log`, `TODO`/
-`FIXME`; `curl https://era-telegram-bot.onrender.com/{health,ready,diag}`.
+Fresh commands run for this document (against commit `86563ae` unless
+noted, superseding the prior pass's `bb19003` baseline): `python -m
+alembic heads`; `ruff check app --select E9,F`; `python -m compileall -q
+app`; `npx tsc --noEmit && npm run build` (frontend); `python -m pytest
+-q` (762 passed); `gh pr checks <N> --watch` (both PRs this pass, all
+jobs including the new `secret-scan`); `curl -sD -
+https://era-telegram-bot.onrender.com/{health,ready,diag}` (repeated
+after each deploy, polled until the new commit appeared); `git log
+origin/main..HEAD --oneline` (drift check before every push). Not
+re-run this pass (unchanged since the prior document, no reason to
+expect drift): `pip-audit`, `npm audit`, the backup-workflow/secret
+checks (still failing/absent exactly as previously found — see the
+Critical finding).
 
 ---
 
@@ -209,7 +253,7 @@ noted): `python -m alembic heads`; `ruff check app --select E9,F`;
 | # | Item | Status | Evidence |
 |---|---|---|---|
 | 46 | Production Mini App URL uses HTTPS | PASS | `https://era-telegram-bot.onrender.com` (Render terminates TLS) |
-| 47 | Mini App URL matches deployed frontend | PASS | `curl https://era-telegram-bot.onrender.com/health` → `"commit":"bb19003"`, matching `git log -1` on `main` |
+| 47 | Mini App URL matches deployed frontend | PASS | `curl https://era-telegram-bot.onrender.com/health` → `"commit":"86563ae"`, matching `git log -1` on `main` |
 | 48 | Correct production bot token in use | PASS | `/diag` → `bot_id: 8481922061`, `bot_username: "ERA_1bot"` — matches the expected production bot |
 | 49 | `getMe()` confirms correct production bot | PASS | Same `/diag` fields, computed from a real `getMe()` call at process boot (`app/webapp.py::lifespan`) |
 | 50 | Telegram Menu Button returns correct `web_app` | PASS | `/diag` → `menu_button_type: "web_app"`, `menu_button_verified: true` |
@@ -299,10 +343,10 @@ noted): `python -m alembic heads`; `ruff check app --select E9,F`;
 | 114 | API minimizes returned PII | PASS | Same schema discipline as §VII #104 |
 | 115 | PII not in technical logs unnecessarily | PASS | `initData`, session tokens confirmed not logged (§V #75); general app logs don't include user free-text fields |
 | 116 | PII not in analytics/monitoring automatically | N/A | No analytics/monitoring tool is integrated at all yet (§XVI) — there's nothing for PII to leak into |
-| 117 | Retention periods defined per data category | FAIL | `docs/DATA_INVENTORY.md` §7 is explicitly a *proposal*, not an implemented policy — "Ниже — рабочее предложение... не внедрённая политика" |
-| 118 | Data deletion process implemented | FAIL | Same doc §4: "Нет реализованного самообслуживаемого экспорта/удаления данных" — manual-only via direct DB access |
-| 119 | Data export/access process implemented | FAIL | Same — no self-service export exists |
-| 120 | Post-account-deletion data fate defined | FAIL | Not defined anywhere in the repo |
+| 117 | Retention periods defined per data category | FAIL (unchanged) | `docs/DATA_INVENTORY.md` §7 is still explicitly a *proposal*, not an implemented policy — "Ниже — рабочее предложение... не внедрённая политика". Formalizing it (e.g. an actual scheduled purge) is a real feature, deliberately not built speculatively this pass without the retention *periods themselves* being legally ratified first (§IX) — building enforcement around numbers nobody has approved would be backwards |
+| 118 | Data deletion process implemented | PASS | `app/services/data_rights_service.py::request_deletion()`/`fulfill_deletion_request()`; `POST /api/v1/profile/delete-request` (self-service) + `GET/POST /api/v1/admin/data-deletion-requests[...]` (admin review, full-admin-gated). Anonymizes + archives, doesn't hard-delete — see the model's own docstring for why (referential integrity for `PointTransaction` and authored content) |
+| 119 | Data export/access process implemented | PASS | `app/services/data_rights_service.py::export_user_data()`; `GET /api/v1/profile/export` returns a downloadable JSON file of everything `DATA_INVENTORY.md` §1–2 lists for the caller's own account; `ProfileScreen.tsx` has the download button |
+| 120 | Post-account-deletion data fate defined | PASS | Defined and implemented identically: `_ANONYMIZED_STRING_FIELDS` cleared, `first_name` set to a placeholder, `is_archived`/`archived_at`/`archived_by` set — see `DataDeletionRequest`'s docstring in `app/database/models.py` and `data_rights_service.py`'s module docstring for the reasoning |
 
 ## IX. Legal Readiness (121–135)
 
@@ -351,7 +395,7 @@ noted): `python -m alembic heads`; `ruff check app --select E9,F`;
 | 151 | Production uses the expected PostgreSQL database | PASS | `render.yaml`'s `era-postgres` service, wired via `DATABASE_URL` |
 | 152 | No accidental prod→dev/test DB connection | PASS | `DATABASE_URL` comes from Render's own `fromDatabase` binding in `render.yaml`, not a hardcoded value that could point elsewhere |
 | 153 | All production tables managed by migrations | PASS | Single Alembic chain, no manually-created tables found |
-| 154 | Alembic has a single head | PASS | `python -m alembic heads` → `0014_consent_log (head)` |
+| 154 | Alembic has a single head | PASS | `python -m alembic heads` → `0015_data_deletion_requests (head)` |
 | 155 | A clean DB comes up via all migrations | PASS | `pytest`'s test DB setup runs the full migration chain on every CI/local run (743 passing tests this session all depend on this) |
 | 156 | Existing production DB upgrades without data loss | OWNER ACTION REQUIRED | Every migration this session added is additive (per `ERA_PLATFORM_PROGRESS.md`'s stated rule) and upgrade/downgrade-smoke-tested on a throwaway DB — but confirming it against the *actual* production DB's current state needs the owner's own deploy-and-verify, which this session did do for every merged PR via `/health`/`/diag` polling (see §XX) |
 | 157 | Foreign keys correctly configured | PASS | `app/database/models.py` — every relationship has an explicit `ForeignKey` |
@@ -382,7 +426,7 @@ noted): `python -m alembic heads`; `ruff check app --select E9,F`;
 | 177 | RTO defined | PASS | ≤2h target stated in the same doc |
 | 178 | Disaster Recovery Runbook created | PASS | `docs/BACKUP_AND_RECOVERY.md`'s "Восстановление"/"Откат" sections |
 | 179 | Scenario for full production DB deletion | PASS (documented) / **currently unusable** | Runbook describes it; it depends on a backup existing, which none currently does |
-| 180 | Scenario for production compromise | OWNER ACTION REQUIRED | Not documented — see the High finding above (no incident-response doc at all) |
+| 180 | Scenario for production compromise | PASS | `docs/INCIDENT_RESPONSE_RUNBOOK.md`'s Scenario 3 (production database leak/compromise: contain, assess scope, legal-notification flag, restore-from-backup step, evidence preservation) |
 
 ## XIII. Secrets / Infrastructure / Config (181–195)
 
@@ -393,7 +437,7 @@ noted): `python -m alembic heads`; `ruff check app --select E9,F`;
 | 183 | API secrets absent from frontend bundle | PASS | Frontend only ever holds the Bearer session token issued after auth, never `MINIAPP_AUTH_SECRET`/`BOT_TOKEN` |
 | 184 | `.env` excluded from Git | PASS | `.gitignore` line 1: `.env` |
 | 185 | `.env.example` has no real secrets | PASS | All secret fields blank; only public-ish invite-link URLs are pre-filled, which is their intended public purpose |
-| 186 | Repository history secret-scanned | OWNER ACTION REQUIRED | No `gitleaks`/`trufflehog`-style scan exists in CI or was run ad hoc this session — see High finding #4-adjacent gap noted for CI (§XIV #203) |
+| 186 | Repository history secret-scanned | PASS | New `secret-scan` job in `.github/workflows/ci.yml` (pinned `gitleaks` v8.21.2 binary, `fetch-depth: 0` for full history), passing on every PR since it landed; this session also ran a manual `git log --all -p` sweep for private-key/AWS/OpenAI-style key patterns as a pre-check — clean |
 | 187 | Previously-compromised secrets rotated | OWNER ACTION REQUIRED | No record of a known compromise in the repo; can't confirm a negative from here |
 | 188 | Dev and production use different credentials | PASS | CI/E2E use hardcoded fake `BOT_TOKEN`/`MINIAPP_AUTH_SECRET` (`ci.yml`'s `e2e` job env); production values are Render-generated (`render.yaml`'s `generateValue: true`) |
 | 189 | Telegram token rotation procedure defined | PASS | `docs/DEPLOYMENT_RUNBOOK.md`'s "Настройка Telegram" + general secret-rotation note in `PRODUCTION_READINESS_AUDIT.md` finding #12 |
@@ -408,14 +452,14 @@ noted): `python -m alembic heads`; `ruff check app --select E9,F`;
 
 | # | Item | Status | Evidence |
 |---|---|---|---|
-| 196 | Every PR runs backend tests | PASS (with caveat) | `.github/workflows/ci.yml`'s `test` job runs on every PR — but see the High finding above: it uses `unittest discover`, which misses 17 test files. This session's own full local `pytest -q` runs (green on every merge) are the actual coverage evidence |
+| 196 | Every PR runs backend tests | PASS | `.github/workflows/ci.yml`'s `test` job runs `pytest -q` on every PR (switched from `unittest discover` via PR #151, merged this pass) — no more silent 17-file blind spot; CI's own green checkmark is now complete evidence, not just this session's local runs |
 | 197 | Every PR runs frontend tests | PASS | `frontend` job in `ci.yml` (build+typecheck; there is no separate frontend unit-test suite — see #258) |
 | 198 | Every PR runs a frontend production build | PASS | `npm run build` in the `frontend` CI job |
 | 199 | Every PR runs lint | PASS | `ruff check app --select E9,F` (correctness rules; not a full style lint, by design — `ci.yml`'s own comment) |
 | 200 | Every PR runs type checking | PASS (frontend only) | `tsc --noEmit` is part of `npm run build`; **no backend type-checker (mypy/pyright) exists in CI** — this repo doesn't use one at all, so there's nothing to check here for Python |
 | 201 | Python dependency audit in CI | PASS | `pip-audit -r requirements.txt --strict`, blocking |
 | 202 | npm dependency audit in CI | PASS | `npm audit --audit-level=high`, blocking (PR18b closed the last advisory) |
-| 203 | Secret scanning in CI | **FAIL** | No such step exists in any of the three workflow files (`ci.yml`, `tests.yml`, `database-backup.yml`) |
+| 203 | Secret scanning in CI | PASS | New `secret-scan` job, first job in `ci.yml`, `gitleaks` v8.21.2 against full history — see #186 |
 | 204 | Dependency lock files in the repo | PASS | `frontend/package-lock.json` tracked; `requirements.txt` pins versions |
 | 205 | Production build is reproducible | PASS | Docker multi-stage build + lock files (`Dockerfile`) |
 | 206 | No Critical dependency vulnerabilities | PASS | `pip-audit --strict` and `npm audit --audit-level=high` both clean, run fresh for this document |
@@ -430,7 +474,7 @@ noted): `python -m alembic heads`; `ruff check app --select E9,F`;
 |---|---|---|---|
 | 211 | Backend errors centrally logged | PASS | Uvicorn's error logger captures unhandled exceptions with full tracebacks, visible in Render's log viewer (per prior `FINAL_PRODUCTION_ACCEPTANCE.md`'s own baseline, still true) |
 | 212 | Frontend errors diagnosable | PASS (basic) | Browser console + `AuthErrorScreen`'s error code/detail display; no dedicated frontend error-reporting pipeline beyond that |
-| 213 | Logs carry a request/correlation ID | OWNER ACTION REQUIRED | Not implemented — no correlation-ID middleware found in `app/webapp.py` |
+| 213 | Logs carry a request/correlation ID | PASS | `app/request_context.py`: `X-Request-ID` trusted if the caller sent one, else a fresh `uuid4`; threaded through every log line via a `logging.Filter` on the root logger's handlers, echoed back in the response header. Confirmed live: `curl -sD - .../health` shows `x-request-id` on the deployed commit |
 | 214 | Tokens not logged | PASS | Spot-checked `app/api/security.py`/`deps.py` — no `logger` call includes the session token |
 | 215 | Cookies/session secrets not logged | N/A | No cookies exist (§V #72); session tokens confirmed not logged |
 | 216 | Full Telegram `initData` not logged | PASS | Confirmed not logged in `app/api/security.py` |
@@ -438,7 +482,7 @@ noted): `python -m alembic heads`; `ruff check app --select E9,F`;
 | 218 | AuditLog records role changes | PASS | `action="user.role_changed"` (`rights_block6.py`) |
 | 219 | AuditLog records application approve/reject | PASS | `action="user.approved"`/`"user.rejected"` (`application_review_service.py`) |
 | 220 | AuditLog records manual points changes | PASS | `action="points.added"` |
-| 221 | AuditLog records data deletion/export | **FAIL** | No such action exists — consistent with §VIII #118/#119: there's no deletion/export feature to audit yet |
+| 221 | AuditLog records data deletion/export | PASS | `action="user.deletion_requested"`/`"user.deletion_fulfilled"`/`"user.deletion_rejected"` (`data_rights_service.py::request_deletion()`/`fulfill_deletion_request()`) and `action="user.data_exported"` (`export_user_data()`, closing a same-pass gap where deletion was audited but export initially wasn't) |
 | 222 | HTTP 5xx monitoring | OWNER ACTION REQUIRED | No external monitoring tool integrated (`PRODUCTION_READINESS_AUDIT.md` finding #14, still open) |
 | 223 | DB unavailability monitoring | OWNER ACTION REQUIRED | Same — `/ready` exposes it on-demand, but nothing polls and alerts on it automatically |
 | 224 | `/health` and `/ready` monitored | PASS (endpoints exist) / OWNER ACTION REQUIRED (active monitoring) | Both endpoints work and were just confirmed live (`curl` this session); whether Render's own health-check or an external uptime monitor is watching them is an owner-side configuration this session can't see |
@@ -490,8 +534,8 @@ noted): `python -m alembic heads`; `ruff check app --select E9,F`;
 
 | # | Item | Status | Evidence |
 |---|---|---|---|
-| 256 | Full backend pytest green | PASS (with the CI caveat from the High finding) | `pytest -q` → 743 passed, run repeatedly this session, most recently immediately before merging PR 38 |
-| 257 | Existing unittest suite green | PASS (narrower than #256) | `python -m unittest discover -s tests` passes for the files it actually collects — see High finding #4 for what it misses |
+| 256 | Full backend pytest green | PASS | `pytest -q` → 762 passed, run repeatedly this pass, most recently immediately before this document; CI's own `test` job now runs this exact command (see #196), no longer just a local-only claim |
+| 257 | Existing unittest suite green | PASS (superseded) | CI no longer uses `unittest discover` at all (switched to `pytest -q` via PR #151) — the item as originally framed ("does the narrower runner pass") no longer describes what CI does; `pytest -q` collecting and passing every test file, including the 17 `unittest discover` used to miss, is the current and stronger evidence |
 | 258 | Frontend test suite green | N/A | No dedicated frontend unit-test framework (Jest/Vitest) exists in this repo — type-checking (`tsc`) + build + E2E are the frontend's actual test layers, both green |
 | 259 | Production frontend build green | PASS | `npm run build` this session, clean |
 | 260 | E2E Participant flow green | PASS | `participant.spec.ts` + `deep_links.spec.ts` + `event_cancel_confirmation.spec.ts`, CI `e2e` job green on every PR this session |
@@ -504,36 +548,36 @@ noted): `python -m alembic heads`; `ruff check app --select E9,F`;
 | 267 | Telegram Desktop checked | OWNER ACTION REQUIRED | No Telegram client access in this environment |
 | 268 | At least one real mobile Telegram client checked | OWNER ACTION REQUIRED | Same |
 | 269 | Widths 320/360/390/430/768px checked | FAIL | E2E fixed at a single 390×844 viewport (`playwright.config.ts`); no multi-width pass performed |
-| 270 | Final regression after the last production merge | PASS | `pytest -q` (743 passed) run immediately before merging PR 38, the most recent merge to `main` |
+| 270 | Final regression after the last production merge | PASS | `pytest -q` (762 passed) run immediately before this document, most recently before merging PR #159 |
 
 ## XIX. Incident Response / Ownership / Business Continuity (271–285)
 
 | # | Item | Status | Evidence |
 |---|---|---|---|
-| 271 | Technical production owner assigned | OWNER ACTION REQUIRED | No named individual anywhere in the repo |
-| 272 | BotFather owner assigned | OWNER ACTION REQUIRED | Not documented |
-| 273 | Hosting/Render owner assigned | OWNER ACTION REQUIRED | Not documented |
-| 274 | Production DB owner assigned | OWNER ACTION REQUIRED | Not documented |
-| 275 | Critical accounts not single-owner without recovery | OWNER ACTION REQUIRED | `render.yaml`'s `ADMIN_IDS` is one Telegram ID; no evidence of a second admin or recovery plan anywhere |
-| 276 | MFA enabled where supported | OWNER ACTION REQUIRED | Can't be verified or configured from this environment |
-| 277 | Recovery codes safely stored | OWNER ACTION REQUIRED | Same |
-| 278 | Document listing all production services + owners exists | FAIL | No such document exists in `docs/` |
-| 279 | Incident Response Runbook exists | **FAIL** | Confirmed — `find docs -iname "*incident*"` returns nothing |
-| 280 | Scenario for Telegram Bot Token leak | FAIL | Not documented (rotation procedure exists, §XIII #189, but not an incident playbook) |
-| 281 | Scenario for admin account compromise | FAIL | Not documented |
-| 282 | Scenario for production DB leak | FAIL | Not documented |
-| 283 | Scenario for hosting provider unavailability | FAIL | Not documented beyond the generic rollback steps in `DEPLOYMENT_RUNBOOK.md` |
-| 284 | Participant-notification procedure for serious incidents | OWNER ACTION REQUIRED | Depends on the legal/organizational decisions in §IX, not yet made |
-| 285 | Post-incident root-cause review process defined | FAIL | Not defined |
+| 271 | Technical production owner assigned | OWNER ACTION REQUIRED (unchanged) | `docs/PRODUCTION_SERVICES_AND_OWNERS.md` now has a row and an `[OWNER: name]` placeholder for this — filling it in is the owner's action, not this session's |
+| 272 | BotFather owner assigned | OWNER ACTION REQUIRED (unchanged) | Same doc, same placeholder pattern |
+| 273 | Hosting/Render owner assigned | OWNER ACTION REQUIRED (unchanged) | Same |
+| 274 | Production DB owner assigned | OWNER ACTION REQUIRED (unchanged) | Same |
+| 275 | Critical accounts not single-owner without recovery | OWNER ACTION REQUIRED (unchanged) | `render.yaml`'s `ADMIN_IDS` is still one Telegram ID; `docs/PRODUCTION_SERVICES_AND_OWNERS.md`'s own "Single-point-of-failure check" section names this explicitly as a real risk, not a hidden one |
+| 276 | MFA enabled where supported | OWNER ACTION REQUIRED (unchanged) | Can't be verified or configured from this environment; the new services doc has a dedicated MFA column ready for the owner to fill in |
+| 277 | Recovery codes safely stored | OWNER ACTION REQUIRED (unchanged) | Same — dedicated column exists, values don't |
+| 278 | Document listing all production services + owners exists | PASS | `docs/PRODUCTION_SERVICES_AND_OWNERS.md` — table of every real dependency (Render, GitHub, BotFather, Postgres, GitHub Actions secrets, `ADMIN_IDS`). The `[OWNER: ...]`/MFA/recovery-code *cells* are still placeholders — filling them in is §XIX #271–277's OWNER ACTION REQUIRED, unchanged; the *document existing* is what this item asks and it now does |
+| 279 | Incident Response Runbook exists | PASS | `docs/INCIDENT_RESPONSE_RUNBOOK.md` |
+| 280 | Scenario for Telegram Bot Token leak | PASS | Same doc, Scenario 1 |
+| 281 | Scenario for admin account compromise | PASS | Same doc, Scenario 2 |
+| 282 | Scenario for production DB leak | PASS | Same doc, Scenario 3 |
+| 283 | Scenario for hosting provider unavailability | PASS | Same doc, Scenario 4 |
+| 284 | Participant-notification procedure for serious incidents | OWNER ACTION REQUIRED (unchanged) | Runbook's Scenario 3 explicitly flags this as an owner+legal decision it can't make unilaterally (`docs/DATA_INVENTORY.md`/`docs/PRIVACY_POLICY_DRAFT.md` cross-reference) rather than silently deciding it — still depends on §IX being resolved first |
+| 285 | Post-incident root-cause review process defined | PASS | Same doc's "Post-incident review" section + an "Incident log" ready to receive entries |
 
 ## XX. Final Production Release (286–300)
 
 | # | Item | Status | Evidence |
 |---|---|---|---|
-| 286 | Exact release commit SHA recorded | PASS | `bb19003` |
+| 286 | Exact release commit SHA recorded | PASS | `86563ae` |
 | 287 | GitHub `main` clean and synced | PASS | `git status --short --branch` → clean, up to date with `origin/main`, at this document's writing |
-| 288 | All production migrations applied | PASS | Single Alembic head; migrations run automatically at container start (`Dockerfile` `CMD`) |
-| 289 | `/health` shows the current release | PASS | `curl https://era-telegram-bot.onrender.com/health` → `{"status":"ok","version":"2.1.0","commit":"bb19003"}` |
+| 288 | All production migrations applied | PASS | Single Alembic head `0015_data_deletion_requests`; migrations run automatically at container start (`Dockerfile` `CMD`) |
+| 289 | `/health` shows the current release | PASS | `curl https://era-telegram-bot.onrender.com/health` → `{"status":"ok","version":"2.1.0","commit":"86563ae"}` |
 | 290 | `/ready` confirms backend+DB readiness | PASS | `curl .../ready` → `{"status":"ready"}` |
 | 291 | Telegram `getMe` confirms the correct bot | PASS | Via `/diag` (computed from a real `getMe()` at boot) |
 | 292 | `getWebhookInfo` confirms the correct production webhook | PASS | Via `/diag`'s `webhook_host` |
@@ -550,34 +594,74 @@ noted): `python -m alembic heads`; `ruff check app --select E9,F`;
 
 ## What would need to change to reach READY FOR LAUNCH
 
-In priority order:
+Two of the previous pass's five priority items are now closed (#3 CI
+test-runner switch, and the documentation half of #3's incident-response
+item — see "Changed since the previous pass"). What's left, in priority
+order:
 
-1. **Owner sets `BACKUP_DATABASE_URL`, manually triggers `database-backup.yml`
-   once, confirms a green run.** Closes the one Critical item. Everything in
-   §XII downstream of it (restore verification, RPO/RTO actually being met)
-   becomes checkable immediately after.
+1. **Owner sets `BACKUP_DATABASE_URL`, manually triggers
+   `database-backup.yml` once, confirms a green run.** Closes the one
+   Critical item. Everything in §XII downstream of it (restore
+   verification, RPO/RTO actually being met) becomes checkable
+   immediately after. **Nothing in this environment can do this — it
+   requires a real Render Postgres connection string and a GitHub Actions
+   secret, both credentials this tooling is not permitted to handle.**
 2. **Owner (with a lawyer where the checklist itself says one is needed)
    resolves §IX**: legal entity, jurisdiction, final Privacy Policy text,
    consent-version content, minors policy, photo/video publication basis,
-   written sign-off. This closes High #1 and most of §VIII's remaining
-   FAILs (retention, export, deletion — those follow naturally once the
-   legal basis is settled).
-3. **A named second owner + MFA/recovery codes for Render/GitHub/BotFather,
-   plus a short incident-response doc** (even a one-page version covering
-   the four scenarios in §XIX). Closes High #2.
-4. **The owner (or a future session with real Telegram access) clicks
+   written sign-off. Closes the remaining High #1. The *technical* side
+   this used to block (§VIII's export/deletion FAILs) is already closed
+   this pass — retention-period *enforcement* (§VIII #117) still waits on
+   this legal step, deliberately, since building enforcement around
+   unratified numbers would be backwards.
+3. **The owner (or a future session with real Telegram access) clicks
    through the bot and Mini App on an actual device once**, confirming
-   §XVIII #267–269 and §XX #294–298's live half. Closes High #3.
-5. **Land `task_6f10a296`** (already spawned, already started by the owner
-   in a separate session) — switches CI to `pytest`, closing the gap behind
-   High #4.
-6. Lower-priority but real: add a CI secret-scanning step (§XIV #203), an
-   E2E spec (or at least a manual owner check) for portfolio upload/view/
-   delete (§XVIII #266), and per-notification deep links (§II #24/§XVII
-   #253) — none of these are stop-ship on their own, but each closes a
-   named gap rather than leaving it silently unaddressed.
+   §XVIII #267–269 and §XX #294–298's live half. Closes the remaining
+   High #2.
+4. **A named second owner + MFA/recovery codes for Render/GitHub/
+   BotFather.** The runbook and services-and-owners document now exist
+   (§XIX #278–285 all closed) — this step is purely filling in the
+   `[OWNER: ...]` placeholders those documents already have, plus
+   actually setting up the second account. §XIX #271–277.
+5. **Enable GitHub branch protection** on `main` (required status checks,
+   no force-push/deletion) — §XIV #209 area. This session attempted it
+   directly and was correctly blocked by its own tooling's
+   security-settings restriction; it needs the owner in GitHub Settings →
+   Branches directly.
+6. Lower-priority but real: an E2E spec (or at least a manual owner
+   check) for portfolio upload/view/delete (§XVIII #266), per-notification
+   deep links (§II #24/§XVII #253), multi-viewport E2E (§XVIII #269),
+   an N+1/index audit (§XVI #229–230), and an unused-dependency audit
+   (§XIV #208) — none of these are stop-ship on their own, but each
+   closes a named gap rather than leaving it silently unaddressed.
 
 Once 1–5 are done, re-run this checklist's automated-evidence items fresh
 (most of §I–§VIII, §X–§XI, §XIII–§XVIII, §XX are already re-runnable
 commands, not new work) and issue an updated verdict. Item 6 can follow in
 normal PR cadence after launch — it doesn't block it.
+
+---
+
+## Once the owner-only items above are closed: the intentionally scoped remaining backlog
+
+Per explicit instruction this pass, everything closeable from this
+environment has been closed — what remains beyond items 1–6 above is
+deliberately scoped to three things, not started this pass because they
+were named as the *next* phase, not part of "everything necessary" right
+now:
+
+1. **Mini App design polish** — a further visual pass beyond §III's
+   existing PASS baseline (tokens, components, skeleton/empty/error/
+   success states already unified; loading-state rollout to the
+   remaining ~40 screens per §III #41 is the main known gap).
+2. **Finishing Mini App functional completion** — the disclosed gaps
+   named throughout this document: per-notification item-level deep
+   links (§II #24/§XVII #253 — the `miniapp_task_url`/`miniapp_event_url`/
+   `miniapp_opportunity_url` helpers exist, just aren't wired into
+   notification call sites), portfolio upload/view/delete E2E coverage
+   (§XVIII #266), multi-viewport testing (§XVIII #269).
+3. **Removing the Bot's admin-button fallback menu** once the Mini App is
+   confirmed as the primary interface end-to-end — currently intact by
+   design (§II #18: "Bot fallback not removed before Mini App confirmed
+   stable") and should stay that way until 1–2 above and the owner-only
+   items are further along, not removed preemptively.
