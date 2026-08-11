@@ -168,6 +168,31 @@ class ConsentLog(TimestampMixin, Base):
     source: Mapped[str] = mapped_column(String(16))
 
 
+class DataDeletionRequest(TimestampMixin, Base):
+    """Self-service "right to erasure" request (see
+    docs/DATA_INVENTORY.md section 4, docs/FINAL_PRODUCTION_ACCEPTANCE.md
+    item #118). A participant requesting deletion doesn't trigger an
+    instant hard-delete — the platform's own PointTransaction ledger is
+    explicitly financial-record-like and retained (docs/DATA_INVENTORY.md
+    section 2), and a real hard-delete would break referential integrity
+    across projects/tasks/audit trail this user authored or is referenced
+    by. Instead this is a request → admin-reviewed anonymization: the
+    request is recorded and audited immediately (so it can never be
+    silently lost), and app.services.data_rights_service.fulfill_request()
+    clears PII fields while keeping the row (and everything that
+    references it) intact — the same "archive, don't delete" pattern
+    already used for User.is_archived elsewhere in this app."""
+
+    __tablename__ = "data_deletion_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    fulfilled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fulfilled_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
 class Event(TimestampMixin, Base):
     __tablename__ = "events"
     __table_args__ = (Index("ix_events_status_date", "status", "event_date"),)

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { PillTabs } from "../components/PillTabs";
 import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
+import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
 import { AdminOffersScreen } from "./admin/AdminOffersScreen";
@@ -19,7 +20,8 @@ type AdminSection =
   | "events"
   | "tasks"
   | "offers"
-  | "surveys";
+  | "surveys"
+  | "data-rights";
 
 const SECTIONS: { value: AdminSection; label: string }[] = [
   { value: "dashboard", label: "Дашборд" },
@@ -31,6 +33,7 @@ const SECTIONS: { value: AdminSection; label: string }[] = [
   { value: "tasks", label: "Задания" },
   { value: "offers", label: "Возможности" },
   { value: "surveys", label: "Опросы" },
+  { value: "data-rights", label: "Удаление данных" },
 ];
 
 export function AdminScreen() {
@@ -48,6 +51,7 @@ export function AdminScreen() {
       {section === "tasks" && <AdminTasksScreen />}
       {section === "offers" && <AdminOffersScreen />}
       {section === "surveys" && <AdminSurveysScreen />}
+      {section === "data-rights" && <AdminDataRightsScreen />}
     </div>
   );
 }

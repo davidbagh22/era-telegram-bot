@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
-import { downloadResumePdf, fetchProfile } from "../api/client";
+import { downloadDataExport, downloadResumePdf, fetchProfile, requestAccountDeletion } from "../api/client";
 import { Avatar } from "../components/Avatar";
+import { BottomSheet } from "../components/BottomSheet";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { MetricCard } from "../components/MetricCard";
@@ -53,6 +54,10 @@ function PortfolioSection({ title, entries }: { title: string; entries: Portfoli
 export function ProfileScreen() {
   const state = useAsync(fetchProfile, []);
   const [downloading, setDownloading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [deletionOpen, setDeletionOpen] = useState(false);
+  const [requestingDeletion, setRequestingDeletion] = useState(false);
+  const [deletionRequested, setDeletionRequested] = useState(false);
   const toast = useToast();
 
   const handleDownloadResume = useCallback(async () => {
@@ -72,6 +77,40 @@ export function ProfileScreen() {
       toast.show("Не удалось скачать резюме. Попробуйте ещё раз.", "error");
     } finally {
       setDownloading(false);
+    }
+  }, [toast]);
+
+  const handleExportData = useCallback(async () => {
+    setExporting(true);
+    try {
+      const blob = await downloadDataExport();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "ERA_data_export.json";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast.show("Данные выгружены", "success");
+    } catch {
+      toast.show("Не удалось выгрузить данные. Попробуйте ещё раз.", "error");
+    } finally {
+      setExporting(false);
+    }
+  }, [toast]);
+
+  const handleRequestDeletion = useCallback(async () => {
+    setRequestingDeletion(true);
+    try {
+      await requestAccountDeletion();
+      setDeletionRequested(true);
+      setDeletionOpen(false);
+      toast.show("Заявка на удаление аккаунта отправлена администратору", "success");
+    } catch {
+      toast.show("Не удалось отправить заявку. Попробуйте ещё раз.", "error");
+    } finally {
+      setRequestingDeletion(false);
     }
   }, [toast]);
 
@@ -146,7 +185,7 @@ export function ProfileScreen() {
         </Card>
       )}
 
-      <div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         <button
           type="button"
           className="era-btn-primary"
@@ -176,6 +215,55 @@ export function ProfileScreen() {
         data.recommendations.length === 0 && (
           <EmptyState text="Портфолио пока пусто — начните с мероприятия, задачи или проекта." />
         )}
+
+      <section>
+        <h2 style={{ fontSize: "0.875rem", color: "var(--era-text-muted)", margin: "0 0 0.5rem" }}>
+          Данные и конфиденциальность
+        </h2>
+        <Card>
+          <p style={{ margin: "0 0 0.75rem", color: "var(--era-text-muted)" }}>
+            Скачайте копию всех данных, которые ЭРА хранит о вас, или запросите удаление аккаунта.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <button type="button" disabled={exporting} onClick={handleExportData}>
+              {exporting ? "Готовим файл…" : "Скачать мои данные (JSON)"}
+            </button>
+            <button
+              type="button"
+              disabled={deletionRequested}
+              onClick={() => setDeletionOpen(true)}
+              style={{ color: "var(--era-error)" }}
+            >
+              {deletionRequested ? "Заявка на удаление отправлена" : "Запросить удаление аккаунта"}
+            </button>
+          </div>
+        </Card>
+      </section>
+
+      <BottomSheet
+        open={deletionOpen}
+        onClose={() => setDeletionOpen(false)}
+        title="Запросить удаление аккаунта?"
+      >
+        <p style={{ color: "var(--era-text-muted)", margin: "0 0 1rem" }}>
+          Заявку рассмотрит администратор. После подтверждения ваши личные данные будут обезличены,
+          а аккаунт — архивирован. Это действие нельзя отменить самостоятельно.
+        </p>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button type="button" onClick={() => setDeletionOpen(false)} style={{ flex: 1 }}>
+            Отмена
+          </button>
+          <button
+            type="button"
+            className="era-btn-primary"
+            disabled={requestingDeletion}
+            onClick={handleRequestDeletion}
+            style={{ flex: 1 }}
+          >
+            {requestingDeletion ? "Отправляем…" : "Отправить заявку"}
+          </button>
+        </div>
+      </BottomSheet>
     </div>
   );
 }

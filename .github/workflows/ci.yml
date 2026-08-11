@@ -8,6 +8,26 @@ on:
   workflow_dispatch:
 
 jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks scans commit history, not just the working tree — a
+          # shallow checkout would only ever see the tip commit and miss a
+          # secret that was committed and later removed.
+          fetch-depth: 0
+      - name: Run gitleaks (full history)
+        # Pinned CLI binary, not the gitleaks-action wrapper — avoids that
+        # action's license gate for private repos and keeps this step
+        # fully self-contained (no account/token to configure).
+        run: |
+          curl -sSL -o gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks detect --source . --no-git=false --redact -v
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
