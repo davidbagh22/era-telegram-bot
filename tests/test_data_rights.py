@@ -55,6 +55,20 @@ class DataRightsServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(data["consent_log"][0]["consent_type"], "registration")
             self.assertIn("exported_at", data)
 
+    async def test_export_writes_audit_log(self) -> None:
+        async with self.session_factory() as session:
+            user = User(telegram_id=13, first_name="Тест")
+            session.add(user)
+            await session.flush()
+            await session.refresh(user, attribute_names=["departments", "directions"])
+
+            await data_rights_service.export_user_data(session, user)
+            await session.commit()
+
+            entries = (await session.scalars(select(AuditLog))).all()
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0].action, "user.data_exported")
+
     async def test_request_deletion_is_idempotent(self) -> None:
         async with self.session_factory() as session:
             user = User(telegram_id=2, first_name="Тест")
