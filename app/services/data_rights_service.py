@@ -112,6 +112,14 @@ async def export_user_data(session: AsyncSession, user: User) -> dict[str, Any]:
         )
     ).all()
 
+    await audit(
+        session,
+        actor_id=user.id,
+        action="user.data_exported",
+        entity_type="user",
+        entity_id=user.id,
+    )
+
     return {
         "exported_at": datetime.now().astimezone().isoformat(),
         "profile": profile,
