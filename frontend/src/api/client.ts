@@ -45,7 +45,7 @@ import type {
   OpenTaskCreatePayload,
 } from "../types/leader";
 import type { Auction, Opportunity, OpportunityScope, Reward, Survey, SurveyDetail } from "../types/opportunity";
-import type { Profile } from "../types/profile";
+import type { AdminDeletionRequest, DeletionRequest, Profile } from "../types/profile";
 import type {
   ProjectDetail,
   ProjectEvent,
@@ -934,6 +934,40 @@ export async function downloadResumePdf(): Promise<Blob> {
     throw new ApiError(response.status, await parseErrorDetail(response));
   }
   return response.blob();
+}
+
+// Self-service data rights — see app/services/data_rights_service.py and
+// docs/DATA_INVENTORY.md section 4.
+export async function downloadDataExport(): Promise<Blob> {
+  if (!sessionToken) {
+    throw new ApiError(401, "missing_token");
+  }
+  const response = await fetch(`${API_BASE_URL}/api/v1/profile/export`, {
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseErrorDetail(response));
+  }
+  return response.blob();
+}
+
+export function requestAccountDeletion(note?: string): Promise<DeletionRequest> {
+  return authorizedPost<DeletionRequest>("/api/v1/profile/delete-request", { note: note ?? null });
+}
+
+// Admin review queue for those same requests.
+export function fetchDeletionRequests(): Promise<AdminDeletionRequest[]> {
+  return authorizedGet<AdminDeletionRequest[]>("/api/v1/admin/data-deletion-requests");
+}
+
+export function fulfillDeletionRequest(
+  requestId: number,
+  approve: boolean,
+): Promise<AdminDeletionRequest> {
+  return authorizedPost<AdminDeletionRequest>(
+    `/api/v1/admin/data-deletion-requests/${requestId}/fulfill`,
+    { approve },
+  );
 }
 
 export function hasSession(): boolean {

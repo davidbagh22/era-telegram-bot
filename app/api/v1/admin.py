@@ -16,6 +16,7 @@ from app.config import Settings
 from app.database.models import (
     Auction,
     Badge,
+    DataDeletionRequest,
     Event,
     EventActivitySubmission,
     EventRegistration,
@@ -33,6 +34,7 @@ from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplic
 from app.keyboards.participant import main_menu, open_app_button
 from app.services import (
     auction_service,
+    data_rights_service,
     event_activity_service,
     event_moderation_service,
     event_registration_service,
@@ -1098,6 +1100,19 @@ async def require_points_awarder(
     raise HTTPException(status_code=403, detail="points_award_access_required")
 
 
+async def require_full_admin(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    # Fulfilling a data-deletion request anonymizes a user's PII — unlike
+    # the reversible block/archive actions gated on require_people_manager
+    # above, that isn't something to hand to every granted people-manager;
+    # deliberately restricted to full admins only.
+    if not is_full_admin(user, settings, user.telegram_id):
+        raise HTTPException(status_code=403, detail="full_admin_access_required")
+    return user
+
+
 class UserListItemOut(BaseModel):
     id: int
     telegram_id: int
@@ -1363,6 +1378,70 @@ async def toggle_user_permission(
     if not decision.allowed:
         raise HTTPException(status_code=409, detail=decision.reason or "cannot_change_permission")
     return PermissionToggleOut(permission=permission, enabled=enabled)
+
+
+# ---------------------------------------------------------------------------
+# Data rights — review queue for self-service account-deletion requests.
+# See app/services/data_rights_service.py: fulfilling anonymizes the
+# target's PII and archives the row, it does not hard-delete it.
+# ---------------------------------------------------------------------------
+
+
+class DeletionRequestOut(BaseModel):
+    id: int
+    user_id: int
+    first_name: str
+    last_name: str | None
+    telegram_id: int
+    note: str | None
+    status: str
+    created_at: str
+
+
+async def _to_deletion_request_out(
+    session: AsyncSession, request: DataDeletionRequest
+) -> DeletionRequestOut:
+    target = await session.get(User, request.user_id)
+    return DeletionRequestOut(
+        id=request.id,
+        user_id=request.user_id,
+        first_name=target.first_name if target else "—",
+        last_name=target.last_name if target else None,
+        telegram_id=target.telegram_id if target else 0,
+        note=request.note,
+        status=request.status,
+        created_at=request.created_at.isoformat(),
+    )
+
+
+@router.get("/data-deletion-requests", response_model=list[DeletionRequestOut])
+async def list_deletion_requests_endpoint(
+    _admin: User = Depends(require_full_admin),
+    session: AsyncSession = Depends(get_session),
+) -> list[DeletionRequestOut]:
+    requests = await data_rights_service.list_deletion_requests(session)
+    return [await _to_deletion_request_out(session, request) for request in requests]
+
+
+class DeletionDecisionIn(BaseModel):
+    approve: bool
+
+
+@router.post("/data-deletion-requests/{request_id}/fulfill", response_model=DeletionRequestOut)
+async def fulfill_deletion_request_endpoint(
+    request_id: int,
+    payload: DeletionDecisionIn,
+    admin: User = Depends(require_full_admin),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> DeletionRequestOut:
+    request = await session.get(DataDeletionRequest, request_id)
+    if request is None:
+        raise HTTPException(status_code=404, detail="request_not_found")
+    await data_rights_service.fulfill_deletion_request(
+        session, request, admin=admin, approve=payload.approve
+    )
+    return await _to_deletion_request_out(session, request)
 
 
 class PointsAwardIn(BaseModel):

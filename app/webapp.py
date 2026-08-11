@@ -22,6 +22,7 @@ from app.api.v1.router import api_router
 from app.bot import create_bot, create_dispatcher
 from app.config import get_settings
 from app.database.session import create_engine_and_sessionmaker
+from app.request_context import RequestIDLogFilter, new_request_id, request_id_var
 from app.services.ai_service import AIService
 from app.services.scheduler_service import create_scheduler
 from app.services.seed_service import seed_reference_data
@@ -118,8 +119,15 @@ async def lifespan(app: FastAPI):
     settings.assert_safe_for_deployment()
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        format="%(asctime)s | %(levelname)s | %(name)s | [%(request_id)s] | %(message)s",
     )
+    # A Filter added to a Logger only fires for records logged directly on
+    # that logger, not ones propagated up from `app.webapp`/etc.'s own
+    # `__name__`-scoped loggers — it has to go on the root's *handler*
+    # (what basicConfig() just created) to see every record regardless of
+    # which module's logger originated it.
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(RequestIDLogFilter())
     logger.info("Starting ERA bot, commit=%s", DEPLOYED_COMMIT)
 
     engine, session_factory = create_engine_and_sessionmaker(settings.database_url)
@@ -216,6 +224,18 @@ app = FastAPI(
     docs_url=None,
     openapi_url=None,
 )
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    request_id = new_request_id(request.headers.get("X-Request-ID"))
+    token = request_id_var.set(request_id)
+    try:
+        response = await call_next(request)
+    finally:
+        request_id_var.reset(token)
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 
 @app.middleware("http")

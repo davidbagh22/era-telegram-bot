@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, Response
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_session
 from app.database.models import User
+from app.services import data_rights_service
 from app.services.growth_service import GrowthProgress, growth_progress_for
 from app.services.portfolio_service import build_portfolio_data
 from app.services.resume_service import build_era_resume
@@ -120,4 +122,47 @@ async def read_profile_resume(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="ERA_portfolio_{user.id}.pdf"'},
+    )
+
+
+@router.get("/export")
+async def export_profile_data(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Self-service data export — see app/services/data_rights_service.py and
+    docs/DATA_INVENTORY.md section 4. Returns everything this app stores
+    about the caller's own account as a downloadable JSON file."""
+    data = await data_rights_service.export_user_data(session, user)
+    body = json.dumps(data, ensure_ascii=False, indent=2)
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="ERA_data_export_{user.id}.json"'},
+    )
+
+
+class DeletionRequestIn(BaseModel):
+    note: str | None = None
+
+
+class DeletionRequestOut(BaseModel):
+    id: int
+    status: str
+    created_at: str
+
+
+@router.post("/delete-request", response_model=DeletionRequestOut)
+async def request_account_deletion(
+    payload: DeletionRequestIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> DeletionRequestOut:
+    """Idempotent — a user with an existing pending request gets that same
+    request back rather than creating a duplicate."""
+    request = await data_rights_service.request_deletion(session, user, payload.note)
+    return DeletionRequestOut(
+        id=request.id,
+        status=request.status,
+        created_at=request.created_at.isoformat(),
     )
