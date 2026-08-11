@@ -30,7 +30,9 @@ jobs:
           python -m pip install pip-audit
           pip-audit -r requirements.txt --strict
       - name: Run tests
-        run: python -m unittest discover -s tests -v
+        run: |
+          python -m pip install pytest
+          python -m pytest -q
 
   frontend:
     runs-on: ubuntu-latest
