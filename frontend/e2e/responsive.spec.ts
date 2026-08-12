@@ -52,10 +52,23 @@ async function expectNoHorizontalOverflow(page: import("@playwright/test").Page,
 
 for (const width of WIDTHS) {
   test(`layout has no horizontal overflow at ${width}px`, async ({ page }) => {
+    // Doubled from playwright.config.ts's 30s default — the initial
+    // auth+render wait below already asks for up to 20s of that on a
+    // loaded CI runner, which wouldn't leave enough for the five tab
+    // navigations that follow.
+    test.setTimeout(60_000);
     await page.setViewportSize({ width, height: 844 });
     await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
 
-    await expect(page.getByRole("heading", { name: "Привет, E2E Participant" })).toBeVisible();
+    // This spec runs last of ~21 sequential specs sharing one SQLite
+    // fixture DB (workers: 1, see e2e/README.md) — by the time it starts,
+    // CI has occasionally shown the initial auth+render round trip take
+    // noticeably longer than the 10s default, especially for the last
+    // couple widths in WIDTHS. Not a real bug (320/360/390 always pass
+    // fast) — just less headroom than a fresh-browser run has.
+    await expect(page.getByRole("heading", { name: "Привет, E2E Participant" })).toBeVisible({
+      timeout: 20_000,
+    });
     await expectNoHorizontalOverflow(page, width);
 
     // All five bottom-nav destinations, not just the landing screen — a
