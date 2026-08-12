@@ -49,6 +49,13 @@ from app.services import (
     user_management_service,
 )
 from app.services.admin_analytics_service import EXCEL_SECTION_MAP, build_analytics_payload
+from app.services.admin_broadcast_service import (
+    BroadcastError,
+    department_options,
+    direction_options,
+    send_chat_broadcast,
+    send_personal_broadcast,
+)
 from app.services.admin_contacts_service import ContactError
 from app.services.admin_contacts_service import archive_contact as archive_org_contact
 from app.services.admin_contacts_service import create_contact as create_org_contact
@@ -414,6 +421,117 @@ async def toggle_chat_greeting(
         id=item.id, chat_key=item.chat_key, title=item.title, text=item.text,
         is_enabled=item.is_enabled, is_bound=item.chat_id is not None,
     )
+
+
+# ---------------------------------------------------------------------------
+# Broadcasts — personal-message and chat broadcast. Mini App equivalents of
+# the bot's "📨 Рассылка в личные сообщения" and "📣 Сообщение в выбранные
+# чаты" flows — see app/services/admin_broadcast_service.py. Chat binding
+# itself stays bot-only (see that module's docstring); this only sends to
+# chats already bound via /bind.
+# ---------------------------------------------------------------------------
+
+
+class AudienceOptionOut(BaseModel):
+    value: str
+    label: str
+
+
+class BroadcastAudienceOptionsOut(BaseModel):
+    roles: list[AudienceOptionOut]
+    departments: list[AudienceOptionOut]
+    directions: list[AudienceOptionOut]
+    ages: list[AudienceOptionOut]
+
+
+_ROLE_LABELS = {
+    "participant": "Участники",
+    "activist": "Активисты",
+    "leader": "Лидеры",
+    "head": "Руководители",
+    "council": "Совет",
+}
+_AGE_LABELS = {
+    "14_17": "14–17",
+    "18_24": "18–24",
+    "25_34": "25–34",
+    "35_plus": "35+",
+}
+
+
+@router.get("/broadcast/audience-options", response_model=BroadcastAudienceOptionsOut)
+async def read_broadcast_audience_options(
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> BroadcastAudienceOptionsOut:
+    return BroadcastAudienceOptionsOut(
+        roles=[AudienceOptionOut(value=value, label=label) for value, label in _ROLE_LABELS.items()],
+        departments=[AudienceOptionOut(value=o.value, label=o.label) for o in await department_options(session)],
+        directions=[AudienceOptionOut(value=o.value, label=o.label) for o in await direction_options(session)],
+        ages=[AudienceOptionOut(value=value, label=label) for value, label in _AGE_LABELS.items()],
+    )
+
+
+class PersonalBroadcastIn(BaseModel):
+    audience: Literal["all", "role", "department", "direction", "age", "city"]
+    filter_value: str | None = None
+    text: str
+
+
+class PersonalBroadcastResultOut(BaseModel):
+    total: int
+    sent: int
+    failed: int
+    duplicates: int
+    temporary_failed: int
+    permanent_failed: int
+
+
+@router.post("/broadcast", response_model=PersonalBroadcastResultOut)
+async def send_broadcast(
+    payload: PersonalBroadcastIn,
+    admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> PersonalBroadcastResultOut:
+    if bot is None:
+        raise HTTPException(status_code=503, detail="bot_unavailable")
+    try:
+        result = await send_personal_broadcast(
+            bot, session, audience=payload.audience, filter_value=payload.filter_value,
+            text=payload.text, author_id=admin.id,
+        )
+    except BroadcastError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+    return PersonalBroadcastResultOut(
+        total=result.total, sent=result.sent, failed=result.failed, duplicates=result.duplicates,
+        temporary_failed=result.temporary_failed, permanent_failed=result.permanent_failed,
+    )
+
+
+class ChatBroadcastIn(BaseModel):
+    chat_key: Literal["general", "internal", "external", "leaders"]
+    text: str
+
+
+@router.post("/broadcast/chat")
+async def send_chat_broadcast_endpoint(
+    payload: ChatBroadcastIn,
+    admin: User = Depends(require_dashboard_access),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> dict[str, bool]:
+    if bot is None:
+        raise HTTPException(status_code=503, detail="bot_unavailable")
+    try:
+        await send_chat_broadcast(bot, settings, session, chat_key=payload.chat_key, text=payload.text, actor_id=admin.id)
+    except BroadcastError as exc:
+        code = 404 if exc.code == "chat_not_bound" else 422
+        raise HTTPException(status_code=code, detail=exc.code) from exc
+    return {"ok": True}
 
 
 class ApplicationOut(BaseModel):

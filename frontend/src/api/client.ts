@@ -13,6 +13,8 @@ import type {
   AnalyticsExcelSection,
   AnalyticsSummary,
   BadgeItem,
+  BroadcastAudienceOptions,
+  ChatBroadcastKey,
   ChatGreetingItem,
   DashboardData,
   DepartmentStructureItem,
@@ -33,6 +35,8 @@ import type {
   OrganizationContactItem,
   Partner,
   PendingApplication,
+  PersonalBroadcastPayload,
+  PersonalBroadcastResult,
   ProjectDecisionAction,
   ProjectForModeration,
   RedemptionAdmin,
@@ -564,6 +568,18 @@ export function updateChatGreetingText(greetingId: number, text: string): Promis
 
 export function toggleChatGreeting(greetingId: number): Promise<ChatGreetingItem> {
   return authorizedPost<ChatGreetingItem>(`/api/v1/admin/chat-greetings/${greetingId}/toggle`);
+}
+
+export function fetchBroadcastAudienceOptions(): Promise<BroadcastAudienceOptions> {
+  return authorizedGet<BroadcastAudienceOptions>("/api/v1/admin/broadcast/audience-options");
+}
+
+export function sendPersonalBroadcast(payload: PersonalBroadcastPayload): Promise<PersonalBroadcastResult> {
+  return authorizedPost<PersonalBroadcastResult>("/api/v1/admin/broadcast", payload);
+}
+
+export function sendChatBroadcast(chatKey: ChatBroadcastKey, text: string): Promise<{ ok: boolean }> {
+  return authorizedPost<{ ok: boolean }>("/api/v1/admin/broadcast/chat", { chat_key: chatKey, text });
 }
 
 export function fetchAdminApplications(): Promise<PendingApplication[]> {

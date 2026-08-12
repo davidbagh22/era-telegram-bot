@@ -53,6 +53,7 @@ from app.keyboards.admin import (
     role_filters_keyboard,
     user_status_keyboard,
 )
+from app.services.admin_broadcast_service import BroadcastError, send_personal_broadcast
 from app.services.admin_greetings_service import GreetingError, toggle_greeting, update_greeting_text
 from app.services.admin_user_card import send_admin_user_card
 from app.services.application_review_service import (
@@ -3134,60 +3135,21 @@ async def broadcast_finish(
         return
     data = await state.get_data()
     audience = data["broadcast_audience"]
-    query = select(User).where(
-        User.application_status == ApplicationStatus.APPROVED,
-        User.is_blocked.is_(False),
-    )
+    # department/direction filters arrive as "id_<pk>" from the inline
+    # keyboard (broadcast_audience above); the shared service takes a bare
+    # numeric string, so strip the prefix here at the bot's own boundary.
     filter_value = data.get("broadcast_filter")
-    if audience == "role":
-        query = query.where(User.role == filter_value)
-    elif audience == "department":
-        query = query.join(UserDepartment).where(
-            UserDepartment.department_id == int(filter_value.removeprefix("id_"))
+    if audience in {"department", "direction"} and filter_value:
+        filter_value = filter_value.removeprefix("id_")
+    try:
+        result = await send_personal_broadcast(
+            bot, session, audience=audience, filter_value=filter_value,
+            text=data["broadcast_text"], author_id=user.id,
         )
-    elif audience == "direction":
-        query = query.join(UserDirection).where(
-            UserDirection.direction_id == int(filter_value.removeprefix("id_"))
-        )
-    elif audience == "city":
-        query = query.where(func.lower(User.city) == filter_value.lower())
-    elif audience == "age":
-        ranges = {
-            "14_17": (14, 17),
-            "18_24": (18, 24),
-            "25_34": (25, 34),
-            "35_plus": (35, 200),
-        }
-        low, high = ranges[filter_value]
-        query = query.where(User.age.between(low, high))
-    recipients = (await session.scalars(query)).unique().all()
-    item = Broadcast(
-        title="Рассылка ЭРА",
-        text=data["broadcast_text"],
-        audience_type=audience,
-        audience_filter_json={"value": filter_value} if filter_value else {},
-        author_id=user.id,
-        status="sending",
-    )
-    session.add(item)
-    await session.flush()
-    result = await broadcast_detailed(bot, (x.telegram_id for x in recipients), item.text)
-    item.status = "sent"
-    item.sent_at = datetime.now().astimezone()
-    await audit(
-        session,
-        actor_id=user.id,
-        action="broadcast.sent",
-        entity_type="broadcast",
-        entity_id=item.id,
-        new_value={
-            "sent": result.sent,
-            "failed": result.failed,
-            "duplicates": result.duplicates,
-            "temporary_failed": result.temporary_failed,
-            "permanent_failed": result.permanent_failed,
-        },
-    )
+    except BroadcastError:
+        await state.clear()
+        await call.message.answer("Не получилось отправить рассылку. Попробуйте ещё раз.")
+        return
     await state.clear()
     await call.message.answer(
         "Рассылка завершена.\n"

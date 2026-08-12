@@ -90,8 +90,9 @@ class RateLimitDependencyWiringTests(unittest.TestCase):
         # fulfill route + 5 admin-tools routes (goals: create + decide,
         # organization contacts: create + archive, chat greetings: toggle —
         # see app/services/admin_goals_service.py, admin_contacts_service.py,
-        # admin_greetings_service.py).
-        self.assertEqual(len(post_routes), 52, "expected 52 admin mutation routes")
+        # admin_greetings_service.py) + 2 broadcast routes (personal message,
+        # chat — see app/services/admin_broadcast_service.py).
+        self.assertEqual(len(post_routes), 54, "expected 54 admin mutation routes")
         for route in post_routes:
             deps = [d.call for d in route.dependant.dependencies]
             self.assertIn(

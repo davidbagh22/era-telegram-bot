@@ -13,12 +13,12 @@ from app.database.management_models import MonthlyGoal, OrganizationContact
 from app.database.models import Department, User
 from app.keyboards.admin import admin_panel_keyboard
 from app.services.admin_analytics_service import EXCEL_SECTION_MAP, build_analytics_payload
+from app.services.admin_broadcast_service import BroadcastError, send_chat_broadcast
 from app.services.admin_contacts_service import ContactError, archive_contact, create_contact
 from app.services.admin_goals_service import GoalError, create_goal, decide_goal
 from app.services.admin_structure_service import StructureError, update_department_description
-from app.services.audit_service import audit
 from app.services.excel_service import build_analytics_workbook
-from app.services.notification_service import safe_answer_document, safe_send
+from app.services.notification_service import safe_answer_document
 from app.utils import texts
 from app.utils.constants import Role
 from app.utils.validators import clean_text
@@ -343,21 +343,16 @@ async def chat_broadcast_send(call: CallbackQuery, user: User | None, settings: 
         await call.message.answer("Текст не найден. Начните рассылку заново")
         return
     key = call.data.rsplit(":", 1)[-1]
-    chat_ids = {
-        "general": settings.general_chat_id,
-        "internal": settings.internal_department_chat_id,
-        "external": settings.external_department_chat_id,
-        "leaders": settings.leaders_chat_id,
-    }
-    chat_id = chat_ids.get(key)
-    if not chat_id:
-        await call.message.answer("ID этого чата ещё не привязан. Используйте /bind в нужном чате или настройки")
+    try:
+        await send_chat_broadcast(bot, settings, session, chat_key=key, text=text, actor_id=user.id if user else None)
+    except BroadcastError as exc:
+        message = (
+            "ID этого чата ещё не привязан. Используйте /bind в нужном чате или настройки"
+            if exc.code == "chat_not_bound"
+            else "Telegram не дал отправить сообщение. Проверьте, что бот админ в этом чате"
+        )
+        await call.message.answer(message)
         return
-    ok = await safe_send(bot, chat_id, text)
-    if not ok:
-        await call.message.answer("Telegram не дал отправить сообщение. Проверьте, что бот админ в этом чате")
-        return
-    await audit(session, actor_id=user.id if user else None, action="chat.broadcast_sent", entity_type="chat", entity_id=None, new_value={"chat": key})
     await state.clear()
     await call.message.answer("Сообщение отправлено ✅")
 
