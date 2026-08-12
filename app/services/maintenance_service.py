@@ -15,6 +15,28 @@ PRESERVED_TABLES = {
     "chat_greetings",
 }
 
+# The exact phrase an admin must type/send back to actually run the wipe —
+# shared by the bot's "🧹 Очистка тестовых данных" flow
+# (app/handlers/admin/panel.py) and its Mini App port
+# (app/api/v1/admin.py), so the two surfaces can never disagree on what
+# counts as confirmation for a destructive, irreversible action.
+CONFIRMATION_PHRASE = "ОЧИСТИТЬ БАЗУ"
+
+# Only the counts an admin actually needs to see before confirming — mirrors
+# the bot's own hand-picked subset (raw table names like "audit_logs" are
+# shown too, but under a friendlier label).
+COUNT_LABELS: dict[str, str] = {
+    "users": "участников",
+    "events": "мероприятий",
+    "projects": "проектов",
+    "tasks": "заданий",
+    "points": "операций с баллами",
+    "portfolio_items": "записей портфолио",
+    "broadcasts": "рассылок",
+    "user_questions": "вопросов",
+    "audit_logs": "технических записей",
+}
+
 
 async def reset_preview(
     session: AsyncSession, admin_telegram_ids: list[int]

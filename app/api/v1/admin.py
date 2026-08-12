@@ -86,6 +86,12 @@ from app.services.authorization_service import (
 )
 from app.services.chat_access_service import sync_user_chat_access
 from app.services.excel_service import build_analytics_workbook
+from app.services.maintenance_service import (
+    CONFIRMATION_PHRASE,
+    COUNT_LABELS,
+    reset_operational_data,
+    reset_preview,
+)
 from app.services.notification_service import broadcast_detailed, safe_send
 from app.services.points_service import total_points
 from app.services.project_workspace_service import can_review_projects
@@ -1537,6 +1543,71 @@ async def require_full_admin(
     if not is_full_admin(user, settings, user.telegram_id):
         raise HTTPException(status_code=403, detail="full_admin_access_required")
     return user
+
+
+async def require_maintenance_access(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    # Deliberately narrower than require_full_admin above: this wipes
+    # operational data irreversibly, so — matching the bot's own
+    # "🧹 Очистка тестовых данных" flow (app/handlers/admin/panel.py) exactly
+    # — only the hardcoded ADMIN_IDS env var counts, not any DB role=admin
+    # account. This was an explicit product decision (see task #118), not
+    # an oversight: don't widen it to is_full_admin without asking first.
+    if user.telegram_id not in settings.admin_ids:
+        raise HTTPException(status_code=403, detail="maintenance_access_required")
+    return user
+
+
+# ---------------------------------------------------------------------------
+# Maintenance — test-data wipe. Mini App equivalent of the bot's "🧹 Очистка
+# тестовых данных" flow — see app/services/maintenance_service.py. Preview
+# is read-only; the actual wipe requires the caller to echo back
+# CONFIRMATION_PHRASE verbatim, validated server-side (never trust a
+# client-only confirm step for something this destructive).
+# ---------------------------------------------------------------------------
+
+
+class MaintenancePreviewOut(BaseModel):
+    counts: dict[str, int]
+    total: int
+    confirmation_phrase: str
+
+
+@router.get("/maintenance/preview", response_model=MaintenancePreviewOut)
+async def read_maintenance_preview(
+    admin: User = Depends(require_maintenance_access),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+) -> MaintenancePreviewOut:
+    counts = await reset_preview(session, settings.admin_ids)
+    visible = {name: value for name, value in counts.items() if name in COUNT_LABELS}
+    return MaintenancePreviewOut(counts=visible, total=sum(counts.values()), confirmation_phrase=CONFIRMATION_PHRASE)
+
+
+class MaintenanceResetIn(BaseModel):
+    confirmation_phrase: str
+
+
+class MaintenanceResetOut(BaseModel):
+    counts: dict[str, int]
+    total: int
+
+
+@router.post("/maintenance/reset", response_model=MaintenanceResetOut)
+async def run_maintenance_reset(
+    payload: MaintenanceResetIn,
+    admin: User = Depends(require_maintenance_access),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> MaintenanceResetOut:
+    if payload.confirmation_phrase.strip() != CONFIRMATION_PHRASE:
+        raise HTTPException(status_code=422, detail="confirmation_phrase_mismatch")
+    counts = await reset_operational_data(session, settings.admin_ids)
+    visible = {name: value for name, value in counts.items() if name in COUNT_LABELS}
+    return MaintenanceResetOut(counts=visible, total=sum(counts.values()))
 
 
 class UserListItemOut(BaseModel):

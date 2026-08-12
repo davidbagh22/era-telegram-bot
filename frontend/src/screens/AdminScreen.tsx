@@ -4,6 +4,7 @@ import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
 import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
+import { AdminMaintenanceScreen } from "./admin/AdminMaintenanceScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
 import { AdminOffersScreen } from "./admin/AdminOffersScreen";
 import { AdminProjectsScreen } from "./admin/AdminProjectsScreen";
@@ -23,7 +24,8 @@ type AdminSection =
   | "offers"
   | "surveys"
   | "tools"
-  | "data-rights";
+  | "data-rights"
+  | "maintenance";
 
 const SECTIONS: { value: AdminSection; label: string }[] = [
   { value: "dashboard", label: "Дашборд" },
@@ -37,6 +39,7 @@ const SECTIONS: { value: AdminSection; label: string }[] = [
   { value: "surveys", label: "Опросы" },
   { value: "tools", label: "Инструменты" },
   { value: "data-rights", label: "Удаление данных" },
+  { value: "maintenance", label: "Обслуживание" },
 ];
 
 export function AdminScreen() {
@@ -56,6 +59,7 @@ export function AdminScreen() {
       {section === "surveys" && <AdminSurveysScreen />}
       {section === "tools" && <AdminToolsScreen />}
       {section === "data-rights" && <AdminDataRightsScreen />}
+      {section === "maintenance" && <AdminMaintenanceScreen />}
     </div>
   );
 }

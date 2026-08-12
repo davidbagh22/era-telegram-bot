@@ -354,6 +354,20 @@ export interface PersonalBroadcastResult {
 
 export type ChatBroadcastKey = "general" | "internal" | "external" | "leaders";
 
+// Mini App equivalent of the bot's "🧹 Очистка тестовых данных" flow — see
+// app/services/maintenance_service.py. Destructive and irreversible: the
+// server re-validates confirmation_phrase itself, this isn't a UI-only gate.
+export interface MaintenancePreview {
+  counts: Record<string, number>;
+  total: number;
+  confirmation_phrase: string;
+}
+
+export interface MaintenanceResetResult {
+  counts: Record<string, number>;
+  total: number;
+}
+
 export interface UserDetail {
   id: number;
   telegram_id: number;

@@ -26,6 +26,8 @@ import type {
   GoalCreatePayload,
   GoalDecisionAction,
   GoalItem,
+  MaintenancePreview,
+  MaintenanceResetResult,
   Office,
   OfferAdmin,
   OfferApplicationAction,
@@ -580,6 +582,16 @@ export function sendPersonalBroadcast(payload: PersonalBroadcastPayload): Promis
 
 export function sendChatBroadcast(chatKey: ChatBroadcastKey, text: string): Promise<{ ok: boolean }> {
   return authorizedPost<{ ok: boolean }>("/api/v1/admin/broadcast/chat", { chat_key: chatKey, text });
+}
+
+export function fetchMaintenancePreview(): Promise<MaintenancePreview> {
+  return authorizedGet<MaintenancePreview>("/api/v1/admin/maintenance/preview");
+}
+
+export function runMaintenanceReset(confirmationPhrase: string): Promise<MaintenanceResetResult> {
+  return authorizedPost<MaintenanceResetResult>("/api/v1/admin/maintenance/reset", {
+    confirmation_phrase: confirmationPhrase,
+  });
 }
 
 export function fetchAdminApplications(): Promise<PendingApplication[]> {
