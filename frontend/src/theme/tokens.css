@@ -249,6 +249,13 @@ input[type="checkbox"] {
 
 .era-page {
   animation: era-fade-in var(--era-motion);
+  /* Every screen root is a flex item inside UserLayout's column (or a
+     flex column itself, per its own inline styles) — without this, a
+     flex item's default min-width is its content's width, not 0, and a
+     wide-enough descendant (a PillTabs row, an unwrapped table) forces
+     this wider instead of shrinking to the viewport. Found by
+     frontend/e2e/responsive.spec.ts at 320/360px. */
+  min-width: 0;
 }
 
 /* Skeleton / Toast / Modal / BottomSheet — see components/Skeleton.tsx,

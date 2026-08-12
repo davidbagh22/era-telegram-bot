@@ -24,7 +24,15 @@ from datetime import date, time, timedelta
 
 from app.config import get_settings
 from app.database.base import Base
-from app.database.models import Event, EventActivity, EventActivitySubmission, PointTransaction, User
+from app.database.models import (
+    Badge,
+    Event,
+    EventActivity,
+    EventActivitySubmission,
+    PointTransaction,
+    User,
+    UserBadge,
+)
 from app.database.session import create_engine_and_sessionmaker
 from app.utils.constants import ApplicationStatus, EventStatus, Role
 
@@ -77,14 +85,15 @@ async def seed() -> None:
             role=Role.LEADER,
             application_status=ApplicationStatus.APPROVED,
         )
+        participant = User(
+            telegram_id=PARTICIPANT_TELEGRAM_ID,
+            first_name="E2E Participant",
+            role=Role.PARTICIPANT,
+            application_status=ApplicationStatus.APPROVED,
+        )
         session.add_all(
             [
-                User(
-                    telegram_id=PARTICIPANT_TELEGRAM_ID,
-                    first_name="E2E Participant",
-                    role=Role.PARTICIPANT,
-                    application_status=ApplicationStatus.APPROVED,
-                ),
+                participant,
                 leader,
                 admin,
                 User(
@@ -126,7 +135,7 @@ async def seed() -> None:
             application_status=ApplicationStatus.APPROVED,
         )
         session.add_all([bidder, redeemer, activity_submitter])
-        await session.flush()  # assigns admin.id/leader.id/bidder.id/redeemer.id/activity_submitter.id, used below
+        await session.flush()  # assigns participant.id/admin.id/leader.id/bidder.id/redeemer.id/activity_submitter.id, used below
         session.add(
             PointTransaction(
                 user_id=bidder.id,
@@ -143,6 +152,24 @@ async def seed() -> None:
                 reason="E2E seed balance",
                 source_type="e2e_seed",
                 idempotency_key=f"e2e_seed:reward_redeemer:{redeemer.id}",
+            )
+        )
+        # A real Badge/UserBadge award — not a bot-only-FSM thing, this is
+        # DB state any admin award creates — so responsive.spec.ts and any
+        # future portfolio-view spec have a real, stable "Достижения" entry
+        # to assert on. See docs/FINAL_PRODUCTION_ACCEPTANCE.md #266 for
+        # why upload/delete still isn't covered here: those genuinely do
+        # need a live Telegram client (file upload FSM), portfolio *view*
+        # doesn't.
+        badge = Badge(name="E2E Тестовый значок", description="Выдан seed-скриптом для проверки портфолио.")
+        session.add(badge)
+        await session.flush()  # assigns badge.id
+        session.add(
+            UserBadge(
+                user_id=participant.id,
+                badge_id=badge.id,
+                reason="Автоматическая проверка портфолио",
+                awarded_by=admin.id,
             )
         )
         session.add(
