@@ -21,6 +21,13 @@ interface BottomNavigationProps {
   onChange: (tab: TabKey) => void;
 }
 
+// A floating "dock" instead of an edge-to-edge bar — inset from the sides
+// so the page background shows around it, active tab gets a gradient pill
+// fill instead of just a color/scale change. The overflow-safety technique
+// (flex: 1 1 0 + minWidth: 0 per tab, label ellipsis) is unchanged from the
+// bar version — that's what keeps "Возможности" from pushing the viewport
+// wider at 320/360px (frontend/e2e/responsive.spec.ts), and nothing about
+// the floating treatment touches it.
 export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
   return (
     <nav
@@ -28,28 +35,26 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
         position: "sticky",
         bottom: 0,
         display: "flex",
-        // minWidth: 0 lets this actually shrink to the viewport instead of
-        // demanding its unshrunk content width (5 labels' worth); without
-        // it, the demand bleeds out through this and every ancestor flex
-        // container up to <html> instead of staying contained here. See
-        // PillTabs.tsx's comment for the same root cause. Found by
-        // frontend/e2e/responsive.spec.ts at 320/360px — "Профиль", the
-        // last tab, was landing past the viewport edge.
         minWidth: 0,
-        padding: "0.5rem 0 calc(0.5rem + env(safe-area-inset-bottom, 0px))",
-        background: "var(--era-bg)",
-        borderTop: "1px solid var(--era-border)",
+        gap: "0.125rem",
+        margin: "0 0.75rem calc(0.6rem + env(safe-area-inset-bottom, 0px))",
+        padding: "0.35rem",
+        background: "var(--era-surface)",
+        border: "1px solid var(--era-border)",
+        borderRadius: "var(--era-radius-pill)",
+        boxShadow: "var(--era-shadow-lift)",
       }}
     >
       {TABS.map(({ key, label, Icon }) => {
         const isActive = key === active;
-        const color = isActive ? "var(--era-red)" : "var(--era-text-muted)";
         return (
           <button
             key={key}
             type="button"
             onClick={() => onChange(key)}
+            aria-current={isActive ? "page" : undefined}
             style={{
+              position: "relative",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
@@ -58,22 +63,36 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
               // flex: 1 1 0 + minWidth: 0 — five equal-share, genuinely
               // shrinkable columns instead of justify-content: space-around
               // over five unshrinkable ones; the label below truncates
-              // with an ellipsis rather than forcing the bar (and the
-              // whole page, see the <nav> comment above) wider than the
-              // viewport on the narrowest phones.
+              // with an ellipsis rather than forcing the dock (and the
+              // whole page) wider than the viewport on the narrowest
+              // phones. See responsive.spec.ts.
               flex: "1 1 0",
               minWidth: 0,
               background: "none",
               border: "none",
-              color,
+              color: isActive ? "#fff" : "var(--era-text-muted)",
               fontFamily: "var(--era-font-body)",
               fontSize: "0.6875rem",
               fontWeight: isActive ? 700 : 500,
-              padding: "0.25rem 0.25rem",
-              transform: isActive ? "translateY(-2px) scale(1.08)" : "translateY(0) scale(1)",
-              transition: "transform var(--era-motion-fast), color var(--era-motion-fast)",
+              padding: "0.5rem 0.25rem",
+              borderRadius: "var(--era-radius-pill)",
+              transition: "color var(--era-motion-fast)",
+              zIndex: 0,
             }}
           >
+            {isActive && (
+              <span
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  borderRadius: "var(--era-radius-pill)",
+                  background: "linear-gradient(135deg, var(--era-violet), var(--era-red))",
+                  boxShadow: "0 8px 18px rgba(116, 44, 196, 0.4)",
+                  zIndex: -1,
+                }}
+              />
+            )}
             <Icon />
             <span
               style={{

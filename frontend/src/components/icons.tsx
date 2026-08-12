@@ -60,3 +60,24 @@ export function ProfileIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+// Used by HomeScreen's hero card chips (Card gradient), not by the bottom
+// navigation — kept here alongside the tab icons since it's the same
+// hand-drawn stroke style and there's no reason to start a second file.
+export function TaskIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...baseProps(props)}>
+      <path d="M9 11.5 11.5 14 20 5" />
+      <path d="M19 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9.5" />
+    </svg>
+  );
+}
+
+export function EventIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...baseProps(props)}>
+      <rect x="3.5" y="5" width="17" height="16" rx="2" />
+      <path d="M16 3v4M8 3v4M3.5 10h17" />
+    </svg>
+  );
+}
