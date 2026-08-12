@@ -89,6 +89,17 @@ except the two gaps called out below.
 | Chat binding / general-chat administration (`chat_binding_stability.py`, `chat_binding.py`) | ✅ keep — "работу с общим чатом" | no equivalent needed | no | Bot |
 | Emergency/maintenance commands (`emergency.py`, `management_ready.py`'s maintenance mode) | ✅ keep — explicit "резервный сценарий" requirement | n/a | no | Bot |
 
+**Final decision on the legacy `/panel` tree (2026-08-13):** every admin-panel
+feature in scope now has a Mini App equivalent (rows above), but the bot's
+`/panel`/`/admin` handlers themselves are **not being deleted**. They stay in
+the codebase exactly as they are, reachable only via the direct `/panel` or
+`/admin` command (not advertised on any keyboard) — a working admin surface
+if the Mini App is ever temporarily unavailable. This was a deliberate
+choice, not an oversight: it resolves in favor of the older "резервный
+сценарий" requirement over the earlier default assumption that porting would
+be followed by deletion. Do not remove these handler files without
+re-confirming with the project owner first.
+
 ## What this means for PR 36 specifically
 
 1. **`main_menu()`/`main_inline_keyboard()`** (`app/keyboards/participant.py`): replaced the old `👤 Личный кабинет / 📅 Афиша / ✅ Задачи / ⭐ Возможности / [🔥 Открыть ЭРА] / 💬 Связь / [⚙️ Панель]` tree with the brief's exact set — `🔥 Открыть ЭРА`, `📅 Ближайшее`, `✅ Мои задачи`, `⭐ Возможности`, `💬 Связь` — three of which now deep-link straight into the right Mini App tab instead of opening a bot-side inline menu. This only changes what's advertised when a Mini App URL is configured; the old buttons/handlers remain as the "Mini App unavailable" fallback (`else` branch, unchanged behavior, `⚙️ Панель` included for privileged/admin users in that branch specifically, satisfying "резервный сценарий, если Mini App временно недоступна").
