@@ -62,7 +62,12 @@ from app.services.application_review_service import (
 )
 from app.services.audit_service import audit
 from app.services.event_service import can_change_event_status
-from app.services.maintenance_service import reset_operational_data, reset_preview
+from app.services.maintenance_service import (
+    CONFIRMATION_PHRASE,
+    COUNT_LABELS,
+    reset_operational_data,
+    reset_preview,
+)
 from app.services.notification_service import (
     broadcast,
     broadcast_detailed,
@@ -3959,19 +3964,8 @@ async def maintenance_preview(
         )
         return
     counts = await reset_preview(session, settings.admin_ids)
-    labels = {
-        "users": "участников",
-        "events": "мероприятий",
-        "projects": "проектов",
-        "tasks": "заданий",
-        "points": "операций с баллами",
-        "portfolio_items": "записей портфолио",
-        "broadcasts": "рассылок",
-        "user_questions": "вопросов",
-        "audit_logs": "технических записей",
-    }
     visible = [
-        f"• {labels[name]}: {value}" for name, value in counts.items() if name in labels
+        f"• {COUNT_LABELS[name]}: {value}" for name, value in counts.items() if name in COUNT_LABELS
     ]
     total = sum(counts.values())
     keyboard = InlineKeyboardMarkup(
@@ -4010,7 +4004,7 @@ async def maintenance_confirm(
     await call.message.answer(
         "Это действие нельзя отменить\n\n"
         "Чтобы удалить тестовых участников и всю рабочую историю, напишите точно:\n"
-        "ОЧИСТИТЬ БАЗУ\n\n"
+        f"{CONFIRMATION_PHRASE}\n\n"
         "Любой другой ответ отменит операцию"
     )
 
@@ -4028,7 +4022,7 @@ async def maintenance_finish(
     if message.from_user.id not in settings.admin_ids:
         await state.clear()
         return
-    if (message.text or "").strip() != "ОЧИСТИТЬ БАЗУ":
+    if (message.text or "").strip() != CONFIRMATION_PHRASE:
         await state.clear()
         await message.answer("Очистка отменена — данные не изменены")
         return

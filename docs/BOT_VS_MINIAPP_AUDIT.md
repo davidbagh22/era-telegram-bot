@@ -84,7 +84,8 @@ except the two gaps called out below.
 | Analytics (incl. Excel export) | fallback | ✅ `AdminDashboardScreen` — on-screen metrics and Excel export both live here now (`downloadAnalyticsExcel`, `admin_analytics_service.py`) | yes | Mini App |
 | Monthly goals / organization contacts / department structure / chat greetings (`management_ready.py`, `panel.py`'s `admin:greetings*`) | fallback | ✅ `AdminToolsScreen` (goals, contacts, structure, greetings sub-tabs — `admin_goals_service.py`, `admin_contacts_service.py`, `admin_structure_service.py`, `admin_greetings_service.py`) | yes | Mini App |
 | General broadcast (personal DM + chat broadcast, 6-way audience targeting) | fallback | ✅ `AdminToolsScreen`'s Рассылки tab (`admin_broadcast_service.py`) | yes | Mini App |
-| Chat binding via forwarded message, test-data maintenance tools | ✅ keep — chat binding is bot-only permanently (Telegram requires a forwarded message sent inside the chat, which a web form can't replicate); maintenance port is still in progress | maintenance: not yet ported (tracked separately) | no | Bot for now |
+| Chat binding via forwarded message | ✅ keep permanently — Telegram only exposes a chat's id through a message sent inside it, which a web form can't replicate | n/a | no | Bot |
+| Test-data maintenance / wipe tool | fallback | ✅ `AdminMaintenanceScreen` (`maintenance_service.py`) — same ADMIN_IDS-only gate as the bot (`require_maintenance_access`, deliberately narrower than the general admin dependency) plus a real server-validated type-to-confirm phrase, not a UI-only confirm | yes | Mini App |
 | Chat binding / general-chat administration (`chat_binding_stability.py`, `chat_binding.py`) | ✅ keep — "работу с общим чатом" | no equivalent needed | no | Bot |
 | Emergency/maintenance commands (`emergency.py`, `management_ready.py`'s maintenance mode) | ✅ keep — explicit "резервный сценарий" requirement | n/a | no | Bot |
 
