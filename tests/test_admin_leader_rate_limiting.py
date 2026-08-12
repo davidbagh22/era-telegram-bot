@@ -87,8 +87,11 @@ class RateLimitDependencyWiringTests(unittest.TestCase):
         # Reward/Redemption routes from PR 31 (create reward, disable reward,
         # answer/exchange/reject redemption) + 3 Event Activity routes from
         # PR 32 (create, send, decide submission) + 1 data-deletion-request
-        # fulfill route (this PR — see app/services/data_rights_service.py).
-        self.assertEqual(len(post_routes), 47, "expected 47 admin mutation routes")
+        # fulfill route + 5 admin-tools routes (goals: create + decide,
+        # organization contacts: create + archive, chat greetings: toggle —
+        # see app/services/admin_goals_service.py, admin_contacts_service.py,
+        # admin_greetings_service.py).
+        self.assertEqual(len(post_routes), 52, "expected 52 admin mutation routes")
         for route in post_routes:
             deps = [d.call for d in route.dependant.dependencies]
             self.assertIn(

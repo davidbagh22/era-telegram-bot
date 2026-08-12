@@ -13,17 +13,24 @@ import type {
   AnalyticsExcelSection,
   AnalyticsSummary,
   BadgeItem,
+  ChatGreetingItem,
   DashboardData,
+  DepartmentStructureItem,
   EventActivityAdmin,
   EventDecisionAction,
   EventForModeration,
   AuctionAdmin,
   EventParticipant,
+  GoalCreatePayload,
+  GoalDecisionAction,
+  GoalItem,
   Office,
   OfferAdmin,
   OfferApplicationAction,
   OfferApplicationForReview,
   OperationalEvent,
+  OrganizationContactCreatePayload,
+  OrganizationContactItem,
   Partner,
   PendingApplication,
   ProjectDecisionAction,
@@ -504,6 +511,59 @@ export async function downloadAnalyticsExcel(section: AnalyticsExcelSection): Pr
     throw new ApiError(response.status, await parseErrorDetail(response));
   }
   return response.blob();
+}
+
+// Admin tools — monthly goals, organization contacts, department structure,
+// chat greetings. See app/api/v1/admin.py's "Admin tools" section.
+export function fetchAdminGoals(): Promise<GoalItem[]> {
+  return authorizedGet<GoalItem[]>("/api/v1/admin/goals");
+}
+
+export function createGoal(payload: GoalCreatePayload): Promise<GoalItem> {
+  return authorizedPost<GoalItem>("/api/v1/admin/goals", payload);
+}
+
+export function decideGoal(goalId: number, action: GoalDecisionAction): Promise<GoalItem> {
+  return authorizedPost<GoalItem>(`/api/v1/admin/goals/${goalId}/${action}`);
+}
+
+export function fetchOrganizationContacts(): Promise<OrganizationContactItem[]> {
+  return authorizedGet<OrganizationContactItem[]>("/api/v1/admin/organization-contacts");
+}
+
+export function createOrganizationContact(
+  payload: OrganizationContactCreatePayload,
+): Promise<OrganizationContactItem> {
+  return authorizedPost<OrganizationContactItem>("/api/v1/admin/organization-contacts", payload);
+}
+
+export function archiveOrganizationContact(contactId: number): Promise<OrganizationContactItem> {
+  return authorizedPost<OrganizationContactItem>(`/api/v1/admin/organization-contacts/${contactId}/archive`);
+}
+
+export function fetchDepartmentStructure(): Promise<DepartmentStructureItem[]> {
+  return authorizedGet<DepartmentStructureItem[]>("/api/v1/admin/departments/structure");
+}
+
+export function updateDepartmentDescription(
+  departmentId: number,
+  description: string,
+): Promise<DepartmentStructureItem> {
+  return authorizedPatch<DepartmentStructureItem>(`/api/v1/admin/departments/${departmentId}/description`, {
+    description,
+  });
+}
+
+export function fetchChatGreetings(): Promise<ChatGreetingItem[]> {
+  return authorizedGet<ChatGreetingItem[]>("/api/v1/admin/chat-greetings");
+}
+
+export function updateChatGreetingText(greetingId: number, text: string): Promise<ChatGreetingItem> {
+  return authorizedPatch<ChatGreetingItem>(`/api/v1/admin/chat-greetings/${greetingId}/text`, { text });
+}
+
+export function toggleChatGreeting(greetingId: number): Promise<ChatGreetingItem> {
+  return authorizedPost<ChatGreetingItem>(`/api/v1/admin/chat-greetings/${greetingId}/toggle`);
 }
 
 export function fetchAdminApplications(): Promise<PendingApplication[]> {

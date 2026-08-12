@@ -1,21 +1,21 @@
 from __future__ import annotations
 
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
 from aiogram import F, Bot, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.management_models import MonthlyGoal, OrganizationContact
-from app.database.models import Department, Direction, User
+from app.database.models import Department, User
 from app.keyboards.admin import admin_panel_keyboard
 from app.services.admin_analytics_service import EXCEL_SECTION_MAP, build_analytics_payload
+from app.services.admin_contacts_service import ContactError, archive_contact, create_contact
+from app.services.admin_goals_service import GoalError, create_goal, decide_goal
+from app.services.admin_structure_service import StructureError, update_department_description
 from app.services.audit_service import audit
 from app.services.excel_service import build_analytics_workbook
 from app.services.notification_service import safe_answer_document, safe_send
@@ -203,19 +203,19 @@ async def goal_save(message: Message, user: User | None, settings: Settings, ses
     except ValueError:
         await message.answer("План должен быть числом. Например: 3")
         return
-    month = parts[2] if len(parts) > 2 and parts[2] else datetime.now(ZoneInfo(settings.timezone)).strftime("%Y-%m")
-    scope_type = "global"
-    scope_id = None
-    if len(parts) > 3 and parts[3]:
-        query = parts[3].casefold()
-        department = await session.scalar(select(Department).where(func.lower(Department.name).contains(query)))
-        direction = await session.scalar(select(Direction).where(func.lower(Direction.name).contains(query)))
-        if direction:
-            scope_type, scope_id = "direction", direction.id
-        elif department:
-            scope_type, scope_id = "department", department.id
-    session.add(MonthlyGoal(month=month, title=parts[0], target_value=target, scope_type=scope_type, scope_id=scope_id, updated_by=user.id if user else None))
-    await session.flush()
+    try:
+        await create_goal(
+            session,
+            title=parts[0],
+            target_value=target,
+            month=parts[2] if len(parts) > 2 else None,
+            scope_query=parts[3] if len(parts) > 3 else None,
+            timezone=settings.timezone,
+            updated_by=user.id if user else None,
+        )
+    except GoalError:
+        await message.answer("Не получилось сохранить цель. Проверьте план — он должен быть больше нуля")
+        return
     await state.clear()
     await message.answer("Цель добавлена ✅")
 
@@ -224,20 +224,13 @@ async def goal_save(message: Message, user: User | None, settings: Settings, ses
 async def goal_action(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await _guard(call, user, settings):
         return
-    _, _, action, raw_id = call.data.split(":")
-    goal = await session.get(MonthlyGoal, int(raw_id))
-    if not goal:
+    _, _, raw_action, raw_id = call.data.split(":")
+    action = "delete" if raw_action == "del" else raw_action
+    try:
+        await decide_goal(session, int(raw_id), action, user.id if user else None)
+    except GoalError:
         await call.message.answer("Цель не найдена")
         return
-    if action == "inc":
-        goal.current_value += 1
-    elif action == "done":
-        goal.current_value = max(goal.current_value, goal.target_value)
-        goal.status = "done"
-    else:
-        goal.status = "deleted"
-    goal.updated_by = user.id if user else None
-    await session.flush()
     await call.message.answer("Цель обновлена")
 
 
@@ -284,18 +277,22 @@ async def contact_save(message: Message, user: User | None, settings: Settings, 
         await message.answer("Нужно указать хотя бы название организации")
         return
     parts += [""] * (8 - len(parts))
-    session.add(OrganizationContact(
-        organization_name=_empty(parts[0]) or "Без названия",
-        contact_name=_empty(parts[1]),
-        position=_empty(parts[2]),
-        second_contact_name=_empty(parts[3]),
-        second_position=_empty(parts[4]),
-        email=_empty(parts[5]),
-        phone=_empty(parts[6]),
-        notes=_empty(parts[7]),
-        created_by=user.id if user else None,
-    ))
-    await session.flush()
+    try:
+        await create_contact(
+            session,
+            organization_name=_empty(parts[0]) or "Без названия",
+            contact_name=_empty(parts[1]),
+            position=_empty(parts[2]),
+            second_contact_name=_empty(parts[3]),
+            second_position=_empty(parts[4]),
+            email=_empty(parts[5]),
+            phone=_empty(parts[6]),
+            notes=_empty(parts[7]),
+            created_by=user.id if user else None,
+        )
+    except ContactError:
+        await message.answer("Нужно указать хотя бы название организации")
+        return
     await state.clear()
     await message.answer("Контакт добавлен ✅")
 
@@ -304,10 +301,10 @@ async def contact_save(message: Message, user: User | None, settings: Settings, 
 async def contact_delete(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await _guard(call, user, settings):
         return
-    contact = await session.get(OrganizationContact, int(call.data.rsplit(":", 1)[-1]))
-    if contact:
-        contact.is_active = False
-        await session.flush()
+    try:
+        await archive_contact(session, int(call.data.rsplit(":", 1)[-1]))
+    except ContactError:
+        pass
     await call.message.answer("Контакт скрыт из активной базы")
 
 
@@ -393,11 +390,10 @@ async def structure_department_save(message: Message, user: User | None, setting
     if not await _guard(message, user, settings):
         return
     data = await state.get_data()
-    department = await session.get(Department, int(data["department_id"]))
-    if not department:
+    try:
+        await update_department_description(session, int(data["department_id"]), clean_text(message.text or "", 3000))
+    except StructureError:
         await state.clear()
         return
-    department.description = clean_text(message.text or "", 3000)
-    await session.flush()
     await state.clear()
     await message.answer("Описание обновлено ✅")
