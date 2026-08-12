@@ -51,7 +51,10 @@ balance dedicated to the auctions bidding scenario (kept separate from
 `900001` so admin_people.spec.ts's exact post-award balance assertion never
 has to account for points spent bidding elsewhere). One future,
 `registration_open` event so the participant spec has something to
-register for.
+register for. A `Badge`/`UserBadge` award to the participant (900001) so
+`portfolio.spec.ts` has a real, stable portfolio entry to assert on —
+picked over event/task fixtures specifically because it's never mutated
+by any other spec (no registration/submission state to contend over).
 
 ## Scope
 
@@ -90,7 +93,19 @@ stack (not just a page render):
   step, including backing out without cancelling — independent of
   `participant.spec.ts` so it doesn't leave the seeded participant's
   registration state as a side effect for other specs.
+- **Responsive layout** (`responsive.spec.ts`): every other spec here runs
+  at the single 390×844 viewport `playwright.config.ts` sets — this one
+  re-visits Home/Activity/Projects/Opportunities/Profile at 320, 360, 390,
+  430, and 768px and asserts no horizontal overflow at any of them.
+  Deliberately read-only (navigation + layout checks only) so it can run
+  against whatever state the other specs leave the shared fixture DB in.
+- **Portfolio view** (`portfolio.spec.ts`): the participant's seeded badge
+  award shows up on the Profile screen's portfolio section. Upload and
+  delete are Bot-only FSM flows Playwright can't drive (see the file's own
+  comment) — this covers the one leg of that flow that's a plain Mini App
+  screen.
 
 Not covered here (see `docs/PRODUCTION_READINESS_AUDIT.md` backlog):
-concurrent-decision races, file/portfolio upload, and the chat/registration
-scenarios covered separately by the addendum's live-checklist re-verification.
+concurrent-decision races, portfolio file upload/delete (Bot-only FSM, see
+`portfolio.spec.ts`'s own comment), and the chat/registration scenarios
+covered separately by the addendum's live-checklist re-verification.
