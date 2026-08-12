@@ -5,7 +5,7 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,6 +47,7 @@ from app.services import (
     task_review_service,
     user_management_service,
 )
+from app.services.admin_analytics_service import EXCEL_SECTION_MAP, build_analytics_payload
 from app.services.admin_dashboard_service import dashboard_metrics, has_dashboard_access
 from app.services.application_review_service import (
     approve_application,
@@ -64,6 +65,7 @@ from app.services.authorization_service import (
     is_full_admin,
 )
 from app.services.chat_access_service import sync_user_chat_access
+from app.services.excel_service import build_analytics_workbook
 from app.services.notification_service import broadcast_detailed, safe_send
 from app.services.points_service import total_points
 from app.services.project_workspace_service import can_review_projects
@@ -114,6 +116,58 @@ async def read_dashboard(
 ) -> DashboardOut:
     metrics = await dashboard_metrics(session)
     return DashboardOut(metrics=metrics.values, attention_total=metrics.attention_total)
+
+
+# ---------------------------------------------------------------------------
+# Analytics / Excel export — the Mini App equivalent of the bot's
+# "📊 Аналитика и Excel" flow (app/handlers/admin/management_ready.py).
+# Both now share app/services/admin_analytics_service.py so the numbers
+# never drift between the two surfaces.
+# ---------------------------------------------------------------------------
+
+
+class AnalyticsSummaryOut(BaseModel):
+    total_users: int
+    approved_users: int
+    pending_users: int
+    events: int
+    projects: int
+    contacts: int
+    goals: int
+
+
+@router.get("/analytics", response_model=AnalyticsSummaryOut)
+async def read_analytics_summary(
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> AnalyticsSummaryOut:
+    data = await build_analytics_payload(session)
+    return AnalyticsSummaryOut(**data.summary)
+
+
+@router.get("/analytics/export.xlsx")
+async def export_analytics_excel(
+    section: Literal["all", "users", "departments", "events", "projects"] = "all",
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    data = await build_analytics_payload(session)
+    content = build_analytics_workbook(
+        data.users,
+        data.events,
+        data.projects,
+        data.totals,
+        department_stats=data.department_stats,
+        direction_stats=data.direction_stats,
+        goals=data.goals,
+        contacts=data.contacts,
+        sections=EXCEL_SECTION_MAP.get(section),
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="ERA_analytics_{section}.xlsx"'},
+    )
 
 
 class ApplicationOut(BaseModel):

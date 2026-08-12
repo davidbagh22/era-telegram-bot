@@ -13,13 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.management_models import MonthlyGoal, OrganizationContact
-from app.database.models import Department, Direction, Event, PointTransaction, Project, User, UserDepartment, UserDirection
+from app.database.models import Department, Direction, User
 from app.keyboards.admin import admin_panel_keyboard
+from app.services.admin_analytics_service import EXCEL_SECTION_MAP, build_analytics_payload
 from app.services.audit_service import audit
 from app.services.excel_service import build_analytics_workbook
 from app.services.notification_service import safe_answer_document, safe_send
 from app.utils import texts
-from app.utils.constants import ApplicationStatus, Role
+from app.utils.constants import Role
 from app.utils.validators import clean_text
 
 router = Router(name="admin_management_ready")
@@ -105,95 +106,20 @@ async def communications_menu(call: CallbackQuery, user: User | None, settings: 
     )
 
 
-async def _analytics_payload(session: AsyncSession) -> dict:
-    users = (await session.scalars(select(User).where(User.is_archived.is_(False)).order_by(User.first_name))).all()
-    events = (await session.scalars(select(Event).order_by(Event.event_date.desc(), Event.event_time).limit(500))).all()
-    projects = (await session.scalars(select(Project).order_by(Project.created_at.desc()).limit(500))).all()
-    totals = dict((await session.execute(select(PointTransaction.user_id, func.coalesce(func.sum(PointTransaction.points), 0)).group_by(PointTransaction.user_id))).all())
-
-    dep_rows = (await session.execute(
-        select(Department.id, Department.name, func.count(UserDepartment.id))
-        .join(UserDepartment, Department.id == UserDepartment.department_id, isouter=True)
-        .group_by(Department.id, Department.name)
-        .order_by(Department.name)
-    )).all()
-    dir_rows = (await session.execute(
-        select(Department.name, Direction.id, Direction.name, func.count(UserDirection.id))
-        .join(Direction, Direction.department_id == Department.id)
-        .join(UserDirection, UserDirection.direction_id == Direction.id, isouter=True)
-        .group_by(Department.name, Direction.id, Direction.name)
-        .order_by(Department.name, Direction.name)
-    )).all()
-    goals = (await session.scalars(select(MonthlyGoal).where(MonthlyGoal.status != "deleted").order_by(MonthlyGoal.month.desc(), MonthlyGoal.created_at.desc()).limit(200))).all()
-    contacts = (await session.scalars(select(OrganizationContact).where(OrganizationContact.is_active.is_(True)).order_by(OrganizationContact.organization_name))).all()
-
-    goals_by_department = {row[0]: {"active": 0, "done": 0} for row in dep_rows}
-    for goal in goals:
-        if goal.scope_type == "department" and goal.scope_id in goals_by_department:
-            key = "done" if goal.status == "done" else "active"
-            goals_by_department[goal.scope_id][key] += 1
-
-    department_stats = [
-        {
-            "id": dep_id,
-            "name": name,
-            "members": members,
-            "active_goals": goals_by_department.get(dep_id, {}).get("active", 0),
-            "done_goals": goals_by_department.get(dep_id, {}).get("done", 0),
-        }
-        for dep_id, name, members in dep_rows
-    ]
-    direction_stats = [
-        {"department": dep_name, "id": direction_id, "name": direction_name, "members": members}
-        for dep_name, direction_id, direction_name, members in dir_rows
-    ]
-    goal_rows = []
-    for goal in goals:
-        scope_name = "Вся организация"
-        if goal.scope_type == "department" and goal.scope_id:
-            found = next((item["name"] for item in department_stats if item["id"] == goal.scope_id), None)
-            scope_name = found or scope_name
-        elif goal.scope_type == "direction" and goal.scope_id:
-            found = next((item["name"] for item in direction_stats if item["id"] == goal.scope_id), None)
-            scope_name = found or scope_name
-        goal_rows.append({
-            "month": goal.month,
-            "scope_type": goal.scope_type,
-            "scope_name": scope_name,
-            "title": goal.title,
-            "target_value": goal.target_value,
-            "current_value": goal.current_value,
-            "status": goal.status,
-            "due_date": goal.due_date,
-        })
-    return {
-        "users": users,
-        "events": events,
-        "projects": projects,
-        "totals": totals,
-        "department_stats": department_stats,
-        "direction_stats": direction_stats,
-        "goals": goal_rows,
-        "contacts": contacts,
-    }
-
-
 @router.callback_query(F.data == "admin:analytics")
 async def analytics(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await _guard(call, user, settings):
         return
-    data = await _analytics_payload(session)
-    approved = sum(1 for item in data["users"] if item.application_status == ApplicationStatus.APPROVED)
-    pending = sum(1 for item in data["users"] if item.application_status == ApplicationStatus.PENDING)
+    data = await build_analytics_payload(session)
     text = (
         "📊 Аналитика ЭРА\n\n"
-        f"Участников в базе: {len(data['users'])}\n"
-        f"Одобрены: {approved}\n"
-        f"Новые заявки: {pending}\n"
-        f"Мероприятий: {len(data['events'])}\n"
-        f"Проектов: {len(data['projects'])}\n"
-        f"Организаций в базе: {len(data['contacts'])}\n"
-        f"Целей месяца: {len(data['goals'])}\n\n"
+        f"Участников в базе: {data.summary['total_users']}\n"
+        f"Одобрены: {data.summary['approved_users']}\n"
+        f"Новые заявки: {data.summary['pending_users']}\n"
+        f"Мероприятий: {data.summary['events']}\n"
+        f"Проектов: {data.summary['projects']}\n"
+        f"Организаций в базе: {data.summary['contacts']}\n"
+        f"Целей месяца: {data.summary['goals']}\n\n"
         "Можно скачать всю книгу или только нужный раздел"
     )
     await call.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -210,24 +136,17 @@ async def analytics_excel(call: CallbackQuery, user: User | None, settings: Sett
     if not await _guard(call, user, settings):
         return
     section = call.data.rsplit(":", 1)[-1] if call.data.count(":") >= 3 else "all"
-    section_map = {
-        "users": {"summary", "users"},
-        "departments": {"summary", "departments", "directions", "goals"},
-        "events": {"summary", "events"},
-        "projects": {"summary", "projects"},
-        "all": None,
-    }
-    data = await _analytics_payload(session)
+    data = await build_analytics_payload(session)
     content = build_analytics_workbook(
-        data["users"],
-        data["events"],
-        data["projects"],
-        data["totals"],
-        department_stats=data["department_stats"],
-        direction_stats=data["direction_stats"],
-        goals=data["goals"],
-        contacts=data["contacts"],
-        sections=section_map.get(section),
+        data.users,
+        data.events,
+        data.projects,
+        data.totals,
+        department_stats=data.department_stats,
+        direction_stats=data.direction_stats,
+        goals=data.goals,
+        contacts=data.contacts,
+        sections=EXCEL_SECTION_MAP.get(section),
     )
     if not await safe_answer_document(
         call.message,

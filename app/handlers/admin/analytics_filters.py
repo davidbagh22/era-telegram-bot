@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.management_models import AdminSurvey, AdminSurveyResponse, MonthlyGoal, OrganizationContact
 from app.database.models import Event, EventActivitySubmission, Project, Task, User, UserQuestion
-from app.handlers.admin.management_ready import _analytics_payload, _guard
+from app.handlers.admin.management_ready import _guard
+from app.services.admin_analytics_service import build_analytics_payload
 from app.utils.constants import (
     APPLICATION_STATUS_LABELS,
     EVENT_STATUS_LABELS,
@@ -137,22 +138,20 @@ async def system_menu(call: CallbackQuery, user: User | None, settings: Settings
 async def analytics_overview(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await _guard(call, user, settings):
         return
-    data = await _analytics_payload(session)
+    data = await build_analytics_payload(session)
     survey_count = int(await session.scalar(select(func.count()).select_from(AdminSurvey)) or 0)
     response_count = int(await session.scalar(select(func.count()).select_from(AdminSurveyResponse)) or 0)
-    approved = sum(1 for item in data["users"] if item.application_status == ApplicationStatus.APPROVED)
-    pending = sum(1 for item in data["users"] if item.application_status == ApplicationStatus.PENDING)
     text = (
         "📊 Аналитика ЭРА\n\n"
-        f"Участников в базе: {len(data['users'])}\n"
-        f"Одобрены: {approved}\n"
-        f"Новые заявки: {pending}\n"
-        f"Мероприятий: {len(data['events'])}\n"
-        f"Проектов: {len(data['projects'])}\n"
+        f"Участников в базе: {data.summary['total_users']}\n"
+        f"Одобрены: {data.summary['approved_users']}\n"
+        f"Новые заявки: {data.summary['pending_users']}\n"
+        f"Мероприятий: {data.summary['events']}\n"
+        f"Проектов: {data.summary['projects']}\n"
         f"Опросов: {survey_count}\n"
         f"Ответов на опросы: {response_count}\n"
-        f"Целей месяца: {len(data['goals'])}\n"
-        f"Организаций в базе: {len(data['contacts'])}\n\n"
+        f"Целей месяца: {data.summary['goals']}\n"
+        f"Организаций в базе: {data.summary['contacts']}\n\n"
         "Выберите готовый срез или скачайте Excel"
     )
     await call.message.answer(text, reply_markup=_analytics_keyboard())
@@ -200,7 +199,7 @@ async def analytics_slice(call: CallbackQuery, user: User | None, settings: Sett
     if not await _guard(call, user, settings):
         return
     kind = call.data.rsplit(":", 1)[-1]
-    data = await _analytics_payload(session)
+    data = await build_analytics_payload(session)
     if kind == "users":
         rows = await _count_by(session, User, User.application_status, User.is_archived.is_(False))
         body = _count_lines(rows, _enum_labels(ApplicationStatus, APPLICATION_STATUS_LABELS))
@@ -215,7 +214,7 @@ async def analytics_slice(call: CallbackQuery, user: User | None, settings: Sett
         title = "🧩 Роли участников"
     elif kind == "age":
         buckets = {"14–17": 0, "18–24": 0, "25–34": 0, "35+": 0, "не указан": 0}
-        for participant in data["users"]:
+        for participant in data.users:
             age = participant.age
             if age is None:
                 buckets["не указан"] += 1
@@ -231,14 +230,14 @@ async def analytics_slice(call: CallbackQuery, user: User | None, settings: Sett
         title = "🎂 Возраст участников"
     elif kind == "departments":
         body = "\n".join(
-            f"• {item['name']}: {item['members']} участников, целей активных {item['active_goals']}, выполнено {item['done_goals']}"
-            for item in data["department_stats"]
+            f"• {item.name}: {item.members} участников, целей активных {item.active_goals}, выполнено {item.done_goals}"
+            for item in data.department_stats
         ) or "департаменты пока не заполнены"
         title = "🏛 Работа департаментов"
     elif kind == "directions":
         body = "\n".join(
-            f"• {item['department']} / {item['name']}: {item['members']} участников"
-            for item in data["direction_stats"]
+            f"• {item.department} / {item.name}: {item.members} участников"
+            for item in data.direction_stats
         ) or "направления пока не заполнены"
         title = "🧭 Активность направлений"
     elif kind == "events":
