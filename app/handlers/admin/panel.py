@@ -53,6 +53,7 @@ from app.keyboards.admin import (
     role_filters_keyboard,
     user_status_keyboard,
 )
+from app.services.admin_greetings_service import GreetingError, toggle_greeting, update_greeting_text
 from app.services.admin_user_card import send_admin_user_card
 from app.services.application_review_service import (
     reject_application,
@@ -2964,11 +2965,10 @@ async def greeting_toggle(
 ) -> None:
     if not await _guard(call, user, settings):
         return
-    item = await session.get(ChatGreeting, int(call.data.rsplit(":", 1)[-1]))
-    if item is None:
+    try:
+        item = await toggle_greeting(session, int(call.data.rsplit(":", 1)[-1]), user.id if user else None)
+    except GreetingError:
         return
-    item.is_enabled = not item.is_enabled
-    item.updated_by = user.id if user else None
     await call.message.answer(
         f"Приветствие для чата «{item.title}» {'включено' if item.is_enabled else 'отключено'}"
     )
@@ -3003,10 +3003,12 @@ async def greeting_edit_finish(
     text = clean_text(message.text or "", 3000)
     if not text:
         return
-    item = await session.get(ChatGreeting, int((await state.get_data())["greeting_id"]))
-    if item:
-        item.text = text
-        item.updated_by = user.id if user else None
+    try:
+        await update_greeting_text(
+            session, int((await state.get_data())["greeting_id"]), text, user.id if user else None
+        )
+    except GreetingError:
+        pass
     await state.clear()
     await message.answer("Приветствие обновлено и уже будет использоваться в чате")
 

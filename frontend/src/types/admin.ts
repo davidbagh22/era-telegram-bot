@@ -257,6 +257,70 @@ export interface RedemptionAdmin {
   admin_comment: string | null;
 }
 
+// Mini App equivalents of the bot's "🎯 Ежемесячные цели", "🤝 База
+// организаций", "🏛 Редактор структуры" and "👋 Автоматические приветствия"
+// flows — see app/services/admin_goals_service.py, admin_contacts_service.py,
+// admin_structure_service.py, admin_greetings_service.py.
+export interface GoalItem {
+  id: number;
+  month: string;
+  title: string;
+  target_value: number;
+  current_value: number;
+  status: string;
+  scope_type: string;
+  scope_name: string | null;
+}
+
+export interface GoalCreatePayload {
+  title: string;
+  target_value: number;
+  month?: string | null;
+  scope_query?: string | null;
+}
+
+export type GoalDecisionAction = "inc" | "done" | "delete";
+
+export interface OrganizationContactItem {
+  id: number;
+  organization_name: string;
+  contact_name: string | null;
+  position: string | null;
+  second_contact_name: string | null;
+  second_position: string | null;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+}
+
+export interface OrganizationContactCreatePayload {
+  organization_name: string;
+  contact_name?: string | null;
+  position?: string | null;
+  second_contact_name?: string | null;
+  second_position?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  notes?: string | null;
+}
+
+export interface DepartmentStructureItem {
+  id: number;
+  name: string;
+  description: string | null;
+}
+
+// chat_key is one of "general" | "internal" | "external" | "leaders" — see
+// app/services/chat_access_service.py's CHAT_SETTING_KEYS.
+export interface ChatGreetingItem {
+  id: number;
+  chat_key: string;
+  title: string;
+  text: string;
+  is_enabled: boolean;
+  is_bound: boolean;
+}
+
 export interface UserDetail {
   id: number;
   telegram_id: number;

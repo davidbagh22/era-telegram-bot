@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -48,7 +49,19 @@ from app.services import (
     user_management_service,
 )
 from app.services.admin_analytics_service import EXCEL_SECTION_MAP, build_analytics_payload
+from app.services.admin_contacts_service import ContactError
+from app.services.admin_contacts_service import archive_contact as archive_org_contact
+from app.services.admin_contacts_service import create_contact as create_org_contact
+from app.services.admin_contacts_service import list_contacts as list_org_contacts
 from app.services.admin_dashboard_service import dashboard_metrics, has_dashboard_access
+from app.services.admin_goals_service import GoalError, create_goal, decide_goal, goal_out, list_goals
+from app.services.admin_greetings_service import (
+    GreetingError,
+    list_greetings,
+    toggle_greeting,
+    update_greeting_text,
+)
+from app.services.admin_structure_service import StructureError, list_departments, update_department_description
 from app.services.application_review_service import (
     approve_application,
     reject_application,
@@ -167,6 +180,239 @@ async def export_analytics_excel(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="ERA_analytics_{section}.xlsx"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Admin tools — monthly goals, organization contacts, department structure,
+# and chat greetings. Mini App equivalents of the bot's "🎯 Ежемесячные
+# цели", "🤝 База организаций", "🏛 Редактор структуры" and "👋 Автоматические
+# приветствия" flows (app/handlers/admin/management_ready.py,
+# app/handlers/admin/panel.py). Each shares its logic with the bot handler
+# via app/services/admin_*_service.py so the two surfaces can't drift before
+# the bot's /panel tree is retired.
+# ---------------------------------------------------------------------------
+
+
+class GoalOut(BaseModel):
+    id: int
+    month: str
+    title: str
+    target_value: int
+    current_value: int
+    status: str
+    scope_type: str
+    scope_name: str | None
+
+
+class GoalCreateIn(BaseModel):
+    title: str
+    target_value: int
+    month: str | None = None
+    scope_query: str | None = None
+
+
+@router.get("/goals", response_model=list[GoalOut])
+async def read_goals(
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> list[GoalOut]:
+    return [GoalOut(**asdict(goal)) for goal in await list_goals(session)]
+
+
+@router.post("/goals", response_model=GoalOut)
+async def create_new_goal(
+    payload: GoalCreateIn,
+    admin: User = Depends(require_dashboard_access),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> GoalOut:
+    try:
+        goal = await create_goal(
+            session,
+            title=payload.title,
+            target_value=payload.target_value,
+            month=payload.month,
+            scope_query=payload.scope_query,
+            timezone=settings.timezone,
+            updated_by=admin.id,
+        )
+    except GoalError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+    return GoalOut(**asdict(await goal_out(session, goal)))
+
+
+@router.post("/goals/{goal_id}/{action}", response_model=GoalOut)
+async def decide_goal_endpoint(
+    goal_id: int,
+    action: Literal["inc", "done", "delete"],
+    admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> GoalOut:
+    try:
+        goal = await decide_goal(session, goal_id, action, admin.id)
+    except GoalError as exc:
+        code = 404 if exc.code == "goal_not_found" else 422
+        raise HTTPException(status_code=code, detail=exc.code) from exc
+    return GoalOut(**asdict(await goal_out(session, goal)))
+
+
+class ContactOut(BaseModel):
+    id: int
+    organization_name: str
+    contact_name: str | None
+    position: str | None
+    second_contact_name: str | None
+    second_position: str | None
+    email: str | None
+    phone: str | None
+    notes: str | None
+
+
+class ContactCreateIn(BaseModel):
+    organization_name: str
+    contact_name: str | None = None
+    position: str | None = None
+    second_contact_name: str | None = None
+    second_position: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    notes: str | None = None
+
+
+@router.get("/organization-contacts", response_model=list[ContactOut])
+async def read_org_contacts(
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> list[ContactOut]:
+    return [ContactOut(**asdict(contact)) for contact in await list_org_contacts(session)]
+
+
+@router.post("/organization-contacts", response_model=ContactOut)
+async def create_new_org_contact(
+    payload: ContactCreateIn,
+    admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> ContactOut:
+    try:
+        contact = await create_org_contact(session, **payload.model_dump(), created_by=admin.id)
+    except ContactError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+    return ContactOut(
+        id=contact.id, organization_name=contact.organization_name, contact_name=contact.contact_name,
+        position=contact.position, second_contact_name=contact.second_contact_name,
+        second_position=contact.second_position, email=contact.email, phone=contact.phone,
+        notes=contact.notes,
+    )
+
+
+@router.post("/organization-contacts/{contact_id}/archive", response_model=ContactOut)
+async def archive_org_contact_endpoint(
+    contact_id: int,
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> ContactOut:
+    try:
+        contact = await archive_org_contact(session, contact_id)
+    except ContactError as exc:
+        raise HTTPException(status_code=404, detail=exc.code) from exc
+    return ContactOut(
+        id=contact.id, organization_name=contact.organization_name, contact_name=contact.contact_name,
+        position=contact.position, second_contact_name=contact.second_contact_name,
+        second_position=contact.second_position, email=contact.email, phone=contact.phone,
+        notes=contact.notes,
+    )
+
+
+class DepartmentStructureOut(BaseModel):
+    id: int
+    name: str
+    description: str | None
+
+
+class DepartmentDescriptionIn(BaseModel):
+    description: str
+
+
+@router.get("/departments/structure", response_model=list[DepartmentStructureOut])
+async def read_department_structure(
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> list[DepartmentStructureOut]:
+    return [DepartmentStructureOut(**asdict(d)) for d in await list_departments(session)]
+
+
+@router.patch("/departments/{department_id}/description", response_model=DepartmentStructureOut)
+async def update_department_description_endpoint(
+    department_id: int,
+    payload: DepartmentDescriptionIn,
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> DepartmentStructureOut:
+    try:
+        department = await update_department_description(session, department_id, payload.description)
+    except StructureError as exc:
+        raise HTTPException(status_code=404, detail=exc.code) from exc
+    return DepartmentStructureOut(id=department.id, name=department.name, description=department.description)
+
+
+class ChatGreetingOut(BaseModel):
+    id: int
+    chat_key: str
+    title: str
+    text: str
+    is_enabled: bool
+    is_bound: bool
+
+
+class ChatGreetingTextIn(BaseModel):
+    text: str
+
+
+@router.get("/chat-greetings", response_model=list[ChatGreetingOut])
+async def read_chat_greetings(
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> list[ChatGreetingOut]:
+    return [ChatGreetingOut(**asdict(g)) for g in await list_greetings(session)]
+
+
+@router.patch("/chat-greetings/{greeting_id}/text", response_model=ChatGreetingOut)
+async def update_chat_greeting_text(
+    greeting_id: int,
+    payload: ChatGreetingTextIn,
+    admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> ChatGreetingOut:
+    try:
+        item = await update_greeting_text(session, greeting_id, payload.text, admin.id)
+    except GreetingError as exc:
+        code = 404 if exc.code == "greeting_not_found" else 422
+        raise HTTPException(status_code=code, detail=exc.code) from exc
+    return ChatGreetingOut(
+        id=item.id, chat_key=item.chat_key, title=item.title, text=item.text,
+        is_enabled=item.is_enabled, is_bound=item.chat_id is not None,
+    )
+
+
+@router.post("/chat-greetings/{greeting_id}/toggle", response_model=ChatGreetingOut)
+async def toggle_chat_greeting(
+    greeting_id: int,
+    admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> ChatGreetingOut:
+    try:
+        item = await toggle_greeting(session, greeting_id, admin.id)
+    except GreetingError as exc:
+        raise HTTPException(status_code=404, detail=exc.code) from exc
+    return ChatGreetingOut(
+        id=item.id, chat_key=item.chat_key, title=item.title, text=item.text,
+        is_enabled=item.is_enabled, is_bound=item.chat_id is not None,
     )
 
 

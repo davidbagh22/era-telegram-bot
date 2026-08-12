@@ -81,8 +81,9 @@ except the two gaps called out below.
 | Offer/reward/auction application review | fallback | ✅ `AdminOffersScreen`'s panels | yes | Mini App |
 | People / permissions / roles management | fallback | ✅ `admin/people/PeopleList.tsx` + `PersonDetail.tsx` | yes | Mini App |
 | Offices management | fallback | ✅ `AdminOfficesScreen` | yes | Mini App |
-| Analytics (incl. Excel export) | fallback | ✅ `AdminDashboardScreen` for on-screen metrics; **Excel export is the one still-open gap** flagged since PR 29 — `admin:analytics:excel:*` stays Bot-only until a Mini App download flow replaces it | partial | Bot (until the Excel gap closes), Mini App for on-screen numbers |
-| Broadcasts / greetings / settings (`addons.py`, `management_ready.py`) | ✅ keep — this is squarely "рассылки" | no equivalent, doesn't need one per the brief | no | Bot |
+| Analytics (incl. Excel export) | fallback | ✅ `AdminDashboardScreen` — on-screen metrics and Excel export both live here now (`downloadAnalyticsExcel`, `admin_analytics_service.py`) | yes | Mini App |
+| Monthly goals / organization contacts / department structure / chat greetings (`management_ready.py`, `panel.py`'s `admin:greetings*`) | fallback | ✅ `AdminToolsScreen` (goals, contacts, structure, greetings sub-tabs — `admin_goals_service.py`, `admin_contacts_service.py`, `admin_structure_service.py`, `admin_greetings_service.py`) | yes | Mini App |
+| General/chat broadcast, chat binding via forwarded message, test-data maintenance tools | ✅ keep — chat binding is bot-only permanently (Telegram requires a forwarded message from inside the chat); broadcast and maintenance ports are still in progress | broadcast/maintenance: not yet ported (tracked separately) | no | Bot for now |
 | Chat binding / general-chat administration (`chat_binding_stability.py`, `chat_binding.py`) | ✅ keep — "работу с общим чатом" | no equivalent needed | no | Bot |
 | Emergency/maintenance commands (`emergency.py`, `management_ready.py`'s maintenance mode) | ✅ keep — explicit "резервный сценарий" requirement | n/a | no | Bot |
 
