@@ -6,7 +6,21 @@ interface PillTabsProps<T extends string> {
 
 export function PillTabs<T extends string>({ options, active, onChange }: PillTabsProps<T>) {
   return (
-    <div style={{ display: "flex", gap: "0.5rem", overflowX: "auto", paddingBottom: "0.25rem" }}>
+    <div
+      style={{
+        display: "flex",
+        gap: "0.5rem",
+        overflowX: "auto",
+        paddingBottom: "0.25rem",
+        // Without this, a flex item's default min-width is its content's
+        // width, not 0 — with enough pills (OpportunitiesScreen has 7),
+        // that's wider than a narrow phone, and since nothing here shrinks
+        // it, the demand propagates up through every ancestor flex
+        // container instead of staying contained by overflowX above.
+        // Found by frontend/e2e/responsive.spec.ts at 320/360px.
+        minWidth: 0,
+      }}
+    >
       {options.map((option) => {
         const isActive = option.value === active;
         return (
