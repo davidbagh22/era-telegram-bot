@@ -118,9 +118,16 @@ def test_survey_broadcast_uses_detailed_delivery_result() -> None:
 
 
 def test_chat_broadcast_uses_safe_send_contract() -> None:
-    source = (ROOT / "app/handlers/admin/management_ready.py").read_text(encoding="utf-8")
+    # The bot handler delegates to app/services/admin_broadcast_service.py
+    # (shared with the Mini App's chat-broadcast port — see
+    # app/api/v1/admin.py's send_chat_broadcast_endpoint) instead of calling
+    # safe_send directly, so the contract now lives in the service.
+    handler_source = (ROOT / "app/handlers/admin/management_ready.py").read_text(encoding="utf-8")
+    service_source = (ROOT / "app/services/admin_broadcast_service.py").read_text(encoding="utf-8")
 
-    assert "safe_send" in source
-    assert "ok = await safe_send(bot, chat_id, text)" in source
-    assert "await bot.send_message(chat_id, text)" not in source
-    assert "TelegramAPIError" not in source
+    assert "send_chat_broadcast" in handler_source
+    assert "await bot.send_message(chat_id, text)" not in handler_source
+    assert "TelegramAPIError" not in handler_source
+
+    assert "safe_send" in service_source
+    assert "ok = await safe_send(bot, chat_id, text)" in service_source

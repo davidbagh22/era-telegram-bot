@@ -1,17 +1,19 @@
 import { useState } from "react";
 import { PillTabs } from "../../components/PillTabs";
+import { BroadcastPanel } from "./tools/BroadcastPanel";
 import { ContactsPanel } from "./tools/ContactsPanel";
 import { GoalsPanel } from "./tools/GoalsPanel";
 import { GreetingsPanel } from "./tools/GreetingsPanel";
 import { StructurePanel } from "./tools/StructurePanel";
 
-type ToolsSection = "goals" | "contacts" | "structure" | "greetings";
+type ToolsSection = "goals" | "contacts" | "structure" | "greetings" | "broadcast";
 
 const SECTIONS: { value: ToolsSection; label: string }[] = [
   { value: "goals", label: "Цели месяца" },
   { value: "contacts", label: "Организации" },
   { value: "structure", label: "Структура" },
   { value: "greetings", label: "Приветствия" },
+  { value: "broadcast", label: "Рассылки" },
 ];
 
 // Groups the smaller admin-panel ports (monthly goals, organization
@@ -27,6 +29,7 @@ export function AdminToolsScreen() {
       {section === "contacts" && <ContactsPanel />}
       {section === "structure" && <StructurePanel />}
       {section === "greetings" && <GreetingsPanel />}
+      {section === "broadcast" && <BroadcastPanel />}
     </div>
   );
 }

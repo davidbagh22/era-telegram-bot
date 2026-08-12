@@ -321,6 +321,39 @@ export interface ChatGreetingItem {
   is_bound: boolean;
 }
 
+// Mini App equivalent of the bot's "📨 Рассылка в личные сообщения" and
+// "📣 Сообщение в выбранные чаты" flows — see app/services/admin_broadcast_service.py.
+export type BroadcastAudience = "all" | "role" | "department" | "direction" | "age" | "city";
+
+export interface AudienceOption {
+  value: string;
+  label: string;
+}
+
+export interface BroadcastAudienceOptions {
+  roles: AudienceOption[];
+  departments: AudienceOption[];
+  directions: AudienceOption[];
+  ages: AudienceOption[];
+}
+
+export interface PersonalBroadcastPayload {
+  audience: BroadcastAudience;
+  filter_value?: string | null;
+  text: string;
+}
+
+export interface PersonalBroadcastResult {
+  total: number;
+  sent: number;
+  failed: number;
+  duplicates: number;
+  temporary_failed: number;
+  permanent_failed: number;
+}
+
+export type ChatBroadcastKey = "general" | "internal" | "external" | "leaders";
+
 export interface UserDetail {
   id: number;
   telegram_id: number;
