@@ -22,6 +22,12 @@ interface DeepLink {
   tab: TabKey;
   projectId: number | null;
   activitySection: ActivitySection | null;
+  /** The specific task/event/opportunity id from a per-notification deep
+   * link (`#/tasks/{id}`, `#/events/{id}`, `#/opportunities/{id}`) — the
+   * landing screen scrolls to and briefly highlights this item once its
+   * list has loaded. `null` for tab-level-only links (e.g. the bot's
+   * quick-access buttons, which intentionally don't name one item). */
+  itemId: number | null;
 }
 
 // PR 36 (Bot/Mini App role split): the bot's quick-access buttons
@@ -37,17 +43,23 @@ function parseDeepLink(): DeepLink | null {
   if (projectMatch) {
     const projectId = Number(projectMatch[1]);
     if (Number.isFinite(projectId)) {
-      return { tab: "projects", projectId, activitySection: null };
+      return { tab: "projects", projectId, activitySection: null, itemId: null };
     }
   }
-  if (/^#\/tasks(\/|$)/.test(hash)) {
-    return { tab: "activity", projectId: null, activitySection: "tasks" };
+  const taskMatch = hash.match(/^#\/tasks(?:\/(\d+))?/);
+  if (taskMatch) {
+    const itemId = taskMatch[1] ? Number(taskMatch[1]) : null;
+    return { tab: "activity", projectId: null, activitySection: "tasks", itemId };
   }
-  if (/^#\/events(\/|$)/.test(hash)) {
-    return { tab: "activity", projectId: null, activitySection: "events" };
+  const eventMatch = hash.match(/^#\/events(?:\/(\d+))?/);
+  if (eventMatch) {
+    const itemId = eventMatch[1] ? Number(eventMatch[1]) : null;
+    return { tab: "activity", projectId: null, activitySection: "events", itemId };
   }
-  if (/^#\/opportunities(\/|$)/.test(hash)) {
-    return { tab: "opportunities", projectId: null, activitySection: null };
+  const opportunityMatch = hash.match(/^#\/opportunities(?:\/(\d+))?/);
+  if (opportunityMatch) {
+    const itemId = opportunityMatch[1] ? Number(opportunityMatch[1]) : null;
+    return { tab: "opportunities", projectId: null, activitySection: null, itemId };
   }
   return null;
 }
@@ -57,19 +69,22 @@ function renderTab(
   user: MiniAppUserSummary,
   initialProjectId: number | null,
   initialActivitySection: ActivitySection | null,
+  initialItemId: number | null,
   onTabChange: (tab: TabKey) => void,
 ) {
   if (tab === "home") {
     return <HomeScreen user={user} onOpenActivity={() => onTabChange("activity")} />;
   }
   if (tab === "activity") {
-    return <ActivityScreen initialSection={initialActivitySection ?? undefined} />;
+    return (
+      <ActivityScreen initialSection={initialActivitySection ?? undefined} initialItemId={initialItemId} />
+    );
   }
   if (tab === "projects") {
     return <ProjectsScreen initialProjectId={initialProjectId} />;
   }
   if (tab === "opportunities") {
-    return <OpportunitiesScreen />;
+    return <OpportunitiesScreen initialItemId={initialItemId} />;
   }
   return <ProfileScreen />;
 }
@@ -114,7 +129,14 @@ export function App() {
 
   return (
     <UserLayout activeTab={activeTab} onTabChange={setActiveTab}>
-      {renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, setActiveTab)}
+      {renderTab(
+        activeTab,
+        user,
+        initialProjectId,
+        deepLink?.activitySection ?? null,
+        deepLink?.itemId ?? null,
+        setActiveTab,
+      )}
     </UserLayout>
   );
 }

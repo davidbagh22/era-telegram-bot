@@ -265,6 +265,40 @@ class EventOperationsApiTests(unittest.TestCase):
         self.assertEqual(response.json()["awarded_count"], 1)
         safe_send_mock.assert_awaited_once()
 
+    def test_award_points_notification_links_to_the_event_in_mini_app(self) -> None:
+        event = SimpleNamespace(id=1, title="E", points_for_visit=5)
+        awarded_user = SimpleNamespace(telegram_id=999)
+        session = SimpleNamespace(get=AsyncMock(return_value=event))
+        bot = SimpleNamespace()
+        app = FastAPI()
+        app.include_router(api_router)
+
+        async def _session_override():
+            yield session
+
+        app.dependency_overrides[get_current_user] = lambda: _admin()
+        app.dependency_overrides[get_session] = _session_override
+        app.dependency_overrides[get_bot] = lambda: bot
+        app.dependency_overrides[get_settings] = lambda: Settings(
+            bot_token="1234567890:test-token",
+            general_chat_id=-100,
+            miniapp_url="https://era.example/app",
+            miniapp_auth_secret="test-secret",
+        )
+        client = TestClient(app)
+        with (
+            patch(
+                "app.api.v1.admin.event_registration_service.award_attendance_points",
+                new=AsyncMock(return_value=[awarded_user]),
+            ),
+            patch("app.api.v1.admin.safe_send", new=AsyncMock()) as safe_send_mock,
+        ):
+            response = client.post("/api/v1/admin/events/1/award-attendance-points")
+        self.assertEqual(response.status_code, 200)
+        keyboard = safe_send_mock.await_args.args[3]
+        url = keyboard.inline_keyboard[0][0].web_app.url
+        self.assertEqual(url, "https://era.example/app/#/events/1")
+
 
 class PartnerCatalogApiTests(unittest.TestCase):
     def test_participant_forbidden(self) -> None:

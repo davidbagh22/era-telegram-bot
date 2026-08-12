@@ -66,14 +66,18 @@ USER_COMMANDS = [
     BotCommand(command="help", description="Что умеет бот"),
 ]
 
+# The old in-bot admin panel tree (/panel and its /admin_* shortcuts,
+# app/handlers/admin/management_ready.py + commands_ready.py) is
+# deliberately no longer advertised here, mirroring main_menu()'s own
+# PR 36 rationale — Admin Mode in the Mini App covers participants,
+# events, projects, tasks, and rights review. The commands themselves
+# are intentionally NOT deleted: a few legacy capabilities (Excel/
+# analytics export, monthly goals, the organizations-contacts database,
+# the department/direction structure editor, general broadcast, and
+# test-data maintenance) don't have a Mini App equivalent yet, so an
+# admin who still knows the old command can type it directly — it just
+# isn't offered in the "/" autocomplete menu as the default UX anymore.
 ADMIN_COMMANDS = USER_COMMANDS + [
-    BotCommand(command="panel", description="Панель управления"),
-    BotCommand(command="admin_users", description="Участники"),
-    BotCommand(command="admin_events", description="События"),
-    BotCommand(command="admin_projects", description="Проекты"),
-    BotCommand(command="admin_partners", description="Партнёры"),
-    BotCommand(command="admin_tasks", description="Задачи"),
-    BotCommand(command="admin_rights", description="Должности и права"),
     BotCommand(command="version", description="Версия запущенного бота"),
 ]
 

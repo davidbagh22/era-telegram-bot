@@ -14,6 +14,7 @@ from app.config import Settings
 from app.database.models import Event, EventActivitySubmission, Task, User
 from app.keyboards.participant import open_app_button
 from app.services import event_activity_service, leader_service
+from app.utils.deep_links import miniapp_task_url
 from app.services.notification_service import notify_admins, safe_send
 from app.utils.constants import PRIVILEGED_ROLES
 
@@ -140,6 +141,7 @@ async def create_assigned_task(
     leader: User = Depends(require_leader),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
+    settings: Settings = Depends(get_settings),
     _rate_limit: None = Depends(enforce_leader_action_rate_limit),
 ) -> TaskOut:
     assignee = await session.get(User, payload.assignee_id)
@@ -155,6 +157,7 @@ async def create_assigned_task(
             deadline=payload.deadline,
             points=payload.points,
             bot=bot,
+            miniapp_url=settings.effective_miniapp_url,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -259,15 +262,21 @@ async def decide_application(
     leader: User = Depends(require_leader),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
+    settings: Settings = Depends(get_settings),
     _rate_limit: None = Depends(enforce_leader_action_rate_limit),
 ) -> OpenTaskOut:
     task = await session.get(Task, task_id)
     target = await session.get(User, user_id)
     if task is None or target is None:
         raise HTTPException(status_code=404, detail="not_found")
+    keyboard = (
+        open_app_button(miniapp_task_url(settings.effective_miniapp_url, task.id))
+        if payload.action == "accept" and settings.effective_miniapp_url
+        else None
+    )
     try:
         await leader_service.decide_task_application(
-            session, task=task, target=target, action=payload.action, actor=leader, bot=bot
+            session, task=task, target=target, action=payload.action, actor=leader, bot=bot, keyboard=keyboard
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { claimTask, describeActionError, fetchTasks } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
@@ -14,12 +14,31 @@ const SCOPES: { value: TaskScope; label: string }[] = [
   { value: "completed", label: "Выполненные" },
 ];
 
-export function TasksTab() {
+// Once-only scroll-to/highlight duration for a per-notification deep
+// link (`#/tasks/{id}`) — matches EventsTab.tsx/OpportunitiesScreen.tsx.
+const HIGHLIGHT_MS = 2500;
+
+interface TasksTabProps {
+  initialItemId?: number | null;
+}
+
+export function TasksTab({ initialItemId }: TasksTabProps = {}) {
   const [scope, setScope] = useState<TaskScope>("mine");
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchTasks(scope), [scope, refreshKey]);
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [highlightId, setHighlightId] = useState<number | null>(initialItemId ?? null);
+
+  useEffect(() => {
+    if (highlightId === null || state.status !== "ready") {
+      return;
+    }
+    document.getElementById(`task-${highlightId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const timer = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.status]);
 
   const handleClaim = useCallback(async (taskId: number) => {
     setPendingId(taskId);
@@ -49,27 +68,29 @@ export function TasksTab() {
       )}
       {state.status === "ready" &&
         state.data.map((task) => (
-          <Card key={task.id}>
-            <strong>{task.title}</strong>
-            <p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>
-              До {new Date(task.deadline).toLocaleDateString("ru-RU")} · {task.points} баллов
-            </p>
-            {scope === "available" && !task.is_joined_or_assigned && (
-              <button
-                type="button"
-                className="era-btn-primary"
-                disabled={pendingId === task.id}
-                onClick={() => handleClaim(task.id)}
-              >
-                Хочу помочь
-              </button>
-            )}
-            {task.can_submit && task.submit_deep_link && (
-              <a href={task.submit_deep_link} target="_blank" rel="noreferrer">
-                Отправить результат в боте
-              </a>
-            )}
-          </Card>
+          <div id={`task-${task.id}`} key={task.id}>
+            <Card style={task.id === highlightId ? { boxShadow: "0 0 0 2px var(--era-violet)" } : undefined}>
+              <strong>{task.title}</strong>
+              <p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>
+                До {new Date(task.deadline).toLocaleDateString("ru-RU")} · {task.points} баллов
+              </p>
+              {scope === "available" && !task.is_joined_or_assigned && (
+                <button
+                  type="button"
+                  className="era-btn-primary"
+                  disabled={pendingId === task.id}
+                  onClick={() => handleClaim(task.id)}
+                >
+                  Хочу помочь
+                </button>
+              )}
+              {task.can_submit && task.submit_deep_link && (
+                <a href={task.submit_deep_link} target="_blank" rel="noreferrer">
+                  Отправить результат в боте
+                </a>
+              )}
+            </Card>
+          </div>
         ))}
     </div>
   );

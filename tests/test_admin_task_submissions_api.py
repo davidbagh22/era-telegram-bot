@@ -121,6 +121,51 @@ class AdminTaskSubmissionsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         safe_send_mock.assert_awaited_once()
 
+    def test_decide_approve_notification_links_to_the_task_in_mini_app(self) -> None:
+        """The notification's "Открыть" button should deep-link to this
+        specific task, not just the Mini App home screen — see
+        app/utils/deep_links.py::miniapp_task_url()."""
+        task = Task(id=9, title="Пост", description="d", points=15, creator_id=1)
+        participant = User(id=2, telegram_id=777, first_name="Иван", last_name=None)
+        submission = TaskSubmission(id=3, task_id=9, user_id=2, text="Готово", status="pending")
+        session = _fake_session({(TaskSubmission, 3): submission, (Task, 9): task, (User, 2): participant})
+        bot = SimpleNamespace()
+        app = FastAPI()
+        app.include_router(api_router)
+
+        async def _session_override():
+            yield session
+
+        app.dependency_overrides[get_current_user] = lambda: _admin()
+        app.dependency_overrides[get_session] = _session_override
+        app.dependency_overrides[get_bot] = lambda: bot
+        app.dependency_overrides[get_settings] = lambda: Settings(
+            bot_token="1234567890:test-token",
+            miniapp_url="https://era.example/app",
+            miniapp_auth_secret="test-secret",
+        )
+        client = TestClient(app)
+        result = SimpleNamespace(
+            submission=submission,
+            admin_notice="Результат одобрен.",
+            participant_notice="Ваш результат одобрен",
+            points_awarded=15,
+        )
+        with (
+            patch(
+                "app.api.v1.admin.task_review_service.decide_submission",
+                new=AsyncMock(return_value=result),
+            ),
+            patch("app.api.v1.admin.safe_send", new=AsyncMock()) as safe_send_mock,
+        ):
+            response = client.post(
+                "/api/v1/admin/task-submissions/3/decide", json={"action": "approve", "comment": ""}
+            )
+        self.assertEqual(response.status_code, 200)
+        keyboard = safe_send_mock.await_args.args[3]
+        url = keyboard.inline_keyboard[0][0].web_app.url
+        self.assertEqual(url, "https://era.example/app/#/tasks/9")
+
     def test_decide_comment_required_maps_to_422(self) -> None:
         task = Task(id=9, title="Пост", description="d", points=15, creator_id=1)
         participant = User(id=2, telegram_id=777, first_name="Иван", last_name=None)

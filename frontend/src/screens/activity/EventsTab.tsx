@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   cancelEventRegistration,
   describeActionError,
@@ -92,7 +92,15 @@ const SCOPES: { value: EventScope; label: string }[] = [
 
 const ACTIVE_REGISTRATION_STATUSES = new Set(["registered", "will_come", "attended"]);
 
-export function EventsTab() {
+// Once-only scroll-to/highlight duration for a per-notification deep
+// link (`#/events/{id}`) — matches TasksTab.tsx/OpportunitiesScreen.tsx.
+const HIGHLIGHT_MS = 2500;
+
+interface EventsTabProps {
+  initialItemId?: number | null;
+}
+
+export function EventsTab({ initialItemId }: EventsTabProps = {}) {
   const [scope, setScope] = useState<EventScope>("for_me");
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchEvents(scope), [scope, refreshKey]);
@@ -100,9 +108,20 @@ export function EventsTab() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [expandedActivitiesId, setExpandedActivitiesId] = useState<number | null>(null);
   const [cancelTarget, setCancelTarget] = useState<{ id: number; title: string } | null>(null);
+  const [highlightId, setHighlightId] = useState<number | null>(initialItemId ?? null);
   const toast = useToast();
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
+
+  useEffect(() => {
+    if (highlightId === null || state.status !== "ready") {
+      return;
+    }
+    document.getElementById(`event-${highlightId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const timer = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.status]);
 
   const handleRegister = useCallback(
     async (eventId: number) => {
@@ -156,56 +175,58 @@ export function EventsTab() {
         state.data.map((event) => {
           const isRegistered = ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "");
           return (
-            <Card key={event.id}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
-                <strong>{event.title}</strong>
-                {event.registration_status && (
-                  <StatusBadge label={event.registration_status} tone="violet" />
-                )}
-              </div>
-              <p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>
-                {event.event_date} · {event.event_time} · {event.location}
-              </p>
-              <p style={{ margin: "0 0 0.5rem", color: "var(--era-text-muted)" }}>
-                Свободных мест: {event.available_places} · {event.points_for_visit} баллов
-              </p>
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                {scope !== "past" &&
-                  (isRegistered ? (
-                    <button
-                      type="button"
-                      disabled={pendingId === event.id}
-                      onClick={() => setCancelTarget({ id: event.id, title: event.title })}
-                    >
-                      Планы изменились
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="era-btn-primary"
-                      disabled={pendingId === event.id}
-                      onClick={() => handleRegister(event.id)}
-                    >
-                      Зарегистрироваться
-                    </button>
-                  ))}
-                {isRegistered && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExpandedActivitiesId((current) => (current === event.id ? null : event.id))
-                    }
-                  >
-                    {expandedActivitiesId === event.id ? "Скрыть активности" : "✨ Активности"}
-                  </button>
-                )}
-              </div>
-              {expandedActivitiesId === event.id && (
-                <div style={{ marginTop: "0.625rem" }}>
-                  <EventActivitiesPanel eventId={event.id} />
+            <div id={`event-${event.id}`} key={event.id}>
+              <Card style={event.id === highlightId ? { boxShadow: "0 0 0 2px var(--era-violet)" } : undefined}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
+                  <strong>{event.title}</strong>
+                  {event.registration_status && (
+                    <StatusBadge label={event.registration_status} tone="violet" />
+                  )}
                 </div>
-              )}
-            </Card>
+                <p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>
+                  {event.event_date} · {event.event_time} · {event.location}
+                </p>
+                <p style={{ margin: "0 0 0.5rem", color: "var(--era-text-muted)" }}>
+                  Свободных мест: {event.available_places} · {event.points_for_visit} баллов
+                </p>
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  {scope !== "past" &&
+                    (isRegistered ? (
+                      <button
+                        type="button"
+                        disabled={pendingId === event.id}
+                        onClick={() => setCancelTarget({ id: event.id, title: event.title })}
+                      >
+                        Планы изменились
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="era-btn-primary"
+                        disabled={pendingId === event.id}
+                        onClick={() => handleRegister(event.id)}
+                      >
+                        Зарегистрироваться
+                      </button>
+                    ))}
+                  {isRegistered && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedActivitiesId((current) => (current === event.id ? null : event.id))
+                      }
+                    >
+                      {expandedActivitiesId === event.id ? "Скрыть активности" : "✨ Активности"}
+                    </button>
+                  )}
+                </div>
+                {expandedActivitiesId === event.id && (
+                  <div style={{ marginTop: "0.625rem" }}>
+                    <EventActivitiesPanel eventId={event.id} />
+                  </div>
+                )}
+              </Card>
+            </div>
           );
         })}
 
