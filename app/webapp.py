@@ -17,6 +17,8 @@ from aiogram.types import (
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from starlette.responses import Response
+from starlette.types import Scope
 
 from app.api.v1.router import api_router
 from app.bot import create_bot, create_dispatcher
@@ -37,6 +39,38 @@ DEPLOYED_COMMIT = os.environ.get("RENDER_GIT_COMMIT", "unknown")[:7]
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
+class _MiniAppStaticFiles(StaticFiles):
+    """Plain StaticFiles sends no Cache-Control at all — browsers fall back
+    to a conditional GET (If-None-Match) on next navigation, which is fine
+    on the open web, but Telegram's in-app WebView is known to skip that
+    revalidation for an already-open Mini App and just keep rendering
+    whatever it loaded first. A user re-opening the Mini App after a deploy
+    could see the old build indefinitely without a full Telegram restart
+    (confirmed live on 2026-08-12 — the new build was already being served
+    correctly by the origin, the client simply never asked again).
+
+    Vite's own output makes the fix cheap: every file under assets/ is
+    content-hashed (a changed file gets a new filename), so those can be
+    cached forever, while index.html — the one file whose *reference* to
+    those hashes actually changes between deploys — must never be cached at
+    all, forcing a revalidation on every load instead of relying on the
+    client's own judgment about when to check again.
+    """
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        # `path` uses the platform's own separator (Starlette builds it with
+        # os.path.join) — normalize before the prefix check so this doesn't
+        # silently fall through to "no-cache" on Windows, even though the
+        # only place that would ever bite in practice is local dev/testing
+        # (the Docker image this actually serves from is Linux).
+        if path.replace(os.sep, "/").startswith("assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def _mount_frontend(app: FastAPI, dist_dir: Path) -> None:
     """Serve the built Mini App from the same service, when it was built.
 
@@ -45,7 +79,7 @@ def _mount_frontend(app: FastAPI, dist_dir: Path) -> None:
     so this must not raise — the bot and API keep working without it.
     """
     if dist_dir.is_dir():
-        app.mount("/app", StaticFiles(directory=str(dist_dir), html=True), name="miniapp")
+        app.mount("/app", _MiniAppStaticFiles(directory=str(dist_dir), html=True), name="miniapp")
     else:
         logger.warning(
             "Mini App static files not found at %s; run `npm run build` in "
