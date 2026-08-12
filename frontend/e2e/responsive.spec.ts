@@ -14,8 +14,31 @@ const PARTICIPANT_TELEGRAM_ID = 900001;
 
 async function expectNoHorizontalOverflow(page: import("@playwright/test").Page, width: number) {
   const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-  // +1px tolerance for sub-pixel rounding on some engines' scrollbar math.
-  expect(scrollWidth, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(width + 1);
+  if (scrollWidth <= width + 1) {
+    return; // +1px tolerance for sub-pixel rounding on some engines' scrollbar math.
+  }
+  // Names the actual offending element rather than just the symptom —
+  // this ran into one real overflow bug during development (PillTabs)
+  // and having to guess the culprit from a bare pixel count cost several
+  // CI round-trips; worth keeping so the next one doesn't.
+  const culprit = await page.evaluate(() => {
+    let widest: { el: Element; right: number } | null = null;
+    for (const el of document.querySelectorAll<HTMLElement>("body *")) {
+      const right = el.getBoundingClientRect().right;
+      if (!widest || right > widest.right) {
+        widest = { el, right };
+      }
+    }
+    if (!widest) return "no element found";
+    const el = widest.el;
+    const label = `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}${
+      el.className && typeof el.className === "string" ? `.${el.className.split(" ").join(".")}` : ""
+    }`;
+    return `${label} (right edge at ${Math.round(widest.right)}px): "${(el.textContent ?? "").slice(0, 60)}"`;
+  });
+  expect(scrollWidth, `horizontal overflow at ${width}px — widest element: ${culprit}`).toBeLessThanOrEqual(
+    width + 1,
+  );
 }
 
 for (const width of WIDTHS) {
