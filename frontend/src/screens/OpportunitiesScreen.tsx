@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   applyToOpportunity,
   describeActionError,
@@ -36,8 +36,18 @@ const APPLICATION_STATUS_LABELS: Record<string, string> = {
   rejected: "отклонена",
 };
 
-export function OpportunitiesScreen() {
-  const [scope, setScope] = useState<OpportunitiesTab>("for_me");
+// Once-only scroll-to/highlight duration for a per-notification deep
+// link (`#/opportunities/{id}`) — matches TasksTab.tsx/EventsTab.tsx.
+const HIGHLIGHT_MS = 2500;
+
+interface OpportunitiesScreenProps {
+  initialItemId?: number | null;
+}
+
+export function OpportunitiesScreen({ initialItemId }: OpportunitiesScreenProps = {}) {
+  // A decided application (approved/rejected) — the case a deep link is
+  // for — lives under "Мои заявки", not the "Для тебя" default.
+  const [scope, setScope] = useState<OpportunitiesTab>(initialItemId ? "mine" : "for_me");
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(
     () => (NON_LIST_TABS.includes(scope) ? Promise.resolve([]) : fetchOpportunities(scope as OpportunityScope)),
@@ -45,8 +55,21 @@ export function OpportunitiesScreen() {
   );
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [highlightId, setHighlightId] = useState<number | null>(initialItemId ?? null);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
+
+  useEffect(() => {
+    if (highlightId === null || state.status !== "ready") {
+      return;
+    }
+    document
+      .getElementById(`opportunity-${highlightId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const timer = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.status]);
 
   const handleApply = useCallback(
     async (offerId: number) => {
@@ -113,46 +136,48 @@ export function OpportunitiesScreen() {
         state.data.map((offer) => {
           const applied = offer.application_status === "pending" || offer.application_status === "approved";
           return (
-            <Card key={offer.id}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
-                <strong>{offer.title}</strong>
-                {offer.application_status && (
-                  <StatusBadge
-                    label={APPLICATION_STATUS_LABELS[offer.application_status] ?? offer.application_status}
-                    tone="violet"
-                  />
+            <div id={`opportunity-${offer.id}`} key={offer.id}>
+              <Card style={offer.id === highlightId ? { boxShadow: "0 0 0 2px var(--era-violet)" } : undefined}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
+                  <strong>{offer.title}</strong>
+                  {offer.application_status && (
+                    <StatusBadge
+                      label={APPLICATION_STATUS_LABELS[offer.application_status] ?? offer.application_status}
+                      tone="violet"
+                    />
+                  )}
+                </div>
+                <p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{offer.partner_name}</p>
+                {offer.reasons.length > 0 && (
+                  <p style={{ margin: "0 0 0.5rem", color: "var(--era-violet)", fontSize: "0.8125rem" }}>
+                    Подходит вам: {offer.reasons.join(", ")}
+                  </p>
                 )}
-              </div>
-              <p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{offer.partner_name}</p>
-              {offer.reasons.length > 0 && (
-                <p style={{ margin: "0 0 0.5rem", color: "var(--era-violet)", fontSize: "0.8125rem" }}>
-                  Подходит вам: {offer.reasons.join(", ")}
+                <p style={{ margin: "0 0 0.5rem", color: "var(--era-text-muted)" }}>
+                  {offer.point_cost} баллов · мест: {offer.remaining_slots}
+                  {offer.expires_at ? ` · до ${offer.expires_at.slice(0, 10)}` : ""}
                 </p>
-              )}
-              <p style={{ margin: "0 0 0.5rem", color: "var(--era-text-muted)" }}>
-                {offer.point_cost} баллов · мест: {offer.remaining_slots}
-                {offer.expires_at ? ` · до ${offer.expires_at.slice(0, 10)}` : ""}
-              </p>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                {!applied && (
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  {!applied && (
+                    <button
+                      type="button"
+                      className="era-btn-primary"
+                      disabled={pendingId === offer.id}
+                      onClick={() => handleApply(offer.id)}
+                    >
+                      Подать заявку
+                    </button>
+                  )}
                   <button
                     type="button"
-                    className="era-btn-primary"
                     disabled={pendingId === offer.id}
-                    onClick={() => handleApply(offer.id)}
+                    onClick={() => handleToggleSave(offer.id, offer.is_saved)}
                   >
-                    Подать заявку
+                    {offer.is_saved ? "Убрать из сохранённых" : "Сохранить"}
                   </button>
-                )}
-                <button
-                  type="button"
-                  disabled={pendingId === offer.id}
-                  onClick={() => handleToggleSave(offer.id, offer.is_saved)}
-                >
-                  {offer.is_saved ? "Убрать из сохранённых" : "Сохранить"}
-                </button>
-              </div>
-            </Card>
+                </div>
+              </Card>
+            </div>
           );
         })}
     </div>

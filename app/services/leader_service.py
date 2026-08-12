@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from aiogram import Bot
+from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,9 +17,11 @@ from app.database.models import (
     UserDepartment,
     UserDirection,
 )
+from app.keyboards.participant import open_app_button
 from app.services.audit_service import audit
 from app.services.notification_service import safe_send
 from app.utils.constants import ApplicationStatus, Role
+from app.utils.deep_links import miniapp_task_url
 
 OPEN_TASK_TYPE = "challenge"
 
@@ -97,6 +100,7 @@ async def create_assigned_task(
     deadline: datetime,
     points: int,
     bot: Bot | None,
+    miniapp_url: str = "",
 ) -> Task:
     if not 0 <= points <= 1000:
         raise ValueError("invalid_points")
@@ -111,11 +115,15 @@ async def create_assigned_task(
     session.add(task)
     await session.flush()
     if bot is not None:
+        # task.id only exists after the flush above, so the deep link is
+        # built here rather than by the caller (see app/api/v1/leader.py).
+        keyboard = open_app_button(miniapp_task_url(miniapp_url, task.id)) if miniapp_url else None
         await safe_send(
             bot,
             assignee.telegram_id,
             f"У Вас новая задача ЭРА.\n\n{task.title}\n{task.description}\n\n"
             f"Дедлайн: {task.deadline:%d.%m.%Y %H:%M}",
+            keyboard,
         )
     await audit(
         session, actor_id=creator.id, action="task.created", entity_type="task", entity_id=task.id
@@ -203,6 +211,7 @@ async def decide_task_application(
     action: str,
     actor: User,
     bot: Bot | None,
+    keyboard: InlineKeyboardMarkup | None = None,
 ) -> TaskParticipant:
     if action not in ("accept", "reject"):
         raise ValueError("unknown_action")
@@ -232,6 +241,7 @@ async def decide_task_application(
                 "Вас приняли в открытую задачу ЭРА.\n\n"
                 f"{task.title}\n\nОткройте Личный кабинет → Мои задачи и отправьте результат "
                 "после выполнения.",
+                keyboard,
             )
     else:
         participant.status = "rejected"

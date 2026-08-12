@@ -70,6 +70,7 @@ from app.services.project_workspace_service import can_review_projects
 from app.utils import texts
 from app.utils.constants import PERMISSIONS, PRIVILEGED_ROLES, ROLE_LABELS, ApplicationStatus
 from app.utils.constants import Role as RoleEnum
+from app.utils.deep_links import miniapp_event_url, miniapp_opportunity_url, miniapp_task_url
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -621,6 +622,7 @@ async def award_event_attendance_points_endpoint(
     reviewer: User = Depends(require_event_reviewer),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
+    settings: Settings = Depends(get_settings),
     _rate_limit: None = Depends(enforce_admin_action_rate_limit),
 ) -> AttendanceAwardOut:
     event = await session.get(Event, event_id)
@@ -630,12 +632,14 @@ async def award_event_attendance_points_endpoint(
         session, event, approved_by_id=reviewer.id
     )
     if bot is not None:
+        keyboard = open_app_button(miniapp_event_url(settings.effective_miniapp_url, event.id))
         for participant in newly_awarded:
             await safe_send(
                 bot,
                 participant.telegram_id,
                 f"Участие в мероприятии «{event.title}» подтверждено.\n"
                 f"Начислено: +{event.points_for_visit} баллов.",
+                keyboard,
             )
     return AttendanceAwardOut(awarded_count=len(newly_awarded))
 
@@ -707,6 +711,7 @@ async def decide_task_submission_endpoint(
     reviewer: User = Depends(require_task_reviewer),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
+    settings: Settings = Depends(get_settings),
     _rate_limit: None = Depends(enforce_admin_action_rate_limit),
 ) -> TaskSubmissionOut:
     submission = await session.get(TaskSubmission, submission_id)
@@ -731,7 +736,8 @@ async def decide_task_submission_endpoint(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if bot is not None and result.participant_notice:
-        await safe_send(bot, participant.telegram_id, result.participant_notice)
+        keyboard = open_app_button(miniapp_task_url(settings.effective_miniapp_url, task.id))
+        await safe_send(bot, participant.telegram_id, result.participant_notice, keyboard)
     return _to_submission_out(submission, task, participant)
 
 
@@ -801,6 +807,7 @@ async def decide_offer_application_endpoint(
     reviewer: User = Depends(require_offer_reviewer),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
+    settings: Settings = Depends(get_settings),
     _rate_limit: None = Depends(enforce_admin_action_rate_limit),
 ) -> OfferApplicationOut:
     application = await session.get(PartnerOfferApplication, application_id)
@@ -819,7 +826,8 @@ async def decide_offer_application_endpoint(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if bot is not None and result.participant_notice:
-        await safe_send(bot, participant.telegram_id, result.participant_notice)
+        keyboard = open_app_button(miniapp_opportunity_url(settings.effective_miniapp_url, offer.id))
+        await safe_send(bot, participant.telegram_id, result.participant_notice, keyboard)
     balance = await total_points(session, participant.id)
     return _to_offer_application_out(application, offer, participant, balance)
 

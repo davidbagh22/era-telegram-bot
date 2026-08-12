@@ -18,9 +18,13 @@ interface ActivityScreenProps {
   /** Lands the screen on a specific tab instead of the "events" default —
    * used by the bot's "📅 Ближайшее"/"✅ Мои задачи" deep links (PR 36). */
   initialSection?: ActivitySection;
+  /** A specific task/event id from a per-notification deep link
+   * (`#/tasks/{id}`, `#/events/{id}`) — passed through to whichever tab
+   * `initialSection` lands on so it can scroll to and highlight it. */
+  initialItemId?: number | null;
 }
 
-export function ActivityScreen({ initialSection }: ActivityScreenProps = {}) {
+export function ActivityScreen({ initialSection, initialItemId }: ActivityScreenProps = {}) {
   const [section, setSection] = useState<ActivitySection>(initialSection ?? "events");
 
   return (
@@ -29,8 +33,8 @@ export function ActivityScreen({ initialSection }: ActivityScreenProps = {}) {
         Активность
       </h1>
       <PillTabs options={SECTIONS} active={section} onChange={setSection} />
-      {section === "events" && <EventsTab />}
-      {section === "tasks" && <TasksTab />}
+      {section === "events" && <EventsTab initialItemId={section === initialSection ? initialItemId : null} />}
+      {section === "tasks" && <TasksTab initialItemId={section === initialSection ? initialItemId : null} />}
       {section === "calendar" && <CalendarTab />}
       {section === "history" && <HistoryTab />}
     </div>
