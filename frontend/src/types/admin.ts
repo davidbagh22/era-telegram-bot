@@ -3,6 +3,20 @@ export interface DashboardData {
   attention_total: number;
 }
 
+// Mini App equivalent of the bot's "📊 Аналитика и Excel" flow — see
+// app/services/admin_analytics_service.py.
+export interface AnalyticsSummary {
+  total_users: number;
+  approved_users: number;
+  pending_users: number;
+  events: number;
+  projects: number;
+  contacts: number;
+  goals: number;
+}
+
+export type AnalyticsExcelSection = "all" | "users" | "departments" | "events" | "projects";
+
 export interface PendingApplication {
   id: number;
   telegram_id: number;

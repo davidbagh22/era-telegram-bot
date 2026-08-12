@@ -1,8 +1,19 @@
-import { fetchAdminDashboard } from "../../api/client";
+import { useCallback, useState } from "react";
+import { downloadAnalyticsExcel, fetchAdminAnalyticsSummary, fetchAdminDashboard } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { MetricCard } from "../../components/MetricCard";
+import { useToast } from "../../components/Toast";
 import { useAsync } from "../../hooks/useAsync";
+import type { AnalyticsExcelSection } from "../../types/admin";
+
+const EXCEL_SECTIONS: { value: AnalyticsExcelSection; label: string }[] = [
+  { value: "all", label: "📘 Всё" },
+  { value: "users", label: "👥 Участники" },
+  { value: "departments", label: "🏛 Департаменты" },
+  { value: "events", label: "📅 Мероприятия" },
+  { value: "projects", label: "💡 Проекты" },
+];
 
 const METRIC_LABELS: Record<string, string> = {
   users_total: "Участников всего",
@@ -39,6 +50,31 @@ const ATTENTION_ORDER = [
 
 export function AdminDashboardScreen() {
   const state = useAsync(() => fetchAdminDashboard(), []);
+  const analytics = useAsync(() => fetchAdminAnalyticsSummary(), []);
+  const [downloadingSection, setDownloadingSection] = useState<AnalyticsExcelSection | null>(null);
+  const toast = useToast();
+
+  const handleDownload = useCallback(
+    async (section: AnalyticsExcelSection) => {
+      setDownloadingSection(section);
+      try {
+        const blob = await downloadAnalyticsExcel(section);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `ERA_analytics_${section}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } catch {
+        toast.show("Не удалось собрать таблицу. Попробуйте ещё раз.", "error");
+      } finally {
+        setDownloadingSection(null);
+      }
+    },
+    [toast],
+  );
 
   if (state.status === "loading") {
     return <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>;
@@ -85,6 +121,33 @@ export function AdminDashboardScreen() {
             </Card>
           ))}
         </div>
+      </section>
+
+      <section>
+        <h2 style={{ fontSize: "0.875rem", color: "var(--era-text-muted)", margin: "0 0 0.5rem" }}>
+          Аналитика и Excel
+        </h2>
+        <Card>
+          {analytics.status === "ready" && (
+            <p style={{ margin: "0 0 0.75rem", color: "var(--era-text-muted)" }}>
+              Участников: {analytics.data.total_users} · Мероприятий: {analytics.data.events} · Проектов:{" "}
+              {analytics.data.projects} · Организаций: {analytics.data.contacts} · Целей месяца:{" "}
+              {analytics.data.goals}
+            </p>
+          )}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+            {EXCEL_SECTIONS.map((section) => (
+              <button
+                key={section.value}
+                type="button"
+                disabled={downloadingSection !== null}
+                onClick={() => handleDownload(section.value)}
+              >
+                {downloadingSection === section.value ? "Готовим…" : section.label}
+              </button>
+            ))}
+          </div>
+        </Card>
       </section>
     </div>
   );

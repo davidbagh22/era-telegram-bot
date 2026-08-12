@@ -10,6 +10,8 @@ import type {
 import type { ApiErrorBody, MiniAppAuthResponse, MiniAppUserSummary } from "../types/auth";
 import type {
   ActivitySubmissionAdmin,
+  AnalyticsExcelSection,
+  AnalyticsSummary,
   BadgeItem,
   DashboardData,
   EventActivityAdmin,
@@ -485,6 +487,23 @@ export function redeemReward(rewardId: number): Promise<Reward> {
 
 export function fetchAdminDashboard(): Promise<DashboardData> {
   return authorizedGet<DashboardData>("/api/v1/admin/dashboard");
+}
+
+export function fetchAdminAnalyticsSummary(): Promise<AnalyticsSummary> {
+  return authorizedGet<AnalyticsSummary>("/api/v1/admin/analytics");
+}
+
+export async function downloadAnalyticsExcel(section: AnalyticsExcelSection): Promise<Blob> {
+  if (!sessionToken) {
+    throw new ApiError(401, "missing_token");
+  }
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/analytics/export.xlsx?section=${section}`, {
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseErrorDetail(response));
+  }
+  return response.blob();
 }
 
 export function fetchAdminApplications(): Promise<PendingApplication[]> {

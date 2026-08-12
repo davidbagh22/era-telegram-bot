@@ -14,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.management_models import AdminSurvey, AdminSurveyResponse
 from app.database.models import User
-from app.handlers.admin.management_ready import _analytics_payload, _guard
+from app.handlers.admin.management_ready import _guard
+from app.services.admin_analytics_service import build_analytics_payload
 from app.services.notification_service import broadcast_detailed, safe_answer_document
 from app.services.survey_excel_service import build_survey_workbook
 from app.services.survey_service import (
@@ -135,22 +136,15 @@ async def analytics_overview(
 ) -> None:
     if not await _guard(call, user, settings):
         return
-    payload = await _analytics_payload(session)
+    payload = await build_analytics_payload(session)
     survey_count = int(await session.scalar(select(func.count()).select_from(AdminSurvey)) or 0)
     survey_response_count = int(await session.scalar(select(func.count()).select_from(AdminSurveyResponse)) or 0)
-    approved = len(payload["users"])
-    pending = int(
-        await session.scalar(
-            select(func.count()).select_from(User).where(User.application_status == ApplicationStatus.PENDING)
-        )
-        or 0
-    )
     text = (
         "📊 Аналитика ЭРА\n\n"
-        f"Участников: {approved}\n"
-        f"Новых заявок: {pending}\n"
-        f"Мероприятий: {len(payload['events'])}\n"
-        f"Проектов: {len(payload['projects'])}\n"
+        f"Участников: {payload.summary['total_users']}\n"
+        f"Новых заявок: {payload.summary['pending_users']}\n"
+        f"Мероприятий: {payload.summary['events']}\n"
+        f"Проектов: {payload.summary['projects']}\n"
         f"Опросов: {survey_count}\n"
         f"Ответов на опросы: {survey_response_count}\n\n"
         "Здесь можно скачать Excel, посмотреть работу направлений и запустить управленческий опрос"
