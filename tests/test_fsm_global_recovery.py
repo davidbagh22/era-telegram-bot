@@ -187,8 +187,8 @@ class FsmRecoveryTests(unittest.IsolatedAsyncioTestCase):
         # start.py's start() — is what a real approved user's /start
         # actually reaches. rescue_start's call to _send_main_menu()
         # dropped `settings`, so the Mini App button never appeared no
-        # matter how many times main_menu()/main_inline_keyboard() were
-        # fixed — this is the only test in the whole suite that exercises
+        # matter how many times main_inline_keyboard() itself was fixed —
+        # this is the only test in the whole suite that exercises
         # the real router-selected handler without mocking _send_main_menu
         # away, so it is the only one that would have caught this.
         state = FakeState()

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import PermissionGrant, User
-from app.keyboards.participant import main_menu
+from app.keyboards.participant import main_inline_keyboard
 from app.services.audit_service import audit
 from app.services.authorization_service import (
     can_change_access_status,
@@ -217,8 +217,7 @@ async def set_role(
         bot,
         target.telegram_id,
         f"Ваша роль в ЭРА обновлена: {_role_label(new_role)}\n\nНовые возможности уже доступны в меню",
-        main_menu(
-            settings.era_channel_url,
+        main_inline_keyboard(
             privileged=new_role in PRIVILEGED_ROLES,
             admin=new_role == Role.ADMIN,
             miniapp_url=settings.effective_miniapp_url,

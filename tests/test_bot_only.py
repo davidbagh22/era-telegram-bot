@@ -1,7 +1,7 @@
 import unittest
 
 from app.keyboards.admin import admin_panel_keyboard
-from app.keyboards.participant import main_menu
+from app.keyboards.participant import main_inline_keyboard
 from app.keyboards.registration import pending_registration_keyboard
 from app.states.registration import RegistrationStates
 from app.utils import texts
@@ -19,18 +19,17 @@ from app.utils.constants import (
 
 class BotOnlyTests(unittest.TestCase):
     def test_main_menu_contains_only_telegram_actions(self) -> None:
-        keyboard = main_menu(
-            "https://t.me/era",
-            privileged=True,
-            admin=True,
-        )
-        buttons = [button for row in keyboard.keyboard for button in row]
+        # No miniapp_url configured — the bot's own fallback menu (no
+        # persistent ReplyKeyboardMarkup exists anywhere in the app
+        # anymore; this is main_inline_keyboard()'s inline fallback,
+        # scoped to callback_data actions the bot itself handles).
+        keyboard = main_inline_keyboard(privileged=True, admin=True)
+        buttons = [button for row in keyboard.inline_keyboard for button in row]
 
         self.assertTrue(all(button.web_app is None for button in buttons))
         labels = {button.text for button in buttons}
         self.assertIn("👤 Личный кабинет", labels)
         self.assertIn("⚙️ Панель", labels)
-        self.assertTrue(keyboard.is_persistent)
 
     def test_pending_registration_has_a_clear_next_step(self) -> None:
         keyboard = pending_registration_keyboard("https://t.me/era")

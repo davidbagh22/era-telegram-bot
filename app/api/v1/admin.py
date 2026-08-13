@@ -32,7 +32,7 @@ from app.database.models import (
 )
 from app.database.management_models import AdminSurvey
 from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
-from app.keyboards.participant import main_menu, open_app_button
+from app.keyboards.participant import main_inline_keyboard, open_app_button
 from app.services import (
     auction_service,
     data_rights_service,
@@ -632,7 +632,7 @@ async def approve_user_application(
             bot,
             target.telegram_id,
             texts.APPLICATION_APPROVED,
-            main_menu(settings.era_channel_url, miniapp_url=settings.effective_miniapp_url),
+            main_inline_keyboard(miniapp_url=settings.effective_miniapp_url),
         )
         await safe_send(
             bot, target.telegram_id, "Перед стартом — короткие правила сообщества\n\n" + texts.CHAT_RULES
@@ -1813,8 +1813,7 @@ async def change_user_role(
             target.telegram_id,
             f"Ваша роль в ЭРА обновлена: {ROLE_LABELS.get(new_role, new_role.value)}\n\n"
             "Новые возможности уже доступны в меню",
-            main_menu(
-                settings.era_channel_url,
+            main_inline_keyboard(
                 privileged=new_role in PRIVILEGED_ROLES,
                 admin=new_role == RoleEnum.ADMIN,
                 miniapp_url=settings.effective_miniapp_url,

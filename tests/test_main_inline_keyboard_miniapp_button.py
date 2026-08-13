@@ -10,12 +10,12 @@ def _button_texts(markup) -> list[str]:
 
 
 class MainInlineKeyboardMiniAppButtonTests(unittest.TestCase):
-    """main_menu() (the reply keyboard shown on /start) has had this
-    button since the original 12-PR plan (see
-    test_participant_menu_miniapp_button.py) — main_inline_keyboard() (the
-    keyboard shown by /menu and "🧭 Главное меню" via _send_main_menu())
-    never did, regardless of how many times main_menu() was fixed. Both
-    keyboards claim to be "the main menu" from the user's perspective."""
+    """main_inline_keyboard() is now the bot's one and only "main menu"
+    surface — the old persistent ReplyKeyboardMarkup main_menu() it used
+    to sit alongside (see test_participant_menu_miniapp_button.py, before
+    it was removed and folded into this file) is gone entirely; Telegram
+    clients that still have it cached get a one-time ReplyKeyboardRemove()
+    via app/middlewares/legacy_keyboard_cleanup.py instead."""
 
     def test_no_miniapp_button_when_url_is_unset(self) -> None:
         markup = main_inline_keyboard()
@@ -46,6 +46,55 @@ class MainInlineKeyboardMiniAppButtonTests(unittest.TestCase):
         # bot-side admin entry point would just be a duplicate UX.
         markup = main_inline_keyboard(admin=True, miniapp_url="https://era-app.example/")
         self.assertNotIn("⚙️ Панель", _button_texts(markup))
+
+    def test_fallback_menu_used_only_when_miniapp_is_unconfigured(self) -> None:
+        # The old bot-side "👤 Личный кабинет"/"📅 Афиша"/"✅ Задачи"/
+        # "⚙️ Панель" menu tree only exists as a fallback for environments
+        # without a configured Mini App (e.g. local dev) — parity between
+        # the two states is not expected or desired once the Mini App is
+        # configured.
+        without_miniapp = _button_texts(main_inline_keyboard())
+        with_miniapp = _button_texts(main_inline_keyboard(miniapp_url="https://era-app.example/"))
+        self.assertIn("👤 Личный кабинет", without_miniapp)
+        self.assertNotIn("👤 Личный кабинет", with_miniapp)
+
+    def test_miniapp_menu_has_the_four_gateway_buttons(self) -> None:
+        markup = main_inline_keyboard(
+            privileged=True, admin=True, miniapp_url="https://era-app.example/"
+        )
+        self.assertEqual(
+            _button_texts(markup),
+            ["🔥 Открыть ЭРА", "📅 Ближайшее", "✅ Мои задачи", "⭐ Возможности", "💬 Связь"],
+        )
+
+    def test_quick_access_buttons_deep_link_into_the_right_miniapp_tab(self) -> None:
+        markup = main_inline_keyboard(miniapp_url="https://era-app.example")
+        buttons = {button.text: button for row in markup.inline_keyboard for button in row}
+        self.assertEqual(buttons["🔥 Открыть ЭРА"].web_app.url, "https://era-app.example")
+        self.assertEqual(buttons["📅 Ближайшее"].web_app.url, "https://era-app.example/#/events")
+        self.assertEqual(buttons["✅ Мои задачи"].web_app.url, "https://era-app.example/#/tasks")
+        self.assertEqual(
+            buttons["⭐ Возможности"].web_app.url, "https://era-app.example/#/opportunities"
+        )
+
+    def test_plain_participant_never_sees_the_panel_button(self) -> None:
+        # privileged=False, admin=False (the defaults) — a plain
+        # participant, in both the miniapp-configured and fallback states.
+        without_miniapp = _button_texts(main_inline_keyboard())
+        with_miniapp = _button_texts(main_inline_keyboard(miniapp_url="https://era-app.example/"))
+        self.assertNotIn("⚙️ Панель", without_miniapp)
+        self.assertNotIn("⚙️ Панель", with_miniapp)
+
+    def test_admin_menu_stays_compact_when_miniapp_is_configured(self) -> None:
+        # The whole point of the bot/Mini App role split: once the Mini
+        # App is configured, an admin's bot-side "main menu" is exactly
+        # the same 5 buttons a participant gets — no extra bot-side admin
+        # surface, because Admin Mode lives in the Mini App now.
+        admin_markup = _button_texts(
+            main_inline_keyboard(admin=True, miniapp_url="https://era-app.example/")
+        )
+        participant_markup = _button_texts(main_inline_keyboard(miniapp_url="https://era-app.example/"))
+        self.assertEqual(admin_markup, participant_markup)
 
 
 if __name__ == "__main__":

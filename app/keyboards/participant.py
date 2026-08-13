@@ -3,81 +3,26 @@ from collections.abc import Iterable
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
     WebAppInfo,
 )
 
 from app.utils.deep_links import miniapp_events_url, miniapp_opportunities_url, miniapp_tasks_url
 
 
-def main_menu(
-    channel_url: str,
-    privileged: bool = False,
-    admin: bool = False,
-    miniapp_url: str = "",
-) -> ReplyKeyboardMarkup:
-    """PR 36 (Bot/Mini App role split): the bot is a gateway now, not a
-    second parallel interface. The old "👤 Личный кабинет"/"⚙️ Панель"
-    entry points into the bot's own multi-screen menu trees
-    (app/handlers/participant/cabinet.py, app/handlers/admin/panel.py) are
-    deliberately no longer advertised here — the Mini App fully covers
-    both (profile/portfolio/points/projects, and Admin/Leader Mode), and
-    🔥 Открыть ЭРА already routes an admin/leader straight into their
-    correct Mini App mode (see frontend/src/app/App.tsx's
-    is_admin/is_leader branches). That old code is intentionally left in
-    place, not deleted — see docs/BOT_VS_MINIAPP_AUDIT.md — in case the
-    Mini App is temporarily unavailable and a fallback is needed; it's
-    just no longer the advertised default UX.
-    """
-    del channel_url
-    rows: list[list[KeyboardButton]] = []
-    if miniapp_url:
-        rows.append(
-            [KeyboardButton(text="🔥 Открыть ЭРА", web_app=WebAppInfo(url=miniapp_url))]
-        )
-        rows.append(
-            [
-                KeyboardButton(
-                    text="📅 Ближайшее", web_app=WebAppInfo(url=miniapp_events_url(miniapp_url))
-                ),
-                KeyboardButton(
-                    text="✅ Мои задачи", web_app=WebAppInfo(url=miniapp_tasks_url(miniapp_url))
-                ),
-            ]
-        )
-        rows.append(
-            [
-                KeyboardButton(
-                    text="⭐ Возможности",
-                    web_app=WebAppInfo(url=miniapp_opportunities_url(miniapp_url)),
-                )
-            ]
-        )
-    else:
-        # Mini App isn't configured, or is the "резервный сценарий" fallback
-        # for when it's temporarily unavailable — fall back to the bot's
-        # own inline menus (including the admin panel) rather than showing
-        # broken WebApp buttons or leaving admins with no way in at all.
-        rows.append([KeyboardButton(text="👤 Личный кабинет"), KeyboardButton(text="📅 Афиша")])
-        rows.append([KeyboardButton(text="✅ Задачи"), KeyboardButton(text="⭐ Возможности")])
-        if privileged or admin:
-            rows.append([KeyboardButton(text="⚙️ Панель")])
-    rows.append([KeyboardButton(text="💬 Связь")])
-    return ReplyKeyboardMarkup(
-        keyboard=rows,
-        resize_keyboard=True,
-        is_persistent=True,
-        input_field_placeholder="Выберите раздел ЭРА",
-    )
-
-
 def main_inline_keyboard(
     privileged: bool = False, admin: bool = False, miniapp_url: str = ""
 ) -> InlineKeyboardMarkup:
-    """Inline equivalent of main_menu() above, for contexts that answer
-    with an inline keyboard instead of the persistent reply keyboard
-    (e.g. "← Главное меню" back-buttons). Same PR 36 role-split rationale."""
+    """The bot's one and only "main menu" surface. Used everywhere the bot
+    used to send a persistent ReplyKeyboardMarkup main menu (/start,
+    registration/role-change approvals, "← Главное меню" back-buttons) —
+    that keyboard is gone (see
+    app/middlewares/legacy_keyboard_cleanup.py for the one-time
+    ReplyKeyboardRemove migration for users who already have it cached).
+    PR 36 (Bot/Mini App role split): when miniapp_url is configured,
+    🔥 Открыть ЭРА is the primary action; the old "👤 Личный
+    кабинет"/"⚙️ Панель" bot-side menu tree only appears as a fallback for
+    when the Mini App isn't configured (e.g. local dev) — see
+    docs/BOT_VS_MINIAPP_AUDIT.md."""
     rows: list[list[InlineKeyboardButton]] = []
     if miniapp_url:
         rows.append(
@@ -127,7 +72,7 @@ def open_app_button(
     carry admin: callback buttons (approve/reject/etc.) — that review now
     happens in the Mini App, not in a bot chat flow. Returns None (send no
     keyboard) rather than a broken one if the Mini App isn't configured,
-    mirroring the `if miniapp_url:` guard already used in main_menu() and
+    mirroring the `if miniapp_url:` guard already used in
     main_inline_keyboard() above."""
     if not miniapp_url:
         return None

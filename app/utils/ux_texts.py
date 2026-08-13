@@ -14,6 +14,12 @@ MAIN_MENU = """Главное меню ЭРА
 
 Выберите раздел. Здесь всё связано: участие даёт опыт, опыт попадает в портфолио, баллы двигают рейтинг и открывают возможности."""
 
+# One-time notice sent alongside ReplyKeyboardRemove() — see
+# app/middlewares/legacy_keyboard_cleanup.py. Needs to be an actual,
+# non-empty message (Telegram requires text to attach a reply_markup to),
+# so it doubles as a short heads-up rather than being purely mechanical.
+LEGACY_KEYBOARD_CLEARED = "Обновили ЭРА — теперь всё через кнопки в сообщениях и Mini App, старое меню внизу больше не нужно."
+
 MAIN_INLINE_MENU = """Главное меню ЭРА
 
 Куда идём дальше? Можно начать с афиши, задач, возможностей или личного кабинета."""
