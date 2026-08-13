@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -12,6 +13,8 @@ from app.api.security import InitDataError, create_session_token, verify_init_da
 from app.api.v1.schemas import MiniAppUserSummary, summarize_user
 from app.config import Settings
 from app.repositories.users import get_user_by_telegram_id
+
+logger = logging.getLogger(__name__)
 
 # Generous enough for a user re-opening the Mini App repeatedly, tight
 # enough to blunt a scripted attempt to mint sessions for many Telegram IDs.
@@ -59,6 +62,17 @@ async def authenticate(
                 max_age_seconds=settings.init_data_max_age_seconds,
             )
         except InitDataError as exc:
+            # No server-side trace of *why* an auth attempt failed existed
+            # before this — every failure was silently swallowed into a
+            # generic "session expired" screen client-side (see
+            # frontend/src/screens/AuthErrorScreen.tsx), with nothing to
+            # tell a real, uniform failure (e.g. a stray character in
+            # BOT_TOKEN corrupting every HMAC check — see
+            # strip_secret_whitespace in app/config.py) apart from a user
+            # simply not opening the Mini App in time. Never logs the raw
+            # init_data itself — it's the one field here that's genuinely
+            # sensitive (contains the user's Telegram profile).
+            logger.warning("miniapp auth rejected: %s", exc)
             raise HTTPException(status_code=401, detail=str(exc)) from exc
         telegram_id = verified.telegram_id
 
