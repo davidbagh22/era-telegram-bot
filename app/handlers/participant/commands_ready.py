@@ -1,50 +1,26 @@
-from datetime import date
-
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy.ext.asyncio import AsyncSession
+from aiogram.types import Message
 
 from app.config import Settings
 from app.database.models import User
-from app.handlers.participant.navigation import _approved, _send_event_list, _send_main_menu, _send_personal_cabinet
-from app.keyboards.participant import about_keyboard, contact_keyboard, profile_sections_keyboard
-from app.repositories.users import user_stats
-from app.services.points_service import total_points
+from app.handlers.participant.navigation import _approved, _send_main_menu
+from app.keyboards.participant import about_keyboard, contact_keyboard, open_app_button
 from app.utils import texts
-from app.utils.constants import STATUS_LABELS
+from app.utils.deep_links import miniapp_events_url, miniapp_opportunities_url, miniapp_profile_url
 
 router = Router(name="participant_commands_ready")
 
-
-def _age_from_birth_date(birth_date) -> int | None:
-    if not birth_date:
-        return None
-    today = date.today()
-    return today.year - birth_date.year - (
-        (today.month, today.day) < (birth_date.month, birth_date.day)
-    )
-
-
-def _my_data_text(user: User, stats: dict[str, int]) -> str:
-    birth_date = getattr(user, "birth_date", None)
-    birth_date_text = birth_date.strftime("%d.%m.%Y") if birth_date else "не указана"
-    age = _age_from_birth_date(birth_date) if birth_date else user.age
-    directions = ", ".join(item.direction.name for item in user.directions) or "не выбраны"
-    status = STATUS_LABELS.get(user.participation_status, user.participation_status)
-    return f"""⚙️ Мои данные
-
-Имя: {user.first_name}
-Фамилия: {user.last_name or 'не указана'}
-Дата рождения: {birth_date_text}
-Возраст: {age or 'не указан'}
-Город: {user.city or 'не указан'}
-Телефон: {user.phone or 'не указан'}
-Email: {user.email or 'не указан'}
-Статус: {status}
-Баланс: {stats['points']} баллов
-Направления: {directions}"""
+# /profile, /data, /events, /opportunities, /points used to each open their
+# own bot-native menu (personal cabinet, a hand-rolled "my data" card, an
+# events list, partner/rewards menus, a points/rating menu) — all of it now
+# duplicates a Mini App screen. Per the 2026-08 master spec (section 25),
+# these are kept live as compatibility redirects, deep-linked to the
+# specific screen rather than just the Mini App's home, not deleted.
+# /menu, /contact, and /help are unaffected: /menu is itself the Mini-App
+# entry point, and /contact ("support") + /help are explicitly allowed to
+# stay bot-native (section 19-22).
 
 
 @router.message(Command("menu"), F.chat.type == "private")
@@ -56,63 +32,62 @@ async def menu_command(
 
 
 @router.message(Command("profile"), F.chat.type == "private")
-async def profile_command(message: Message, user: User | None, session: AsyncSession, settings: Settings, state: FSMContext) -> None:
+async def profile_command(message: Message, user: User | None, settings: Settings, state: FSMContext) -> None:
     await state.clear()
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
-    await _send_personal_cabinet(message, user, session, settings)
+    await message.answer(
+        texts.PROFILE_MOVED,
+        reply_markup=open_app_button(miniapp_profile_url(settings.effective_miniapp_url)),
+    )
 
 
 @router.message(Command("data"), F.chat.type == "private")
-async def data_command(message: Message, user: User | None, session: AsyncSession, state: FSMContext) -> None:
+async def data_command(message: Message, user: User | None, settings: Settings, state: FSMContext) -> None:
     await state.clear()
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
-    stats = await user_stats(session, user.id)
-    await message.answer(_my_data_text(user, stats), reply_markup=profile_sections_keyboard())
+    await message.answer(
+        texts.PROFILE_MOVED,
+        reply_markup=open_app_button(miniapp_profile_url(settings.effective_miniapp_url)),
+    )
 
 
 @router.message(Command("events"), F.chat.type == "private")
-async def events_command(message: Message, user: User | None, session: AsyncSession, state: FSMContext) -> None:
-    await state.clear()
-    await _send_event_list(message, user, session)
-
-
-@router.message(Command("opportunities"), F.chat.type == "private")
-async def opportunities_command(message: Message, user: User | None, session: AsyncSession, state: FSMContext) -> None:
+async def events_command(message: Message, user: User | None, settings: Settings, state: FSMContext) -> None:
     await state.clear()
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
-    balance = await total_points(session, user.id)
     await message.answer(
-        f"⭐ Возможности\n\nВаш баланс: {balance} баллов\n\n"
-        "Здесь доступны партнёры, каталог возможностей, аукционы, награды и специальные форматы ЭРА.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🤝 Партнёры", callback_data="partners:list")],
-            [InlineKeyboardButton(text="⭐ Каталог возможностей", callback_data="rewards:menu")],
-            [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
-        ]),
+        texts.EVENTS_MOVED,
+        reply_markup=open_app_button(miniapp_events_url(settings.effective_miniapp_url)),
+    )
+
+
+@router.message(Command("opportunities"), F.chat.type == "private")
+async def opportunities_command(message: Message, user: User | None, settings: Settings, state: FSMContext) -> None:
+    await state.clear()
+    if not _approved(user):
+        await message.answer(texts.APPLICATION_PENDING)
+        return
+    await message.answer(
+        texts.OPPORTUNITIES_MOVED,
+        reply_markup=open_app_button(miniapp_opportunities_url(settings.effective_miniapp_url)),
     )
 
 
 @router.message(Command("points"), F.chat.type == "private")
-async def points_command(message: Message, user: User | None, session: AsyncSession, state: FSMContext) -> None:
+async def points_command(message: Message, user: User | None, settings: Settings, state: FSMContext) -> None:
     await state.clear()
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
-    balance = await total_points(session, user.id)
     await message.answer(
-        f"🏆 Баллы\n\nВаш баланс: {balance} баллов\n\n"
-        "Баллы начисляются за подтверждённое участие, задачи, проекты и реальный вклад в ЭРА.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⭐ История баллов", callback_data="cabinet:points")],
-            [InlineKeyboardButton(text="🏆 Рейтинг", callback_data="cabinet:rating")],
-            [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
-        ]),
+        texts.PROFILE_MOVED,
+        reply_markup=open_app_button(miniapp_profile_url(settings.effective_miniapp_url)),
     )
 
 

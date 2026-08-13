@@ -215,6 +215,47 @@ admin-side `partner_offers_block16.py` for opportunities,
 rewards, `admin_dashboard_service.py`) — all read through the same two
 functions. No drift, no second calculation, no bug found.
 
+## P3 — participant-side commands no longer duplicate the Mini App
+
+Fixes the item flagged (found, not yet fixed) at the end of the P2
+section above. `/profile`, `/data`, `/events`, `/opportunities`, and
+`/points` — all five advertised in the bot's public `/` autocomplete menu
+(`USER_COMMANDS` in `app/webapp.py`) — used to each open their own
+bot-native menu (personal cabinet card, a hand-rolled "my data" summary,
+an events list, a partners/rewards menu, a points/rating menu). All five
+now redirect to the specific Mini App screen instead of just its home —
+new `miniapp_profile_url()` deep-link helper (`/profile`, `/data`,
+`/points` all land on the Profile screen, where balance, personal data,
+and leaderboard access already live) alongside the existing
+`miniapp_events_url()`/`miniapp_opportunities_url()`. A matching `#/profile`
+parse case was added to the frontend's `parseDeepLink()`.
+
+`/menu`, `/contact`, `/help` are unaffected — `/menu` already is the
+Mini-App entry point (`main_inline_keyboard()`), and `/contact`
+("support") + `/help` are explicitly allowed to stay bot-native per the
+spec's own Bot/Mini App split (section 19-22).
+
+Also confirmed inert (not touched — already dead, no behavior to fix):
+`app/handlers/participant/events.py` and `events_stability_block8.py`
+each register a second, near-identical `Command("events")` handler, but
+since `commands_ready.router` is included first in
+`app/handlers/participant/__init__.py`, only its handler ever actually
+fires for `/events` — the same router-registration-order pattern already
+seen and documented for `event_activities_block15.py` vs `_block7.py`
+above. Left as-is rather than touched in this pass, since removing dead
+code that's provably unreachable is lower-risk than editing it and this
+pass was scoped to the behavior fix.
+
+**`/start`'s single-CTA requirement was already satisfied**, not a gap:
+`app/handlers/start.py::show_home()` already reuses the same
+`main_inline_keyboard()` that gates on `settings.effective_miniapp_url` —
+when the Mini App is configured (production), it shows exactly
+"🔥 Открыть ЭРА" + 3 quick-access shortcuts + "💬 Связь", already covered
+by `tests/test_main_inline_keyboard_miniapp_button.py`. The
+old multi-button bot-native menu only renders in the *unconfigured*
+fallback branch (local dev), which is intentionally kept and documented
+as a fallback, not a live duplicate. No change needed here.
+
 ## Scope note
 
 This audit prioritized the class of bug most likely to cause silent data
