@@ -61,6 +61,9 @@ function parseDeepLink(): DeepLink | null {
     const itemId = opportunityMatch[1] ? Number(opportunityMatch[1]) : null;
     return { tab: "opportunities", projectId: null, activitySection: null, itemId };
   }
+  if (hash.match(/^#\/profile/)) {
+    return { tab: "profile", projectId: null, activitySection: null, itemId: null };
+  }
   return null;
 }
 

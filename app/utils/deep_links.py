@@ -113,3 +113,12 @@ def miniapp_opportunity_url(miniapp_url: str, opportunity_id: int) -> str:
     """Deep-links to a single opportunity's detail in the Opportunities
     screen — used by opportunity-related notifications (PR 40)."""
     return miniapp_path_url(miniapp_url, f"opportunities/{opportunity_id}")
+
+
+def miniapp_profile_url(miniapp_url: str) -> str:
+    """Deep-links straight into the Mini App's Profile screen (personal
+    data, points balance, leaderboard access, portfolio) — used by the
+    bot's /profile, /data, and /points compatibility redirects (2026-08
+    master spec section 25: these used to open a bot-native menu tree,
+    now they just hand off to the one real Profile screen instead)."""
+    return miniapp_path_url(miniapp_url, "profile")
