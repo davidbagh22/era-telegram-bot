@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { PillTabs } from "../components/PillTabs";
+import { FilterChips } from "../components/FilterChips";
+import { SegmentedTabs } from "../components/SegmentedTabs";
 import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
 import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
@@ -66,13 +67,13 @@ export function AdminScreen() {
 
   return (
     <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <PillTabs options={GROUPS} active={group} onChange={setGroup} />
+      <SegmentedTabs options={GROUPS} active={group} onChange={setGroup} />
 
       {group === "overview" && <AdminOverviewScreen />}
 
       {group === "people" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <PillTabs options={PEOPLE_SECTIONS} active={peopleSection} onChange={setPeopleSection} />
+          <FilterChips options={PEOPLE_SECTIONS} active={peopleSection} onChange={setPeopleSection} />
           {peopleSection === "participants" && <AdminUsersScreen />}
           {peopleSection === "applications" && <AdminApplicationsScreen />}
           {peopleSection === "offices" && <AdminOfficesScreen />}
@@ -82,7 +83,7 @@ export function AdminScreen() {
 
       {group === "work" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <PillTabs options={WORK_SECTIONS} active={workSection} onChange={setWorkSection} />
+          <FilterChips options={WORK_SECTIONS} active={workSection} onChange={setWorkSection} />
           {workSection === "projects" && <AdminProjectsScreen />}
           {workSection === "events" && <AdminEventsScreen />}
           {workSection === "tasks" && <AdminTasksScreen />}
@@ -92,7 +93,7 @@ export function AdminScreen() {
 
       {group === "comms" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <PillTabs options={COMMS_SECTIONS} active={commsSection} onChange={setCommsSection} />
+          <FilterChips options={COMMS_SECTIONS} active={commsSection} onChange={setCommsSection} />
           {commsSection === "surveys" && <AdminSurveysScreen />}
           {commsSection === "tools" && <AdminToolsScreen />}
         </div>
