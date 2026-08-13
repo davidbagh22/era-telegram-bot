@@ -81,3 +81,16 @@ export function EventIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+// Auction hero card cover glyph (AuctionsPanel.tsx) — a gavel, no fake
+// lot photo, same hand-drawn stroke style as the rest of this file.
+export function AuctionIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...baseProps(props)}>
+      <path d="m14.5 4.5 5 5-2 2-5-5Z" />
+      <path d="m9 10 5 5-6 6-5-5Z" />
+      <path d="M4 21h8" />
+      <path d="m11.5 7 2-2M16.5 12l2-2" />
+    </svg>
+  );
+}
