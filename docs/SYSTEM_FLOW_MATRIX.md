@@ -111,6 +111,18 @@ duplicate reimplementation was found.
 across `portfolio_service.py`, `activity_service.py`, and
 `achievements_block4.py`'s bot-side listing.
 
+### ✅ Tasks — consistent
+
+`task_service.py::ARCHIVE_STATUSES = {"completed", "cancelled", "rejected"}`
+is the one place task lifecycle terminality is defined.
+`admin_dashboard_service.py`'s open-task count and
+`scheduler_service.py`'s reminder-eligibility query both hand-roll their
+own status lists, but for two legitimately different questions (dashboard:
+"anything still active", reminders: "not yet submitted for review") —
+not the same "have I already done this" duplicate-guard question that
+drifted for event activities, so this isn't the same bug class. No
+change made.
+
 ### RBAC — already enforced server-side (confirmed by existing tests)
 
 `require_dashboard_access`, `require_full_admin`, `require_leader`, etc.
