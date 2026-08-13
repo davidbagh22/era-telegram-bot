@@ -15,7 +15,6 @@ interface SegmentedTabsProps<T extends string> {
 export function SegmentedTabs<T extends string>({ options, active, onChange }: SegmentedTabsProps<T>) {
   return (
     <div
-      role="tablist"
       style={{
         display: "flex",
         gap: "0.125rem",
@@ -30,8 +29,7 @@ export function SegmentedTabs<T extends string>({ options, active, onChange }: S
           <button
             key={option.value}
             type="button"
-            role="tab"
-            aria-selected={isActive}
+            aria-pressed={isActive}
             onClick={() => onChange(option.value)}
             style={{
               flex: 1,
