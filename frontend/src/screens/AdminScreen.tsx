@@ -1,6 +1,6 @@
 import { useState } from "react";
+import { AdminBottomNav, type AdminGroup } from "../components/AdminBottomNav";
 import { FilterChips } from "../components/FilterChips";
-import { SegmentedTabs } from "../components/SegmentedTabs";
 import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
 import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
@@ -14,26 +14,19 @@ import { AdminTasksScreen } from "./admin/AdminTasksScreen";
 import { AdminToolsScreen } from "./admin/AdminToolsScreen";
 import { AdminUsersScreen } from "./admin/AdminUsersScreen";
 
-// 2026-08 Admin Mode redesign: the old flat 12-tab PillTabs row
-// (Дашборд/Заявки/Участники/Должности/Проекты/Мероприятия/Задания/
-// Возможности/Опросы/Инструменты/Удаление данных/Обслуживание, all in
-// one horizontal scroller) is replaced by 5 logical groups, each with
-// its own sub-navigation where it actually has more than one screen —
-// "не пытаться одновременно показать всё" (don't try to show everything
-// at once). No screen listed below was rewritten as part of this
-// change — this only regroups how they're reached. See
-// docs/UI_DESIGN_SYSTEM.md for the full rationale and AdminOverviewScreen
-// for what replaced the old dashboard-as-landing-screen.
-type AdminGroup = "overview" | "people" | "work" | "comms" | "analytics";
-
-const GROUPS: { value: AdminGroup; label: string }[] = [
-  { value: "overview", label: "Обзор" },
-  { value: "people", label: "Люди" },
-  { value: "work", label: "Работа" },
-  { value: "comms", label: "Коммуникации" },
-  { value: "analytics", label: "Аналитика" },
-];
-
+// 2026-08 Admin Mode redesign, round 2: the old flat 12-tab PillTabs row
+// was replaced (see git history) by 5 logical groups reached through a
+// SegmentedTabs row at the top — itself now replaced by a fixed bottom
+// dock (AdminBottomNav), the master spec's explicit "not a long segmented
+// control" requirement for Admin Mode's top-level navigation. Same 5
+// groups, same screens underneath, same sub-navigation approach where a
+// group has more than one screen ("не пытаться одновременно показать
+// всё") — this pass only moves the group switcher itself from a
+// scrollable top row to a fixed dock, matching the same floating-dock
+// pattern already used for the participant-facing bottom nav. No screen
+// listed below was rewritten. See docs/UI_DESIGN_SYSTEM.md for the
+// grouping rationale and AdminOverviewScreen for what replaced the old
+// dashboard-as-landing-screen.
 type PeopleSection = "participants" | "applications" | "offices" | "data-rights";
 
 const PEOPLE_SECTIONS: { value: PeopleSection; label: string }[] = [
@@ -66,40 +59,44 @@ export function AdminScreen() {
   const [commsSection, setCommsSection] = useState<CommsSection>("surveys");
 
   return (
-    <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <SegmentedTabs options={GROUPS} active={group} onChange={setGroup} />
+    <div
+      className="era-page"
+      style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}
+    >
+      <div style={{ flex: "1 1 auto", minWidth: 0, padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+        {group === "overview" && <AdminOverviewScreen />}
 
-      {group === "overview" && <AdminOverviewScreen />}
+        {group === "people" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <FilterChips options={PEOPLE_SECTIONS} active={peopleSection} onChange={setPeopleSection} />
+            {peopleSection === "participants" && <AdminUsersScreen />}
+            {peopleSection === "applications" && <AdminApplicationsScreen />}
+            {peopleSection === "offices" && <AdminOfficesScreen />}
+            {peopleSection === "data-rights" && <AdminDataRightsScreen />}
+          </div>
+        )}
 
-      {group === "people" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <FilterChips options={PEOPLE_SECTIONS} active={peopleSection} onChange={setPeopleSection} />
-          {peopleSection === "participants" && <AdminUsersScreen />}
-          {peopleSection === "applications" && <AdminApplicationsScreen />}
-          {peopleSection === "offices" && <AdminOfficesScreen />}
-          {peopleSection === "data-rights" && <AdminDataRightsScreen />}
-        </div>
-      )}
+        {group === "work" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <FilterChips options={WORK_SECTIONS} active={workSection} onChange={setWorkSection} />
+            {workSection === "projects" && <AdminProjectsScreen />}
+            {workSection === "events" && <AdminEventsScreen />}
+            {workSection === "tasks" && <AdminTasksScreen />}
+            {workSection === "offers" && <AdminOffersScreen />}
+          </div>
+        )}
 
-      {group === "work" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <FilterChips options={WORK_SECTIONS} active={workSection} onChange={setWorkSection} />
-          {workSection === "projects" && <AdminProjectsScreen />}
-          {workSection === "events" && <AdminEventsScreen />}
-          {workSection === "tasks" && <AdminTasksScreen />}
-          {workSection === "offers" && <AdminOffersScreen />}
-        </div>
-      )}
+        {group === "comms" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <FilterChips options={COMMS_SECTIONS} active={commsSection} onChange={setCommsSection} />
+            {commsSection === "surveys" && <AdminSurveysScreen />}
+            {commsSection === "tools" && <AdminToolsScreen />}
+          </div>
+        )}
 
-      {group === "comms" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <FilterChips options={COMMS_SECTIONS} active={commsSection} onChange={setCommsSection} />
-          {commsSection === "surveys" && <AdminSurveysScreen />}
-          {commsSection === "tools" && <AdminToolsScreen />}
-        </div>
-      )}
-
-      {group === "analytics" && <AdminDashboardScreen />}
+        {group === "analytics" && <AdminDashboardScreen />}
+      </div>
+      <AdminBottomNav active={group} onChange={setGroup} />
     </div>
   );
 }
