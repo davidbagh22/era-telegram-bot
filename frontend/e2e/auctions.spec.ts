@@ -14,7 +14,10 @@ test("admin creates a lot and the seeded bidder places a real bid on it", async 
 
   try {
     await adminPage.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
-    await expect(adminPage.getByText("ЭРА / ADMIN")).toBeVisible();
+    await expect(adminPage.getByText("Управление")).toBeVisible();
+    // Возможности now lives under the Работа group — see AdminScreen.tsx's
+    // 2026-08 regrouping.
+    await adminPage.getByRole("button", { name: "Работа" }).click();
     await adminPage.getByRole("button", { name: "Возможности" }).click();
     await adminPage.getByRole("button", { name: "Аукционы" }).click();
 

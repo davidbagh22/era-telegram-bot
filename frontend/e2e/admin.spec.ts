@@ -6,9 +6,13 @@ test("admin logs in and approves the seeded pending applicant", async ({ page })
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
 
   // AdminLayout's header, not a screen heading — confirms the admin branch
-  // of App.tsx rendered (is_admin === true), not the plain participant one.
-  await expect(page.getByText("ЭРА / ADMIN")).toBeVisible();
+  // of App.tsx rendered (is_admin === true, and workspace mode, not the
+  // plain participant one).
+  await expect(page.getByText("Управление")).toBeVisible();
 
+  // Заявки now lives under the Люди group — see AdminScreen.tsx's 2026-08
+  // regrouping (5 top-level groups instead of one flat 12-tab row).
+  await page.getByRole("button", { name: "Люди" }).click();
   await page.getByRole("button", { name: "Заявки" }).click();
 
   const applicantCard = page.getByText("E2E Pending Applicant");

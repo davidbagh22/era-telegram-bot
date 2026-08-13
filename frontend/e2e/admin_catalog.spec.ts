@@ -4,8 +4,11 @@ const ADMIN_TELEGRAM_ID = 900003;
 
 test("admin creates a partner and an offer for it through the real API", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
-  await expect(page.getByText("ЭРА / ADMIN")).toBeVisible();
+  await expect(page.getByText("Управление")).toBeVisible();
 
+  // Возможности now lives under the Работа group — see AdminScreen.tsx's
+  // 2026-08 regrouping.
+  await page.getByRole("button", { name: "Работа" }).click();
   await page.getByRole("button", { name: "Возможности" }).click();
   await page.getByRole("button", { name: "Партнёры" }).click();
 

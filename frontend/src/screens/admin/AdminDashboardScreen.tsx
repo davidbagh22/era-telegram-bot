@@ -2,7 +2,6 @@ import { useCallback, useState } from "react";
 import { downloadAnalyticsExcel, fetchAdminAnalyticsSummary, fetchAdminDashboard } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
-import { MetricCard } from "../../components/MetricCard";
 import { useToast } from "../../components/Toast";
 import { useAsync } from "../../hooks/useAsync";
 import type { AnalyticsExcelSection } from "../../types/admin";
@@ -35,10 +34,24 @@ const METRIC_LABELS: Record<string, string> = {
   departments: "Заявки по направлениям",
 };
 
-const ATTENTION_ORDER = [
+// Every metric the backend computes, not just the curated subset
+// AdminOverviewScreen's Action Center and KPI row show — this is the
+// "full breakdown" analytics view, so it's meant to be more exhaustive
+// than Обзор, not a repeat of it. See AdminOverviewScreen.tsx for why the
+// old attention hero + decision list that used to live here moved there
+// instead (this screen is reached from the Аналитика group now, not as
+// the Admin Mode landing screen).
+const ALL_METRIC_ORDER = [
+  "users_total",
+  "users_approved",
   "users_pending",
+  "activists",
+  "leaders",
   "projects_review",
+  "projects_active",
   "events_pending",
+  "events_live",
+  "tasks_open",
   "task_results",
   "activity_results",
   "rewards",
@@ -83,36 +96,16 @@ export function AdminDashboardScreen() {
     return <EmptyState text="Не удалось загрузить дашборд." />;
   }
 
-  const { metrics, attention_total } = state.data;
+  const { metrics } = state.data;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <Card gradient>
-        <div style={{ fontFamily: "var(--era-font-display)", fontSize: "1.75rem" }}>
-          {attention_total}
-        </div>
-        <div>требует внимания прямо сейчас</div>
-      </Card>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, 1fr)",
-          gap: "0.75rem",
-        }}
-      >
-        <MetricCard label="Участников" value={metrics.users_total ?? 0} />
-        <MetricCard label="Новые заявки" value={metrics.users_pending ?? 0} />
-        <MetricCard label="Проекты на проверке" value={metrics.projects_review ?? 0} />
-        <MetricCard label="Активные проекты" value={metrics.projects_active ?? 0} />
-      </div>
-
       <section>
         <h2 style={{ fontSize: "0.875rem", color: "var(--era-text-muted)", margin: "0 0 0.5rem" }}>
-          Что требует решения
+          Показатели
         </h2>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          {ATTENTION_ORDER.map((key) => (
+          {ALL_METRIC_ORDER.map((key) => (
             <Card key={key}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>{METRIC_LABELS[key] ?? key}</span>

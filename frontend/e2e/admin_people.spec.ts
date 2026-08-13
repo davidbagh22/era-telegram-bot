@@ -6,8 +6,11 @@ test("admin searches the people directory, opens a participant, and awards point
   page,
 }) => {
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
-  await expect(page.getByText("ЭРА / ADMIN")).toBeVisible();
+  await expect(page.getByText("Управление")).toBeVisible();
 
+  // Участники now lives under the Люди group — see AdminScreen.tsx's
+  // 2026-08 regrouping.
+  await page.getByRole("button", { name: "Люди" }).click();
   await page.getByRole("button", { name: "Участники" }).click();
   await page.getByPlaceholder("Имя, username или Telegram ID").fill("E2E Participant");
 

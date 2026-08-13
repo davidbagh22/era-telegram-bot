@@ -4,8 +4,11 @@ const ADMIN_TELEGRAM_ID = 900003;
 
 test("admin creates an office and assigns the seeded participant to it", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
-  await expect(page.getByText("ЭРА / ADMIN")).toBeVisible();
+  await expect(page.getByText("Управление")).toBeVisible();
 
+  // Должности now lives under the Люди group — see AdminScreen.tsx's
+  // 2026-08 regrouping.
+  await page.getByRole("button", { name: "Люди" }).click();
   await page.getByRole("button", { name: "Должности" }).click();
 
   const officeTitle = `E2E Office ${Date.now()}`;

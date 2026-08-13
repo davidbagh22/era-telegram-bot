@@ -13,7 +13,10 @@ test("admin creates and sends a survey; the participant answers it and the admin
 
   try {
     await adminPage.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
-    await expect(adminPage.getByText("ЭРА / ADMIN")).toBeVisible();
+    await expect(adminPage.getByText("Управление")).toBeVisible();
+    // Опросы now lives under the Коммуникации group — see AdminScreen.tsx's
+    // 2026-08 regrouping.
+    await adminPage.getByRole("button", { name: "Коммуникации" }).click();
     await adminPage.getByRole("button", { name: "Опросы" }).click();
 
     const surveyTitle = `E2E Survey ${Date.now()}`;
@@ -48,6 +51,7 @@ test("admin creates and sends a survey; the participant answers it and the admin
     await expect(participantCard.getByText("пройден")).toBeVisible();
 
     await adminPage.reload();
+    await adminPage.getByRole("button", { name: "Коммуникации" }).click();
     await adminPage.getByRole("button", { name: "Опросы" }).click();
     const refreshedCard = adminPage.locator(".era-card", { hasText: surveyTitle });
     await refreshedCard.getByRole("button", { name: /^Ответы/ }).click();

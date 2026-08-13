@@ -3,6 +3,16 @@ export interface DashboardData {
   attention_total: number;
 }
 
+// Admin Mode Overview's "Последняя активность" — see
+// app/services/admin_activity_feed_service.py.
+export interface ActivityFeedEntry {
+  id: number;
+  actor_name: string | null;
+  summary: string;
+  entity_type: string;
+  created_at: string;
+}
+
 // Mini App equivalent of the bot's "📊 Аналитика и Excel" flow — see
 // app/services/admin_analytics_service.py.
 export interface AnalyticsSummary {

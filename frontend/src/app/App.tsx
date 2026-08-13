@@ -94,6 +94,15 @@ export function App() {
   const [deepLink] = useState<DeepLink | null>(() => parseDeepLink());
   const initialProjectId = deepLink?.projectId ?? null;
   const [activeTab, setActiveTab] = useState<TabKey>(deepLink?.tab ?? "home");
+  // Admin/leader land in their workspace by default — unchanged from
+  // before this switch existed, and what e2e/admin.spec.ts and friends
+  // already assume ("ЭРА / ADMIN" — now just "Управление" — visible right
+  // after login, no extra click). What's new is that it's no longer the
+  // *only* place they can be: "← Личное" in AdminLayout/LeaderLayout flips
+  // this to false, landing them on the exact same Home/Projects/
+  // Opportunities/Profile a participant sees — previously an admin or
+  // leader had no route to their own personal Mini App at all.
+  const [inWorkspace, setInWorkspace] = useState(true);
 
   if (auth.status === "loading") {
     return null;
@@ -112,16 +121,16 @@ export function App() {
     return <BlockedScreen />;
   }
 
-  if (user.is_admin) {
+  if (user.is_admin && inWorkspace) {
     return (
-      <AdminLayout>
+      <AdminLayout onExitWorkspace={() => setInWorkspace(false)}>
         {initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <AdminScreen />}
       </AdminLayout>
     );
   }
-  if (user.is_leader) {
+  if (user.is_leader && inWorkspace) {
     return (
-      <LeaderLayout>
+      <LeaderLayout onExitWorkspace={() => setInWorkspace(false)}>
         {initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <LeaderScreen />}
       </LeaderLayout>
     );
@@ -129,13 +138,21 @@ export function App() {
 
   return (
     <UserLayout activeTab={activeTab} onTabChange={setActiveTab}>
-      {renderTab(
-        activeTab,
-        user,
-        initialProjectId,
-        deepLink?.activitySection ?? null,
-        deepLink?.itemId ?? null,
-        setActiveTab,
+      {activeTab === "profile" ? (
+        <ProfileScreen
+          isAdmin={user.is_admin}
+          isLeader={user.is_leader}
+          onEnterWorkspace={user.is_admin || user.is_leader ? () => setInWorkspace(true) : undefined}
+        />
+      ) : (
+        renderTab(
+          activeTab,
+          user,
+          initialProjectId,
+          deepLink?.activitySection ?? null,
+          deepLink?.itemId ?? null,
+          setActiveTab,
+        )
       )}
     </UserLayout>
   );

@@ -18,7 +18,10 @@ test("admin publishes a reward, the seeded participant redeems it, and the admin
 
   try {
     await adminPage.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
-    await expect(adminPage.getByText("ЭРА / ADMIN")).toBeVisible();
+    await expect(adminPage.getByText("Управление")).toBeVisible();
+    // Возможности now lives under the Работа group — see AdminScreen.tsx's
+    // 2026-08 regrouping.
+    await adminPage.getByRole("button", { name: "Работа" }).click();
     await adminPage.getByRole("button", { name: "Возможности" }).click();
     await adminPage.getByRole("button", { name: "Каталог" }).click();
 
@@ -46,6 +49,7 @@ test("admin publishes a reward, the seeded participant redeems it, and the admin
     await expect(participantCard.getByText("заявка отправлена")).toBeVisible();
 
     await adminPage.reload();
+    await adminPage.getByRole("button", { name: "Работа" }).click();
     await adminPage.getByRole("button", { name: "Возможности" }).click();
     await adminPage.getByRole("button", { name: "Каталог" }).click();
     const redemptionCard = adminPage.locator(".era-card", { hasText: "E2E Reward Redeemer" });

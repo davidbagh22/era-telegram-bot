@@ -51,7 +51,17 @@ function PortfolioSection({ title, entries }: { title: string; entries: Portfoli
   );
 }
 
-export function ProfileScreen() {
+interface ProfileScreenProps {
+  isAdmin?: boolean;
+  isLeader?: boolean;
+  /** Present only when the current user actually has a workspace to
+   * switch into (App.tsx passes it for admin/leader only). Its absence,
+   * not a hidden button, is what keeps this off a plain participant's
+   * profile — see App.tsx's workspace-mode switch. */
+  onEnterWorkspace?: () => void;
+}
+
+export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileScreenProps = {}) {
   const state = useAsync(fetchProfile, []);
   const [downloading, setDownloading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -167,6 +177,22 @@ export function ProfileScreen() {
         totalSteps={data.growth.level_count}
         labels={GROWTH_LABELS}
       />
+
+      {onEnterWorkspace && (
+        <Card>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
+            <div>
+              <strong>Управление ЭРА</strong>
+              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+                {isAdmin ? "Режим администратора" : isLeader ? "Режим лидера" : "Рабочее пространство"}
+              </p>
+            </div>
+            <button type="button" className="era-btn-primary" onClick={onEnterWorkspace}>
+              Перейти
+            </button>
+          </div>
+        </Card>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.5rem" }}>
         {Object.entries(data.stats).map(([key, value]) => (

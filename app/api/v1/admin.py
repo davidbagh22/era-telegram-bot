@@ -60,6 +60,7 @@ from app.services.admin_contacts_service import ContactError
 from app.services.admin_contacts_service import archive_contact as archive_org_contact
 from app.services.admin_contacts_service import create_contact as create_org_contact
 from app.services.admin_contacts_service import list_contacts as list_org_contacts
+from app.services.admin_activity_feed_service import recent_activity
 from app.services.admin_dashboard_service import dashboard_metrics, has_dashboard_access
 from app.services.admin_goals_service import GoalError, create_goal, decide_goal, goal_out, list_goals
 from app.services.admin_greetings_service import (
@@ -142,6 +143,29 @@ async def read_dashboard(
 ) -> DashboardOut:
     metrics = await dashboard_metrics(session)
     return DashboardOut(metrics=metrics.values, attention_total=metrics.attention_total)
+
+
+class ActivityEntryOut(BaseModel):
+    id: int
+    actor_name: str | None
+    summary: str
+    entity_type: str
+    created_at: str
+
+
+@router.get("/recent-activity", response_model=list[ActivityEntryOut])
+async def read_recent_activity(
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> list[ActivityEntryOut]:
+    entries = await recent_activity(session)
+    return [
+        ActivityEntryOut(
+            id=e.id, actor_name=e.actor_name, summary=e.summary,
+            entity_type=e.entity_type, created_at=e.created_at.isoformat(),
+        )
+        for e in entries
+    ]
 
 
 # ---------------------------------------------------------------------------
