@@ -94,3 +94,54 @@ export function AuctionIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+// AdminBottomNav.tsx's 5 groups (Обзор/Люди/Работа/Связь/Аналитика) —
+// same hand-drawn stroke style as the rest of this file.
+export function OverviewIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...baseProps(props)}>
+      <rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13" y="3.5" width="7.5" height="7.5" rx="1.5" />
+      <rect x="3.5" y="13" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13" y="13" width="7.5" height="7.5" rx="1.5" />
+    </svg>
+  );
+}
+
+export function PeopleIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...baseProps(props)}>
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3.5 19c.9-3.2 3-5 5.5-5s4.6 1.8 5.5 5" />
+      <circle cx="17" cy="7.5" r="2.25" />
+      <path d="M15.5 10.7c1.8.3 3.1 1.7 3.7 3.8" />
+    </svg>
+  );
+}
+
+export function WorkIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...baseProps(props)}>
+      <rect x="3.5" y="8" width="17" height="11" rx="2" />
+      <path d="M8.5 8V6a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v2" />
+      <path d="M3.5 13h17" />
+    </svg>
+  );
+}
+
+export function CommsIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...baseProps(props)}>
+      <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H9l-4.5 4v-4H5.5A1.5 1.5 0 0 1 4 14.5Z" />
+    </svg>
+  );
+}
+
+export function AnalyticsIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...baseProps(props)}>
+      <path d="M4 20V10M11 20V4M18 20v-7" />
+      <path d="M2.5 20h19" />
+    </svg>
+  );
+}
