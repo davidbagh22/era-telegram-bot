@@ -172,6 +172,25 @@ now-dead browse handlers from its still-live action handlers correctly,
 file by file, is real remaining work that deserves its own dedicated,
 carefully-verified pass rather than a rushed mass move in this one.
 
+## P1 — points ledger: verified single source of truth
+
+`app/services/points_service.py::add_points()` is the *only* place in the
+codebase that constructs a `PointTransaction` row (confirmed via
+`rg 'PointTransaction\('` — the sole other hit is the model definition
+itself). It supports an `idempotency_key` (returns the existing row
+instead of double-inserting) and locks the user row (`with_for_update()`)
+before checking `balance + points < 0` on any negative-points call,
+preventing a double-spend race on redemptions/purchases. There is no
+cached `User.points` column anywhere to drift out of sync — every balance
+read (`points_service.total_points()`, and `app/repositories/users.py`'s
+`rating()` for the leaderboard) is a live `SUM(PointTransaction.points)`
+against the same table. Traced every consumer
+(`leaderboard_service.py`, `growth.py`/profile, both participant- and
+admin-side `partner_offers_block16.py` for opportunities,
+`auction_service.py`/`auction_block17.py`, `redemption_service.py` for
+rewards, `admin_dashboard_service.py`) — all read through the same two
+functions. No drift, no second calculation, no bug found.
+
 ## Scope note
 
 This audit prioritized the class of bug most likely to cause silent data
