@@ -16,9 +16,18 @@ from app.repositories.users import get_user_by_telegram_id
 
 logger = logging.getLogger(__name__)
 
-# Generous enough for a user re-opening the Mini App repeatedly, tight
-# enough to blunt a scripted attempt to mint sessions for many Telegram IDs.
-AUTH_RATE_LIMIT = 20
+# Generous enough for a user re-opening the Mini App repeatedly across
+# several tabs/devices behind one IP (offices/NATs share one outbound
+# address), tight enough to blunt a scripted attempt to mint sessions for
+# many Telegram IDs. Was 20 — raised after the real cause of the
+# intermittent rewards.spec.ts/surveys.spec.ts CI failures turned out to
+# be this exact limit: the whole E2E suite runs single-worker, sequential,
+# and every spec's page load(s) POST here, all from the CI runner's one
+# IP, well within one 60s window — 20 was already only a few specs deep
+# into a full ~24-file run. Confirmed via uvicorn.log on the failing CI
+# runs (`429 Too Many Requests` on this exact endpoint, at this exact
+# position in the run, reproducing identically on main before this fix).
+AUTH_RATE_LIMIT = 60
 AUTH_RATE_LIMIT_WINDOW_SECONDS = 60
 
 router = APIRouter(tags=["miniapp-auth"])

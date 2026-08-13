@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import get_session, get_settings
 from app.api.security import create_session_token
+from app.api.v1.auth import AUTH_RATE_LIMIT
 from app.api.v1.router import api_router
 from app.config import Settings
 
@@ -155,6 +156,70 @@ class MiniAppAuthEndpointTests(unittest.TestCase):
                 "/api/v1/miniapp/auth", json={"devTelegramId": 555}
             )
         self.assertEqual(response.status_code, 500)
+
+
+class _FakeRedis:
+    """Minimal in-memory stand-in for the fixed-window counters
+    enforce_rate_limit() reads/writes — enough to drive the real
+    /api/v1/miniapp/auth endpoint through its real rate-limit path (rather
+    than the fail-open no-redis branch _build_app() otherwise hits)."""
+
+    def __init__(self) -> None:
+        self.counts: dict[str, int] = {}
+
+    async def incr(self, key: str) -> int:
+        self.counts[key] = self.counts.get(key, 0) + 1
+        return self.counts[key]
+
+    async def expire(self, key: str, seconds: int) -> None:
+        pass
+
+
+def _build_app_with_rate_limiting(settings: Settings) -> FastAPI:
+    app = _build_app(settings)
+    app.state.dispatcher = SimpleNamespace(storage=SimpleNamespace(redis=_FakeRedis()))
+    return app
+
+
+class MiniAppAuthRateLimitTests(unittest.TestCase):
+    """Regression coverage for the real cause of the intermittent
+    rewards.spec.ts/surveys.spec.ts E2E flake (see app/api/v1/auth.py's
+    AUTH_RATE_LIMIT comment): confirms the limit survives a realistic E2E
+    burst from one IP, and that it's still an actual limit, not disabled."""
+
+    def test_a_full_e2e_suite_sized_burst_from_one_ip_all_succeed(self) -> None:
+        settings = _settings()
+        app = _build_app_with_rate_limiting(settings)
+        client = TestClient(app)
+        with patch(
+            "app.api.v1.auth.get_user_by_telegram_id",
+            new=AsyncMock(return_value=_user()),
+        ):
+            # The real, current E2E suite makes well under AUTH_RATE_LIMIT
+            # auth calls total from its single CI-runner IP within one
+            # 60s window (see app/api/v1/auth.py's comment for how this
+            # number was derived from an actual failing run's uvicorn.log)
+            # — this asserts every one of them still succeeds.
+            for _ in range(AUTH_RATE_LIMIT):
+                response = client.post(
+                    "/api/v1/miniapp/auth", json={"devTelegramId": 555}
+                )
+                self.assertEqual(response.status_code, 200)
+
+    def test_the_limit_is_still_a_real_limit(self) -> None:
+        settings = _settings()
+        app = _build_app_with_rate_limiting(settings)
+        client = TestClient(app)
+        with patch(
+            "app.api.v1.auth.get_user_by_telegram_id",
+            new=AsyncMock(return_value=_user()),
+        ):
+            for _ in range(AUTH_RATE_LIMIT):
+                client.post("/api/v1/miniapp/auth", json={"devTelegramId": 555})
+            response = client.post(
+                "/api/v1/miniapp/auth", json={"devTelegramId": 555}
+            )
+        self.assertEqual(response.status_code, 429)
 
 
 class MeEndpointTests(unittest.TestCase):
