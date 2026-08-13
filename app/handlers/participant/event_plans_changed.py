@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Event, EventActivity, EventActivitySubmission, EventRegistration, User
 from app.keyboards.common import back_keyboard
+from app.services.event_activity_service import REVIEWABLE_STATUSES
 from app.services.event_registration_service import (
     can_change_registration_plans,
     mark_not_coming,
@@ -92,7 +93,9 @@ async def my_events(call: CallbackQuery, user: User | None, session: AsyncSessio
                         select(EventActivitySubmission.activity_id).where(
                             EventActivitySubmission.user_id == user.id,
                             EventActivitySubmission.activity_id.in_([activity.id for activity in activities] or [-1]),
-                            EventActivitySubmission.status.in_(["pending", "approved"]),
+                            # Same fix as cabinet.py's identical copy-pasted
+                            # check — see that file's comment for the bug.
+                            EventActivitySubmission.status.in_(REVIEWABLE_STATUSES),
                         )
                     )
                 ).all()

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Event, EventActivity, EventActivitySubmission, EventRegistration, User
+from app.services.event_activity_service import REVIEWABLE_STATUSES
 from app.services.notification_service import notify_admins, safe_send_document, safe_send_photo
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, RegistrationStatus
@@ -189,7 +190,14 @@ async def proof_start(
     if existing and existing.status == "approved":
         await call.message.answer("Эта активность уже принята. Повторная отправка закрыта.")
         return
-    if existing and existing.status == "pending":
+    # This is the router that actually fires for activity:submit: (registered
+    # before the near-duplicate handler in event_activities_block7.py, which
+    # never runs for real traffic — see docs/SYSTEM_FLOW_MATRIX.md). It was
+    # missing the "leader_approved" intermediate status, so a submission a
+    # leader had already pre-approved (but the admin hadn't signed off on
+    # yet) looked "not in review" and could be overwritten by a duplicate
+    # submit. Use the same REVIEWABLE_STATUSES source of truth as cabinet.py.
+    if existing and existing.status in REVIEWABLE_STATUSES:
         await call.message.answer("Ваш результат уже на проверке.")
         return
     proof_type = activity.submission_type if activity.submission_type in ALLOWED_PROOF_TYPES else "text"

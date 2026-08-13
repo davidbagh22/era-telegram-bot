@@ -30,6 +30,7 @@ from app.keyboards.participant import (
     tasks_keyboard,
 )
 from app.repositories.users import rating, user_stats
+from app.services.event_activity_service import REVIEWABLE_STATUSES
 from app.services.notification_service import safe_answer_document, safe_answer_photo
 from app.services.portfolio_service import build_portfolio_data, portfolio_summary_text
 from app.services.resume_service import build_era_resume
@@ -472,7 +473,16 @@ async def my_events(
                         EventActivitySubmission.activity_id.in_(
                             [activity.id for activity in activities] or [-1]
                         ),
-                        EventActivitySubmission.status.in_(["pending", "approved"]),
+                        # Was hand-rolled as ["pending", "approved"], missing
+                        # "leader_approved" — a real intermediate state (see
+                        # event_activity_service.py's own REVIEWABLE_STATUSES)
+                        # between a leader's pre-approval and the admin's final
+                        # sign-off. With it missing, a submission sitting at
+                        # "leader_approved" didn't count as "already
+                        # submitted", so the button to submit *again* for the
+                        # same activity stayed up — a real duplicate-submission
+                        # bug, found by the 2026-08 system flow audit.
+                        EventActivitySubmission.status.in_(REVIEWABLE_STATUSES),
                     )
                 )
             ).all()
