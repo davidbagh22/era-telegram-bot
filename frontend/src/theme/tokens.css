@@ -281,6 +281,16 @@ input[type="checkbox"] {
   display: none; /* Chrome/Android WebView/Safari */
 }
 
+/* Right-edge fade on the same scroller, only where the option list can
+   genuinely run past the viewport (PillTabs, not the fixed-width
+   SegmentedTabs) — a soft hint that there's more to scroll to, now that
+   the native scrollbar itself is hidden. Fades to transparent since the
+   track background (era-surface-2) already shows through underneath. */
+.era-pilltabs-fade {
+  mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent 100%);
+}
+
 @keyframes era-fade-in {
   from {
     opacity: 0;

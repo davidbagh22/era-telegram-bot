@@ -8,7 +8,7 @@ import {
 } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
-import { PillTabs } from "../../components/PillTabs";
+import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { StatusBadge } from "../../components/StatusBadge";
 import type { ProjectDetail as ProjectDetailType, ProjectQuestion } from "../../types/project";
 import { ProjectWorkspace } from "./ProjectWorkspace";
@@ -110,7 +110,7 @@ export function ProjectDetail({ projectId, initialTab = "form", onBack }: Projec
         )}
       </Card>
 
-      <PillTabs options={DETAIL_TABS} active={activeTab} onChange={setActiveTab} />
+      <SegmentedTabs options={DETAIL_TABS} active={activeTab} onChange={setActiveTab} />
 
       {activeTab === "workspace" ? (
         <ProjectWorkspace projectId={projectId} />
