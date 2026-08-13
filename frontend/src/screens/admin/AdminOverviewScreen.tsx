@@ -2,9 +2,16 @@ import { useState } from "react";
 import { fetchAdminDashboard, fetchRecentActivity } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
-import { MetricCard } from "../../components/MetricCard";
+import { MetricCard, type MetricTone } from "../../components/MetricCard";
 import { useAsync } from "../../hooks/useAsync";
 import { AdminMaintenanceScreen } from "./AdminMaintenanceScreen";
+
+// Reused for both the attention list's left accent bar and the KPI grid's
+// tint — a light visual signature per item so the screen isn't a wall of
+// identical white cards, without inventing new meaning per color (unlike
+// HomeScreen's tones, none of these map to a fixed category here, so they
+// just cycle for variety).
+const TONE_CYCLE: MetricTone[] = ["violet", "red", "gold", "magenta"];
 
 // "Что мне нужно сделать сейчас?", not "где находится функция?" — the
 // 2026-08 Admin Mode redesign's Обзор tab. Replaces the old
@@ -73,22 +80,34 @@ export function AdminOverviewScreen() {
           Требует внимания
         </h2>
         {attention_total === 0 ? (
-          <Card>
-            <strong>Всё спокойно</strong>
+          <Card style={{ background: "var(--era-tint-violet)", border: "none", textAlign: "center" }}>
+            <div style={{ fontSize: "1.75rem" }}>✨</div>
+            <strong style={{ color: "var(--era-violet)" }}>Всё спокойно</strong>
             <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>
               Нет задач, требующих решения
             </p>
           </Card>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            {attentionItems.map((item) => (
-              <Card key={item.key}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span>{item.label}</span>
-                  <strong style={{ fontFamily: "var(--era-font-display)" }}>{item.value}</strong>
-                </div>
-              </Card>
-            ))}
+            {attentionItems.map((item, index) => {
+              const tone = TONE_CYCLE[index % TONE_CYCLE.length];
+              return (
+                <Card key={item.key} style={{ borderLeft: `3px solid var(--era-${tone})`, borderRadius: "var(--era-radius-card)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span>{item.label}</span>
+                    <strong
+                      style={{
+                        fontFamily: "var(--era-font-display)",
+                        fontSize: "1.125rem",
+                        color: `var(--era-${tone})`,
+                      }}
+                    >
+                      {item.value}
+                    </strong>
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         )}
       </section>
@@ -98,8 +117,13 @@ export function AdminOverviewScreen() {
           Показатели
         </h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0.5rem" }}>
-          {Object.keys(KPI_LABELS).map((key) => (
-            <MetricCard key={key} label={KPI_LABELS[key]} value={metrics[key] ?? 0} />
+          {Object.keys(KPI_LABELS).map((key, index) => (
+            <MetricCard
+              key={key}
+              label={KPI_LABELS[key]}
+              value={metrics[key] ?? 0}
+              tone={TONE_CYCLE[index % TONE_CYCLE.length]}
+            />
           ))}
         </div>
       </section>
@@ -115,11 +139,12 @@ export function AdminOverviewScreen() {
         )}
         {activity.status === "ready" && activity.data.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
-            {activity.data.map((entry) => (
+            {activity.data.map((entry, index) => (
               <div
                 key={entry.id}
                 style={{
                   display: "flex",
+                  alignItems: "center",
                   justifyContent: "space-between",
                   gap: "0.5rem",
                   padding: "0.5rem 0",
@@ -127,7 +152,16 @@ export function AdminOverviewScreen() {
                   fontSize: "0.8125rem",
                 }}
               >
-                <span>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span
+                    style={{
+                      width: "0.4375rem",
+                      height: "0.4375rem",
+                      borderRadius: "50%",
+                      flexShrink: 0,
+                      background: `var(--era-${TONE_CYCLE[index % TONE_CYCLE.length]})`,
+                    }}
+                  />
                   {entry.actor_name ? <strong>{entry.actor_name}</strong> : "Кто-то"} {entry.summary}
                 </span>
                 <span style={{ color: "var(--era-text-muted)", whiteSpace: "nowrap" }}>
