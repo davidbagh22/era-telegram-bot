@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createProject, describeActionError, fetchProjects } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
-import { PillTabs } from "../../components/PillTabs";
+import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useAsync } from "../../hooks/useAsync";
 import type { ProjectScope } from "../../types/project";
@@ -41,7 +41,7 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-      <PillTabs options={SCOPES} active={scope} onChange={setScope} />
+      <SegmentedTabs options={SCOPES} active={scope} onChange={setScope} />
 
       {scope === "mine" && (
         <Card>
