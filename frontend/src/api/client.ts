@@ -9,6 +9,7 @@ import type {
 } from "../types/activity";
 import type { ApiErrorBody, MiniAppAuthResponse, MiniAppUserSummary } from "../types/auth";
 import type {
+  ActivityFeedEntry,
   ActivitySubmissionAdmin,
   AnalyticsExcelSection,
   AnalyticsSummary,
@@ -500,6 +501,10 @@ export function redeemReward(rewardId: number): Promise<Reward> {
 
 export function fetchAdminDashboard(): Promise<DashboardData> {
   return authorizedGet<DashboardData>("/api/v1/admin/dashboard");
+}
+
+export function fetchRecentActivity(): Promise<ActivityFeedEntry[]> {
+  return authorizedGet<ActivityFeedEntry[]>("/api/v1/admin/recent-activity");
 }
 
 export function fetchAdminAnalyticsSummary(): Promise<AnalyticsSummary> {

@@ -34,7 +34,10 @@ test("leader pre-approves an activity submission, then the admin does the final 
     await expect(leaderPage.locator(".era-card", { hasText: ACTIVITY_TITLE })).toHaveCount(0);
 
     await adminPage.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
-    await expect(adminPage.getByText("ЭРА / ADMIN")).toBeVisible();
+    await expect(adminPage.getByText("Управление")).toBeVisible();
+    // Мероприятия now lives under the Работа group — see AdminScreen.tsx's
+    // 2026-08 regrouping.
+    await adminPage.getByRole("button", { name: "Работа" }).click();
     await adminPage.getByRole("button", { name: "Мероприятия" }).click();
     await adminPage.getByRole("button", { name: "Активности" }).click();
 
