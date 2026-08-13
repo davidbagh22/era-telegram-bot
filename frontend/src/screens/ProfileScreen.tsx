@@ -10,6 +10,7 @@ import { Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { useToast } from "../components/Toast";
 import { useAsync } from "../hooks/useAsync";
+import { LeaderboardScreen } from "./LeaderboardScreen";
 import type { PortfolioEntry } from "../types/profile";
 
 const GROWTH_LABELS = ["Участник", "Активный", "Лидер"];
@@ -68,6 +69,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileSc
   const [deletionOpen, setDeletionOpen] = useState(false);
   const [requestingDeletion, setRequestingDeletion] = useState(false);
   const [deletionRequested, setDeletionRequested] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const toast = useToast();
 
   const handleDownloadResume = useCallback(async () => {
@@ -123,6 +125,10 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileSc
       setRequestingDeletion(false);
     }
   }, [toast]);
+
+  if (showLeaderboard) {
+    return <LeaderboardScreen onBack={() => setShowLeaderboard(false)} />;
+  }
 
   if (state.status === "loading") {
     return (
@@ -199,6 +205,24 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileSc
           <MetricCard key={key} label={STAT_LABELS[key] ?? key} value={value} />
         ))}
       </div>
+
+      <Card>
+        <button
+          type="button"
+          onClick={() => setShowLeaderboard(true)}
+          style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
+            <div>
+              <strong>Рейтинг участников</strong>
+              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+                Баллы и уровни всех участников ЭРА
+              </p>
+            </div>
+            <span style={{ color: "var(--era-text-muted)" }}>→</span>
+          </div>
+        </button>
+      </Card>
 
       {(data.departments.length > 0 || data.directions.length > 0) && (
         <Card>
