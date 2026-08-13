@@ -172,6 +172,30 @@ now-dead browse handlers from its still-live action handlers correctly,
 file by file, is real remaining work that deserves its own dedicated,
 carefully-verified pass rather than a rushed mass move in this one.
 
+## FOUND, not yet fixed — participant-side commands still duplicate the Mini App
+
+`app/handlers/participant/commands_ready.py` (a *different* file from the
+admin one of the same name) is where `/profile`, `/data`, `/events`,
+`/opportunities`, and `/points` actually live — all five are advertised
+in the bot's public `/` autocomplete menu (`USER_COMMANDS` in
+`app/webapp.py`) and all five open a bot-native inline-menu browsing flow
+(`partners:list`, `rewards:menu`, `cabinet:points`, `cabinet:rating`,
+etc.) instead of deep-linking into the Mini App — this is the same
+"duplicate interface for the same function" problem just fixed for
+`/panel`/`/admin`, but on the participant side and for currently-active,
+real daily-use commands. (Also confirmed via router-registration order:
+three different files register a `Command("events")` handler —
+`commands_ready.py`, `events.py`, `events_stability_block8.py` — and
+because `commands_ready.router` is included first in
+`app/handlers/participant/__init__.py`, its browsing-menu version is the
+one that actually runs; the other two are dead for this trigger.)
+**Not fixed in this pass** — unlike the admin tree, these are commands
+real participants type today, so converting them to compatibility
+redirects needs the same careful, tested, one-at-a-time treatment as
+`/panel`/`/admin` got, not a rushed bundling into this PR. Flagged here
+as a concrete, real, still-open P3 item for the next pass, not silently
+dropped.
+
 ## P1 — points ledger: verified single source of truth
 
 `app/services/points_service.py::add_points()` is the *only* place in the
