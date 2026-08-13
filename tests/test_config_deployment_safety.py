@@ -35,6 +35,22 @@ class DeploymentSafetyTests(unittest.TestCase):
         settings = Settings(bot_token="1234567890:test-token")
         self.assertEqual(settings.init_data_max_age_seconds, 3600)
 
+    def test_secret_fields_strip_surrounding_whitespace(self) -> None:
+        # A trailing newline/space pasted into a Render env var is an easy,
+        # silent mistake — see strip_secret_whitespace's own comment in
+        # app/config.py for why it specifically corrupts every Telegram
+        # initData signature check (app/api/security.py) while every other
+        # bot API call keeps working, which is what makes it worth a
+        # regression test rather than trusting env vars to already be clean.
+        settings = Settings(
+            bot_token="  1234567890:test-token\n",
+            miniapp_auth_secret=" secret-value \t",
+            webhook_secret="\nwebhook-secret ",
+        )
+        self.assertEqual(settings.bot_token, "1234567890:test-token")
+        self.assertEqual(settings.miniapp_auth_secret, "secret-value")
+        self.assertEqual(settings.webhook_secret, "webhook-secret")
+
 
 if __name__ == "__main__":
     unittest.main()

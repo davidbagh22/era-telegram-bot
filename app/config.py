@@ -61,6 +61,21 @@ class Settings(BaseSettings):
             return value.replace("postgresql://", "postgresql+asyncpg://", 1)
         return value
 
+    @field_validator("bot_token", "miniapp_auth_secret", "webhook_secret", mode="before")
+    @classmethod
+    def strip_secret_whitespace(cls, value: object) -> object:
+        # A trailing newline/space pasted into a Render env var is an easy,
+        # silent mistake — aiogram's own HTTP calls to the Bot API tend to
+        # tolerate it (it ends up in a URL/header that gets normalized
+        # somewhere along the way), but our own HMAC checks
+        # (app/api/security.py's verify_init_data/create_session_token)
+        # hash this value byte-for-byte, so unstripped whitespace here would
+        # make every genuine Telegram-signed initData look like a forgery
+        # while every other bot API call kept working fine — the specific,
+        # confusing failure mode that made this worth guarding against
+        # rather than trusting the env var to already be clean.
+        return value.strip() if isinstance(value, str) else value
+
     @property
     def chat_ids(self) -> set[int]:
         return {
