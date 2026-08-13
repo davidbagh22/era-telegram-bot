@@ -12,7 +12,7 @@ from app.database.models import (
     User,
     UserQuestion,
 )
-from app.keyboards.participant import main_menu
+from app.keyboards.participant import main_inline_keyboard
 from app.services.maintenance_service import reset_operational_data, reset_preview
 from app.utils.constants import ApplicationStatus, Role
 
@@ -101,8 +101,8 @@ class MaintenanceTests(unittest.IsolatedAsyncioTestCase):
         engine.dispose()
 
     async def test_main_menu_explains_the_bot(self) -> None:
-        keyboard = main_menu("https://t.me/era")
-        labels = {button.text for row in keyboard.keyboard for button in row}
+        keyboard = main_inline_keyboard()
+        labels = {button.text for row in keyboard.inline_keyboard for button in row}
         self.assertIn("⭐ Возможности", labels)
 
 

@@ -102,8 +102,8 @@ USER_COMMANDS = [
 
 # The old in-bot admin panel tree (/panel and its /admin_* shortcuts,
 # app/handlers/admin/management_ready.py + commands_ready.py) is
-# deliberately no longer advertised here, mirroring main_menu()'s own
-# PR 36 rationale — Admin Mode in the Mini App covers participants,
+# deliberately no longer advertised here, mirroring PR 36's Bot/Mini App
+# role-split rationale — Admin Mode in the Mini App covers participants,
 # events, projects, tasks, and rights review. The commands themselves
 # are intentionally NOT deleted: a few legacy capabilities (Excel/
 # analytics export, monthly goals, the organizations-contacts database,
@@ -118,13 +118,13 @@ ADMIN_COMMANDS = USER_COMMANDS + [
 
 def _chat_menu_button(miniapp_url: str) -> MenuButtonWebApp | MenuButtonDefault:
     """The persistent button next to the message input (Telegram's "chat
-    menu button" — distinct from the "🔥 Открыть ЭРА" reply-keyboard button
-    in main_menu(), which only appears after main_menu() has been sent at
-    least once). Opens the Mini App in one tap from anywhere once it's
-    actually configured (`miniapp_url` is `Settings.effective_miniapp_url`,
-    already empty until `MINIAPP_AUTH_SECRET` is set); falls back to the
-    plain commands list otherwise, rather than shipping a button that
-    would error.
+    menu button" — distinct from the "🔥 Открыть ЭРА" inline button in
+    main_inline_keyboard(), which only appears after the bot has actually
+    sent a message carrying it). Opens the Mini App in one tap from
+    anywhere once it's actually configured (`miniapp_url` is
+    `Settings.effective_miniapp_url`, already empty until
+    `MINIAPP_AUTH_SECRET` is set); falls back to the plain commands list
+    otherwise, rather than shipping a button that would error.
     """
     if not miniapp_url:
         return MenuButtonDefault()

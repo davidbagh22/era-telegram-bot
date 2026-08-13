@@ -64,6 +64,17 @@ class User(TimestampMixin, Base):
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     archived_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    # One-time migration flag: True means this user's Telegram client has
+    # never had (or has already had cleared) the old persistent
+    # ReplyKeyboardMarkup main menu (removed — see
+    # app/middlewares/legacy_keyboard_cleanup.py). `default=True` here is
+    # the client-side (ORM-insert) default, so every user created *after*
+    # this migration ships starts already "clean" and is never sent the
+    # one-time ReplyKeyboardRemove notice. Existing rows are backfilled to
+    # False by migration 0016, since Telegram keeps a persistent reply
+    # keyboard visible on the client until the bot explicitly removes it —
+    # they may still have one cached from weeks ago.
+    legacy_reply_keyboard_removed: Mapped[bool] = mapped_column(Boolean, default=True)
 
     departments: Mapped[list[UserDepartment]] = relationship(
         back_populates="user", cascade="all, delete-orphan", lazy="selectin"
