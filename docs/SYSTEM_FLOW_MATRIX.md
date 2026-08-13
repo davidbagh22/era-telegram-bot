@@ -131,6 +131,47 @@ independently of any frontend rendering — confirmed by
 `test_participant_forbidden_from_dashboard` and `test_participant_is_denied`,
 which already existed and pass. Not a gap.
 
+## P2 — /panel and /admin removed from live routing
+
+Per the 2026-08 master spec (section 23, reversing the earlier "keep
+/panel as a fallback" decision now that Admin Mode in the Mini App has
+full parity — see the six ports in PRs #163-166): every bot-native entry
+point into the old admin browse-menu tree now shows a compact "this lives
+in the Mini App now" redirect instead of opening the tree —
+
+- `/panel` (`management_ready.py::panel_command`)
+- `/admin` and the legacy `"⚙️ Управление"` reply-keyboard trigger
+  (`dashboard_block_a.py::admin_dashboard`)
+- the `admin:panel` "back to dashboard" callback
+  (`dashboard_block_a.py::admin_dashboard_callback`)
+- the `"⚙️ Панель"` fallback-menu button and its `panel:open` callback
+  (`navigation.py::panel_button` / `panel_callback`)
+- all six `/admin_users`, `/admin_events`, `/admin_projects`,
+  `/admin_partners`, `/admin_tasks`, `/admin_rights` shortcuts
+  (`commands_ready.py`) — these previously jumped straight past `/panel`
+  into a specific branch of the same tree
+
+The commands are kept live (not deleted) as compatibility handlers, per
+the spec's explicit "archive, don't destroy" instruction. `admin:attention`
+(`dashboard_block_a.py`) was fully dead code once its only entry point
+(the removed dashboard keyboard) was gone — verified via
+`rg '"admin:attention"'` across `app/` before deleting it outright, since
+nothing else ever sent that callback_data.
+
+**Not done in this pass, and flagged honestly rather than silently
+skipped:** the deeper `admin:*` callback tree itself (~30 files under
+`app/handlers/admin/`) is now unreachable *browse/menu* code (verified —
+nothing outside the admin package and `app/keyboards/admin.py` itself
+links into it, and `notification_service.py` never does), but it has not
+been physically moved to `archive/legacy_bot/` yet. Several of those same
+files also contain object-specific action handlers reachable from admin
+notifications (e.g. `admin:tasksub:approve:*`, `admin:project:review:*`)
+that must stay live per the spec's own "contextual notification actions
+are not duplication" rule (section 19-22) — splitting each file's
+now-dead browse handlers from its still-live action handlers correctly,
+file by file, is real remaining work that deserves its own dedicated,
+carefully-verified pass rather than a rushed mass move in this one.
+
 ## Scope note
 
 This audit prioritized the class of bug most likely to cause silent data
