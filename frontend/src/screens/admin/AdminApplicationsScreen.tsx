@@ -8,6 +8,7 @@ import {
 } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
+import { InitialsAvatar } from "../../components/InitialsAvatar";
 import { useAsync } from "../../hooks/useAsync";
 
 export function AdminApplicationsScreen() {
@@ -87,10 +88,13 @@ export function AdminApplicationsScreen() {
         <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
       )}
       {state.data.map((application) => (
-        <Card key={application.id}>
-          <strong>
-            {application.first_name} {application.last_name ?? ""}
-          </strong>
+        <Card key={application.id} style={{ borderLeft: "3px solid var(--era-gold)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", marginBottom: "0.25rem" }}>
+            <InitialsAvatar firstName={application.first_name} lastName={application.last_name} />
+            <strong>
+              {application.first_name} {application.last_name ?? ""}
+            </strong>
+          </div>
           <p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>
             {application.city ?? "—"} · {application.occupation ?? "—"}
           </p>

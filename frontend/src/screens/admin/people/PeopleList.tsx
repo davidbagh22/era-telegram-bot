@@ -2,6 +2,7 @@ import { useState } from "react";
 import { fetchAdminUsers } from "../../../api/client";
 import { Card } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
+import { InitialsAvatar } from "../../../components/InitialsAvatar";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { useAsync } from "../../../hooks/useAsync";
 import { ROLE_LABELS, ROLE_OPTIONS } from "./roleLabels";
@@ -69,17 +70,20 @@ export function PeopleList({ onSelect }: PeopleListProps) {
                 width: "100%",
                 justifyContent: "space-between",
                 alignItems: "center",
-                gap: "0.5rem",
+                gap: "0.625rem",
               }}
             >
-              <span>
-                <strong>
-                  {item.first_name} {item.last_name ?? ""}
-                </strong>
-                <br />
-                <span style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-                  {ROLE_LABELS[item.role] ?? item.role}
-                  {item.username ? ` · @${item.username}` : ""}
+              <span style={{ display: "flex", alignItems: "center", gap: "0.625rem", minWidth: 0 }}>
+                <InitialsAvatar firstName={item.first_name} lastName={item.last_name} />
+                <span style={{ minWidth: 0 }}>
+                  <strong>
+                    {item.first_name} {item.last_name ?? ""}
+                  </strong>
+                  <br />
+                  <span style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+                    {ROLE_LABELS[item.role] ?? item.role}
+                    {item.username ? ` · @${item.username}` : ""}
+                  </span>
                 </span>
               </span>
               <span style={{ display: "flex", gap: "0.375rem", flexShrink: 0 }}>
