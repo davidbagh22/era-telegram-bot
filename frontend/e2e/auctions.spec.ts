@@ -38,14 +38,23 @@ test("admin creates a lot and the seeded bidder places a real bid on it", async 
     await participantPage.getByRole("button", { name: "Возможности" }).click();
     await participantPage.getByRole("button", { name: "Аукционы" }).click();
 
+    // Hero card (2026-08 premium marketplace redesign): the card itself
+    // shows title/countdown/current bid and a CTA that opens the actual
+    // bid form in a detail bottom sheet, rather than an inline input.
     const lotCard = participantPage.locator(".era-card", { hasText: lotTitle });
     await expect(lotCard).toBeVisible();
-    await lotCard.getByPlaceholder(/^от /).fill("150");
     await lotCard.getByRole("button", { name: "Сделать ставку" }).click();
 
+    const sheet = participantPage.getByRole("dialog", { name: lotTitle });
+    await expect(sheet).toBeVisible();
+    await sheet.getByPlaceholder(/^от /).fill("150");
+    await sheet.getByRole("button", { name: "Подтвердить ставку" }).click();
+
     // A real bid through the full stack (API -> auction_service -> DB),
-    // not a UI-only echo — verified by the bid showing up as "your bid"
+    // not a UI-only echo — verified by the sheet closing (immediate UI
+    // update) and the bid showing up as "your bid" on the card itself
     // after the screen refetches the auction from the API.
+    await expect(sheet).not.toBeVisible();
     await expect(lotCard.getByText("Ваша ставка: 150 баллов")).toBeVisible();
   } finally {
     await adminContext.close();
