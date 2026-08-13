@@ -100,17 +100,16 @@ USER_COMMANDS = [
     BotCommand(command="help", description="Что умеет бот"),
 ]
 
-# The old in-bot admin panel tree (/panel and its /admin_* shortcuts,
-# app/handlers/admin/management_ready.py + commands_ready.py) is
-# deliberately no longer advertised here, mirroring PR 36's Bot/Mini App
-# role-split rationale — Admin Mode in the Mini App covers participants,
-# events, projects, tasks, and rights review. The commands themselves
-# are intentionally NOT deleted: a few legacy capabilities (Excel/
-# analytics export, monthly goals, the organizations-contacts database,
-# the department/direction structure editor, general broadcast, and
-# test-data maintenance) don't have a Mini App equivalent yet, so an
-# admin who still knows the old command can type it directly — it just
-# isn't offered in the "/" autocomplete menu as the default UX anymore.
+# The old in-bot admin panel tree (/panel, /admin,
+# app/handlers/admin/management_ready.py + dashboard_block_a.py) is not
+# advertised here. Update (2026-08 master spec / docs/SYSTEM_FLOW_MATRIX.md):
+# the "legacy capabilities without a Mini App equivalent yet" carve-out this
+# comment used to describe is gone — Excel/analytics export, monthly goals,
+# the organizations-contacts database, the department/direction structure
+# editor, general broadcast, and test-data maintenance were all ported to
+# Admin Mode in the Mini App. /panel and /admin now only show a "this lives
+# in the Mini App now" redirect (kept live, not deleted, as a compatibility
+# handler for anyone who still types the old command).
 ADMIN_COMMANDS = USER_COMMANDS + [
     BotCommand(command="version", description="Версия запущенного бота"),
 ]

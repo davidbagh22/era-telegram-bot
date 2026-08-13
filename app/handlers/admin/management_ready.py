@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.management_models import MonthlyGoal, OrganizationContact
 from app.database.models import Department, User
-from app.keyboards.admin import admin_panel_keyboard
+from app.keyboards.participant import open_app_button
 from app.services.admin_analytics_service import EXCEL_SECTION_MAP, build_analytics_payload
 from app.services.admin_broadcast_service import BroadcastError, send_chat_broadcast
 from app.services.admin_contacts_service import ContactError, archive_contact, create_contact
@@ -80,10 +80,15 @@ def _communications_keyboard() -> InlineKeyboardMarkup:
 
 @router.message(Command("panel"))
 async def panel_command(message: Message, user: User | None, settings: Settings, state: FSMContext) -> None:
+    # /panel used to open the full bot-native admin menu tree
+    # (admin_panel_keyboard()). Admin Mode in the Mini App now covers
+    # everything that tree offered (see docs/SYSTEM_FLOW_MATRIX.md and the
+    # 2026-08 master spec's Bot/Mini App role split) — this command is kept
+    # live only as a compatibility redirect, not a duplicate interface.
     if not await _guard(message, user, settings):
         return
     await state.clear()
-    await message.answer(texts.ADMIN_PANEL, reply_markup=admin_panel_keyboard())
+    await message.answer(texts.ADMIN_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
 
 
 @router.callback_query(F.data == "admin:menu:system")
