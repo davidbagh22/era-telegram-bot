@@ -54,6 +54,7 @@ import type {
   UserListResult,
 } from "../types/admin";
 import type { HomeSnapshot } from "../types/home";
+import type { Leaderboard } from "../types/leaderboard";
 import type {
   ActivitySubmission,
   LeaderOpenTask,
@@ -227,6 +228,12 @@ export function fetchMe(): Promise<MiniAppUserSummary> {
 
 export function fetchHome(): Promise<HomeSnapshot> {
   return authorizedGet<HomeSnapshot>("/api/v1/home");
+}
+
+// Mini App equivalent of the Bot's "🏆 Рейтинг" (cabinet:rating) — see
+// app/services/leaderboard_service.py.
+export function fetchLeaderboard(): Promise<Leaderboard> {
+  return authorizedGet<Leaderboard>("/api/v1/leaderboard");
 }
 
 export function fetchEvents(scope: EventScope): Promise<EventItem[]> {
