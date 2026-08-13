@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { PillTabs } from "../components/PillTabs";
+import { SegmentedTabs } from "../components/SegmentedTabs";
 import { CalendarTab } from "./activity/CalendarTab";
 import { EventsTab } from "./activity/EventsTab";
 import { HistoryTab } from "./activity/HistoryTab";
@@ -32,7 +32,7 @@ export function ActivityScreen({ initialSection, initialItemId }: ActivityScreen
       <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.375rem", margin: 0 }}>
         Активность
       </h1>
-      <PillTabs options={SECTIONS} active={section} onChange={setSection} />
+      <SegmentedTabs options={SECTIONS} active={section} onChange={setSection} />
       {section === "events" && <EventsTab initialItemId={section === initialSection ? initialItemId : null} />}
       {section === "tasks" && <TasksTab initialItemId={section === initialSection ? initialItemId : null} />}
       {section === "calendar" && <CalendarTab />}

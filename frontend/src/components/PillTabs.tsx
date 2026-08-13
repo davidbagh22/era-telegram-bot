@@ -7,11 +7,11 @@ interface PillTabsProps<T extends string> {
 export function PillTabs<T extends string>({ options, active, onChange }: PillTabsProps<T>) {
   return (
     <div
+      className="era-pilltabs-scroller"
       style={{
         display: "flex",
         gap: "0.5rem",
         overflowX: "auto",
-        paddingBottom: "0.25rem",
         // Without this, a flex item's default min-width is its content's
         // width, not 0 — with enough pills (OpportunitiesScreen has 7),
         // that's wider than a narrow phone, and since nothing here shrinks

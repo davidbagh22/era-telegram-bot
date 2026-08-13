@@ -267,6 +267,20 @@ input[type="checkbox"] {
   transition: box-shadow var(--era-motion), transform var(--era-motion);
 }
 
+/* PillTabs' horizontal scroller (docs/UI_DESIGN_SYSTEM.md) — the native
+   scrollbar Chrome/Android paint under an overflow-x:auto row read as a
+   stray gray slider bolted under an otherwise polished pill row. Scrolling
+   itself stays fully functional (touch drag / trackpad), only the visible
+   track is removed. */
+.era-pilltabs-scroller {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge */
+}
+
+.era-pilltabs-scroller::-webkit-scrollbar {
+  display: none; /* Chrome/Android WebView/Safari */
+}
+
 @keyframes era-fade-in {
   from {
     opacity: 0;

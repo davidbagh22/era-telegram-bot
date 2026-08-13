@@ -9,7 +9,7 @@ import {
 import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
-import { PillTabs } from "../../components/PillTabs";
+import { FilterChips } from "../../components/FilterChips";
 import { SkeletonList } from "../../components/Skeleton";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useToast } from "../../components/Toast";
@@ -160,7 +160,7 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-      <PillTabs options={SCOPES} active={scope} onChange={setScope} />
+      <FilterChips options={SCOPES} active={scope} onChange={setScope} />
 
       {actionError && (
         <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
