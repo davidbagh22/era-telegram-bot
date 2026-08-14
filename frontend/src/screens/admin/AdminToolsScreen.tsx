@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ActionCell } from "../../components/ActionCell";
+import { AutoContentPanel } from "./tools/AutoContentPanel";
 import { BroadcastPanel } from "./tools/BroadcastPanel";
 import { ChatsPanel } from "./tools/ChatsPanel";
 import { ContactsPanel } from "./tools/ContactsPanel";
@@ -7,7 +8,14 @@ import { GoalsPanel } from "./tools/GoalsPanel";
 import { GreetingsPanel } from "./tools/GreetingsPanel";
 import { StructurePanel } from "./tools/StructurePanel";
 
-type ToolsSection = "goals" | "contacts" | "structure" | "chats" | "greetings" | "broadcast";
+type ToolsSection =
+  | "goals"
+  | "contacts"
+  | "structure"
+  | "chats"
+  | "greetings"
+  | "broadcast"
+  | "autocontent";
 
 const SECTIONS: { value: ToolsSection; label: string; description: string }[] = [
   { value: "goals", label: "Цели месяца", description: "Фокус команды и ключевые цели текущего месяца" },
@@ -16,6 +24,11 @@ const SECTIONS: { value: ToolsSection; label: string; description: string }[] = 
   { value: "chats", label: "Чаты", description: "Привязка, доступ и состояние организационных чатов" },
   { value: "greetings", label: "Приветствия", description: "Сообщения для новых участников в чатах" },
   { value: "broadcast", label: "Рассылки", description: "Коммуникации с участниками и рабочими чатами" },
+  {
+    value: "autocontent",
+    label: "Автоконтент",
+    description: "Утро, вечер, вызовы, темы и праздники общего чата",
+  },
 ];
 
 export function AdminToolsScreen() {
@@ -25,7 +38,12 @@ export function AdminToolsScreen() {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", minWidth: 0 }}>
         {SECTIONS.map((item) => (
-          <ActionCell key={item.value} title={item.label} description={item.description} onClick={() => setSection(item.value)} />
+          <ActionCell
+            key={item.value}
+            title={item.label}
+            description={item.description}
+            onClick={() => setSection(item.value)}
+          />
         ))}
       </div>
     );
@@ -45,6 +63,7 @@ export function AdminToolsScreen() {
       {section === "chats" && <ChatsPanel />}
       {section === "greetings" && <GreetingsPanel />}
       {section === "broadcast" && <BroadcastPanel />}
+      {section === "autocontent" && <AutoContentPanel />}
     </div>
   );
 }

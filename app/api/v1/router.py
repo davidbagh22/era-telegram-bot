@@ -6,6 +6,7 @@ from app.api.v1 import (
     activity,
     admin,
     admin_applications,
+    admin_autocontent,
     auctions,
     auth,
     events,
@@ -40,6 +41,7 @@ api_router.include_router(surveys.router)
 # endpoint. FastAPI resolves matching routes in registration order. Decision
 # POST endpoints continue to live in admin.router.
 api_router.include_router(admin_applications.router)
+api_router.include_router(admin_autocontent.router)
 api_router.include_router(admin.router)
 api_router.include_router(system.router)
 api_router.include_router(profile.router)
