@@ -8,33 +8,80 @@ and PR 39 redesign the remaining screen content, they extend this system
 rather than inventing new one-off styles — that's the whole point of
 having it.
 
-## Redesign in progress (2026-08)
+## Redesign (2026-08) — complete
 
 The project owner handed down a full 52-section product/UX/UI redesign
 brief (private, not committed to the repo verbatim — this doc absorbs the
 concrete tokens/rules from it as they're actually implemented, same
-"real, not aspirational" policy as everything else here). It's being
-executed as a sequence of phases, each its own PR, in this order:
+"real, not aspirational" policy as everything else here). It was
+executed as 6 phases, each its own PR:
 
-1. **Foundation** (this PR) — dark-first palette tokens, exact brand
-   gradient stops, hero typography step. `:root` (light theme) is
-   **not** flipped to dark-first yet — only the existing opt-in
-   `:root[data-theme="dark"]` block (driven by Telegram's own
-   `colorScheme`, see below) picked up the brief's exact hex values.
-   Flipping the *default* is its own decision with app-wide visual
-   blast radius, deferred to a later phase.
-2. Critical project-detail bug fix (project must be readable regardless
-   of `can_edit`; retire the "Форма/Workspace" terminology split).
-3. Navigation/IA restructure (remove horizontal pill/tab rows as
-   *primary* navigation, 4 fixed bottom destinations).
-4. Screen-by-screen redesign (Home, Projects, Opportunities, Profile,
-   Admin Mode).
-5. Bot navigation button + role-aware nav card.
-6. Final screen-map doc + manual QA pass.
+1. **Foundation** — dark-first palette tokens, exact brand gradient
+   stops, hero typography step, added to the existing opt-in
+   `:root[data-theme="dark"]` block. `:root` (light theme) was
+   deliberately **not** flipped to dark-first — that's its own decision
+   with app-wide visual blast radius, left for a future call rather than
+   bundled into this redesign.
+2. Critical project-detail bug fix — `ProjectDetail.tsx` now always
+   renders the project's content regardless of `can_edit`, with a
+   separate "Редактировать" toggle instead of the old "Форма/Workspace"
+   split; `AdminProjectModerationPanel` restructured to list → detail →
+   `BottomSheet` decision instead of 5 stacked buttons under a raw status
+   pill.
+3. **Navigation/IA restructure** — see "Information architecture" below
+   for the pattern this landed: `BottomNavigation` down to 4 fixed
+   destinations (Главная/Активность/Возможности/Профиль), "Проекты"
+   folded into Активность as an action card rather than its own tab.
+4. **Screen-by-screen redesign** — `OpportunitiesScreen` rebuilt on the
+   same landing-menu pattern (Предложения/Аукционы/Каталог/Опросы);
+   Admin Mode's bottom dock down from 5 groups to 4
+   (Обзор/Люди/Работа/Коммуникации), Аналитика folded into Обзор as a
+   collapsible section. Home/Auction/Profile were already reasonably
+   aligned with the brief from earlier PRs (PR 37's hero card, PR 148's
+   auction marketplace redesign) and didn't need further screen-level
+   restructuring in this pass.
+5. **Bot navigation button + role-aware nav card** — the bot's
+   advertised menu (`main_inline_keyboard()`) is exactly 🔥 Открыть ЭРА
+   / 🧭 Навигация / 💬 Связь; the old 3 separate quick-access WebApp
+   buttons collapsed into one 🧭 Навигация callback that opens a
+   role-aware explainer message (participant/leader/admin) with the
+   same deep links, so the bot explains and links to the app instead of
+   carrying a second, parallel navigation surface.
+6. **Final screen-map doc + manual QA pass** (this section) —
+   `docs/ERA_UX_SCREEN_MAP.md` created; see that file for the full
+   route/screen inventory and the manual QA walkthrough result.
 
-Each phase updates this file and `docs/ERA_UX_SCREEN_MAP.md` (once phase
-3 creates it) as it lands, rather than writing the whole target state
-up front and letting it drift from the code.
+## Information architecture
+
+The pattern established across phases 3–4, used consistently instead of
+horizontal tabs wherever a screen has genuinely different views (not
+just a filter on one list):
+
+- **Landing menu → detail, via local `useState`, not a router.** A
+  screen with sub-sections (`ActivityScreen`, `OpportunitiesScreen`,
+  `AdminProjectModerationPanel`) renders a list of `Card`s (icon in a
+  gradient square, label, description, `→`) when nothing is selected;
+  tapping one sets local state to that section/item and shows it with a
+  `← Parent` back button and a section-specific `<h1>`. No client-side
+  router, no URL change on this navigation — only the top-level deep
+  link (`#/tasks`, `#/projects/{id}`, etc.) is parsed once at mount
+  (`App.tsx`'s `parseDeepLink()`).
+- **`BottomSheet` scope picker for same-shape list filters.** When the
+  options genuinely just filter one list into different subsets of the
+  same shape (`ProjectsList`'s Мои/Открытые/Предложения/Завершённые,
+  `OffersList`'s Для тебя/Все/Сохранённые/Мои заявки), a single
+  "Фильтр" button opens a `BottomSheet` with a vertical radio-style
+  list, rather than a horizontal `PillTabs`/`SegmentedTabs` row.
+- **`PillTabs`/`SegmentedTabs` are demoted, not gone.** They remain in
+  the codebase for cases that are neither of the above — a fixed, short
+  (2–4 option) admin sub-navigation within an already-selected group
+  (`FilterChips` in `AdminScreen.tsx`'s People/Work/Comms groups) — but
+  are no longer used as a screen's *primary* navigation anywhere a
+  landing-menu or BottomSheet pattern fits instead.
+- **4 fixed bottom-nav destinations for participants**
+  (`BottomNavigation.tsx`): Главная / Активность / Возможности /
+  Профиль. **4 fixed groups for Admin Mode** (`AdminBottomNav.tsx`):
+  Обзор / Люди / Работа / Коммуникации.
 
 ### New brand tokens (phase 1)
 
@@ -152,10 +199,13 @@ matches the rem values already used ad hoc across every screen's
   muted text, used when a list/query legitimately has zero results (not
   the same as an error — `useAsync`'s "error" and "ready with []" are
   rendered differently everywhere, on purpose).
-- **`PillTabs`** — the app's **tabs** primitive (Activity's
-  Events/Tasks/Calendar/History, Opportunities' scope switcher).
-- **`BottomNavigation`** — the app's primary **navigation** (mobile
-  bottom bar, `TabKey`-driven).
+- **`PillTabs`** — a scrollable pill-track filter control. Since the
+  2026-08 redesign (see "Information architecture" above) no longer the
+  app's primary navigation anywhere a landing-menu or `BottomSheet`
+  scope picker fits instead — used today for short, fixed
+  sub-navigation within an already-chosen area.
+- **`BottomNavigation`** — the app's primary **navigation**: 4 fixed
+  destinations (Главная/Активность/Возможности/Профиль), `TabKey`-driven.
 - **`icons.tsx`** — the small inline-SVG icon set used by
   BottomNavigation and a few cards.
 
