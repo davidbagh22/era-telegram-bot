@@ -75,6 +75,7 @@ function renderTab(
   initialProjectId: number | null,
   initialActivitySection: ActivitySection | null,
   initialItemId: number | null,
+  isDeepLinkedTab: boolean,
   onTabChange: (tab: TabKey) => void,
 ) {
   if (tab === "home") {
@@ -90,7 +91,15 @@ function renderTab(
     );
   }
   if (tab === "opportunities") {
-    return <OpportunitiesScreen initialItemId={initialItemId} />;
+    // The bot's "⭐ Возможности" quick-access button and per-notification
+    // deep links land straight on "Предложения", skipping this screen's
+    // own landing menu — same treatment as ActivityScreen above.
+    return (
+      <OpportunitiesScreen
+        initialSection={isDeepLinkedTab ? "offers" : undefined}
+        initialItemId={initialItemId}
+      />
+    );
   }
   return <ProfileScreen />;
 }
@@ -157,6 +166,7 @@ export function App() {
           initialProjectId,
           deepLink?.activitySection ?? null,
           deepLink?.itemId ?? null,
+          deepLink?.tab === activeTab,
           setActiveTab,
         )
       )}
