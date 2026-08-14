@@ -14,7 +14,9 @@ import type {
   AnalyticsExcelSection,
   AnalyticsSummary,
   BadgeItem,
+  BroadcastAudience,
   BroadcastAudienceOptions,
+  BroadcastPreviewCount,
   ChatBroadcastKey,
   ChatGreetingItem,
   ChatHealthResult,
@@ -596,6 +598,17 @@ export function runChatsHealthCheck(): Promise<ChatHealthResult[]> {
 
 export function fetchBroadcastAudienceOptions(): Promise<BroadcastAudienceOptions> {
   return authorizedGet<BroadcastAudienceOptions>("/api/v1/admin/broadcast/audience-options");
+}
+
+export function fetchBroadcastPreviewCount(
+  audience: BroadcastAudience,
+  filterValue: string | null,
+): Promise<BroadcastPreviewCount> {
+  const params = new URLSearchParams({ audience });
+  if (filterValue) {
+    params.set("filter_value", filterValue);
+  }
+  return authorizedGet<BroadcastPreviewCount>(`/api/v1/admin/broadcast/preview-count?${params.toString()}`);
 }
 
 export function sendPersonalBroadcast(payload: PersonalBroadcastPayload): Promise<PersonalBroadcastResult> {

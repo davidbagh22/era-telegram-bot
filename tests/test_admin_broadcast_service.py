@@ -240,6 +240,79 @@ class AdminBroadcastApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"ok": True})
 
+    def test_participant_cannot_read_preview_count(self) -> None:
+        app = _build_app(_participant())
+        client = TestClient(app)
+        response = client.get("/api/v1/admin/broadcast/preview-count", params={"audience": "all"})
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_reads_preview_count(self) -> None:
+        app = _build_app(_admin())
+        client = TestClient(app)
+        with patch("app.api.v1.admin.preview_recipient_count", new=AsyncMock(return_value=42)):
+            response = client.get("/api/v1/admin/broadcast/preview-count", params={"audience": "all"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"count": 42})
+
+    def test_admin_preview_count_rejects_invalid_filter(self) -> None:
+        app = _build_app(_admin())
+        client = TestClient(app)
+        response = client.get(
+            "/api/v1/admin/broadcast/preview-count", params={"audience": "role", "filter_value": "bogus"}
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"], "invalid_filter")
+
+
+class AdminBroadcastPreviewCountRealDbTests(unittest.IsolatedAsyncioTestCase):
+    """Real-DB round trip through the actual endpoint (not the mocked
+    service-call tests above), matching this session's established
+    "at least one real round trip for anything security/data-shape
+    sensitive" ritual."""
+
+    async def asyncSetUp(self) -> None:
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def asyncTearDown(self) -> None:
+        await self.engine.dispose()
+
+    async def test_preview_count_reflects_real_recipient_query(self) -> None:
+        async with self.session_factory() as session:
+            session.add_all(
+                [
+                    User(
+                        telegram_id=1, first_name="A",
+                        application_status=ApplicationStatus.APPROVED, role="leader",
+                    ),
+                    User(
+                        telegram_id=2, first_name="B",
+                        application_status=ApplicationStatus.APPROVED, role="participant",
+                    ),
+                    User(telegram_id=3, first_name="C", application_status=ApplicationStatus.PENDING),
+                ]
+            )
+            await session.commit()
+
+        app = FastAPI()
+        app.include_router(api_router)
+        app.state.session_factory = self.session_factory
+        app.dependency_overrides[get_current_user] = lambda: _admin()
+        app.dependency_overrides[get_settings] = lambda: Settings(bot_token="1234567890:test-token")
+        client = TestClient(app)
+
+        response = client.get("/api/v1/admin/broadcast/preview-count", params={"audience": "all"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"count": 2})
+
+        response = client.get(
+            "/api/v1/admin/broadcast/preview-count", params={"audience": "role", "filter_value": "leader"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"count": 1})
+
 
 if __name__ == "__main__":
     unittest.main()
