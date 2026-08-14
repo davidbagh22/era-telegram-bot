@@ -2,14 +2,18 @@ import { expect, test } from "@playwright/test";
 
 const ADMIN_TELEGRAM_ID = 900003;
 
+async function enterAdminWorkspace(page: import("@playwright/test").Page) {
+  await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
+  await page.getByRole("button", { name: "Профиль" }).click();
+  await page.getByRole("button", { name: /Управление ЭРА/ }).click();
+  await expect(page.getByText("Управление", { exact: true })).toBeVisible();
+}
+
 test("admin searches the people directory, opens a participant, and awards points", async ({
   page,
 }) => {
-  await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
-  await expect(page.getByText("Управление")).toBeVisible();
+  await enterAdminWorkspace(page);
 
-  // Участники now lives under the Люди group — see AdminScreen.tsx's
-  // 2026-08 regrouping.
   await page.getByRole("button", { name: "Люди" }).click();
   await page.getByRole("button", { name: "Участники" }).click();
   await page.getByPlaceholder("Имя, username или Telegram ID").fill("E2E Participant");
@@ -22,10 +26,5 @@ test("admin searches the people directory, opens a participant, and awards point
   await page.getByPlaceholder("Причина").fill("E2E проверка начисления баллов");
   await page.getByRole("button", { name: "Применить" }).click();
 
-  // A real award through the full stack (API → user_management_service →
-  // DB), not a UI-only counter bump — verified by the balance <dd>
-  // reflecting the freshly refetched detail after the award. The label
-  // ("Баланс") and value ("15 баллов") are separate <dt>/<dd> elements, so
-  // this checks the value directly rather than the label's own text.
   await expect(page.getByText("15 баллов")).toBeVisible();
 });
