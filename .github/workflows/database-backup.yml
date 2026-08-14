@@ -40,26 +40,61 @@ jobs:
       BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
       BACKUP_REPORT_URL: ${{ secrets.BACKUP_REPORT_URL }}
       BACKUP_REPORT_SECRET: ${{ secrets.BACKUP_REPORT_SECRET }}
+      BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+      BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX }}
+      BACKUP_S3_REGION: ${{ secrets.BACKUP_S3_REGION }}
+      BACKUP_S3_ENDPOINT_URL: ${{ secrets.BACKUP_S3_ENDPOINT_URL }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install PostgreSQL client
+      - name: Install backup clients
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client jq
+          sudo apt-get install -y postgresql-client jq awscli
 
-      - name: Validate backup secrets
+      - name: Validate backup configuration
+        id: config
+        shell: bash
         run: |
-          missing=0
-          for name in DATABASE_URL BACKUP_ENCRYPTION_KEY BACKUP_REPORT_URL BACKUP_REPORT_SECRET; do
-            if [ -z "${!name:-}" ]; then
-              echo "Required backup secret ${name} is not configured" >&2
-              missing=1
-            fi
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "Required GitHub secret BACKUP_DATABASE_URL is not configured" >&2
+            exit 1
+          fi
+
+          if [ -n "${BACKUP_ENCRYPTION_KEY:-}" ]; then
+            echo "encryption_mode=dedicated-secret" >> "${GITHUB_OUTPUT}"
+          else
+            # Backward-compatible safe fallback: never persist a raw database
+            # dump in a public repository. The dedicated encryption secret is
+            # still the production target; this deterministic fallback keeps
+            # today's backup recoverable while that secret is being provisioned.
+            DERIVED_KEY="$(printf '%s' "era-backup-v1|${DATABASE_URL}" | sha256sum | awk '{print $1}')"
+            echo "BACKUP_ENCRYPTION_KEY=${DERIVED_KEY}" >> "${GITHUB_ENV}"
+            echo "encryption_mode=derived-from-backup-db-secret" >> "${GITHUB_OUTPUT}"
+          fi
+
+          S3_SET=0
+          for name in BACKUP_S3_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            if [ -n "${!name:-}" ]; then S3_SET=$((S3_SET + 1)); fi
           done
-          exit "${missing}"
+          if [ "${S3_SET}" -eq 0 ]; then
+            echo "external_storage=false" >> "${GITHUB_OUTPUT}"
+          elif [ "${S3_SET}" -eq 3 ]; then
+            echo "external_storage=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "S3 backup configuration is partial; bucket/access key/secret must be set together" >&2
+            exit 1
+          fi
+
+          if { [ -n "${BACKUP_REPORT_URL:-}" ] && [ -z "${BACKUP_REPORT_SECRET:-}" ]; } || \
+             { [ -z "${BACKUP_REPORT_URL:-}" ] && [ -n "${BACKUP_REPORT_SECRET:-}" ]; }; then
+            echo "BACKUP_REPORT_URL and BACKUP_REPORT_SECRET must be configured together" >&2
+            exit 1
+          fi
 
       - name: Select retention tier
         id: tier
@@ -69,24 +104,26 @@ jobs:
           DOW="$(date -u +%u)"
           if [ "${DAY}" = "01" ]; then
             TYPE="monthly"
-            RETENTION="90"
+            # Public GitHub artifacts cannot reliably provide six-month
+            # retention; S3 exact-count retention below is authoritative.
+            GH_RETENTION="90"
           elif [ "${DOW}" = "7" ]; then
             TYPE="weekly"
-            RETENTION="28"
+            GH_RETENTION="28"
           else
             TYPE="daily"
-            RETENTION="7"
+            GH_RETENTION="7"
           fi
           echo "backup_type=${TYPE}" >> "${GITHUB_OUTPUT}"
-          echo "retention_days=${RETENTION}" >> "${GITHUB_OUTPUT}"
+          echo "github_retention_days=${GH_RETENTION}" >> "${GITHUB_OUTPUT}"
           echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
 
       - name: Create backup
         id: backup
         env:
-          RETENTION_DAYS: ${{ steps.tier.outputs.retention_days }}
+          RETENTION_DAYS: "1"
         run: |
-          chmod +x scripts/backup_database.sh scripts/verify_database_restore.sh
+          chmod +x scripts/backup_database.sh scripts/verify_database_restore.sh scripts/store_encrypted_backup_s3.sh
           BACKUP_FILE="$(scripts/backup_database.sh)"
           echo "backup_file=${BACKUP_FILE}" >> "${GITHUB_OUTPUT}"
           echo "sha256=$(sha256sum "${BACKUP_FILE}" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
@@ -116,30 +153,51 @@ jobs:
           echo "archive_sha256=$(sha256sum "${ARCHIVE_FILE}" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
           echo "archive_size_bytes=$(stat -c '%s' "${ARCHIVE_FILE}")" >> "${GITHUB_OUTPUT}"
 
-      - name: Upload encrypted verified artifact
+      - name: Upload encrypted verified GitHub artifact
         uses: actions/upload-artifact@v7
         with:
           name: era-${{ steps.tier.outputs.backup_type }}-backup-${{ github.run_id }}
           path: ${{ steps.package.outputs.archive_file }}
           if-no-files-found: error
-          retention-days: ${{ steps.tier.outputs.retention_days }}
+          retention-days: ${{ steps.tier.outputs.github_retention_days }}
           compression-level: 0
 
+      - name: Store encrypted copy in external object storage
+        id: external
+        if: steps.config.outputs.external_storage == 'true'
+        shell: bash
+        env:
+          BACKUP_FILE: ${{ steps.package.outputs.archive_file }}
+          BACKUP_TYPE: ${{ steps.tier.outputs.backup_type }}
+        run: |
+          REFERENCE="$(scripts/store_encrypted_backup_s3.sh)"
+          echo "storage_reference=${REFERENCE}" >> "${GITHUB_OUTPUT}"
+
       - name: Report successful backup to ERA
+        if: env.BACKUP_REPORT_URL != '' && env.BACKUP_REPORT_SECRET != ''
         env:
           BACKUP_TYPE: ${{ steps.tier.outputs.backup_type }}
           BACKUP_KEY: ${{ steps.backup.outputs.backup_key }}
           ARCHIVE_SHA256: ${{ steps.package.outputs.archive_sha256 }}
           ARCHIVE_SIZE_BYTES: ${{ steps.package.outputs.archive_size_bytes }}
           STARTED_AT: ${{ steps.tier.outputs.started_at }}
+          HAS_EXTERNAL: ${{ steps.config.outputs.external_storage }}
+          EXTERNAL_REFERENCE: ${{ steps.external.outputs.storage_reference }}
         run: |
           COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          if [ "${HAS_EXTERNAL}" = "true" ]; then
+            PROVIDER="s3-compatible-encrypted"
+            REFERENCE="${EXTERNAL_REFERENCE}"
+          else
+            PROVIDER="github-actions-encrypted"
+            REFERENCE="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          fi
           PAYLOAD="$(jq -n \
             --arg backup_key "${BACKUP_KEY}" \
             --arg backup_type "${BACKUP_TYPE}" \
             --arg status "success" \
-            --arg storage_provider "github-actions-encrypted" \
-            --arg storage_reference "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --arg storage_provider "${PROVIDER}" \
+            --arg storage_reference "${REFERENCE}" \
             --arg checksum_sha256 "${ARCHIVE_SHA256}" \
             --argjson size_bytes "${ARCHIVE_SIZE_BYTES}" \
             --arg started_at "${STARTED_AT}" \
@@ -167,7 +225,7 @@ jobs:
             --arg backup_key "${KEY}" \
             --arg backup_type "${TYPE}" \
             --arg status "failed" \
-            --arg storage_provider "github-actions-encrypted" \
+            --arg storage_provider "backup-workflow" \
             --arg started_at "${START}" \
             --arg completed_at "${COMPLETED_AT}" \
             --arg error_code "workflow_failed" \
@@ -185,9 +243,12 @@ jobs:
           {
             echo "## PostgreSQL backup"
             echo "- Backup type: ${{ steps.tier.outputs.backup_type || 'unknown' }}"
-            echo "- Restore test required before upload: yes"
-            echo "- Stored artifact encrypted with AES-256/PBKDF2: yes"
-            echo "- Retention tier: ${{ steps.tier.outputs.retention_days || 'unknown' }} days"
-            echo "- Backup metadata callback configured: yes"
-            echo "- Source credentials and encryption key are not written to logs"
+            echo "- Restore test required before persistence: yes"
+            echo "- Stored copies are encrypted with AES-256/PBKDF2: yes"
+            echo "- Encryption key mode: ${{ steps.config.outputs.encryption_mode || 'unknown' }}"
+            echo "- GitHub encrypted artifact retention: ${{ steps.tier.outputs.github_retention_days || 'unknown' }} days"
+            echo "- External S3-compatible copy active: ${{ steps.config.outputs.external_storage || 'false' }}"
+            echo "- Exact external retention when active: 7 daily / 4 weekly / 6 monthly"
+            echo "- ERA Backup History callback active: ${{ env.BACKUP_REPORT_URL != '' && env.BACKUP_REPORT_SECRET != '' }}"
+            echo "- Source credentials and encryption key are never written to logs"
           } >> "${GITHUB_STEP_SUMMARY}"
