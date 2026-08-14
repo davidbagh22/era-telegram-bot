@@ -6,6 +6,7 @@ import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useAsync } from "../../hooks/useAsync";
 import type { ProjectScope } from "../../types/project";
+import { projectStatusLabel } from "./statusLabels";
 
 const SCOPES: { value: ProjectScope; label: string }[] = [
   { value: "mine", label: "Мои" },
@@ -93,7 +94,7 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
             >
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <strong>{project.title}</strong>
-                <StatusBadge label={project.status} tone="violet" />
+                <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
               </div>
               <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>
                 {project.short_description}
