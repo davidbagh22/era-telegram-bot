@@ -59,10 +59,8 @@ class ChatFaqServiceTests(unittest.IsolatedAsyncioTestCase):
             audit_rows = (await session.scalars(select(AuditLog))).all()
             self.assertEqual(len(audit_rows), 1)
             self.assertEqual(audit_rows[0].action, "chat.faq_published")
-            self.assertEqual(
-                audit_rows[0].new_value,
-                {"chat": "general", "pinned": True, "message_id": 555},
-            )
+            self.assertEqual(audit_rows[0].entity_id, 555)
+            self.assertEqual(audit_rows[0].new_value, {"chat": "general", "pinned": True})
 
     async def test_second_publish_reuses_recorded_message_instead_of_spamming(self) -> None:
         async with self.session_factory() as session:
@@ -92,10 +90,8 @@ class ChatFaqServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(result.pinned)
             self.assertEqual(len(bot.sent), 1)
             audit_rows = (await session.scalars(select(AuditLog))).all()
-            self.assertEqual(
-                audit_rows[0].new_value,
-                {"chat": "general", "pinned": False, "message_id": 555},
-            )
+            self.assertEqual(audit_rows[0].entity_id, 555)
+            self.assertEqual(audit_rows[0].new_value, {"chat": "general", "pinned": False})
 
     async def test_publish_raises_when_send_fails(self) -> None:
         async with self.session_factory() as session:
