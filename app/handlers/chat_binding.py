@@ -41,9 +41,12 @@ async def bind_current_chat(message: Message, user: User | None, settings: Setti
             "Варианты: general, internal, external, leaders, channel"
         )
         return
+
     raw_key = parts[1].strip().lower()
     setting_key, greeting_key, title = CHAT_KEYS[raw_key]
-    setattr(settings, setting_key, message.chat.id)
+
+    # PostgreSQL is the durable source of truth. Commit the binding before
+    # mutating the in-process Settings object or reporting success.
     stored = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
     if stored is None:
         stored = AppSetting(key=setting_key, value=str(message.chat.id), updated_by=user.id if user else None)
@@ -51,9 +54,14 @@ async def bind_current_chat(message: Message, user: User | None, settings: Setti
     else:
         stored.value = str(message.chat.id)
         stored.updated_by = user.id if user else None
+
     greeting = await session.scalar(select(ChatGreeting).where(ChatGreeting.chat_key == greeting_key))
     if greeting is not None:
         greeting.chat_id = message.chat.id
         greeting.updated_by = user.id if user else None
-    await session.flush()
-    await message.reply(f"✅ {title} привязан к этому чату\nID: {message.chat.id}\n\nНастройка уже применяется без перезапуска")
+
+    await session.commit()
+    setattr(settings, setting_key, message.chat.id)
+    await message.reply(
+        f"✅ {title} привязан. Настройка сохранена в ЭРА и применяется без перезапуска."
+    )
