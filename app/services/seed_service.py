@@ -10,6 +10,7 @@ from app.database.models import (
     Direction,
     Office,
 )
+from app.services.chat_binding_recovery_service import recover_chat_bindings
 from app.utils.constants import BADGES, DEPARTMENTS
 
 
@@ -130,4 +131,10 @@ async def seed_reference_data(session: AsyncSession, settings: Settings) -> None
                     text=text,
                 )
             )
+    await session.flush()
+
+    # Older installs can already contain a chat ID in greeting/delivery/join
+    # history even when the AppSetting row was lost or never created. Recover
+    # only a single unambiguous historical ID; never infer IDs from invite URLs.
+    await recover_chat_bindings(session, settings)
     await session.commit()

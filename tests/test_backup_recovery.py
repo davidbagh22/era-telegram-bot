@@ -6,13 +6,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class BackupRecoveryContractTests(unittest.TestCase):
-    def test_backup_workflow_is_scheduled_verified_encrypted_and_tiered(self) -> None:
+    def test_backup_workflow_is_scheduled_oidc_verified_encrypted_and_tiered(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "database-backup.yml").read_text(encoding="utf-8")
         required = [
             "schedule:",
-            "BACKUP_DATABASE_URL",
-            "scripts/backup_database.sh",
+            "id-token: write",
+            "ACTIONS_ID_TOKEN_REQUEST_URL",
+            "audience=era-platform-backup",
+            "/snapshot",
             "scripts/verify_database_restore.sh",
+            "/material",
             "openssl enc -aes-256-cbc",
             "-pbkdf2",
             "actions/upload-artifact@v7",
@@ -20,19 +23,22 @@ class BackupRecoveryContractTests(unittest.TestCase):
             'TYPE="daily"',
             'TYPE="weekly"',
             'TYPE="monthly"',
-            "BACKUP_REPORT_SECRET",
+            "/report",
         ]
         for marker in required:
             self.assertIn(marker, workflow)
 
-        # A production dump must be encrypted before anything persisted by
-        # upload-artifact or the external object-storage step.
+        self.assertNotIn("BACKUP_DATABASE_URL", workflow)
+        self.assertNotIn("BACKUP_REPORT_SECRET", workflow)
+        self.assertNotIn("BACKUP_REPORT_URL", workflow)
+
+        snapshot_pos = workflow.index("Download transient production snapshot using GitHub OIDC")
+        restore_pos = workflow.index("Verify restore on isolated PostgreSQL")
         encrypt_pos = workflow.index("Encrypt verified backup package")
         artifact_pos = workflow.index("Upload encrypted verified GitHub artifact")
-        external_pos = workflow.index("Store encrypted copy in external object storage")
+        self.assertLess(snapshot_pos, restore_pos)
+        self.assertLess(restore_pos, encrypt_pos)
         self.assertLess(encrypt_pos, artifact_pos)
-        self.assertLess(encrypt_pos, external_pos)
-        self.assertNotIn("retention-days: 30", workflow)
 
     def test_external_storage_script_enforces_exact_retention_counts(self) -> None:
         script = (ROOT / "scripts" / "store_encrypted_backup_s3.sh").read_text(encoding="utf-8")
@@ -46,11 +52,12 @@ class BackupRecoveryContractTests(unittest.TestCase):
         ]:
             self.assertIn(marker, script)
 
-    def test_backup_script_uses_safe_postgres_dump_contract(self) -> None:
-        script = (ROOT / "scripts" / "backup_database.sh").read_text(encoding="utf-8")
-        for marker in ["set -Eeuo pipefail", "pg_dump", "--format=custom", "sha256sum", "--no-owner"]:
-            self.assertIn(marker, script)
-        self.assertNotIn("echo ${DATABASE_URL}", script)
+    def test_runtime_snapshot_never_exports_database_url(self) -> None:
+        service = (ROOT / "app" / "services" / "backup_runtime_service.py").read_text(encoding="utf-8")
+        for marker in ["PGHOST", "PGDATABASE", "PGUSER", "PGPASSWORD", "pg_dump", "--format=custom"]:
+            self.assertIn(marker, service)
+        self.assertNotIn('"database_url":', service)
+        self.assertNotIn("print(database_url", service)
 
     def test_restore_script_checks_integrity_and_required_schema(self) -> None:
         script = (ROOT / "scripts" / "verify_database_restore.sh").read_text(encoding="utf-8")
@@ -59,14 +66,7 @@ class BackupRecoveryContractTests(unittest.TestCase):
 
     def test_recovery_document_exists(self) -> None:
         document = (ROOT / "docs" / "BACKUP_AND_RECOVERY.md").read_text(encoding="utf-8")
-        for marker in [
-            "RPO",
-            "RTO",
-            "BACKUP_DATABASE_URL",
-            "Восстановление",
-            "Откат",
-            "7 daily / 4 weekly / 6 monthly",
-        ]:
+        for marker in ["RPO", "RTO", "GitHub OIDC", "Восстановление", "Откат"]:
             self.assertIn(marker, document)
 
 
