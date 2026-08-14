@@ -6,7 +6,12 @@ from aiogram.types import (
     WebAppInfo,
 )
 
-from app.utils.deep_links import miniapp_events_url, miniapp_opportunities_url, miniapp_tasks_url
+from app.utils.deep_links import (
+    miniapp_events_url,
+    miniapp_opportunities_url,
+    miniapp_profile_url,
+    miniapp_tasks_url,
+)
 
 
 def main_inline_keyboard(
@@ -22,30 +27,23 @@ def main_inline_keyboard(
     🔥 Открыть ЭРА is the primary action; the old "👤 Личный
     кабинет"/"⚙️ Панель" bot-side menu tree only appears as a fallback for
     when the Mini App isn't configured (e.g. local dev) — see
-    docs/BOT_VS_MINIAPP_AUDIT.md."""
+    docs/BOT_VS_MINIAPP_AUDIT.md.
+
+    2026-08 redesign brief section 36 ("бот не должен дублировать
+    приложение"): the three separate quick-access buttons this used to
+    carry (📅 Ближайшее / ✅ Мои задачи / ⭐ Возможности, each a direct
+    WebApp deep link) collapsed into one 🧭 Навигация button — a bot
+    message that explains what's in the app and links out to it, rather
+    than the bot itself trying to be a second, parallel set of shortcuts
+    into the same screens. See navigation_guide_keyboard() and
+    app/handlers/participant/navigation.py's nav_guide_callback for what
+    that button opens."""
     rows: list[list[InlineKeyboardButton]] = []
     if miniapp_url:
         rows.append(
             [InlineKeyboardButton(text="🔥 Открыть ЭРА", web_app=WebAppInfo(url=miniapp_url))]
         )
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="📅 Ближайшее", web_app=WebAppInfo(url=miniapp_events_url(miniapp_url))
-                ),
-                InlineKeyboardButton(
-                    text="✅ Мои задачи", web_app=WebAppInfo(url=miniapp_tasks_url(miniapp_url))
-                ),
-            ]
-        )
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="⭐ Возможности",
-                    web_app=WebAppInfo(url=miniapp_opportunities_url(miniapp_url)),
-                )
-            ]
-        )
+        rows.append([InlineKeyboardButton(text="🧭 Навигация", callback_data="nav:guide")])
     else:
         rows.append(
             [
@@ -79,6 +77,46 @@ def open_app_button(
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text=label, web_app=WebAppInfo(url=miniapp_url))]]
     )
+
+
+def navigation_guide_keyboard(
+    miniapp_url: str, admin: bool = False, privileged: bool = False
+) -> InlineKeyboardMarkup:
+    """Buttons under the "🧭 Навигация" bot message (2026-08 redesign
+    brief section 36) — direct WebApp deep links into the four screens the
+    message text describes, plus one extra row into the admin/leader
+    workspace when the user actually has one. Every button here just
+    opens the Mini App at a specific screen; none of them re-implement
+    that screen's content in the bot."""
+    rows = [
+        [
+            InlineKeyboardButton(
+                text="📅 Мероприятия", web_app=WebAppInfo(url=miniapp_events_url(miniapp_url))
+            ),
+            InlineKeyboardButton(
+                text="✅ Задачи", web_app=WebAppInfo(url=miniapp_tasks_url(miniapp_url))
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="⭐ Возможности",
+                web_app=WebAppInfo(url=miniapp_opportunities_url(miniapp_url)),
+            ),
+            InlineKeyboardButton(
+                text="👤 Профиль", web_app=WebAppInfo(url=miniapp_profile_url(miniapp_url))
+            ),
+        ],
+    ]
+    if admin:
+        rows.append(
+            [InlineKeyboardButton(text="⚙️ Режим администратора", web_app=WebAppInfo(url=miniapp_url))]
+        )
+    elif privileged:
+        rows.append(
+            [InlineKeyboardButton(text="🧭 Режим лидера", web_app=WebAppInfo(url=miniapp_url))]
+        )
+    rows.append([InlineKeyboardButton(text="💬 Связь", callback_data="contact:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def about_keyboard() -> InlineKeyboardMarkup:

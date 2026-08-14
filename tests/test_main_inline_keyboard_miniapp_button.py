@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.keyboards.participant import main_inline_keyboard
+from app.keyboards.participant import main_inline_keyboard, navigation_guide_keyboard
 
 
 def _button_texts(markup) -> list[str]:
@@ -58,24 +58,53 @@ class MainInlineKeyboardMiniAppButtonTests(unittest.TestCase):
         self.assertIn("👤 Личный кабинет", without_miniapp)
         self.assertNotIn("👤 Личный кабинет", with_miniapp)
 
-    def test_miniapp_menu_has_the_four_gateway_buttons(self) -> None:
+    def test_miniapp_menu_has_the_three_gateway_buttons(self) -> None:
+        # 2026-08 redesign brief section 36: the old separate 📅
+        # Ближайшее/✅ Мои задачи/⭐ Возможности quick-access buttons
+        # collapsed into one 🧭 Навигация button — the bot explains and
+        # links to the app instead of carrying a second, parallel set of
+        # shortcuts into the same screens.
         markup = main_inline_keyboard(
             privileged=True, admin=True, miniapp_url="https://era-app.example/"
         )
         self.assertEqual(
             _button_texts(markup),
-            ["🔥 Открыть ЭРА", "📅 Ближайшее", "✅ Мои задачи", "⭐ Возможности", "💬 Связь"],
+            ["🔥 Открыть ЭРА", "🧭 Навигация", "💬 Связь"],
         )
 
-    def test_quick_access_buttons_deep_link_into_the_right_miniapp_tab(self) -> None:
+    def test_navigation_button_is_a_callback_not_a_web_app_button(self) -> None:
         markup = main_inline_keyboard(miniapp_url="https://era-app.example")
+        button = next(
+            button
+            for row in markup.inline_keyboard
+            for button in row
+            if button.text == "🧭 Навигация"
+        )
+        self.assertEqual(button.callback_data, "nav:guide")
+        self.assertIsNone(button.web_app)
+
+    def test_navigation_guide_keyboard_deep_links_into_the_right_miniapp_screens(self) -> None:
+        markup = navigation_guide_keyboard("https://era-app.example")
         buttons = {button.text: button for row in markup.inline_keyboard for button in row}
-        self.assertEqual(buttons["🔥 Открыть ЭРА"].web_app.url, "https://era-app.example")
-        self.assertEqual(buttons["📅 Ближайшее"].web_app.url, "https://era-app.example/#/events")
-        self.assertEqual(buttons["✅ Мои задачи"].web_app.url, "https://era-app.example/#/tasks")
+        self.assertEqual(buttons["📅 Мероприятия"].web_app.url, "https://era-app.example/#/events")
+        self.assertEqual(buttons["✅ Задачи"].web_app.url, "https://era-app.example/#/tasks")
         self.assertEqual(
             buttons["⭐ Возможности"].web_app.url, "https://era-app.example/#/opportunities"
         )
+        self.assertEqual(buttons["👤 Профиль"].web_app.url, "https://era-app.example/#/profile")
+        self.assertNotIn("⚙️ Режим администратора", buttons)
+        self.assertNotIn("🧭 Режим лидера", buttons)
+
+    def test_navigation_guide_keyboard_adds_workspace_row_for_admin(self) -> None:
+        markup = navigation_guide_keyboard("https://era-app.example", admin=True)
+        buttons = {button.text: button for row in markup.inline_keyboard for button in row}
+        self.assertIn("⚙️ Режим администратора", buttons)
+        self.assertEqual(buttons["⚙️ Режим администратора"].web_app.url, "https://era-app.example")
+
+    def test_navigation_guide_keyboard_adds_workspace_row_for_leader(self) -> None:
+        markup = navigation_guide_keyboard("https://era-app.example", privileged=True)
+        buttons = {button.text: button for row in markup.inline_keyboard for button in row}
+        self.assertIn("🧭 Режим лидера", buttons)
 
     def test_plain_participant_never_sees_the_panel_button(self) -> None:
         # privileged=False, admin=False (the defaults) — a plain
