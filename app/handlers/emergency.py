@@ -7,17 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import User
 from app.handlers.participant.navigation import (
-    LEADER_PANEL_TEXT,
     _approved,
     _has_admin_access,
     _send_event_list,
     _send_main_menu,
     _send_personal_cabinet,
 )
-from app.keyboards.admin import admin_panel_keyboard
 from app.keyboards.common import registration_keyboard, subscription_keyboard
-from app.keyboards.leader import leader_panel_keyboard
-from app.keyboards.participant import contact_keyboard, project_menu_keyboard
+from app.keyboards.participant import contact_keyboard, open_app_button, project_menu_keyboard
 from app.services.points_service import total_points
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.utils import texts
@@ -164,11 +161,20 @@ async def rescue_menu_button(
         )
         return
     if text == "⚙️ Панель":
+        # This is the router that actually owns "⚙️ Панель" in production --
+        # emergency.router is included first in the dispatcher (app/bot.py)
+        # and this handler's StateFilter("*") matches any FSM state, so it
+        # wins over app/handlers/participant/navigation.py's panel_button/
+        # panel_callback regardless of what those do. Both admin and leader
+        # branches redirect to the Mini App instead of the old bot-native
+        # menu trees, matching ADMIN_PANEL_MOVED/LEADER_PANEL_MOVED
+        # everywhere else those trees used to be reachable. 2026-08 master
+        # spec, P5.
         if _has_admin_access(user):
-            await message.answer(texts.ADMIN_PANEL, reply_markup=admin_panel_keyboard())
+            await message.answer(texts.ADMIN_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
             return
         if user.role in PRIVILEGED_ROLES:
-            await message.answer(LEADER_PANEL_TEXT, reply_markup=leader_panel_keyboard())
+            await message.answer(texts.LEADER_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
             return
         await message.answer(texts.NO_ACCESS)
         return

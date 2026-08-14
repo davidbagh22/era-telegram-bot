@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 from app import bot as bot_module
 from app.handlers import chat, emergency
 from app.handlers.leader import events_block6
+from app.utils import texts
 from app.utils.constants import ApplicationStatus, Role
 
 
@@ -122,6 +123,39 @@ class FsmRecoveryTests(unittest.IsolatedAsyncioTestCase):
                     "Проверьте формат",
                     " ".join(x[0] for x in message.answers),
                 )
+
+    async def test_panel_button_redirects_admin_to_miniapp(self):
+        # emergency.router is registered first (test_emergency_router_is_first
+        # below) and its StateFilter("*") matches any FSM state, so this
+        # handler -- not navigation.py's panel_button -- is what a real
+        # "⚙️ Панель" tap actually reaches. Must redirect, not show the old
+        # admin_panel_keyboard() tree. 2026-08 master spec, P5.
+        settings = SimpleNamespace(effective_miniapp_url="https://era-app.example/")
+        state = FakeState()
+        message = FakeMessage("⚙️ Панель")
+        await emergency.rescue_menu_button(
+            message, approved_user(Role.ADMIN), settings, SimpleNamespace(), state
+        )
+        (text, kwargs) = message.answers[-1]
+        self.assertEqual(text, texts.ADMIN_PANEL_MOVED)
+        markup = kwargs["reply_markup"]
+        self.assertIsNotNone(markup)
+        buttons = [b for row in markup.inline_keyboard for b in row]
+        self.assertTrue(all(b.web_app is not None for b in buttons))
+
+    async def test_panel_button_redirects_leader_to_miniapp(self):
+        settings = SimpleNamespace(effective_miniapp_url="https://era-app.example/")
+        state = FakeState()
+        message = FakeMessage("⚙️ Панель")
+        await emergency.rescue_menu_button(
+            message, approved_user(Role.LEADER), settings, SimpleNamespace(), state
+        )
+        (text, kwargs) = message.answers[-1]
+        self.assertEqual(text, texts.LEADER_PANEL_MOVED)
+        markup = kwargs["reply_markup"]
+        self.assertIsNotNone(markup)
+        buttons = [b for row in markup.inline_keyboard for b in row]
+        self.assertTrue(all(b.web_app is not None for b in buttons))
 
     async def test_cancel_clears_any_state(self):
         state = FakeState()

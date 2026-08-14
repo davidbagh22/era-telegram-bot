@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import User
-from app.keyboards.leader import leader_panel_keyboard
 from app.keyboards.participant import (
     contact_keyboard,
     event_list_keyboard,
@@ -207,17 +206,21 @@ async def panel_button(message: Message, user: User | None, state: FSMContext, s
     if not _approved(user):
         await message.answer(texts.NO_ACCESS)
         return
-    # The bot-native admin panel tree (admin_panel_keyboard()) was removed
-    # from live routing — Admin Mode in the Mini App is the only admin
-    # surface now (2026-08 System Flow Audit / master spec section 23).
-    # This legacy reply-keyboard-button trigger is already dormant in
-    # production (main_inline_keyboard() stopped emitting "⚙️ Панель" once
-    # a Mini App URL is configured), kept only as a safety net.
+    # The bot-native admin and leader panel trees (admin_panel_keyboard(),
+    # leader_panel_keyboard()) were removed from live routing — Admin Mode
+    # and LeaderScreen in the Mini App are the only surfaces now (2026-08
+    # System Flow Audit / master spec section 23, P5). This reply-keyboard
+    # trigger is already dormant in production (main_inline_keyboard()
+    # stopped emitting "⚙️ Панель" once a Mini App URL is configured, and
+    # app/handlers/emergency.py's StateFilter("*") rescue handler for the
+    # same text is registered before this router and wins in practice) --
+    # kept live and fixed anyway so source behavior matches everywhere the
+    # button could theoretically still reach a user.
     if _has_admin_access(user):
         await message.answer(texts.ADMIN_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
         return
     if user.role in PRIVILEGED_ROLES:
-        await message.answer(LEADER_PANEL_TEXT, reply_markup=leader_panel_keyboard())
+        await message.answer(texts.LEADER_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
         return
     await message.answer(texts.NO_ACCESS)
 
@@ -232,7 +235,7 @@ async def panel_callback(call: CallbackQuery, user: User | None, settings: Setti
         await call.message.answer(texts.ADMIN_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
         return
     if user.role in PRIVILEGED_ROLES:
-        await call.message.answer(LEADER_PANEL_TEXT, reply_markup=leader_panel_keyboard())
+        await call.message.answer(texts.LEADER_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
         return
     await call.message.answer(texts.NO_ACCESS)
 
