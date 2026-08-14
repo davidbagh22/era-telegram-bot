@@ -3,15 +3,18 @@ import {
   HomeIcon,
   OpportunitiesIcon,
   ProfileIcon,
-  ProjectsIcon,
 } from "./icons";
 
-export type TabKey = "home" | "activity" | "projects" | "opportunities" | "profile";
+// 2026-08 redesign brief section 16: 4 fixed destinations, not 5 --
+// "Проекты" folded into "Активность" as one of its action cards
+// (ActivityScreen) instead of competing for its own dock slot. Also
+// fixes the real truncation bug this caused on a real iPhone ("Активно…",
+// "Возмож…") by giving each remaining label more room.
+export type TabKey = "home" | "activity" | "opportunities" | "profile";
 
 const TABS: { key: TabKey; label: string; Icon: typeof HomeIcon }[] = [
   { key: "home", label: "Главная", Icon: HomeIcon },
   { key: "activity", label: "Активность", Icon: ActivityIcon },
-  { key: "projects", label: "Проекты", Icon: ProjectsIcon },
   { key: "opportunities", label: "Возможности", Icon: OpportunitiesIcon },
   { key: "profile", label: "Профиль", Icon: ProfileIcon },
 ];
@@ -60,9 +63,9 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
               alignItems: "center",
               gap: "0.125rem",
               minHeight: "auto",
-              // flex: 1 1 0 + minWidth: 0 — five equal-share, genuinely
+              // flex: 1 1 0 + minWidth: 0 — equal-share, genuinely
               // shrinkable columns instead of justify-content: space-around
-              // over five unshrinkable ones; the label below truncates
+              // over unshrinkable ones; the label below truncates
               // with an ellipsis rather than forcing the dock (and the
               // whole page) wider than the viewport on the narrowest
               // phones. See responsive.spec.ts.

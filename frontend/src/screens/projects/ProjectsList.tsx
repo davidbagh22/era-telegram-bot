@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { createProject, describeActionError, fetchProjects } from "../../api/client";
+import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
-import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useAsync } from "../../hooks/useAsync";
 import type { ProjectScope } from "../../types/project";
@@ -21,10 +21,12 @@ interface ProjectsListProps {
 
 export function ProjectsList({ onSelect }: ProjectsListProps) {
   const [scope, setScope] = useState<ProjectScope>("mine");
+  const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [idea, setIdea] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const state = useAsync(() => fetchProjects(scope), [scope]);
+  const scopeLabel = SCOPES.find((option) => option.value === scope)?.label ?? scope;
 
   const handleCreate = async () => {
     setCreating(true);
@@ -42,7 +44,49 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-      <SegmentedTabs options={SCOPES} active={scope} onChange={setScope} />
+      {/* 2026-08 redesign brief section 15: no horizontal scope tabs as
+          primary navigation — a single "Фильтр" button opens a bottom
+          sheet instead, matching the pattern already used elsewhere
+          (OpenTasksTab's destination picker, BroadcastPanel's audience
+          picker). */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <strong>{scopeLabel}</strong>
+        <button type="button" onClick={() => setShowFilterSheet(true)}>
+          Фильтр
+        </button>
+      </div>
+
+      <BottomSheet open={showFilterSheet} onClose={() => setShowFilterSheet(false)} title="Показать">
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {SCOPES.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                width: "100%",
+                textAlign: "left",
+                fontFamily: "var(--era-font-body)",
+                fontSize: "0.9375rem",
+                padding: "0.625rem 0.25rem",
+                border: "none",
+                borderBottom: "1px solid var(--era-border)",
+                background: "transparent",
+                color: "var(--era-text)",
+              }}
+              onClick={() => {
+                setScope(option.value);
+                setShowFilterSheet(false);
+              }}
+            >
+              <input type="radio" readOnly checked={scope === option.value} />
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </BottomSheet>
 
       {scope === "mine" && (
         <Card>

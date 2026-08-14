@@ -35,13 +35,15 @@ const FLAKY_WIDTHS = new Set([430, 768]);
 // 320/360/390 aren't quarantined: they pass reliably and are real
 // coverage for the #269 checklist item this spec exists to close.
 
-// A 5-column flex row (BottomNavigation) splitting a non-multiple-of-5
-// viewport (768/5 = 153.6px) genuinely lands a few px past the edge on
+// A flex row (BottomNavigation) splitting a viewport that isn't an exact
+// multiple of its column count genuinely lands a few px past the edge on
 // some engines' fractional-pixel rounding — not a real, user-visible bug,
 // just how subpixel layout rounds, and CI has shown it drifting anywhere
 // from 769 to 771 across runs (never higher) — +1 and then +2 both
 // still occasionally flaked, so this is deliberately generous rather than
-// chasing the exact noise ceiling one more time.
+// chasing the exact noise ceiling one more time. (BottomNavigation went
+// from 5 columns to 4 in the 2026-08 redesign, but the underlying
+// subpixel-rounding risk is the same class of issue regardless of count.)
 const OVERFLOW_TOLERANCE_PX = 5;
 
 async function expectNoHorizontalOverflow(page: import("@playwright/test").Page, width: number) {
@@ -82,10 +84,12 @@ for (const width of WIDTHS) {
     await expect(page.getByRole("heading", { name: "Привет, E2E Participant" })).toBeVisible();
     await expectNoHorizontalOverflow(page, width);
 
-    // All five bottom-nav destinations, not just the landing screen — a
+    // All four bottom-nav destinations, not just the landing screen — a
     // screen-specific layout bug (a wide table, an unwrapped label) is
-    // exactly what a single-screen check would miss.
-    for (const tabName of ["Активность", "Проекты", "Возможности", "Профиль", "Главная"]) {
+    // exactly what a single-screen check would miss. "Проекты" folded
+    // into "Активность" as one of its action cards (2026-08 redesign
+    // brief section 16) — see BottomNavigation.tsx.
+    for (const tabName of ["Активность", "Возможности", "Профиль", "Главная"]) {
       await page.getByRole("button", { name: tabName, exact: true }).click();
       await expectNoHorizontalOverflow(page, width);
     }

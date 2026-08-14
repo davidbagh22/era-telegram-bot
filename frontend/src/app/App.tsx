@@ -16,7 +16,7 @@ import { ProfileScreen } from "../screens/ProfileScreen";
 import { ProjectsScreen } from "../screens/ProjectsScreen";
 import type { MiniAppUserSummary } from "../types/auth";
 
-type ActivitySection = "events" | "tasks" | "calendar" | "history";
+type ActivitySection = "projects" | "events" | "tasks" | "calendar" | "history";
 
 interface DeepLink {
   tab: TabKey;
@@ -43,7 +43,9 @@ function parseDeepLink(): DeepLink | null {
   if (projectMatch) {
     const projectId = Number(projectMatch[1]);
     if (Number.isFinite(projectId)) {
-      return { tab: "projects", projectId, activitySection: null, itemId: null };
+      // "Проекты" is a section inside Activity now, not its own bottom-nav
+      // tab (2026-08 redesign brief section 16) — see BottomNavigation.tsx.
+      return { tab: "activity", projectId, activitySection: "projects", itemId: null };
     }
   }
   const taskMatch = hash.match(/^#\/tasks(?:\/(\d+))?/);
@@ -80,11 +82,12 @@ function renderTab(
   }
   if (tab === "activity") {
     return (
-      <ActivityScreen initialSection={initialActivitySection ?? undefined} initialItemId={initialItemId} />
+      <ActivityScreen
+        initialSection={initialActivitySection ?? undefined}
+        initialItemId={initialItemId}
+        initialProjectId={initialProjectId}
+      />
     );
-  }
-  if (tab === "projects") {
-    return <ProjectsScreen initialProjectId={initialProjectId} />;
   }
   if (tab === "opportunities") {
     return <OpportunitiesScreen initialItemId={initialItemId} />;
@@ -102,7 +105,7 @@ export function App() {
   // already assume ("ЭРА / ADMIN" — now just "Управление" — visible right
   // after login, no extra click). What's new is that it's no longer the
   // *only* place they can be: "← Личное" in AdminLayout/LeaderLayout flips
-  // this to false, landing them on the exact same Home/Projects/
+  // this to false, landing them on the exact same Home/Activity/
   // Opportunities/Profile a participant sees — previously an admin or
   // leader had no route to their own personal Mini App at all.
   const [inWorkspace, setInWorkspace] = useState(true);
