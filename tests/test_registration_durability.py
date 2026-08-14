@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -58,20 +58,18 @@ def _settings(*, admin_ids: tuple[int, ...] = ()):
     )
 
 
-@pytest.mark.asyncio
-async def test_pending_registration_survives_admin_notification_failure() -> None:
-    """The database row must be durable before any Telegram admin delivery.
+class RegistrationDurabilityTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
-    This reproduces the production symptom: the user finishes registration,
-    but building/sending the admin card fails. Before the fix the middleware
-    rolled the whole transaction back, so Admin Mode showed no application.
-    """
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    async def asyncTearDown(self) -> None:
+        await self.engine.dispose()
 
-    try:
+    async def test_pending_registration_survives_admin_notification_failure(self) -> None:
+        """A Telegram failure after submit must not roll the DB transaction back."""
         telegram_id = 880001
         state = _state(_registration_data())
         call = _call(telegram_id)
@@ -91,7 +89,7 @@ async def test_pending_registration_survives_admin_notification_failure() -> Non
                 new=AsyncMock(return_value=True),
             ) as fallback_send,
         ):
-            async with session_factory() as session:
+            async with self.session_factory() as session:
                 await finish_registration(
                     call,
                     state,
@@ -100,31 +98,21 @@ async def test_pending_registration_survives_admin_notification_failure() -> Non
                     _settings(admin_ids=(990001,)),
                 )
 
-            # Use a brand-new session: this proves the row was COMMITTED,
-            # not merely still visible in the handler's transaction.
-            async with session_factory() as verification_session:
+            # Brand-new session proves the row was committed, not merely
+            # visible inside the original handler transaction.
+            async with self.session_factory() as verification_session:
                 user = await verification_session.scalar(
                     select(User).where(User.telegram_id == telegram_id)
                 )
-                assert user is not None
-                assert user.application_status == ApplicationStatus.PENDING
-                assert user.role == Role.PARTICIPANT
+                self.assertIsNotNone(user)
+                self.assertEqual(user.application_status, ApplicationStatus.PENDING)
+                self.assertEqual(user.role, Role.PARTICIPANT)
 
             fallback_send.assert_awaited()
             state.clear.assert_awaited_once()
-    finally:
-        await engine.dispose()
 
-
-@pytest.mark.asyncio
-async def test_system_admin_registration_is_persisted_and_notified() -> None:
-    """ADMIN_IDS keeps bootstrap auto-approval but no longer disappears silently."""
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    try:
+    async def test_system_admin_registration_is_persisted_and_notified(self) -> None:
+        """ADMIN_IDS keeps auto-approval but no longer disappears silently."""
         telegram_id = 880002
         state = _state(_registration_data())
         call = _call(telegram_id)
@@ -140,7 +128,7 @@ async def test_system_admin_registration_is_persisted_and_notified() -> None:
                 new=AsyncMock(return_value=True),
             ) as admin_notice,
         ):
-            async with session_factory() as session:
+            async with self.session_factory() as session:
                 await finish_registration(
                     call,
                     state,
@@ -149,17 +137,19 @@ async def test_system_admin_registration_is_persisted_and_notified() -> None:
                     _settings(admin_ids=(telegram_id,)),
                 )
 
-            async with session_factory() as verification_session:
+            async with self.session_factory() as verification_session:
                 user = await verification_session.scalar(
                     select(User).where(User.telegram_id == telegram_id)
                 )
-                assert user is not None
-                assert user.application_status == ApplicationStatus.APPROVED
-                assert user.role == Role.ADMIN
+                self.assertIsNotNone(user)
+                self.assertEqual(user.application_status, ApplicationStatus.APPROVED)
+                self.assertEqual(user.role, Role.ADMIN)
 
             admin_notice.assert_awaited()
             sent_text = admin_notice.await_args.args[2]
-            assert "Новая регистрация ЭРА" in sent_text
-            assert "автоодобрено" in sent_text
-    finally:
-        await engine.dispose()
+            self.assertIn("Новая регистрация ЭРА", sent_text)
+            self.assertIn("автоодобрено", sent_text)
+
+
+if __name__ == "__main__":
+    unittest.main()
