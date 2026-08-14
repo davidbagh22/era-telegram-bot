@@ -6,8 +6,9 @@ import { ContactsPanel } from "./tools/ContactsPanel";
 import { GoalsPanel } from "./tools/GoalsPanel";
 import { GreetingsPanel } from "./tools/GreetingsPanel";
 import { StructurePanel } from "./tools/StructurePanel";
+import { SystemPanel } from "./tools/SystemPanel";
 
-type ToolsSection = "goals" | "contacts" | "structure" | "chats" | "greetings" | "broadcast";
+type ToolsSection = "goals" | "contacts" | "structure" | "chats" | "greetings" | "broadcast" | "system";
 
 const SECTIONS: { value: ToolsSection; label: string; description: string }[] = [
   { value: "goals", label: "Цели месяца", description: "Фокус команды и ключевые цели текущего месяца" },
@@ -16,6 +17,7 @@ const SECTIONS: { value: ToolsSection; label: string; description: string }[] = 
   { value: "chats", label: "Чаты", description: "Привязка, доступ и состояние организационных чатов" },
   { value: "greetings", label: "Приветствия", description: "Сообщения для новых участников в чатах" },
   { value: "broadcast", label: "Рассылки", description: "Коммуникации с участниками и рабочими чатами" },
+  { value: "system", label: "Система", description: "Health score, диагностика, инциденты и резервные копии" },
 ];
 
 export function AdminToolsScreen() {
@@ -52,6 +54,7 @@ export function AdminToolsScreen() {
       {section === "chats" && <ChatsPanel />}
       {section === "greetings" && <GreetingsPanel />}
       {section === "broadcast" && <BroadcastPanel />}
+      {section === "system" && <SystemPanel />}
     </div>
   );
 }
