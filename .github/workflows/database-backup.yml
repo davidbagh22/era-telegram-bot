@@ -4,6 +4,7 @@ on:
   schedule:
     - cron: "17 1 * * *"
   workflow_dispatch:
+  deployment_status:
 
 permissions:
   contents: read
@@ -19,6 +20,11 @@ concurrency:
 
 jobs:
   backup-and-verify:
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment.environment == 'main - era-telegram-bot' &&
+       github.event.deployment.ref == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
