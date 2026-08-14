@@ -130,7 +130,15 @@ jobs:
       - name: Playwright failure summary
         if: failure()
         working-directory: frontend
-        run: tail -n 220 playwright-output.log || true
+        shell: bash
+        run: |
+          tail -n 220 playwright-output.log || true
+          echo "### Playwright failure" >> "${GITHUB_STEP_SUMMARY}"
+          tail -n 220 playwright-output.log >> "${GITHUB_STEP_SUMMARY}" || true
+          grep -E "([0-9]+\)|Error:|TimeoutError:|Locator:|Expected:|Received:|at .*\.spec\.ts:)" playwright-output.log \
+            | tail -n 30 \
+            | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' \
+            | while IFS= read -r line; do echo "::error title=Playwright failure::${line}"; done || true
       - name: Backend log (on failure)
         if: failure()
         run: cat uvicorn.log || true
