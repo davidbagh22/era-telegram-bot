@@ -88,6 +88,7 @@ from app.services.authorization_service import (
 )
 from app.services.audit_service import audit
 from app.services.chat_access_service import sync_user_chat_access
+from app.services.chat_faq_service import ChatFaqError, publish_faq_message
 from app.services.chat_registry_service import check_chats_health, list_chat_registry
 from app.services.excel_service import build_analytics_workbook
 from app.services.maintenance_service import (
@@ -647,6 +648,33 @@ async def run_chats_health_check(
         new_value={"results": {r.chat_key: r.ok for r in results}},
     )
     return [ChatHealthOut(chat_key=r.chat_key, ok=r.ok, detail=r.detail) for r in results]
+
+
+class FaqPublishOut(BaseModel):
+    ok: bool
+    pinned: bool
+
+
+@router.post("/chats/faq/publish", response_model=FaqPublishOut)
+async def publish_chat_faq_endpoint(
+    admin: User = Depends(require_dashboard_access),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> FaqPublishOut:
+    # Posts + pins the in-chat FAQ card (2026-08 master spec, P5) in the
+    # general chat -- see app/services/chat_faq_service.py. Re-postable on
+    # demand rather than edit-in-place: simplest safe option, and the old
+    # card staying visible above a fresh pin is harmless.
+    if bot is None:
+        raise HTTPException(status_code=503, detail="bot_unavailable")
+    try:
+        result = await publish_faq_message(bot, settings, session, admin.id)
+    except ChatFaqError as exc:
+        code = 404 if exc.code == "chat_not_bound" else 502
+        raise HTTPException(status_code=code, detail=exc.code) from exc
+    return FaqPublishOut(ok=True, pinned=result.pinned)
 
 
 class ApplicationOut(BaseModel):

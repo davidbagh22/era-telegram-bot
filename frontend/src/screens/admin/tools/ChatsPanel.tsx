@@ -1,5 +1,10 @@
 import { useCallback, useState } from "react";
-import { describeActionError, fetchChatRegistry, runChatsHealthCheck } from "../../../api/client";
+import {
+  describeActionError,
+  fetchChatRegistry,
+  publishChatFaq,
+  runChatsHealthCheck,
+} from "../../../api/client";
 import { Card } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { StatusBadge } from "../../../components/StatusBadge";
@@ -22,6 +27,9 @@ export function ChatsPanel() {
   const [health, setHealth] = useState<Record<string, ChatHealthResult>>({});
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
+  const [publishingFaq, setPublishingFaq] = useState(false);
+  const [faqResult, setFaqResult] = useState<string | null>(null);
+  const [faqError, setFaqError] = useState<string | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
@@ -37,6 +45,25 @@ export function ChatsPanel() {
       setChecking(false);
     }
   }, []);
+
+  const handlePublishFaq = useCallback(async () => {
+    setPublishingFaq(true);
+    setFaqError(null);
+    setFaqResult(null);
+    try {
+      const result = await publishChatFaq();
+      setFaqResult(
+        result.pinned
+          ? "FAQ опубликован и закреплён в общем чате ✅"
+          : "FAQ опубликован, но не удалось закрепить — проверьте права бота на закрепление сообщений.",
+      );
+      refresh();
+    } catch (error) {
+      setFaqError(describeActionError(error));
+    } finally {
+      setPublishingFaq(false);
+    }
+  }, [refresh]);
 
   if (state.status === "loading") {
     return <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>;
@@ -82,6 +109,23 @@ export function ChatsPanel() {
               <p style={{ margin: "0.375rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
                 Перешлите любое сообщение из этого чата боту с /bind
               </p>
+            )}
+            {chat.chat_key === "general" && chat.is_bound && (
+              <div style={{ marginTop: "0.5rem" }}>
+                <button type="button" disabled={publishingFaq} onClick={handlePublishFaq}>
+                  {publishingFaq ? "Публикуем…" : "📌 Опубликовать FAQ в общем чате"}
+                </button>
+                {faqResult && (
+                  <p style={{ margin: "0.375rem 0 0", fontSize: "0.8125rem", color: "var(--era-text-muted)" }}>
+                    {faqResult}
+                  </p>
+                )}
+                {faqError && (
+                  <p style={{ margin: "0.375rem 0 0", fontSize: "0.8125rem", color: "var(--era-error)" }}>
+                    {faqError}
+                  </p>
+                )}
+              </div>
             )}
           </Card>
         );

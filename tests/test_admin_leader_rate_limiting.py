@@ -97,8 +97,10 @@ class RateLimitDependencyWiringTests(unittest.TestCase):
         # app/services/maintenance_service.py) + 1 chat health-check route
         # (2026-08 master spec section 30 — Telegram API calls are worth
         # rate-limiting same as everything else here even though it's
-        # read-only, see app/services/chat_registry_service.py).
-        self.assertEqual(len(post_routes), 56, "expected 56 admin mutation routes")
+        # read-only, see app/services/chat_registry_service.py) + 1 chat FAQ
+        # publish route (2026-08 master spec, P5 — see
+        # app/services/chat_faq_service.py).
+        self.assertEqual(len(post_routes), 57, "expected 57 admin mutation routes")
         for route in post_routes:
             deps = [d.call for d in route.dependant.dependencies]
             self.assertIn(

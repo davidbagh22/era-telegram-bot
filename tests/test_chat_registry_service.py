@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
@@ -25,8 +26,13 @@ class FakeBot:
         self.member_status = member_status
         self.raise_on_get_member = raise_on_get_member
 
-    async def send_message(self, chat_id: int, text: str, reply_markup=None) -> None:
+    async def send_message(self, chat_id: int, text: str, reply_markup=None):
         self.sent.append((chat_id, text))
+        return SimpleNamespace(message_id=1)
+
+    async def pin_chat_message(self, chat_id: int, message_id: int, disable_notification: bool = True) -> None:
+        self.pinned = getattr(self, "pinned", [])
+        self.pinned.append((chat_id, message_id))
 
     async def get_chat_member(self, chat_id: int, user_id: int):
         if self.raise_on_get_member:
@@ -169,6 +175,16 @@ class ChatRegistryApiRbacTests(unittest.TestCase):
         response = client.post("/api/v1/admin/chats/health-check")
         self.assertEqual(response.status_code, 503)
 
+    def test_participant_cannot_publish_faq(self) -> None:
+        client = TestClient(self._build_app(_participant()))
+        response = client.post("/api/v1/admin/chats/faq/publish")
+        self.assertEqual(response.status_code, 403)
+
+    def test_publish_faq_without_bot_is_unavailable(self) -> None:
+        client = TestClient(self._build_app(_admin(), bot=None))
+        response = client.post("/api/v1/admin/chats/faq/publish")
+        self.assertEqual(response.status_code, 503)
+
 
 class ChatBroadcastFailureAuditPersistsThroughRealEndpointTests(unittest.IsolatedAsyncioTestCase):
     """The one thing worth a real, DB-backed round trip here: does the
@@ -224,6 +240,61 @@ class ChatBroadcastFailureAuditPersistsThroughRealEndpointTests(unittest.Isolate
                 "the failed send's audit row did not survive the request -- "
                 "the commit-before-raise fix in admin.py regressed",
             )
+
+
+class ChatFaqPublishThroughRealEndpointTests(unittest.IsolatedAsyncioTestCase):
+    """Real-DB round trip through the actual endpoint, matching this
+    session's established pattern for anything that writes an audit row."""
+
+    async def asyncSetUp(self) -> None:
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def asyncTearDown(self) -> None:
+        await self.engine.dispose()
+
+    async def test_publish_faq_writes_audit_row_and_reports_pinned(self) -> None:
+        app = FastAPI()
+        app.include_router(api_router)
+        app.state.session_factory = self.session_factory
+        app.dependency_overrides[get_current_user] = lambda: _admin()
+        app.dependency_overrides[get_settings] = lambda: Settings(
+            bot_token="1234567890:test-token", general_chat_id=-100999
+        )
+        app.dependency_overrides[get_bot] = lambda: FakeBot()
+        client = TestClient(app)
+
+        response = client.post("/api/v1/admin/chats/faq/publish")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": True, "pinned": True})
+
+        async with self.session_factory() as session:
+            rows = (
+                await session.scalars(
+                    select(AuditLog).where(AuditLog.action == "chat.faq_published")
+                )
+            ).all()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].new_value, {"chat": "general", "pinned": True})
+
+    def test_publish_faq_rejects_unbound_chat(self) -> None:
+        app = FastAPI()
+        app.include_router(api_router)
+        app.dependency_overrides[get_current_user] = lambda: _admin()
+        app.dependency_overrides[get_settings] = lambda: Settings(bot_token="1234567890:test-token")
+
+        async def _session_override():
+            yield SimpleNamespace()
+
+        app.dependency_overrides[get_session] = _session_override
+        app.dependency_overrides[get_bot] = lambda: FakeBot()
+        client = TestClient(app)
+
+        response = client.post("/api/v1/admin/chats/faq/publish")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "chat_not_bound")
 
 
 if __name__ == "__main__":

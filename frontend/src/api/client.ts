@@ -596,6 +596,10 @@ export function runChatsHealthCheck(): Promise<ChatHealthResult[]> {
   return authorizedPost<ChatHealthResult[]>("/api/v1/admin/chats/health-check");
 }
 
+export function publishChatFaq(): Promise<{ ok: boolean; pinned: boolean }> {
+  return authorizedPost<{ ok: boolean; pinned: boolean }>("/api/v1/admin/chats/faq/publish");
+}
+
 export function fetchBroadcastAudienceOptions(): Promise<BroadcastAudienceOptions> {
   return authorizedGet<BroadcastAudienceOptions>("/api/v1/admin/broadcast/audience-options");
 }
