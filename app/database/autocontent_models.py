@@ -37,6 +37,7 @@ class GeneralCustomContent(TimestampMixin, Base):
     title: Mapped[str | None] = mapped_column(String(180))
     text: Mapped[str] = mapped_column(Text)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_skipped: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
