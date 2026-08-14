@@ -16,7 +16,9 @@ from app.database.system_models import BackupHistory, SystemDiagnosticRun, Syste
 from app.services.notification_service import notify_admins
 
 _SECRET_PATTERNS = (
-    re.compile(r"(?i)(bot[_-]?token|token|secret|password|api[_-]?key)\s*[=:]\s*[^\s,;]+"),
+    re.compile(
+        r"(?i)(bot[_-]?token|token|secret|password|api[_-]?key)\s*[=:]\s*[^\s,;]+"
+    ),
     re.compile(r"\b\d{8,12}:[A-Za-z0-9_-]{20,}\b"),
 )
 
@@ -43,6 +45,13 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _as_utc(value: datetime) -> datetime:
+    """Normalize SQLite-naive and PostgreSQL-aware timestamps alike."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def current_commit_sha() -> str | None:
     value = (
         os.getenv("RENDER_GIT_COMMIT")
@@ -57,13 +66,22 @@ def sanitize_runtime_detail(value: object, *, limit: int = 700) -> str:
     text_value = str(value or "").replace("\x00", " ")
     for pattern in _SECRET_PATTERNS:
         text_value = pattern.sub("[REDACTED]", text_value)
-    text_value = re.sub(r"postgres(?:ql)?(?:\+asyncpg)?://[^\s]+", "[DATABASE_URL_REDACTED]", text_value, flags=re.I)
+    text_value = re.sub(
+        r"postgres(?:ql)?(?:\+asyncpg)?://[^\s]+",
+        "[DATABASE_URL_REDACTED]",
+        text_value,
+        flags=re.I,
+    )
     text_value = re.sub(r"https?://[^\s]+", "[URL_REDACTED]", text_value)
     text_value = " ".join(text_value.split())
     return text_value[:limit]
 
 
-def _fix_prompt(check: HealthCheck, commit_sha: str | None, last_healthy_commit: str | None) -> str:
+def _fix_prompt(
+    check: HealthCheck,
+    commit_sha: str | None,
+    last_healthy_commit: str | None,
+) -> str:
     return (
         "Исправь production-инцидент ERA Platform.\n\n"
         f"Категория: {check.key}\n"
@@ -71,15 +89,32 @@ def _fix_prompt(check: HealthCheck, commit_sha: str | None, last_healthy_commit:
         f"Симптом: {sanitize_runtime_detail(check.detail)}\n"
         f"Текущий commit: {commit_sha or 'unknown'}\n"
         f"Последний healthy commit: {last_healthy_commit or 'unknown'}\n\n"
-        "Требования: найди корневую причину, не обходи проверки, не ослабляй авторизацию, "
-        "добавь regression test, проверь миграции и не выводи секреты/персональные данные в логи."
+        "Требования: найди корневую причину, не обходи проверки, не ослабляй "
+        "авторизацию, добавь regression test, проверь миграции и не выводи "
+        "секреты/персональные данные в логи."
     )
 
 
 def _score(checks: list[HealthCheck]) -> tuple[int, str]:
-    penalties = {"info": 0, "low": 4, "medium": 10, "high": 25, "critical": 45}
-    score = max(0, 100 - sum(penalties.get(item.severity, 10) for item in checks if item.status != "ok"))
-    if any(item.status != "ok" and item.severity == "critical" for item in checks):
+    penalties = {
+        "info": 0,
+        "low": 4,
+        "medium": 10,
+        "high": 25,
+        "critical": 45,
+    }
+    score = max(
+        0,
+        100
+        - sum(
+            penalties.get(item.severity, 10)
+            for item in checks
+            if item.status != "ok"
+        ),
+    )
+    if any(
+        item.status != "ok" and item.severity == "critical" for item in checks
+    ):
         return score, "critical"
     if any(item.status != "ok" for item in checks):
         return score, "degraded"
@@ -89,20 +124,48 @@ def _score(checks: list[HealthCheck]) -> tuple[int, str]:
 async def _database_check(session) -> HealthCheck:
     try:
         await session.execute(text("SELECT 1"))
-        return HealthCheck("database", "База данных", "ok", "info", "Соединение с БД работает")
+        return HealthCheck(
+            "database",
+            "База данных",
+            "ok",
+            "info",
+            "Соединение с БД работает",
+        )
     except Exception as exc:  # noqa: BLE001 - diagnostic boundary
-        return HealthCheck("database", "База данных", "error", "critical", f"Database probe failed: {exc.__class__.__name__}")
+        return HealthCheck(
+            "database",
+            "База данных",
+            "error",
+            "critical",
+            f"Database probe failed: {exc.__class__.__name__}",
+        )
 
 
 async def _configuration_check(settings: Settings) -> HealthCheck:
     missing: list[str] = []
     if settings.is_render_deployment and not settings.miniapp_auth_secret:
         missing.append("MINIAPP_AUTH_SECRET")
-    if settings.is_render_deployment and not settings.effective_base_url.startswith("https://"):
+    if settings.is_render_deployment and not settings.effective_base_url.startswith(
+        "https://"
+    ):
         missing.append("HTTPS public base URL")
+    if settings.is_render_deployment and not settings.backup_report_secret:
+        missing.append("BACKUP_REPORT_SECRET")
     if missing:
-        return HealthCheck("production_config", "Production config", "error", "critical", f"Не настроено: {', '.join(missing)}")
-    return HealthCheck("production_config", "Production config", "ok", "info", "Критичная production-конфигурация присутствует")
+        return HealthCheck(
+            "production_config",
+            "Production config",
+            "error",
+            "critical",
+            f"Не настроено: {', '.join(missing)}",
+        )
+    return HealthCheck(
+        "production_config",
+        "Production config",
+        "ok",
+        "info",
+        "Критичная production-конфигурация присутствует",
+    )
 
 
 async def _chat_config_check(settings: Settings) -> HealthCheck:
@@ -114,8 +177,20 @@ async def _chat_config_check(settings: Settings) -> HealthCheck:
     }
     missing = [key for key, chat_id in expected.items() if not chat_id]
     if missing:
-        return HealthCheck("chat_bindings", "Чаты ЭРА", "warning", "medium", f"Нет chat_id: {', '.join(missing)}")
-    return HealthCheck("chat_bindings", "Чаты ЭРА", "ok", "info", "Все четыре организационных чата настроены")
+        return HealthCheck(
+            "chat_bindings",
+            "Чаты ЭРА",
+            "warning",
+            "medium",
+            f"Нет chat_id: {', '.join(missing)}",
+        )
+    return HealthCheck(
+        "chat_bindings",
+        "Чаты ЭРА",
+        "ok",
+        "info",
+        "Все четыре организационных чата настроены",
+    )
 
 
 async def _delivery_check(session) -> HealthCheck:
@@ -131,11 +206,29 @@ async def _delivery_check(session) -> HealthCheck:
             or 0
         )
     except Exception as exc:  # pragma: no cover - schema/runtime boundary
-        return HealthCheck("task_delivery", "Доставка задач", "error", "high", f"Delivery diagnostic failed: {exc.__class__.__name__}")
+        return HealthCheck(
+            "task_delivery",
+            "Доставка задач",
+            "error",
+            "high",
+            f"Delivery diagnostic failed: {exc.__class__.__name__}",
+        )
     if failed:
         severity = "high" if failed >= 5 else "medium"
-        return HealthCheck("task_delivery", "Доставка задач", "warning", severity, f"Неуспешных доставок за 24 часа: {failed}")
-    return HealthCheck("task_delivery", "Доставка задач", "ok", "info", "Неуспешных доставок задач за 24 часа нет")
+        return HealthCheck(
+            "task_delivery",
+            "Доставка задач",
+            "warning",
+            severity,
+            f"Неуспешных доставок за 24 часа: {failed}",
+        )
+    return HealthCheck(
+        "task_delivery",
+        "Доставка задач",
+        "ok",
+        "info",
+        "Неуспешных доставок задач за 24 часа нет",
+    )
 
 
 async def _points_integrity_check(session) -> HealthCheck:
@@ -151,7 +244,13 @@ async def _points_integrity_check(session) -> HealthCheck:
             ).scalars()
         )
     except Exception as exc:  # pragma: no cover - schema/runtime boundary
-        return HealthCheck("points_integrity", "Целостность баллов", "error", "high", f"Points diagnostic failed: {exc.__class__.__name__}")
+        return HealthCheck(
+            "points_integrity",
+            "Целостность баллов",
+            "error",
+            "high",
+            f"Points diagnostic failed: {exc.__class__.__name__}",
+        )
     if negative_users:
         return HealthCheck(
             "points_integrity",
@@ -160,34 +259,106 @@ async def _points_integrity_check(session) -> HealthCheck:
             "high",
             f"Найдены отрицательные итоговые балансы: {len(negative_users)}+ аккаунтов",
         )
-    return HealthCheck("points_integrity", "Целостность баллов", "ok", "info", "Отрицательных итоговых балансов не найдено")
+    return HealthCheck(
+        "points_integrity",
+        "Целостность баллов",
+        "ok",
+        "info",
+        "Отрицательных итоговых балансов не найдено",
+    )
 
 
 async def _backup_check(session) -> HealthCheck:
     try:
-        latest = await session.scalar(select(BackupHistory).order_by(BackupHistory.created_at.desc()).limit(1))
+        latest = await session.scalar(
+            select(BackupHistory).order_by(BackupHistory.created_at.desc()).limit(1)
+        )
     except Exception as exc:  # pragma: no cover - schema/runtime boundary
-        return HealthCheck("backup", "Резервное копирование", "error", "high", f"Backup diagnostic failed: {exc.__class__.__name__}")
+        return HealthCheck(
+            "backup",
+            "Резервное копирование",
+            "error",
+            "high",
+            f"Backup diagnostic failed: {exc.__class__.__name__}",
+        )
     if latest is None:
-        return HealthCheck("backup", "Резервное копирование", "warning", "high", "В Backup History пока нет ни одной подтверждённой записи")
+        # First deploy of Backup History should be visible but not page admins
+        # every 15 minutes before the first nightly callback has had a chance
+        # to run.
+        return HealthCheck(
+            "backup",
+            "Резервное копирование",
+            "warning",
+            "medium",
+            "В Backup History пока нет ни одной подтверждённой записи",
+        )
     if latest.status != "success" or latest.restore_verified_at is None:
-        return HealthCheck("backup", "Резервное копирование", "error", "high", f"Последний backup имеет статус {latest.status}; restore verification отсутствует или завершился ошибкой")
-    reference_time = latest.completed_at or latest.created_at
+        return HealthCheck(
+            "backup",
+            "Резервное копирование",
+            "error",
+            "high",
+            f"Последний backup имеет статус {latest.status}; restore verification отсутствует или завершился ошибкой",
+        )
+
+    reference_time = _as_utc(latest.completed_at or latest.created_at)
     age = _now() - reference_time
     if age > timedelta(hours=72):
-        return HealthCheck("backup", "Резервное копирование", "error", "critical", f"Последний проверенный backup старше 72 часов ({int(age.total_seconds() // 3600)} ч)")
+        return HealthCheck(
+            "backup",
+            "Резервное копирование",
+            "error",
+            "critical",
+            f"Последний проверенный backup старше 72 часов ({int(age.total_seconds() // 3600)} ч)",
+        )
     if age > timedelta(hours=36):
-        return HealthCheck("backup", "Резервное копирование", "warning", "high", f"Последний проверенный backup старше 36 часов ({int(age.total_seconds() // 3600)} ч)")
-    return HealthCheck("backup", "Резервное копирование", "ok", "info", f"Последний backup проверен {int(age.total_seconds() // 3600)} ч назад")
+        return HealthCheck(
+            "backup",
+            "Резервное копирование",
+            "warning",
+            "high",
+            f"Последний проверенный backup старше 36 часов ({int(age.total_seconds() // 3600)} ч)",
+        )
+    if latest.storage_provider != "s3-compatible-encrypted":
+        return HealthCheck(
+            "backup",
+            "Резервное копирование",
+            "warning",
+            "medium",
+            "Verified backup есть, но независимое S3-совместимое хранилище с retention 7/4/6 ещё не подтверждено",
+        )
+    return HealthCheck(
+        "backup",
+        "Резервное копирование",
+        "ok",
+        "info",
+        f"Последний verified external backup создан {int(age.total_seconds() // 3600)} ч назад",
+    )
 
 
 async def _telegram_checks(bot: Bot, settings: Settings) -> list[HealthCheck]:
     checks: list[HealthCheck] = []
     try:
         me = await bot.get_me()
-        checks.append(HealthCheck("telegram_api", "Telegram Bot API", "ok", "info", f"Bot API отвечает; bot_id={me.id}"))
+        checks.append(
+            HealthCheck(
+                "telegram_api",
+                "Telegram Bot API",
+                "ok",
+                "info",
+                f"Bot API отвечает; bot_id={me.id}",
+            )
+        )
     except Exception as exc:  # noqa: BLE001
-        return [HealthCheck("telegram_api", "Telegram Bot API", "error", "critical", f"Telegram probe failed: {exc.__class__.__name__}")]
+        return [
+            HealthCheck(
+                "telegram_api",
+                "Telegram Bot API",
+                "error",
+                "critical",
+                f"Telegram probe failed: {exc.__class__.__name__}",
+            )
+        ]
 
     bot_id = me.id
     configured = {
@@ -207,22 +378,45 @@ async def _telegram_checks(bot: Bot, settings: Settings) -> list[HealthCheck]:
         except Exception as exc:  # noqa: BLE001
             failed.append(f"{key}:{exc.__class__.__name__}")
     if failed:
-        checks.append(HealthCheck("telegram_chat_access", "Доступ бота к чатам", "error", "high", f"Проблемные чаты: {', '.join(failed)}"))
+        checks.append(
+            HealthCheck(
+                "telegram_chat_access",
+                "Доступ бота к чатам",
+                "error",
+                "high",
+                f"Проблемные чаты: {', '.join(failed)}",
+            )
+        )
     else:
-        checks.append(HealthCheck("telegram_chat_access", "Доступ бота к чатам", "ok", "info", "Бот доступен во всех настроенных чатах"))
+        checks.append(
+            HealthCheck(
+                "telegram_chat_access",
+                "Доступ бота к чатам",
+                "ok",
+                "info",
+                "Бот доступен во всех настроенных чатах",
+            )
+        )
     return checks
 
 
 async def _last_healthy_commit(session) -> str | None:
     return await session.scalar(
         select(SystemDiagnosticRun.commit_sha)
-        .where(SystemDiagnosticRun.status == "healthy", SystemDiagnosticRun.commit_sha.is_not(None))
+        .where(
+            SystemDiagnosticRun.status == "healthy",
+            SystemDiagnosticRun.commit_sha.is_not(None),
+        )
         .order_by(SystemDiagnosticRun.created_at.desc())
         .limit(1)
     )
 
 
-async def _sync_incidents(session, checks: list[HealthCheck], commit_sha: str | None) -> tuple[list[SystemIncident], list[SystemIncident]]:
+async def _sync_incidents(
+    session,
+    checks: list[HealthCheck],
+    commit_sha: str | None,
+) -> tuple[list[SystemIncident], list[SystemIncident]]:
     now = _now()
     last_healthy = await _last_healthy_commit(session)
     active_keys: set[str] = set()
@@ -234,7 +428,9 @@ async def _sync_incidents(session, checks: list[HealthCheck], commit_sha: str | 
         if check.status == "ok":
             continue
         active_keys.add(dedupe_key)
-        incident = await session.scalar(select(SystemIncident).where(SystemIncident.dedupe_key == dedupe_key))
+        incident = await session.scalar(
+            select(SystemIncident).where(SystemIncident.dedupe_key == dedupe_key)
+        )
         if incident is None:
             incident = SystemIncident(
                 dedupe_key=dedupe_key,
@@ -270,7 +466,16 @@ async def _sync_incidents(session, checks: list[HealthCheck], commit_sha: str | 
                 incident.admin_notified = False
                 opened_or_reopened.append(incident)
 
-    existing_open = list((await session.scalars(select(SystemIncident).where(SystemIncident.status == "open", SystemIncident.category == "runtime_health"))).all())
+    existing_open = list(
+        (
+            await session.scalars(
+                select(SystemIncident).where(
+                    SystemIncident.status == "open",
+                    SystemIncident.category == "runtime_health",
+                )
+            )
+        ).all()
+    )
     for incident in existing_open:
         if incident.dedupe_key not in active_keys:
             incident.status = "resolved"
@@ -280,14 +485,29 @@ async def _sync_incidents(session, checks: list[HealthCheck], commit_sha: str | 
     return opened_or_reopened, recovered
 
 
-async def _notify_incident_changes(bot: Bot, settings: Settings, session_factory, opened_ids: list[int], recovered_ids: list[int]) -> None:
+async def _notify_incident_changes(
+    bot: Bot,
+    settings: Settings,
+    session_factory,
+    opened_ids: list[int],
+    recovered_ids: list[int],
+) -> None:
     async with session_factory() as session:
         if opened_ids:
-            incidents = list((await session.scalars(select(SystemIncident).where(SystemIncident.id.in_(opened_ids)))).all())
+            incidents = list(
+                (
+                    await session.scalars(
+                        select(SystemIncident).where(SystemIncident.id.in_(opened_ids))
+                    )
+                ).all()
+            )
             for incident in incidents:
-                if incident.severity not in {"high", "critical"} or incident.admin_notified:
+                if (
+                    incident.severity not in {"high", "critical"}
+                    or incident.admin_notified
+                ):
                     continue
-                await notify_admins(
+                sent, _ = await notify_admins(
                     bot,
                     settings,
                     "🚨 ЭРА: системный инцидент\n\n"
@@ -296,18 +516,36 @@ async def _notify_incident_changes(bot: Bot, settings: Settings, session_factory
                     f"Диагностика: {incident.detail}\n\n"
                     "Откройте Admin Mode → Коммуникации → Инструменты → Система.",
                 )
-                incident.admin_notified = True
+                incident.admin_notified = sent > 0
         if recovered_ids:
-            incidents = list((await session.scalars(select(SystemIncident).where(SystemIncident.id.in_(recovered_ids)))).all())
+            incidents = list(
+                (
+                    await session.scalars(
+                        select(SystemIncident).where(
+                            SystemIncident.id.in_(recovered_ids)
+                        )
+                    )
+                ).all()
+            )
             for incident in incidents:
                 if not incident.admin_notified or incident.recovery_notified:
                     continue
-                await notify_admins(bot, settings, f"✅ ЭРА: восстановление\n\n{incident.title}\nПроверка снова проходит успешно.")
-                incident.recovery_notified = True
+                sent, _ = await notify_admins(
+                    bot,
+                    settings,
+                    f"✅ ЭРА: восстановление\n\n{incident.title}\nПроверка снова проходит успешно.",
+                )
+                incident.recovery_notified = sent > 0
         await session.commit()
 
 
-async def run_system_diagnostics(bot: Bot, settings: Settings, session_factory, *, run_type: str = "heartbeat") -> dict[str, Any]:
+async def run_system_diagnostics(
+    bot: Bot,
+    settings: Settings,
+    session_factory,
+    *,
+    run_type: str = "heartbeat",
+) -> dict[str, Any]:
     started = time.perf_counter()
     commit_sha = current_commit_sha()
     async with session_factory() as session:
@@ -338,7 +576,13 @@ async def run_system_diagnostics(bot: Bot, settings: Settings, session_factory, 
         opened_ids = [item.id for item in opened]
         recovered_ids = [item.id for item in recovered]
 
-    await _notify_incident_changes(bot, settings, session_factory, opened_ids, recovered_ids)
+    await _notify_incident_changes(
+        bot,
+        settings,
+        session_factory,
+        opened_ids,
+        recovered_ids,
+    )
     return {
         "id": run.id,
         "run_type": run.run_type,
@@ -351,10 +595,38 @@ async def run_system_diagnostics(bot: Bot, settings: Settings, session_factory, 
 
 
 async def system_snapshot(session) -> dict[str, Any]:
-    latest = await session.scalar(select(SystemDiagnosticRun).order_by(SystemDiagnosticRun.created_at.desc()).limit(1))
-    latest_full = await session.scalar(select(SystemDiagnosticRun).where(SystemDiagnosticRun.run_type == "full").order_by(SystemDiagnosticRun.created_at.desc()).limit(1))
-    incidents = list((await session.scalars(select(SystemIncident).order_by(SystemIncident.status.asc(), SystemIncident.last_seen_at.desc()).limit(50))).all())
-    backups = list((await session.scalars(select(BackupHistory).order_by(BackupHistory.created_at.desc()).limit(30))).all())
+    latest = await session.scalar(
+        select(SystemDiagnosticRun)
+        .order_by(SystemDiagnosticRun.created_at.desc())
+        .limit(1)
+    )
+    latest_full = await session.scalar(
+        select(SystemDiagnosticRun)
+        .where(SystemDiagnosticRun.run_type == "full")
+        .order_by(SystemDiagnosticRun.created_at.desc())
+        .limit(1)
+    )
+    incidents = list(
+        (
+            await session.scalars(
+                select(SystemIncident)
+                .order_by(
+                    SystemIncident.status.asc(),
+                    SystemIncident.last_seen_at.desc(),
+                )
+                .limit(50)
+            )
+        ).all()
+    )
+    backups = list(
+        (
+            await session.scalars(
+                select(BackupHistory)
+                .order_by(BackupHistory.created_at.desc())
+                .limit(30)
+            )
+        ).all()
+    )
     return {
         "latest": _run_payload(latest),
         "latest_full": _run_payload(latest_full),
@@ -407,18 +679,26 @@ def _backup_payload(item: BackupHistory) -> dict[str, Any]:
         "checksum_sha256": item.checksum_sha256,
         "size_bytes": item.size_bytes,
         "completed_at": item.completed_at.isoformat() if item.completed_at else None,
-        "restore_verified_at": item.restore_verified_at.isoformat() if item.restore_verified_at else None,
+        "restore_verified_at": (
+            item.restore_verified_at.isoformat() if item.restore_verified_at else None
+        ),
         "error_code": item.error_code,
         "error_detail": item.error_detail,
         "created_at": item.created_at.isoformat() if item.created_at else None,
     }
 
 
-async def send_daily_system_summary(bot: Bot, settings: Settings, session_factory) -> None:
+async def send_daily_system_summary(
+    bot: Bot,
+    settings: Settings,
+    session_factory,
+) -> None:
     async with session_factory() as session:
         snapshot = await system_snapshot(session)
     latest = snapshot["latest"]
-    open_incidents = [item for item in snapshot["incidents"] if item["status"] == "open"]
+    open_incidents = [
+        item for item in snapshot["incidents"] if item["status"] == "open"
+    ]
     latest_backup = snapshot["backups"][0] if snapshot["backups"] else None
     await notify_admins(
         bot,
