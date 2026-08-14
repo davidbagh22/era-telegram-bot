@@ -92,9 +92,14 @@ async def _latest_faq_message_id(session: AsyncSession) -> int | None:
         payload = row.new_value or {}
         if payload.get("chat") != "general":
             continue
-        message_id = payload.get("message_id")
-        if isinstance(message_id, int) and message_id > 0:
-            return message_id
+        # New entries use the structured entity_id field. Read the older JSON
+        # shape too so a deploy can reuse a FAQ card created by the previous
+        # release instead of posting a duplicate.
+        if isinstance(row.entity_id, int) and row.entity_id > 0:
+            return row.entity_id
+        legacy_message_id = payload.get("message_id")
+        if isinstance(legacy_message_id, int) and legacy_message_id > 0:
+            return legacy_message_id
     return None
 
 
@@ -110,12 +115,8 @@ async def _upsert_faq_message(bot: Bot, chat_id: int, session: AsyncSession) -> 
             )
             return message_id
         except TelegramBadRequest as exc:
-            # Telegram returns "message is not modified" when the pinned card
-            # is already exactly current; that is success, not a reason to
-            # create a duplicate.
             if "not modified" in str(exc).lower():
                 return message_id
-            # Deleted/too-old/non-editable cards are replaced once below.
         except TelegramAPIError as exc:
             raise ChatFaqError("faq_refresh_failed") from exc
 
@@ -145,8 +146,8 @@ async def publish_faq_message(
         actor_id=actor_id,
         action="chat.faq_published",
         entity_type="chat",
-        entity_id=None,
-        new_value={"chat": "general", "pinned": pinned, "message_id": message_id},
+        entity_id=message_id,
+        new_value={"chat": "general", "pinned": pinned},
     )
     await session.commit()
     return FaqPublishResult(pinned=pinned, message_id=message_id)
