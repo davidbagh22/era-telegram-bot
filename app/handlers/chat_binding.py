@@ -43,7 +43,10 @@ async def bind_current_chat(message: Message, user: User | None, settings: Setti
         return
     raw_key = parts[1].strip().lower()
     setting_key, greeting_key, title = CHAT_KEYS[raw_key]
-    setattr(settings, setting_key, message.chat.id)
+
+    # Persist first, then change the live Settings object. That ordering avoids
+    # a false-success state where the running process appears configured while
+    # the database write has not actually committed yet.
     stored = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
     if stored is None:
         stored = AppSetting(key=setting_key, value=str(message.chat.id), updated_by=user.id if user else None)
@@ -51,9 +54,14 @@ async def bind_current_chat(message: Message, user: User | None, settings: Setti
     else:
         stored.value = str(message.chat.id)
         stored.updated_by = user.id if user else None
+
     greeting = await session.scalar(select(ChatGreeting).where(ChatGreeting.chat_key == greeting_key))
     if greeting is not None:
         greeting.chat_id = message.chat.id
         greeting.updated_by = user.id if user else None
-    await session.flush()
-    await message.reply(f"✅ {title} привязан к этому чату\nID: {message.chat.id}\n\nНастройка уже применяется без перезапуска")
+
+    await session.commit()
+    setattr(settings, setting_key, message.chat.id)
+    await message.reply(
+        f"✅ {title} привязан. Настройка сохранена в ЭРА и применяется без перезапуска."
+    )
