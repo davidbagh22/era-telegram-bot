@@ -28,6 +28,7 @@ from app.request_context import RequestIDLogFilter, new_request_id, request_id_v
 from app.services.ai_service import AIService
 from app.services.scheduler_service import create_scheduler
 from app.services.seed_service import seed_reference_data
+from app.services.system_scheduler import add_system_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +199,11 @@ async def lifespan(app: FastAPI):
 
     app.state.ai_service = AIService(settings)
     scheduler = create_scheduler(bot, settings, session_factory)
+    # The FastAPI/webhook process is the production entrypoint on Render.
+    # System health jobs must therefore be attached here as well as in the
+    # optional polling entrypoint (app.main), otherwise a deploy could serve
+    # a healthy API while never running heartbeat/full diagnostics.
+    add_system_jobs(scheduler, bot, settings, session_factory)
     scheduler.start()
     app.state.scheduler = scheduler
     app.state.bot_diagnostics = {"error": "webhook_not_configured"}
@@ -285,82 +291,62 @@ async def request_id_middleware(request: Request, call_next):
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     response = await call_next(request)
-    # Baseline hardening headers. No CORS header is set here on purpose —
-    # the Mini App is served same-origin in production (see
-    # _mount_frontend below), so cross-origin requests should keep failing
-    # closed by default rather than being explicitly allowed. If the
-    # frontend is ever hosted on a separate domain, add an explicit
-    # allowlisted CORSMiddleware then — never a wildcard.
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["X-Frame-Options"] = "SAMEORIGIN"
-    if request.url.scheme == "https":
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=63072000; includeSubDomains"
-        )
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' https://telegram.org 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob: https:; "
+        "connect-src 'self' https:; "
+        "font-src 'self' data:; "
+        "frame-ancestors https://web.telegram.org https://*.telegram.org; "
+        "base-uri 'self'; form-action 'self'"
+    )
+    if request.url.scheme == "https" or getattr(request.app.state, "settings", None) and request.app.state.settings.is_render_deployment:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    """Liveness only — must stay cheap and dependency-free so it keeps
-    answering even if the database or Redis are degraded. Use /ready for
-    an actual dependency check."""
-    return {"status": "ok", "version": "2.1.0", "commit": DEPLOYED_COMMIT}
+async def health(request: Request):
+    return {"status": "ok", "commit": DEPLOYED_COMMIT}
 
 
 @app.get("/ready")
-async def ready(request: Request) -> dict[str, str]:
-    """Readiness check: verifies the database is actually reachable,
-    without leaking connection details in the response."""
-    session_factory = getattr(request.app.state, "session_factory", None)
-    if session_factory is None:
-        raise HTTPException(status_code=503, detail="not_ready")
+async def ready(request: Request):
     try:
-        async with session_factory() as session:
+        async with request.app.state.session_factory() as session:
             await session.execute(text("SELECT 1"))
-    except Exception:
-        logger.exception("Readiness check failed: database unreachable")
-        raise HTTPException(status_code=503, detail="database_unavailable")
-    return {"status": "ready"}
+        return {"status": "ready", "commit": DEPLOYED_COMMIT}
+    except Exception as exc:
+        logger.exception("Readiness check failed")
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
 
 
-@app.get("/diag")
-async def diag(request: Request) -> dict:
-    """Non-sensitive bot-configuration diagnostics, cached at startup (see
-    lifespan()'s menu-button verification) — not a live Telegram call per
-    request. Exists so "is the running process actually the bot I'm
-    talking to, correctly configured" can be checked from the outside
-    (e.g. `curl`) without needing BOT_TOKEN or a Telegram session — the
-    same fields are also available live, in more detail, via the /version
-    bot command for admins. No token, secret, or connection string is
-    ever included: bot_id/bot_username are public (Telegram search finds
-    them), webhook_host is a domain, not the secret validated separately
-    via the webhook's header token."""
-    return {
-        "commit": DEPLOYED_COMMIT,
-        **getattr(request.app.state, "bot_diagnostics", {"error": "not_available"}),
-    }
-
-
-app.include_router(api_router)
-_mount_frontend(app, FRONTEND_DIST)
-
-
-@app.post("/telegram/webhook", include_in_schema=False)
+@app.post("/telegram/webhook")
 async def telegram_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
-    secret: str | None = Header(default=None, alias="X-Telegram-Bot-Api-Secret-Token"),
-) -> dict[str, bool]:
-    expected_secret = request.app.state.settings.effective_webhook_secret
-    if expected_secret and not hmac.compare_digest(secret or "", expected_secret):
-        raise HTTPException(status_code=403, detail="Invalid webhook secret")
-    payload = await request.json()
-    update = Update.model_validate(payload, context={"bot": request.app.state.bot})
+    x_telegram_bot_api_secret_token: str | None = Header(default=None),
+):
+    settings = request.app.state.settings
+    expected = settings.effective_webhook_secret
+    if expected and not hmac.compare_digest(
+        x_telegram_bot_api_secret_token or "", expected
+    ):
+        raise HTTPException(status_code=403, detail="invalid_webhook_secret")
+    update = Update.model_validate(await request.json(), context={"bot": request.app.state.bot})
     background_tasks.add_task(
         request.app.state.dispatcher.feed_update,
         request.app.state.bot,
         update,
+        settings=settings,
+        ai_service=request.app.state.ai_service,
     )
     return {"ok": True}
+
+
+app.include_router(api_router)
+_mount_frontend(app, FRONTEND_DIST)
