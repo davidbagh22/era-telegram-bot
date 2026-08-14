@@ -10,21 +10,22 @@ import { expect, test } from "@playwright/test";
 
 const PARTICIPANT_TELEGRAM_ID = 900001;
 
-test("#/tasks deep link opens Activity on the Tasks tab", async ({ page }) => {
+test("#/tasks deep link opens Activity on the Tasks section", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/tasks`);
 
-  await expect(page.getByRole("heading", { name: "Активность" })).toBeVisible();
-  // No Task rows exist anywhere in the e2e seed data, so this empty state
-  // is deterministic — its presence (not the generic "Активность" heading,
-  // which renders for any section) is what proves the Tasks tab, not the
-  // "events" default, actually landed.
+  // 2026-08 redesign brief section 16: ActivityScreen's landing menu
+  // (generic "Активность" heading) is skipped entirely when a section is
+  // named up front — the heading itself is now the section's own name
+  // ("Задачи"), which is stronger proof of landing on the right section
+  // than the old generic heading + empty-state-text combination was.
+  await expect(page.getByRole("heading", { name: "Задачи" })).toBeVisible();
   await expect(page.getByText("Задач в этом разделе пока нет.")).toBeVisible();
 });
 
-test("#/events deep link opens Activity on the Events tab", async ({ page }) => {
+test("#/events deep link opens Activity on the Events section", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/events`);
 
-  await expect(page.getByRole("heading", { name: "Активность" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Мероприятия" })).toBeVisible();
   await expect(page.getByText("E2E тестовое мероприятие")).toBeVisible();
 });
 

@@ -10,6 +10,10 @@ test("participant logs in, sees Home, and registers for the seeded event", async
   await page.getByRole("button", { name: "Активность" }).click();
   await expect(page.getByRole("heading", { name: "Активность" })).toBeVisible();
 
+  // 2026-08 redesign brief section 16: "Активность" is a landing menu of
+  // action cards now, not the Events tab by default -- one extra tap.
+  await page.getByRole("button", { name: /Мероприятия/ }).click();
+
   const eventCard = page.getByText("E2E тестовое мероприятие");
   await expect(eventCard).toBeVisible();
 
