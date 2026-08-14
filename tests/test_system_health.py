@@ -13,6 +13,7 @@ from app.api.v1.router import api_router
 from app.config import Settings
 from app.services.system_health_service import (
     HealthCheck,
+    _chat_config_check,
     _configuration_check,
     _score,
     sanitize_runtime_detail,
@@ -65,6 +66,27 @@ class SystemConfigurationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status, "error")
         self.assertEqual(result.severity, "critical")
         self.assertIn("MINIAPP_AUTH_SECRET", result.detail)
+
+    async def test_all_four_bound_chats_make_chat_health_green(self) -> None:
+        settings = Settings(
+            bot_token="1234567890:test-token",
+            general_chat_id=-100001,
+            internal_department_chat_id=-100002,
+            external_department_chat_id=-100003,
+            leaders_chat_id=-100004,
+        )
+        result = await _chat_config_check(settings)
+        self.assertEqual(result.status, "ok")
+        self.assertIn("Все четыре", result.detail)
+
+    async def test_missing_chat_ids_explain_bind_action_without_guessing_ids(self) -> None:
+        settings = Settings(bot_token="1234567890:test-token")
+        result = await _chat_config_check(settings)
+        self.assertEqual(result.status, "warning")
+        self.assertEqual(result.severity, "medium")
+        self.assertIn("/bind", result.detail)
+        for key in ("general", "internal", "external", "leaders"):
+            self.assertIn(key, result.detail)
 
 
 class SystemSchedulerTests(unittest.TestCase):
