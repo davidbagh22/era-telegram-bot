@@ -92,6 +92,20 @@ class PanelAndAdminCommandsRedirectTests(unittest.IsolatedAsyncioTestCase):
         (text,), _ = call.message.answer.call_args
         self.assertEqual(text, texts.ADMIN_PANEL_MOVED)
 
+    async def test_panel_button_and_callback_redirect_for_leaders(self) -> None:
+        # P5 follow-up: leaders got the exact same treatment as admins here
+        # (previously they still saw the raw leader_panel_keyboard() tree).
+        message = SimpleNamespace(answer=AsyncMock())
+        state = SimpleNamespace(clear=AsyncMock())
+        await navigation.panel_button(message, _leader_user(), state, _settings())
+        (text,), _ = message.answer.call_args
+        self.assertEqual(text, texts.LEADER_PANEL_MOVED)
+
+        call = SimpleNamespace(answer=AsyncMock(), message=SimpleNamespace(answer=AsyncMock()))
+        await navigation.panel_callback(call, _leader_user(), _settings())
+        (text,), _ = call.message.answer.call_args
+        self.assertEqual(text, texts.LEADER_PANEL_MOVED)
+
     async def test_all_six_admin_shortcut_commands_redirect(self) -> None:
         handlers = [
             commands_ready.admin_users_command,
