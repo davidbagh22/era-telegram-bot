@@ -47,6 +47,7 @@ def upgrade() -> None:
             sa.Column("title", sa.String(length=180), nullable=True),
             sa.Column("text", sa.Text(), nullable=False),
             sa.Column("is_enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
+            sa.Column("is_skipped", sa.Boolean(), nullable=False, server_default=sa.false()),
             sa.Column("created_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
             sa.Column("updated_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
