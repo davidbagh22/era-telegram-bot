@@ -21,10 +21,30 @@ class GeneralContentOverride(TimestampMixin, Base):
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
 
+class GeneralCustomContent(TimestampMixin, Base):
+    """Admin-created dates, primarily extra holidays, stored outside deploy files."""
+
+    __tablename__ = "general_custom_content"
+    __table_args__ = (
+        Index("ix_general_custom_content_date_type", "date_key", "content_type"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    content_id: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    content_type: Mapped[str] = mapped_column(String(32), index=True)
+    date_key: Mapped[str] = mapped_column(String(10), index=True)
+    slot: Mapped[str] = mapped_column(String(16), default="morning")
+    title: Mapped[str | None] = mapped_column(String(180))
+    text: Mapped[str] = mapped_column(Text)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
 class GeneralContentDelivery(TimestampMixin, Base):
     """One scheduled/manual attempt, including terminal skipped/missed states.
 
-    Scheduled idempotency is enforced by the unique idempotency_key.  A restart
+    Scheduled idempotency is enforced by the unique idempotency_key. A restart
     can therefore call the same slot again safely without re-sending Telegram.
     """
 
