@@ -10,6 +10,7 @@ from __future__ import annotations
 
 
 CONSENT_POLICY_VERSION = "pd-v1-2026-08-15"
+TELEGRAM_SAFE_TEXT_LIMIT = 3800
 
 CONSENT_SUMMARY = """🔐 Согласие на обработку данных
 
@@ -67,3 +68,32 @@ CONSENT_FULL_TEXT = """🔐 Полные условия согласия ЭРА
 Для всех используется одна и та же форма. Если пользователю ещё нет 16 лет, настоящее согласие предоставляется от его имени родителем или иным законным представителем. Нажимая «Согласен и продолжить» от имени такого пользователя, законный представитель подтверждает свои полномочия и согласие на обработку данных несовершеннолетнего на условиях настоящего документа.
 
 Нажимая «Согласен и продолжить», пользователь либо, когда это требуется законом, его законный представитель подтверждает, что ознакомился с настоящими условиями и даёт согласие на обработку данных и использование материалов на указанных условиях."""
+
+
+def consent_full_chunks(
+    text: str = CONSENT_FULL_TEXT,
+    *,
+    limit: int = TELEGRAM_SAFE_TEXT_LIMIT,
+) -> tuple[str, ...]:
+    """Split the long policy on paragraph boundaries for Telegram.
+
+    The user still sees one consent form; this only prevents Telegram's
+    per-message text limit from turning the "Полные условия" button into
+    a runtime error as the approved text evolves.
+    """
+    paragraphs = text.split("\n\n")
+    chunks: list[str] = []
+    current = ""
+    for paragraph in paragraphs:
+        candidate = paragraph if not current else f"{current}\n\n{paragraph}"
+        if len(candidate) <= limit:
+            current = candidate
+            continue
+        if current:
+            chunks.append(current)
+        current = paragraph
+    if current:
+        chunks.append(current)
+    if any(len(chunk) > limit for chunk in chunks):
+        raise ValueError("consent_policy_paragraph_exceeds_telegram_limit")
+    return tuple(chunks)
