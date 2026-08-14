@@ -78,6 +78,11 @@ def miniapp_admin_project_url(miniapp_url: str, project_id: int) -> str:
     return miniapp_path_url(miniapp_url, f"admin/projects/{project_id}")
 
 
+def miniapp_projects_url(miniapp_url: str) -> str:
+    """Deep-links straight into the participant Projects tab."""
+    return miniapp_path_url(miniapp_url, "projects")
+
+
 def miniapp_events_url(miniapp_url: str) -> str:
     """Deep-links straight into the Mini App's Activity screen, Events tab
     — used by the bot's "📅 Ближайшее" quick-access button (PR 36's Bot/Mini
@@ -95,6 +100,11 @@ def miniapp_opportunities_url(miniapp_url: str) -> str:
     """Deep-links straight into the Mini App's Opportunities screen — used
     by the bot's "⭐ Возможности" quick-access button."""
     return miniapp_path_url(miniapp_url, "opportunities")
+
+
+def miniapp_community_url(miniapp_url: str) -> str:
+    """Deep-links straight into the participant Community tab."""
+    return miniapp_path_url(miniapp_url, "community")
 
 
 def miniapp_task_url(miniapp_url: str, task_id: int) -> str:

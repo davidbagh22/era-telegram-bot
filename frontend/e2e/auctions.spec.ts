@@ -35,7 +35,10 @@ test("admin creates a lot and the seeded bidder places a real bid on it", async 
     await expect(adminPage.getByText(lotTitle)).toBeVisible();
 
     await participantPage.goto(`/app/?devTelegramId=${AUCTION_BIDDER_TELEGRAM_ID}`);
-    await participantPage.getByRole("button", { name: "Возможности" }).click();
+    await participantPage
+      .getByRole("navigation", { name: "Основная навигация" })
+      .getByRole("button", { name: "Сообщество" })
+      .click();
     await participantPage.getByRole("button", { name: "Аукционы" }).click();
 
     // Hero card (2026-08 premium marketplace redesign): the card itself

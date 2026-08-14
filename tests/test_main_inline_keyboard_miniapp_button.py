@@ -86,12 +86,12 @@ class MainInlineKeyboardMiniAppButtonTests(unittest.TestCase):
     def test_navigation_guide_keyboard_deep_links_into_the_right_miniapp_screens(self) -> None:
         markup = navigation_guide_keyboard("https://era-app.example")
         buttons = {button.text: button for row in markup.inline_keyboard for button in row}
-        self.assertEqual(buttons["📅 Мероприятия"].web_app.url, "https://era-app.example/#/events")
-        self.assertEqual(buttons["✅ Задачи"].web_app.url, "https://era-app.example/#/tasks")
-        self.assertEqual(
-            buttons["⭐ Возможности"].web_app.url, "https://era-app.example/#/opportunities"
-        )
-        self.assertEqual(buttons["👤 Профиль"].web_app.url, "https://era-app.example/#/profile")
+        self.assertEqual(buttons["Проекты"].web_app.url, "https://era-app.example/#/projects")
+        self.assertEqual(buttons["События"].web_app.url, "https://era-app.example/#/events")
+        self.assertEqual(buttons["Сообщество"].web_app.url, "https://era-app.example/#/community")
+        self.assertEqual(buttons["Профиль"].web_app.url, "https://era-app.example/#/profile")
+        self.assertEqual(buttons["Мои задачи"].web_app.url, "https://era-app.example/#/tasks")
+        self.assertEqual(buttons["Возможности"].web_app.url, "https://era-app.example/#/opportunities")
         self.assertNotIn("⚙️ Режим администратора", buttons)
         self.assertNotIn("🧭 Режим лидера", buttons)
 

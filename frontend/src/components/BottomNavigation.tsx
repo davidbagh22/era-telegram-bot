@@ -1,21 +1,20 @@
 import {
-  ActivityIcon,
+  CommunityIcon,
+  EventIcon,
   HomeIcon,
-  OpportunitiesIcon,
   ProfileIcon,
+  ProjectsIcon,
 } from "./icons";
 
-// 2026-08 redesign brief section 16: 4 fixed destinations, not 5 --
-// "Проекты" folded into "Активность" as one of its action cards
-// (ActivityScreen) instead of competing for its own dock slot. Also
-// fixes the real truncation bug this caused on a real iPhone ("Активно…",
-// "Возмож…") by giving each remaining label more room.
-export type TabKey = "home" | "activity" | "opportunities" | "profile";
+// ERA Dark Living System: participant navigation has five permanent
+// product areas. Leader/Admin management remains outside this dock.
+export type TabKey = "home" | "projects" | "events" | "community" | "profile";
 
 const TABS: { key: TabKey; label: string; Icon: typeof HomeIcon }[] = [
   { key: "home", label: "Главная", Icon: HomeIcon },
-  { key: "activity", label: "Активность", Icon: ActivityIcon },
-  { key: "opportunities", label: "Возможности", Icon: OpportunitiesIcon },
+  { key: "projects", label: "Проекты", Icon: ProjectsIcon },
+  { key: "events", label: "События", Icon: EventIcon },
+  { key: "community", label: "Сообщество", Icon: CommunityIcon },
   { key: "profile", label: "Профиль", Icon: ProfileIcon },
 ];
 
@@ -24,28 +23,25 @@ interface BottomNavigationProps {
   onChange: (tab: TabKey) => void;
 }
 
-// A floating "dock" instead of an edge-to-edge bar — inset from the sides
-// so the page background shows around it, active tab gets a gradient pill
-// fill instead of just a color/scale change. The overflow-safety technique
-// (flex: 1 1 0 + minWidth: 0 per tab, label ellipsis) is unchanged from the
-// bar version — that's what keeps "Возможности" from pushing the viewport
-// wider at 320/360px (frontend/e2e/responsive.spec.ts), and nothing about
-// the floating treatment touches it.
 export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
   return (
     <nav
+      aria-label="Основная навигация"
       style={{
         position: "sticky",
         bottom: 0,
         display: "flex",
         minWidth: 0,
-        gap: "0.125rem",
-        margin: "0 0.75rem calc(0.6rem + env(safe-area-inset-bottom, 0px))",
-        padding: "0.35rem",
-        background: "var(--era-surface)",
+        gap: "0.0625rem",
+        margin: "0 0.625rem calc(0.55rem + env(safe-area-inset-bottom, 0px))",
+        padding: "0.3rem",
+        background: "var(--era-glass)",
         border: "1px solid var(--era-border)",
         borderRadius: "var(--era-radius-pill)",
-        boxShadow: "var(--era-shadow-lift)",
+        boxShadow: "var(--era-shadow-dock)",
+        backdropFilter: "blur(24px)",
+        WebkitBackdropFilter: "blur(24px)",
+        zIndex: 20,
       }}
     >
       {TABS.map(({ key, label, Icon }) => {
@@ -62,24 +58,18 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
               flexDirection: "column",
               alignItems: "center",
               gap: "0.125rem",
-              minHeight: "auto",
-              // flex: 1 1 0 + minWidth: 0 — equal-share, genuinely
-              // shrinkable columns instead of justify-content: space-around
-              // over unshrinkable ones; the label below truncates
-              // with an ellipsis rather than forcing the dock (and the
-              // whole page) wider than the viewport on the narrowest
-              // phones. See responsive.spec.ts.
+              minHeight: "3rem",
               flex: "1 1 0",
               minWidth: 0,
               background: "none",
               border: "none",
-              color: isActive ? "#fff" : "var(--era-text-muted)",
+              color: isActive ? "var(--era-text)" : "var(--era-text-muted)",
               fontFamily: "var(--era-font-body)",
-              fontSize: "0.6875rem",
-              fontWeight: isActive ? 700 : 500,
-              padding: "0.5rem 0.25rem",
-              borderRadius: "var(--era-radius-pill)",
-              transition: "color var(--era-motion-fast)",
+              fontSize: "0.625rem",
+              fontWeight: isActive ? 800 : 600,
+              padding: "0.45rem 0.125rem",
+              borderRadius: "1.35rem",
+              transition: "color var(--era-motion-fast), transform var(--era-motion-fast)",
               zIndex: 0,
             }}
           >
@@ -90,13 +80,14 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
                   position: "absolute",
                   inset: 0,
                   borderRadius: "var(--era-radius-pill)",
-                  background: "linear-gradient(135deg, var(--era-violet), var(--era-red))",
-                  boxShadow: "0 8px 18px rgba(116, 44, 196, 0.4)",
+                  background:
+                    "linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.04)), var(--era-gradient)",
+                  boxShadow: "0 10px 24px rgba(227, 59, 73, 0.26)",
                   zIndex: -1,
                 }}
               />
             )}
-            <Icon />
+            <Icon width={22} height={22} />
             <span
               style={{
                 maxWidth: "100%",

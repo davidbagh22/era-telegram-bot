@@ -1,93 +1,67 @@
-/* ERA brand tokens. Unbounded/Golos Text load from Google Fonts via a
-   <link> in index.html — the stack below falls back to system fonts only
-   while that request is in flight or blocked. See
-   docs/ERA_PLATFORM_PROGRESS.md. */
-:root {
-  --era-red: #e52b24;
-  --era-violet: #742cc4;
-  --era-magenta: #be268f;
-  /* Middle stop is --era-magenta itself, not an intermediate hue — the
-     2026-08 UX/UI redesign brief specifies the gradient as exactly
-     violet(#742CC4) -> magenta(#BE268F) -> red(#E52B24), no blended
-     in-between color. */
-  --era-gradient: linear-gradient(135deg, #742cc4 0%, #be268f 48%, #e52b24 100%);
+/* ERA Dark Living System. The app is dark-first even when Telegram itself
+   reports a light color scheme; light mode can be added later as a separate
+   audited variant, but it is not the participant default. */
+:root,
+:root[data-theme="light"],
+:root[data-theme="dark"] {
+  --era-red: #e33b49;
+  --era-violet: #783dff;
+  --era-magenta: #c8327a;
+  --era-crimson: #a91d3d;
+  --era-gold: #d3b36a;
+  --era-gold-ink: #e8d59e;
+  --era-gradient: linear-gradient(135deg, #7a1837 0%, #a22745 48%, #6331a5 100%);
 
-  /* Dark-first palette (2026-08 UX/UI redesign brief, section 3) --
-     defined here as brand constants so components can reach for them by
-     name ahead of the full dark-first rollout (see docs/UI_DESIGN_SYSTEM.md
-     "Redesign in progress" note for why :root itself isn't flipped to dark
-     yet). --era-bg/--era-surface under :root[data-theme="dark"] below will
-     migrate to exactly these three once the rollout reaches that phase. */
-  --era-black: #0b0910;
-  --era-plum: #15101c;
-  --era-surface-dark: #1d1625;
+  --era-black: #050507;
+  --era-plum: #0b0a0e;
+  --era-surface-dark: #121016;
+  --era-bg: #050507;
+  --era-bg-subtle: #0b0a0e;
+  --era-surface: rgba(18, 16, 22, 0.94);
+  --era-surface-2: rgba(25, 22, 31, 0.92);
+  --era-glass: rgba(20, 17, 25, 0.74);
+  --era-hero-bg:
+    radial-gradient(120% 80% at 12% 0%, rgba(120, 61, 255, 0.42), transparent 48%),
+    radial-gradient(95% 70% at 100% 4%, rgba(227, 59, 73, 0.34), transparent 52%),
+    linear-gradient(145deg, #130914 0%, #21101d 52%, #0a0710 100%);
 
-  /* Gold — the one net-new brand hue, added for the 2026-08 visual
-     refresh (see docs/UI_DESIGN_SYSTEM.md's "Home hero" section).
-     Reserved for achievement/streak moments only — it does not appear
-     in navigation, forms, or ordinary status colors, so it stays
-     legible as a deliberate accent rather than another everyday hue. */
-  --era-gold: #f5b942;
-  --era-gold-ink: #b9791c; /* text-safe shade of gold, for on-tint labels */
+  --era-text: #f6f2f7;
+  --era-text-muted: #afa6b8;
+  --era-border: rgba(255, 255, 255, 0.08);
+  --era-success: #43d39a;
+  --era-warning: #e0a642;
+  --era-error: #ff6b5f;
 
-  /* Deliberately theme-constant, like the brand colors above — HomeScreen's
-     hero is a fixed dark "spotlight" moment in both light and dark theme,
-     not a surface that adapts. Only declared here in the bare :root block
-     on purpose; redeclaring it under :root[data-theme="dark"] would just
-     repeat the same value. */
-  --era-hero-bg: #150e1c;
+  --era-shadow-soft: 0 10px 32px rgba(0, 0, 0, 0.28);
+  --era-shadow-lift: 0 18px 46px rgba(0, 0, 0, 0.42);
+  --era-shadow-dock: 0 22px 58px rgba(0, 0, 0, 0.56);
+  --era-shadow-overlay: 0 -18px 52px rgba(0, 0, 0, 0.58);
 
-  --era-bg: #f8f6f9;
-  --era-bg-subtle: #ffffff;
-  --era-surface: #ffffff;
-  --era-surface-2: #f4eefa;
-  --era-text: #1b1720;
-  --era-text-muted: #756e7a;
-  --era-border: #eae5ed;
-  --era-success: #16845b;
-  --era-warning: #c77a00;
-  --era-error: #d92d20;
-  --era-shadow-soft: 0 8px 28px rgba(43, 22, 54, 0.06);
-  --era-shadow-lift: 0 12px 32px rgba(43, 22, 54, 0.12);
-  --era-shadow-overlay: 0 -8px 32px rgba(43, 22, 54, 0.18);
+  --era-tint-violet: rgba(120, 61, 255, 0.14);
+  --era-tint-red: rgba(227, 59, 73, 0.14);
+  --era-tint-gold: rgba(211, 179, 106, 0.15);
+  --era-ring-track: rgba(255, 255, 255, 0.12);
 
-  /* Tint surfaces — a category's hue at low saturation as a card/chip
-     background, instead of a plain white card + a colored rail. Used
-     first by HomeScreen's hero cards and MetricCard's `tone` prop. */
-  --era-tint-violet: #f1e7fb;
-  --era-tint-red: #fdecea;
-  --era-tint-gold: #fff3dc;
-  --era-ring-track: #ecdff8;
-  --era-radius-sm: 0.625rem;
-  --era-radius-card: 20px;
-  --era-radius-control: 0.875rem;
+  --era-radius-sm: 0.75rem;
+  --era-radius-card: 24px;
+  --era-radius-control: 1rem;
   --era-radius-pill: 999px;
   --era-radius-sheet: 1.5rem;
-  --era-motion-fast: 0.15s ease;
-  --era-motion: 0.25s ease;
+  --era-motion-fast: 0.16s ease;
+  --era-motion: 0.24s ease;
 
-  --era-font-display: "Unbounded", "Segoe UI", system-ui, sans-serif;
-  --era-font-body: "Golos Text", "Segoe UI", system-ui, sans-serif;
+  --era-font-display: "Onest", "Segoe UI", system-ui, sans-serif;
+  --era-font-body: "Onest", "Segoe UI", system-ui, sans-serif;
 
-  /* Typography scale — see docs/UI_DESIGN_SYSTEM.md. Screens still set
-     font-size inline per element (React inline styles, not utility
-     classes, is this codebase's established pattern — see PR 14's design
-     audit), but every one of those inline values should be drawn from
-     this scale rather than an arbitrary number, so the scale is the
-     single source of truth even though it isn't auto-applied by the
-     cascade. era-text-base doubles as the body default (see `body` rule
-     below). */
-  --era-text-xs: 0.75rem; /* micro labels, timestamps */
-  --era-text-sm: 0.8125rem; /* secondary text, captions */
-  --era-text-base: 0.875rem; /* body copy, buttons, inputs */
-  --era-text-lg: 1rem; /* card titles, list item titles */
-  --era-text-xl: 1.125rem; /* section headings */
-  --era-text-2xl: 1.375rem; /* screen titles */
-  --era-text-3xl: 1.75rem; /* hero numbers (points, level) */
-  --era-text-4xl: 2rem; /* hero H1 (Home greeting), 2026-08 redesign brief section 6 */
+  --era-text-xs: 0.75rem;
+  --era-text-sm: 0.8125rem;
+  --era-text-base: 0.875rem;
+  --era-text-lg: 1rem;
+  --era-text-xl: 1.125rem;
+  --era-text-2xl: 1.375rem;
+  --era-text-3xl: 1.75rem;
+  --era-text-4xl: 2rem;
 
-  /* Spacing scale — 4px base unit, matches the rem values already used
-     ad hoc across every screen (0.25/0.5/0.75/1/1.25/1.5/2rem). */
   --era-space-1: 0.25rem;
   --era-space-2: 0.5rem;
   --era-space-3: 0.75rem;
@@ -97,78 +71,39 @@
   --era-space-8: 2rem;
 }
 
-/* Applied to <html> by telegram/webApp.ts's applyTelegramTheme(), mirroring
-   Telegram's own colorScheme ("themeChanged" event keeps it live). Brand
-   colors (red/violet/magenta/gradient) stay the same in both themes —
-   they're already saturated enough to read on a dark surface; only
-   surface/text/border/shadow tokens need a dark variant. */
-:root[data-theme="dark"] {
-  /* 2026-08 UX/UI redesign brief section 3's exact dark palette --
-     Deep Black / Deep Plum / Surface, replacing the previous ad hoc dark
-     hexes. --era-bg-subtle stays one step darker than --era-black itself
-     (recessed surfaces read as "sunk into" the page, same relationship
-     the old palette already had). */
-  --era-bg: var(--era-black);
-  --era-bg-subtle: #08060c;
-  --era-surface: var(--era-plum);
-  --era-surface-2: var(--era-surface-dark);
-  --era-text: #f3eff6;
-  --era-text-muted: #a99fb0;
-  --era-border: #362c40;
-  --era-success: #3ecf96;
-  --era-warning: #e8a23d;
-  --era-error: #f0655c;
-  --era-shadow-soft: 0 8px 28px rgba(0, 0, 0, 0.35);
-  --era-shadow-lift: 0 12px 32px rgba(0, 0, 0, 0.5);
-
-  --era-gold-ink: #f5b942;
-  --era-tint-violet: #2c1e3a;
-  --era-tint-red: #34191d;
-  --era-tint-gold: #332615;
-  --era-ring-track: #2f2138;
-}
-
 * {
   box-sizing: border-box;
-  /* Kills the default gray flash Telegram's Android WebView and mobile
-     Chrome paint on every tap — this is a touch-only app (see
-     frontend/e2e/*.spec.ts's fixed 390x844 viewport). Buttons keep their
-     own explicit tap feedback (button:active below); hover styles are
-     scoped to real hover-capable pointers further down, so they can't
-     "stick" after a tap either. */
   -webkit-tap-highlight-color: transparent;
 }
 
 html {
-  /* Telegram's WebView occasionally rubber-bands the whole page on a
-     vertical swipe that starts past the content edge, which reads as the
-     app "slipping" out from under a tap. Chained to body below too since
-     some WebKit builds only honor it on one or the other. */
   overscroll-behavior-y: none;
+  background: #050507;
 }
 
 body {
   margin: 0;
-  background: var(--era-bg);
+  min-width: 320px;
+  background:
+    radial-gradient(88% 58% at 8% -8%, rgba(120, 61, 255, 0.22), transparent 58%),
+    radial-gradient(70% 52% at 102% 8%, rgba(227, 59, 73, 0.16), transparent 62%),
+    linear-gradient(180deg, #050507 0%, #0a070d 50%, #050507 100%);
   color: var(--era-text);
   font-family: var(--era-font-body);
+  font-size: var(--era-text-base);
+  letter-spacing: 0;
   overscroll-behavior-y: none;
 }
 
-/* Default look for every plain <button> in the app. Components that set
-   their own inline `style` (ProjectWorkspace, LeaderScreen's publish
-   button, etc.) override this via normal CSS-vs-inline precedence, so
-   this only upgrades buttons that were previously unstyled browser
-   defaults. */
 button {
   font-family: var(--era-font-body);
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-size: var(--era-text-base);
+  font-weight: 700;
   min-height: 2.75rem;
   padding: 0.625rem 1rem;
   border-radius: var(--era-radius-control);
   border: 1px solid var(--era-border);
-  background: var(--era-surface);
+  background: rgba(255, 255, 255, 0.045);
   color: var(--era-text);
   cursor: pointer;
   transition:
@@ -179,19 +114,15 @@ button {
     opacity var(--era-motion-fast);
 }
 
-/* hover-capable pointer only: on tap, mobile WebKit/Chrome otherwise
-   "stick" a :hover style until the next unrelated tap, which reads as a
-   button or card staying highlighted after you've already moved on —
-   this is a touch-only app (no mouse), so real :hover only ever applies
-   on a device that actually has one. */
 @media (hover: hover) and (pointer: fine) {
   button:hover:not(:disabled) {
-    border-color: var(--era-violet);
+    border-color: rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.07);
     box-shadow: var(--era-shadow-soft);
   }
 
   .era-btn-primary:hover:not(:disabled) {
-    box-shadow: 0 8px 24px rgba(116, 44, 196, 0.35);
+    box-shadow: 0 12px 28px rgba(227, 59, 73, 0.28);
     border-color: transparent;
   }
 
@@ -215,21 +146,13 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
-/* Default look for every plain <input>/<textarea>/<select>. Screens set
-   layout-only inline styles (width, flex, margin) on top of this — see
-   e.g. PeopleList.tsx — so this is the one place font-size lives for form
-   controls. That matters beyond looks: iOS Safari and Telegram's in-app
-   WebView both zoom the whole page in when a focused input's font-size is
-   under 16px, which is exactly what was happening — form controls had no
-   font-size of their own and fell back to the browser's UA stylesheet
-   (often ~13px), not this file's 16px body-adjacent size. */
 input:not([type="checkbox"]):not([type="radio"]),
 textarea,
 select {
   font-family: var(--era-font-body);
   font-size: 1rem;
   color: var(--era-text);
-  background: var(--era-bg-subtle);
+  background: rgba(255, 255, 255, 0.055);
   border: 1px solid var(--era-border);
   border-radius: var(--era-radius-control);
   padding: 0.75rem 0.875rem;
@@ -254,8 +177,8 @@ input:not([type="checkbox"]):not([type="radio"]):focus,
 textarea:focus,
 select:focus {
   outline: none;
-  border-color: var(--era-violet);
-  box-shadow: 0 0 0 3px rgba(116, 44, 196, 0.15);
+  border-color: rgba(120, 61, 255, 0.72);
+  box-shadow: 0 0 0 3px rgba(120, 61, 255, 0.18);
 }
 
 input:disabled,
@@ -273,39 +196,28 @@ input[type="checkbox"] {
   flex-shrink: 0;
 }
 
-/* Applied to the highest-emphasis call-to-action per screen (submit,
-   approve, register, download) so visual weight matches how often and
-   how important the action actually is — not every button should shout. */
 .era-btn-primary {
   border: none;
-  background: var(--era-gradient);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.02)),
+    var(--era-gradient);
   color: #fff;
-  box-shadow: 0 6px 18px rgba(116, 44, 196, 0.25);
+  box-shadow: 0 12px 28px rgba(227, 59, 73, 0.22);
 }
 
 .era-card {
-  transition: box-shadow var(--era-motion), transform var(--era-motion);
+  transition: box-shadow var(--era-motion), transform var(--era-motion), border-color var(--era-motion);
 }
 
-/* PillTabs' horizontal scroller (docs/UI_DESIGN_SYSTEM.md) — the native
-   scrollbar Chrome/Android paint under an overflow-x:auto row read as a
-   stray gray slider bolted under an otherwise polished pill row. Scrolling
-   itself stays fully functional (touch drag / trackpad), only the visible
-   track is removed. */
 .era-pilltabs-scroller {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* old Edge */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .era-pilltabs-scroller::-webkit-scrollbar {
-  display: none; /* Chrome/Android WebView/Safari */
+  display: none;
 }
 
-/* Right-edge fade on the same scroller, only where the option list can
-   genuinely run past the viewport (PillTabs, not the fixed-width
-   SegmentedTabs) — a soft hint that there's more to scroll to, now that
-   the native scrollbar itself is hidden. Fades to transparent since the
-   track background (era-surface-2) already shows through underneath. */
 .era-pilltabs-fade {
   mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent 100%);
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent 100%);
@@ -324,20 +236,9 @@ input[type="checkbox"] {
 
 .era-page {
   animation: era-fade-in var(--era-motion);
-  /* Every screen root is a flex item inside UserLayout's column (or a
-     flex column itself, per its own inline styles) — without this, a
-     flex item's default min-width is its content's width, not 0, and a
-     wide-enough descendant (a PillTabs row, an unwrapped table) forces
-     this wider instead of shrinking to the viewport. Found by
-     frontend/e2e/responsive.spec.ts at 320/360px. */
   min-width: 0;
 }
 
-/* Skeleton / Toast / Modal / BottomSheet — see components/Skeleton.tsx,
-   components/Toast.tsx, components/Modal.tsx, components/BottomSheet.tsx
-   and docs/UI_DESIGN_SYSTEM.md. Kept here rather than inline styles
-   because keyframes and backdrop-filter can't be expressed as React
-   inline style objects. */
 @keyframes era-shimmer {
   0% {
     background-position: -120% 0;
@@ -350,9 +251,9 @@ input[type="checkbox"] {
 .era-skeleton {
   background: linear-gradient(
     90deg,
-    var(--era-border) 25%,
-    var(--era-bg-subtle) 50%,
-    var(--era-border) 75%
+    rgba(255, 255, 255, 0.055) 25%,
+    rgba(255, 255, 255, 0.11) 50%,
+    rgba(255, 255, 255, 0.055) 75%
   );
   background-size: 200% 100%;
   animation: era-shimmer 1.4s ease-in-out infinite;
@@ -371,7 +272,7 @@ input[type="checkbox"] {
 .era-overlay-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(20, 12, 26, 0.5);
+  background: rgba(3, 3, 5, 0.68);
   animation: era-overlay-in var(--era-motion-fast);
   z-index: 40;
 }
@@ -417,4 +318,15 @@ input[type="checkbox"] {
 
 .era-toast {
   animation: era-toast-in var(--era-motion-fast);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
 }

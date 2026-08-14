@@ -17,7 +17,7 @@ import { RewardsPanel } from "./opportunities/RewardsPanel";
 import { SurveysPanel } from "./opportunities/SurveysPanel";
 import type { OpportunityScope } from "../types/opportunity";
 
-type OpportunitiesSection = "offers" | "auctions" | "rewards" | "surveys";
+export type OpportunitiesSection = "offers" | "auctions" | "rewards" | "surveys";
 
 // 2026-08 redesign brief section 20 ("Возможности как премиальная
 // витрина") + section 15 (no horizontal tabs as primary navigation): the
@@ -232,9 +232,10 @@ interface OpportunitiesScreenProps {
    * (`#/opportunities/{id}`) — passed through to the offers list once
    * it's showing, to scroll to and highlight it. */
   initialItemId?: number | null;
+  onBack?: () => void;
 }
 
-export function OpportunitiesScreen({ initialSection, initialItemId }: OpportunitiesScreenProps = {}) {
+export function OpportunitiesScreen({ initialSection, initialItemId, onBack }: OpportunitiesScreenProps = {}) {
   const [section, setSection] = useState<OpportunitiesSection | null>(
     initialSection ?? (initialItemId ? "offers" : null),
   );
@@ -242,9 +243,16 @@ export function OpportunitiesScreen({ initialSection, initialItemId }: Opportuni
   if (section === null) {
     return (
       <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-        <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.375rem", margin: 0 }}>
-          Возможности
-        </h1>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          {onBack && (
+            <button type="button" onClick={onBack} aria-label="Назад">
+              ←
+            </button>
+          )}
+          <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.375rem", margin: 0 }}>
+            Возможности
+          </h1>
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           {SECTIONS.map(({ value, label, description, Icon }) => (
             <Card key={value}>
@@ -297,8 +305,8 @@ export function OpportunitiesScreen({ initialSection, initialItemId }: Opportuni
 
   return (
     <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <button type="button" onClick={() => setSection(null)}>
-        ← Возможности
+      <button type="button" onClick={() => (onBack ? onBack() : setSection(null))}>
+        {onBack ? "← Сообщество" : "← Возможности"}
       </button>
       <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.375rem", margin: 0 }}>
         {current?.label}
