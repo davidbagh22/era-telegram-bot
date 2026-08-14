@@ -16,11 +16,16 @@ function formatDate(value: string | null): string {
   return new Date(value).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-// Chat Infrastructure Registry (2026-08 master spec section 30): one card
-// per org chat -- binding, who has access, greeting state, and recent
-// send/error history from the audit log (app/services/chat_registry_service.py)
-// -- plus a "Проверить чаты" button that runs a real, read-only Telegram
-// check (bot.get_chat_member) only when pressed, never automatically.
+const BIND_COMMANDS: Record<string, string> = {
+  general: "/bind general",
+  internal: "/bind internal",
+  external: "/bind external",
+  leaders: "/bind leaders",
+};
+
+// The ERA database is the persistent source of truth for chat bindings.
+// Binding itself stays Telegram-native because only Telegram can tell us the
+// real numeric chat_id safely: an invite URL cannot be converted or guessed.
 export function ChatsPanel() {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchChatRegistry(), [refreshKey]);
@@ -74,6 +79,13 @@ export function ChatsPanel() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <Card style={{ background: "var(--era-tint-violet)", border: "none" }}>
+        <strong>Чаты привязываются из самого Telegram</strong>
+        <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+          Добавьте бота администратором нужного чата и отправьте указанную команду прямо в этом чате. ЭРА сама сохранит реальный chat_id в БД — вручную вводить или угадывать ID не нужно.
+        </p>
+      </Card>
+
       <button type="button" disabled={checking} onClick={handleHealthCheck}>
         {checking ? "Проверяем…" : "🔍 Проверить чаты"}
       </button>
@@ -81,6 +93,7 @@ export function ChatsPanel() {
       {state.data.length === 0 && <EmptyState text="Чаты пока не настроены." />}
       {state.data.map((chat) => {
         const result = health[chat.chat_key];
+        const bindCommand = BIND_COMMANDS[chat.chat_key] ?? `/bind ${chat.chat_key}`;
         return (
           <Card key={chat.chat_key}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "flex-start" }}>
@@ -106,9 +119,12 @@ export function ChatsPanel() {
               )}
             </p>
             {!chat.is_bound && (
-              <p style={{ margin: "0.375rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-                Перешлите любое сообщение из этого чата боту с /bind
-              </p>
+              <div style={{ marginTop: "0.625rem", padding: "0.65rem", borderRadius: "var(--era-radius-control)", background: "var(--era-surface-raised)" }}>
+                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+                  Команда для этого чата:
+                </p>
+                <code style={{ display: "block", marginTop: "0.25rem", color: "var(--era-text)" }}>{bindCommand}</code>
+              </div>
             )}
             {chat.chat_key === "general" && chat.is_bound && (
               <div style={{ marginTop: "0.5rem" }}>
