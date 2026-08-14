@@ -20,8 +20,9 @@ test("leader pre-approves an activity submission, then the admin does the final 
 
   try {
     await leaderPage.goto(`/app/?devTelegramId=${LEADER_TELEGRAM_ID}`);
-    await expect(leaderPage.getByRole("heading", { name: "Панель лидера" })).toBeVisible();
-    await leaderPage.getByRole("button", { name: "Активности" }).click();
+    await expect(leaderPage.getByRole("heading", { name: "Пространство лидера" })).toBeVisible();
+    await leaderPage.getByRole("button", { name: /Активности/ }).click();
+    await expect(leaderPage.getByRole("heading", { name: "Активности" })).toBeVisible();
 
     const leaderCard = leaderPage.locator(".era-card", { hasText: ACTIVITY_TITLE });
     await expect(leaderCard).toBeVisible();
@@ -38,7 +39,7 @@ test("leader pre-approves an activity submission, then the admin does the final 
     // Мероприятия now lives under the Работа group — see AdminScreen.tsx's
     // 2026-08 regrouping.
     await adminPage.getByRole("button", { name: "Работа" }).click();
-    await adminPage.getByRole("button", { name: "Мероприятия" }).click();
+    await adminPage.getByRole("button", { name: /Мероприятия/ }).click();
     await adminPage.getByRole("button", { name: "Активности" }).click();
 
     const adminCard = adminPage.locator(".era-card", { hasText: ACTIVITY_TITLE });
