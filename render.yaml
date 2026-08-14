@@ -6,7 +6,7 @@ services:
     plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    autoDeployTrigger: commit
+    autoDeployTrigger: checksPass
     healthCheckPath: /health
     envVars:
       - key: BOT_TOKEN

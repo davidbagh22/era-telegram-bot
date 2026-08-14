@@ -39,7 +39,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install PostgreSQL client
         run: |
@@ -68,7 +68,7 @@ jobs:
         run: scripts/verify_database_restore.sh
 
       - name: Upload verified encrypted-at-rest artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: era-postgres-backup-${{ github.run_id }}
           path: backups/

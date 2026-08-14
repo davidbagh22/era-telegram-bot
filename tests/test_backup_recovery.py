@@ -13,7 +13,7 @@ class BackupRecoveryContractTests(unittest.TestCase):
             "BACKUP_DATABASE_URL",
             "scripts/backup_database.sh",
             "scripts/verify_database_restore.sh",
-            "actions/upload-artifact@v4",
+            "actions/upload-artifact@v7",
             "retention-days: 30",
         ]
         for marker in required:
