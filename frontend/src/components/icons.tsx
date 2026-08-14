@@ -82,6 +82,28 @@ export function EventIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+// ActivityScreen's action-card landing (2026-08 redesign brief section
+// 16) -- Calendar/History cards, same hand-drawn stroke style.
+export function CalendarIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...baseProps(props)}>
+      <rect x="3.5" y="5" width="17" height="16" rx="2" />
+      <path d="M16 3v4M8 3v4M3.5 10h17" />
+      <path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01" />
+    </svg>
+  );
+}
+
+export function HistoryIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...baseProps(props)}>
+      <path d="M3 12a9 9 0 1 0 2.64-6.36" />
+      <path d="M3 4v5h5" />
+      <path d="M12 8v4l3 2" />
+    </svg>
+  );
+}
+
 // Auction hero card cover glyph (AuctionsPanel.tsx) — a gavel, no fake
 // lot photo, same hand-drawn stroke style as the rest of this file.
 export function AuctionIcon(props: SVGProps<SVGSVGElement>) {
