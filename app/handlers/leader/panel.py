@@ -24,7 +24,7 @@ from app.database.models import (
     User,
 )
 from app.keyboards.common import options_keyboard
-from app.keyboards.leader import leader_panel_keyboard
+from app.keyboards.participant import open_app_button
 from app.services import leader_service
 from app.services.ai_service import AIService, AIUnavailableError
 from app.services.audit_service import audit
@@ -61,19 +61,27 @@ async def _guard(event: Message | CallbackQuery, user: User | None) -> bool:
 @router.message(Command("leader"))
 @router.message(F.text == "🧭 Панель лидера")
 async def leader_command(
-    message: Message, user: User | None, state: FSMContext
+    message: Message, user: User | None, state: FSMContext, settings: Settings
 ) -> None:
+    # /leader used to open the full bot-native leader menu tree
+    # (leader_panel_keyboard()). LeaderScreen in the Mini App now covers
+    # everything that tree offered (see docs/SYSTEM_FLOW_MATRIX.md) --
+    # this command is kept live only as a compatibility redirect, not a
+    # duplicate interface, mirroring /panel's treatment for admins in
+    # app/handlers/admin/management_ready.py. 2026-08 master spec, P5.
     if not await _guard(message, user):
         return
     await state.clear()
-    await message.answer(texts.LEADER_PANEL, reply_markup=leader_panel_keyboard())
+    await message.answer(texts.LEADER_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
 
 
 @router.callback_query(F.data == "leader:panel")
-async def leader_panel(call: CallbackQuery, user: User | None) -> None:
+async def leader_panel(call: CallbackQuery, user: User | None, settings: Settings) -> None:
     if not await _guard(call, user):
         return
-    await call.message.answer(texts.LEADER_PANEL, reply_markup=leader_panel_keyboard())
+    await call.message.answer(
+        texts.LEADER_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url)
+    )
 
 
 @router.callback_query(F.data == "leader:department")
