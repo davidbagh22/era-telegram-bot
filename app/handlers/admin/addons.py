@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Badge, Task, User, UserBadge
-from app.keyboards.admin import admin_panel_keyboard, application_actions
+from app.keyboards.admin import application_actions
+from app.keyboards.participant import open_app_button
 from app.services.audit_service import audit
 from app.services.notification_service import safe_send, safe_send_document, safe_send_photo
 from app.states.admin import AdminGrowthStates
@@ -77,11 +78,19 @@ async def _guard(event: Message | CallbackQuery, user: User | None, settings: Se
     return True
 
 
-async def _reset_admin_state(message: Message, state: FSMContext) -> None:
+async def _reset_admin_state(message: Message, state: FSMContext, settings: Settings) -> None:
+    # 2026-08 bot cleanup ("/panel и /admin не должны запускать старые
+    # меню"): this used to clear the FSM and reopen admin_panel_keyboard()
+    # — the old 6-tile bot-native menu tree. That was the last live entry
+    # point into it (docs/BOT_VS_MINIAPP_AUDIT.md's redirect covers /panel
+    # and /admin themselves; this covers /cancel and the escape-text/
+    # escape-callback shortcuts admins could type or tap mid-flow to bail
+    # out of an FSM). The FSM-clearing behavior is still useful and kept;
+    # what it opens now is the same "теперь в приложении" redirect.
     await state.clear()
     await message.answer(
-        "Состояние сброшено. Админ-панель открыта.",
-        reply_markup=admin_panel_keyboard(),
+        texts.ADMIN_PANEL_MOVED,
+        reply_markup=open_app_button(settings.effective_miniapp_url),
     )
 
 
@@ -94,7 +103,7 @@ async def admin_cancel_command(
 ) -> None:
     if not await _guard(message, user, settings):
         return
-    await _reset_admin_state(message, state)
+    await _reset_admin_state(message, state, settings)
 
 
 @router.message(F.text.in_(ADMIN_ESCAPE_TEXTS))
@@ -106,7 +115,7 @@ async def admin_escape_text(
 ) -> None:
     if not await _guard(message, user, settings):
         return
-    await _reset_admin_state(message, state)
+    await _reset_admin_state(message, state, settings)
 
 
 @router.callback_query(F.data.in_({"admin:task:cancel", "admin:panel"}))
@@ -120,8 +129,8 @@ async def admin_escape_callback(
         return
     await state.clear()
     await call.message.answer(
-        "Состояние сброшено. Админ-панель открыта.",
-        reply_markup=admin_panel_keyboard(),
+        texts.ADMIN_PANEL_MOVED,
+        reply_markup=open_app_button(settings.effective_miniapp_url),
     )
 
 

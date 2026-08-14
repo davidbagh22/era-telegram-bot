@@ -88,28 +88,35 @@ def _mount_frontend(app: FastAPI, dist_dir: Path) -> None:
         )
 
 
+# 2026-08 bot cleanup: the / autocomplete list used to advertise
+# /profile, /data, /events, /tasks, /opportunities, /points, /contact,
+# /help — most of which are Mini App screens now, so typing / showed a
+# second interface competing with the app. Down to exactly 3, per the
+# brief: Mini App = work inside ЭРА; Bot = entry, navigation, and
+# Telegram-native actions. Every dropped command still has a live
+# handler (registered in app/handlers/participant/commands_ready.py) —
+# it just answers with a "this lives in the app now" redirect instead
+# of opening a bot-native menu; see that file's own docstring.
 USER_COMMANDS = [
-    BotCommand(command="start", description="Открыть бота ЭРА"),
-    BotCommand(command="profile", description="Личный кабинет"),
-    BotCommand(command="data", description="Мои данные"),
-    BotCommand(command="events", description="Афиша"),
-    BotCommand(command="tasks", description="Задачи"),
-    BotCommand(command="opportunities", description="Возможности"),
-    BotCommand(command="points", description="Баллы"),
-    BotCommand(command="contact", description="Связь"),
-    BotCommand(command="help", description="Что умеет бот"),
+    BotCommand(command="start", description="Запустить ЭРА"),
+    BotCommand(command="navigation", description="Навигация по ЭРА"),
+    BotCommand(command="contact", description="Связь с командой"),
 ]
 
 # The old in-bot admin panel tree (/panel, /admin,
-# app/handlers/admin/management_ready.py + dashboard_block_a.py) is not
-# advertised here. Update (2026-08 master spec / docs/SYSTEM_FLOW_MATRIX.md):
-# the "legacy capabilities without a Mini App equivalent yet" carve-out this
-# comment used to describe is gone — Excel/analytics export, monthly goals,
-# the organizations-contacts database, the department/direction structure
-# editor, general broadcast, and test-data maintenance were all ported to
-# Admin Mode in the Mini App. /panel and /admin now only show a "this lives
-# in the Mini App now" redirect (kept live, not deleted, as a compatibility
-# handler for anyone who still types the old command).
+# app/handlers/admin/management_ready.py + dashboard_block_a.py,
+# app/handlers/admin/panel.py's admin_panel_keyboard()-rooted menu tree)
+# is not advertised here and, as of this cleanup, has no live entry
+# point left anywhere in the bot (see app/handlers/admin/addons.py's
+# _reset_admin_state) — Excel/analytics export, monthly goals, the
+# organizations-contacts database, the department/direction structure
+# editor, general broadcast, and test-data maintenance were all ported
+# to Admin Mode in the Mini App. /panel and /admin only show a "this
+# lives in the Mini App now" redirect (kept live, not deleted, as a
+# compatibility handler for anyone who still types the old command) —
+# the underlying handler tree itself stays in the codebase (not
+# archived yet, tracked separately) but is no longer reachable.
+# /version is the one genuinely bot-native, admin-only diagnostic left.
 ADMIN_COMMANDS = USER_COMMANDS + [
     BotCommand(command="version", description="Версия запущенного бота"),
 ]
