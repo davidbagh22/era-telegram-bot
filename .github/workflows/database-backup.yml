@@ -1,6 +1,10 @@
 name: Database backup
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/database-backup.yml"
   schedule:
     - cron: "17 1 * * *"
   workflow_dispatch:
@@ -263,7 +267,7 @@ jobs:
             --arg error_detail "Database backup workflow failed; inspect the protected workflow run logs." \
             '{backup_key:$backup_key,backup_type:$backup_type,status:$status,storage_provider:$storage_provider,started_at:$started_at,completed_at:$completed_at,error_code:$error_code,error_detail:$error_detail}')"
           curl --silent --show-error \
-            -H "Authorization: Bearer ${OIDC_TOKEN}" \
+            -H "Authorization: Bearer ${OIDIDC_TOKEN:-${OIDC_TOKEN}}" \
             -H "Content-Type: application/json" \
             -d "${PAYLOAD}" \
             "${BACKUP_API_BASE}/report" || true
