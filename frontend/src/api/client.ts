@@ -1037,6 +1037,12 @@ export function decideLeaderApplication(
   );
 }
 
+export function retryTaskDelivery(taskId: number, deliveryId: number): Promise<LeaderOpenTask> {
+  return authorizedPost<LeaderOpenTask>(
+    `/api/v1/leader/open-tasks/${taskId}/deliveries/${deliveryId}/retry`,
+  );
+}
+
 export function fetchLeaderActivities(): Promise<ActivitySubmission[]> {
   return authorizedGet<ActivitySubmission[]>("/api/v1/leader/activities");
 }

@@ -2,7 +2,9 @@ import { useCallback, useState } from "react";
 import { decideTaskSubmission, describeActionError, fetchAdminTaskSubmissions } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
+import { FilterChips } from "../../components/FilterChips";
 import { useAsync } from "../../hooks/useAsync";
+import { OpenTasksTab } from "../leader/OpenTasksTab";
 import type { TaskReviewAction } from "../../types/admin";
 
 const DECISIONS: { action: TaskReviewAction; label: string; primary?: boolean }[] = [
@@ -11,7 +13,30 @@ const DECISIONS: { action: TaskReviewAction; label: string; primary?: boolean }[
   { action: "reject", label: "Отклонить" },
 ];
 
+type TasksSection = "review" | "create";
+
+const SECTIONS: { value: TasksSection; label: string }[] = [
+  { value: "review", label: "Проверка результатов" },
+  { value: "create", label: "Создать задание" },
+];
+
+// "Создать задание" reuses OpenTasksTab from Leader Mode as-is (same
+// backend RBAC already grants admins access to /api/v1/leader/open-tasks --
+// Role.ADMIN is in PRIVILEGED_ROLES) rather than building a second,
+// duplicate task-creation flow. 2026-08 master spec section 31.
 export function AdminTasksScreen() {
+  const [section, setSection] = useState<TasksSection>("review");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <FilterChips options={SECTIONS} active={section} onChange={setSection} />
+      {section === "create" && <OpenTasksTab />}
+      {section === "review" && <TaskSubmissionReview />}
+    </div>
+  );
+}
+
+function TaskSubmissionReview() {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchAdminTaskSubmissions(), [refreshKey]);
   const [busyId, setBusyId] = useState<number | null>(null);

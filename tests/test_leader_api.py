@@ -90,8 +90,12 @@ class LeaderOpenTaskApiTests(unittest.TestCase):
             max_participants=3,
             creator_id=1,
         )
-        with patch(
-            "app.api.v1.leader.leader_service.create_open_task", new=AsyncMock(return_value=created)
+        with (
+            patch("app.api.v1.leader.leader_service.create_open_task", new=AsyncMock(return_value=created)),
+            # create_open_task() itself dispatches deliveries internally --
+            # the endpoint reads them back afterwards via a separate call,
+            # which needs its own mock now that create_open_task is mocked.
+            patch("app.api.v1.leader.leader_service.list_task_deliveries", new=AsyncMock(return_value=[])),
         ):
             response = client.post(
                 "/api/v1/leader/open-tasks",
@@ -107,6 +111,7 @@ class LeaderOpenTaskApiTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["id"], 5)
         self.assertEqual(body["applications"], [])
+        self.assertEqual(body["deliveries"], [])
 
     def test_create_open_task_invalid_payload_returns_422(self) -> None:
         app = _build_app(_user(), _fake_session({}))
@@ -398,6 +403,109 @@ class LeaderAssignedTaskApiTests(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(create_mock.await_args.kwargs["miniapp_url"], "https://era.example/app")
+
+
+class OpenTaskDeliveryRetryApiTests(unittest.IsolatedAsyncioTestCase):
+    """Real DB round trip through the actual endpoint (not mocked
+    services) -- this one specifically needs the ownership check
+    (task.creator_id != leader.id -> 404, not a delivery for someone
+    else's task) verified against real rows, not a mock that would let a
+    wrong assertion pass silently."""
+
+    async def asyncSetUp(self) -> None:
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from app.database.base import Base
+
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def asyncTearDown(self) -> None:
+        await self.engine.dispose()
+
+    def _build_real_app(self, user) -> FastAPI:
+        app = FastAPI()
+        app.include_router(api_router)
+        app.state.session_factory = self.session_factory
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_settings] = lambda: Settings(
+            bot_token="1234567890:test-token", general_chat_id=-100111
+        )
+        app.dependency_overrides[get_bot] = lambda: None  # bot_unavailable path
+        return app
+
+    async def test_retry_on_someone_elses_task_is_404(self) -> None:
+        from app.database.models import TaskDelivery
+
+        async with self.session_factory() as session:
+            other_leader = User(telegram_id=2, first_name="Other", role="leader")
+            session.add(other_leader)
+            await session.flush()
+            task = Task(
+                title="t", description="d", creator_id=other_leader.id,
+                deadline=datetime.now(timezone.utc), points=10, task_type="challenge",
+                status="published", max_participants=3,
+            )
+            session.add(task)
+            await session.flush()
+            delivery = TaskDelivery(task_id=task.id, chat_key="general", chat_id=-100111, status="failed", error="x")
+            session.add(delivery)
+            await session.commit()
+            task_id, delivery_id = task.id, delivery.id
+
+        # A genuinely different leader -- id=999 can't collide with
+        # other_leader's real autoincrement id from the DB above (id=1 did
+        # once, silently turning this into a false-negative test).
+        app = self._build_real_app(_user(id=999, telegram_id=555))
+        client = TestClient(app)
+        response = client.post(f"/api/v1/leader/open-tasks/{task_id}/deliveries/{delivery_id}/retry")
+        self.assertEqual(response.status_code, 404)
+
+    async def test_retry_own_task_delivery_without_bot_records_failure(self) -> None:
+        async with self.session_factory() as session:
+            leader = User(telegram_id=555, first_name="Лидер", role="leader")
+            session.add(leader)
+            await session.flush()
+            leader_id = leader.id
+
+        # id must match what was actually persisted above -- a plain
+        # _user() default (id=1) would silently not match the real row.
+        app = self._build_real_app(
+            SimpleNamespace(
+                id=leader_id, telegram_id=555, first_name="Лидер", role="leader",
+                is_blocked=False, is_archived=False,
+            )
+        )
+        client = TestClient(app)
+        created = client.post(
+            "/api/v1/leader/open-tasks",
+            json={
+                "title": "Задача",
+                "description": "d",
+                "deadline": "2026-09-01T18:00:00+00:00",
+                "points": 10,
+                "max_participants": 3,
+                "destinations": ["general"],
+            },
+        )
+        self.assertEqual(created.status_code, 200)
+        body = created.json()
+        self.assertEqual(len(body["deliveries"]), 1)
+        # get_bot returns None in this app -> bot_unavailable, a real
+        # failure recorded, not silently dropped.
+        self.assertEqual(body["deliveries"][0]["status"], "failed")
+        self.assertEqual(body["deliveries"][0]["error"], "bot_unavailable")
+
+        retry = client.post(
+            f"/api/v1/leader/open-tasks/{body['id']}/deliveries/{body['deliveries'][0]['id']}/retry"
+        )
+        self.assertEqual(retry.status_code, 200)
+        retried_delivery = retry.json()["deliveries"][0]
+        # Still failing (bot is still None) -- but it's a genuinely fresh
+        # attempt, not just echoing the same stale row back.
+        self.assertEqual(retried_delivery["status"], "failed")
 
 
 if __name__ == "__main__":

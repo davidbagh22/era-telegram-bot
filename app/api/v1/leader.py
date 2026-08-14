@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.rate_limit import enforce_rate_limit
 from app.config import Settings
-from app.database.models import Event, EventActivitySubmission, Task, User
+from app.database.models import Event, EventActivitySubmission, Task, TaskDelivery, User
 from app.keyboards.participant import open_app_button
 from app.services import event_activity_service, leader_service
 from app.utils.deep_links import miniapp_task_url
@@ -179,6 +179,24 @@ class ApplicationOut(BaseModel):
     status: str
 
 
+class TaskDeliveryOut(BaseModel):
+    id: int
+    chat_key: str
+    status: str
+    error: str | None
+    sent_at: str | None
+
+
+def _to_delivery_out(delivery) -> TaskDeliveryOut:
+    return TaskDeliveryOut(
+        id=delivery.id,
+        chat_key=delivery.chat_key,
+        status=delivery.status,
+        error=delivery.error,
+        sent_at=delivery.sent_at.isoformat() if delivery.sent_at else None,
+    )
+
+
 class OpenTaskOut(BaseModel):
     id: int
     title: str
@@ -187,6 +205,7 @@ class OpenTaskOut(BaseModel):
     points: int
     max_participants: int | None
     applications: list[ApplicationOut]
+    deliveries: list[TaskDeliveryOut]
 
 
 def _to_open_task_out(result: leader_service.OpenTaskWithApplications) -> OpenTaskOut:
@@ -208,6 +227,7 @@ def _to_open_task_out(result: leader_service.OpenTaskWithApplications) -> OpenTa
             )
             for application in result.applications
         ],
+        deliveries=[_to_delivery_out(delivery) for delivery in result.deliveries],
     )
 
 
@@ -226,16 +246,25 @@ class OpenTaskCreateIn(BaseModel):
     deadline: datetime
     points: int = 10
     max_participants: int = 1
+    # 2026-08 master spec section 31: which of the 4 org chats to announce
+    # this task in, alongside the Mini App listing it already gets.
+    destinations: list[Literal["general", "internal", "external", "leaders"]] = []
 
 
 @router.post("/open-tasks", response_model=OpenTaskOut)
 async def create_open_task(
     payload: OpenTaskCreateIn,
     leader: User = Depends(require_leader),
+    settings: Settings = Depends(get_settings),
     session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
     _rate_limit: None = Depends(enforce_leader_action_rate_limit),
 ) -> OpenTaskOut:
     try:
+        # Task creation always succeeds regardless of Telegram delivery --
+        # create_open_task() dispatches to the requested chats internally
+        # and never raises for a delivery failure (see
+        # leader_service.dispatch_task_to_chats()).
         task = await leader_service.create_open_task(
             session,
             creator=leader,
@@ -244,10 +273,41 @@ async def create_open_task(
             deadline=payload.deadline,
             points=payload.points,
             max_participants=payload.max_participants,
+            destinations=payload.destinations,
+            bot=bot,
+            settings=settings,
+            miniapp_url=settings.effective_miniapp_url,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _to_open_task_out(leader_service.OpenTaskWithApplications(task=task, applications=[]))
+    deliveries = await leader_service.list_task_deliveries(session, task.id)
+    return _to_open_task_out(leader_service.OpenTaskWithApplications(task=task, applications=[], deliveries=deliveries))
+
+
+@router.post("/open-tasks/{task_id}/deliveries/{delivery_id}/retry", response_model=OpenTaskOut)
+async def retry_open_task_delivery(
+    task_id: int,
+    delivery_id: int,
+    leader: User = Depends(require_leader),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_leader_action_rate_limit),
+) -> OpenTaskOut:
+    task = await session.get(Task, task_id)
+    if task is None or task.creator_id != leader.id:
+        raise HTTPException(status_code=404, detail="task_not_found")
+    delivery = await session.get(TaskDelivery, delivery_id)
+    if delivery is None or delivery.task_id != task_id:
+        raise HTTPException(status_code=404, detail="delivery_not_found")
+    keyboard = open_app_button(miniapp_task_url(settings.effective_miniapp_url, task.id)) if settings.effective_miniapp_url else None
+    await leader_service.retry_task_delivery(session, bot, delivery, task, keyboard=keyboard)
+    deliveries = await leader_service.list_task_deliveries(session, task.id)
+    results = await leader_service.list_open_tasks_with_applications(session, leader)
+    matching = next((r for r in results if r.task.id == task_id), None)
+    if matching is None:
+        return _to_open_task_out(leader_service.OpenTaskWithApplications(task=task, applications=[], deliveries=deliveries))
+    return _to_open_task_out(matching)
 
 
 class ApplicationDecisionIn(BaseModel):

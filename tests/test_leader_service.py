@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.config import Settings
 from app.database.base import Base
 from app.database.models import (
     Department,
@@ -302,6 +304,180 @@ class LeaderServiceTests(unittest.IsolatedAsyncioTestCase):
                 session, task=task, target=applicant, action="reject", actor=leader, bot=None
             )
             self.assertEqual(participant.status, "rejected")
+
+
+class FakeBot:
+    id = 999
+
+    def __init__(self, fail_chat_ids: set[int] | None = None) -> None:
+        self.sent: list[tuple[int, str]] = []
+        self.fail_chat_ids = fail_chat_ids or set()
+        self._next_message_id = 1
+
+    async def send_message(self, chat_id: int, text: str, reply_markup=None):
+        from aiogram.exceptions import TelegramNetworkError
+
+        if chat_id in self.fail_chat_ids:
+            raise TelegramNetworkError(method=None, message="simulated outage")
+        self.sent.append((chat_id, text))
+        message = SimpleNamespace(message_id=self._next_message_id)
+        self._next_message_id += 1
+        return message
+
+
+class TaskChatDeliveryTests(unittest.IsolatedAsyncioTestCase):
+    """2026-08 master spec section 31-33: task creation supports choosing
+    delivery destinations, never rolls back on a Telegram failure, and the
+    result is readable back as entity<->chat<->message_id<->status<->error."""
+
+    async def asyncSetUp(self) -> None:
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def asyncTearDown(self) -> None:
+        await self.engine.dispose()
+
+    async def _leader(self, session) -> User:
+        user = User(
+            telegram_id=1,
+            first_name="Dev",
+            role=Role.LEADER,
+            application_status=ApplicationStatus.APPROVED,
+        )
+        session.add(user)
+        await session.flush()
+        return user
+
+    async def test_create_open_task_dispatches_to_requested_chats(self) -> None:
+        async with self.session_factory() as session:
+            leader = await self._leader(session)
+            settings = Settings(bot_token="1234567890:test-token", general_chat_id=-100111, leaders_chat_id=-100222)
+            bot = FakeBot()
+            task = await leader_service.create_open_task(
+                session,
+                creator=leader,
+                title="Задача",
+                description="d",
+                deadline=datetime.now(timezone.utc),
+                points=10,
+                max_participants=3,
+                destinations=["general", "leaders"],
+                bot=bot,
+                settings=settings,
+            )
+            await session.commit()
+            self.assertEqual({chat_id for chat_id, _ in bot.sent}, {-100111, -100222})
+            deliveries = await leader_service.list_task_deliveries(session, task.id)
+            self.assertEqual(len(deliveries), 2)
+            self.assertTrue(all(d.status == "sent" for d in deliveries))
+            self.assertTrue(all(d.sent_at is not None for d in deliveries))
+            self.assertTrue(all(d.telegram_message_id is not None for d in deliveries))
+
+    async def test_task_creation_survives_a_telegram_failure(self) -> None:
+        # The core guarantee: a Telegram outage on one (or every) requested
+        # chat must never roll back the task itself.
+        async with self.session_factory() as session:
+            leader = await self._leader(session)
+            settings = Settings(bot_token="1234567890:test-token", general_chat_id=-100111)
+            bot = FakeBot(fail_chat_ids={-100111})
+            task = await leader_service.create_open_task(
+                session,
+                creator=leader,
+                title="Задача",
+                description="d",
+                deadline=datetime.now(timezone.utc),
+                points=10,
+                max_participants=3,
+                destinations=["general"],
+                bot=bot,
+                settings=settings,
+            )
+            await session.commit()
+            # The task itself exists and is fully published, not rolled back.
+            persisted = await session.get(Task, task.id)
+            self.assertIsNotNone(persisted)
+            self.assertEqual(persisted.status, "published")
+            deliveries = await leader_service.list_task_deliveries(session, task.id)
+            self.assertEqual(len(deliveries), 1)
+            self.assertEqual(deliveries[0].status, "failed")
+            self.assertIsNotNone(deliveries[0].error)
+
+    async def test_unbound_destination_recorded_as_failed_not_skipped(self) -> None:
+        async with self.session_factory() as session:
+            leader = await self._leader(session)
+            settings = Settings(bot_token="1234567890:test-token")  # no chats bound
+            task = await leader_service.create_open_task(
+                session,
+                creator=leader,
+                title="Задача",
+                description="d",
+                deadline=datetime.now(timezone.utc),
+                points=10,
+                max_participants=3,
+                destinations=["internal"],
+                bot=FakeBot(),
+                settings=settings,
+            )
+            await session.commit()
+            deliveries = await leader_service.list_task_deliveries(session, task.id)
+            self.assertEqual(len(deliveries), 1)
+            self.assertEqual(deliveries[0].status, "failed")
+            self.assertEqual(deliveries[0].error, "chat_not_bound")
+
+    async def test_create_open_task_rejects_unknown_destination(self) -> None:
+        async with self.session_factory() as session:
+            leader = await self._leader(session)
+            with self.assertRaises(ValueError):
+                await leader_service.create_open_task(
+                    session,
+                    creator=leader,
+                    title="Задача",
+                    description="d",
+                    deadline=datetime.now(timezone.utc),
+                    points=10,
+                    max_participants=3,
+                    destinations=["not_a_real_chat"],
+                    settings=Settings(bot_token="1234567890:test-token"),
+                )
+
+    async def test_retry_delivery_only_resends_that_one_destination(self) -> None:
+        async with self.session_factory() as session:
+            leader = await self._leader(session)
+            settings = Settings(bot_token="1234567890:test-token", general_chat_id=-100111, leaders_chat_id=-100222)
+            bot = FakeBot(fail_chat_ids={-100111})
+            task = await leader_service.create_open_task(
+                session,
+                creator=leader,
+                title="Задача",
+                description="d",
+                deadline=datetime.now(timezone.utc),
+                points=10,
+                max_participants=3,
+                destinations=["general", "leaders"],
+                bot=bot,
+                settings=settings,
+            )
+            await session.commit()
+            deliveries = await leader_service.list_task_deliveries(session, task.id)
+            failed = next(d for d in deliveries if d.chat_key == "general")
+            self.assertEqual(failed.status, "failed")
+
+            # Retry with a bot that no longer fails -- only the failed
+            # destination should be resent.
+            recovered_bot = FakeBot()
+            await leader_service.retry_task_delivery(session, recovered_bot, failed, task)
+            await session.commit()
+            self.assertEqual(len(recovered_bot.sent), 1)
+            self.assertEqual(recovered_bot.sent[0][0], -100111)
+
+            updated = await leader_service.list_task_deliveries(session, task.id)
+            updated_general = next(d for d in updated if d.chat_key == "general")
+            self.assertEqual(updated_general.status, "sent")
+            # The leaders delivery, never retried, keeps its original status.
+            updated_leaders = next(d for d in updated if d.chat_key == "leaders")
+            self.assertEqual(updated_leaders.status, "sent")
 
 
 if __name__ == "__main__":
