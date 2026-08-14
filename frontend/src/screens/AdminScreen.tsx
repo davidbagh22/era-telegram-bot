@@ -2,8 +2,10 @@ import { useState } from "react";
 import { ActionCell } from "../components/ActionCell";
 import { AdminBottomNav, type AdminGroup } from "../components/AdminBottomNav";
 import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
+import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
 import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
+import { AdminMaintenanceScreen } from "./admin/AdminMaintenanceScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
 import { AdminOffersScreen } from "./admin/AdminOffersScreen";
 import { AdminOverviewScreen } from "./admin/AdminOverviewScreen";
@@ -12,10 +14,12 @@ import { AdminSurveysScreen } from "./admin/AdminSurveysScreen";
 import { AdminTasksScreen } from "./admin/AdminTasksScreen";
 import { AdminToolsScreen } from "./admin/AdminToolsScreen";
 import { AdminUsersScreen } from "./admin/AdminUsersScreen";
+import { SystemPanel } from "./admin/tools/SystemPanel";
 
 type PeopleSection = "participants" | "applications" | "offices" | "data-rights";
 type WorkSection = "projects" | "events" | "tasks" | "offers";
 type CommsSection = "surveys" | "tools";
+type ControlSection = "analytics" | "system" | "maintenance";
 
 type SectionOption<T extends string> = { value: T; label: string; description: string };
 
@@ -23,7 +27,7 @@ const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
   { value: "participants", label: "Участники", description: "Люди, роли и состояние сообщества" },
   { value: "applications", label: "Заявки", description: "Новые регистрации и решения по ним" },
   { value: "offices", label: "Должности", description: "Организационные роли и структура" },
-  { value: "data-rights", label: "Удаление данных", description: "Запросы по персональным данным" },
+  { value: "data-rights", label: "Данные и права", description: "Запросы на экспорт и удаление персональных данных" },
 ];
 
 const WORK_SECTIONS: SectionOption<WorkSection>[] = [
@@ -35,7 +39,13 @@ const WORK_SECTIONS: SectionOption<WorkSection>[] = [
 
 const COMMS_SECTIONS: SectionOption<CommsSection>[] = [
   { value: "surveys", label: "Опросы", description: "Обратная связь и активные опросы" },
-  { value: "tools", label: "Инструменты", description: "Коммуникационные и служебные действия" },
+  { value: "tools", label: "Центр связи", description: "Чаты, приветствия, рассылки и структура коммуникаций" },
+];
+
+const CONTROL_SECTIONS: SectionOption<ControlSection>[] = [
+  { value: "analytics", label: "Аналитика", description: "Показатели сообщества, динамика и Excel-выгрузка" },
+  { value: "system", label: "Состояние системы", description: "Диагностика, инциденты, резервные копии и здоровье ЭРА" },
+  { value: "maintenance", label: "Обслуживание", description: "Редкие технические операции с отдельной серверной защитой" },
 ];
 
 function SectionMenu<T extends string>({
@@ -86,12 +96,14 @@ export function AdminScreen() {
   const [peopleSection, setPeopleSection] = useState<PeopleSection | null>(null);
   const [workSection, setWorkSection] = useState<WorkSection | null>(null);
   const [commsSection, setCommsSection] = useState<CommsSection | null>(null);
+  const [controlSection, setControlSection] = useState<ControlSection | null>(null);
 
   const changeGroup = (next: AdminGroup) => {
     setGroup(next);
     setPeopleSection(null);
     setWorkSection(null);
     setCommsSection(null);
+    setControlSection(null);
   };
 
   return (
@@ -137,17 +149,34 @@ export function AdminScreen() {
 
         {group === "comms" && !commsSection && (
           <SectionMenu
-            title="Коммуникации"
-            description="Опросы и служебные инструменты связи."
+            title="Связь"
+            description="Чаты, рассылки и обратная связь без системных функций."
             options={COMMS_SECTIONS}
             onOpen={setCommsSection}
           />
         )}
         {group === "comms" && commsSection && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <SectionHeader title={COMMS_SECTIONS.find((item) => item.value === commsSection)?.label ?? "Коммуникации"} onBack={() => setCommsSection(null)} />
+            <SectionHeader title={COMMS_SECTIONS.find((item) => item.value === commsSection)?.label ?? "Связь"} onBack={() => setCommsSection(null)} />
             {commsSection === "surveys" && <AdminSurveysScreen />}
             {commsSection === "tools" && <AdminToolsScreen />}
+          </div>
+        )}
+
+        {group === "control" && !controlSection && (
+          <SectionMenu
+            title="Контроль"
+            description="Аналитика и обслуживание вынесены из ежедневной админской работы в отдельный системный контур."
+            options={CONTROL_SECTIONS}
+            onOpen={setControlSection}
+          />
+        )}
+        {group === "control" && controlSection && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <SectionHeader title={CONTROL_SECTIONS.find((item) => item.value === controlSection)?.label ?? "Контроль"} onBack={() => setControlSection(null)} />
+            {controlSection === "analytics" && <AdminDashboardScreen />}
+            {controlSection === "system" && <SystemPanel />}
+            {controlSection === "maintenance" && <AdminMaintenanceScreen />}
           </div>
         )}
       </div>
