@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -11,7 +11,12 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.v1.router import api_router
 from app.config import Settings
-from app.services.system_health_service import HealthCheck, _score, sanitize_runtime_detail
+from app.services.system_health_service import (
+    HealthCheck,
+    _configuration_check,
+    _score,
+    sanitize_runtime_detail,
+)
 from app.services.system_scheduler import add_system_jobs
 
 
@@ -37,6 +42,31 @@ class SystemSanitizerTests(unittest.TestCase):
         self.assertLess(score, 100)
 
 
+class SystemConfigurationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_backup_report_secret_is_not_required_for_production_health(self) -> None:
+        settings = Settings(
+            bot_token="1234567890:test-token",
+            render_external_hostname="era.example",
+            miniapp_auth_secret="miniapp-auth-secret",
+            backup_report_secret="",
+        )
+        result = await _configuration_check(settings)
+        self.assertEqual(result.status, "ok")
+        self.assertNotIn("BACKUP_REPORT_SECRET", result.detail)
+
+    async def test_real_auth_secret_is_still_required_on_render(self) -> None:
+        settings = Settings(
+            bot_token="1234567890:test-token",
+            render_external_hostname="era.example",
+            miniapp_auth_secret="",
+            backup_report_secret="",
+        )
+        result = await _configuration_check(settings)
+        self.assertEqual(result.status, "error")
+        self.assertEqual(result.severity, "critical")
+        self.assertIn("MINIAPP_AUTH_SECRET", result.detail)
+
+
 class SystemSchedulerTests(unittest.TestCase):
     def test_attaches_expected_jobs(self) -> None:
         scheduler = SimpleNamespace(add_job=unittest.mock.Mock())
@@ -50,7 +80,7 @@ class SystemSchedulerTests(unittest.TestCase):
 
 
 class SystemApiAuthorizationTests(unittest.TestCase):
-    def _app(self, user) -> FastAPI:
+    def _app(self, user, *, backup_report_secret: str = "") -> FastAPI:
         app = FastAPI()
         app.include_router(api_router)
 
@@ -60,10 +90,22 @@ class SystemApiAuthorizationTests(unittest.TestCase):
         app.dependency_overrides[get_current_user] = lambda: user
         app.dependency_overrides[get_session] = session_override
         app.dependency_overrides[get_settings] = lambda: Settings(
-            bot_token="1234567890:test-token"
+            bot_token="1234567890:test-token",
+            backup_report_secret=backup_report_secret,
         )
         app.dependency_overrides[get_bot] = lambda: None
         return app
+
+    @staticmethod
+    def _admin():
+        return SimpleNamespace(
+            id=1,
+            telegram_id=555,
+            role="admin",
+            is_blocked=False,
+            is_archived=False,
+            permission_grants=[],
+        )
 
     def test_participant_cannot_read_system_snapshot(self) -> None:
         participant = SimpleNamespace(
@@ -77,24 +119,29 @@ class SystemApiAuthorizationTests(unittest.TestCase):
         response = TestClient(self._app(participant)).get("/api/v1/admin/system")
         self.assertEqual(response.status_code, 403)
 
-    def test_backup_report_rejects_invalid_secret_before_db_access(self) -> None:
-        app = self._app(
-            SimpleNamespace(
-                id=1,
-                telegram_id=555,
-                role="admin",
-                is_blocked=False,
-                is_archived=False,
-                permission_grants=[],
-            )
+    def test_backup_report_stays_fail_closed_when_optional_secret_is_absent(self) -> None:
+        payload = {
+            "backup_key": "era-backup-test",
+            "status": "failed",
+            "backup_type": "daily",
+        }
+        response = TestClient(self._app(self._admin())).post(
+            "/api/v1/internal/backup/report",
+            headers={"X-ERA-Backup-Secret": "anything"},
+            json=payload,
         )
+        self.assertEqual(response.status_code, 503)
+
+    def test_backup_report_rejects_invalid_secret_before_db_access(self) -> None:
         payload = {
             "backup_key": "era-backup-test",
             "status": "failed",
             "backup_type": "daily",
         }
         with patch.dict(os.environ, {"BACKUP_REPORT_SECRET": "correct-secret"}, clear=False):
-            response = TestClient(app).post(
+            response = TestClient(
+                self._app(self._admin(), backup_report_secret="correct-secret")
+            ).post(
                 "/api/v1/internal/backup/report",
                 headers={"X-ERA-Backup-Secret": "wrong-secret"},
                 json=payload,
