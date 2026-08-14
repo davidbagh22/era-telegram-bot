@@ -54,12 +54,13 @@ def miniapp_path_url(
     if not miniapp_url:
         return ""
     normalized_path = path.strip("/")
-    parts = urlsplit(miniapp_url.rstrip("/") + "/")
+    parts = urlsplit(miniapp_url)
+    app_path = parts.path if parts.path.endswith("/") else f"{parts.path}/"
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     query[MINIAPP_ROUTE_PARAM] = normalized_path
     if params:
         query.update({key: str(value) for key, value in params.items()})
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), ""))
+    return urlunsplit((parts.scheme, parts.netloc, app_path, urlencode(query), ""))
 
 
 def miniapp_project_url(miniapp_url: str, project_id: int) -> str:
