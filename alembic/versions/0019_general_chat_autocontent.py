@@ -36,6 +36,28 @@ def upgrade() -> None:
         )
         op.create_index("ix_general_content_overrides_content_id", "general_content_overrides", ["content_id"], unique=True)
 
+    if not _table_exists("general_custom_content"):
+        op.create_table(
+            "general_custom_content",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("content_id", sa.String(length=100), nullable=False),
+            sa.Column("content_type", sa.String(length=32), nullable=False),
+            sa.Column("date_key", sa.String(length=10), nullable=False),
+            sa.Column("slot", sa.String(length=16), nullable=False, server_default="morning"),
+            sa.Column("title", sa.String(length=180), nullable=True),
+            sa.Column("text", sa.Text(), nullable=False),
+            sa.Column("is_enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
+            sa.Column("created_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
+            sa.Column("updated_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.UniqueConstraint("content_id", name="uq_general_custom_content_content_id"),
+        )
+        op.create_index("ix_general_custom_content_content_id", "general_custom_content", ["content_id"], unique=True)
+        op.create_index("ix_general_custom_content_content_type", "general_custom_content", ["content_type"])
+        op.create_index("ix_general_custom_content_date_key", "general_custom_content", ["date_key"])
+        op.create_index("ix_general_custom_content_date_type", "general_custom_content", ["date_key", "content_type"])
+
     if not _table_exists("general_content_deliveries"):
         op.create_table(
             "general_content_deliveries",
@@ -68,5 +90,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     if _table_exists("general_content_deliveries"):
         op.drop_table("general_content_deliveries")
+    if _table_exists("general_custom_content"):
+        op.drop_table("general_custom_content")
     if _table_exists("general_content_overrides"):
         op.drop_table("general_content_overrides")
