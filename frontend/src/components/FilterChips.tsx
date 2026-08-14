@@ -4,21 +4,16 @@ interface FilterChipsProps<T extends string> {
   onChange: (value: T) => void;
 }
 
-/** Secondary, in-list filter — "which slice of this list am I looking
- * at" (e.g. EventsTab's Для меня/Все/Мои/Прошедшие). Deliberately quieter
- * than SegmentedTabs — outline chips with a tint fill on the active one,
- * no gradient — so a screen that stacks a SegmentedTabs section switcher
- * above one of these reads as two different kinds of control instead of
- * the same pill row repeated. Horizontally scrollable (scrollbar hidden,
- * see .era-pilltabs-scroller) for option lists too long to fit. */
+/** Secondary list filter. Options wrap on narrow screens instead of creating
+ * a horizontal scroller; section navigation belongs in ActionCell. */
 export function FilterChips<T extends string>({ options, active, onChange }: FilterChipsProps<T>) {
   return (
     <div
-      className="era-pilltabs-scroller"
       style={{
         display: "flex",
-        gap: "0.375rem",
-        overflowX: "auto",
+        flexWrap: "wrap",
+        gap: "0.5rem",
+        width: "100%",
         minWidth: 0,
       }}
     >
@@ -29,19 +24,19 @@ export function FilterChips<T extends string>({ options, active, onChange }: Fil
             key={option.value}
             type="button"
             onClick={() => onChange(option.value)}
+            aria-pressed={isActive}
             style={{
-              flexShrink: 0,
-              minHeight: "auto",
-              padding: "0.3rem 0.7rem",
-              borderRadius: "var(--era-radius-pill)",
-              border: `1px solid ${isActive ? "var(--era-violet)" : "var(--era-border)"}`,
-              background: isActive ? "var(--era-tint-violet)" : "transparent",
-              color: isActive ? "var(--era-violet)" : "var(--era-text-muted)",
-              fontSize: "0.75rem",
-              fontWeight: isActive ? 700 : 500,
-              fontFamily: "var(--era-font-body)",
-              transition:
-                "background var(--era-motion-fast), color var(--era-motion-fast), border-color var(--era-motion-fast)",
+              flex: "0 1 auto",
+              maxWidth: "100%",
+              minHeight: "2.5rem",
+              padding: "0.5rem 0.75rem",
+              borderRadius: "var(--era-radius-control)",
+              border: `1px solid ${isActive ? "rgba(120, 61, 255, 0.6)" : "var(--era-border)"}`,
+              background: isActive ? "var(--era-tint-violet)" : "rgba(255,255,255,0.025)",
+              color: isActive ? "var(--era-text)" : "var(--era-text-muted)",
+              fontSize: "var(--era-text-xs)",
+              fontWeight: isActive ? 800 : 600,
+              overflowWrap: "anywhere",
             }}
           >
             {option.label}
