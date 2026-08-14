@@ -2,28 +2,16 @@ from aiogram import F, Bot, Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import Event, EventActivity, EventRegistration, Task, User
-from app.handlers.participant.event_activities_block15 import (
-    ACTIVE_REGISTRATION_STATUSES,
-    ALLOWED_PROOF_TYPES,
-    ActivityProofStates,
-)
-from app.handlers.participant.event_activities_block15 import (
-    _notify_proof as notify_activity_proof,
-)
+from app.database.models import User
 from app.keyboards.common import registration_keyboard, subscription_keyboard
 from app.keyboards.participant import main_inline_keyboard
 from app.keyboards.registration import pending_registration_keyboard
-from app.services import event_activity_service, task_service
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
-from app.states.growth import TaskSubmissionStates
 from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
-from app.utils.deep_links import parse_activity_submit_payload, parse_task_submit_payload
 
 router = Router(name="start")
 
@@ -77,97 +65,24 @@ def _approved_existing_user(user: User | None) -> bool:
     )
 
 
-async def _try_start_task_submission_from_deep_link(
-    message: Message,
-    user: User,
-    state: FSMContext,
-    session: AsyncSession,
-    command: CommandObject | None,
-) -> bool:
-    """Mini App "Отправить результат" hands off here (section 15 of the
-    platform brief) — uploads stay a Bot-only FSM. Returns True if the
-    deep link was valid and the submission prompt was sent."""
-    if command is None or not command.args:
-        return False
-    task_id = parse_task_submit_payload(command.args)
-    if task_id is None:
-        return False
-    task = await session.get(Task, task_id)
-    if (
-        task is None
-        or task.status in task_service.ARCHIVE_STATUSES
-        or not await task_service.can_submit(session, task, user)
-    ):
-        return False
-    await state.set_state(TaskSubmissionStates.result)
-    await state.update_data(task_id=task.id)
-    await message.answer(
-        f"Отправьте результат по задаче «{task.title}» текстом, фотографией, видео или файлом"
-    )
-    return True
-
-
-async def _try_start_activity_submission_from_deep_link(
-    message: Message,
-    user: User,
-    state: FSMContext,
-    session: AsyncSession,
-    bot: Bot,
-    settings: Settings,
-    command: CommandObject | None,
-) -> bool:
-    """Mini App's Event Activities screen hands off here the same way
-    task submission does above — uploads stay a Bot-only FSM. Returns
-    True if the deep link was valid and handled (either the submission
-    prompt was sent, or a "manual" proof-type activity was submitted
-    immediately, mirroring proof_start()'s own short-circuit for that
-    type in app/handlers/participant/event_activities_block15.py)."""
-    if command is None or not command.args:
-        return False
-    activity_id = parse_activity_submit_payload(command.args)
-    if activity_id is None:
-        return False
-    activity = await session.get(EventActivity, activity_id)
-    if activity is None or not activity.is_active:
-        return False
-    registration = await session.scalar(
-        select(EventRegistration).where(
-            EventRegistration.event_id == activity.event_id,
-            EventRegistration.user_id == user.id,
-            EventRegistration.status.in_(ACTIVE_REGISTRATION_STATUSES),
-        )
-    )
-    if registration is None:
-        return False
-    existing = await event_activity_service.get_submission(session, activity.id, user.id)
-    if existing and existing.status == "approved":
-        await message.answer("Эта активность уже принята. Повторная отправка закрыта.")
-        return True
-    if existing and existing.status == "pending":
-        await message.answer("Ваш результат уже на проверке.")
-        return True
-    proof_type = activity.submission_type if activity.submission_type in ALLOWED_PROOF_TYPES else "text"
-    if proof_type == "manual":
-        submission = await event_activity_service.submit_manual(session, activity, user)
-        event = await session.get(Event, activity.event_id)
-        await notify_activity_proof(bot, settings, submission, activity, event, user)
-        await message.answer("Заявка отправлена на проверку.")
-        return True
-    await state.set_state(ActivityProofStates.proof)
-    await state.update_data(activity_id=activity.id, proof_type=proof_type)
-    prompts = {
-        "photo": "Отправьте фотографию.",
-        "link": "Отправьте ссылку.",
-        "text": "Отправьте текстовое подтверждение.",
-        "file": "Отправьте документ или файл.",
-    }
-    await message.answer(
-        f"✨ {activity.title}\n\n{activity.description}\n\n"
-        f"Баллы: +{activity.points}\n{prompts[proof_type]}"
-    )
-    return True
-
-
+# NOTE: start() below (and by extension show_home()'s CommandStart/"menu"
+# call path) is unreachable in production. app/bot.py's create_dispatcher()
+# includes emergency.router before this router, and emergency.rescue_start
+# is registered on StateFilter("*") + the same CommandStart()/Command("menu")
+# + F.chat.type == "private" filters -- aiogram first-match-wins routing
+# means rescue_start always intercepts these updates first (see
+# tests/test_fsm_global_recovery.py::test_emergency_router_is_first).
+#
+# The deep-link payload parsing that used to live here as
+# _try_start_task_submission_from_deep_link() / _try_start_activity_
+# submission_from_deep_link() has been ported to app/handlers/emergency.py
+# (rescue_start now accepts `command: CommandObject` and calls them) since
+# that is the handler that actually owns /start in production -- this copy
+# was silently swallowing every task/activity submission deep link before
+# that fix. Kept registered here only as a defense-in-depth fallback, per
+# the same "legacy handler kept as emergency backup, not deleted" decision
+# already applied elsewhere to app/handlers/emergency.py's own reply-keyboard
+# rescue handlers.
 @router.message(CommandStart(), F.chat.type == "private")
 @router.message(Command("menu"), F.chat.type == "private")
 async def start(
@@ -202,12 +117,6 @@ async def start(
         return
     if user is None:
         await message.answer(ux_texts.WELCOME_START, reply_markup=registration_keyboard())
-        return
-    if await _try_start_task_submission_from_deep_link(message, user, state, session, command):
-        return
-    if await _try_start_activity_submission_from_deep_link(
-        message, user, state, session, bot, settings, command
-    ):
         return
     await show_home(message, user, settings)
 

@@ -4,8 +4,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from app.handlers.emergency import _try_start_activity_submission_from_deep_link
 from app.handlers.participant.event_activities_block15 import ActivityProofStates
-from app.handlers.start import _try_start_activity_submission_from_deep_link
 from app.utils.deep_links import activity_submit_deep_link, parse_activity_submit_payload
 
 
@@ -84,7 +84,7 @@ class TryActivitySubmissionHandoffTests(unittest.IsolatedAsyncioTestCase):
         session = SimpleNamespace(get=AsyncMock(return_value=activity), scalar=AsyncMock(return_value=registration))
         command = SimpleNamespace(args="activity_submit_7")
         with patch(
-            "app.handlers.start.event_activity_service.get_submission", new=AsyncMock(return_value=None)
+            "app.handlers.emergency.event_activity_service.get_submission", new=AsyncMock(return_value=None)
         ):
             result = await _try_start_activity_submission_from_deep_link(
                 message, SimpleNamespace(id=1), state, session, SimpleNamespace(), SimpleNamespace(), command
@@ -109,13 +109,13 @@ class TryActivitySubmissionHandoffTests(unittest.IsolatedAsyncioTestCase):
         command = SimpleNamespace(args="activity_submit_7")
         with (
             patch(
-                "app.handlers.start.event_activity_service.get_submission", new=AsyncMock(return_value=None)
+                "app.handlers.emergency.event_activity_service.get_submission", new=AsyncMock(return_value=None)
             ),
             patch(
-                "app.handlers.start.event_activity_service.submit_manual",
+                "app.handlers.emergency.event_activity_service.submit_manual",
                 new=AsyncMock(return_value=submission),
             ),
-            patch("app.handlers.start.notify_activity_proof", new=AsyncMock()) as notify_mock,
+            patch("app.handlers.emergency.notify_activity_proof", new=AsyncMock()) as notify_mock,
         ):
             result = await _try_start_activity_submission_from_deep_link(
                 message, SimpleNamespace(id=1), state, session, SimpleNamespace(), SimpleNamespace(), command
@@ -134,7 +134,7 @@ class TryActivitySubmissionHandoffTests(unittest.IsolatedAsyncioTestCase):
         session = SimpleNamespace(get=AsyncMock(return_value=activity), scalar=AsyncMock(return_value=registration))
         command = SimpleNamespace(args="activity_submit_7")
         with patch(
-            "app.handlers.start.event_activity_service.get_submission", new=AsyncMock(return_value=existing)
+            "app.handlers.emergency.event_activity_service.get_submission", new=AsyncMock(return_value=existing)
         ):
             result = await _try_start_activity_submission_from_deep_link(
                 message, SimpleNamespace(id=1), state, session, SimpleNamespace(), SimpleNamespace(), command
@@ -152,7 +152,7 @@ class TryActivitySubmissionHandoffTests(unittest.IsolatedAsyncioTestCase):
         session = SimpleNamespace(get=AsyncMock(return_value=activity), scalar=AsyncMock(return_value=registration))
         command = SimpleNamespace(args="activity_submit_7")
         with patch(
-            "app.handlers.start.event_activity_service.get_submission", new=AsyncMock(return_value=existing)
+            "app.handlers.emergency.event_activity_service.get_submission", new=AsyncMock(return_value=existing)
         ):
             result = await _try_start_activity_submission_from_deep_link(
                 message, SimpleNamespace(id=1), state, session, SimpleNamespace(), SimpleNamespace(), command
