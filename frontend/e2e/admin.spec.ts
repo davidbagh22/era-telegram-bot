@@ -2,33 +2,27 @@ import { expect, test } from "@playwright/test";
 
 const ADMIN_TELEGRAM_ID = 900003;
 
-test("admin logs in and approves the seeded pending applicant", async ({ page }) => {
+async function enterAdminWorkspace(page: import("@playwright/test").Page) {
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
+  await expect(page.getByRole("button", { name: "Профиль" })).toBeVisible();
+  await page.getByRole("button", { name: "Профиль" }).click();
+  await page.getByRole("button", { name: /Управление ЭРА/ }).click();
+  await expect(page.getByText("Управление", { exact: true })).toBeVisible();
+}
 
-  // AdminLayout's header, not a screen heading — confirms the admin branch
-  // of App.tsx rendered (is_admin === true, and workspace mode, not the
-  // plain participant one).
-  await expect(page.getByText("Управление")).toBeVisible();
-
-  // Заявки now lives under the Люди group — see AdminScreen.tsx's 2026-08
-  // regrouping (5 top-level groups instead of one flat 12-tab row).
+test("admin enters separate management workspace and approves a pending applicant", async ({ page }) => {
+  await enterAdminWorkspace(page);
   await page.getByRole("button", { name: "Люди" }).click();
   await page.getByRole("button", { name: "Заявки" }).click();
-
-  const applicantCard = page.getByText("E2E Pending Applicant");
-  await expect(applicantCard).toBeVisible();
-
-  // Scoped to this applicant's own card, not a bare global lookup: the
-  // queue can (and, once pending_sync.spec.ts's own fixture is also
-  // pending, does) hold more than one applicant at once, each with an
-  // identical "Одобрить" button.
-  await page
-    .locator(".era-card", { hasText: "E2E Pending Applicant" })
-    .getByRole("button", { name: "Одобрить" })
-    .click();
-
-  // A real approval through application_review_service → DB, not a UI-only
-  // removal — verified by the applicant disappearing after the screen
-  // refetches the (now-empty) pending queue from the API.
+  await expect(page.getByText("E2E Pending Applicant")).toBeVisible();
+  await page.locator(".era-card", { hasText: "E2E Pending Applicant" }).getByRole("button", { name: "Одобрить" }).click();
   await expect(page.getByText("E2E Pending Applicant")).not.toBeVisible();
+});
+
+test("admin control has analytics system and maintenance as separate destinations", async ({ page }) => {
+  await enterAdminWorkspace(page);
+  await page.getByRole("button", { name: "Контроль" }).click();
+  await expect(page.getByRole("button", { name: /Аналитика/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Состояние системы/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Обслуживание/ })).toBeVisible();
 });
