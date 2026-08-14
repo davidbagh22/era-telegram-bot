@@ -44,18 +44,32 @@ class FullAdminApplicationViewTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("photo_file_id", fields)
 
     def test_full_route_precedes_legacy_compact_route(self) -> None:
-        # api_router is the child router; its own /api/v1 prefix is applied
-        # when mounted into the FastAPI app, so child route paths are
-        # /admin/... here. What matters is that the full read-model is the
-        # first GET match before the legacy compact route.
-        matches = [
+        # Test endpoint registration order rather than the router's internal
+        # rendered path string: FastAPI can rewrite prefixes during nested
+        # include_router calls, while first-match ordering is what determines
+        # which GET implementation serves Admin Mode.
+        get_routes = [
             route
             for route in api_router.routes
-            if getattr(route, "path", None) == "/admin/applications"
-            and "GET" in (getattr(route, "methods", None) or set())
+            if "GET" in (getattr(route, "methods", None) or set())
         ]
-        self.assertGreaterEqual(len(matches), 1)
-        self.assertEqual(matches[0].endpoint.__module__, "app.api.v1.admin_applications")
+        full_indexes = [
+            index
+            for index, route in enumerate(get_routes)
+            if getattr(getattr(route, "endpoint", None), "__module__", "")
+            == "app.api.v1.admin_applications"
+        ]
+        compact_indexes = [
+            index
+            for index, route in enumerate(get_routes)
+            if getattr(getattr(route, "endpoint", None), "__module__", "")
+            == "app.api.v1.admin"
+            and getattr(getattr(route, "endpoint", None), "__name__", "")
+            == "read_applications"
+        ]
+        self.assertEqual(len(full_indexes), 1)
+        if compact_indexes:
+            self.assertLess(full_indexes[0], compact_indexes[0])
 
     async def test_photo_is_embedded_without_exposing_telegram_file_id(self) -> None:
         bot = AsyncMock()
