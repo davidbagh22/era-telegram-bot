@@ -4,6 +4,7 @@ import { App } from "./app/App";
 import { ToastProvider } from "./components/Toast";
 import { applyTelegramTheme } from "./telegram/webApp";
 import "./theme/tokens.css";
+import "./theme/layout-safety.css";
 
 // Set light/dark before the first paint so there is no flash of the wrong
 // theme; initTelegramWebApp() (called from useAuth) re-applies this once
