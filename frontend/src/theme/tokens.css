@@ -6,7 +6,21 @@
   --era-red: #e52b24;
   --era-violet: #742cc4;
   --era-magenta: #be268f;
-  --era-gradient: linear-gradient(135deg, #742cc4 0%, #b529a6 48%, #e52b24 100%);
+  /* Middle stop is --era-magenta itself, not an intermediate hue — the
+     2026-08 UX/UI redesign brief specifies the gradient as exactly
+     violet(#742CC4) -> magenta(#BE268F) -> red(#E52B24), no blended
+     in-between color. */
+  --era-gradient: linear-gradient(135deg, #742cc4 0%, #be268f 48%, #e52b24 100%);
+
+  /* Dark-first palette (2026-08 UX/UI redesign brief, section 3) --
+     defined here as brand constants so components can reach for them by
+     name ahead of the full dark-first rollout (see docs/UI_DESIGN_SYSTEM.md
+     "Redesign in progress" note for why :root itself isn't flipped to dark
+     yet). --era-bg/--era-surface under :root[data-theme="dark"] below will
+     migrate to exactly these three once the rollout reaches that phase. */
+  --era-black: #0b0910;
+  --era-plum: #15101c;
+  --era-surface-dark: #1d1625;
 
   /* Gold — the one net-new brand hue, added for the 2026-08 visual
      refresh (see docs/UI_DESIGN_SYSTEM.md's "Home hero" section).
@@ -70,6 +84,7 @@
   --era-text-xl: 1.125rem; /* section headings */
   --era-text-2xl: 1.375rem; /* screen titles */
   --era-text-3xl: 1.75rem; /* hero numbers (points, level) */
+  --era-text-4xl: 2rem; /* hero H1 (Home greeting), 2026-08 redesign brief section 6 */
 
   /* Spacing scale — 4px base unit, matches the rem values already used
      ad hoc across every screen (0.25/0.5/0.75/1/1.25/1.5/2rem). */
@@ -88,10 +103,15 @@
    they're already saturated enough to read on a dark surface; only
    surface/text/border/shadow tokens need a dark variant. */
 :root[data-theme="dark"] {
-  --era-bg: #17121d;
-  --era-bg-subtle: #1f1926;
-  --era-surface: #241d2c;
-  --era-surface-2: #2c2334;
+  /* 2026-08 UX/UI redesign brief section 3's exact dark palette --
+     Deep Black / Deep Plum / Surface, replacing the previous ad hoc dark
+     hexes. --era-bg-subtle stays one step darker than --era-black itself
+     (recessed surfaces read as "sunk into" the page, same relationship
+     the old palette already had). */
+  --era-bg: var(--era-black);
+  --era-bg-subtle: #08060c;
+  --era-surface: var(--era-plum);
+  --era-surface-2: var(--era-surface-dark);
   --era-text: #f3eff6;
   --era-text-muted: #a99fb0;
   --era-border: #362c40;
