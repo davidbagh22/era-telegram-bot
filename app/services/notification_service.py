@@ -169,10 +169,15 @@ async def safe_answer_media(
 
 
 async def admin_notification_recipients(settings: Settings) -> set[int]:
+    """Return actual administrators for automatic administrative notifications.
+
+    The leaders chat is intentionally not included here. Automatic events such as
+    new registration applications must stay private to admins. Messages explicitly
+    sent to the leaders chat from Admin Mode continue to use the dedicated chat
+    broadcast path and are unaffected by this recipient list.
+    """
     recipients = set(settings.admin_ids)
     recipients.update(await _database_admin_ids(settings))
-    if settings.leaders_chat_id:
-        recipients.add(settings.leaders_chat_id)
     return recipients
 
 
