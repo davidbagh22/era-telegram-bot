@@ -38,8 +38,6 @@ jobs:
       DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
       RESTORE_DATABASE_URL: postgresql://restore:restore@localhost:5432/era_restore_check
       BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
-      BACKUP_REPORT_URL: ${{ secrets.BACKUP_REPORT_URL }}
-      BACKUP_REPORT_SECRET: ${{ secrets.BACKUP_REPORT_SECRET }}
       BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
       BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX }}
       BACKUP_S3_REGION: ${{ secrets.BACKUP_S3_REGION }}
@@ -54,7 +52,7 @@ jobs:
       - name: Install backup clients
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client jq awscli
+          sudo apt-get install -y postgresql-client awscli
 
       - name: Validate backup configuration
         id: config
@@ -68,10 +66,8 @@ jobs:
           if [ -n "${BACKUP_ENCRYPTION_KEY:-}" ]; then
             echo "encryption_mode=dedicated-secret" >> "${GITHUB_OUTPUT}"
           else
-            # Backward-compatible safe fallback: never persist a raw database
-            # dump in a public repository. The dedicated encryption secret is
-            # still the production target; this deterministic fallback keeps
-            # today's backup recoverable while that secret is being provisioned.
+            # Safe compatibility fallback: the raw database dump is never
+            # persisted. A dedicated BACKUP_ENCRYPTION_KEY remains preferred.
             DERIVED_KEY="$(printf '%s' "era-backup-v1|${DATABASE_URL}" | sha256sum | awk '{print $1}')"
             echo "BACKUP_ENCRYPTION_KEY=${DERIVED_KEY}" >> "${GITHUB_ENV}"
             echo "encryption_mode=derived-from-backup-db-secret" >> "${GITHUB_OUTPUT}"
@@ -90,12 +86,6 @@ jobs:
             exit 1
           fi
 
-          if { [ -n "${BACKUP_REPORT_URL:-}" ] && [ -z "${BACKUP_REPORT_SECRET:-}" ]; } || \
-             { [ -z "${BACKUP_REPORT_URL:-}" ] && [ -n "${BACKUP_REPORT_SECRET:-}" ]; }; then
-            echo "BACKUP_REPORT_URL and BACKUP_REPORT_SECRET must be configured together" >&2
-            exit 1
-          fi
-
       - name: Select retention tier
         id: tier
         shell: bash
@@ -104,8 +94,7 @@ jobs:
           DOW="$(date -u +%u)"
           if [ "${DAY}" = "01" ]; then
             TYPE="monthly"
-            # Public GitHub artifacts cannot reliably provide six-month
-            # retention; S3 exact-count retention below is authoritative.
+            # Exact six-month count retention is handled by external storage.
             GH_RETENTION="90"
           elif [ "${DOW}" = "7" ]; then
             TYPE="weekly"
@@ -123,7 +112,11 @@ jobs:
         env:
           RETENTION_DAYS: "1"
         run: |
-          chmod +x scripts/backup_database.sh scripts/verify_database_restore.sh scripts/store_encrypted_backup_s3.sh
+          chmod +x \
+            scripts/backup_database.sh \
+            scripts/verify_database_restore.sh \
+            scripts/store_encrypted_backup_s3.sh \
+            scripts/record_backup_history.sh
           BACKUP_FILE="$(scripts/backup_database.sh)"
           echo "backup_file=${BACKUP_FILE}" >> "${GITHUB_OUTPUT}"
           echo "sha256=$(sha256sum "${BACKUP_FILE}" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
@@ -173,69 +166,48 @@ jobs:
           REFERENCE="$(scripts/store_encrypted_backup_s3.sh)"
           echo "storage_reference=${REFERENCE}" >> "${GITHUB_OUTPUT}"
 
-      - name: Report successful backup to ERA
-        if: env.BACKUP_REPORT_URL != '' && env.BACKUP_REPORT_SECRET != ''
+      - name: Record verified backup in ERA Backup History
         env:
-          BACKUP_TYPE: ${{ steps.tier.outputs.backup_type }}
           BACKUP_KEY: ${{ steps.backup.outputs.backup_key }}
-          ARCHIVE_SHA256: ${{ steps.package.outputs.archive_sha256 }}
-          ARCHIVE_SIZE_BYTES: ${{ steps.package.outputs.archive_size_bytes }}
+          BACKUP_TYPE: ${{ steps.tier.outputs.backup_type }}
+          CHECKSUM_SHA256: ${{ steps.package.outputs.archive_sha256 }}
+          SIZE_BYTES: ${{ steps.package.outputs.archive_size_bytes }}
           STARTED_AT: ${{ steps.tier.outputs.started_at }}
           HAS_EXTERNAL: ${{ steps.config.outputs.external_storage }}
           EXTERNAL_REFERENCE: ${{ steps.external.outputs.storage_reference }}
+        shell: bash
         run: |
           COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           if [ "${HAS_EXTERNAL}" = "true" ]; then
-            PROVIDER="s3-compatible-encrypted"
-            REFERENCE="${EXTERNAL_REFERENCE}"
+            STORAGE_PROVIDER="s3-compatible-encrypted"
+            STORAGE_REFERENCE="${EXTERNAL_REFERENCE}"
           else
-            PROVIDER="github-actions-encrypted"
-            REFERENCE="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            STORAGE_PROVIDER="github-actions-encrypted"
+            STORAGE_REFERENCE="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           fi
-          PAYLOAD="$(jq -n \
-            --arg backup_key "${BACKUP_KEY}" \
-            --arg backup_type "${BACKUP_TYPE}" \
-            --arg status "success" \
-            --arg storage_provider "${PROVIDER}" \
-            --arg storage_reference "${REFERENCE}" \
-            --arg checksum_sha256 "${ARCHIVE_SHA256}" \
-            --argjson size_bytes "${ARCHIVE_SIZE_BYTES}" \
-            --arg started_at "${STARTED_AT}" \
-            --arg completed_at "${COMPLETED_AT}" \
-            --arg restore_verified_at "${COMPLETED_AT}" \
-            '{backup_key:$backup_key,backup_type:$backup_type,status:$status,storage_provider:$storage_provider,storage_reference:$storage_reference,checksum_sha256:$checksum_sha256,size_bytes:$size_bytes,started_at:$started_at,completed_at:$completed_at,restore_verified_at:$restore_verified_at}')"
-          curl --fail-with-body --silent --show-error \
-            -H "Content-Type: application/json" \
-            -H "X-ERA-Backup-Secret: ${BACKUP_REPORT_SECRET}" \
-            -d "${PAYLOAD}" \
-            "${BACKUP_REPORT_URL}"
+          export BACKUP_STATUS="success"
+          export STORAGE_PROVIDER STORAGE_REFERENCE COMPLETED_AT
+          export RESTORE_VERIFIED_AT="${COMPLETED_AT}"
+          scripts/record_backup_history.sh
 
-      - name: Report backup failure to ERA
-        if: failure() && env.BACKUP_REPORT_URL != '' && env.BACKUP_REPORT_SECRET != ''
+      - name: Record backup workflow failure
+        if: failure()
         env:
-          BACKUP_TYPE: ${{ steps.tier.outputs.backup_type }}
           BACKUP_KEY: ${{ steps.backup.outputs.backup_key }}
+          BACKUP_TYPE: ${{ steps.tier.outputs.backup_type }}
           STARTED_AT: ${{ steps.tier.outputs.started_at }}
+        shell: bash
         run: |
-          KEY="${BACKUP_KEY:-era-backup-run-${GITHUB_RUN_ID}}"
-          TYPE="${BACKUP_TYPE:-manual}"
-          START="${STARTED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
-          COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          PAYLOAD="$(jq -n \
-            --arg backup_key "${KEY}" \
-            --arg backup_type "${TYPE}" \
-            --arg status "failed" \
-            --arg storage_provider "backup-workflow" \
-            --arg started_at "${START}" \
-            --arg completed_at "${COMPLETED_AT}" \
-            --arg error_code "workflow_failed" \
-            --arg error_detail "GitHub Actions database backup workflow failed; inspect the protected workflow run logs." \
-            '{backup_key:$backup_key,backup_type:$backup_type,status:$status,storage_provider:$storage_provider,started_at:$started_at,completed_at:$completed_at,error_code:$error_code,error_detail:$error_detail}')"
-          curl --fail-with-body --silent --show-error \
-            -H "Content-Type: application/json" \
-            -H "X-ERA-Backup-Secret: ${BACKUP_REPORT_SECRET}" \
-            -d "${PAYLOAD}" \
-            "${BACKUP_REPORT_URL}" || true
+          chmod +x scripts/record_backup_history.sh
+          export BACKUP_KEY="${BACKUP_KEY:-era-backup-run-${GITHUB_RUN_ID}}"
+          export BACKUP_TYPE="${BACKUP_TYPE:-manual}"
+          export BACKUP_STATUS="failed"
+          export STORAGE_PROVIDER="backup-workflow"
+          export STARTED_AT="${STARTED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+          export COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export ERROR_CODE="workflow_failed"
+          export ERROR_DETAIL="GitHub Actions database backup workflow failed; inspect the protected workflow run."
+          scripts/record_backup_history.sh || true
 
       - name: Write job summary
         if: always()
@@ -246,9 +218,9 @@ jobs:
             echo "- Restore test required before persistence: yes"
             echo "- Stored copies are encrypted with AES-256/PBKDF2: yes"
             echo "- Encryption key mode: ${{ steps.config.outputs.encryption_mode || 'unknown' }}"
+            echo "- Backup History recording: direct PostgreSQL metadata write"
             echo "- GitHub encrypted artifact retention: ${{ steps.tier.outputs.github_retention_days || 'unknown' }} days"
             echo "- External S3-compatible copy active: ${{ steps.config.outputs.external_storage || 'false' }}"
             echo "- Exact external retention when active: 7 daily / 4 weekly / 6 monthly"
-            echo "- ERA Backup History callback active: ${{ env.BACKUP_REPORT_URL != '' && env.BACKUP_REPORT_SECRET != '' }}"
-            echo "- Source credentials and encryption key are never written to logs"
+            echo "- Source credentials and encryption keys are never written to logs"
           } >> "${GITHUB_STEP_SUMMARY}"
