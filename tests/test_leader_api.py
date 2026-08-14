@@ -4,6 +4,7 @@ import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -92,9 +93,6 @@ class LeaderOpenTaskApiTests(unittest.TestCase):
         )
         with (
             patch("app.api.v1.leader.leader_service.create_open_task", new=AsyncMock(return_value=created)),
-            # create_open_task() itself dispatches deliveries internally --
-            # the endpoint reads them back afterwards via a separate call,
-            # which needs its own mock now that create_open_task is mocked.
             patch("app.api.v1.leader.leader_service.list_task_deliveries", new=AsyncMock(return_value=[])),
         ):
             response = client.post(
@@ -237,8 +235,6 @@ class LeaderDecideApplicationApiTests(unittest.TestCase):
         self.assertEqual(body["applications"][0]["status"], "accepted")
 
     def test_decide_application_accept_passes_a_task_deep_link_keyboard(self) -> None:
-        """The acceptance notification's "Открыть" button should deep-link
-        to this specific task — see app/utils/deep_links.py::miniapp_task_url()."""
         task = Task(
             id=5, title="t", description="d", deadline=datetime.now(timezone.utc), points=1, creator_id=1
         )
@@ -272,7 +268,9 @@ class LeaderDecideApplicationApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         keyboard = decide_mock.await_args.kwargs["keyboard"]
         url = keyboard.inline_keyboard[0][0].web_app.url
-        self.assertEqual(url, "https://era.example/app/#/tasks/5")
+        parsed = urlsplit(url)
+        self.assertEqual(parsed.fragment, "")
+        self.assertEqual(parse_qs(parsed.query).get("eraPath"), ["tasks/5"])
 
     def test_decide_application_reject_passes_no_keyboard(self) -> None:
         task = Task(
@@ -358,9 +356,6 @@ class LeaderAssignedTaskApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_create_assigned_task_passes_the_effective_miniapp_url(self) -> None:
-        """create_assigned_task() builds the deep-link keyboard itself
-        (it needs the just-flushed task.id) — see leader_service.py's own
-        comment on why the URL is threaded through, not a keyboard."""
         assignee = User(id=9, telegram_id=999, first_name="Иван")
         session = _fake_session({(User, 9): assignee})
         app = FastAPI()
@@ -406,15 +401,8 @@ class LeaderAssignedTaskApiTests(unittest.TestCase):
 
 
 class OpenTaskDeliveryRetryApiTests(unittest.IsolatedAsyncioTestCase):
-    """Real DB round trip through the actual endpoint (not mocked
-    services) -- this one specifically needs the ownership check
-    (task.creator_id != leader.id -> 404, not a delivery for someone
-    else's task) verified against real rows, not a mock that would let a
-    wrong assertion pass silently."""
-
     async def asyncSetUp(self) -> None:
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
         from app.database.base import Base
 
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -433,7 +421,7 @@ class OpenTaskDeliveryRetryApiTests(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides[get_settings] = lambda: Settings(
             bot_token="1234567890:test-token", general_chat_id=-100111
         )
-        app.dependency_overrides[get_bot] = lambda: None  # bot_unavailable path
+        app.dependency_overrides[get_bot] = lambda: None
         return app
 
     async def test_retry_on_someone_elses_task_is_404(self) -> None:
@@ -455,9 +443,6 @@ class OpenTaskDeliveryRetryApiTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
             task_id, delivery_id = task.id, delivery.id
 
-        # A genuinely different leader -- id=999 can't collide with
-        # other_leader's real autoincrement id from the DB above (id=1 did
-        # once, silently turning this into a false-negative test).
         app = self._build_real_app(_user(id=999, telegram_id=555))
         client = TestClient(app)
         response = client.post(f"/api/v1/leader/open-tasks/{task_id}/deliveries/{delivery_id}/retry")
@@ -470,8 +455,6 @@ class OpenTaskDeliveryRetryApiTests(unittest.IsolatedAsyncioTestCase):
             await session.flush()
             leader_id = leader.id
 
-        # id must match what was actually persisted above -- a plain
-        # _user() default (id=1) would silently not match the real row.
         app = self._build_real_app(
             SimpleNamespace(
                 id=leader_id, telegram_id=555, first_name="Лидер", role="leader",
@@ -493,8 +476,6 @@ class OpenTaskDeliveryRetryApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(created.status_code, 200)
         body = created.json()
         self.assertEqual(len(body["deliveries"]), 1)
-        # get_bot returns None in this app -> bot_unavailable, a real
-        # failure recorded, not silently dropped.
         self.assertEqual(body["deliveries"][0]["status"], "failed")
         self.assertEqual(body["deliveries"][0]["error"], "bot_unavailable")
 
@@ -503,8 +484,6 @@ class OpenTaskDeliveryRetryApiTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(retry.status_code, 200)
         retried_delivery = retry.json()["deliveries"][0]
-        # Still failing (bot is still None) -- but it's a genuinely fresh
-        # attempt, not just echoing the same stale row back.
         self.assertEqual(retried_delivery["status"], "failed")
 
 
