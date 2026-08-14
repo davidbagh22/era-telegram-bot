@@ -4,6 +4,7 @@ import asyncio
 import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -98,14 +99,14 @@ class BackupHealthTests(unittest.TestCase):
             created_at=datetime.now(timezone.utc),
             storage_provider="github-actions-encrypted",
         )
-        session = SimpleNamespace(scalar=unittest.mock.AsyncMock(return_value=backup))
+        session = SimpleNamespace(scalar=AsyncMock(return_value=backup))
         check = asyncio.run(_backup_check(session))
         self.assertEqual(check.status, "ok")
 
 
 class SystemSchedulerTests(unittest.TestCase):
     def test_attaches_expected_jobs(self) -> None:
-        scheduler = SimpleNamespace(add_job=unittest.mock.Mock())
+        scheduler = SimpleNamespace(add_job=Mock())
         settings = Settings(bot_token="1234567890:test-token")
         add_system_jobs(scheduler, SimpleNamespace(), settings, SimpleNamespace())
         ids = [call.kwargs["id"] for call in scheduler.add_job.call_args_list]
