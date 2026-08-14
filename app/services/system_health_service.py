@@ -46,7 +46,6 @@ def _now() -> datetime:
 
 
 def _as_utc(value: datetime) -> datetime:
-    """Normalize SQLite-naive and PostgreSQL-aware timestamps alike."""
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
@@ -96,13 +95,7 @@ def _fix_prompt(
 
 
 def _score(checks: list[HealthCheck]) -> tuple[int, str]:
-    penalties = {
-        "info": 0,
-        "low": 4,
-        "medium": 10,
-        "high": 25,
-        "critical": 45,
-    }
+    penalties = {"info": 0, "low": 4, "medium": 10, "high": 25, "critical": 45}
     score = max(
         0,
         100
@@ -124,14 +117,8 @@ def _score(checks: list[HealthCheck]) -> tuple[int, str]:
 async def _database_check(session) -> HealthCheck:
     try:
         await session.execute(text("SELECT 1"))
-        return HealthCheck(
-            "database",
-            "База данных",
-            "ok",
-            "info",
-            "Соединение с БД работает",
-        )
-    except Exception as exc:  # noqa: BLE001 - diagnostic boundary
+        return HealthCheck("database", "База данных", "ok", "info", "Соединение с БД работает")
+    except Exception as exc:  # noqa: BLE001
         return HealthCheck(
             "database",
             "База данных",
@@ -145,12 +132,8 @@ async def _configuration_check(settings: Settings) -> HealthCheck:
     missing: list[str] = []
     if settings.is_render_deployment and not settings.miniapp_auth_secret:
         missing.append("MINIAPP_AUTH_SECRET")
-    if settings.is_render_deployment and not settings.effective_base_url.startswith(
-        "https://"
-    ):
+    if settings.is_render_deployment and not settings.effective_base_url.startswith("https://"):
         missing.append("HTTPS public base URL")
-    if settings.is_render_deployment and not settings.backup_report_secret:
-        missing.append("BACKUP_REPORT_SECRET")
     if missing:
         return HealthCheck(
             "production_config",
@@ -164,7 +147,7 @@ async def _configuration_check(settings: Settings) -> HealthCheck:
         "Production config",
         "ok",
         "info",
-        "Критичная production-конфигурация присутствует",
+        "Критичная production-конфигурация присутствует; backup workflow использует GitHub OIDC",
     )
 
 
@@ -177,12 +160,13 @@ async def _chat_config_check(settings: Settings) -> HealthCheck:
     }
     missing = [key for key, chat_id in expected.items() if not chat_id]
     if missing:
+        commands = ", ".join(f"/bind {key}" for key in missing)
         return HealthCheck(
             "chat_bindings",
             "Чаты ЭРА",
             "warning",
             "medium",
-            f"Нет chat_id: {', '.join(missing)}",
+            f"Нет chat_id: {', '.join(missing)}. Историческое auto-recovery не нашло однозначный ID; выполните в соответствующих чатах: {commands}",
         )
     return HealthCheck(
         "chat_bindings",
@@ -205,7 +189,7 @@ async def _delivery_check(session) -> HealthCheck:
             )
             or 0
         )
-    except Exception as exc:  # pragma: no cover - schema/runtime boundary
+    except Exception as exc:  # pragma: no cover
         return HealthCheck(
             "task_delivery",
             "Доставка задач",
@@ -243,7 +227,7 @@ async def _points_integrity_check(session) -> HealthCheck:
                 )
             ).scalars()
         )
-    except Exception as exc:  # pragma: no cover - schema/runtime boundary
+    except Exception as exc:  # pragma: no cover
         return HealthCheck(
             "points_integrity",
             "Целостность баллов",
@@ -273,7 +257,7 @@ async def _backup_check(session) -> HealthCheck:
         latest = await session.scalar(
             select(BackupHistory).order_by(BackupHistory.created_at.desc()).limit(1)
         )
-    except Exception as exc:  # pragma: no cover - schema/runtime boundary
+    except Exception as exc:  # pragma: no cover
         return HealthCheck(
             "backup",
             "Резервное копирование",
@@ -282,9 +266,6 @@ async def _backup_check(session) -> HealthCheck:
             f"Backup diagnostic failed: {exc.__class__.__name__}",
         )
     if latest is None:
-        # First deploy of Backup History should be visible but not page admins
-        # every 15 minutes before the first nightly callback has had a chance
-        # to run.
         return HealthCheck(
             "backup",
             "Резервное копирование",
@@ -319,20 +300,23 @@ async def _backup_check(session) -> HealthCheck:
             "high",
             f"Последний проверенный backup старше 36 часов ({int(age.total_seconds() // 3600)} ч)",
         )
-    if latest.storage_provider != "s3-compatible-encrypted":
+    if latest.storage_provider not in {
+        "github-actions-encrypted",
+        "s3-compatible-encrypted",
+    }:
         return HealthCheck(
             "backup",
             "Резервное копирование",
             "warning",
             "medium",
-            "Verified backup есть, но независимое S3-совместимое хранилище с retention 7/4/6 ещё не подтверждено",
+            f"Verified backup использует неподтверждённый storage provider: {latest.storage_provider}",
         )
     return HealthCheck(
         "backup",
         "Резервное копирование",
         "ok",
         "info",
-        f"Последний verified external backup создан {int(age.total_seconds() // 3600)} ч назад",
+        f"Последний encrypted off-Render backup прошёл restore verification {int(age.total_seconds() // 3600)} ч назад",
     )
 
 
@@ -481,7 +465,6 @@ async def _sync_incidents(
             incident.status = "resolved"
             incident.resolved_at = now
             recovered.append(incident)
-
     return opened_or_reopened, recovered
 
 
@@ -502,10 +485,7 @@ async def _notify_incident_changes(
                 ).all()
             )
             for incident in incidents:
-                if (
-                    incident.severity not in {"high", "critical"}
-                    or incident.admin_notified
-                ):
+                if incident.severity not in {"high", "critical"} or incident.admin_notified:
                     continue
                 sent, _ = await notify_admins(
                     bot,
@@ -521,9 +501,7 @@ async def _notify_incident_changes(
             incidents = list(
                 (
                     await session.scalars(
-                        select(SystemIncident).where(
-                            SystemIncident.id.in_(recovered_ids)
-                        )
+                        select(SystemIncident).where(SystemIncident.id.in_(recovered_ids))
                     )
                 ).all()
             )
