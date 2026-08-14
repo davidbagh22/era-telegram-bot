@@ -5,9 +5,12 @@ const LEADER_TELEGRAM_ID = 900002;
 test("leader logs in and creates a new open task", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${LEADER_TELEGRAM_ID}`);
 
-  await expect(page.getByRole("heading", { name: "Панель лидера" })).toBeVisible();
+  // Leader Mode now opens as a cell-based workspace rather than a horizontal
+  // tab strip. This assertion deliberately verifies the new production UX.
+  await expect(page.getByRole("heading", { name: "Пространство лидера" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Открытые задачи" }).click();
+  await page.getByRole("button", { name: /Открытые задачи/ }).click();
+  await expect(page.getByRole("heading", { name: "Открытые задачи" })).toBeVisible();
   await page.getByRole("button", { name: "Новая открытая задача" }).click();
 
   const taskTitle = `E2E задача ${Date.now()}`;
