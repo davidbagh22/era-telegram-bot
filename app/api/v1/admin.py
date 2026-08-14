@@ -53,6 +53,7 @@ from app.services.admin_broadcast_service import (
     BroadcastError,
     department_options,
     direction_options,
+    preview_recipient_count,
     send_chat_broadcast,
     send_personal_broadcast,
 )
@@ -502,6 +503,28 @@ async def read_broadcast_audience_options(
         directions=[AudienceOptionOut(value=o.value, label=o.label) for o in await direction_options(session)],
         ages=[AudienceOptionOut(value=value, label=label) for value, label in _AGE_LABELS.items()],
     )
+
+
+class BroadcastPreviewCountOut(BaseModel):
+    count: int
+
+
+@router.get("/broadcast/preview-count", response_model=BroadcastPreviewCountOut)
+async def read_broadcast_preview_count(
+    audience: Literal["all", "role", "department", "direction", "age", "city"],
+    filter_value: str | None = None,
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> BroadcastPreviewCountOut:
+    # Lets the composer show "Получателей: N" before the admin commits to
+    # sending -- read-only DB count, no Telegram call, so unlike the actual
+    # send endpoints below this isn't rate-limited (same reasoning as
+    # /broadcast/audience-options just above). 2026-08 master spec section 33.
+    try:
+        count = await preview_recipient_count(session, audience, filter_value)
+    except BroadcastError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+    return BroadcastPreviewCountOut(count=count)
 
 
 class PersonalBroadcastIn(BaseModel):

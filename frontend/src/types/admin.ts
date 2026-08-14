@@ -374,6 +374,10 @@ export interface PersonalBroadcastPayload {
   text: string;
 }
 
+export interface BroadcastPreviewCount {
+  count: number;
+}
+
 export interface PersonalBroadcastResult {
   total: number;
   sent: number;
