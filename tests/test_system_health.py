@@ -112,7 +112,12 @@ class SystemSchedulerTests(unittest.TestCase):
         ids = [call.kwargs["id"] for call in scheduler.add_job.call_args_list]
         self.assertEqual(
             ids,
-            ["system-heartbeat", "system-full-diagnostic", "system-daily-summary"],
+            [
+                "system-heartbeat",
+                "system-full-diagnostic",
+                "system-daily-summary",
+                "general-chat-faq-pin",
+            ],
         )
 
 
