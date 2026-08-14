@@ -16,6 +16,9 @@ class BackupRecoveryContractTests(unittest.TestCase):
             "id-token: write",
             "ACTIONS_ID_TOKEN_REQUEST_URL",
             "audience=era-platform-backup",
+            "Wait for matching production commit",
+            'EXPECTED="${GITHUB_SHA}"',
+            '"${PRODUCTION_BASE}/health"',
             "/snapshot",
             "scripts/verify_database_restore.sh",
             "/material",
@@ -35,10 +38,12 @@ class BackupRecoveryContractTests(unittest.TestCase):
         self.assertNotIn("BACKUP_REPORT_SECRET", workflow)
         self.assertNotIn("BACKUP_REPORT_URL", workflow)
 
+        deploy_gate_pos = workflow.index("Wait for matching production commit")
         snapshot_pos = workflow.index("Download transient production snapshot using GitHub OIDC")
         restore_pos = workflow.index("Verify restore on isolated PostgreSQL")
         encrypt_pos = workflow.index("Encrypt verified backup package")
         artifact_pos = workflow.index("Upload encrypted verified GitHub artifact")
+        self.assertLess(deploy_gate_pos, snapshot_pos)
         self.assertLess(snapshot_pos, restore_pos)
         self.assertLess(restore_pos, encrypt_pos)
         self.assertLess(encrypt_pos, artifact_pos)
