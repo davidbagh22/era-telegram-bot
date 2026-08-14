@@ -61,11 +61,12 @@ function sectionHash(section: CommunitySection): string {
 }
 
 export function CommunityScreen({ initialSection = null, initialItemId = null }: CommunityScreenProps) {
-  // Local state remains as a no-hash browser-preview fallback. In Telegram,
-  // key navigation writes the hash so App.tsx and browser/Telegram Back stay
-  // synchronized across reloads and history navigation.
+  // Local state only exists for isolated previews/tests without a hash. In
+  // the real Mini App App.tsx owns hash routing, so URL + browser/Telegram
+  // history are the single source of truth and cannot drift from this view.
   const [fallbackSection, setFallbackSection] = useState<CommunitySection | null>(initialSection);
-  const section = initialSection ?? fallbackSection;
+  const hasRouteHash = window.location.hash.startsWith("#/");
+  const section = hasRouteHash ? initialSection : initialSection ?? fallbackSection;
 
   const openSection = (next: CommunitySection) => {
     setFallbackSection(next);
