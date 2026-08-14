@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import logging
-from typing import Any
 
 from aiogram import Bot
 from fastapi import APIRouter, Depends, HTTPException
@@ -87,9 +86,9 @@ async def _load_photo_data_url(
         encoded = base64.b64encode(raw).decode("ascii")
         return f"data:image/jpeg;base64,{encoded}"
     except Exception:
-        # Do not log the Telegram file_id, name, contact details, or any other
-        # applicant PII. A missing preview must not break the admin queue.
-        logger.exception("Could not load registration photo for user_id=%s", user_id)
+        # Do not log exception details here: Telegram exceptions can contain
+        # request metadata. Only the internal DB user id is safe and useful.
+        logger.warning("Could not load registration photo for user_id=%s", user_id)
         return None
 
 
