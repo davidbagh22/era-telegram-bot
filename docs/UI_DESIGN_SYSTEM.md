@@ -8,6 +8,49 @@ and PR 39 redesign the remaining screen content, they extend this system
 rather than inventing new one-off styles — that's the whole point of
 having it.
 
+## Redesign in progress (2026-08)
+
+The project owner handed down a full 52-section product/UX/UI redesign
+brief (private, not committed to the repo verbatim — this doc absorbs the
+concrete tokens/rules from it as they're actually implemented, same
+"real, not aspirational" policy as everything else here). It's being
+executed as a sequence of phases, each its own PR, in this order:
+
+1. **Foundation** (this PR) — dark-first palette tokens, exact brand
+   gradient stops, hero typography step. `:root` (light theme) is
+   **not** flipped to dark-first yet — only the existing opt-in
+   `:root[data-theme="dark"]` block (driven by Telegram's own
+   `colorScheme`, see below) picked up the brief's exact hex values.
+   Flipping the *default* is its own decision with app-wide visual
+   blast radius, deferred to a later phase.
+2. Critical project-detail bug fix (project must be readable regardless
+   of `can_edit`; retire the "Форма/Workspace" terminology split).
+3. Navigation/IA restructure (remove horizontal pill/tab rows as
+   *primary* navigation, 4 fixed bottom destinations).
+4. Screen-by-screen redesign (Home, Projects, Opportunities, Profile,
+   Admin Mode).
+5. Bot navigation button + role-aware nav card.
+6. Final screen-map doc + manual QA pass.
+
+Each phase updates this file and `docs/ERA_UX_SCREEN_MAP.md` (once phase
+3 creates it) as it lands, rather than writing the whole target state
+up front and letting it drift from the code.
+
+### New brand tokens (phase 1)
+
+| Token | Value | Use |
+|---|---|---|
+| `--era-black` | `#0B0910` | dark-theme page background |
+| `--era-plum` | `#15101C` | dark-theme card/sheet surface |
+| `--era-surface-dark` | `#1D1625` | dark-theme raised surface (`--era-surface-2`) |
+| `--era-gold` | `#F5B942` | achievements/streaks/auctions only, see existing note below |
+| `--era-text-4xl` | `2rem` (32px) | hero H1 (Home greeting) — the top of the brief's 28–32px H1 range |
+
+`--era-gradient`'s middle stop changed from an intermediate blended hue
+(`#b529a6`) to `--era-magenta` itself (`#be268f`) — the brief specifies
+the gradient as exactly violet → magenta → red, not violet → *a* pink →
+red.
+
 ## Brand direction
 
 ЭРА's own words: energy, movement, growth, a youth environment,
@@ -34,9 +77,10 @@ modern, a light touch of elitism, technological. Concretely, that means:
 |---|---|---|---|
 | `--era-red` / `--era-violet` / `--era-magenta` | fixed, same in both themes | — | brand accents, never surfaces |
 | `--era-gradient` | `linear-gradient(135deg, violet → magenta → red)` | — | primary buttons, spotlight cards |
-| `--era-bg` | `#f8f6f9` | `#17121d` | page background |
-| `--era-bg-subtle` | `#ffffff` | `#1f1926` | recessed surfaces (inputs) |
-| `--era-surface` | `#ffffff` | `#241d2c` | cards, sheets, modals |
+| `--era-bg` | `#f8f6f9` | `#0b0910` (`--era-black`) | page background |
+| `--era-bg-subtle` | `#ffffff` | `#08060c` | recessed surfaces (inputs) |
+| `--era-surface` | `#ffffff` | `#15101c` (`--era-plum`) | cards, sheets, modals |
+| `--era-surface-2` | `#f4eefa` | `#1d1625` (`--era-surface-dark`) | raised surfaces above `--era-surface` |
 | `--era-text` / `--era-text-muted` | — | — | primary / secondary text |
 | `--era-border` | `#eae5ed` | `#362c40` | the one border color in the app |
 | `--era-success` / `--era-warning` / `--era-error` | — | — | status semantics (StatusBadge, toasts) |
