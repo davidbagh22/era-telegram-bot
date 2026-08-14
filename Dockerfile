@@ -16,7 +16,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-dejavu-core \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
