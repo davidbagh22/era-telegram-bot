@@ -43,6 +43,15 @@ class BackupRecoveryContractTests(unittest.TestCase):
         self.assertLess(restore_pos, encrypt_pos)
         self.assertLess(encrypt_pos, artifact_pos)
 
+    def test_base_backup_does_not_depend_on_ubuntu_awscli_package(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "database-backup.yml").read_text(encoding="utf-8")
+        self.assertIn("sudo apt-get install -y postgresql-client jq", workflow)
+        self.assertNotIn("sudo apt-get install -y postgresql-client jq awscli", workflow)
+        self.assertIn("Install AWS CLI for external storage only", workflow)
+        self.assertIn("if: steps.config.outputs.external_storage == 'true'", workflow)
+        self.assertIn("python3 -m venv /tmp/era-awscli", workflow)
+        self.assertIn("/tmp/era-awscli/bin/python -m pip install", workflow)
+
     def test_external_storage_script_enforces_exact_retention_counts(self) -> None:
         script = (ROOT / "scripts" / "store_encrypted_backup_s3.sh").read_text(encoding="utf-8")
         for marker in [
