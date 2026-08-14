@@ -24,6 +24,7 @@ import { PillTabs } from "../../components/PillTabs";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusBadge } from "../../components/StatusBadge";
 import type { ProjectMember, ProjectRole, ProjectWorkspace as ProjectWorkspaceType } from "../../types/project";
+import { projectStatusLabel } from "./statusLabels";
 
 type WorkspaceTab = "overview" | "team" | "tasks" | "milestones" | "events" | "materials" | "analytics";
 
@@ -185,7 +186,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
                 {workspace.project.short_description}
               </p>
             </div>
-            <StatusBadge label={workspace.project.status} tone="violet" />
+            <StatusBadge label={projectStatusLabel(workspace.project.status)} tone="violet" />
           </div>
           <ProgressBar
             currentIndex={Math.round(workspace.progress_percent / 25)}

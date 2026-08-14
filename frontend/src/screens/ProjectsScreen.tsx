@@ -25,7 +25,7 @@ export function ProjectsScreen({ initialProjectId = null }: ProjectsScreenProps)
       ) : (
         <ProjectDetail
           projectId={selectedId}
-          initialTab={initialProjectId ? "workspace" : "form"}
+          initialShowWorkspace={Boolean(initialProjectId)}
           onBack={() => setSelectedId(null)}
         />
       )}
