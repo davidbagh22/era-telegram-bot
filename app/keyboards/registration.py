@@ -106,7 +106,18 @@ def desired_path_keyboard() -> InlineKeyboardMarkup:
 def consent_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Согласен", callback_data="reg:consent:yes")],
+            [
+                InlineKeyboardButton(
+                    text="✅ Согласен и продолжить",
+                    callback_data="reg:consent:yes",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📄 Полные условия",
+                    callback_data="reg:consent:full",
+                )
+            ],
             [InlineKeyboardButton(text="Не согласен", callback_data="reg:consent:no")],
         ]
     )
