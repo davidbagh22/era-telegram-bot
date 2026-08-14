@@ -160,7 +160,12 @@ export function App() {
   const auth = useAuth();
   const [deepLink, setDeepLink] = useState<DeepLink | null>(() => parseDeepLink());
   const [activeTab, setActiveTab] = useState<TabKey>(deepLink?.tab ?? "home");
-  const [inWorkspace, setInWorkspace] = useState(true);
+  // Admin/leader tools are a separate workspace, not the default Mini App.
+  // Everyone enters through the participant-facing product first and opens
+  // management explicitly from Profile. This prevents role-specific tooling
+  // from replacing a person's own ERA experience just because they have
+  // elevated permissions.
+  const [inWorkspace, setInWorkspace] = useState(false);
 
   useEffect(() => {
     const syncFromHash = () => {
