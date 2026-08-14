@@ -59,8 +59,12 @@ def test_office_view_keeps_assignment_end_action() -> None:
 
 def test_runtime_version_command_is_admin_only_and_wired() -> None:
     admin_init = (ROOT / "app/handlers/admin/__init__.py").read_text(encoding="utf-8")
-    command_source = (ROOT / "app/handlers/admin/version_command.py").read_text(encoding="utf-8")
+    version_source = (ROOT / "app/handlers/admin/version_command.py").read_text(encoding="utf-8")
+    webapp = (ROOT / "app/webapp.py").read_text(encoding="utf-8")
 
     assert "version_command.router" in admin_init
-    assert '@router.message(Command("version"))' in command_source
-    assert "is_admin" in command_source or "admin" in command_source.lower()
+    assert 'Command("version")' in version_source
+    assert "can_manage_people" in version_source
+    assert "RENDER_GIT_COMMIT" in version_source
+    assert 'BotCommand(command="version"' in webapp
+    assert '"commit": DEPLOYED_COMMIT' in webapp
