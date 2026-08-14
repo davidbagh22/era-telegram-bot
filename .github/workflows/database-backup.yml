@@ -15,6 +15,7 @@ permissions:
 
 env:
   BACKUP_DIR: backups
+  PRODUCTION_BASE: https://era-telegram-bot.onrender.com
   BACKUP_API_BASE: https://era-telegram-bot.onrender.com/api/v1/internal/backup
 
 concurrency:
@@ -103,6 +104,26 @@ jobs:
           echo "backup_type=${TYPE}" >> "${GITHUB_OUTPUT}"
           echo "github_retention_days=${GH_RETENTION}" >> "${GITHUB_OUTPUT}"
           echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
+
+      - name: Wait for matching production commit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          EXPECTED="${GITHUB_SHA}"
+          for attempt in $(seq 1 60); do
+            HEALTH="$(curl --silent --show-error --max-time 10 "${PRODUCTION_BASE}/health" || true)"
+            LIVE="$(printf '%s' "${HEALTH}" | jq -r '.commit // empty' 2>/dev/null || true)"
+            if [ "${LIVE}" = "${EXPECTED}" ] || [ "${LIVE}" = "${EXPECTED:0:7}" ]; then
+              echo "Production is serving expected commit ${EXPECTED:0:7}."
+              exit 0
+            fi
+            if [ $((attempt % 6)) -eq 0 ]; then
+              echo "Production deploy not ready yet (attempt ${attempt}/60)."
+            fi
+            sleep 10
+          done
+          echo "Production did not reach the expected commit before backup timeout." >&2
+          exit 1
 
       - name: Download transient production snapshot using GitHub OIDC
         id: backup
@@ -295,6 +316,7 @@ jobs:
             echo "## PostgreSQL backup"
             echo "- Production DB credentials exported to GitHub: no"
             echo "- GitHub authentication: short-lived OIDC, exact repo/main/workflow claims"
+            echo "- Production commit matched before snapshot: yes"
             echo "- Restore test required before persistence: yes"
             echo "- Stored copies encrypted with AES-256/PBKDF2: yes"
             echo "- GitHub artifact retention: ${{ steps.tier.outputs.github_retention_days || 'unknown' }} days"
