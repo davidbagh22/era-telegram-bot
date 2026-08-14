@@ -142,6 +142,14 @@ async def _database_check(session) -> HealthCheck:
 
 
 async def _configuration_check(settings: Settings) -> HealthCheck:
+    """Validate only configuration required to serve production safely.
+
+    BACKUP_REPORT_SECRET deliberately is not a production prerequisite. The
+    internal backup-report endpoint remains fail-closed when it is absent, but
+    the authoritative backup workflow records verified backup metadata directly
+    in PostgreSQL. Treating an optional callback secret as critical made a
+    healthy application report a false production outage.
+    """
     missing: list[str] = []
     if settings.is_render_deployment and not settings.miniapp_auth_secret:
         missing.append("MINIAPP_AUTH_SECRET")
@@ -149,8 +157,6 @@ async def _configuration_check(settings: Settings) -> HealthCheck:
         "https://"
     ):
         missing.append("HTTPS public base URL")
-    if settings.is_render_deployment and not settings.backup_report_secret:
-        missing.append("BACKUP_REPORT_SECRET")
     if missing:
         return HealthCheck(
             "production_config",
@@ -182,14 +188,14 @@ async def _chat_config_check(settings: Settings) -> HealthCheck:
             "Чаты ЭРА",
             "warning",
             "medium",
-            f"Нет chat_id: {', '.join(missing)}",
+            "Не привязаны через /bind: " + ", ".join(missing),
         )
     return HealthCheck(
         "chat_bindings",
         "Чаты ЭРА",
         "ok",
         "info",
-        "Все четыре организационных чата настроены",
+        "Все четыре организационных чата привязаны",
     )
 
 
@@ -282,9 +288,6 @@ async def _backup_check(session) -> HealthCheck:
             f"Backup diagnostic failed: {exc.__class__.__name__}",
         )
     if latest is None:
-        # First deploy of Backup History should be visible but not page admins
-        # every 15 minutes before the first nightly callback has had a chance
-        # to run.
         return HealthCheck(
             "backup",
             "Резервное копирование",
@@ -514,7 +517,7 @@ async def _notify_incident_changes(
                     f"{incident.title}\n"
                     f"Критичность: {incident.severity}\n"
                     f"Диагностика: {incident.detail}\n\n"
-                    "Откройте Admin Mode → Коммуникации → Инструменты → Система.",
+                    "Откройте Управление ЭРА → Контроль → Состояние системы.",
                 )
                 incident.admin_notified = sent > 0
         if recovered_ids:
