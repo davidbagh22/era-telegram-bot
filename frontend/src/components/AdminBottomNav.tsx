@@ -1,13 +1,15 @@
-import { AnalyticsIcon, CommsIcon, OverviewIcon, PeopleIcon, WorkIcon } from "./icons";
+import { CommsIcon, OverviewIcon, PeopleIcon, WorkIcon } from "./icons";
 
-export type AdminGroup = "overview" | "people" | "work" | "comms" | "analytics";
+export type AdminGroup = "overview" | "people" | "work" | "comms";
 
+// 2026-08 redesign brief section 34: "4 фиксированные группы, не 5" —
+// the standalone Аналитика group folded into Обзор as a collapsible
+// section (see AdminOverviewScreen.tsx), so this dock is down to 4.
 const GROUPS: { key: AdminGroup; label: string; Icon: typeof OverviewIcon }[] = [
   { key: "overview", label: "Обзор", Icon: OverviewIcon },
   { key: "people", label: "Люди", Icon: PeopleIcon },
   { key: "work", label: "Работа", Icon: WorkIcon },
   { key: "comms", label: "Коммуникации", Icon: CommsIcon },
-  { key: "analytics", label: "Аналитика", Icon: AnalyticsIcon },
 ];
 
 interface AdminBottomNavProps {
@@ -19,7 +21,7 @@ interface AdminBottomNavProps {
 // SegmentedTabs row (a long horizontal segmented control) — replaced with
 // a fixed dock, the exact same floating-dock component and gradient-pill
 // active state as the participant-facing BottomNavigation, just with its
-// own 5 admin groups and icon set. Sub-navigation within a group (e.g.
+// own 4 admin groups and icon set. Sub-navigation within a group (e.g.
 // People's Участники/Заявки/Должности/Удаление данных) stays on
 // FilterChips — that's 2-4 short, non-scrolling options for choosing a
 // sub-screen, not the "long primary nav row" or "list filter" patterns

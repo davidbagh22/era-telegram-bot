@@ -2,7 +2,6 @@ import { useState } from "react";
 import { AdminBottomNav, type AdminGroup } from "../components/AdminBottomNav";
 import { FilterChips } from "../components/FilterChips";
 import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
-import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
 import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
@@ -15,18 +14,22 @@ import { AdminToolsScreen } from "./admin/AdminToolsScreen";
 import { AdminUsersScreen } from "./admin/AdminUsersScreen";
 
 // 2026-08 Admin Mode redesign, round 2: the old flat 12-tab PillTabs row
-// was replaced (see git history) by 5 logical groups reached through a
+// was replaced (see git history) by logical groups reached through a
 // SegmentedTabs row at the top — itself now replaced by a fixed bottom
 // dock (AdminBottomNav), the master spec's explicit "not a long segmented
-// control" requirement for Admin Mode's top-level navigation. Same 5
-// groups, same screens underneath, same sub-navigation approach where a
-// group has more than one screen ("не пытаться одновременно показать
-// всё") — this pass only moves the group switcher itself from a
-// scrollable top row to a fixed dock, matching the same floating-dock
-// pattern already used for the participant-facing bottom nav. No screen
-// listed below was rewritten. See docs/UI_DESIGN_SYSTEM.md for the
+// control" requirement for Admin Mode's top-level navigation. Same
+// screens underneath, same sub-navigation approach where a group has more
+// than one screen ("не пытаться одновременно показать всё") — this pass
+// only moves the group switcher itself from a scrollable top row to a
+// fixed dock, matching the same floating-dock pattern already used for
+// the participant-facing bottom nav. See docs/UI_DESIGN_SYSTEM.md for the
 // grouping rationale and AdminOverviewScreen for what replaced the old
 // dashboard-as-landing-screen.
+//
+// Round 3 (redesign brief section 34, "4 фиксированные группы"): the
+// standalone Аналитика group is gone — AdminDashboardScreen now lives
+// inside AdminOverviewScreen as a collapsible section instead of its own
+// bottom-nav destination.
 type PeopleSection = "participants" | "applications" | "offices" | "data-rights";
 
 const PEOPLE_SECTIONS: { value: PeopleSection; label: string }[] = [
@@ -93,8 +96,6 @@ export function AdminScreen() {
             {commsSection === "tools" && <AdminToolsScreen />}
           </div>
         )}
-
-        {group === "analytics" && <AdminDashboardScreen />}
       </div>
       <AdminBottomNav active={group} onChange={setGroup} />
     </div>

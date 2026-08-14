@@ -4,6 +4,7 @@ import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { MetricCard, type MetricTone } from "../../components/MetricCard";
 import { useAsync } from "../../hooks/useAsync";
+import { AdminDashboardScreen } from "./AdminDashboardScreen";
 import { AdminMaintenanceScreen } from "./AdminMaintenanceScreen";
 
 // Reused for both the attention list's left accent bar and the KPI grid's
@@ -19,10 +20,15 @@ const TONE_CYCLE: MetricTone[] = ["violet", "red", "gold", "magenta"];
 // требует внимания" gradient hero (full width, shown even when there was
 // genuinely nothing to review) is gone, along with the flat 12-tab row
 // this used to sit under — see AdminScreen.tsx for the new grouping and
-// docs/UI_DESIGN_SYSTEM.md for the full rationale. AdminDashboardScreen
-// itself isn't deleted; it moved to the Аналитика group unchanged
-// (metrics + Excel export), since that content genuinely is analytics,
-// not "what needs a decision right now".
+// docs/UI_DESIGN_SYSTEM.md for the full rationale.
+//
+// 2026-08 redesign brief section 34: "4 фиксированные группы, не 5" —
+// the standalone Аналитика bottom-nav group is gone; AdminDashboardScreen
+// (full metric breakdown + Excel export) is folded in below as a
+// collapsible "Полная аналитика" section, same collapse pattern as
+// Обслуживание further down. Collapsed by default so Обзор keeps its
+// "what needs a decision right now" focus and doesn't fire the
+// dashboard's own fetches on every Overview visit.
 const ATTENTION_LABELS: Record<string, string> = {
   users_pending: "Новые заявки",
   projects_review: "Проекты на проверке",
@@ -59,6 +65,7 @@ function timeAgo(iso: string): string {
 export function AdminOverviewScreen() {
   const dashboard = useAsync(() => fetchAdminDashboard(), []);
   const activity = useAsync(() => fetchRecentActivity(), []);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
 
   if (dashboard.status === "loading") {
@@ -169,6 +176,33 @@ export function AdminOverviewScreen() {
                 </span>
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      {/* Full metric breakdown + Excel export (former standalone
+       * Аналитика group) — collapsible, same pattern as Обслуживание
+       * below, so Обзор's landing view stays focused on what needs a
+       * decision right now. */}
+      <section>
+        <button
+          type="button"
+          onClick={() => setAnalyticsOpen((open) => !open)}
+          style={{
+            background: "none",
+            border: "none",
+            padding: 0,
+            color: "var(--era-text-muted)",
+            fontSize: "0.75rem",
+            textDecoration: "underline",
+            minHeight: "auto",
+          }}
+        >
+          {analyticsOpen ? "Скрыть полную аналитику" : "Полная аналитика и Excel-выгрузка"}
+        </button>
+        {analyticsOpen && (
+          <div style={{ marginTop: "0.75rem" }}>
+            <AdminDashboardScreen />
           </div>
         )}
       </section>

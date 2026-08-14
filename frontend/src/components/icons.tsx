@@ -117,8 +117,8 @@ export function AuctionIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-// AdminBottomNav.tsx's 5 groups (Обзор/Люди/Работа/Связь/Аналитика) —
-// same hand-drawn stroke style as the rest of this file.
+// AdminBottomNav.tsx's 4 groups (Обзор/Люди/Работа/Связь) — same
+// hand-drawn stroke style as the rest of this file.
 export function OverviewIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...baseProps(props)}>
@@ -159,6 +159,9 @@ export function CommsIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+// No longer wired to AdminBottomNav (the Аналитика group folded into
+// Обзор — see AdminOverviewScreen.tsx). Kept exported rather than
+// deleted in case a future screen wants an analytics glyph.
 export function AnalyticsIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...baseProps(props)}>
