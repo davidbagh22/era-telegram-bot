@@ -23,7 +23,7 @@ from app.keyboards.participant import main_inline_keyboard
 from app.repositories.users import create_user_from_registration
 from app.services.admin_user_card import send_admin_application_cards
 from app.services.audit_service import audit
-from app.services.consent_policy import CONSENT_FULL_TEXT, CONSENT_SUMMARY
+from app.services.consent_policy import CONSENT_SUMMARY, consent_full_chunks
 from app.services.consent_service import CURRENT_POLICY_VERSION
 from app.services.points_service import add_points
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
@@ -377,7 +377,12 @@ async def registration_social(message: Message, state: FSMContext) -> None:
 @router.callback_query(RegistrationStates.consent, F.data == "reg:consent:full")
 async def full_consent(call: CallbackQuery) -> None:
     await call.answer()
-    await call.message.answer(CONSENT_FULL_TEXT, reply_markup=consent_keyboard())
+    chunks = consent_full_chunks()
+    for index, chunk in enumerate(chunks):
+        await call.message.answer(
+            chunk,
+            reply_markup=consent_keyboard() if index == len(chunks) - 1 else None,
+        )
 
 
 @router.callback_query(RegistrationStates.consent, F.data == "reg:consent:no")
