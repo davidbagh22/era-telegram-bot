@@ -7,7 +7,6 @@ from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import Settings
-from app.services.chat_faq_service import ensure_general_faq_pinned
 from app.services.system_health_service import run_system_diagnostics, send_daily_system_summary
 
 
@@ -17,7 +16,7 @@ def add_system_jobs(
     settings: Settings,
     session_factory,
 ) -> None:
-    """Attach production-health and durable chat-maintenance jobs."""
+    """Attach production-health jobs."""
 
     now = datetime.now(ZoneInfo(settings.timezone))
     scheduler.add_job(
@@ -53,19 +52,4 @@ def add_system_jobs(
         replace_existing=True,
         max_instances=1,
         coalesce=True,
-    )
-    # The FAQ is infrastructure for the general chat, not a one-off admin
-    # broadcast. Run immediately after every deploy and then twice a day. The
-    # service edits/re-pins the same recorded message, so this does not create
-    # duplicate cards.
-    scheduler.add_job(
-        ensure_general_faq_pinned,
-        "interval",
-        hours=12,
-        args=(bot, settings, session_factory),
-        id="general-chat-faq-pin",
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-        next_run_time=now,
     )
