@@ -23,7 +23,9 @@ class ChatBindingProductionContractTests(unittest.TestCase):
 
         # Never tell an admin that binding succeeded before the transaction is
         # durable in PostgreSQL.
-        self.assertLess(source.index("await session.commit()"), source.index("await message.reply("))
+        success_reply = 'f"✅ {title} привязан. Настройка сохранена в ЭРА'
+        self.assertIn(success_reply, source)
+        self.assertLess(source.index("await session.commit()"), source.index(success_reply))
 
     def test_startup_rehydrates_persisted_chat_settings(self) -> None:
         source = (ROOT / "app" / "services" / "seed_service.py").read_text(encoding="utf-8")
