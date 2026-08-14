@@ -14,12 +14,12 @@ test("participant's earned badge appears in their portfolio", async ({ page }) =
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
 
   await page.getByRole("button", { name: "Профиль", exact: true }).click();
+  await expect(page.getByText("Мой путь в ЭРА")).toBeVisible();
 
-  // scripts/e2e_seed.py awards this badge to the E2E participant directly
-  // through the DB (the same effect an admin's real "award badge" action
-  // has) — seeing it render here proves the Profile screen's portfolio
-  // section is reading real, awarded state, not a fixture the UI itself
-  // fabricated.
-  await expect(page.getByText("Достижения")).toBeVisible();
+  // The redesigned Profile keeps achievements as a first-class cell and
+  // opens them on their own screen instead of rendering the whole portfolio
+  // in one long page. Verify both the navigation and the real awarded badge.
+  await page.getByRole("button", { name: /Достижения/ }).click();
+  await expect(page.getByRole("heading", { name: "Достижения" })).toBeVisible();
   await expect(page.getByText("E2E Тестовый значок")).toBeVisible();
 });
