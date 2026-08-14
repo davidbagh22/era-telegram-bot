@@ -16,11 +16,13 @@ function formatDate(value: string | null): string {
   return new Date(value).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-// Chat Infrastructure Registry (2026-08 master spec section 30): one card
-// per org chat -- binding, who has access, greeting state, and recent
-// send/error history from the audit log (app/services/chat_registry_service.py)
-// -- plus a "Проверить чаты" button that runs a real, read-only Telegram
-// check (bot.get_chat_member) only when pressed, never automatically.
+const BIND_COMMANDS: Record<string, string> = {
+  general: "/bind general",
+  internal: "/bind internal",
+  external: "/bind external",
+  leaders: "/bind leaders",
+};
+
 export function ChatsPanel() {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchChatRegistry(), [refreshKey]);
@@ -38,7 +40,7 @@ export function ChatsPanel() {
     setCheckError(null);
     try {
       const results = await runChatsHealthCheck();
-      setHealth(Object.fromEntries(results.map((r) => [r.chat_key, r])));
+      setHealth(Object.fromEntries(results.map((result) => [result.chat_key, result])));
     } catch (error) {
       setCheckError(describeActionError(error));
     } finally {
@@ -65,74 +67,58 @@ export function ChatsPanel() {
     }
   }, [refresh]);
 
-  if (state.status === "loading") {
-    return <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>;
-  }
-  if (state.status === "error") {
-    return <EmptyState text="Не удалось загрузить реестр чатов." />;
-  }
+  if (state.status === "loading") return <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>;
+  if (state.status === "error") return <EmptyState text="Не удалось загрузить реестр чатов." />;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-      <button type="button" disabled={checking} onClick={handleHealthCheck}>
-        {checking ? "Проверяем…" : "🔍 Проверить чаты"}
-      </button>
+      <Card style={{ background: "var(--era-tint-violet)", border: "none" }}>
+        <strong>Чаты привязываются из самого Telegram</strong>
+        <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+          Добавьте бота администратором нужного чата и отправьте указанную команду прямо в этом чате. ЭРА сама сохранит реальный chat_id в БД — вручную вводить или угадывать ID не нужно.
+        </p>
+      </Card>
+
+      <button type="button" disabled={checking} onClick={handleHealthCheck}>{checking ? "Проверяем…" : "🔍 Проверить чаты"}</button>
       {checkError && <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{checkError}</p>}
       {state.data.length === 0 && <EmptyState text="Чаты пока не настроены." />}
       {state.data.map((chat) => {
         const result = health[chat.chat_key];
+        const bindCommand = BIND_COMMANDS[chat.chat_key] ?? `/bind ${chat.chat_key}`;
         return (
           <Card key={chat.chat_key}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "flex-start" }}>
               <strong>{chat.title}</strong>
               <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap", justifyContent: "flex-end" }}>
                 <StatusBadge label={chat.is_bound ? "привязан" : "не привязан"} tone={chat.is_bound ? "violet" : "neutral"} />
-                {result && (
-                  <StatusBadge label={result.ok ? "чат в порядке" : `ошибка: ${result.detail}`} tone={result.ok ? "violet" : "red"} />
-                )}
+                {result && <StatusBadge label={result.ok ? "чат в порядке" : `ошибка: ${result.detail}`} tone={result.ok ? "violet" : "red"} />}
               </div>
             </div>
-            <p style={{ margin: "0.375rem 0 0", fontSize: "0.8125rem", color: "var(--era-text-muted)" }}>
-              Доступ: {chat.permission_description}
-            </p>
+            <p style={{ margin: "0.375rem 0 0", fontSize: "0.8125rem", color: "var(--era-text-muted)" }}>Доступ: {chat.permission_description}</p>
             <p style={{ margin: "0.25rem 0 0", fontSize: "0.8125rem", color: "var(--era-text-muted)" }}>
-              Приветствие:{" "}
-              {chat.greeting_enabled === null ? "не настроено" : chat.greeting_enabled ? "включено" : "выключено"}
+              Приветствие: {chat.greeting_enabled === null ? "не настроено" : chat.greeting_enabled ? "включено" : "выключено"}
             </p>
             <p style={{ margin: "0.25rem 0 0", fontSize: "0.8125rem", color: "var(--era-text-muted)" }}>
               Последняя рассылка: {formatDate(chat.last_sent_at)}
-              {chat.last_error_at && (
-                <span style={{ color: "var(--era-error)" }}> · Последняя ошибка: {formatDate(chat.last_error_at)}</span>
-              )}
+              {chat.last_error_at && <span style={{ color: "var(--era-error)" }}> · Последняя ошибка: {formatDate(chat.last_error_at)}</span>}
             </p>
             {!chat.is_bound && (
-              <p style={{ margin: "0.375rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-                Перешлите любое сообщение из этого чата боту с /bind
-              </p>
+              <div style={{ marginTop: "0.625rem", padding: "0.65rem", borderRadius: "var(--era-radius-control)", background: "var(--era-surface-raised)" }}>
+                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>Команда для этого чата:</p>
+                <code style={{ display: "block", marginTop: "0.25rem", color: "var(--era-text)" }}>{bindCommand}</code>
+              </div>
             )}
             {chat.chat_key === "general" && chat.is_bound && (
               <div style={{ marginTop: "0.5rem" }}>
-                <button type="button" disabled={publishingFaq} onClick={handlePublishFaq}>
-                  {publishingFaq ? "Публикуем…" : "📌 Опубликовать FAQ в общем чате"}
-                </button>
-                {faqResult && (
-                  <p style={{ margin: "0.375rem 0 0", fontSize: "0.8125rem", color: "var(--era-text-muted)" }}>
-                    {faqResult}
-                  </p>
-                )}
-                {faqError && (
-                  <p style={{ margin: "0.375rem 0 0", fontSize: "0.8125rem", color: "var(--era-error)" }}>
-                    {faqError}
-                  </p>
-                )}
+                <button type="button" disabled={publishingFaq} onClick={handlePublishFaq}>{publishingFaq ? "Публикуем…" : "📌 Опубликовать FAQ в общем чате"}</button>
+                {faqResult && <p style={{ margin: "0.375rem 0 0", fontSize: "0.8125rem", color: "var(--era-text-muted)" }}>{faqResult}</p>}
+                {faqError && <p style={{ margin: "0.375rem 0 0", fontSize: "0.8125rem", color: "var(--era-error)" }}>{faqError}</p>}
               </div>
             )}
           </Card>
         );
       })}
-      <button type="button" onClick={refresh} style={{ alignSelf: "flex-start" }}>
-        Обновить
-      </button>
+      <button type="button" onClick={refresh} style={{ alignSelf: "flex-start" }}>Обновить</button>
     </div>
   );
 }
