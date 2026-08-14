@@ -114,7 +114,7 @@ jobs:
           chmod 600 "${BACKUP_FILE}"
 
           LOCAL_SHA="$(sha256sum "${BACKUP_FILE}" | awk '{print $1}')"
-          SERVER_SHA="$(awk 'BEGIN{IGNORECASE=1} $1=="X-ERA-Backup-SHA256:" {gsub("\r", "", $2); print $2}' "${HEADERS_FILE}" | tail -n1)"
+          SERVER_SHA="$(awk '$1=="x-era-backup-sha256:" {gsub("\r", "", $2); print $2}' "${HEADERS_FILE}" | tail -n1)"
           rm -f "${HEADERS_FILE}"
           if [ -z "${SERVER_SHA}" ] || [ "${LOCAL_SHA}" != "${SERVER_SHA}" ]; then
             echo "Production snapshot checksum mismatch" >&2
