@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ActionCell } from "../components/ActionCell";
 import { Card } from "../components/Card";
 import { AuctionIcon, CommunityIcon, OpportunitiesIcon, RewardIcon, SurveyIcon } from "../components/icons";
 import { LeaderboardScreen } from "./LeaderboardScreen";
@@ -50,12 +51,8 @@ const SECTION_CARDS: {
 ];
 
 function toOpportunitySection(section: CommunitySection): OpportunitiesSection | undefined {
-  if (section === "opportunities") {
-    return "offers";
-  }
-  if (section === "surveys" || section === "rewards" || section === "auctions") {
-    return section;
-  }
+  if (section === "opportunities") return "offers";
+  if (section === "surveys" || section === "rewards" || section === "auctions") return section;
   return undefined;
 }
 
@@ -77,15 +74,7 @@ export function CommunityScreen({ initialSection = null, initialItemId = null }:
   }
 
   return (
-    <div
-      className="era-page"
-      style={{
-        padding: "1.25rem",
-        display: "flex",
-        flexDirection: "column",
-        gap: "1rem",
-      }}
-    >
+    <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
       <Card gradient style={{ position: "relative", overflow: "hidden", minHeight: 164 }}>
         <div
           aria-hidden="true"
@@ -116,20 +105,10 @@ export function CommunityScreen({ initialSection = null, initialItemId = null }:
             <CommunityIcon width={23} height={23} />
           </span>
           <div>
-            <p
-              style={{
-                margin: "0 0 0.35rem",
-                color: "rgba(255,255,255,0.68)",
-                fontSize: "var(--era-text-xs)",
-                fontWeight: 800,
-                textTransform: "uppercase",
-              }}
-            >
+            <p style={{ margin: "0 0 0.35rem", color: "rgba(255,255,255,0.68)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
               Среда роста
             </p>
-            <h1 style={{ margin: 0, fontSize: "var(--era-text-3xl)", lineHeight: 1.08 }}>
-              Сообщество
-            </h1>
+            <h1 style={{ margin: 0, fontSize: "var(--era-text-3xl)", lineHeight: 1.08 }}>Сообщество</h1>
             <p style={{ margin: "0.5rem 0 0", color: "rgba(255,255,255,0.78)", maxWidth: 280 }}>
               Возможности, рейтинг и решения, которые двигают участников дальше.
             </p>
@@ -137,48 +116,15 @@ export function CommunityScreen({ initialSection = null, initialItemId = null }:
         </div>
       </Card>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", minWidth: 0 }}>
         {SECTION_CARDS.map(({ value, label, description, Icon }) => (
-          <Card key={value}>
-            <button
-              type="button"
-              onClick={() => setSection(value)}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.875rem",
-                width: "100%",
-              }}
-            >
-              <span
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  background: "var(--era-tint-violet)",
-                  color: "var(--era-violet)",
-                }}
-                aria-hidden="true"
-              >
-                <Icon width={21} height={21} />
-              </span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <strong style={{ display: "block", fontSize: "var(--era-text-lg)" }}>{label}</strong>
-                <span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>
-                  {description}
-                </span>
-              </span>
-              <span aria-hidden="true" style={{ color: "var(--era-text-muted)" }}>
-                →
-              </span>
-            </button>
-          </Card>
+          <ActionCell
+            key={value}
+            title={label}
+            description={description}
+            leading={<Icon width={21} height={21} />}
+            onClick={() => setSection(value)}
+          />
         ))}
       </div>
     </div>
