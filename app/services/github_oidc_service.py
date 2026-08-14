@@ -15,7 +15,11 @@ EXPECTED_REF = "refs/heads/main"
 EXPECTED_WORKFLOW_REF = (
     "davidbagh22/era-telegram-bot/.github/workflows/database-backup.yml@refs/heads/main"
 )
-ALLOWED_EVENTS = {"schedule", "workflow_dispatch"}
+# `push` is intentionally allowed only because the backup workflow itself has
+# a path-scoped main-branch trigger used to verify production backup changes
+# immediately after merge. Repository/ref/workflow/audience/issuer checks below
+# remain exact, so PR/fork/arbitrary workflow tokens are still rejected.
+ALLOWED_EVENTS = {"schedule", "workflow_dispatch", "push"}
 
 
 @lru_cache(maxsize=1)

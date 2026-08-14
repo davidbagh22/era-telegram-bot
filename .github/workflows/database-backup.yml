@@ -56,7 +56,7 @@ jobs:
       - name: Install backup clients
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client jq awscli
+          sudo apt-get install -y postgresql-client jq
 
       - name: Validate optional external storage
         id: config
@@ -74,6 +74,15 @@ jobs:
             echo "S3 backup configuration is partial; bucket/access key/secret must be set together" >&2
             exit 1
           fi
+
+      - name: Install AWS CLI for external storage only
+        if: steps.config.outputs.external_storage == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m venv /tmp/era-awscli
+          /tmp/era-awscli/bin/python -m pip install --disable-pip-version-check --no-input awscli
+          echo "/tmp/era-awscli/bin" >> "${GITHUB_PATH}"
 
       - name: Select retention tier
         id: tier
