@@ -15,7 +15,7 @@ EXPECTED_REF = "refs/heads/main"
 EXPECTED_WORKFLOW_REF = (
     "davidbagh22/era-telegram-bot/.github/workflows/database-backup.yml@refs/heads/main"
 )
-ALLOWED_EVENTS = {"schedule", "workflow_dispatch"}
+ALLOWED_EVENTS = {"schedule", "workflow_dispatch", "deployment_status"}
 
 
 @lru_cache(maxsize=1)
@@ -59,8 +59,6 @@ async def verify_backup_workflow_token(token: str) -> dict[str, object]:
     except HTTPException:
         raise
     except Exception as exc:
-        # Do not include the token, claims, key material, or remote response in
-        # the exception returned to callers/logs.
         raise HTTPException(status_code=401, detail="invalid_backup_identity") from exc
     _require_exact_backup_claims(claims)
     return claims
