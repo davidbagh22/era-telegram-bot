@@ -6,6 +6,7 @@ from app.config import get_settings
 from app.database.session import create_engine_and_sessionmaker
 from app.services.scheduler_service import create_scheduler
 from app.services.seed_service import seed_reference_data
+from app.services.system_scheduler import add_system_jobs
 
 
 async def main() -> None:
@@ -21,6 +22,7 @@ async def main() -> None:
     bot = create_bot(settings)
     dispatcher = create_dispatcher(settings, session_factory)
     scheduler = create_scheduler(bot, settings, session_factory)
+    add_system_jobs(scheduler, bot, settings, session_factory)
     scheduler.start()
     try:
         await bot.delete_webhook(drop_pending_updates=False)
