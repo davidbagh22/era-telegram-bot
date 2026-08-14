@@ -30,12 +30,29 @@ export type AnalyticsExcelSection = "all" | "users" | "departments" | "events" |
 export interface PendingApplication {
   id: number;
   telegram_id: number;
+  username: string | null;
   first_name: string;
   last_name: string | null;
+  birth_date: string | null;
+  age: number | null;
+  phone: string | null;
+  email: string | null;
   city: string | null;
+  education_work: string | null;
   occupation: string | null;
+  skills: string[];
+  experience: string | null;
   motivation: string | null;
+  available_time: string | null;
+  desired_path: string | null;
+  departments: string[];
+  directions: string[];
+  social_links: SocialLinkItem[];
+  personal_data_consent: boolean;
+  consent_policy_version: string | null;
   application_status: string;
+  photo_attached: boolean;
+  photo_data_url: string | null;
   created_at: string;
 }
 
