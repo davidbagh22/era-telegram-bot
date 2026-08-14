@@ -14,14 +14,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # gitleaks scans commit history, not just the working tree — a
-          # shallow checkout would only ever see the tip commit and miss a
-          # secret that was committed and later removed.
           fetch-depth: 0
       - name: Run gitleaks (full history)
-        # Pinned CLI binary, not the gitleaks-action wrapper — avoids that
-        # action's license gate for private repos and keeps this step
-        # fully self-contained (no account/token to configure).
         run: |
           curl -sSL -o gitleaks.tar.gz \
             https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
@@ -72,8 +66,6 @@ jobs:
       - name: Type check and build
         run: npm run build
       - name: Dependency audit
-        # Blocking again as of PR18b — the esbuild/vite advisory that made
-        # this non-blocking in PR13 is fixed (Vite upgraded past it).
         run: npm audit --audit-level=high
 
   e2e:
@@ -130,7 +122,23 @@ jobs:
         working-directory: frontend
         env:
           E2E_BASE_URL: http://127.0.0.1:8000
-        run: npx playwright test
+          PLAYWRIGHT_HTML_OPEN: never
+        shell: bash
+        run: |
+          set -o pipefail
+          npx playwright test --reporter=line,html 2>&1 | tee playwright-output.log
+      - name: Playwright failure summary
+        if: failure()
+        working-directory: frontend
+        shell: bash
+        run: |
+          tail -n 220 playwright-output.log || true
+          echo "### Playwright failure" >> "${GITHUB_STEP_SUMMARY}"
+          tail -n 220 playwright-output.log >> "${GITHUB_STEP_SUMMARY}" || true
+          grep -E "([0-9]+\)|Error:|TimeoutError:|Locator:|Expected:|Received:|at .*\.spec\.ts:)" playwright-output.log \
+            | tail -n 30 \
+            | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' \
+            | while IFS= read -r line; do echo "::error title=Playwright failure::${line}"; done || true
       - name: Backend log (on failure)
         if: failure()
         run: cat uvicorn.log || true
@@ -142,5 +150,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
-          path: frontend/playwright-report/
+          path: |
+            frontend/playwright-report/
+            frontend/playwright-output.log
+          if-no-files-found: warn
           retention-days: 7

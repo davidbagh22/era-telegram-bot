@@ -9,6 +9,9 @@ class BackupRecoveryContractTests(unittest.TestCase):
     def test_backup_workflow_is_scheduled_oidc_verified_encrypted_and_tiered(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "database-backup.yml").read_text(encoding="utf-8")
         required = [
+            "push:",
+            'branches: [main]',
+            '".github/workflows/database-backup.yml"',
             "schedule:",
             "id-token: write",
             "ACTIONS_ID_TOKEN_REQUEST_URL",

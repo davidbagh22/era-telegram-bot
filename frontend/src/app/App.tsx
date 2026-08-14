@@ -160,7 +160,7 @@ export function App() {
   const auth = useAuth();
   const [deepLink, setDeepLink] = useState<DeepLink | null>(() => parseDeepLink());
   const [activeTab, setActiveTab] = useState<TabKey>(deepLink?.tab ?? "home");
-  const [inWorkspace, setInWorkspace] = useState(true);
+  const [inWorkspace, setInWorkspace] = useState(false);
 
   useEffect(() => {
     const syncFromHash = () => {
@@ -183,16 +183,12 @@ export function App() {
 
   const initialProjectId = deepLink?.projectId ?? null;
 
-  if (auth.status === "loading") {
-    return null;
-  }
-
+  if (auth.status === "loading") return null;
   if (auth.status === "error") {
     return <AuthErrorScreen code={auth.code} detail={auth.detail} onRetry={auth.refresh} />;
   }
 
   const { user } = auth;
-
   if (user.application_status === "pending" || user.application_status === "needs_info") {
     return <PendingScreen onRefresh={auth.refresh} />;
   }
