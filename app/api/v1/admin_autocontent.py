@@ -66,11 +66,10 @@ class PreviewIn(BaseModel):
 
 @router.get("/overview")
 async def overview(
-    admin: User = Depends(require_admin),
+    _admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    del admin
     today = datetime.now(ZoneInfo(settings.timezone)).date()
     return {
         "settings": await get_autocontent_settings(session),
@@ -149,13 +148,14 @@ async def patch_item(
                 actor_id=admin.id,
                 text=body.text,
                 is_enabled=body.is_enabled,
+                is_skipped=body.is_skipped,
                 title=body.title,
             )
             result = {
                 "content_id": row.content_id,
                 "text": row.text,
                 "is_enabled": row.is_enabled,
-                "is_skipped": False,
+                "is_skipped": row.is_skipped,
                 "title": row.title,
             }
         else:
@@ -196,28 +196,25 @@ async def skip_item(
     admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    if content_id.startswith("holiday-custom-"):
-        try:
+    try:
+        if content_id.startswith("holiday-custom-"):
             row = await update_custom_content(
                 session,
                 content_id,
                 actor_id=admin.id,
-                is_enabled=False,
+                is_skipped=True,
             )
-        except LookupError as exc:
-            raise HTTPException(status_code=404, detail="content_not_found") from exc
-        result = {"content_id": row.content_id, "skipped": True}
-    else:
-        try:
+            skipped = row.is_skipped
+        else:
             row = await save_item_override(
                 session,
                 content_id,
                 actor_id=admin.id,
                 is_skipped=True,
             )
-        except LookupError as exc:
-            raise HTTPException(status_code=404, detail="content_not_found") from exc
-        result = {"content_id": row.content_id, "skipped": row.is_skipped}
+            skipped = row.is_skipped
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="content_not_found") from exc
     await audit(
         session,
         actor_id=admin.id,
@@ -226,7 +223,7 @@ async def skip_item(
         new_value={"content_id": content_id},
     )
     await session.commit()
-    return result
+    return {"content_id": content_id, "skipped": skipped}
 
 
 @router.post("/items/{content_id}/send-now")
@@ -288,6 +285,7 @@ async def add_holiday(
         "title": row.title,
         "text": row.text,
         "is_enabled": row.is_enabled,
+        "is_skipped": row.is_skipped,
     }
 
 
@@ -296,8 +294,6 @@ async def preview(
     body: PreviewIn,
     _admin: User = Depends(require_admin),
 ) -> dict[str, Any]:
-    # React renders the allowed <b> markers without innerHTML; the same raw
-    # string is sent to Telegram with parse_mode=HTML by the delivery service.
     return {
         "text": body.text,
         "characters": len(body.text),
