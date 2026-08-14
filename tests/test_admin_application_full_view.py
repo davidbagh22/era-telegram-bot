@@ -44,10 +44,14 @@ class FullAdminApplicationViewTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("photo_file_id", fields)
 
     def test_full_route_precedes_legacy_compact_route(self) -> None:
+        # api_router is the child router; its own /api/v1 prefix is applied
+        # when mounted into the FastAPI app, so child route paths are
+        # /admin/... here. What matters is that the full read-model is the
+        # first GET match before the legacy compact route.
         matches = [
             route
             for route in api_router.routes
-            if getattr(route, "path", None) == "/api/v1/admin/applications"
+            if getattr(route, "path", None) == "/admin/applications"
             and "GET" in (getattr(route, "methods", None) or set())
         ]
         self.assertGreaterEqual(len(matches), 1)
