@@ -111,8 +111,9 @@ class RateLimitDependencyWiringTests(unittest.TestCase):
         post_routes = [r for r in leader_api.router.routes if r.methods and "POST" in r.methods]
         # 3 original (create assigned task, create open task, decide
         # application) + 1 Event Activity route from PR 32 (decide
-        # submission).
-        self.assertEqual(len(post_routes), 4, "expected 4 leader create/decide routes")
+        # submission) + 1 task-delivery retry route (2026-08 master spec
+        # section 31-33 -- see app/services/leader_service.py).
+        self.assertEqual(len(post_routes), 5, "expected 5 leader create/decide routes")
         for route in post_routes:
             deps = [d.call for d in route.dependant.dependencies]
             self.assertIn(

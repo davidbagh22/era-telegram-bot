@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import Settings
 from app.database.models import (
     Event,
     Project,
     Task,
+    TaskDelivery,
     TaskParticipant,
     User,
     UserDepartment,
@@ -24,6 +27,95 @@ from app.utils.constants import ApplicationStatus, Role
 from app.utils.deep_links import miniapp_task_url
 
 OPEN_TASK_TYPE = "challenge"
+
+# The 4 org chats a task announcement can be dispatched to (2026-08 master
+# spec section 31) -- same 4 keys as chat_access_service.CHAT_SETTING_KEYS,
+# duplicated here as a plain tuple rather than importing that dict to avoid
+# a service->service import for 4 literal strings.
+CHAT_DESTINATION_KEYS = ("general", "internal", "external", "leaders")
+
+
+def _destination_chat_id(settings: Settings, chat_key: str) -> int | None:
+    return {
+        "general": settings.general_chat_id,
+        "internal": settings.internal_department_chat_id,
+        "external": settings.external_department_chat_id,
+        "leaders": settings.leaders_chat_id,
+    }.get(chat_key)
+
+
+async def dispatch_task_to_chats(
+    session: AsyncSession,
+    bot: Bot | None,
+    settings: Settings,
+    task: Task,
+    destinations: list[str],
+    *,
+    miniapp_url: str = "",
+) -> list[TaskDelivery]:
+    """Announces a task in each requested chat and records one TaskDelivery
+    row per destination, success or failure -- never raises, since task
+    creation itself must succeed regardless of whether Telegram delivery
+    does (2026-08 master spec section 32: "создано, но не доставлено", not
+    a rolled-back task). Unbound/unknown chat keys are recorded as an
+    immediate failure (no chat_id to send to) rather than silently skipped,
+    so they show up in the same "not delivered" list an admin/leader
+    reviews, with a real reason instead of nothing."""
+    deliveries: list[TaskDelivery] = []
+    keyboard = open_app_button(miniapp_task_url(miniapp_url, task.id)) if miniapp_url else None
+    text = f"📌 Новое задание ЭРА\n\n{task.title}\n{task.description}\n\nБаллы: {task.points}"
+    for chat_key in destinations:
+        chat_id = _destination_chat_id(settings, chat_key)
+        if chat_id is None:
+            delivery = TaskDelivery(task_id=task.id, chat_key=chat_key, chat_id=0, status="failed", error="chat_not_bound")
+            session.add(delivery)
+            deliveries.append(delivery)
+            continue
+        delivery = await _send_and_record(session, bot, chat_id, chat_key, task.id, text, keyboard)
+        deliveries.append(delivery)
+    await session.flush()
+    return deliveries
+
+
+async def _send_and_record(
+    session: AsyncSession,
+    bot: Bot | None,
+    chat_id: int,
+    chat_key: str,
+    task_id: int,
+    text: str,
+    keyboard: InlineKeyboardMarkup | None,
+) -> TaskDelivery:
+    if bot is None:
+        delivery = TaskDelivery(task_id=task_id, chat_key=chat_key, chat_id=chat_id, status="failed", error="bot_unavailable")
+        session.add(delivery)
+        return delivery
+    try:
+        message = await bot.send_message(chat_id, text, reply_markup=keyboard)
+        delivery = TaskDelivery(
+            task_id=task_id,
+            chat_key=chat_key,
+            chat_id=chat_id,
+            telegram_message_id=message.message_id,
+            status="sent",
+            sent_at=datetime.now().astimezone(),
+        )
+    except TelegramAPIError as exc:
+        delivery = TaskDelivery(task_id=task_id, chat_key=chat_key, chat_id=chat_id, status="failed", error=str(exc)[:500])
+    session.add(delivery)
+    return delivery
+
+
+async def retry_task_delivery(
+    session: AsyncSession, bot: Bot | None, delivery: TaskDelivery, task: Task, *, keyboard: InlineKeyboardMarkup | None = None
+) -> TaskDelivery:
+    """Re-attempts exactly one failed destination -- not the whole task,
+    since the other destinations may already have succeeded and resending
+    to them would just duplicate the announcement."""
+    text = f"📌 Новое задание ЭРА\n\n{task.title}\n{task.description}\n\nБаллы: {task.points}"
+    updated = await _send_and_record(session, bot, delivery.chat_id, delivery.chat_key, task.id, text, keyboard)
+    await session.flush()
+    return updated
 
 
 def scope_ids(user: User) -> tuple[set[int], set[int]]:
@@ -140,11 +232,25 @@ async def create_open_task(
     deadline: datetime,
     points: int,
     max_participants: int,
+    destinations: list[str] | None = None,
+    bot: Bot | None = None,
+    settings: Settings | None = None,
+    miniapp_url: str = "",
 ) -> Task:
+    # destinations/bot/settings/miniapp_url are all optional and default to
+    # "dispatch nothing" -- existing callers (the bot-native
+    # app/handlers/leader/open_tasks.py flow, which has no chat-selection
+    # UI) are unaffected; this keeps create_open_task()'s return type as
+    # just Task rather than breaking every existing caller's unpacking.
+    # Deliveries are read back afterwards via list_task_deliveries(),
+    # not returned here.
     if not 0 <= points <= 1000:
         raise ValueError("invalid_points")
     if not 1 <= max_participants <= 50:
         raise ValueError("invalid_max_participants")
+    unknown = set(destinations or []) - set(CHAT_DESTINATION_KEYS)
+    if unknown:
+        raise ValueError("invalid_destination")
     task = Task(
         title=title,
         description=description,
@@ -165,7 +271,33 @@ async def create_open_task(
         entity_type="task",
         entity_id=task.id,
     )
+    # Task creation itself is already committed to the session above
+    # regardless of what happens next -- dispatch_task_to_chats() never
+    # raises, so a Telegram outage can never roll this back (2026-08
+    # master spec section 32).
+    if destinations and settings is not None:
+        await dispatch_task_to_chats(session, bot, settings, task, destinations, miniapp_url=miniapp_url)
     return task
+
+
+async def list_task_deliveries(session: AsyncSession, task_id: int) -> list[TaskDelivery]:
+    """Most-recent attempt per chat_key -- a retried delivery adds a new
+    row (audit-trail style, consistent with AuditLog elsewhere in this
+    app) rather than overwriting the failed one, so this reads the latest
+    per destination rather than every row ever recorded. Ordered by id,
+    not created_at -- a retry immediately after the original attempt can
+    land in the same server_default=func.now() second, and id is the one
+    monotonic, insertion-order-reliable tiebreaker SQLite and Postgres
+    both actually guarantee."""
+    rows = (
+        await session.scalars(
+            select(TaskDelivery).where(TaskDelivery.task_id == task_id).order_by(TaskDelivery.id.desc())
+        )
+    ).all()
+    latest: dict[str, TaskDelivery] = {}
+    for row in rows:
+        latest.setdefault(row.chat_key, row)
+    return list(latest.values())
 
 
 @dataclass(frozen=True)
@@ -178,6 +310,7 @@ class OpenTaskApplication:
 class OpenTaskWithApplications:
     task: Task
     applications: list[OpenTaskApplication]
+    deliveries: list[TaskDelivery] = field(default_factory=list)
 
 
 async def list_open_tasks_with_applications(
@@ -199,7 +332,8 @@ async def list_open_tasks_with_applications(
             if applicant is None:
                 continue
             applications.append(OpenTaskApplication(participant=participant, applicant=applicant))
-        result.append(OpenTaskWithApplications(task=task, applications=applications))
+        deliveries = await list_task_deliveries(session, task.id)
+        result.append(OpenTaskWithApplications(task=task, applications=applications, deliveries=deliveries))
     return result
 
 

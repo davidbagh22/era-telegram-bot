@@ -490,6 +490,28 @@ class Task(TimestampMixin, Base):
     reminder_count: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class TaskDelivery(TimestampMixin, Base):
+    """One row per chat a task announcement was dispatched to (2026-08
+    master spec section 33) -- entity<->chat<->message_id<->status<->error
+    tracking, generic enough to extend to other entity types later but not
+    built out further than tasks need today. Task creation itself must
+    never roll back because a Telegram send failed (see
+    app/services/leader_service.py::create_open_task()) -- a failed
+    delivery is recorded here, not raised, so an admin/leader can see
+    "created but not delivered to X" and retry that one destination."""
+
+    __tablename__ = "task_deliveries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), index=True)
+    chat_key: Mapped[str] = mapped_column(String(32))
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    telegram_message_id: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), default="failed", index=True)
+    error: Mapped[str | None] = mapped_column(Text)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Report(TimestampMixin, Base):
     __tablename__ = "reports"
 

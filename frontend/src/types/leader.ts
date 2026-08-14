@@ -45,6 +45,18 @@ export interface LeaderApplication {
   status: string;
 }
 
+// One of the 4 org chats a task can be announced in — see
+// app/services/leader_service.py::CHAT_DESTINATION_KEYS.
+export type TaskDestinationKey = "general" | "internal" | "external" | "leaders";
+
+export interface TaskDelivery {
+  id: number;
+  chat_key: string;
+  status: string;
+  error: string | null;
+  sent_at: string | null;
+}
+
 export interface LeaderOpenTask {
   id: number;
   title: string;
@@ -53,6 +65,7 @@ export interface LeaderOpenTask {
   points: number;
   max_participants: number | null;
   applications: LeaderApplication[];
+  deliveries: TaskDelivery[];
 }
 
 export interface OpenTaskCreatePayload {
@@ -61,6 +74,7 @@ export interface OpenTaskCreatePayload {
   deadline: string;
   points: number;
   max_participants: number;
+  destinations: TaskDestinationKey[];
 }
 
 export interface ActivitySubmission {
