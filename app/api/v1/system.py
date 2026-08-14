@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import hmac
-import os
 from datetime import datetime, timezone
 from typing import Literal
 
 from aiogram import Bot
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -96,9 +95,16 @@ class BackupReportIn(BaseModel):
     error_code: str | None = Field(default=None, max_length=96)
     error_detail: str | None = Field(default=None, max_length=1000)
 
-
-def _backup_secret() -> str:
-    return os.getenv("BACKUP_REPORT_SECRET", "").strip()
+    @model_validator(mode="after")
+    def validate_success_proof(self) -> "BackupReportIn":
+        if self.status == "success":
+            if not self.checksum_sha256:
+                raise ValueError("successful_backup_requires_checksum")
+            if not self.restore_verified_at:
+                raise ValueError("successful_backup_requires_restore_verification")
+            if not self.storage_reference:
+                raise ValueError("successful_backup_requires_storage_reference")
+        return self
 
 
 def _backup_fix_prompt(detail: str) -> str:
@@ -120,7 +126,7 @@ async def report_backup(
     bot: Bot | None = Depends(get_bot),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, object]:
-    expected = _backup_secret()
+    expected = settings.backup_report_secret
     if not expected:
         raise HTTPException(status_code=503, detail="backup_reporting_not_configured")
     supplied = (x_era_backup_secret or "").strip()
@@ -128,7 +134,9 @@ async def report_backup(
         raise HTTPException(status_code=401, detail="invalid_backup_report_secret")
 
     now = datetime.now(timezone.utc)
-    row = await session.scalar(select(BackupHistory).where(BackupHistory.backup_key == payload.backup_key))
+    row = await session.scalar(
+        select(BackupHistory).where(BackupHistory.backup_key == payload.backup_key)
+    )
     if row is None:
         row = BackupHistory(backup_key=payload.backup_key, status=payload.status)
         session.add(row)
@@ -141,10 +149,18 @@ async def report_backup(
     row.started_at = payload.started_at
     row.completed_at = payload.completed_at or now
     row.restore_verified_at = payload.restore_verified_at
-    row.error_code = sanitize_runtime_detail(payload.error_code, limit=96) if payload.error_code else None
-    row.error_detail = sanitize_runtime_detail(payload.error_detail) if payload.error_detail else None
+    row.error_code = (
+        sanitize_runtime_detail(payload.error_code, limit=96)
+        if payload.error_code
+        else None
+    )
+    row.error_detail = (
+        sanitize_runtime_detail(payload.error_detail) if payload.error_detail else None
+    )
 
-    incident = await session.scalar(select(SystemIncident).where(SystemIncident.dedupe_key == "backup:workflow"))
+    incident = await session.scalar(
+        select(SystemIncident).where(SystemIncident.dedupe_key == "backup:workflow")
+    )
     if payload.status == "failed":
         detail = row.error_detail or row.error_code or "Backup workflow завершился ошибкой"
         if incident is None:
@@ -188,8 +204,16 @@ async def report_backup(
         if incident is not None and incident.status == "open":
             incident.status = "resolved"
             incident.resolved_at = now
-            if bot is not None and incident.admin_notified and not incident.recovery_notified:
-                await notify_admins(bot, settings, "✅ ЭРА: backup снова выполняется и проходит restore verification.")
+            if (
+                bot is not None
+                and incident.admin_notified
+                and not incident.recovery_notified
+            ):
+                await notify_admins(
+                    bot,
+                    settings,
+                    "✅ ЭРА: backup снова выполняется и проходит restore verification.",
+                )
                 incident.recovery_notified = True
         if bot is not None:
             await notify_admins(
@@ -197,7 +221,7 @@ async def report_backup(
                 settings,
                 "💾 ЭРА: резервная копия готова\n\n"
                 f"Тип: {payload.backup_type}\n"
-                f"Restore verification: {'пройден' if payload.restore_verified_at else 'не подтверждён'}",
+                "Restore verification: пройден",
             )
 
     await audit(
@@ -211,6 +235,7 @@ async def report_backup(
             "backup_type": payload.backup_type,
             "status": payload.status,
             "restore_verified": bool(payload.restore_verified_at),
+            "storage_provider": payload.storage_provider,
         },
     )
     return {"ok": True, "backup_key": payload.backup_key, "status": payload.status}
