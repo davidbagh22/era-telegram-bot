@@ -24,6 +24,10 @@ class ChatBindingRecoveryResult:
     missing: list[str]
 
 
+def choose_unique_chat_id(candidates: set[int]) -> int | None:
+    return next(iter(candidates)) if len(candidates) == 1 else None
+
+
 async def _candidate_ids(session: AsyncSession, chat_key: str) -> set[int]:
     candidates: set[int] = set()
 
@@ -64,9 +68,8 @@ async def recover_chat_bindings(
 ) -> ChatBindingRecoveryResult:
     """Recover only bindings with one unambiguous historical Telegram ID.
 
-    Invite links are deliberately not resolved: Telegram private invite URLs
-    are not a reliable identifier for Bot API calls. Conflicting historical
-    IDs are surfaced as ambiguous instead of guessed.
+    Invite links are deliberately not resolved. Conflicting historical IDs
+    are surfaced as ambiguous instead of guessed.
     """
     recovered: dict[str, int] = {}
     ambiguous: dict[str, list[int]] = {}
@@ -77,14 +80,14 @@ async def recover_chat_bindings(
         if configured:
             continue
         candidates = await _candidate_ids(session, chat_key)
-        if len(candidates) == 0:
-            missing.append(chat_key)
-            continue
-        if len(candidates) > 1:
-            ambiguous[chat_key] = sorted(candidates)
+        chat_id = choose_unique_chat_id(candidates)
+        if chat_id is None:
+            if candidates:
+                ambiguous[chat_key] = sorted(candidates)
+            else:
+                missing.append(chat_key)
             continue
 
-        chat_id = candidates.pop()
         setattr(settings, setting_key, chat_id)
         row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
         if row is None:
