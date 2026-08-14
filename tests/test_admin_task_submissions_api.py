@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -122,9 +123,7 @@ class AdminTaskSubmissionsApiTests(unittest.TestCase):
         safe_send_mock.assert_awaited_once()
 
     def test_decide_approve_notification_links_to_the_task_in_mini_app(self) -> None:
-        """The notification's "Открыть" button should deep-link to this
-        specific task, not just the Mini App home screen — see
-        app/utils/deep_links.py::miniapp_task_url()."""
+        """The notification opens this exact task without relying on a URL fragment."""
         task = Task(id=9, title="Пост", description="d", points=15, creator_id=1)
         participant = User(id=2, telegram_id=777, first_name="Иван", last_name=None)
         submission = TaskSubmission(id=3, task_id=9, user_id=2, text="Готово", status="pending")
@@ -164,7 +163,9 @@ class AdminTaskSubmissionsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         keyboard = safe_send_mock.await_args.args[3]
         url = keyboard.inline_keyboard[0][0].web_app.url
-        self.assertEqual(url, "https://era.example/app/#/tasks/9")
+        parsed = urlsplit(url)
+        self.assertEqual(parsed.fragment, "")
+        self.assertEqual(parse_qs(parsed.query).get("eraPath"), ["tasks/9"])
 
     def test_decide_comment_required_maps_to_422(self) -> None:
         task = Task(id=9, title="Пост", description="d", points=15, creator_id=1)
