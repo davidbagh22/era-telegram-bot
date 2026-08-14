@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import hmac
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal
 
 from aiogram import Bot
@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.background import BackgroundTask
+from starlette.responses import FileResponse, JSONResponse
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.rate_limit import enforce_rate_limit
@@ -17,6 +19,12 @@ from app.database.models import User
 from app.database.system_models import BackupHistory, SystemIncident
 from app.services.audit_service import audit
 from app.services.authorization_service import is_full_admin
+from app.services.backup_runtime_service import (
+    BackupSnapshotError,
+    create_database_snapshot,
+    derive_backup_encryption_key,
+)
+from app.services.github_oidc_service import bearer_token, verify_backup_workflow_token
 from app.services.notification_service import notify_admins
 from app.services.system_health_service import (
     current_commit_sha,
@@ -35,6 +43,12 @@ async def require_system_admin(
     if not is_full_admin(user, settings, user.telegram_id):
         raise HTTPException(status_code=403, detail="admin_access_required")
     return user
+
+
+async def require_backup_workflow(
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    return await verify_backup_workflow_token(bearer_token(authorization))
 
 
 class DiagnosticRunIn(BaseModel):
@@ -81,6 +95,52 @@ async def run_diagnostics_now(
     )
 
 
+@router.get("/internal/backup/snapshot")
+async def download_backup_snapshot(
+    request: Request,
+    _identity: dict[str, object] = Depends(require_backup_workflow),
+    settings: Settings = Depends(get_settings),
+) -> FileResponse:
+    await enforce_rate_limit(
+        request,
+        key_prefix="internal_backup_snapshot",
+        limit=3,
+        window_seconds=3600,
+    )
+    try:
+        snapshot = await create_database_snapshot(settings.database_url)
+    except BackupSnapshotError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="snapshot_failed") from exc
+
+    response = FileResponse(
+        path=str(snapshot.path),
+        media_type="application/octet-stream",
+        filename="era-production.dump",
+        background=BackgroundTask(Path(snapshot.path).unlink, missing_ok=True),
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-ERA-Backup-SHA256"] = snapshot.checksum_sha256
+    response.headers["X-ERA-Backup-Size"] = str(snapshot.size_bytes)
+    return response
+
+
+@router.get("/internal/backup/material")
+async def backup_encryption_material(
+    _identity: dict[str, object] = Depends(require_backup_workflow),
+    settings: Settings = Depends(get_settings),
+) -> JSONResponse:
+    try:
+        key = derive_backup_encryption_key(settings)
+    except BackupSnapshotError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return JSONResponse(
+        {"encryption_key": key, "key_version": "miniapp-hmac-v1"},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 class BackupReportIn(BaseModel):
     backup_key: str = Field(min_length=4, max_length=160)
     backup_type: Literal["daily", "weekly", "monthly", "manual"] = "daily"
@@ -112,8 +172,9 @@ def _backup_fix_prompt(detail: str) -> str:
         "Исправь сбой production backup ERA Platform.\n\n"
         f"Симптом: {sanitize_runtime_detail(detail)}\n"
         f"Текущий commit: {current_commit_sha() or 'unknown'}\n\n"
-        "Проверь workflow database-backup.yml, pg_dump, checksum, restore verification, "
-        "external storage и retention. Не выводи DATABASE_URL, токены или персональные данные. "
+        "Проверь GitHub OIDC identity, production snapshot endpoint, pg_dump, "
+        "checksum, restore verification, encryption, storage и retention. "
+        "Не выводи токены, ключи, DATABASE_URL или персональные данные. "
         "После исправления обязательно выполни реальный restore-test."
     )
 
@@ -121,18 +182,11 @@ def _backup_fix_prompt(detail: str) -> str:
 @router.post("/internal/backup/report")
 async def report_backup(
     payload: BackupReportIn,
-    x_era_backup_secret: str | None = Header(default=None),
+    _identity: dict[str, object] = Depends(require_backup_workflow),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, object]:
-    expected = settings.backup_report_secret
-    if not expected:
-        raise HTTPException(status_code=503, detail="backup_reporting_not_configured")
-    supplied = (x_era_backup_secret or "").strip()
-    if not supplied or not hmac.compare_digest(supplied, expected):
-        raise HTTPException(status_code=401, detail="invalid_backup_report_secret")
-
     now = datetime.now(timezone.utc)
     row = await session.scalar(
         select(BackupHistory).where(BackupHistory.backup_key == payload.backup_key)
@@ -204,11 +258,7 @@ async def report_backup(
         if incident is not None and incident.status == "open":
             incident.status = "resolved"
             incident.resolved_at = now
-            if (
-                bot is not None
-                and incident.admin_notified
-                and not incident.recovery_notified
-            ):
+            if bot is not None and incident.admin_notified and not incident.recovery_notified:
                 await notify_admins(
                     bot,
                     settings,
