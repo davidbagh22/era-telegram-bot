@@ -1,8 +1,8 @@
 """Annual editorial ritual for the registered ``general`` Telegram chat.
 
-The content itself lives under content/general_chat/*.json.  This module owns
-planning, priority, persistence, idempotent delivery and admin overrides.  It
-never falls back to a hard-coded chat id or another system chat.
+The authored content lives under ``content/general_chat``. This service owns
+priority, persistent editor overrides, idempotent delivery and bounded recovery.
+It never falls back from the registered ``general`` chat to another chat id.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import asyncio
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -28,6 +28,7 @@ from aiogram.exceptions import (
     TelegramServerError,
 )
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -43,7 +44,13 @@ from app.services.notification_service import notify_admins
 logger = logging.getLogger(__name__)
 
 Slot = Literal["morning", "evening"]
-ContentType = Literal["morning_quote", "evening_quote", "weekly_challenge", "monthly_theme", "holiday"]
+ContentType = Literal[
+    "morning_quote",
+    "evening_quote",
+    "weekly_challenge",
+    "monthly_theme",
+    "holiday",
+]
 
 CONTENT_ROOT = Path(__file__).resolve().parents[2] / "content" / "general_chat"
 AUTOCONTENT_SETTINGS_KEY = "general_autocontent.settings"
@@ -52,8 +59,16 @@ MORNING_TIME = time(9, 0)
 EVENING_TIME = time(18, 0)
 QUOTE_LATE_LIMIT = timedelta(minutes=60)
 SIGNIFICANT_LATE_LIMIT = timedelta(hours=6)
+CLAIM_STALE_AFTER = timedelta(minutes=5)
 MAX_SEND_ATTEMPTS = 3
-TERMINAL_STATUSES = {"sent", "skipped_late", "missed", "skipped_admin", "disabled", "failed"}
+TERMINAL_STATUSES = {
+    "sent",
+    "skipped_late",
+    "missed",
+    "skipped_admin",
+    "disabled",
+    "failed",
+}
 
 DEFAULT_AUTOCONTENT_SETTINGS: dict[str, bool] = {
     "paused": False,
@@ -61,14 +76,6 @@ DEFAULT_AUTOCONTENT_SETTINGS: dict[str, bool] = {
     "challenges": True,
     "themes": True,
     "holidays": True,
-}
-
-TYPE_SETTING_KEY = {
-    "morning_quote": "quotes",
-    "evening_quote": "quotes",
-    "weekly_challenge": "challenges",
-    "monthly_theme": "themes",
-    "holiday": "holidays",
 }
 
 
@@ -118,9 +125,12 @@ def _read_json(filename: str) -> Any:
 
 @lru_cache(maxsize=1)
 def _pack() -> dict[str, Any]:
+    challenge_a = _read_json("weekly_challenges_01_26.json")
+    challenge_b = _read_json("weekly_challenges_27_52.json")
     return {
-        "quotes": _read_json("quotes.json"),
-        "challenges": _read_json("weekly_challenges.json"),
+        "quote_fragments": _read_json("quote_fragments.json"),
+        "quote_plan": _read_json("quote_plan.json"),
+        "challenges": {"items": challenge_a["items"] + challenge_b["items"]},
         "themes": _read_json("monthly_themes.json"),
         "holidays": _read_json("holidays.json"),
     }
@@ -134,25 +144,58 @@ def _date_key(day: date) -> str:
     return day.strftime("%m-%d")
 
 
+def _theme_row(month: int) -> dict[str, Any] | None:
+    return next(
+        (row for row in _pack()["themes"]["items"] if int(row["month"]) == month),
+        None,
+    )
+
+
+def _quote_plan_row(key: str) -> list[Any] | None:
+    return next((row for row in _pack()["quote_plan"]["plans"] if row[0] == key), None)
+
+
+def _render_quote(key: str, slot: Slot, spec: list[int]) -> str:
+    family, a, b, c, theme_thread = spec
+    fragments = _pack()["quote_fragments"][slot]
+    if family == 0:
+        first = f"Если сегодня {fragments['conditions'][a]}, {fragments['responses'][b]}."
+        last = fragments["actions" if slot == "morning" else "end"][c]
+    elif family == 1:
+        first = f"Сегодня {fragments['today'][a]}. {fragments['follow'][b]}"
+        last = fragments["actions" if slot == "morning" else "end"][c]
+    else:
+        first = f"Иногда {fragments['sometimes'][a]}. {fragments['insight'][b]}"
+        last = fragments["actions" if slot == "morning" else "end"][c]
+    text = f"{first} {last}"
+    if theme_thread:
+        month = int(key[:2])
+        theme = _theme_row(month)
+        if theme:
+            practice = theme["practice"]
+            if slot == "morning":
+                text += f" В теме этого месяца попробуй {practice}."
+            else:
+                text += f" Если нужен ориентир на завтра, продолжай {practice}."
+    return text
+
+
 def _quote_for(day: date, slot: Slot) -> ContentItem | None:
     key = _date_key(day)
-    field = "morning" if slot == "morning" else "evening"
-    content_type: ContentType = "morning_quote" if slot == "morning" else "evening_quote"
-    for row in _pack()["quotes"]["items"]:
-        if row["date_key"] == key:
-            block = row[field]
-            return ContentItem(
-                content_id=block["id"],
-                content_type=content_type,
-                slot=slot,
-                text=block["text"],
-                date_key=key,
-            )
-    # 29 February is intentionally not part of the 365-entry pack.  Reuse a
-    # neighbouring editorial slot only on leap day rather than crashing.
     if key == "02-29":
-        return _quote_for(day.replace(day=28), slot)
-    return None
+        key = "02-28"
+    plan = _quote_plan_row(key)
+    if plan is None:
+        return None
+    spec = plan[1] if slot == "morning" else plan[2]
+    content_type: ContentType = "morning_quote" if slot == "morning" else "evening_quote"
+    return ContentItem(
+        content_id=f"{slot}-{key.replace('-', '')}",
+        content_type=content_type,
+        slot=slot,
+        text=_render_quote(key, slot, spec),
+        date_key=key,
+    )
 
 
 def _static_holiday(day: date) -> ContentItem | None:
@@ -171,26 +214,26 @@ def _static_holiday(day: date) -> ContentItem | None:
 
 
 def _monthly_theme(month: int) -> ContentItem | None:
-    for row in _pack()["themes"]["items"]:
-        if int(row["month"]) == month:
-            return ContentItem(
-                content_id=row["id"],
-                content_type="monthly_theme",
-                slot="morning",
-                text=row["text"],
-                title=row.get("title"),
-                date_key=f"month:{month:02d}",
-            )
-    return None
+    row = _theme_row(month)
+    if row is None:
+        return None
+    return ContentItem(
+        content_id=row["id"],
+        content_type="monthly_theme",
+        slot="morning",
+        text=row["text"],
+        title=row.get("title"),
+        date_key=f"month:{month:02d}",
+    )
 
 
 def _weekly_challenge(day: date) -> ContentItem | None:
     rows = _pack()["challenges"]["items"]
     exact = next((row for row in rows if row.get("date") == day.isoformat()), None)
-    if exact is None and rows:
-        first = date.fromisoformat(rows[0]["date"])
-        week_offset = (day - first).days // 7
-        exact = rows[week_offset % len(rows)]
+    if exact is None:
+        month_rows = [row for row in rows if int(row.get("month", 0)) == day.month]
+        if month_rows:
+            exact = month_rows[((day.day - 1) // 7) % len(month_rows)]
     if exact is None:
         return None
     return ContentItem(
@@ -204,20 +247,16 @@ def _weekly_challenge(day: date) -> ContentItem | None:
 
 
 def static_item_by_id(content_id: str) -> ContentItem | None:
-    for row in _pack()["quotes"]["items"]:
-        for field, content_type, slot in (
-            ("morning", "morning_quote", "morning"),
-            ("evening", "evening_quote", "evening"),
-        ):
-            block = row[field]
-            if block["id"] == content_id:
-                return ContentItem(
-                    content_id=content_id,
-                    content_type=content_type,  # type: ignore[arg-type]
-                    slot=slot,  # type: ignore[arg-type]
-                    text=block["text"],
-                    date_key=row["date_key"],
-                )
+    if content_id.startswith("morning-") or content_id.startswith("evening-"):
+        slot: Slot = "morning" if content_id.startswith("morning-") else "evening"
+        mmdd = content_id.split("-", 1)[1]
+        if len(mmdd) == 4 and mmdd.isdigit():
+            try:
+                day = date(2025, int(mmdd[:2]), int(mmdd[2:]))
+            except ValueError:
+                day = None
+            if day:
+                return _quote_for(day, slot)
     for filename, content_type, slot in (
         ("challenges", "weekly_challenge", "evening"),
         ("themes", "monthly_theme", "morning"),
@@ -225,21 +264,29 @@ def static_item_by_id(content_id: str) -> ContentItem | None:
     ):
         for row in _pack()[filename]["items"]:
             if row["id"] == content_id:
+                date_key = row.get("date_key") or row.get("date")
+                if date_key is None and "month" in row:
+                    date_key = f"month:{int(row['month']):02d}"
                 return ContentItem(
                     content_id=content_id,
                     content_type=content_type,  # type: ignore[arg-type]
                     slot=slot,  # type: ignore[arg-type]
                     text=row["text"],
                     title=row.get("title"),
-                    date_key=row.get("date_key") or row.get("date") or (f"month:{int(row['month']):02d}" if "month" in row else None),
+                    date_key=date_key,
                 )
     return None
 
 
 async def get_autocontent_settings(session: AsyncSession) -> dict[str, bool]:
-    row = await session.scalar(select(AppSetting).where(AppSetting.key == AUTOCONTENT_SETTINGS_KEY))
+    row = await session.scalar(
+        select(AppSetting).where(AppSetting.key == AUTOCONTENT_SETTINGS_KEY)
+    )
     value = row.value if row and isinstance(row.value, dict) else {}
-    return {key: bool(value.get(key, default)) for key, default in DEFAULT_AUTOCONTENT_SETTINGS.items()}
+    return {
+        key: bool(value.get(key, default))
+        for key, default in DEFAULT_AUTOCONTENT_SETTINGS.items()
+    }
 
 
 async def update_autocontent_settings(
@@ -253,9 +300,15 @@ async def update_autocontent_settings(
         raise ValueError(f"unknown_settings:{','.join(sorted(unknown))}")
     current = await get_autocontent_settings(session)
     current.update({key: bool(value) for key, value in changes.items()})
-    row = await session.scalar(select(AppSetting).where(AppSetting.key == AUTOCONTENT_SETTINGS_KEY))
+    row = await session.scalar(
+        select(AppSetting).where(AppSetting.key == AUTOCONTENT_SETTINGS_KEY)
+    )
     if row is None:
-        row = AppSetting(key=AUTOCONTENT_SETTINGS_KEY, value=current, updated_by=actor_id)
+        row = AppSetting(
+            key=AUTOCONTENT_SETTINGS_KEY,
+            value=current,
+            updated_by=actor_id,
+        )
         session.add(row)
     else:
         row.value = current
@@ -271,7 +324,6 @@ async def _custom_holiday(session: AsyncSession, day: date) -> ContentItem | Non
         .where(
             GeneralCustomContent.content_type == "holiday",
             GeneralCustomContent.date_key.in_(keys),
-            GeneralCustomContent.is_enabled.is_(True),
         )
         .order_by(GeneralCustomContent.updated_at.desc(), GeneralCustomContent.id.desc())
     )
@@ -288,36 +340,31 @@ async def _custom_holiday(session: AsyncSession, day: date) -> ContentItem | Non
     )
 
 
-async def _has_holiday(session: AsyncSession, day: date) -> bool:
-    return bool(await _custom_holiday(session, day) or _static_holiday(day))
-
-
-async def _theme_due_today(session: AsyncSession, day: date, holiday_enabled: bool) -> bool:
-    if day.day > 3:
-        return False
-    first = day.replace(day=1)
-    for offset in range(3):
-        candidate = first + timedelta(days=offset)
-        occupied = holiday_enabled and await _has_holiday(session, candidate)
-        if not occupied:
-            return candidate == day
-    # All first three mornings are occupied by holidays: max deferral is +2,
-    # so theme is not silently moved further into the month.
-    return False
-
-
-async def _override_resolution(session: AsyncSession, item: ContentItem) -> _CandidateResolution:
+async def _override_resolution(
+    session: AsyncSession, item: ContentItem
+) -> _CandidateResolution:
     if item.source == "custom":
+        row = await session.scalar(
+            select(GeneralCustomContent).where(
+                GeneralCustomContent.content_id == item.content_id
+            )
+        )
+        if row is None or not row.is_enabled:
+            return _CandidateResolution(item=None)
+        if row.is_skipped:
+            return _CandidateResolution(item=None, blocked=True)
         return _CandidateResolution(item=item)
     override = await session.scalar(
-        select(GeneralContentOverride).where(GeneralContentOverride.content_id == item.content_id)
+        select(GeneralContentOverride).where(
+            GeneralContentOverride.content_id == item.content_id
+        )
     )
     if override is None:
         return _CandidateResolution(item=item)
     if override.is_skipped:
         return _CandidateResolution(item=None, blocked=True)
     if not override.is_enabled:
-        return _CandidateResolution(item=None, blocked=False)
+        return _CandidateResolution(item=None)
     if override.override_text:
         item = ContentItem(
             content_id=item.content_id,
@@ -329,6 +376,35 @@ async def _override_resolution(session: AsyncSession, item: ContentItem) -> _Can
             source=item.source,
         )
     return _CandidateResolution(item=item)
+
+
+async def _holiday_occupies(session: AsyncSession, day: date) -> bool:
+    custom = await _custom_holiday(session, day)
+    if custom:
+        resolved = await _override_resolution(session, custom)
+        if resolved.blocked or resolved.item is not None:
+            return True
+    static = _static_holiday(day)
+    if static:
+        resolved = await _override_resolution(session, static)
+        return resolved.blocked or resolved.item is not None
+    return False
+
+
+async def _theme_due_today(
+    session: AsyncSession,
+    day: date,
+    holiday_enabled: bool,
+) -> bool:
+    if day.day > 3:
+        return False
+    first = day.replace(day=1)
+    for offset in range(3):
+        candidate = first + timedelta(days=offset)
+        occupied = holiday_enabled and await _holiday_occupies(session, candidate)
+        if not occupied:
+            return candidate == day
+    return False
 
 
 async def _candidate_items(
@@ -346,7 +422,9 @@ async def _candidate_items(
                 candidates.append(custom)
             if static and (not custom or custom.content_id != static.content_id):
                 candidates.append(static)
-        if flags["themes"] and await _theme_due_today(session, day, flags["holidays"]):
+        if flags["themes"] and await _theme_due_today(
+            session, day, flags["holidays"]
+        ):
             theme = _monthly_theme(day.month)
             if theme:
                 candidates.append(theme)
@@ -396,7 +474,11 @@ def scheduled_idempotency_key(day: date, slot: Slot, content_type: str) -> str:
     return f"general_content:{day.isoformat()}:{slot}:{content_type}"
 
 
-def _late_status(item: ContentItem, planned_at: datetime, now: datetime) -> str | None:
+def _late_status(
+    item: ContentItem,
+    planned_at: datetime,
+    now: datetime,
+) -> str | None:
     lateness = now - planned_at
     if lateness <= timedelta(0):
         return None
@@ -411,7 +493,11 @@ async def _general_chat_id(session: AsyncSession, settings: Settings) -> int | N
     return entry.chat_id if entry and entry.is_bound else None
 
 
-async def _send_with_retry(bot: Bot, chat_id: int, text: str) -> tuple[Any | None, int, str | None, bool]:
+async def _send_with_retry(
+    bot: Bot,
+    chat_id: int,
+    text: str,
+) -> tuple[Any | None, int, str | None, bool]:
     attempt = 0
     while attempt < MAX_SEND_ATTEMPTS:
         attempt += 1
@@ -433,7 +519,12 @@ async def _send_with_retry(bot: Bot, chat_id: int, text: str) -> tuple[Any | Non
     return None, attempt, "telegram_unknown", False
 
 
-async def _alert_delivery_failure(bot: Bot, settings: Settings, code: str, content_id: str) -> None:
+async def _alert_delivery_failure(
+    bot: Bot,
+    settings: Settings,
+    code: str,
+    content_id: str,
+) -> None:
     await notify_admins(
         bot,
         settings,
@@ -442,6 +533,73 @@ async def _alert_delivery_failure(bot: Bot, settings: Settings, code: str, conte
         f"Материал: {content_id}\n"
         "Проверьте Admin Mode → Связь → Автоконтент.",
     )
+
+
+def _utc_stamp(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+async def _claim_delivery(
+    session: AsyncSession,
+    *,
+    key: str,
+    item: ContentItem,
+    planned_at: datetime,
+    manual: bool,
+    now: datetime,
+) -> tuple[GeneralContentDelivery, bool]:
+    delivery = await session.scalar(
+        select(GeneralContentDelivery).where(
+            GeneralContentDelivery.idempotency_key == key
+        )
+    )
+    if delivery is None:
+        delivery = GeneralContentDelivery(
+            idempotency_key=key,
+            content_id=item.content_id,
+            content_type=item.content_type,
+            slot=item.slot,
+            chat_key=GENERAL_CHAT_KEY,
+            planned_at=planned_at,
+            status="claimed",
+            is_manual=manual,
+        )
+        session.add(delivery)
+        try:
+            await session.commit()
+            await session.refresh(delivery)
+            return delivery, True
+        except IntegrityError:
+            await session.rollback()
+            delivery = await session.scalar(
+                select(GeneralContentDelivery).where(
+                    GeneralContentDelivery.idempotency_key == key
+                )
+            )
+            if delivery is None:
+                raise
+
+    if delivery.status in TERMINAL_STATUSES:
+        return delivery, False
+    updated = _utc_stamp(delivery.updated_at)
+    now_utc = _utc_stamp(now)
+    if (
+        delivery.status in {"claimed", "sending"}
+        and updated is not None
+        and now_utc is not None
+        and now_utc - updated < CLAIM_STALE_AFTER
+    ):
+        return delivery, False
+    delivery.status = "claimed"
+    delivery.error_code = None
+    delivery.error_detail = None
+    await session.commit()
+    await session.refresh(delivery)
+    return delivery, True
 
 
 async def deliver_planned_content(
@@ -454,35 +612,31 @@ async def deliver_planned_content(
     manual: bool = False,
 ) -> DeliveryOutcome:
     item = planned.item
-    if manual:
-        idempotency_key = f"general_content:manual:{item.content_id}:{uuid4().hex}"
-    else:
-        idempotency_key = scheduled_idempotency_key(planned.planned_at.date(), item.slot, item.content_type)
-
-    delivery = await session.scalar(
-        select(GeneralContentDelivery).where(GeneralContentDelivery.idempotency_key == idempotency_key)
+    if not manual and now < planned.planned_at:
+        return DeliveryOutcome("not_due", item.content_id)
+    key = (
+        f"general_content:manual:{item.content_id}:{uuid4().hex}"
+        if manual
+        else scheduled_idempotency_key(
+            planned.planned_at.date(), item.slot, item.content_type
+        )
     )
-    if delivery and delivery.status in TERMINAL_STATUSES:
+    delivery, claimed = await _claim_delivery(
+        session,
+        key=key,
+        item=item,
+        planned_at=planned.planned_at,
+        manual=manual,
+        now=now,
+    )
+    if not claimed:
+        status = delivery.status if delivery.status in TERMINAL_STATUSES else "in_progress"
         return DeliveryOutcome(
-            status=delivery.status,
-            content_id=delivery.content_id,
-            delivery_id=delivery.id,
-            message_id=delivery.telegram_message_id,
+            status,
+            delivery.content_id,
+            delivery.id,
+            delivery.telegram_message_id,
         )
-
-    if delivery is None:
-        delivery = GeneralContentDelivery(
-            idempotency_key=idempotency_key,
-            content_id=item.content_id,
-            content_type=item.content_type,
-            slot=item.slot,
-            chat_key=GENERAL_CHAT_KEY,
-            planned_at=planned.planned_at,
-            status="planned",
-            is_manual=manual,
-        )
-        session.add(delivery)
-        await session.flush()
 
     if not manual:
         late_status = _late_status(item, planned.planned_at, now)
@@ -495,15 +649,15 @@ async def deliver_planned_content(
     if chat_id is None:
         delivery.status = "failed"
         delivery.error_code = "general_chat_unbound"
-        delivery.error_detail = None
         await session.commit()
-        await _alert_delivery_failure(bot, settings, "general_chat_unbound", item.content_id)
+        await _alert_delivery_failure(
+            bot, settings, "general_chat_unbound", item.content_id
+        )
         return DeliveryOutcome("failed", item.content_id, delivery.id)
 
     delivery.chat_id = chat_id
     delivery.status = "sending"
     await session.commit()
-
     message, attempts, error_code, transient = await _send_with_retry(
         bot, chat_id, planned.effective_text
     )
@@ -515,13 +669,21 @@ async def deliver_planned_content(
         delivery.error_code = None
         delivery.error_detail = None
         await session.commit()
-        return DeliveryOutcome("sent", item.content_id, delivery.id, int(message.message_id))
+        return DeliveryOutcome(
+            "sent", item.content_id, delivery.id, int(message.message_id)
+        )
 
-    delivery.status = "failed"
     delivery.error_code = error_code or "telegram_error"
     delivery.error_detail = "transient_exhausted" if transient else "permanent"
+    if transient:
+        delivery.status = "retryable_failed"
+        await session.commit()
+        return DeliveryOutcome("retryable_failed", item.content_id, delivery.id)
+    delivery.status = "failed"
     await session.commit()
-    await _alert_delivery_failure(bot, settings, delivery.error_code, item.content_id)
+    await _alert_delivery_failure(
+        bot, settings, delivery.error_code, item.content_id
+    )
     return DeliveryOutcome("failed", item.content_id, delivery.id)
 
 
@@ -556,11 +718,6 @@ async def run_scheduled_slot(
         )
 
 
-async def list_overrides(session: AsyncSession) -> dict[str, GeneralContentOverride]:
-    rows = (await session.scalars(select(GeneralContentOverride))).all()
-    return {row.content_id: row for row in rows}
-
-
 async def save_item_override(
     session: AsyncSession,
     content_id: str,
@@ -573,7 +730,9 @@ async def save_item_override(
     if static_item_by_id(content_id) is None:
         raise LookupError("content_not_found")
     row = await session.scalar(
-        select(GeneralContentOverride).where(GeneralContentOverride.content_id == content_id)
+        select(GeneralContentOverride).where(
+            GeneralContentOverride.content_id == content_id
+        )
     )
     if row is None:
         row = GeneralContentOverride(content_id=content_id, updated_by=actor_id)
@@ -601,7 +760,6 @@ async def create_custom_holiday(
     text: str,
     actor_id: int | None,
 ) -> GeneralCustomContent:
-    # Accept either recurring MM-DD or one exact YYYY-MM-DD editorial date.
     try:
         if len(date_key) == 5:
             datetime.strptime(date_key, "%m-%d")
@@ -634,10 +792,13 @@ async def update_custom_content(
     actor_id: int | None,
     text: str | None = None,
     is_enabled: bool | None = None,
+    is_skipped: bool | None = None,
     title: str | None = None,
 ) -> GeneralCustomContent:
     row = await session.scalar(
-        select(GeneralCustomContent).where(GeneralCustomContent.content_id == content_id)
+        select(GeneralCustomContent).where(
+            GeneralCustomContent.content_id == content_id
+        )
     )
     if row is None:
         raise LookupError("content_not_found")
@@ -648,6 +809,8 @@ async def update_custom_content(
         row.text = cleaned
     if is_enabled is not None:
         row.is_enabled = is_enabled
+    if is_skipped is not None:
+        row.is_skipped = is_skipped
     if title is not None:
         row.title = title.strip() or row.title
     row.updated_by = actor_id
@@ -656,15 +819,19 @@ async def update_custom_content(
     return row
 
 
-async def content_item_by_id(session: AsyncSession, content_id: str) -> ContentItem | None:
+async def content_item_by_id(
+    session: AsyncSession, content_id: str
+) -> ContentItem | None:
     static = static_item_by_id(content_id)
     if static:
         resolution = await _override_resolution(session, static)
         return resolution.item
     row = await session.scalar(
-        select(GeneralCustomContent).where(GeneralCustomContent.content_id == content_id)
+        select(GeneralCustomContent).where(
+            GeneralCustomContent.content_id == content_id
+        )
     )
-    if row is None or not row.is_enabled:
+    if row is None or not row.is_enabled or row.is_skipped:
         return None
     return ContentItem(
         content_id=row.content_id,
@@ -698,6 +865,12 @@ async def send_item_now(
     )
 
 
+def _local_delivery_day(value: datetime, zone: ZoneInfo) -> date:
+    if value.tzinfo is None:
+        return value.date()
+    return value.astimezone(zone).date()
+
+
 async def calendar_items(
     session: AsyncSession,
     *,
@@ -706,18 +879,21 @@ async def calendar_items(
     timezone_name: str,
 ) -> list[dict[str, Any]]:
     days = max(1, min(days, 90))
+    zone = ZoneInfo(timezone_name)
+    lower = datetime.combine(start, time.min, tzinfo=zone)
+    upper = datetime.combine(start + timedelta(days=days), time.min, tzinfo=zone)
     deliveries = (
         await session.scalars(
             select(GeneralContentDelivery)
             .where(
-                GeneralContentDelivery.planned_at >= datetime.combine(start, time.min, tzinfo=ZoneInfo(timezone_name)),
-                GeneralContentDelivery.planned_at < datetime.combine(start + timedelta(days=days), time.min, tzinfo=ZoneInfo(timezone_name)),
+                GeneralContentDelivery.planned_at >= lower,
+                GeneralContentDelivery.planned_at < upper,
             )
             .order_by(GeneralContentDelivery.planned_at.asc())
         )
     ).all()
     delivery_map = {
-        (row.planned_at.astimezone(ZoneInfo(timezone_name)).date(), row.slot): row
+        (_local_delivery_day(row.planned_at, zone), row.slot): row
         for row in deliveries
         if not row.is_manual
     }
@@ -737,7 +913,9 @@ async def calendar_items(
                     "date": day.isoformat(),
                     "slot": slot,
                     "planned": planned.as_dict() if planned else None,
-                    "status": delivery.status if delivery else ("planned" if planned else "disabled"),
+                    "status": delivery.status
+                    if delivery
+                    else ("planned" if planned else "disabled"),
                     "delivery_id": delivery.id if delivery else None,
                     "message_id": delivery.telegram_message_id if delivery else None,
                     "error_code": delivery.error_code if delivery else None,
@@ -746,7 +924,9 @@ async def calendar_items(
     return result
 
 
-async def delivery_history(session: AsyncSession, limit: int = 100) -> list[dict[str, Any]]:
+async def delivery_history(
+    session: AsyncSession, limit: int = 100
+) -> list[dict[str, Any]]:
     rows = (
         await session.scalars(
             select(GeneralContentDelivery)
@@ -786,6 +966,7 @@ async def custom_holidays(session: AsyncSession) -> list[dict[str, Any]]:
             "title": row.title,
             "text": row.text,
             "is_enabled": row.is_enabled,
+            "is_skipped": row.is_skipped,
         }
         for row in rows
     ]
