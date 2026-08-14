@@ -2,12 +2,16 @@ import { expect, test } from "@playwright/test";
 
 const ADMIN_TELEGRAM_ID = 900003;
 
-test("admin creates a partner and an offer for it through the real API", async ({ page }) => {
+async function enterAdminWorkspace(page: import("@playwright/test").Page) {
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
-  await expect(page.getByText("Управление")).toBeVisible();
+  await page.getByRole("button", { name: "Профиль" }).click();
+  await page.getByRole("button", { name: /Управление ЭРА/ }).click();
+  await expect(page.getByText("Управление", { exact: true })).toBeVisible();
+}
 
-  // Возможности now lives under the Работа group — see AdminScreen.tsx's
-  // 2026-08 regrouping.
+test("admin creates a partner and an offer for it through the real API", async ({ page }) => {
+  await enterAdminWorkspace(page);
+
   await page.getByRole("button", { name: "Работа" }).click();
   await page.getByRole("button", { name: "Возможности" }).click();
   await page.getByRole("button", { name: "Партнёры" }).click();
@@ -17,8 +21,6 @@ test("admin creates a partner and an offer for it through the real API", async (
   await page.getByPlaceholder("Описание").fill("Создано E2E-тестом.");
   await page.getByRole("button", { name: "Добавить партнёра" }).click();
 
-  // A real create through the full stack, verified by the partner
-  // appearing in the list after the screen refetches it from the API.
   await expect(page.getByText(partnerName)).toBeVisible();
 
   await page.getByRole("button", { name: "Предложения" }).click();
