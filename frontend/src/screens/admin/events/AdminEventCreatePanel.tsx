@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { createAdminEvent } from "../../../api/adminEvents";
 import { describeActionError } from "../../../api/client";
 import { Card } from "../../../components/Card";
@@ -121,7 +122,7 @@ export function AdminEventCreatePanel() {
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem", marginBottom: "0.75rem" }}>
       <strong>{label}</strong>
