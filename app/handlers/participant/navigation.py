@@ -10,6 +10,7 @@ from app.keyboards.participant import (
     event_list_keyboard,
     journey_keyboard,
     main_inline_keyboard,
+    navigation_guide_keyboard,
     open_app_button,
     team_keyboard,
 )
@@ -170,6 +171,35 @@ async def contact_button(
     await message.answer(
         ux_texts.CONTACT_MENU,
         reply_markup=contact_keyboard(),
+    )
+
+
+@router.callback_query(F.data == "nav:guide")
+async def nav_guide_callback(
+    call: CallbackQuery, user: User | None, settings: Settings
+) -> None:
+    """"🧭 Навигация" — replaces the old 📅 Ближайшее/✅ Мои задачи/
+    ⭐ Возможности quick-access buttons with one explainer message plus
+    deep links (2026-08 redesign brief section 36). Role-aware text, same
+    _has_admin_access()/PRIVILEGED_ROLES checks already used for the
+    "⚙️ Панель" redirect above."""
+    await call.answer()
+    if not _approved(user):
+        await call.message.answer(texts.APPLICATION_PENDING)
+        return
+    is_admin = _has_admin_access(user)
+    is_privileged = user.role in PRIVILEGED_ROLES
+    if is_admin:
+        text = texts.NAVIGATION_GUIDE_ADMIN
+    elif is_privileged:
+        text = texts.NAVIGATION_GUIDE_LEADER
+    else:
+        text = texts.NAVIGATION_GUIDE_PARTICIPANT
+    await call.message.answer(
+        text,
+        reply_markup=navigation_guide_keyboard(
+            settings.effective_miniapp_url, admin=is_admin, privileged=is_privileged
+        ),
     )
 
 

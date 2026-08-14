@@ -483,6 +483,39 @@ FAQ_ANSWER_SEND_FAILED = (
     "и нажмите /start, затем повторите."
 )
 
+# "🧭 Навигация" bot message (2026-08 redesign brief section 36) — replaces
+# the old three separate quick-access buttons (📅 Ближайшее / ✅ Мои
+# задачи / ⭐ Возможности) with a single button that explains what's in
+# the app instead of the bot trying to be a second navigation surface.
+# The bot never re-implements a screen's content here — only names it and
+# links to it (see app/keyboards/participant.py's navigation_guide_keyboard()
+# for the actual deep links). Role-aware: a leader/admin gets one extra
+# paragraph about their workspace, not a separate message.
+NAVIGATION_GUIDE_PARTICIPANT = (
+    "🧭 Навигация по ЭРА\n\n"
+    "Всё живёт в одном приложении — открывайте кнопкой 🔥 Открыть ЭРА "
+    "или сразу нужный раздел кнопками ниже:\n\n"
+    "🏠 Главная — что важно именно вам прямо сейчас\n"
+    "📅 Мероприятия и ✅ Задачи — открытые дела, на которые можно записаться\n"
+    "⭐ Возможности — предложения партнёров, аукционы, каталог, опросы\n"
+    "👤 Профиль — баллы, уровень и портфолио ваших результатов\n\n"
+    "Бот не дублирует приложение — здесь только быстрые ссылки. Если что-то "
+    "непонятно, жмите «💬 Связь»."
+)
+NAVIGATION_GUIDE_LEADER = (
+    NAVIGATION_GUIDE_PARTICIPANT
+    + "\n\n"
+    "Как лидер вы дополнительно управляете своим направлением — участники, "
+    "задачи, мероприятия, отчёты — в режиме лидера внутри приложения."
+)
+NAVIGATION_GUIDE_ADMIN = (
+    NAVIGATION_GUIDE_PARTICIPANT
+    + "\n\n"
+    "Как администратор вы дополнительно управляете всей ЭРА — заявки, "
+    "проекты, мероприятия, баллы, рассылки — в режиме администратора "
+    "внутри приложения."
+)
+
 LEADER_PANEL = """Панель лидера
 
 Здесь Вы управляете своим направлением: участники, мероприятия, задачи, проекты, отчёты и предложения админу.
