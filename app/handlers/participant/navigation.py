@@ -1,4 +1,5 @@
 from aiogram import F, Router
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -174,18 +175,17 @@ async def contact_button(
     )
 
 
-@router.callback_query(F.data == "nav:guide")
-async def nav_guide_callback(
-    call: CallbackQuery, user: User | None, settings: Settings
+async def _send_navigation_guide(
+    message: Message, user: User | None, settings: Settings
 ) -> None:
     """"🧭 Навигация" — replaces the old 📅 Ближайшее/✅ Мои задачи/
     ⭐ Возможности quick-access buttons with one explainer message plus
     deep links (2026-08 redesign brief section 36). Role-aware text, same
     _has_admin_access()/PRIVILEGED_ROLES checks already used for the
-    "⚙️ Панель" redirect above."""
-    await call.answer()
+    "⚙️ Панель" redirect above. Shared by both the callback (button in
+    main_inline_keyboard()) and the /navigation command."""
     if not _approved(user):
-        await call.message.answer(texts.APPLICATION_PENDING)
+        await message.answer(texts.APPLICATION_PENDING)
         return
     is_admin = _has_admin_access(user)
     is_privileged = user.role in PRIVILEGED_ROLES
@@ -195,12 +195,28 @@ async def nav_guide_callback(
         text = texts.NAVIGATION_GUIDE_LEADER
     else:
         text = texts.NAVIGATION_GUIDE_PARTICIPANT
-    await call.message.answer(
+    await message.answer(
         text,
         reply_markup=navigation_guide_keyboard(
             settings.effective_miniapp_url, admin=is_admin, privileged=is_privileged
         ),
     )
+
+
+@router.callback_query(F.data == "nav:guide")
+async def nav_guide_callback(
+    call: CallbackQuery, user: User | None, settings: Settings
+) -> None:
+    await call.answer()
+    await _send_navigation_guide(call.message, user, settings)
+
+
+@router.message(Command("navigation"), F.chat.type == "private")
+async def navigation_command(
+    message: Message, user: User | None, settings: Settings, state: FSMContext
+) -> None:
+    await state.clear()
+    await _send_navigation_guide(message, user, settings)
 
 
 @router.callback_query(F.data == "contact:menu")
