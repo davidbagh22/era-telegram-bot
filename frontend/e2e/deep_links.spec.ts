@@ -29,8 +29,13 @@ test("#/events deep link opens Activity on the Events section", async ({ page })
   await expect(page.getByText("E2E тестовое мероприятие")).toBeVisible();
 });
 
-test("#/opportunities deep link opens the Opportunities screen", async ({ page }) => {
+test("#/opportunities deep link opens the Opportunities screen on Предложения", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/opportunities`);
 
-  await expect(page.getByRole("button", { name: "Для тебя" })).toBeVisible();
+  // 2026-08 redesign brief section 20: OpportunitiesScreen now has its own
+  // landing menu (Предложения/Аукционы/Каталог/Опросы) instead of a
+  // PillTabs row -- a deep link skips straight to "Предложения", proven
+  // here by its section heading and "Фильтр" scope-picker button.
+  await expect(page.getByRole("heading", { name: "Предложения" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Фильтр" })).toBeVisible();
 });

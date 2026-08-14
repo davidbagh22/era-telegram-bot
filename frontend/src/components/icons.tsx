@@ -167,3 +167,27 @@ export function AnalyticsIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+// OpportunitiesScreen's landing-card menu (2026-08 redesign brief section
+// 20, "premium showcase") — Каталог (rewards catalog) and Опросы (surveys)
+// cards, same hand-drawn stroke style as the rest of this file.
+export function RewardIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...baseProps(props)}>
+      <rect x="3.5" y="9" width="17" height="11" rx="1.5" />
+      <path d="M3.5 9h17M12 9v11" />
+      <path d="M12 9c-2-3-6-3.5-6-1s3 1.2 6 1c3 .2 6-1.5 6-3.5S14 6 12 9Z" />
+    </svg>
+  );
+}
+
+export function SurveyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...baseProps(props)}>
+      <rect x="4.5" y="3.5" width="15" height="17" rx="1.5" />
+      <path d="M9 3.5V2h6v1.5" />
+      <path d="m8 11 1.8 1.8L13.5 9" />
+      <path d="M8 16h8" />
+    </svg>
+  );
+}
