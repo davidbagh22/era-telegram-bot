@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -25,6 +26,7 @@ from app.services.admin_user_card import send_admin_application_cards
 from app.services.audit_service import audit
 from app.services.consent_policy import CONSENT_SUMMARY, consent_full_chunks
 from app.services.consent_service import CURRENT_POLICY_VERSION
+from app.services.notification_service import admin_notification_recipients, safe_send
 from app.services.points_service import add_points
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.states.registration import RegistrationStates
@@ -41,6 +43,7 @@ from app.utils.validators import (
 router = Router(name="registration")
 router.message.filter(F.chat.type == "private")
 router.callback_query.filter(F.message.chat.type == "private")
+logger = logging.getLogger(__name__)
 
 PATHS = (
     "Участник",
@@ -89,6 +92,94 @@ def _normalize_url(value: str) -> str | None:
     if parsed.scheme not in {"http", "https"} or "." not in parsed.netloc:
         return None
     return value
+
+
+async def _fallback_registration_notice(
+    bot: Bot,
+    settings: Settings,
+    user,
+    *,
+    auto_approved_admin: bool,
+) -> None:
+    """Best-effort fallback after the registration is already committed.
+
+    Notification failures must never be able to erase a valid registration.
+    Logs intentionally contain only the internal user id, not personal data.
+    """
+    try:
+        recipients = set(await admin_notification_recipients(settings))
+    except Exception:
+        logger.exception(
+            "Failed to resolve registration-notification recipients for user_id=%s",
+            user.id,
+        )
+        recipients = set(settings.admin_ids)
+
+    if not recipients:
+        logger.error("No admin recipients configured for registration user_id=%s", user.id)
+        return
+
+    status_text = (
+        "автоодобрено — системный администратор"
+        if auto_approved_admin
+        else "ожидает рассмотрения"
+    )
+    full_name = f"{user.first_name} {user.last_name or ''}".strip()
+    text = (
+        "🆕 Новая регистрация ЭРА\n\n"
+        f"{full_name}\n"
+        f"Статус: {status_text}.\n\n"
+        "Регистрация уже сохранена в базе."
+    )
+    for admin_id in recipients:
+        try:
+            await safe_send(bot, admin_id, text)
+        except Exception:
+            logger.exception(
+                "Fallback registration notification failed for user_id=%s",
+                user.id,
+            )
+
+
+async def _notify_admins_registration(
+    bot: Bot,
+    settings: Settings,
+    session: AsyncSession,
+    user,
+    *,
+    auto_approved_admin: bool,
+) -> None:
+    """Notify admins without letting Telegram affect registration durability."""
+    if auto_approved_admin:
+        await _fallback_registration_notice(
+            bot,
+            settings,
+            user,
+            auto_approved_admin=True,
+        )
+        return
+
+    try:
+        await send_admin_application_cards(bot, settings, session, user)
+        return
+    except Exception:
+        logger.exception(
+            "Rich admin registration card failed for user_id=%s; sending fallback",
+            user.id,
+        )
+
+    try:
+        await _fallback_registration_notice(
+            bot,
+            settings,
+            user,
+            auto_approved_admin=False,
+        )
+    except Exception:
+        logger.exception(
+            "All registration notifications failed for user_id=%s",
+            user.id,
+        )
 
 
 @router.callback_query(F.data == "registration:start")
@@ -448,7 +539,12 @@ async def finish_registration(
                 updated_at=now,
             )
         )
-    if call.from_user.id in settings.admin_ids:
+
+    auto_approved_admin = call.from_user.id in settings.admin_ids
+    if auto_approved_admin:
+        # Preserve bootstrap/admin access semantics, but do not silently
+        # hide the registration event: after commit admins receive an
+        # explicit "auto-approved" registration notice.
         user.role = Role.ADMIN
         user.application_status = ApplicationStatus.APPROVED
         if created:
@@ -471,8 +567,16 @@ async def finish_registration(
             entity_id=user.id,
             new_value={"telegram_id": user.telegram_id},
         )
+
+    # Critical durability boundary: the registration, consent, profile,
+    # social link, role/status and audit event are committed BEFORE any
+    # Telegram notification or success screen is attempted. The outer bot
+    # middleware may later roll back a new transaction if Telegram fails,
+    # but it can no longer erase this already-committed registration.
     await session.flush()
+    await session.commit()
     await state.clear()
+
     if user.application_status == ApplicationStatus.APPROVED:
         await call.message.answer(texts.APPLICATION_APPROVED)
         await call.message.answer(
@@ -488,7 +592,15 @@ async def finish_registration(
             texts.REG_DONE,
             reply_markup=pending_registration_keyboard(settings.era_channel_url),
         )
-        await send_admin_application_cards(bot, settings, session, user)
+
+    if created:
+        await _notify_admins_registration(
+            bot,
+            settings,
+            session,
+            user,
+            auto_approved_admin=auto_approved_admin,
+        )
 
 
 @router.callback_query(F.data == "registration:status")
