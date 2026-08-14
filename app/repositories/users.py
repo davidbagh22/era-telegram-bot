@@ -17,7 +17,7 @@ from app.database.models import (
     UserDepartment,
     UserDirection,
 )
-from app.services.consent_service import record_consent
+from app.services.consent_service import CURRENT_POLICY_VERSION, record_consent
 from app.utils.validators import calculate_age
 
 
@@ -76,15 +76,17 @@ async def create_user_from_registration(
     )
     session.add(user)
     await session.flush()
-    # Additive audit trail alongside personal_data_consent above — see
-    # app/services/consent_service.py. Does not change registration
-    # behavior or what the user sees.
+    # Persist the exact policy version that was shown in the registration
+    # FSM. The handler prevents accepting a stale version after a deploy;
+    # this explicit value keeps the audit record tied to what the person
+    # actually saw instead of whatever version happens to be current later.
     await record_consent(
         session,
         user_id=user.id,
         consent_type="registration",
         granted=True,
         source="bot",
+        policy_version=str(data.get("consent_policy_version") or CURRENT_POLICY_VERSION),
     )
     await assign_interests(
         session,
