@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { TabKey } from "../components/BottomNavigation";
 import { useAuth } from "../hooks/useAuth";
 import { AdminLayout } from "../layouts/AdminLayout";
@@ -27,51 +27,90 @@ interface DeepLink {
   itemId: number | null;
 }
 
+const TAB_HASH: Record<TabKey, string> = {
+  home: "#/home",
+  projects: "#/projects",
+  events: "#/events",
+  community: "#/community",
+  profile: "#/profile",
+};
+
+function parseOptionalId(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function parseDeepLink(): DeepLink | null {
   const hash = window.location.hash;
 
-  const projectMatch = hash.match(/^#\/(?:admin\/)?projects\/(\d+)/);
+  const projectMatch = hash.match(/^#\/(?:admin\/)?projects\/(\d+)\/?$/);
   if (projectMatch) {
-    const projectId = Number(projectMatch[1]);
-    if (Number.isFinite(projectId)) {
+    const projectId = parseOptionalId(projectMatch[1]);
+    if (projectId !== null) {
       return { tab: "projects", projectId, activitySection: null, communitySection: null, itemId: null };
     }
   }
-  if (hash.match(/^#\/projects\/?$/)) {
+  if (/^#\/projects\/?$/.test(hash)) {
     return { tab: "projects", projectId: null, activitySection: null, communitySection: null, itemId: null };
   }
 
-  const taskMatch = hash.match(/^#\/tasks(?:\/(\d+))?/);
-  if (taskMatch) {
-    const itemId = taskMatch[1] ? Number(taskMatch[1]) : null;
-    return { tab: "home", projectId: null, activitySection: "tasks", communitySection: null, itemId };
+  const activityMatch = hash.match(/^#\/(tasks|calendar|history)(?:\/(\d+))?\/?$/);
+  if (activityMatch) {
+    return {
+      tab: "home",
+      projectId: null,
+      activitySection: activityMatch[1] as LegacyActivitySection,
+      communitySection: null,
+      itemId: parseOptionalId(activityMatch[2]),
+    };
   }
 
-  const eventMatch = hash.match(/^#\/events(?:\/(\d+))?/);
+  const eventMatch = hash.match(/^#\/events(?:\/(\d+))?\/?$/);
   if (eventMatch) {
-    const itemId = eventMatch[1] ? Number(eventMatch[1]) : null;
-    return { tab: "events", projectId: null, activitySection: null, communitySection: null, itemId };
+    return {
+      tab: "events",
+      projectId: null,
+      activitySection: null,
+      communitySection: null,
+      itemId: parseOptionalId(eventMatch[1]),
+    };
   }
 
-  const opportunityMatch = hash.match(/^#\/opportunities(?:\/(\d+))?/);
-  if (opportunityMatch) {
-    const itemId = opportunityMatch[1] ? Number(opportunityMatch[1]) : null;
-    return { tab: "community", projectId: null, activitySection: null, communitySection: "opportunities", itemId };
+  const communityMatch = hash.match(/^#\/(opportunities|auctions|rewards|surveys)(?:\/(\d+))?\/?$/);
+  if (communityMatch) {
+    return {
+      tab: "community",
+      projectId: null,
+      activitySection: null,
+      communitySection: communityMatch[1] as CommunitySection,
+      itemId: parseOptionalId(communityMatch[2]),
+    };
   }
 
-  if (hash.match(/^#\/leaderboard/)) {
+  if (/^#\/leaderboard\/?$/.test(hash)) {
     return { tab: "community", projectId: null, activitySection: null, communitySection: "leaderboard", itemId: null };
   }
 
-  if (hash.match(/^#\/community/)) {
+  if (/^#\/community\/?$/.test(hash)) {
     return { tab: "community", projectId: null, activitySection: null, communitySection: null, itemId: null };
   }
 
-  if (hash.match(/^#\/profile/)) {
+  if (/^#\/profile\/?$/.test(hash)) {
     return { tab: "profile", projectId: null, activitySection: null, communitySection: null, itemId: null };
   }
 
+  if (/^#\/home\/?$/.test(hash)) {
+    return { tab: "home", projectId: null, activitySection: null, communitySection: null, itemId: null };
+  }
+
   return null;
+}
+
+function navigateToTab(tab: TabKey): void {
+  if (window.location.hash !== TAB_HASH[tab]) {
+    window.location.hash = TAB_HASH[tab];
+  }
 }
 
 function renderTab(
@@ -86,12 +125,7 @@ function renderTab(
 ) {
   if (tab === "home") {
     if (isDeepLinkedTab && initialActivitySection) {
-      return (
-        <ActivityScreen
-          initialSection={initialActivitySection}
-          initialItemId={initialItemId}
-        />
-      );
+      return <ActivityScreen initialSection={initialActivitySection} initialItemId={initialItemId} />;
     }
     return (
       <HomeScreen
@@ -124,10 +158,30 @@ function renderTab(
 
 export function App() {
   const auth = useAuth();
-  const [deepLink] = useState<DeepLink | null>(() => parseDeepLink());
-  const initialProjectId = deepLink?.projectId ?? null;
+  const [deepLink, setDeepLink] = useState<DeepLink | null>(() => parseDeepLink());
   const [activeTab, setActiveTab] = useState<TabKey>(deepLink?.tab ?? "home");
   const [inWorkspace, setInWorkspace] = useState(true);
+
+  useEffect(() => {
+    const syncFromHash = () => {
+      const next = parseDeepLink();
+      setDeepLink(next);
+      setActiveTab(next?.tab ?? "home");
+    };
+    window.addEventListener("hashchange", syncFromHash);
+    window.addEventListener("popstate", syncFromHash);
+    return () => {
+      window.removeEventListener("hashchange", syncFromHash);
+      window.removeEventListener("popstate", syncFromHash);
+    };
+  }, []);
+
+  const handleTabChange = (tab: TabKey) => {
+    setActiveTab(tab);
+    navigateToTab(tab);
+  };
+
+  const initialProjectId = deepLink?.projectId ?? null;
 
   if (auth.status === "loading") {
     return null;
@@ -162,7 +216,7 @@ export function App() {
   }
 
   return (
-    <UserLayout activeTab={activeTab} onTabChange={setActiveTab}>
+    <UserLayout activeTab={activeTab} onTabChange={handleTabChange}>
       {activeTab === "profile" ? (
         <ProfileScreen
           isAdmin={user.is_admin}
@@ -178,7 +232,7 @@ export function App() {
           deepLink?.communitySection ?? null,
           deepLink?.itemId ?? null,
           deepLink?.tab === activeTab,
-          setActiveTab,
+          handleTabChange,
         )
       )}
     </UserLayout>

@@ -56,19 +56,39 @@ function toOpportunitySection(section: CommunitySection): OpportunitiesSection |
   return undefined;
 }
 
+function sectionHash(section: CommunitySection): string {
+  return section === "leaderboard" ? "#/leaderboard" : `#/${section}`;
+}
+
 export function CommunityScreen({ initialSection = null, initialItemId = null }: CommunityScreenProps) {
-  const [section, setSection] = useState<CommunitySection | null>(initialSection);
+  // Local state only exists for isolated previews/tests without a hash. In
+  // the real Mini App App.tsx owns hash routing, so URL + browser/Telegram
+  // history are the single source of truth and cannot drift from this view.
+  const [fallbackSection, setFallbackSection] = useState<CommunitySection | null>(initialSection);
+  const hasRouteHash = window.location.hash.startsWith("#/");
+  const section = hasRouteHash ? initialSection : initialSection ?? fallbackSection;
+
+  const openSection = (next: CommunitySection) => {
+    setFallbackSection(next);
+    const hash = sectionHash(next);
+    if (window.location.hash !== hash) window.location.hash = hash;
+  };
+
+  const backToCommunity = () => {
+    setFallbackSection(null);
+    if (window.location.hash !== "#/community") window.location.hash = "#/community";
+  };
 
   if (section === "leaderboard") {
-    return <LeaderboardScreen onBack={() => setSection(null)} />;
+    return <LeaderboardScreen onBack={backToCommunity} />;
   }
 
   if (section) {
     return (
       <OpportunitiesScreen
         initialSection={toOpportunitySection(section)}
-        initialItemId={section === "opportunities" ? initialItemId : null}
-        onBack={() => setSection(null)}
+        initialItemId={initialItemId}
+        onBack={backToCommunity}
       />
     );
   }
@@ -123,7 +143,7 @@ export function CommunityScreen({ initialSection = null, initialItemId = null }:
             title={label}
             description={description}
             leading={<Icon width={21} height={21} />}
-            onClick={() => setSection(value)}
+            onClick={() => openSection(value)}
           />
         ))}
       </div>

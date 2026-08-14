@@ -200,29 +200,28 @@ class SystemWideAuditTests(unittest.TestCase):
         ]
         self.assertFalse(failures, "Participant legacy router order changed:\n" + "\n".join(failures))
 
-    def test_modern_admin_routers_precede_legacy_panel_overlaps(self) -> None:
+    def test_modern_admin_routers_are_wired_and_legacy_panel_is_removed(self) -> None:
         admin = read(APP / "handlers" / "admin" / "__init__.py")
-        order_pairs = [
-            ("dashboard_block_a.router", "panel.router"),
-            ("task_review_block2.router", "panel.router"),
-            ("rights_block6.router", "panel.router"),
-            ("user_profile_block3_safe.router", "panel.router"),
-            ("projects_block5_list.router", "panel.router"),
-            ("projects_block5_decision.router", "panel.router"),
-            ("events_block6.router", "panel.router"),
-            ("event_registration_block14.router", "panel.router"),
-            ("event_activities_stability.router", "panel.router"),
-            ("auction_block17.router", "panel.router"),
-            ("partner_offers_block16.router", "panel.router"),
-            ("approval_bonus_fix.router", "panel.router"),
-            ("chat_binding_stability.router", "panel.router"),
+        required = [
+            "dashboard_block_a.router",
+            "task_review_block2.router",
+            "rights_block6.router",
+            "user_profile_block3_safe.router",
+            "projects_block5_list.router",
+            "projects_block5_decision.router",
+            "events_block6.router",
+            "event_registration_block14.router",
+            "event_activities_stability.router",
+            "auction_block17.router",
+            "partner_offers_block16.router",
+            "approval_bonus_fix.router",
+            "chat_binding_stability.router",
+            "offices_management.router",
         ]
-        failures = [
-            f"{newer} must be before {legacy}"
-            for newer, legacy in order_pairs
-            if admin.index(newer) > admin.index(legacy)
-        ]
-        self.assertFalse(failures, "Admin legacy router order changed:\n" + "\n".join(failures))
+        missing = [router for router in required if router not in admin]
+        self.assertFalse(missing, "Modern admin routers are not wired: " + ", ".join(missing))
+        self.assertNotIn("panel.router", admin)
+        self.assertNotIn("panel,", admin)
 
     def test_modern_leader_routers_precede_legacy_panel_overlaps(self) -> None:
         leader = read(APP / "handlers" / "leader" / "__init__.py")

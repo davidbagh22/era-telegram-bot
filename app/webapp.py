@@ -28,6 +28,7 @@ from app.request_context import RequestIDLogFilter, new_request_id, request_id_v
 from app.services.ai_service import AIService
 from app.services.scheduler_service import create_scheduler
 from app.services.seed_service import seed_reference_data
+from app.services.system_scheduler import add_system_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +199,7 @@ async def lifespan(app: FastAPI):
 
     app.state.ai_service = AIService(settings)
     scheduler = create_scheduler(bot, settings, session_factory)
+    add_system_jobs(scheduler, bot, settings, session_factory)
     scheduler.start()
     app.state.scheduler = scheduler
     app.state.bot_diagnostics = {"error": "webhook_not_configured"}

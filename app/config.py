@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     init_data_max_age_seconds: int = 3600
     miniapp_url: str = ""
     miniapp_auth_secret: str = ""
+    # Shared only between the production API and the GitHub backup workflow.
+    # It authenticates metadata callbacks; backup bytes and DB credentials are
+    # never accepted by the HTTP endpoint.
+    backup_report_secret: str = ""
     bot_username: str = ""
     database_url: str = "postgresql+asyncpg://era:era@db:5432/era"
     redis_url: str = "redis://redis:6379/0"
@@ -61,7 +65,13 @@ class Settings(BaseSettings):
             return value.replace("postgresql://", "postgresql+asyncpg://", 1)
         return value
 
-    @field_validator("bot_token", "miniapp_auth_secret", "webhook_secret", mode="before")
+    @field_validator(
+        "bot_token",
+        "miniapp_auth_secret",
+        "webhook_secret",
+        "backup_report_secret",
+        mode="before",
+    )
     @classmethod
     def strip_secret_whitespace(cls, value: object) -> object:
         # A trailing newline/space pasted into a Render env var is an easy,
