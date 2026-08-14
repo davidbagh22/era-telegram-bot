@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, patch
 from app import bot as bot_module
 from app.handlers import chat, emergency
 from app.handlers.leader import events_block6
+from app.handlers.participant.event_activities_block15 import ActivityProofStates
+from app.states.growth import TaskSubmissionStates
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, Role
 
@@ -75,6 +77,7 @@ class FsmRecoveryTests(unittest.IsolatedAsyncioTestCase):
                 approved_user(),
                 SimpleNamespace(era_channel_url="https://t.me/example"),
                 state,
+                SimpleNamespace(),
             )
         self.assertEqual(state.clear_count, 1)
         send_menu.assert_awaited_once()
@@ -93,6 +96,7 @@ class FsmRecoveryTests(unittest.IsolatedAsyncioTestCase):
                 approved_user(),
                 SimpleNamespace(era_channel_url="https://t.me/example"),
                 state,
+                SimpleNamespace(),
             )
         self.assertEqual(state.clear_count, 1)
 
@@ -232,12 +236,66 @@ class FsmRecoveryTests(unittest.IsolatedAsyncioTestCase):
             effective_miniapp_url="https://era-telegram-bot.onrender.com/app/",
         )
         with patch.object(emergency, "_subscription_ok", AsyncMock(return_value=True)):
-            await emergency.rescue_start(message, FakeBot(), approved_user(), settings, state)
+            await emergency.rescue_start(
+                message, FakeBot(), approved_user(), settings, state, SimpleNamespace()
+            )
         markup = message.answers[-1][1]["reply_markup"]
         buttons = [button for row in markup.inline_keyboard for button in row]
         miniapp_button = next((b for b in buttons if b.text == "🔥 Открыть ЭРА"), None)
         self.assertIsNotNone(miniapp_button, "Mini App button missing from the real /start reply")
         self.assertEqual(miniapp_button.web_app.url, settings.effective_miniapp_url)
+
+    async def test_rescue_start_real_task_submission_deep_link_reaches_fsm(self):
+        # Regression test for the deep-link-swallowing bug: rescue_start --
+        # not start.py's start() -- is what a real "/start task_submit_<id>"
+        # notification link actually reaches in production (see
+        # test_emergency_router_is_first below). Before this fix,
+        # rescue_start took no `command` parameter and did no deep-link
+        # parsing at all, so the link silently fell through to the plain
+        # home screen instead of the task submission prompt.
+        state = FakeState()
+        message = FakeMessage("/start")
+        command = SimpleNamespace(args="task_submit_7")
+        task = SimpleNamespace(id=7, title="Собрать отчёт", status="in_progress", assignee_id=1)
+        session = SimpleNamespace(get=AsyncMock(return_value=task))
+        settings = SimpleNamespace(era_channel_url="https://t.me/example")
+        with patch.object(emergency, "_subscription_ok", AsyncMock(return_value=True)):
+            await emergency.rescue_start(
+                message, FakeBot(), approved_user(), settings, state, session, command
+            )
+        self.assertEqual(state.current, TaskSubmissionStates.result)
+        self.assertEqual(state.data.get("task_id"), 7)
+        self.assertIn("Собрать отчёт", message.answers[-1][0])
+
+    async def test_rescue_start_real_activity_submission_deep_link_reaches_fsm(self):
+        # Same regression, for the Mini App Event Activities hand-off link
+        # ("/start activity_submit_<id>").
+        state = FakeState()
+        message = FakeMessage("/start")
+        command = SimpleNamespace(args="activity_submit_9")
+        activity = SimpleNamespace(
+            id=9,
+            is_active=True,
+            event_id=3,
+            submission_type="text",
+            title="Отзыв",
+            description="Поделитесь впечатлениями",
+            points=5,
+        )
+        session = SimpleNamespace(
+            get=AsyncMock(return_value=activity),
+            scalar=AsyncMock(return_value=SimpleNamespace()),
+        )
+        settings = SimpleNamespace(era_channel_url="https://t.me/example")
+        with patch.object(emergency, "_subscription_ok", AsyncMock(return_value=True)), patch.object(
+            emergency.event_activity_service, "get_submission", AsyncMock(return_value=None)
+        ):
+            await emergency.rescue_start(
+                message, FakeBot(), approved_user(), settings, state, session, command
+            )
+        self.assertEqual(state.current, ActivityProofStates.proof)
+        self.assertEqual(state.data.get("activity_id"), 9)
+        self.assertIn("Отзыв", message.answers[-1][0])
 
     def test_emergency_router_is_first(self):
         source = inspect.getsource(bot_module.create_dispatcher)

@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from app.handlers.start import _try_start_task_submission_from_deep_link
+from app.handlers.emergency import _try_start_task_submission_from_deep_link
 from app.states.growth import TaskSubmissionStates
 from app.utils.deep_links import (
     miniapp_admin_project_url,
