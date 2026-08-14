@@ -8,9 +8,11 @@ from app.handlers.emergency import _try_start_task_submission_from_deep_link
 from app.states.growth import TaskSubmissionStates
 from app.utils.deep_links import (
     miniapp_admin_project_url,
+    miniapp_community_url,
     miniapp_path_url,
     miniapp_project_application_url,
     miniapp_project_url,
+    miniapp_projects_url,
     parse_task_submit_payload,
     task_submit_deep_link,
 )
@@ -49,6 +51,16 @@ class DeepLinkHelperTests(unittest.TestCase):
         self.assertEqual(
             miniapp_path_url("https://era.example/app", "projects/7/tasks/3", {"tab": "tasks"}),
             "https://era.example/app/#/projects/7/tasks/3?tab=tasks",
+        )
+
+    def test_miniapp_top_level_deep_links_use_hash_routes(self) -> None:
+        self.assertEqual(
+            miniapp_projects_url("https://era.example/app"),
+            "https://era.example/app/#/projects",
+        )
+        self.assertEqual(
+            miniapp_community_url("https://era.example/app"),
+            "https://era.example/app/#/community",
         )
 
 

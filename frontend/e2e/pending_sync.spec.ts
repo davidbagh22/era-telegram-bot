@@ -62,7 +62,7 @@ test("a pending applicant's Mini App updates itself after admin approval, withou
     await applicantPage.getByRole("button", { name: "Проверить сейчас" }).click();
 
     await expect(
-      applicantPage.getByRole("heading", { name: "Привет, E2E Sync Applicant" }),
+      applicantPage.getByRole("heading", { name: /E2E Sync Applicant, держим темп/ }),
     ).toBeVisible();
     await expect(
       applicantPage.getByRole("heading", { name: "Заявка на рассмотрении" }),

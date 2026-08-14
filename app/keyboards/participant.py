@@ -7,9 +7,11 @@ from aiogram.types import (
 )
 
 from app.utils.deep_links import (
+    miniapp_community_url,
     miniapp_events_url,
     miniapp_opportunities_url,
     miniapp_profile_url,
+    miniapp_projects_url,
     miniapp_tasks_url,
 )
 
@@ -83,27 +85,35 @@ def navigation_guide_keyboard(
     miniapp_url: str, admin: bool = False, privileged: bool = False
 ) -> InlineKeyboardMarkup:
     """Buttons under the "🧭 Навигация" bot message (2026-08 redesign
-    brief section 36) — direct WebApp deep links into the four screens the
-    message text describes, plus one extra row into the admin/leader
-    workspace when the user actually has one. Every button here just
-    opens the Mini App at a specific screen; none of them re-implement
-    that screen's content in the bot."""
+    brief section 36) — direct WebApp deep links into the five participant
+    areas plus quick task/opportunity shortcuts, and one extra row into
+    the admin/leader workspace when the user actually has one. Every
+    button here just opens the Mini App at a specific screen; none of
+    them re-implement that screen's content in the bot."""
     rows = [
         [
             InlineKeyboardButton(
-                text="📅 Мероприятия", web_app=WebAppInfo(url=miniapp_events_url(miniapp_url))
+                text="Проекты", web_app=WebAppInfo(url=miniapp_projects_url(miniapp_url))
             ),
             InlineKeyboardButton(
-                text="✅ Задачи", web_app=WebAppInfo(url=miniapp_tasks_url(miniapp_url))
+                text="События", web_app=WebAppInfo(url=miniapp_events_url(miniapp_url))
             ),
         ],
         [
             InlineKeyboardButton(
-                text="⭐ Возможности",
-                web_app=WebAppInfo(url=miniapp_opportunities_url(miniapp_url)),
+                text="Сообщество",
+                web_app=WebAppInfo(url=miniapp_community_url(miniapp_url)),
             ),
             InlineKeyboardButton(
-                text="👤 Профиль", web_app=WebAppInfo(url=miniapp_profile_url(miniapp_url))
+                text="Профиль", web_app=WebAppInfo(url=miniapp_profile_url(miniapp_url))
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="Мои задачи", web_app=WebAppInfo(url=miniapp_tasks_url(miniapp_url))
+            ),
+            InlineKeyboardButton(
+                text="Возможности", web_app=WebAppInfo(url=miniapp_opportunities_url(miniapp_url))
             ),
         ],
     ]

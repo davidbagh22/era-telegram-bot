@@ -5,23 +5,15 @@ const PARTICIPANT_TELEGRAM_ID = 900001;
 test("participant logs in, sees Home, and registers for the seeded event", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
 
-  await expect(page.getByRole("heading", { name: "Привет, E2E Participant" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /держим темп/ })).toBeVisible();
 
-  await page.getByRole("button", { name: "Активность" }).click();
-  await expect(page.getByRole("heading", { name: "Активность" })).toBeVisible();
-
-  // 2026-08 redesign brief section 16: "Активность" is a landing menu of
-  // action cards now, not the Events tab by default -- one extra tap.
-  await page.getByRole("button", { name: /Мероприятия/ }).click();
+  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "События" }).click();
+  await expect(page.getByRole("heading", { name: "События" })).toBeVisible();
 
   const eventCard = page.getByText("E2E тестовое мероприятие");
   await expect(eventCard).toBeVisible();
 
   await page.getByRole("button", { name: "Зарегистрироваться" }).click();
 
-  // A real registration through the full stack (API → event_service →
-  // DB), not a UI-only toggle — verified by the button switching to the
-  // cancel-registration label, which only renders when the freshly
-  // refetched event's registration_status is an active one.
   await expect(page.getByRole("button", { name: "Планы изменились" })).toBeVisible();
 });

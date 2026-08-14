@@ -34,7 +34,10 @@ test("admin creates and sends a survey; the participant answers it and the admin
     await expect(surveyCard.getByText("отправлен", { exact: true })).toBeVisible();
 
     await participantPage.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
-    await participantPage.getByRole("button", { name: "Возможности" }).click();
+    await participantPage
+      .getByRole("navigation", { name: "Основная навигация" })
+      .getByRole("button", { name: "Сообщество" })
+      .click();
     await participantPage.getByRole("button", { name: "Опросы" }).click();
 
     const participantCard = participantPage.locator(".era-card", { hasText: surveyTitle });

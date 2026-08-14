@@ -37,7 +37,10 @@ test("admin publishes a reward, the seeded participant redeems it, and the admin
     await expect(rewardCard).toBeVisible();
 
     await participantPage.goto(`/app/?devTelegramId=${REWARD_REDEEMER_TELEGRAM_ID}`);
-    await participantPage.getByRole("button", { name: "Возможности" }).click();
+    await participantPage
+      .getByRole("navigation", { name: "Основная навигация" })
+      .getByRole("button", { name: "Сообщество" })
+      .click();
     await participantPage.getByRole("button", { name: "Каталог" }).click();
 
     const participantCard = participantPage.locator(".era-card", { hasText: rewardName });
