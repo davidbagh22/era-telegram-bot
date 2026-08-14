@@ -30,8 +30,11 @@ from app.services.general_chat_content_service import (
 router = APIRouter(prefix="/admin/autocontent", tags=["admin-autocontent"])
 
 
-async def require_admin(user: User = Depends(get_current_user)) -> User:
-    if not is_full_admin(user):
+async def require_admin(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    if not is_full_admin(user, settings, user.telegram_id):
         raise HTTPException(status_code=403, detail="admin_access_required")
     return user
 
