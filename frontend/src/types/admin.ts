@@ -331,6 +331,27 @@ export interface ChatGreetingItem {
   is_bound: boolean;
 }
 
+// Chat Infrastructure Registry — one row per org chat, combining binding
+// (app/services/chat_access_service.py), the greeting toggle above, and
+// recent send/error history from the audit log. See
+// app/services/chat_registry_service.py.
+export interface ChatRegistryItem {
+  chat_key: string;
+  title: string;
+  chat_id: number | null;
+  is_bound: boolean;
+  permission_description: string;
+  greeting_enabled: boolean | null;
+  last_sent_at: string | null;
+  last_error_at: string | null;
+}
+
+export interface ChatHealthResult {
+  chat_key: string;
+  ok: boolean;
+  detail: string;
+}
+
 // Mini App equivalent of the bot's "📨 Рассылка в личные сообщения" and
 // "📣 Сообщение в выбранные чаты" flows — see app/services/admin_broadcast_service.py.
 export type BroadcastAudience = "all" | "role" | "department" | "direction" | "age" | "city";

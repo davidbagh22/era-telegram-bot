@@ -85,7 +85,9 @@ from app.services.authorization_service import (
     can_view_people,
     is_full_admin,
 )
+from app.services.audit_service import audit
 from app.services.chat_access_service import sync_user_chat_access
+from app.services.chat_registry_service import check_chats_health, list_chat_registry
 from app.services.excel_service import build_analytics_workbook
 from app.services.maintenance_service import (
     CONFIRMATION_PHRASE,
@@ -559,9 +561,69 @@ async def send_chat_broadcast_endpoint(
     try:
         await send_chat_broadcast(bot, settings, session, chat_key=payload.chat_key, text=payload.text, actor_id=admin.id)
     except BroadcastError as exc:
+        if exc.code == "delivery_failed":
+            # send_chat_broadcast() already staged a chat.broadcast_failed
+            # audit row for the Chat Registry's "last error" column before
+            # raising -- commit it now, or get_session's request-scope
+            # rollback (triggered by the HTTPException below) would erase
+            # it along with everything else in this failed request.
+            await session.commit()
         code = 404 if exc.code == "chat_not_bound" else 422
         raise HTTPException(status_code=code, detail=exc.code) from exc
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Chat Infrastructure Registry (2026-08 master spec section 30) -- one
+# screen for the 4 org chats' binding/permissions/greeting state and
+# recent send history, plus a read-only-until-pressed Telegram health
+# check. See app/services/chat_registry_service.py.
+class ChatRegistryOut(BaseModel):
+    chat_key: str
+    title: str
+    chat_id: int | None
+    is_bound: bool
+    permission_description: str
+    greeting_enabled: bool | None
+    last_sent_at: datetime | None
+    last_error_at: datetime | None
+
+
+@router.get("/chats", response_model=list[ChatRegistryOut])
+async def read_chat_registry(
+    _admin: User = Depends(require_dashboard_access),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+) -> list[ChatRegistryOut]:
+    return [ChatRegistryOut(**entry.__dict__) for entry in await list_chat_registry(session, settings)]
+
+
+class ChatHealthOut(BaseModel):
+    chat_key: str
+    ok: bool
+    detail: str
+
+
+@router.post("/chats/health-check", response_model=list[ChatHealthOut])
+async def run_chats_health_check(
+    admin: User = Depends(require_dashboard_access),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> list[ChatHealthOut]:
+    if bot is None:
+        raise HTTPException(status_code=503, detail="bot_unavailable")
+    results = await check_chats_health(bot, settings)
+    await audit(
+        session,
+        actor_id=admin.id,
+        action="chats.health_check_run",
+        entity_type="chat",
+        entity_id=None,
+        new_value={"results": {r.chat_key: r.ok for r in results}},
+    )
+    return [ChatHealthOut(chat_key=r.chat_key, ok=r.ok, detail=r.detail) for r in results]
 
 
 class ApplicationOut(BaseModel):

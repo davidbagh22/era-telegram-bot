@@ -17,6 +17,8 @@ import type {
   BroadcastAudienceOptions,
   ChatBroadcastKey,
   ChatGreetingItem,
+  ChatHealthResult,
+  ChatRegistryItem,
   DashboardData,
   DepartmentStructureItem,
   EventActivityAdmin,
@@ -582,6 +584,14 @@ export function updateChatGreetingText(greetingId: number, text: string): Promis
 
 export function toggleChatGreeting(greetingId: number): Promise<ChatGreetingItem> {
   return authorizedPost<ChatGreetingItem>(`/api/v1/admin/chat-greetings/${greetingId}/toggle`);
+}
+
+export function fetchChatRegistry(): Promise<ChatRegistryItem[]> {
+  return authorizedGet<ChatRegistryItem[]>("/api/v1/admin/chats");
+}
+
+export function runChatsHealthCheck(): Promise<ChatHealthResult[]> {
+  return authorizedPost<ChatHealthResult[]>("/api/v1/admin/chats/health-check");
 }
 
 export function fetchBroadcastAudienceOptions(): Promise<BroadcastAudienceOptions> {
