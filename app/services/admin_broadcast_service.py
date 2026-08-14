@@ -169,6 +169,22 @@ async def send_chat_broadcast(
         raise BroadcastError("chat_not_bound")
     ok = await safe_send(bot, chat_id, text)
     if not ok:
+        # Was silently dropped before (2026-08 chat infrastructure audit,
+        # docs/SYSTEM_FLOW_MATRIX.md) -- the registry's "last error" column
+        # needs a real audit trail to read from, not just the admin's own
+        # in-the-moment error toast. Staged here, not committed -- the
+        # caller (app/api/v1/admin.py's send_chat_broadcast_endpoint) must
+        # commit it explicitly before the BroadcastError propagates out of
+        # get_session's request scope, which would otherwise roll it back
+        # along with everything else in this failed request.
+        await audit(
+            session,
+            actor_id=actor_id,
+            action="chat.broadcast_failed",
+            entity_type="chat",
+            entity_id=None,
+            new_value={"chat": chat_key},
+        )
         raise BroadcastError("delivery_failed")
     await audit(
         session,
