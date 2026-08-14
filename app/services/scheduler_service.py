@@ -20,6 +20,7 @@ from app.database.models import (
 from app.keyboards.admin import project_review_actions
 from app.services.birthday_service import send_birthday_greetings
 from app.services.event_service import event_datetime
+from app.services.general_chat_content_service import run_scheduled_slot
 from app.services.notification_service import (
     BroadcastResult,
     admin_notification_recipients,
@@ -301,6 +302,23 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
         await session.commit()
 
 
+async def send_general_content_morning(bot: Bot, settings: Settings, session_factory) -> None:
+    await run_scheduled_slot(bot, settings, session_factory, "morning")
+
+
+async def send_general_content_evening(bot: Bot, settings: Settings, session_factory) -> None:
+    await run_scheduled_slot(bot, settings, session_factory, "evening")
+
+
+async def recover_general_content(bot: Bot, settings: Settings, session_factory) -> None:
+    """Recover only today's due slots; idempotency prevents any restart flood."""
+    now = datetime.now(ZoneInfo(settings.timezone))
+    if (now.hour, now.minute) >= (9, 0):
+        await run_scheduled_slot(bot, settings, session_factory, "morning", now=now)
+    if (now.hour, now.minute) >= (18, 0):
+        await run_scheduled_slot(bot, settings, session_factory, "evening", now=now)
+
+
 def create_scheduler(bot: Bot, settings: Settings, session_factory) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=settings.timezone)
     scheduler.add_job(
@@ -356,8 +374,42 @@ def create_scheduler(bot: Bot, settings: Settings, session_factory) -> AsyncIOSc
         max_instances=1,
         coalesce=True,
     )
+    scheduler.add_job(
+        send_general_content_morning,
+        "cron",
+        hour=9,
+        minute=0,
+        args=(bot, settings, session_factory),
+        id="general-content-morning",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        send_general_content_evening,
+        "cron",
+        hour=18,
+        minute=0,
+        args=(bot, settings, session_factory),
+        id="general-content-evening",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        recover_general_content,
+        "interval",
+        minutes=30,
+        args=(bot, settings, session_factory),
+        id="general-content-recovery",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    # The old Monday post to the general chat is intentionally gone: the new
+    # editorial system guarantees at most two automatic ritual messages there.
+    # Department and leaders chat nudges remain separate operational comms.
     weekly_targets = (
-        (settings.general_chat_id, WEEKLY_MESSAGES["general"], "weekly-general"),
         (
             settings.internal_department_chat_id,
             WEEKLY_MESSAGES["internal"],
