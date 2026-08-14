@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -152,7 +153,7 @@ class TeamPostApiTests(unittest.TestCase):
             response = client.post("/api/v1/admin/projects/20/team-post/publish")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "published")
-        self.assertEqual(safe_send_mock.await_count, 2)  # general chat + author
+        self.assertEqual(safe_send_mock.await_count, 2)
 
 
 class EventOperationsApiTests(unittest.TestCase):
@@ -297,7 +298,9 @@ class EventOperationsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         keyboard = safe_send_mock.await_args.args[3]
         url = keyboard.inline_keyboard[0][0].web_app.url
-        self.assertEqual(url, "https://era.example/app/#/events/1")
+        parsed = urlsplit(url)
+        self.assertEqual(parsed.fragment, "")
+        self.assertEqual(parse_qs(parsed.query).get("eraPath"), ["events/1"])
 
 
 class PartnerCatalogApiTests(unittest.TestCase):
@@ -381,8 +384,7 @@ class OfferCatalogApiTests(unittest.TestCase):
             "app.api.v1.admin.opportunity_service.create_offer", new=AsyncMock(return_value=offer)
         ):
             response = client.post(
-                "/api/v1/admin/offers",
-                json={"partner_id": 1, "title": "T", "description": "d", "point_cost": 10},
+                "/api/v1/admin/offers", json={"partner_id": 1, "title": "T", "description": "d", "point_cost": 10},
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["title"], "T")
