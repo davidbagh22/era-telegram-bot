@@ -4,30 +4,18 @@ interface PillTabsProps<T extends string> {
   onChange: (value: T) => void;
 }
 
-// Scrollable sibling of SegmentedTabs — same filled-track family (see
-// tokens.css's era-pilltabs-scroller and SegmentedTabs.tsx), used where
-// the option list is too long to fit as fixed equal segments (e.g.
-// OpportunitiesScreen's 7 scopes, ProjectWorkspace's 7 tabs). The track
-// background plus a right-edge fade mask (era-pilltabs-fade) reads as
-// "this scrolls, and it's one control" instead of a loose row of pills
-// floating on the page with a bare native scrollbar underneath.
+/**
+ * Legacy-compatible local selector. It intentionally wraps instead of
+ * scrolling horizontally; primary navigation should use ActionCell.
+ */
 export function PillTabs<T extends string>({ options, active, onChange }: PillTabsProps<T>) {
   return (
     <div
-      className="era-pilltabs-scroller era-pilltabs-fade"
       style={{
-        display: "flex",
-        gap: "0.25rem",
-        overflowX: "auto",
-        padding: "0.25rem",
-        background: "var(--era-surface-2)",
-        borderRadius: "var(--era-radius-pill)",
-        // Without this, a flex item's default min-width is its content's
-        // width, not 0 — with enough pills (OpportunitiesScreen has 7),
-        // that's wider than a narrow phone, and since nothing here shrinks
-        // it, the demand propagates up through every ancestor flex
-        // container instead of staying contained by overflowX above.
-        // Found by frontend/e2e/responsive.spec.ts at 320/360px.
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(8.5rem, 1fr))",
+        gap: "0.5rem",
+        width: "100%",
         minWidth: 0,
       }}
     >
@@ -38,20 +26,21 @@ export function PillTabs<T extends string>({ options, active, onChange }: PillTa
             key={option.value}
             type="button"
             onClick={() => onChange(option.value)}
+            aria-current={isActive ? "page" : undefined}
             style={{
-              flexShrink: 0,
-              minHeight: "auto",
-              padding: "0.5rem 0.75rem",
-              border: "none",
-              borderRadius: "var(--era-radius-pill)",
-              background: isActive ? "var(--era-gradient)" : "transparent",
-              color: isActive ? "#fff" : "var(--era-text-muted)",
-              fontSize: "0.8125rem",
-              fontWeight: isActive ? 700 : 600,
-              fontFamily: "var(--era-font-body)",
-              boxShadow: isActive ? "0 4px 14px rgba(116, 44, 196, 0.3)" : "none",
-              whiteSpace: "nowrap",
-              transition: "background var(--era-motion-fast), color var(--era-motion-fast), box-shadow var(--era-motion-fast)",
+              minWidth: 0,
+              width: "100%",
+              minHeight: "2.75rem",
+              padding: "0.625rem 0.75rem",
+              border: `1px solid ${isActive ? "rgba(120, 61, 255, 0.55)" : "var(--era-border)"}`,
+              borderRadius: "var(--era-radius-control)",
+              background: isActive
+                ? "linear-gradient(135deg, rgba(120,61,255,0.2), rgba(227,59,73,0.1)), var(--era-surface)"
+                : "var(--era-surface)",
+              color: isActive ? "var(--era-text)" : "var(--era-text-muted)",
+              fontSize: "var(--era-text-sm)",
+              fontWeight: isActive ? 800 : 600,
+              overflowWrap: "anywhere",
             }}
           >
             {option.label}
