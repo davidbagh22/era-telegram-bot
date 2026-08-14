@@ -4,10 +4,15 @@ import io
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.v1.admin_applications import FullApplicationOut, _load_photo_data_url
 from app.api.v1.router import api_router
+from app.config import Settings
 
 
 class FullAdminApplicationViewTests(unittest.IsolatedAsyncioTestCase):
@@ -43,33 +48,76 @@ class FullAdminApplicationViewTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(required.issubset(fields))
         self.assertNotIn("photo_file_id", fields)
 
-    def test_full_route_precedes_legacy_compact_route(self) -> None:
-        # Test endpoint registration order rather than the router's internal
-        # rendered path string: FastAPI can rewrite prefixes during nested
-        # include_router calls, while first-match ordering is what determines
-        # which GET implementation serves Admin Mode.
-        get_routes = [
-            route
-            for route in api_router.routes
-            if "GET" in (getattr(route, "methods", None) or set())
-        ]
-        full_indexes = [
-            index
-            for index, route in enumerate(get_routes)
-            if getattr(getattr(route, "endpoint", None), "__module__", "")
-            == "app.api.v1.admin_applications"
-        ]
-        compact_indexes = [
-            index
-            for index, route in enumerate(get_routes)
-            if getattr(getattr(route, "endpoint", None), "__module__", "")
-            == "app.api.v1.admin"
-            and getattr(getattr(route, "endpoint", None), "__name__", "")
-            == "read_applications"
-        ]
-        self.assertEqual(len(full_indexes), 1)
-        if compact_indexes:
-            self.assertLess(full_indexes[0], compact_indexes[0])
+    def test_http_endpoint_serves_full_application_contract(self) -> None:
+        app = FastAPI()
+        app.include_router(api_router)
+        admin = SimpleNamespace(
+            id=1,
+            telegram_id=555,
+            role="admin",
+            is_blocked=False,
+            is_archived=False,
+            permission_grants=[],
+        )
+        pending = SimpleNamespace(id=42)
+        rows = SimpleNamespace(all=lambda: [pending])
+        session = SimpleNamespace(scalars=AsyncMock(return_value=rows))
+
+        async def _session_override():
+            yield session
+
+        app.dependency_overrides[get_current_user] = lambda: admin
+        app.dependency_overrides[get_session] = _session_override
+        app.dependency_overrides[get_settings] = lambda: Settings(
+            bot_token="1234567890:test-token"
+        )
+        app.dependency_overrides[get_bot] = lambda: None
+
+        full = FullApplicationOut(
+            id=42,
+            telegram_id=777001,
+            username="pending_member",
+            first_name="Новый",
+            last_name="Участник",
+            birth_date="2000-01-01",
+            age=26,
+            phone="+37400000000",
+            email="member@example.test",
+            city="Ереван",
+            education_work="Университет",
+            occupation="Студент",
+            skills=["Организация"],
+            experience="Волонтёрство",
+            motivation="Хочу развиваться в ЭРА",
+            available_time="3–5 часов в неделю",
+            desired_path="Активист",
+            departments=["Внутренние связи"],
+            directions=["Культура"],
+            social_links=[{"platform": "Telegram", "url": "https://t.me/pending_member"}],
+            personal_data_consent=True,
+            consent_policy_version="era-personal-data-v1",
+            application_status="pending",
+            photo_attached=True,
+            photo_data_url="data:image/jpeg;base64,ZmFrZQ==",
+            created_at="2026-08-15T00:00:00+00:00",
+        )
+
+        with patch(
+            "app.api.v1.admin_applications._application_out",
+            new=AsyncMock(return_value=full),
+        ) as application_out:
+            response = TestClient(app).get("/api/v1/admin/applications")
+
+        self.assertEqual(response.status_code, 200)
+        application_out.assert_awaited_once()
+        payload = response.json()[0]
+        self.assertEqual(payload["phone"], "+37400000000")
+        self.assertEqual(payload["departments"], ["Внутренние связи"])
+        self.assertEqual(payload["directions"], ["Культура"])
+        self.assertTrue(payload["personal_data_consent"])
+        self.assertTrue(payload["photo_attached"])
+        self.assertTrue(payload["photo_data_url"].startswith("data:image/jpeg;base64,"))
+        self.assertNotIn("photo_file_id", payload)
 
     async def test_photo_is_embedded_without_exposing_telegram_file_id(self) -> None:
         bot = AsyncMock()
