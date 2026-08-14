@@ -14,9 +14,18 @@ test("admin enters separate management workspace and approves a pending applican
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: "Люди" }).click();
   await page.getByRole("button", { name: "Заявки" }).click();
-  await expect(page.getByText("E2E Pending Applicant")).toBeVisible();
-  await page.locator(".era-card", { hasText: "E2E Pending Applicant" }).getByRole("button", { name: "Одобрить" }).click();
-  await expect(page.getByText("E2E Pending Applicant")).not.toBeVisible();
+
+  const application = page.locator(".era-card", { hasText: "E2E Pending Applicant" });
+  await expect(application).toBeVisible();
+  await expect(application.getByText("Личные данные", { exact: true })).toBeVisible();
+  await expect(application.getByText("Контакты", { exact: true })).toBeVisible();
+  await expect(application.getByText("Учёба и деятельность", { exact: true })).toBeVisible();
+  await expect(application.getByText("Интерес к ЭРА", { exact: true })).toBeVisible();
+  await expect(application.getByText("Мотивация", { exact: true })).toBeVisible();
+  await expect(application.getByText("Согласие и подача", { exact: true })).toBeVisible();
+
+  await application.getByRole("button", { name: "Одобрить" }).click();
+  await expect(page.locator(".era-card", { hasText: "E2E Pending Applicant" })).not.toBeVisible();
 });
 
 test("admin control has analytics system and maintenance as separate destinations", async ({ page }) => {
