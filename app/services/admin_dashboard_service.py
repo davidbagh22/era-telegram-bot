@@ -10,6 +10,7 @@ from app.database.models import (
     DepartmentApplication,
     Event,
     EventActivitySubmission,
+    EventRegistration,
     PortfolioItem,
     Project,
     Report,
@@ -19,7 +20,14 @@ from app.database.models import (
     User,
     UserQuestion,
 )
-from app.utils.constants import ApplicationStatus, EventStatus, ProjectStatus, Role, TaskStatus
+from app.utils.constants import (
+    ApplicationStatus,
+    EventStatus,
+    ProjectStatus,
+    RegistrationStatus,
+    Role,
+    TaskStatus,
+)
 
 ATTENTION_KEYS = (
     "users_pending",
@@ -36,9 +44,6 @@ ATTENTION_KEYS = (
 
 
 def has_dashboard_access(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    """Mirrors app/handlers/admin/dashboard_block_a.py::_is_admin — any
-    active permission grant (not just the admin role) unlocks the
-    dashboard, matching the Bot's existing rule exactly."""
     return bool(
         telegram_id in settings.admin_ids
         or (user and user.role == Role.ADMIN and not user.is_blocked)
@@ -65,9 +70,7 @@ class DashboardMetrics:
 
 
 async def dashboard_metrics(session: AsyncSession) -> DashboardMetrics:
-    """Mirrors app/handlers/admin/dashboard_block_a.py::_metrics exactly —
-    single source of truth for both the Bot panel and the Mini App
-    dashboard."""
+    """Live Command Center counters. Every number maps to a real entity list."""
     values = {
         "users_total": await _count(session, User, User.is_archived.is_(False)),
         "users_approved": await _count(
@@ -113,6 +116,22 @@ async def dashboard_metrics(session: AsyncSession) -> DashboardMetrics:
                     EventStatus.ACTIVE,
                 ]
             ),
+        ),
+        "event_registrations": await _count(
+            session,
+            EventRegistration,
+            EventRegistration.status.in_(
+                [
+                    RegistrationStatus.REGISTERED,
+                    RegistrationStatus.WILL_COME,
+                    RegistrationStatus.ATTENDED,
+                ]
+            ),
+        ),
+        "event_waitlist": await _count(
+            session,
+            EventRegistration,
+            EventRegistration.status == RegistrationStatus.WAITLIST,
         ),
         "tasks_open": await _count(
             session,
