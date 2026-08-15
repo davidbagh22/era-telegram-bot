@@ -28,10 +28,23 @@ test("admin enters separate management workspace and approves a pending applican
   await expect(page.locator(".era-card", { hasText: "E2E Pending Applicant" })).not.toBeVisible();
 });
 
-test("admin control has analytics system and maintenance as separate destinations", async ({ page }) => {
+test("admin control has live data system and maintenance as separate destinations", async ({ page }) => {
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: "Контроль" }).click();
-  await expect(page.getByRole("button", { name: /Аналитика/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /ЭРА сейчас/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Состояние системы/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Обслуживание/ })).toBeVisible();
+});
+
+test("admin clicks participant KPI and sees the actual participants behind the number", async ({ page }) => {
+  await enterAdminWorkspace(page);
+  await page.getByRole("button", { name: "Контроль" }).click();
+  await page.getByRole("button", { name: /ЭРА сейчас/ }).click();
+
+  const participantsMetric = page.getByRole("button", { name: /Участники/ }).first();
+  await expect(participantsMetric).toBeVisible();
+  await participantsMetric.click();
+
+  await expect(page.getByRole("heading", { name: "Участники" })).toBeVisible();
+  await expect(page.getByText("E2E Participant", { exact: false })).toBeVisible();
 });
