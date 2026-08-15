@@ -1,9 +1,11 @@
 import { authenticate } from "./client";
 import { getInitData } from "../telegram/webApp";
 import type {
+  AdminDevelopmentProfile,
   AssessmentCard,
   AssessmentResult,
   AssessmentSession,
+  DevelopmentAnalytics,
   DevelopmentGoal,
   DevelopmentHome,
   DevelopmentPrivacy,
@@ -140,3 +142,9 @@ export const updateDevelopmentPrivacy = (payload: {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+
+export const fetchAdminDevelopmentAnalytics = (periodDays = 30) =>
+  request<DevelopmentAnalytics>(`/api/v1/admin/development/analytics?period_days=${periodDays}`);
+
+export const fetchAdminDevelopmentProfile = (userId: number) =>
+  request<AdminDevelopmentProfile>(`/api/v1/admin/development/participants/${userId}`);
