@@ -121,10 +121,11 @@ export function AdminOverviewScreen({ onOpenPeople, onOpenApplications, onOpenPr
           </Card>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
-            {(metrics.event_waitlist ?? 0) > 0 && <ActionCell title={`${metrics.event_waitlist} в листе ожидания`} description="Проверьте ближайшие события и свободные места" leading="◎" onClick={onOpenEvents} />}
-            {attentionItems.map((item) => (
-              <ActionCell key={item.key} title={`${item.value} · ${item.label}`} description={attentionAction(item.key) ? "Открыть и решить →" : "Посмотреть в соответствующем разделе"} leading="!" onClick={attentionAction(item.key)} />
-            ))}
+            {(metrics.event_waitlist ?? 0) > 0 && <ActionCell title={`${metrics.event_waitlist} в листе ожидания`} description="Проверьте ближайшие события и свободные места" leading="◎" onClick={() => onOpenEvents?.()} />}
+            {attentionItems.map((item) => {
+              const action = attentionAction(item.key);
+              return <ActionCell key={item.key} title={`${item.value} · ${item.label}`} description={action ? "Открыть и решить →" : "Посмотреть в соответствующем разделе"} leading="!" onClick={() => action?.()} />;
+            })}
           </div>
         )}
       </section>
