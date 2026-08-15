@@ -164,19 +164,19 @@ async def _send_navigation_guide(message: Message, user: User | None, settings: 
         return
     is_admin = _has_admin_access(user)
     is_privileged = user.role in PRIVILEGED_ROLES
-    base_url = settings.effective_miniapp_url
     if is_admin:
         text = NAVIGATION_ADMIN
-        keyboard_url = miniapp_admin_url(base_url)
     elif is_privileged:
         text = NAVIGATION_LEADER
-        keyboard_url = miniapp_leader_url(base_url)
     else:
         text = NAVIGATION_PARTICIPANT
-        keyboard_url = base_url
     await message.answer(
         text,
-        reply_markup=navigation_guide_keyboard(keyboard_url, admin=is_admin, privileged=is_privileged),
+        reply_markup=navigation_guide_keyboard(
+            settings.effective_miniapp_url,
+            admin=is_admin,
+            privileged=is_privileged,
+        ),
     )
 
 
