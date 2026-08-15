@@ -8,8 +8,11 @@ test("cancelling a registration goes through a confirm sheet, not an immediate t
   await expect(page.getByText("E2E тестовое мероприятие")).toBeVisible();
   await page.getByRole("button", { name: "Открыть событие" }).first().click();
 
-  await page.getByRole("button", { name: "Зарегистрироваться" }).click();
-  const cancelTrigger = page.getByRole("button", { name: "Отказаться от участия" });
+  await page.getByRole("button", { name: "Участвовать" }).click();
+  await expect(page.getByRole("heading", { name: "Место за вами" })).toBeVisible();
+  await page.getByRole("button", { name: "Готово" }).click();
+
+  const cancelTrigger = page.getByRole("button", { name: "Отказаться", exact: true });
   await expect(cancelTrigger).toBeVisible();
 
   await cancelTrigger.click();
@@ -20,8 +23,8 @@ test("cancelling a registration goes through a confirm sheet, not an immediate t
   await expect(cancelTrigger).toBeVisible();
 
   await cancelTrigger.click();
-  await page.getByRole("button", { name: "Отказаться", exact: true }).click();
+  await page.getByRole("button", { name: "Отказаться", exact: true }).last().click();
 
-  await expect(page.getByRole("button", { name: "Зарегистрироваться" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Участвовать" })).toBeVisible();
   await expect(page.getByText("Участие отменено")).toBeVisible();
 });
