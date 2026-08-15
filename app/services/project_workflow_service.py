@@ -38,7 +38,7 @@ OPEN_STATUSES = {ProjectStatus.APPROVED, ProjectStatus.IN_PROGRESS}
 
 # Same question-key -> Project column mapping the bot's guided wizard uses
 # (app/handlers/participant/projects.py::project_answer). Kept here so the
-# Mini App's single-form edit stays in sync with it instead of drifting.
+# Mini App's incremental edit stays in sync with it instead of drifting.
 _COLUMN_BY_QUESTION_KEY: dict[str, str] = {
     "title": "title",
     "idea": "short_description",
@@ -47,6 +47,14 @@ _COLUMN_BY_QUESTION_KEY: dict[str, str] = {
     "team": "team",
     "risks": "risks",
     "success_metrics": "expected_result",
+}
+
+# Keep values written into typed SQL columns inside the actual schema limits.
+# The constructor stores the full editorial answer in form_data, while the
+# compact typed column is only a denormalized/searchable representation.
+_COLUMN_MAX_LENGTH: dict[str, int] = {
+    "title": 255,
+    "format": 100,
 }
 
 QUESTION_KEYS: tuple[str, ...] = tuple(question.key for question in PROJECT_QUESTIONS)
@@ -155,10 +163,6 @@ async def list_projects_for_user(
             .order_by(Project.updated_at.desc())
         )
         return list(rows.all())
-    # "open": a directory of live ERA projects across all authors — this is
-    # new (participants previously only ever saw their own projects), but it
-    # is a real query with no fabricated data, and it's a prerequisite for
-    # PR 5's "find a team" workspace to have anything to browse.
     rows = await session.scalars(
         select(Project)
         .where(Project.status.in_(OPEN_STATUSES))
@@ -200,8 +204,9 @@ async def create_draft(session: AsyncSession, user: User, idea: str) -> Project:
 
 
 def update_answers(project: Project, answers: dict[str, str]) -> None:
-    """Apply a partial set of question-key -> answer updates, mirroring the
-    Bot wizard's per-question field mapping. Unknown keys are ignored."""
+    """Apply partial question-key -> answer updates without touching other
+    constructor answers. Unknown keys are ignored. Full answers stay in
+    form_data; denormalized SQL columns are clipped to their real limits."""
     form_data = dict(project.form_data or {})
     for key, value in answers.items():
         if key not in QUESTION_KEYS:
@@ -209,7 +214,8 @@ def update_answers(project: Project, answers: dict[str, str]) -> None:
         form_data[key] = value
         column = _COLUMN_BY_QUESTION_KEY.get(key)
         if column:
-            setattr(project, column, value[:255] if column in {"title", "format"} else value)
+            max_length = _COLUMN_MAX_LENGTH.get(column)
+            setattr(project, column, value[:max_length] if max_length else value)
     project.form_data = form_data
 
 
@@ -316,7 +322,7 @@ async def decide_project(
         project.status = ProjectStatus.POSTPONED
         project.venue_remind_at = None
         notice = "Проект перенесён"
-    else:  # reject
+    else:
         project.status = ProjectStatus.REJECTED
         project.venue_remind_at = None
         notice = "Проект отклонён"
