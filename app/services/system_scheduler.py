@@ -8,7 +8,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import Settings
 from app.services.chat_faq_service import ensure_general_faq_pinned
-from app.services.development_notification_service import send_monthly_development_reminders
+from app.services.development_notification_service import (
+    send_monthly_development_reminders,
+    send_weekly_development_pulses,
+)
 from app.services.event_custom_reminder_service import send_configured_event_reminders
 from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
 from app.services.system_health_service import run_system_diagnostics, send_daily_system_summary
@@ -57,9 +60,6 @@ def add_system_jobs(
         max_instances=1,
         coalesce=True,
     )
-    # Rich event drafts can define any set of reminder thresholds (24h, 3h,
-    # 1h or custom). Delivery has its own idempotency table, so restarts and
-    # overlapping scheduler ticks cannot duplicate messages.
     scheduler.add_job(
         send_configured_event_reminders,
         "interval",
@@ -70,9 +70,6 @@ def add_system_jobs(
         max_instances=1,
         coalesce=True,
     )
-    # Tasks configured in the event wizard are editor-friendly JSON until
-    # publish. This job materialises/updates them in the existing EventActivity
-    # workflow, where participants can submit work and receive real points.
     scheduler.add_job(
         sync_event_wizard_tasks_job,
         "interval",
@@ -84,9 +81,6 @@ def add_system_jobs(
         coalesce=True,
         next_run_time=now,
     )
-    # My Vector reminder delivery runs daily but is idempotent per participant
-    # and month. That avoids missing an entire month after a restart on the
-    # first day, while still sending at most one guilt-free reminder each month.
     scheduler.add_job(
         send_monthly_development_reminders,
         "cron",
@@ -98,10 +92,20 @@ def add_system_jobs(
         max_instances=1,
         coalesce=True,
     )
-    # Infrastructure maintenance, not a health check: refresh and re-pin the
-    # same FAQ card immediately after deploy and then twice a day. The service
-    # is idempotent and never creates a second card while the recorded one is
-    # still editable.
+    # One optional pulse in the middle of the week keeps the year-long map
+    # alive without turning the bot into a daily habit tracker.
+    scheduler.add_job(
+        send_weekly_development_pulses,
+        "cron",
+        day_of_week="wed",
+        hour=18,
+        minute=30,
+        args=(bot, settings, session_factory),
+        id="my-vector-weekly-pulse",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
     scheduler.add_job(
         ensure_general_faq_pinned,
         "interval",
