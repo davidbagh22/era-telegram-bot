@@ -7,7 +7,7 @@ const SUBMITTER_NAME = "E2E Activity Submitter";
 
 async function enterWorkspace(page: import("@playwright/test").Page, telegramId: number) {
   await page.goto(`/app/?devTelegramId=${telegramId}`);
-  await page.getByRole("button", { name: "Профиль" }).click();
+  await page.getByRole("button", { name: "Профиль", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
 }
 

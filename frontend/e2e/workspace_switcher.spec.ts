@@ -5,8 +5,8 @@ const LEADER_TELEGRAM_ID = 900002;
 const PARTICIPANT_TELEGRAM_ID = 900001;
 
 async function openProfile(page: import("@playwright/test").Page) {
-  await expect(page.getByRole("button", { name: "Профиль" })).toBeVisible();
-  await page.getByRole("button", { name: "Профиль" }).click();
+  await expect(page.getByRole("button", { name: "Профиль", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Профиль", exact: true }).click();
 }
 
 // Regression coverage for the Personal <-> Admin/Leader workspace-mode
@@ -17,7 +17,7 @@ test("admin starts personal, enters Admin Mode, leaves it, and returns", async (
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
 
   // Elevated permissions must not replace the person's own Mini App on load.
-  await expect(page.getByRole("button", { name: "Профиль" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Профиль", exact: true })).toBeVisible();
   await expect(page.getByText("Управление", { exact: true })).toHaveCount(0);
 
   await openProfile(page);
@@ -31,7 +31,7 @@ test("admin starts personal, enters Admin Mode, leaves it, and returns", async (
   await expect(page.getByRole("button", { name: "← Личное" })).toBeVisible();
 
   await page.getByRole("button", { name: "← Личное" }).click();
-  await expect(page.getByRole("button", { name: "Профиль" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Профиль", exact: true })).toBeVisible();
   await expect(page.getByText("Управление", { exact: true })).toHaveCount(0);
 
   await openProfile(page);
@@ -42,7 +42,7 @@ test("admin starts personal, enters Admin Mode, leaves it, and returns", async (
 test("leader starts personal, enters Leader Mode, leaves it, and returns", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${LEADER_TELEGRAM_ID}`);
 
-  await expect(page.getByRole("button", { name: "Профиль" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Профиль", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Пространство лидера" })).toHaveCount(0);
 
   await openProfile(page);
@@ -54,7 +54,7 @@ test("leader starts personal, enters Leader Mode, leaves it, and returns", async
   await expect(page.getByRole("heading", { name: "Пространство лидера" })).toBeVisible();
 
   await page.getByRole("button", { name: "← Личное" }).click();
-  await expect(page.getByRole("button", { name: "Профиль" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Профиль", exact: true })).toBeVisible();
 
   await openProfile(page);
   await page.getByRole("button", { name: /Управление ЭРА.*Открыть пространство лидера/ }).click();
