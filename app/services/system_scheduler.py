@@ -8,6 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import Settings
 from app.services.chat_faq_service import ensure_general_faq_pinned
+from app.services.development_notification_service import send_monthly_development_reminders
 from app.services.event_custom_reminder_service import send_configured_event_reminders
 from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
 from app.services.system_health_service import run_system_diagnostics, send_daily_system_summary
@@ -82,6 +83,20 @@ def add_system_jobs(
         max_instances=1,
         coalesce=True,
         next_run_time=now,
+    )
+    # My Vector reminder delivery runs daily but is idempotent per participant
+    # and month. That avoids missing an entire month after a restart on the
+    # first day, while still sending at most one guilt-free reminder each month.
+    scheduler.add_job(
+        send_monthly_development_reminders,
+        "cron",
+        hour=18,
+        minute=0,
+        args=(bot, settings, session_factory),
+        id="my-vector-monthly-reminders",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
     # Infrastructure maintenance, not a health check: refresh and re-pin the
     # same FAQ card immediately after deploy and then twice a day. The service
