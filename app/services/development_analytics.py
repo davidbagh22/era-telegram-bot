@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from datetime import timedelta
 from statistics import mean
 from typing import Any
 
@@ -37,7 +38,7 @@ async def community_analytics(session: AsyncSession, period_days: int = 30) -> d
     calculated so an admin cannot infer a person's answers from a tiny group.
     """
     days = max(1, min(period_days, 365))
-    cutoff = dev.utcnow() - dev.timedelta(days=days)
+    cutoff = dev.utcnow() - timedelta(days=days)
 
     participant_count = int(
         (
