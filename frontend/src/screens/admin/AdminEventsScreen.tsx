@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { AdminEventOperationsPanel } from "./events/AdminEventOperationsPanel";
-import { AdminEventModerationPanel } from "./events/AdminEventModerationPanel";
-import { AdminEventActivitiesPanel } from "./events/AdminEventActivitiesPanel";
+import { AdminEventOperationsPanel } from "./AdminEventOperationsPanel";
+import { AdminEventModerationPanel } from "./AdminEventModerationPanel";
+import { AdminEventActivitiesPanel } from "./AdminEventActivitiesPanel";
 import { SuggestedEventCreatePanel } from "./events/SuggestedEventCreatePanel";
 
 const ACCENT = "#E32636";
