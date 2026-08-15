@@ -4,6 +4,7 @@ import { AdminBottomNav, type AdminGroup } from "../components/AdminBottomNav";
 import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
 import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
+import { AdminDevelopmentScreen } from "./admin/AdminDevelopmentScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
 import { AdminMaintenanceScreen } from "./admin/AdminMaintenanceScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
@@ -16,7 +17,7 @@ import { AdminToolsScreen } from "./admin/AdminToolsScreen";
 import { AdminUsersScreen } from "./admin/AdminUsersScreen";
 import { SystemPanel } from "./admin/tools/SystemPanel";
 
-type PeopleSection = "participants" | "applications" | "offices" | "data-rights";
+type PeopleSection = "participants" | "development" | "applications" | "offices" | "data-rights";
 type WorkSection = "projects" | "events" | "tasks" | "offers";
 type CommsSection = "surveys" | "tools";
 type ControlSection = "analytics" | "system" | "maintenance";
@@ -30,6 +31,7 @@ type InitialAdminRoute = {
 
 const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
   { value: "participants", label: "Участники", description: "Люди, роли и состояние сообщества" },
+  { value: "development", label: "Состояние и развитие", description: "Добровольные Check-in, охват и потребности сообщества" },
   { value: "applications", label: "Заявки", description: "Новые регистрации и решения по ним" },
   { value: "offices", label: "Должности", description: "Организационные роли и структура" },
   { value: "data-rights", label: "Данные и права", description: "Запросы на экспорт и удаление персональных данных" },
@@ -142,11 +144,12 @@ export function AdminScreen() {
           />
         )}
 
-        {group === "people" && !peopleSection && <SectionMenu title="Люди" description="Участники, регистрации, роли и права на данные." options={PEOPLE_SECTIONS} onOpen={setPeopleSection} />}
+        {group === "people" && !peopleSection && <SectionMenu title="Люди" description="Участники, развитие, регистрации, роли и права на данные." options={PEOPLE_SECTIONS} onOpen={setPeopleSection} />}
         {group === "people" && peopleSection && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={PEOPLE_SECTIONS.find((item) => item.value === peopleSection)?.label ?? "Люди"} onBack={() => setPeopleSection(null)} />
             {peopleSection === "participants" && <AdminUsersScreen />}
+            {peopleSection === "development" && <AdminDevelopmentScreen />}
             {peopleSection === "applications" && <AdminApplicationsScreen initialApplicationId={launchRoute.applicationId} />}
             {peopleSection === "offices" && <AdminOfficesScreen />}
             {peopleSection === "data-rights" && <AdminDataRightsScreen />}

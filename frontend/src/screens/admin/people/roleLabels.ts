@@ -26,6 +26,14 @@ export const PERMISSION_LABELS: Record<string, string> = {
   "people.manage": "Управление участниками",
   "portfolio.review": "Портфолио и сертификаты",
   "broadcasts.create": "Рассылки и ответы",
+  "development.self.read": "Мой вектор · свои данные",
+  "development.self.write": "Мой вектор · свои ответы",
+  "development.admin.summary.read": "Мой вектор · сводки",
+  "development.admin.individual.read": "Мой вектор · профили участников",
+  "development.admin.analytics.read": "Мой вектор · аналитика сообщества",
+  "development.admin.export": "Мой вектор · экспорт агрегатов",
+  "development.methodology.manage": "Мой вектор · методики",
+  "development.content.manage": "Мой вектор · рекомендации",
 };
 
 export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
@@ -42,4 +50,12 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   "people.manage": "Менять роли и статусы участников, блокировать и возвращать из архива в пределах своих полномочий.",
   "portfolio.review": "Проверять портфолио, подтверждения достижений и связанные сертификаты.",
   "broadcasts.create": "Создавать рассылки, работать с обращениями и коммуникацией с участниками.",
+  "development.self.read": "Читать собственный личный профиль развития.",
+  "development.self.write": "Сохранять собственные Check-in, цели, заметки и обратную связь по выводам.",
+  "development.admin.summary.read": "Видеть только разрешённые участниками сводные показатели развития.",
+  "development.admin.individual.read": "Открывать индивидуальный разрешённый профиль развития с обязательным аудитом доступа.",
+  "development.admin.analytics.read": "Смотреть агрегированную аналитику только при безопасном размере выборки.",
+  "development.admin.export": "Экспортировать только разрешённую агрегированную аналитику развития.",
+  "development.methodology.manage": "Управлять версиями методик после методологического и лицензионного согласования.",
+  "development.content.manage": "Управлять семействами и формулировками рекомендаций без изменения научного scoring.",
 };

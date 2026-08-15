@@ -9,6 +9,7 @@ import { ActivityScreen } from "../screens/ActivityScreen";
 import { AuthErrorScreen } from "../screens/AuthErrorScreen";
 import { BlockedScreen } from "../screens/BlockedScreen";
 import { CommunityScreen, type CommunitySection } from "../screens/CommunityScreen";
+import { DevelopmentScreen, type DevelopmentRoute } from "../screens/DevelopmentScreen";
 import { EventsScreen } from "../screens/EventsScreen";
 import { HomeScreen } from "../screens/HomeScreen";
 import { LeaderScreen } from "../screens/LeaderScreen";
@@ -23,7 +24,7 @@ import type { MiniAppUserSummary } from "../types/auth";
 
 type LegacyActivitySection = "tasks" | "calendar" | "history";
 type WorkspaceKind = "admin" | "leader";
-type SpecialScreen = "progress";
+type SpecialScreen = "progress" | "development";
 
 interface DeepLink {
   tab: TabKey;
@@ -35,6 +36,7 @@ interface DeepLink {
   adminEventId: number | null;
   userId: number | null;
   specialScreen: SpecialScreen | null;
+  developmentRoute: DevelopmentRoute | null;
   invalid: boolean;
 }
 
@@ -106,14 +108,28 @@ function link(overrides: Partial<DeepLink> = {}): DeepLink {
     adminEventId: null,
     userId: null,
     specialScreen: null,
+    developmentRoute: null,
     invalid: false,
     ...overrides,
   };
 }
 
+function parseDevelopmentRoute(route: string): DevelopmentRoute | null {
+  if (route === "development") return "home";
+  if (route === "development/checkin" || route === "development/checkin/current") return "checkin";
+  if (route === "development/assessments") return "assessments";
+  if (route === "development/history") return "history";
+  if (route === "development/goals") return "goals";
+  if (route === "development/privacy") return "privacy";
+  return null;
+}
+
 function parseDeepLink(): DeepLink | null {
   const route = routeValue();
   if (!route) return null;
+
+  const developmentRoute = parseDevelopmentRoute(route);
+  if (developmentRoute) return link({ tab: "home", specialScreen: "development", developmentRoute });
 
   const adminEventMatch = route.match(/^admin\/events\/(\d+)$/);
   if (adminEventMatch) {
@@ -195,6 +211,7 @@ function renderTab(
         user={user}
         onOpenProfile={() => navigateToRoute("profile")}
         onOpenProgress={() => navigateToRoute("progress")}
+        onOpenDevelopment={() => navigateToRoute("development")}
         onOpenEvents={() => onTabChange("events")}
         onOpenEvent={(id) => navigateToRoute(`events/${id}`)}
         onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
@@ -207,7 +224,7 @@ function renderTab(
   if (tab === "projects") return <ProjectsScreen initialProjectId={initialProjectId} />;
   if (tab === "events") return <EventsScreen initialItemId={isDeepLinkedTab ? initialItemId : null} />;
   if (tab === "community") return <CommunityScreen initialSection={isDeepLinkedTab ? initialCommunitySection : null} initialItemId={isDeepLinkedTab ? initialItemId : null} />;
-  return <ProfileScreen />;
+  return <ProfileScreen onOpenDevelopment={() => navigateToRoute("development")} />;
 }
 
 export function App() {
@@ -270,6 +287,18 @@ export function App() {
     );
   }
 
+  if (deepLink?.specialScreen === "development") {
+    return (
+      <UserLayout activeTab="home" onTabChange={handleTabChange}>
+        <DevelopmentScreen
+          route={deepLink.developmentRoute ?? "home"}
+          onNavigate={(route) => navigateToRoute(route === "home" ? "development" : `development/${route}`)}
+          onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("home")}
+        />
+      </UserLayout>
+    );
+  }
+
   const adminWorkspaceRequested = user.is_admin && (inWorkspace || deepLink?.workspace === "admin");
   const leaderWorkspaceRequested = user.is_leader && (inWorkspace || deepLink?.workspace === "leader");
 
@@ -287,6 +316,7 @@ export function App() {
           isAdmin={user.is_admin}
           isLeader={user.is_leader}
           onEnterWorkspace={user.is_admin || user.is_leader ? () => setInWorkspace(true) : undefined}
+          onOpenDevelopment={() => navigateToRoute("development")}
         />
       ) : renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.tab === activeTab, handleTabChange)}
     </UserLayout>

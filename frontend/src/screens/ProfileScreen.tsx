@@ -68,9 +68,10 @@ interface ProfileScreenProps {
   isAdmin?: boolean;
   isLeader?: boolean;
   onEnterWorkspace?: () => void;
+  onOpenDevelopment?: () => void;
 }
 
-export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileScreenProps = {}) {
+export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevelopment }: ProfileScreenProps = {}) {
   const state = useAsync(fetchProfile, []);
   const [downloading, setDownloading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -242,6 +243,18 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileSc
           </div>
         </Card>
       </section>
+
+      {onOpenDevelopment && (
+        <section>
+          <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Развитие</h2>
+          <ActionCell
+            title="Мой вектор"
+            description="Моё состояние, личная история, исследования и цели"
+            meta="Ты ↔ ты"
+            onClick={onOpenDevelopment}
+          />
+        </section>
+      )}
 
       {onEnterWorkspace && (
         <ActionCell

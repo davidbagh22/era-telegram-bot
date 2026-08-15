@@ -8,6 +8,7 @@ from app.api.v1 import (
     admin_analytics_details,
     admin_applications,
     admin_autocontent,
+    admin_development,
     admin_event_create,
     admin_event_operations,
     admin_people_detail,
@@ -15,6 +16,7 @@ from app.api.v1 import (
     auctions,
     auth,
     community_users,
+    development,
     event_posters,
     events,
     home,
@@ -35,6 +37,7 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
 api_router.include_router(me.router)
 api_router.include_router(home.router)
+api_router.include_router(development.router)
 api_router.include_router(leaderboard.router)
 api_router.include_router(community_users.router)
 api_router.include_router(event_posters.router)
@@ -53,6 +56,9 @@ api_router.include_router(surveys.router)
 # POST endpoints continue to live in admin.router.
 api_router.include_router(admin_applications.router)
 api_router.include_router(admin_autocontent.router)
+# Development summaries and aggregate analytics have their own privacy gate
+# and audit trail; register them before the large legacy admin router.
+api_router.include_router(admin_development.router)
 # Exact analytics drill-down lists are registered before the large legacy
 # admin router so /admin/analytics/details/{section} cannot be shadowed.
 api_router.include_router(admin_analytics_details.router)
