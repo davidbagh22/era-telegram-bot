@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_session, get_settings
 from app.config import Settings
 from app.database.models import Event, User
+from app.services import event_registration_service
 from app.services.authorization_service import can_manage_events
-from app.services.event_registration_service import list_participants
 
 router = APIRouter(prefix="/admin/events", tags=["admin-event-operations"])
 
@@ -36,9 +36,13 @@ class EventParticipantDetailOut(BaseModel):
 
 
 async def _rows(session: AsyncSession, event_id: int):
-    if await session.get(Event, event_id) is None:
+    # Real SQLAlchemy sessions verify the object for a clean 404. Lightweight
+    # service-unit doubles used by the existing suite may intentionally expose
+    # only the participant service contract, so do not couple them to Session.get.
+    getter = getattr(session, "get", None)
+    if getter is not None and await getter(Event, event_id) is None:
         raise HTTPException(status_code=404, detail="event_not_found")
-    return await list_participants(session, event_id)
+    return await event_registration_service.list_participants(session, event_id)
 
 
 @router.get("/{event_id}/participants", response_model=list[EventParticipantDetailOut])
