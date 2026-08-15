@@ -10,6 +10,8 @@ class RegistrationStates(StatesGroup):
     city = State()
     education_work = State()
     occupation = State()
+    skills = State()
+    experience = State()
     department = State()
     directions = State()
     available_time = State()
