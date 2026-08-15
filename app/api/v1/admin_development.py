@@ -9,7 +9,8 @@ from fastapi.responses import Response
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_session
+from app.api.deps import get_current_user, get_session, get_settings
+from app.config import Settings
 from app.database.development_models import (
     AdminVisibilitySetting,
     GoalReview,
@@ -19,12 +20,13 @@ from app.database.development_models import (
 from app.database.models import User
 from app.services import development_analytics as dev_analytics
 from app.services import development_service as dev
+from app.services.authorization_service import is_full_admin
 
 router = APIRouter(prefix="/admin/development", tags=["admin-development"])
 
 
-def _has_permission(user: User, permission: str) -> bool:
-    if user.is_admin:
+def _has_permission(user: User, permission: str, settings: Settings) -> bool:
+    if is_full_admin(user, settings, user.telegram_id):
         return True
     return any(
         grant.is_active
@@ -34,8 +36,8 @@ def _has_permission(user: User, permission: str) -> bool:
     )
 
 
-def _require_permission(user: User, permission: str) -> None:
-    if not _has_permission(user, permission):
+def _require_permission(user: User, permission: str, settings: Settings) -> None:
+    if not _has_permission(user, permission, settings):
         raise HTTPException(status_code=403, detail=f"permission_required:{permission}")
 
 
@@ -43,9 +45,10 @@ def _require_permission(user: User, permission: str) -> None:
 async def participant_development(
     user_id: int,
     user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    _require_permission(user, "development.admin.individual.read")
+    _require_permission(user, "development.admin.individual.read", settings)
     target = await session.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="user_not_found")
@@ -146,9 +149,10 @@ async def participant_development(
 async def development_analytics(
     period_days: int = 30,
     user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    _require_permission(user, "development.admin.analytics.read")
+    _require_permission(user, "development.admin.analytics.read", settings)
     result = await dev_analytics.community_analytics(session, period_days=period_days)
     await dev.audit(
         session,
@@ -168,9 +172,10 @@ async def development_analytics(
 async def export_development_analytics(
     period_days: int = 30,
     user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    _require_permission(user, "development.admin.export")
+    _require_permission(user, "development.admin.export", settings)
     result = await dev_analytics.community_analytics(session, period_days=period_days)
     output = io.StringIO()
     writer = csv.writer(output)
