@@ -18,6 +18,7 @@ env:
   PRODUCTION_BASE: https://era-telegram-bot.onrender.com
   BACKUP_API_BASE: https://era-telegram-bot.onrender.com/api/v1/internal/backup
   PG_MAJOR: "18"
+  PG_BIN: /usr/lib/postgresql/18/bin
 
 concurrency:
   group: database-backup
@@ -55,7 +56,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install PostgreSQL 18 backup clients
+      - name: Install exact PostgreSQL 18 restore clients
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -70,8 +71,22 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
           sudo apt-get update
           sudo apt-get install -y "postgresql-client-${PG_MAJOR}"
-          pg_dump --version
-          pg_restore --version
+
+          test -x "${PG_BIN}/pg_dump"
+          test -x "${PG_BIN}/pg_restore"
+          test -x "${PG_BIN}/psql"
+          "${PG_BIN}/pg_dump" --version | grep -q "PostgreSQL) ${PG_MAJOR}\."
+          "${PG_BIN}/pg_restore" --version | grep -q "PostgreSQL) ${PG_MAJOR}\."
+          "${PG_BIN}/psql" --version | grep -q "PostgreSQL) ${PG_MAJOR}\."
+          "${PG_BIN}/pg_restore" --version
+
+      - name: Install migration verifier
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m venv /tmp/era-backup-tools
+          /tmp/era-backup-tools/bin/python -m pip install --disable-pip-version-check --no-input "alembic>=1.14,<2"
+          /tmp/era-backup-tools/bin/alembic heads >/dev/null
 
       - name: Validate optional external storage
         id: config
@@ -120,6 +135,7 @@ jobs:
           echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
 
       - name: Wait for matching production commit
+        id: deploy_gate
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -194,12 +210,23 @@ jobs:
           echo "backup_key=$(basename "${BACKUP_FILE}" .dump)" >> "${GITHUB_OUTPUT}"
 
       - name: Verify restore on isolated PostgreSQL
+        id: restore
         env:
           BACKUP_FILE: ${{ steps.backup.outputs.backup_file }}
           BACKUP_SHA256: ${{ steps.backup.outputs.sha256 }}
+          ALEMBIC_BIN: /tmp/era-backup-tools/bin/alembic
+        shell: bash
         run: |
+          set +e
           chmod +x scripts/verify_database_restore.sh
           scripts/verify_database_restore.sh
+          RESULT=$?
+          set -e
+          if [ "${RESULT}" -ne 0 ]; then
+            echo "error_code=restore_verification_failed" >> "${GITHUB_OUTPUT}"
+            exit "${RESULT}"
+          fi
+          echo "verified=true" >> "${GITHUB_OUTPUT}"
 
       - name: Fetch one-purpose encryption material using fresh OIDC token
         shell: bash
@@ -251,8 +278,10 @@ jobs:
           echo "archive_file=${ARCHIVE_FILE}" >> "${GITHUB_OUTPUT}"
           echo "archive_sha256=$(sha256sum "${ARCHIVE_FILE}" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
           echo "archive_size_bytes=$(stat -c '%s' "${ARCHIVE_FILE}")" >> "${GITHUB_OUTPUT}"
+          echo "verified=true" >> "${GITHUB_OUTPUT}"
 
       - name: Upload encrypted verified GitHub artifact
+        id: artifact
         uses: actions/upload-artifact@v7
         with:
           name: era-${{ steps.tier.outputs.backup_type }}-backup-${{ github.run_id }}
@@ -274,6 +303,7 @@ jobs:
           echo "storage_reference=${REFERENCE}" >> "${GITHUB_OUTPUT}"
 
       - name: Report successful verified backup using GitHub OIDC
+        id: success_report
         env:
           BACKUP_TYPE: ${{ steps.tier.outputs.backup_type }}
           BACKUP_KEY: ${{ steps.backup.outputs.backup_key }}
@@ -323,6 +353,7 @@ jobs:
           BACKUP_KEY: ${{ steps.backup.outputs.backup_key }}
           STARTED_AT: ${{ steps.tier.outputs.started_at }}
           SNAPSHOT_ERROR_CODE: ${{ steps.backup.outputs.error_code }}
+          RESTORE_ERROR_CODE: ${{ steps.restore.outputs.error_code }}
         shell: bash
         run: |
           set +e
@@ -335,7 +366,7 @@ jobs:
           KEY="${BACKUP_KEY:-era-backup-run-${GITHUB_RUN_ID}}"
           TYPE="${BACKUP_TYPE:-manual}"
           START="${STARTED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
-          ERROR_CODE="${SNAPSHOT_ERROR_CODE:-workflow_failed}"
+          ERROR_CODE="${SNAPSHOT_ERROR_CODE:-${RESTORE_ERROR_CODE:-workflow_failed}}"
           COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           PAYLOAD="$(jq -n \
             --arg backup_key "${KEY}" \
@@ -366,14 +397,14 @@ jobs:
           {
             echo "## PostgreSQL backup"
             echo "- Production DB credentials exported to GitHub: no"
-            echo "- GitHub authentication: short-lived OIDC, exact repo/main/workflow claims"
-            echo "- PostgreSQL client major: ${PG_MAJOR}"
-            echo "- Production commit matched before snapshot: yes"
-            echo "- Restore test required before persistence: yes"
-            echo "- Alembic migration heads checked after restore: yes"
-            echo "- Encryption round-trip checksum verified: yes"
-            echo "- Stored copies encrypted with AES-256/PBKDF2: yes"
+            echo "- GitHub authentication: short-lived OIDC with exact repo/main/workflow claims"
+            echo "- PostgreSQL restore client: explicit ${PG_BIN}"
+            echo "- Production commit gate: ${{ steps.deploy_gate.outcome }}"
+            echo "- Production snapshot + checksum: ${{ steps.backup.outcome }}"
+            echo "- Real isolated restore + Alembic head verification: ${{ steps.restore.outcome }}"
+            echo "- Encryption round-trip checksum: ${{ steps.package.outcome }}"
+            echo "- Encrypted GitHub artifact upload: ${{ steps.artifact.outcome }}"
             echo "- GitHub artifact retention: ${{ steps.tier.outputs.github_retention_days || 'unknown' }} days"
             echo "- External S3-compatible copy active: ${{ steps.config.outputs.external_storage || 'false' }}"
-            echo "- Backup History callback: GitHub OIDC"
+            echo "- Backup History success callback: ${{ steps.success_report.outcome }}"
           } >> "${GITHUB_STEP_SUMMARY}"
