@@ -32,7 +32,7 @@ export function ProgressRing({ percent, size = 92, trackColor, animationKey = "s
     const cy = size / 2;
     const r = size / 2 - 8;
     const cssTrack = getComputedStyle(document.documentElement).getPropertyValue("--era-ring-track").trim();
-    const track = trackColor ?? cssTrack || "rgba(255,255,255,0.10)";
+    const track = trackColor ?? (cssTrack || "rgba(255,255,255,0.10)");
 
     function frame(p: number) {
       ctx.clearRect(0, 0, size, size);
