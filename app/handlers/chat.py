@@ -4,13 +4,24 @@ from time import monotonic
 from aiogram import F, Bot, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
-from aiogram.types import ChatJoinRequest, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    ChatJoinRequest,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    WebAppInfo,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.chat_moderation import ChatModerationSetting
 from app.database.models import ChatGreeting, User
+from app.keyboards.faq import (
+    GENERAL_CHAT_EVENTS_TEXT,
+    GENERAL_CHAT_PROFILE_TEXT,
+    general_chat_navigation_keyboard,
+)
 from app.repositories.users import get_user_by_telegram_id
 from app.services.audit_service import audit
 from app.services.chat_access_service import (
@@ -25,8 +36,10 @@ from app.services.chat_access_service import (
     restrict_member,
     unrestrict_member,
 )
+from app.services.notification_service import safe_send
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES
+from app.utils.deep_links import miniapp_events_url, miniapp_profile_url
 
 router = Router(name="chat")
 
@@ -34,6 +47,18 @@ _activity: dict[tuple[int, int], deque[float]] = defaultdict(lambda: deque(maxle
 _personal_attacks = {"дурак", "идиот", "тупой", "тупая", "ненавижу тебя"}
 _dm_notice_sent: dict[tuple[int, int], float] = {}
 _DM_NOTICE_COOLDOWN = 300.0
+_GENERAL_CHAT_QUICK_ACTIONS = {
+    GENERAL_CHAT_EVENTS_TEXT: (
+        "📅 События ЭРА\n\nАфиша, регистрация и ваши ближайшие события — в приложении.",
+        "📅 Открыть события",
+        miniapp_events_url,
+    ),
+    GENERAL_CHAT_PROFILE_TEXT: (
+        "👤 Ваш профиль ЭРА\n\nБаллы, путь, достижения и портфолио — в одном месте.",
+        "👤 Открыть мой профиль",
+        miniapp_profile_url,
+    ),
+}
 
 
 def _private(message: Message) -> bool:
@@ -231,13 +256,82 @@ async def welcome_members(message: Message, bot: Bot, settings: Settings, sessio
     fallback = "Добро пожаловать в ЭРА.\n\nЗдесь общаются участники сообщества, появляются анонсы, проекты и возможности.\n\nРегистрация, баллы, портфолио и личный кабинет — в личном чате с ботом."
     body = greeting.text if greeting is not None else fallback
     body = body.replace("{name}", ", ".join(welcomed))
-    await message.answer(body, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Открыть бот", url=f"https://t.me/{me.username}?start=registration")]]))
+    if chat_key == "general":
+        markup = general_chat_navigation_keyboard()
+    else:
+        markup = InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="Открыть бот",
+                    url=f"https://t.me/{me.username}?start=registration",
+                )
+            ]]
+        )
+    await message.answer(body, reply_markup=markup)
 
 
 @router.callback_query(F.data == "chat:rules")
 async def rules_callback(call) -> None:
     await call.answer()
     await call.message.answer(texts.CHAT_RULES)
+
+
+@router.message(
+    F.text.in_({GENERAL_CHAT_EVENTS_TEXT, GENERAL_CHAT_PROFILE_TEXT}),
+    ~F.chat.type.in_({"private"}),
+)
+async def general_chat_quick_navigation(
+    message: Message,
+    bot: Bot,
+    user: User | None,
+    settings: Settings,
+) -> None:
+    """Turn the persistent group reply-keyboard tap into a private Mini App route.
+
+    Group reply keyboards can only send text messages; Web App keyboard buttons are
+    private-chat only in Telegram. Delete that trigger immediately, then deliver a
+    proper Web App button in DM so the general chat never fills with navigation noise.
+    """
+    if chat_key_for_id(settings, message.chat.id) != "general":
+        await _soft_moderation(message)
+        return
+
+    decision = check_chat_access(user, "general")
+    if not decision.allowed:
+        if message.from_user:
+            await restrict_member(bot, message.chat.id, message.from_user.id)
+        try:
+            await message.delete()
+        except TelegramAPIError:
+            pass
+        if message.from_user:
+            await notify_user(bot, message.from_user.id, access_message(decision.reason))
+        return
+
+    try:
+        await message.delete()
+    except TelegramAPIError:
+        pass
+
+    if user is None or not settings.effective_miniapp_url:
+        return
+    route = _GENERAL_CHAT_QUICK_ACTIONS.get(message.text or "")
+    if route is None:
+        return
+    text, label, build_url = route
+    url = build_url(settings.effective_miniapp_url)
+    if not url:
+        return
+    await safe_send(
+        bot,
+        user.telegram_id,
+        text,
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(text=label, web_app=WebAppInfo(url=url))
+            ]]
+        ),
+    )
 
 
 @router.message(~F.chat.type.in_({"private"}))
