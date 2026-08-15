@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 from enum import Enum
-from io import StringIO
+from io import BytesIO, StringIO
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -15,6 +15,7 @@ from app.database.models import User
 from app.services.admin_analytics_service import build_analytics_payload
 from app.services.admin_dashboard_service import has_dashboard_access
 from app.services.era_efficiency_service import build_efficiency_snapshot
+from app.services.excel_service import build_analytics_workbook
 
 router = APIRouter(prefix="/admin/analytics", tags=["admin-analytics-details"])
 
@@ -148,6 +149,56 @@ def _detail_items(section: AnalyticsDetailSection, data) -> list[AnalyticsDetail
     ]
 
 
+def _with_efficiency_sheet(content: bytes, snapshot) -> bytes:
+    from openpyxl import load_workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    wb = load_workbook(BytesIO(content))
+    if "Эффективность" in wb.sheetnames:
+        del wb["Эффективность"]
+    ws = wb.create_sheet("Эффективность", 0)
+    ws.sheet_view.showGridLines = False
+    ws["A1"] = "ЭФФЕКТИВНОСТЬ ЭРА"
+    ws["A1"].font = Font(size=18, bold=True, color="FFFFFF")
+    ws["A1"].fill = PatternFill("solid", fgColor="BE268F")
+    ws.merge_cells("A1:D1")
+    ws["A2"] = f"{snapshot.score}/100 · {snapshot.label}"
+    ws["A2"].font = Font(size=14, bold=True)
+    ws.merge_cells("A2:D2")
+    ws["A3"] = snapshot.data_note
+    ws.merge_cells("A3:D3")
+
+    ws.append([])
+    ws.append(["Показатель", "Значение", "Оценка / 100", "Что это значит"])
+    for metric in snapshot.metrics:
+        ws.append([metric.label, metric.display, metric.score if metric.score is not None else "—", metric.note])
+
+    ws.append([])
+    ws.append(["ПРИОРИТЕТЫ НА ЭТУ НЕДЕЛЮ", "Почему", "Что сделать", "Приоритет"])
+    for item in snapshot.recommendations:
+        ws.append([item.title, item.reason, item.action, item.priority])
+
+    for cell in ws[5]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="742CC4")
+    recommendation_header_row = 7 + len(snapshot.metrics)
+    for cell in ws[recommendation_header_row]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="E52B24")
+    for row in ws.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+    ws.column_dimensions["A"].width = 30
+    ws.column_dimensions["B"].width = 42
+    ws.column_dimensions["C"].width = 58
+    ws.column_dimensions["D"].width = 24
+    ws.freeze_panes = "A5"
+
+    output = BytesIO()
+    wb.save(output)
+    return output.getvalue()
+
+
 @router.get("/weekly", response_model=EfficiencyOut)
 async def read_weekly_efficiency(
     _admin: User = Depends(require_dashboard_access),
@@ -163,6 +214,31 @@ async def read_weekly_efficiency(
         top_interest=snapshot.top_interest,
         top_interest_count=snapshot.top_interest_count,
         data_note=snapshot.data_note,
+    )
+
+
+@router.get("/full-report.xlsx")
+async def export_full_analytics_report(
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    data = await build_analytics_payload(session)
+    snapshot = await build_efficiency_snapshot(session)
+    base = build_analytics_workbook(
+        data.users,
+        data.events,
+        data.projects,
+        data.totals,
+        department_stats=data.department_stats,
+        direction_stats=data.direction_stats,
+        goals=data.goals,
+        contacts=data.contacts,
+    )
+    content = _with_efficiency_sheet(base, snapshot)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="ERA_full_report.xlsx"'},
     )
 
 
@@ -190,7 +266,6 @@ async def export_analytics_details_csv(
     writer.writerow(["ID", "Название", "Детали", "Статус"])
     for item in items:
         writer.writerow([item.id, item.title, item.subtitle or "", item.status or ""])
-    # UTF-8 BOM makes the Cyrillic CSV open correctly in desktop Excel.
     payload = "\ufeff" + buffer.getvalue()
     return Response(
         content=payload.encode("utf-8"),
