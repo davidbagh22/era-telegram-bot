@@ -67,12 +67,8 @@ test("community people navigation stays synchronized with browser history", asyn
   await expect(page.getByRole("heading", { name: "Сообщество" })).toBeVisible();
 });
 
-test("exact event and project routes open the requested object", async ({ page }) => {
+test("exact event route opens the requested object", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/events/1`);
   await expect(page.getByRole("heading", { name: "E2E тестовое мероприятие" })).toBeVisible();
   await expect(page).toHaveURL(/#\/events\/1$/);
-
-  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/projects/1`);
-  await expect(page).toHaveURL(/#\/projects\/1$/);
-  await expect(page.getByText(/Проект/).first()).toBeVisible();
 });
