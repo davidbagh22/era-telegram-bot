@@ -10,6 +10,7 @@ from app.api.v1 import (
     admin_autocontent,
     admin_event_create,
     admin_event_operations,
+    admin_people_detail,
     admin_project_detail,
     auctions,
     auth,
@@ -55,6 +56,9 @@ api_router.include_router(admin_autocontent.router)
 # Exact analytics drill-down lists are registered before the large legacy
 # admin router so /admin/analytics/details/{section} cannot be shadowed.
 api_router.include_router(admin_analytics_details.router)
+# Full participant intelligence card must own GET /admin/users/{id}; legacy
+# admin.py keeps the mutation endpoints and their compact response models.
+api_router.include_router(admin_people_detail.router)
 # Full project review detail is also registered before the large admin router
 # so reviewers can inspect the complete submitted form before deciding.
 api_router.include_router(admin_project_detail.router)
