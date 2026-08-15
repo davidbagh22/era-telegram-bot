@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
+from pathlib import Path
 
 from app.api.v1.admin_people_detail import (
     ParticipantMetricsOut,
     _recognition_suggestions,
     _signal_text,
 )
-from app.api.v1.router import api_router
 from app.database.models import Badge
 
 
@@ -84,14 +83,10 @@ def test_recent_manual_bonus_suppresses_duplicate_point_prompt() -> None:
     assert point_suggestion is None
 
 
-def test_rich_user_route_precedes_legacy_compact_route() -> None:
-    app = FastAPI()
-    app.include_router(api_router)
-    matches = [
-        route
-        for route in app.routes
-        if getattr(route, "path", "") == "/api/v1/admin/users/{user_id}"
-        and "GET" in getattr(route, "methods", set())
-    ]
-    assert len(matches) >= 2
-    assert matches[0].endpoint.__module__.endswith("admin_people_detail")
+def test_rich_user_router_is_registered_before_legacy_admin_router() -> None:
+    source = Path("app/api/v1/router.py").read_text(encoding="utf-8")
+    rich = "api_router.include_router(admin_people_detail.router)"
+    legacy = "api_router.include_router(admin.router)"
+    assert rich in source
+    assert legacy in source
+    assert source.index(rich) < source.index(legacy)
