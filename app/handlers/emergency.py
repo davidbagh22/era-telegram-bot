@@ -1,4 +1,5 @@
 from aiogram import F, Bot, Router
+from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandObject, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -25,9 +26,11 @@ from app.handlers.participant.navigation import (
 from app.keyboards.common import registration_keyboard, subscription_keyboard
 from app.keyboards.participant import contact_keyboard, open_app_button, project_menu_keyboard
 from app.services import event_activity_service, task_service
+from app.services.chat_faq_service import FAQ_ANSWERS, FAQ_CONTACT_PAYLOAD, FAQ_START_PAYLOADS
 from app.services.points_service import total_points
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.states.growth import TaskSubmissionStates
+from app.states.question import QuestionStates
 from app.utils import texts
 from app.utils.constants import PRIVILEGED_ROLES
 from app.utils.deep_links import parse_activity_submit_payload, parse_task_submit_payload
@@ -72,6 +75,28 @@ async def group_start(message: Message, bot: Bot, state: FSMContext) -> None:
     )
 
 
+async def _try_faq_deep_link(
+    message: Message,
+    user: User,
+    state: FSMContext,
+    command: CommandObject | None,
+) -> bool:
+    """Handle pinned general-chat FAQ links after Telegram opens the bot DM."""
+    payload = command.args if command and command.args else ""
+    if payload not in FAQ_START_PAYLOADS and payload != FAQ_CONTACT_PAYLOAD:
+        return False
+    if not _approved(user):
+        await message.answer(texts.APPLICATION_PENDING)
+        return True
+    if payload == FAQ_CONTACT_PAYLOAD:
+        await state.set_state(QuestionStates.text)
+        await message.answer(texts.QUESTION_START)
+        return True
+    answer_key = FAQ_START_PAYLOADS[payload]
+    await message.answer(FAQ_ANSWERS[answer_key], parse_mode=ParseMode.HTML)
+    return True
+
+
 async def _try_start_task_submission_from_deep_link(
     message: Message,
     user: User,
@@ -80,14 +105,7 @@ async def _try_start_task_submission_from_deep_link(
     command: CommandObject | None,
 ) -> bool:
     """Mini App "Отправить результат" hands off here (section 15 of the
-    platform brief) — uploads stay a Bot-only FSM. Returns True if the
-    deep link was valid and the submission prompt was sent.
-
-    Lives here (not app/handlers/start.py) because emergency.router is
-    included first in the dispatcher (app/bot.py) and rescue_start's
-    StateFilter("*") matches any FSM state, so it — not start.py's start()
-    — is what a real "/start task_submit_<id>" deep link actually reaches.
-    See app/handlers/start.py's now-dead duplicate for the history."""
+    platform brief) — uploads stay bot-only; authorization is rechecked."""
     if command is None or not command.args:
         return False
     task_id = parse_task_submit_payload(command.args)
@@ -117,14 +135,6 @@ async def _try_start_activity_submission_from_deep_link(
     settings: Settings,
     command: CommandObject | None,
 ) -> bool:
-    """Mini App's Event Activities screen hands off here the same way
-    task submission does above — uploads stay a Bot-only FSM. Returns
-    True if the deep link was valid and handled (either the submission
-    prompt was sent, or a "manual" proof-type activity was submitted
-    immediately, mirroring proof_start()'s own short-circuit for that
-    type in app/handlers/participant/event_activities_block15.py).
-
-    Lives here for the same reason as the task-submission helper above."""
     if command is None or not command.args:
         return False
     activity_id = parse_activity_submit_payload(command.args)
@@ -203,6 +213,8 @@ async def rescue_start(
     if user is None:
         await message.answer(texts.WELCOME, reply_markup=registration_keyboard())
         return
+    if await _try_faq_deep_link(message, user, state, command):
+        return
     if await _try_start_task_submission_from_deep_link(message, user, state, session, command):
         return
     if await _try_start_activity_submission_from_deep_link(
@@ -280,15 +292,6 @@ async def rescue_menu_button(
         )
         return
     if text == "⚙️ Панель":
-        # This is the router that actually owns "⚙️ Панель" in production --
-        # emergency.router is included first in the dispatcher (app/bot.py)
-        # and this handler's StateFilter("*") matches any FSM state, so it
-        # wins over app/handlers/participant/navigation.py's panel_button/
-        # panel_callback regardless of what those do. Both admin and leader
-        # branches redirect to the Mini App instead of the old bot-native
-        # menu trees, matching ADMIN_PANEL_MOVED/LEADER_PANEL_MOVED
-        # everywhere else those trees used to be reachable. 2026-08 master
-        # spec, P5.
         if _has_admin_access(user):
             await message.answer(texts.ADMIN_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
             return
