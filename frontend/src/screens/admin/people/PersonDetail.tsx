@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   awardUserBadge,
   awardUserPoints,
@@ -149,6 +149,12 @@ function prettyStatus(value: string | null | undefined): string {
     rejected: "Отклонено",
     needs_info: "Нужна информация",
     confirmed: "Подтверждено",
+    new_member: "Новый участник",
+    involved_member: "Вовлечённый участник",
+    active_member: "Активный участник",
+    team_member: "Член команды",
+    project_curator: "Куратор проекта",
+    community_leader: "Лидер сообщества",
   };
   return labels[value] ?? value.replaceAll("_", " ");
 }
@@ -226,16 +232,14 @@ export function PersonDetail({ userId, onBack }: PersonDetailProps) {
   const availableBadges = person.available_badges as OwnedBadge[];
   const ownedBadges = person.badges as OwnedBadge[];
   const selectedBadge = availableBadges.find((badge) => String(badge.id) === selectedBadgeId);
-
-  const metrics = useMemo(() => [
+  const metrics: readonly (readonly [number, string])[] = [
     [person.metrics.events_attended, "Посещено событий"],
     [person.metrics.tasks_approved, "Принято заданий"],
     [person.metrics.projects_authored, "Своих проектов"],
     [person.metrics.project_memberships, "Проектных команд"],
     [person.metrics.surveys_completed, "Опросов заполнено"],
     [person.points_balance, "Баллов сейчас"],
-  ] as const, [person]);
-
+  ];
   const tabs: { key: ViewKey; label: string }[] = [
     { key: "overview", label: "Обзор" },
     { key: "activity", label: "Активность" },
