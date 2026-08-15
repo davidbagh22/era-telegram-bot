@@ -90,7 +90,20 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
     )
     approved_total = len(approved_users)
 
-    new_users_7d = sum(1 for user in approved_users if user.created_at and user.created_at >= week_ago)
+    # Do date filtering in SQL instead of comparing ORM datetime objects in
+    # Python. SQLite returns naive datetimes while PostgreSQL can return
+    # timezone-aware ones; comparing those directly caused the weekly
+    # analytics endpoint to fail in E2E even though the data itself was fine.
+    new_users_7d = int(
+        await session.scalar(
+            select(func.count(User.id)).where(
+                User.is_archived.is_(False),
+                User.application_status == ApplicationStatus.APPROVED,
+                User.created_at >= week_ago,
+            )
+        )
+        or 0
+    )
 
     active_users_30d = int(
         await session.scalar(
