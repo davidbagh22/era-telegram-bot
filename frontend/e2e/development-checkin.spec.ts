@@ -1,8 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const PARTICIPANT_TELEGRAM_ID = 900002;
 
-async function openVector(page) {
+async function openVector(page: Page) {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
   await page.getByRole("button", { name: /Как ты изменился за последний месяц/ }).click();
   const consent = page.getByRole("button", { name: "Понятно, продолжить" });
