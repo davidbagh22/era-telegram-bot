@@ -1,19 +1,18 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 TASK_SUBMIT_PREFIX = "task_submit_"
 ACTIVITY_SUBMIT_PREFIX = "activity_submit_"
+ATTENDANCE_PREFIX = "att"
 MINIAPP_ROUTE_PARAM = "eraPath"
 
 
 def task_submit_deep_link(bot_username: str, task_id: int) -> str:
-    """Mini App -> Bot handoff for task submission.
-
-    Uploads and conversational flows stay bot-only; authorization is rechecked
-    in the bot before the FSM starts, so the task id itself does not grant
-    access.
-    """
+    """Mini App -> Bot handoff for task submission."""
     return f"https://t.me/{bot_username}?start={TASK_SUBMIT_PREFIX}{task_id}"
 
 
@@ -27,7 +26,7 @@ def parse_task_submit_payload(payload: str) -> int | None:
 
 
 def activity_submit_deep_link(bot_username: str, activity_id: int) -> str:
-    """Mini App -> Bot handoff for Event Activity proof submission."""
+    """Mini App's Event Activities screen hands off here for proof submission."""
     return f"https://t.me/{bot_username}?start={ACTIVITY_SUBMIT_PREFIX}{activity_id}"
 
 
@@ -40,16 +39,53 @@ def parse_activity_submit_payload(payload: str) -> int | None:
         return None
 
 
+def _attendance_signature(event_id: int, secret: str) -> str:
+    digest = hmac.new(
+        secret.encode("utf-8"),
+        str(event_id).encode("ascii"),
+        hashlib.sha256,
+    ).digest()[:8]
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def attendance_payload(event_id: int, secret: str) -> str:
+    """Short signed Telegram /start payload for event attendance.
+
+    It carries no user data. The event id is authenticated with HMAC and the
+    actual check-in is still authorized against the database and event time.
+    """
+    if event_id <= 0 or not secret:
+        raise ValueError("invalid attendance token input")
+    return f"{ATTENDANCE_PREFIX}_{event_id}_{_attendance_signature(event_id, secret)}"
+
+
+def parse_attendance_payload(payload: str, secret: str) -> int | None:
+    try:
+        prefix, raw_event_id, signature = payload.split("_", 2)
+        event_id = int(raw_event_id)
+    except (ValueError, AttributeError):
+        return None
+    if prefix != ATTENDANCE_PREFIX or event_id <= 0 or not secret:
+        return None
+    expected = _attendance_signature(event_id, secret)
+    return event_id if hmac.compare_digest(signature, expected) else None
+
+
+def attendance_deep_link(bot_username: str, event_id: int, secret: str) -> str:
+    username = bot_username.lstrip("@").strip()
+    if not username:
+        raise ValueError("bot username is required")
+    return f"https://t.me/{username}?start={attendance_payload(event_id, secret)}"
+
+
 def miniapp_path_url(
     miniapp_url: str, path: str, params: dict[str, str | int] | None = None
 ) -> str:
     """Build a Telegram-safe Mini App deep link.
 
     Telegram's iOS WebView may open a WebAppInfo URL after dropping or
-    normalising the fragment. The old contract stored the whole destination in
-    ``#/...`` and therefore occasionally landed on Home. Keep the destination
-    in a normal query parameter instead; the frontend converts it to its
-    internal hash route after boot. Existing query parameters are preserved.
+    normalising the fragment. Keep the destination in a normal query parameter;
+    the frontend converts it to its internal hash route after boot.
     """
     if not miniapp_url:
         return ""
