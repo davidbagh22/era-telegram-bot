@@ -1,67 +1,32 @@
 import { useCallback, useState } from "react";
 import { downloadDataExport, downloadResumePdf, fetchProfile, requestAccountDeletion } from "../api/client";
-import { ActionCell } from "../components/ActionCell";
 import { Avatar } from "../components/Avatar";
 import { BottomSheet } from "../components/BottomSheet";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
-import { ProgressBar } from "../components/ProgressBar";
+import { EraScore } from "../components/EraScore";
+import { PageHeader } from "../components/PageHeader";
+import { PrimaryButton, SecondaryButton } from "../components/Buttons";
 import { Skeleton, SkeletonCard } from "../components/Skeleton";
-import { StatusBanner } from "../components/StatusBanner";
+import { StatusBadge } from "../components/StatusBadge";
 import { useToast } from "../components/Toast";
+import { AwardIcon, ChevronRightIcon, EventIcon, ProjectsIcon, TaskIcon, WorkIcon } from "../components/icons";
 import { useAsync } from "../hooks/useAsync";
-import { LeaderboardScreen } from "./LeaderboardScreen";
 import type { PortfolioEntry } from "../types/profile";
+import { LeaderboardScreen } from "./LeaderboardScreen";
 
-const GROWTH_LABELS = ["Участник", "Активный", "Лидер"];
+type PortfolioSection = "projects" | "events" | "tasks" | "volunteer" | "leadership" | "badges" | "certificates" | "recommendations";
 
-type ResultSection =
-  | "projects"
-  | "events"
-  | "tasks"
-  | "volunteer"
-  | "leadership"
-  | "badges"
-  | "certificates"
-  | "recommendations";
-
-const RESULT_SECTIONS: { key: ResultSection; title: string; description: string }[] = [
-  { key: "projects", title: "Проекты", description: "Проекты и роли, которые вы прошли в ЭРА" },
-  { key: "events", title: "Мероприятия", description: "События, в которых вы участвовали" },
-  { key: "tasks", title: "Задачи", description: "Практическая работа и выполненные результаты" },
-  { key: "volunteer", title: "Волонтёрство", description: "Социальный вклад и инициативы" },
-  { key: "leadership", title: "Лидерство", description: "Управленческий опыт и ответственность" },
-  { key: "badges", title: "Достижения", description: "Знаки, уровни и признание вашего вклада" },
-  { key: "certificates", title: "Сертификаты", description: "Подтверждения участия и обучения" },
-  { key: "recommendations", title: "Рекомендации", description: "Рекомендательные материалы и признание" },
+const SECTIONS: { key: PortfolioSection; title: string }[] = [
+  { key: "projects", title: "Проекты" },
+  { key: "events", title: "События" },
+  { key: "tasks", title: "Задания" },
+  { key: "volunteer", title: "Социальный вклад" },
+  { key: "leadership", title: "Лидерские роли" },
+  { key: "badges", title: "Достижения" },
+  { key: "certificates", title: "Сертификаты" },
+  { key: "recommendations", title: "Рекомендации" },
 ];
-
-function PortfolioSection({ title, entries }: { title: string; entries: PortfolioEntry[] }) {
-  return (
-    <section>
-      <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 0.75rem" }}>{title}</h2>
-      {entries.length === 0 ? (
-        <EmptyState text="Здесь пока нет записей." />
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          {entries.map((entry, index) => (
-            <Card key={`${entry.title}-${index}`}>
-              <strong>{entry.title}</strong>
-              {entry.description && (
-                <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>{entry.description}</p>
-              )}
-              {(entry.status || entry.date_label) && (
-                <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>
-                  {[entry.status, entry.date_label].filter(Boolean).join(" · ")}
-                </p>
-              )}
-            </Card>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
 
 interface ProfileScreenProps {
   isAdmin?: boolean;
@@ -69,18 +34,27 @@ interface ProfileScreenProps {
   onEnterWorkspace?: () => void;
 }
 
+function entityRoute(entry: PortfolioEntry): string | null {
+  if (!entry.entity_kind || !entry.entity_id) return null;
+  if (entry.entity_kind === "project") return `#/projects/${entry.entity_id}`;
+  if (entry.entity_kind === "event") return `#/events/${entry.entity_id}`;
+  if (entry.entity_kind === "task") return `#/tasks/${entry.entity_id}`;
+  return null;
+}
+
 export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileScreenProps = {}) {
   const state = useAsync(fetchProfile, []);
+  const toast = useToast();
+  const [section, setSection] = useState<PortfolioSection | null>(null);
+  const [leaderboard, setLeaderboard] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deletionOpen, setDeletionOpen] = useState(false);
-  const [requestingDeletion, setRequestingDeletion] = useState(false);
+  const [deletionBusy, setDeletionBusy] = useState(false);
   const [deletionRequested, setDeletionRequested] = useState(false);
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [resultSection, setResultSection] = useState<ResultSection | null>(null);
-  const toast = useToast();
 
-  const handleDownloadResume = useCallback(async () => {
+  const downloadResume = useCallback(async () => {
+    if (downloading) return;
     setDownloading(true);
     try {
       const blob = await downloadResumePdf();
@@ -88,19 +62,15 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileSc
       const link = document.createElement("a");
       link.href = url;
       link.download = "ERA_portfolio.pdf";
-      document.body.appendChild(link);
       link.click();
-      link.remove();
       URL.revokeObjectURL(url);
-      toast.show("Резюме сохранено", "success");
-    } catch {
-      toast.show("Не удалось скачать резюме. Попробуйте ещё раз.", "error");
-    } finally {
-      setDownloading(false);
-    }
-  }, [toast]);
+      toast.show("Портфолио готово", "success");
+    } catch { toast.show("Не удалось скачать портфолио. Попробуйте ещё раз.", "error"); }
+    finally { setDownloading(false); }
+  }, [downloading, toast]);
 
-  const handleExportData = useCallback(async () => {
+  const exportData = useCallback(async () => {
+    if (exporting) return;
     setExporting(true);
     try {
       const blob = await downloadDataExport();
@@ -108,57 +78,33 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileSc
       const link = document.createElement("a");
       link.href = url;
       link.download = "ERA_data_export.json";
-      document.body.appendChild(link);
       link.click();
-      link.remove();
       URL.revokeObjectURL(url);
-      toast.show("Данные выгружены", "success");
-    } catch {
-      toast.show("Не удалось выгрузить данные. Попробуйте ещё раз.", "error");
-    } finally {
-      setExporting(false);
-    }
-  }, [toast]);
+      toast.show("Копия данных готова", "success");
+    } catch { toast.show("Не удалось выгрузить данные. Попробуйте ещё раз.", "error"); }
+    finally { setExporting(false); }
+  }, [exporting, toast]);
 
-  const handleRequestDeletion = useCallback(async () => {
-    setRequestingDeletion(true);
+  const requestDeletion = useCallback(async () => {
+    if (deletionBusy || deletionRequested) return;
+    setDeletionBusy(true);
     try {
       await requestAccountDeletion();
       setDeletionRequested(true);
       setDeletionOpen(false);
-      toast.show("Заявка на удаление аккаунта отправлена администратору", "success");
-    } catch {
-      toast.show("Не удалось отправить заявку. Попробуйте ещё раз.", "error");
-    } finally {
-      setRequestingDeletion(false);
-    }
-  }, [toast]);
+      toast.show("Заявка на удаление отправлена", "success");
+    } catch { toast.show("Не удалось отправить заявку. Попробуйте ещё раз.", "error"); }
+    finally { setDeletionBusy(false); }
+  }, [deletionBusy, deletionRequested, toast]);
 
-  if (showLeaderboard) return <LeaderboardScreen onBack={() => setShowLeaderboard(false)} />;
+  if (leaderboard) return <LeaderboardScreen onBack={() => setLeaderboard(false)} />;
+  if (state.status === "loading") return <div className="era-page era-page-shell"><div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}><Skeleton width={56} height={56} radius="50%" /><div style={{ flex: 1, display: "grid", gap: 6 }}><Skeleton height="1.1rem" width="60%" /><Skeleton height="0.75rem" width="38%" /></div></div><Skeleton height="9rem" radius="var(--era-radius-card)" /><SkeletonCard /><SkeletonCard /></div>;
+  if (state.status === "error") return <div className="era-page era-page-shell"><EmptyState title="Профиль не загрузился" description="Ваши данные сохранены. Проверьте соединение и откройте профиль снова." /></div>;
 
-  if (state.status === "loading") {
-    return (
-      <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <Skeleton width={48} height={48} radius="50%" />
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.375rem" }}>
-            <Skeleton height="1.125rem" width="55%" />
-            <Skeleton height="0.75rem" width="35%" />
-          </div>
-        </div>
-        <Skeleton height="2.5rem" radius="var(--era-radius-control)" />
-        <SkeletonCard />
-        <SkeletonCard />
-      </div>
-    );
-  }
-
-  if (state.status === "error") {
-    return <StatusBanner title="Не удалось загрузить профиль" description="Потяните вниз, чтобы обновить страницу, или откройте ЭРА заново." />;
-  }
-
-  const { data } = state;
-  const resultEntries: Record<ResultSection, PortfolioEntry[]> = {
+  const data = state.data;
+  const progress = data.growth.level_count <= 1 ? 100 : (data.growth.level_index / (data.growth.level_count - 1)) * 100;
+  const score = data.stats.points ?? 0;
+  const entries: Record<PortfolioSection, PortfolioEntry[]> = {
     projects: data.projects,
     events: data.events,
     tasks: data.tasks,
@@ -169,126 +115,73 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileSc
     recommendations: data.recommendations,
   };
 
-  if (resultSection) {
-    const config = RESULT_SECTIONS.find((item) => item.key === resultSection);
+  if (section) {
+    const title = SECTIONS.find((item) => item.key === section)?.title ?? "Портфолио";
     return (
-      <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-        <button type="button" onClick={() => setResultSection(null)} style={{ alignSelf: "flex-start" }}>← Назад</button>
-        <PortfolioSection title={config?.title ?? "Результаты"} entries={resultEntries[resultSection]} />
+      <div className="era-page era-page-shell">
+        <PageHeader title={title} eyebrow="Портфолио ЭРА" subtitle="Только реальные записи из вашего профиля." onBack={() => setSection(null)} />
+        {entries[section].length === 0 ? <EmptyState title={`Пока нет записей: ${title.toLowerCase()}`} description="Раздел заполнится после подтверждённой активности." /> : <div style={{ display: "grid", gap: "0.75rem" }}>{entries[section].map((entry, index) => <PortfolioCard key={`${entry.title}-${entry.date_label}-${index}`} entry={entry} />)}</div>}
       </div>
     );
   }
 
-  const points = data.stats.points ?? 0;
-  const totalResults = Object.values(resultEntries).reduce((total, entries) => total + entries.length, 0);
-
   return (
-    <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
-      <Card gradient style={{ position: "relative", overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.875rem" }}>
+    <div className="era-page era-page-shell">
+      <PageHeader title="Профиль" eyebrow="Цифровое портфолио ЭРА" />
+
+      <Card style={{ padding: "1.2rem" }}>
+        <div style={{ display: "flex", gap: "0.9rem", alignItems: "center" }}>
           <Avatar firstName={data.first_name} lastName={data.last_name} />
-          <div style={{ minWidth: 0 }}>
-            <p style={{ margin: "0 0 0.2rem", color: "rgba(255,255,255,0.7)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
-              Мой путь в ЭРА
-            </p>
-            <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)", margin: 0, overflowWrap: "anywhere" }}>
-              {data.full_name || data.first_name}
-            </h1>
-            <p style={{ margin: "0.25rem 0 0", color: "rgba(255,255,255,0.78)" }}>
-              {data.growth.label}{data.city ? ` · ${data.city}` : ""}
-            </p>
-          </div>
+          <div style={{ flex: 1, minWidth: 0 }}><h1 style={{ margin: 0, fontSize: "var(--era-text-2xl)", overflowWrap: "anywhere" }}>{data.full_name || data.first_name}</h1><p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)" }}>{data.growth.label}{data.city ? ` · ${data.city}` : ""}</p><p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>{data.period}</p></div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem", marginTop: "1rem" }}>
-          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{points}</strong><span style={{ display: "block", color: "rgba(255,255,255,0.68)", fontSize: "var(--era-text-xs)" }}>баллов</span></div>
-          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{totalResults}</strong><span style={{ display: "block", color: "rgba(255,255,255,0.68)", fontSize: "var(--era-text-xs)" }}>результатов</span></div>
-        </div>
+        {(data.directions.length > 0 || data.departments.length > 0) && <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.9rem" }}>{[...data.directions, ...data.departments].slice(0, 6).map((item) => <span key={item} style={{ padding: "0.35rem 0.55rem", borderRadius: 999, background: "var(--era-bg-subtle)", fontSize: "var(--era-text-xs)", fontWeight: 750 }}>{item}</span>)}</div>}
       </Card>
 
-      <section>
-        <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Рост</h2>
-        <ProgressBar currentIndex={data.growth.level_index} totalSteps={data.growth.level_count} labels={GROWTH_LABELS} />
-        <Card style={{ marginTop: "0.75rem" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            {GROWTH_LABELS.map((label, index) => {
-              const reached = index <= data.growth.level_index;
-              const current = index === data.growth.level_index;
-              return (
-                <div key={label} style={{ display: "grid", gridTemplateColumns: "1.25rem 1fr", gap: "0.75rem", alignItems: "start" }}>
-                  <span aria-hidden="true" style={{ width: 12, height: 12, marginTop: 3, borderRadius: "50%", background: reached ? "var(--era-violet)" : "var(--era-ring-track)", boxShadow: current ? "0 0 0 5px var(--era-tint-violet)" : "none" }} />
-                  <div>
-                    <strong style={{ color: reached ? "var(--era-text)" : "var(--era-text-muted)" }}>{label}</strong>
-                    {current && <span style={{ display: "block", marginTop: "0.15rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>Вы здесь сейчас</span>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      </section>
+      <EraScore score={score} progressPercent={progress} levelLabel={data.growth.label} onClick={() => { window.location.hash = "#/progress"; }} />
 
-      {onEnterWorkspace && (
-        <ActionCell
-          title="Управление ЭРА"
-          description={isAdmin ? "Открыть режим администратора" : isLeader ? "Открыть пространство лидера" : "Открыть рабочее пространство"}
-          onClick={onEnterWorkspace}
-        />
-      )}
-
-      <ActionCell title="Рейтинг участников" description="Ваше место, баллы и активные участники" onClick={() => setShowLeaderboard(true)} />
-
-      <section>
-        <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Мои результаты</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", minWidth: 0 }}>
-          {RESULT_SECTIONS.map((item) => (
-            <ActionCell
-              key={item.key}
-              title={item.title}
-              description={item.description}
-              meta={`${resultEntries[item.key].length} записей`}
-              onClick={() => setResultSection(item.key)}
-            />
-          ))}
+      <section className="era-section">
+        <h2 className="era-section-title">Статистика</h2>
+        <div className="era-grid-2">
+          <StatCard icon={<ProjectsIcon width={20} height={20} />} value={data.projects.length} label="Проекты" onClick={() => { window.location.hash = "#/projects"; }} />
+          <StatCard icon={<EventIcon width={20} height={20} />} value={data.events.length} label="События" onClick={() => { window.location.hash = "#/events"; }} />
+          <StatCard icon={<TaskIcon width={20} height={20} />} value={data.tasks.length} label="Задания" onClick={() => { window.location.hash = "#/tasks"; }} />
+          <StatCard icon={<AwardIcon width={20} height={20} />} value={data.badges.length} label="Достижения" onClick={() => setSection("badges")} />
         </div>
       </section>
 
-      {(data.departments.length > 0 || data.directions.length > 0) && (
-        <Card>
-          {data.departments.length > 0 && <p style={{ margin: 0 }}>Отделы: {data.departments.join(", ")}</p>}
-          {data.directions.length > 0 && <p style={{ margin: data.departments.length > 0 ? "0.25rem 0 0" : 0 }}>Направления: {data.directions.join(", ")}</p>}
-        </Card>
-      )}
+      {onEnterWorkspace && <Card interactive onClick={onEnterWorkspace} ariaLabel="Открыть управление ЭРА" style={{ borderColor: "rgba(227,38,54,.14)" }}><div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}><span style={{ width: 42, height: 42, borderRadius: 14, display: "grid", placeItems: "center", background: "var(--era-tint-red)", color: "var(--era-red)" }}><WorkIcon width={20} height={20} /></span><div style={{ flex: 1 }}><strong>Управление ЭРА</strong><p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>{isAdmin ? "Админ-панель: люди, события, проекты и аналитика" : isLeader ? "Пространство лидера" : "Рабочее пространство"}</p></div><ChevronRightIcon width={20} height={20} style={{ color: "var(--era-red)" }} /></div></Card>}
 
-      <button type="button" className="era-btn-primary" disabled={downloading} onClick={handleDownloadResume}>
-        {downloading ? "Формируем PDF…" : "Скачать резюме PDF"}
-      </button>
+      <section className="era-section">
+        <h2 className="era-section-title">Портфолио ЭРА</h2>
+        <div style={{ display: "grid", gap: "0.55rem" }}>{SECTIONS.map((item) => <button key={item.key} type="button" onClick={() => setSection(item.key)} style={{ minHeight: 58, padding: "0.75rem 0.85rem", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", textAlign: "left", background: "var(--era-surface)" }}><span><strong>{item.title}</strong><span style={{ display: "block", marginTop: 2, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>{entries[item.key].length} записей</span></span><ChevronRightIcon width={19} height={19} /></button>)}</div>
+      </section>
 
-      <section>
-        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 0.75rem" }}>Данные и конфиденциальность</h2>
-        <Card>
-          <p style={{ margin: "0 0 0.75rem", color: "var(--era-text-muted)" }}>
-            Скачайте копию данных, которые ЭРА хранит о вас, или запросите удаление аккаунта.
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <button type="button" disabled={exporting} onClick={handleExportData}>{exporting ? "Готовим файл…" : "Скачать мои данные (JSON)"}</button>
-            <button type="button" disabled={deletionRequested} onClick={() => setDeletionOpen(true)} style={{ color: "var(--era-error)" }}>
-              {deletionRequested ? "Заявка на удаление отправлена" : "Запросить удаление аккаунта"}
-            </button>
-          </div>
-        </Card>
+      {(data.skills.length > 0 || data.experience || data.occupation) && <section className="era-section"><h2 className="era-section-title">О вас</h2><Card>{data.occupation && <ProfileField label="Сейчас" value={data.occupation} />}{data.experience && <ProfileField label="Опыт" value={data.experience} />}{data.skills.length > 0 && <div style={{ marginTop: data.occupation || data.experience ? "0.9rem" : 0 }}><span className="era-kicker">Навыки</span><div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.45rem" }}>{data.skills.map((skill) => <StatusBadge key={skill} label={skill} tone="neutral" />)}</div></div>}</Card></section>}
+
+      <SecondaryButton onClick={() => setLeaderboard(true)}>Рейтинг участников</SecondaryButton>
+      <PrimaryButton busy={downloading} busyLabel="Формируем PDF…" onClick={() => void downloadResume()}>Скачать портфолио PDF</PrimaryButton>
+
+      <section className="era-section">
+        <h2 className="era-section-title">Данные и конфиденциальность</h2>
+        <Card><p style={{ margin: 0, color: "var(--era-text-muted)" }}>Вы можете получить копию данных или отправить запрос на удаление аккаунта. Опасное действие всегда требует подтверждения.</p><SecondaryButton busy={exporting} busyLabel="Готовим файл…" onClick={() => void exportData()} style={{ width: "100%", marginTop: "0.75rem" }}>Скачать мои данные</SecondaryButton><button type="button" className="era-btn-danger" disabled={deletionRequested} onClick={() => setDeletionOpen(true)} style={{ width: "100%", marginTop: "0.5rem" }}>{deletionRequested ? "Заявка на удаление отправлена" : "Запросить удаление аккаунта"}</button></Card>
       </section>
 
       <BottomSheet open={deletionOpen} onClose={() => setDeletionOpen(false)} title="Запросить удаление аккаунта?">
-        <p style={{ color: "var(--era-text-muted)", margin: "0 0 1rem" }}>
-          Заявку рассмотрит администратор. После подтверждения ваши личные данные будут обезличены, а аккаунт — архивирован. Это действие нельзя отменить самостоятельно.
-        </p>
-        <div style={{ display: "flex", gap: "0.5rem" }}>
-          <button type="button" onClick={() => setDeletionOpen(false)} style={{ flex: 1 }}>Отмена</button>
-          <button type="button" className="era-btn-primary" disabled={requestingDeletion} onClick={handleRequestDeletion} style={{ flex: 1 }}>
-            {requestingDeletion ? "Отправляем…" : "Отправить заявку"}
-          </button>
-        </div>
+        <p style={{ margin: 0, color: "var(--era-text-muted)" }}>Администратор получит заявку. До её выполнения данные останутся доступными вам в профиле.</p><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginTop: "1rem" }}><SecondaryButton onClick={() => setDeletionOpen(false)}>Оставить</SecondaryButton><button type="button" className="era-btn-danger" disabled={deletionBusy} onClick={() => void requestDeletion()}>{deletionBusy ? "Отправляем…" : "Отправить заявку"}</button></div>
       </BottomSheet>
     </div>
   );
 }
+
+function StatCard({ icon, value, label, onClick }: { icon: React.ReactNode; value: number; label: string; onClick: () => void }) {
+  return <Card interactive onClick={onClick} ariaLabel={`${label}: ${value}. Открыть список`} style={{ boxShadow: "none" }}><span style={{ color: "var(--era-red)" }}>{icon}</span><strong style={{ display: "block", marginTop: "0.55rem", fontSize: "1.75rem" }}>{value}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>{label}</span></Card>;
+}
+
+function PortfolioCard({ entry }: { entry: PortfolioEntry }) {
+  const route = entityRoute(entry);
+  const interactive = Boolean(route || entry.url);
+  const action = interactive ? () => { if (route) window.location.hash = route; else if (entry.url) window.open(entry.url, "_blank", "noopener,noreferrer"); } : undefined;
+  return <Card interactive={interactive} onClick={action} ariaLabel={interactive ? `${entry.title}. Открыть` : undefined}><div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}><div style={{ flex: 1, minWidth: 0 }}><strong style={{ overflowWrap: "anywhere" }}>{entry.title}</strong>{entry.description && <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)" }}>{entry.description}</p>}<p style={{ margin: "0.45rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>{[entry.status, entry.date_label].filter(Boolean).join(" · ")}</p></div>{interactive && <ChevronRightIcon width={19} height={19} style={{ flexShrink: 0, color: "var(--era-text-muted)" }} />}</div></Card>;
+}
+
+function ProfileField({ label, value }: { label: string; value: string }) { return <div style={{ marginTop: "0.75rem" }}><span className="era-kicker">{label}</span><p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", whiteSpace: "pre-wrap" }}>{value}</p></div>; }

@@ -13,6 +13,8 @@ export interface PortfolioEntry {
   category: string;
   file_id: string | null;
   url: string | null;
+  entity_kind: "project" | "event" | "task" | null;
+  entity_id: number | null;
 }
 
 export interface Profile {
@@ -45,15 +47,12 @@ export interface Profile {
   recommendations: PortfolioEntry[];
 }
 
-// Self-service data rights — see app/services/data_rights_service.py.
 export interface DeletionRequest {
   id: number;
   status: "pending" | "fulfilled" | "rejected";
   created_at: string;
 }
 
-// Admin's view of the same request, with just enough of the target user's
-// identity to review it — see app/api/v1/admin.py's DeletionRequestOut.
 export interface AdminDeletionRequest {
   id: number;
   user_id: number;
