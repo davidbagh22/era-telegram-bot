@@ -82,6 +82,7 @@ function ApplicationCard({
   onApprove,
   onRequestInfo,
   onReject,
+  focused = false,
 }: {
   application: PendingApplication;
   busy: boolean;
@@ -90,6 +91,7 @@ function ApplicationCard({
   onApprove: () => void;
   onRequestInfo: () => void;
   onReject: () => void;
+  focused?: boolean;
 }) {
   const fullName = `${application.first_name} ${application.last_name ?? ""}`.trim();
   const telegram = application.username ? `@${application.username}` : `ID ${application.telegram_id}`;
@@ -98,7 +100,12 @@ function ApplicationCard({
   const skills = application.skills.length ? application.skills.join(", ") : "—";
 
   return (
-    <Card style={{ borderLeft: "3px solid var(--era-gold)", overflow: "hidden" }}>
+    <Card style={{ borderLeft: focused ? "4px solid var(--era-red)" : "3px solid var(--era-gold)", overflow: "hidden" }}>
+      {focused && (
+        <p style={{ margin: "0 0 0.65rem", color: "var(--era-red)", fontSize: "0.75rem", fontWeight: 850, textTransform: "uppercase" }}>
+          Заявка из уведомления
+        </p>
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.85rem" }}>
         <InitialsAvatar firstName={application.first_name} lastName={application.last_name} />
         <div style={{ minWidth: 0, flex: 1 }}>
@@ -256,7 +263,7 @@ function ApplicationCard({
   );
 }
 
-export function AdminApplicationsScreen() {
+export function AdminApplicationsScreen({ initialApplicationId = null }: { initialApplicationId?: number | null }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchAdminApplications(), [refreshKey]);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -327,20 +334,35 @@ export function AdminApplicationsScreen() {
     return <EmptyState text="Новых заявок нет." />;
   }
 
+  const focusedExists = initialApplicationId !== null && state.data.some((item) => item.id === initialApplicationId);
+  const applications = initialApplicationId === null
+    ? state.data
+    : [...state.data].sort((left, right) => {
+        if (left.id === initialApplicationId) return -1;
+        if (right.id === initialApplicationId) return 1;
+        return 0;
+      });
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem", minWidth: 0 }}>
       <div>
         <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
           Показаны все данные, которые участник отправил при регистрации, включая фотографию и соцсети.
         </p>
+        {initialApplicationId !== null && !focusedExists && (
+          <p style={{ margin: "0.45rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+            Заявка #{initialApplicationId} уже обработана или больше не находится в очереди. Ниже показаны актуальные заявки.
+          </p>
+        )}
       </div>
       {actionError && (
         <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
       )}
-      {state.data.map((application) => (
+      {applications.map((application) => (
         <ApplicationCard
           key={application.id}
           application={application}
+          focused={application.id === initialApplicationId}
           busy={busyId === application.id}
           comment={comments[application.id] ?? ""}
           onComment={(value) =>
