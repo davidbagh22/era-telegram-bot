@@ -11,6 +11,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlsplit
 
+from aiogram.enums import ParseMode
+
 from app.handlers.participant import navigation
 from app.utils import texts
 from app.utils.constants import ApplicationStatus
@@ -64,6 +66,15 @@ def _call() -> SimpleNamespace:
     return SimpleNamespace(answer=AsyncMock(), message=SimpleNamespace(answer=AsyncMock()))
 
 
+def _webapp_routes(reply_markup) -> dict[str, str]:
+    routes: dict[str, str] = {}
+    for row in reply_markup.inline_keyboard:
+        for button in row:
+            if button.web_app:
+                routes[button.text] = parse_qs(urlsplit(button.web_app.url).query).get("eraPath", [""])[0]
+    return routes
+
+
 class NavGuideCallbackTests(unittest.IsolatedAsyncioTestCase):
     async def test_participant_gets_the_participant_guide(self) -> None:
         call = _call()
@@ -71,17 +82,30 @@ class NavGuideCallbackTests(unittest.IsolatedAsyncioTestCase):
         call.answer.assert_awaited_once()
         (text,), kwargs = call.message.answer.call_args
         self.assertEqual(text, navigation.NAVIGATION_PARTICIPANT)
+        self.assertEqual(kwargs["parse_mode"], ParseMode.HTML)
         self.assertIn("💡 <b>Проекты</b>", text)
         self.assertIn("💬 Связь", text)
         buttons = {b.text for row in kwargs["reply_markup"].inline_keyboard for b in row}
         self.assertNotIn("⚙️ Режим администратора", buttons)
         self.assertNotIn("🧭 Режим лидера", buttons)
+        self.assertEqual(
+            _webapp_routes(kwargs["reply_markup"]),
+            {
+                "Проекты": "projects",
+                "События": "events",
+                "Сообщество": "community",
+                "Профиль": "profile",
+                "Мои задачи": "tasks",
+                "Возможности": "opportunities",
+            },
+        )
 
     async def test_leader_gets_the_leader_guide_with_workspace_row(self) -> None:
         call = _call()
         await navigation.nav_guide_callback(call, _leader_user(), _settings())
         (text,), kwargs = call.message.answer.call_args
         self.assertEqual(text, navigation.NAVIGATION_LEADER)
+        self.assertEqual(kwargs["parse_mode"], ParseMode.HTML)
         buttons = {b.text: b for row in kwargs["reply_markup"].inline_keyboard for b in row}
         self.assertIn("🧭 Режим лидера", buttons)
         route = parse_qs(urlsplit(buttons["🧭 Режим лидера"].web_app.url).query)
@@ -92,6 +116,7 @@ class NavGuideCallbackTests(unittest.IsolatedAsyncioTestCase):
         await navigation.nav_guide_callback(call, _admin_user(), _settings())
         (text,), kwargs = call.message.answer.call_args
         self.assertEqual(text, navigation.NAVIGATION_ADMIN)
+        self.assertEqual(kwargs["parse_mode"], ParseMode.HTML)
         buttons = {b.text: b for row in kwargs["reply_markup"].inline_keyboard for b in row}
         self.assertIn("⚙️ Режим администратора", buttons)
         route = parse_qs(urlsplit(buttons["⚙️ Режим администратора"].web_app.url).query)
