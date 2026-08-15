@@ -59,7 +59,7 @@ function TaskDetail({ task, onClaim, pending, error }: { task: TaskItem; onClaim
 }
 
 export function TasksTab({ initialItemId }: TasksTabProps = {}) {
-  const [scope, setScope] = useState<TaskScope>(initialItemId ? "mine" : "mine");
+  const [scope, setScope] = useState<TaskScope>("mine");
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchTasks(scope), [scope, refreshKey]);
   const detail = useAsync(
@@ -93,7 +93,8 @@ export function TasksTab({ initialItemId }: TasksTabProps = {}) {
         </div>
       );
     }
-    return <TaskDetail task={detail.data} pending={pendingId === detail.data.id} error={actionError} onClaim={() => void handleClaim(detail.data.id)} />;
+    const task = detail.data;
+    return <TaskDetail task={task} pending={pendingId === task.id} error={actionError} onClaim={() => void handleClaim(task.id)} />;
   }
 
   const scopeMeta = SCOPES.find((item) => item.value === scope) ?? SCOPES[1];
