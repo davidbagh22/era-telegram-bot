@@ -12,7 +12,7 @@ import { AdminOverviewScreen } from "./admin/AdminOverviewScreen";
 import { AdminProjectsScreen } from "./admin/AdminProjectsScreen";
 import { AdminSurveysScreen } from "./admin/AdminSurveysScreen";
 import { AdminTasksScreen } from "./admin/AdminTasksScreen";
-import { AdminToolsScreen } from "./admin/AdminToolsScreen";
+import { AdminToolsScreen, type ToolsSection } from "./admin/AdminToolsScreen";
 import { AdminUsersScreen } from "./admin/AdminUsersScreen";
 import { SystemPanel } from "./admin/tools/SystemPanel";
 
@@ -43,7 +43,7 @@ const COMMS_SECTIONS: SectionOption<CommsSection>[] = [
 ];
 
 const CONTROL_SECTIONS: SectionOption<ControlSection>[] = [
-  { value: "analytics", label: "Аналитика", description: "Показатели сообщества, динамика и Excel-выгрузка" },
+  { value: "analytics", label: "ЭРА сейчас", description: "Живые показатели с переходом к реальным данным" },
   { value: "system", label: "Состояние системы", description: "Диагностика, инциденты, резервные копии и здоровье ЭРА" },
   { value: "maintenance", label: "Обслуживание", description: "Редкие технические операции с отдельной серверной защитой" },
 ];
@@ -78,13 +78,19 @@ export function AdminScreen() {
   const [workSection, setWorkSection] = useState<WorkSection | null>(null);
   const [commsSection, setCommsSection] = useState<CommsSection | null>(null);
   const [controlSection, setControlSection] = useState<ControlSection | null>(null);
+  const [toolsInitialSection, setToolsInitialSection] = useState<ToolsSection | null>(null);
 
-  const changeGroup = (next: AdminGroup) => {
-    setGroup(next);
+  const clearSections = () => {
     setPeopleSection(null);
     setWorkSection(null);
     setCommsSection(null);
     setControlSection(null);
+    setToolsInitialSection(null);
+  };
+
+  const changeGroup = (next: AdminGroup) => {
+    setGroup(next);
+    clearSections();
   };
 
   const openPeople = (section: PeopleSection) => {
@@ -93,17 +99,31 @@ export function AdminScreen() {
     setWorkSection(null);
     setCommsSection(null);
     setControlSection(null);
+    setToolsInitialSection(null);
   };
+
   const openWork = (section: WorkSection) => {
     setGroup("work");
     setWorkSection(section);
     setPeopleSection(null);
     setCommsSection(null);
     setControlSection(null);
+    setToolsInitialSection(null);
   };
+
   const openComms = () => {
     setGroup("comms");
     setCommsSection("tools");
+    setToolsInitialSection(null);
+    setPeopleSection(null);
+    setWorkSection(null);
+    setControlSection(null);
+  };
+
+  const openTool = (section: ToolsSection) => {
+    setGroup("comms");
+    setCommsSection("tools");
+    setToolsInitialSection(section);
     setPeopleSection(null);
     setWorkSection(null);
     setControlSection(null);
@@ -143,20 +163,31 @@ export function AdminScreen() {
           </div>
         )}
 
-        {group === "comms" && !commsSection && <SectionMenu title="Связь" description="Чаты, рассылки и обратная связь без системных функций." options={COMMS_SECTIONS} onOpen={setCommsSection} />}
+        {group === "comms" && !commsSection && <SectionMenu title="Связь" description="Чаты, рассылки и обратная связь без системных функций." options={COMMS_SECTIONS} onOpen={(next) => { setToolsInitialSection(null); setCommsSection(next); }} />}
         {group === "comms" && commsSection && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <SectionHeader title={COMMS_SECTIONS.find((item) => item.value === commsSection)?.label ?? "Связь"} onBack={() => setCommsSection(null)} />
+            <SectionHeader title={COMMS_SECTIONS.find((item) => item.value === commsSection)?.label ?? "Связь"} onBack={() => { setCommsSection(null); setToolsInitialSection(null); }} />
             {commsSection === "surveys" && <AdminSurveysScreen />}
-            {commsSection === "tools" && <AdminToolsScreen />}
+            {commsSection === "tools" && <AdminToolsScreen initialSection={toolsInitialSection} />}
           </div>
         )}
 
-        {group === "control" && !controlSection && <SectionMenu title="Контроль" description="Аналитика, здоровье платформы и редкое техническое обслуживание." options={CONTROL_SECTIONS} onOpen={setControlSection} />}
+        {group === "control" && !controlSection && <SectionMenu title="Контроль" description="Живые данные ЭРА, здоровье платформы и техническое обслуживание." options={CONTROL_SECTIONS} onOpen={setControlSection} />}
         {group === "control" && controlSection && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={CONTROL_SECTIONS.find((item) => item.value === controlSection)?.label ?? "Контроль"} onBack={() => setControlSection(null)} />
-            {controlSection === "analytics" && <AdminDashboardScreen />}
+            {controlSection === "analytics" && (
+              <AdminDashboardScreen
+                onOpenParticipants={() => openPeople("participants")}
+                onOpenProjects={() => openWork("projects")}
+                onOpenEvents={() => openWork("events")}
+                onOpenOrganizations={() => openTool("contacts")}
+                onOpenGoals={() => openTool("goals")}
+                onOpenApplications={() => openPeople("applications")}
+                onOpenTasks={() => openWork("tasks")}
+                onOpenOffers={() => openWork("offers")}
+              />
+            )}
             {controlSection === "system" && <SystemPanel />}
             {controlSection === "maintenance" && <AdminMaintenanceScreen />}
           </div>
