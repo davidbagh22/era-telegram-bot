@@ -3,14 +3,17 @@ from __future__ import annotations
 import asyncio
 import unittest
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlsplit
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.api.v1.project_builder import read_project_builder_questions
 from app.config import Settings
+from app.handlers.participant.navigation import _send_navigation_guide
 from app.services.chat_faq_service import FAQ_ANSWERS, FAQ_PINNED_MESSAGE
 from app.services.system_scheduler import add_system_jobs
+from app.utils.constants import ApplicationStatus, Role
 from app.utils.deep_links import (
     miniapp_admin_url,
     miniapp_event_url,
@@ -35,6 +38,33 @@ class TelegramSafeDeepLinkTests(unittest.TestCase):
     def test_admin_route_is_explicit(self) -> None:
         url = miniapp_admin_url("https://era.example/app/")
         self.assertEqual(parse_qs(urlsplit(url).query)["eraPath"], ["admin"])
+
+
+class TelegramNavigationRenderingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_navigation_uses_html_parse_mode_instead_of_printing_tags(self) -> None:
+        message = SimpleNamespace(answer=AsyncMock())
+        user = SimpleNamespace(
+            application_status=ApplicationStatus.APPROVED,
+            is_blocked=False,
+            is_archived=False,
+            role=Role.PARTICIPANT,
+            permission_grants=[],
+        )
+        settings = Settings(
+            bot_token="0000000000:TESTTOKEN",
+            miniapp_auth_secret="test-secret",
+            miniapp_url="https://era.example/app/",
+        )
+
+        await _send_navigation_guide(message, user, settings)
+
+        message.answer.assert_awaited_once()
+        args, kwargs = message.answer.await_args
+        self.assertIn("<b>Куда идём?</b>", args[0])
+        self.assertEqual(kwargs["parse_mode"], "HTML")
+        keyboard = kwargs["reply_markup"]
+        projects_url = keyboard.inline_keyboard[0][0].web_app.url
+        self.assertEqual(parse_qs(urlsplit(projects_url).query)["eraPath"], ["projects"])
 
 
 class ProjectBuilderContractTests(unittest.TestCase):
