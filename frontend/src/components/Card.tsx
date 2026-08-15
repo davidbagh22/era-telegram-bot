@@ -4,26 +4,42 @@ interface CardProps {
   children: ReactNode;
   gradient?: boolean;
   style?: CSSProperties;
+  onClick?: () => void;
 }
 
-export function Card({ children, gradient = false, style }: CardProps) {
+export function Card({ children, gradient = false, style, onClick }: CardProps) {
+  const interactive = Boolean(onClick);
+  const sharedStyle: CSSProperties = {
+    borderRadius: "var(--era-radius-card)",
+    padding: "1rem",
+    border: gradient ? "1px solid rgba(227,38,54,0.10)" : "1px solid var(--era-border)",
+    background: gradient ? "var(--era-hero-bg)" : "var(--era-surface)",
+    boxShadow: gradient ? "0 12px 34px rgba(152,27,40,0.09)" : "var(--era-shadow-soft)",
+    color: "var(--era-text)",
+    ...style,
+  };
+
+  if (interactive) {
+    return (
+      <button
+        type="button"
+        className="era-card"
+        onClick={onClick}
+        style={{
+          ...sharedStyle,
+          width: "100%",
+          minHeight: 44,
+          textAlign: "left",
+          fontWeight: 400,
+        }}
+      >
+        {children}
+      </button>
+    );
+  }
+
   return (
-    <div
-      className="era-card"
-      style={{
-        borderRadius: "var(--era-radius-card)",
-        padding: "1rem",
-        border: gradient ? "1px solid rgba(255,255,255,0.12)" : "1px solid var(--era-border)",
-        background: gradient
-          ? "linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.02)), var(--era-gradient)"
-          : "linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018)), var(--era-surface)",
-        boxShadow: gradient ? "0 18px 42px rgba(120, 61, 255, 0.18)" : "var(--era-shadow-soft)",
-        color: gradient ? "#fff" : "var(--era-text)",
-        backdropFilter: "blur(18px)",
-        WebkitBackdropFilter: "blur(18px)",
-        ...style,
-      }}
-    >
+    <div className="era-card" style={sharedStyle}>
       {children}
     </div>
   );
