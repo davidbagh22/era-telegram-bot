@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createProject, describeActionError, fetchProjects } from "../../api/client";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
@@ -9,6 +9,7 @@ import { FilterIcon, PlusIcon } from "../../components/icons";
 import { useAsync } from "../../hooks/useAsync";
 import type { ProjectScope } from "../../types/project";
 
+const PROJECT_SCOPE_KEY = "era:projects:scope";
 const SCOPES: { value: ProjectScope; label: string; description: string }[] = [
   { value: "mine", label: "Мои", description: "Ваши проекты и черновики" },
   { value: "open", label: "Открытые", description: "Проекты, куда можно включиться" },
@@ -18,14 +19,25 @@ const SCOPES: { value: ProjectScope; label: string; description: string }[] = [
 
 interface ProjectsListProps { onSelect: (projectId: number) => void; }
 
+function initialScope(): ProjectScope {
+  try {
+    const value = window.sessionStorage.getItem(PROJECT_SCOPE_KEY) as ProjectScope | null;
+    return SCOPES.some((option) => option.value === value) ? value! : "mine";
+  } catch { return "mine"; }
+}
+
 export function ProjectsList({ onSelect }: ProjectsListProps) {
-  const [scope, setScope] = useState<ProjectScope>("mine");
+  const [scope, setScope] = useState<ProjectScope>(initialScope);
   const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [idea, setIdea] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const state = useAsync(() => fetchProjects(scope), [scope]);
   const scopeConfig = SCOPES.find((option) => option.value === scope) ?? SCOPES[0];
+
+  useEffect(() => {
+    try { window.sessionStorage.setItem(PROJECT_SCOPE_KEY, scope); } catch { /* browser storage may be restricted */ }
+  }, [scope]);
 
   const handleCreate = async () => {
     const draft = idea.trim();

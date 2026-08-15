@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { BottomNavigation, type TabKey } from "../components/BottomNavigation";
+import { useRouteScrollMemory } from "../hooks/useRouteScrollMemory";
 
 interface UserLayoutProps {
   children: ReactNode;
@@ -8,6 +9,7 @@ interface UserLayoutProps {
 }
 
 export function UserLayout({ children, activeTab, onTabChange }: UserLayoutProps) {
+  useRouteScrollMemory();
   return (
     <div
       style={{
