@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import csv
+import io
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -159,3 +162,52 @@ async def development_analytics(
         },
     )
     return result
+
+
+@router.get("/analytics/export")
+async def export_development_analytics(
+    period_days: int = 30,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    _require_permission(user, "development.admin.export")
+    result = await dev_analytics.community_analytics(session, period_days=period_days)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["section", "indicator", "value", "count", "coverage_percent"])
+    writer.writerow([
+        "coverage",
+        "checkins",
+        result["sample_size"],
+        result["eligible_profiles"],
+        result["coverage_percent"],
+    ])
+    if not result["suppressed"]:
+        for code in dev.STATE_DIMENSIONS:
+            writer.writerow([
+                "state",
+                dev.STATE_LABELS[code],
+                result["state"].get(code, ""),
+                result["sample_size"],
+                result["coverage_percent"],
+            ])
+        for item in result.get("development_wants", []):
+            writer.writerow(["development_wants", item["key"], item["percent"], item["count"], result["coverage_percent"]])
+        for item in result.get("interests", []):
+            writer.writerow(["interests", item["key"], item["percent"], item["count"], result["coverage_percent"]])
+    await dev.audit(
+        session,
+        user.id,
+        "development.admin.analytics.export",
+        metadata={
+            "period_days": max(1, min(period_days, 365)),
+            "suppressed": result["suppressed"],
+            "sample_size": result["sample_size"],
+            "permission": "development.admin.export",
+        },
+    )
+    return Response(
+        content=output.getvalue().encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=era_my_vector_analytics.csv"},
+    )
