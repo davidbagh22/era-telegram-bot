@@ -86,7 +86,7 @@ def test_rich_user_route_precedes_legacy_compact_route() -> None:
     matches = [
         route
         for route in api_router.routes
-        if getattr(route, "path", None) == "/api/v1/admin/users/{user_id}"
+        if getattr(route, "path", "").endswith("/admin/users/{user_id}")
         and "GET" in getattr(route, "methods", set())
     ]
     assert len(matches) >= 2
