@@ -1,10 +1,11 @@
 import { useState } from "react";
 
-import { fetchAdminDevelopmentAnalytics } from "../../api/development";
+import { downloadAdminDevelopmentAnalytics, fetchAdminDevelopmentAnalytics } from "../../api/development";
 import { Card } from "../../components/Card";
 import { ProgressRing } from "../../components/ProgressRing";
 import { SkeletonCard } from "../../components/Skeleton";
 import { StatusBanner } from "../../components/StatusBanner";
+import { useToast } from "../../components/Toast";
 import { useAsync } from "../../hooks/useAsync";
 import type { VectorDimension } from "../../types/development";
 
@@ -20,7 +21,9 @@ const DIMENSIONS: VectorDimension[] = ["energy", "agency", "autonomy", "connecti
 
 export function AdminDevelopmentScreen() {
   const [period, setPeriod] = useState(30);
+  const [exporting, setExporting] = useState(false);
   const state = useAsync(() => fetchAdminDevelopmentAnalytics(period), [period]);
+  const toast = useToast();
 
   if (state.status === "loading") {
     return <><SkeletonCard /><SkeletonCard /></>;
@@ -48,6 +51,31 @@ export function AdminDevelopmentScreen() {
             {days === 30 ? "30 дней" : days === 90 ? "3 месяца" : "6 месяцев"}
           </button>
         ))}
+        <button
+          type="button"
+          disabled={exporting}
+          onClick={async () => {
+            setExporting(true);
+            try {
+              const blob = await downloadAdminDevelopmentAnalytics(period);
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = `ERA_My_Vector_${period}d.csv`;
+              document.body.appendChild(link);
+              link.click();
+              link.remove();
+              URL.revokeObjectURL(url);
+              toast.show("Агрегированная аналитика выгружена", "success");
+            } catch {
+              toast.show("Нет права на экспорт или выгрузка недоступна.", "error");
+            } finally {
+              setExporting(false);
+            }
+          }}
+        >
+          {exporting ? "Готовим…" : "Скачать CSV"}
+        </button>
       </div>
 
       <Card>
