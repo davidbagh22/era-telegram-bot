@@ -20,9 +20,20 @@ from app.services import development_service as dev
 router = APIRouter(prefix="/admin/development", tags=["admin-development"])
 
 
-def _require_admin(user: User) -> None:
-    if not user.is_admin:
-        raise HTTPException(status_code=403, detail="development_admin_access_required")
+def _has_permission(user: User, permission: str) -> bool:
+    if user.is_admin:
+        return True
+    return any(
+        grant.is_active
+        and grant.permission == permission
+        and grant.scope_type == "global"
+        for grant in (user.permission_grants or [])
+    )
+
+
+def _require_permission(user: User, permission: str) -> None:
+    if not _has_permission(user, permission):
+        raise HTTPException(status_code=403, detail=f"permission_required:{permission}")
 
 
 @router.get("/participants/{user_id}")
@@ -31,7 +42,7 @@ async def participant_development(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    _require_admin(user)
+    _require_permission(user, "development.admin.individual.read")
     target = await session.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="user_not_found")
@@ -43,6 +54,7 @@ async def participant_development(
             user.id,
             "development.admin.profile.denied",
             target_user_id=user_id,
+            metadata={"reason": "user_visibility"},
         )
         raise HTTPException(status_code=403, detail="development_summary_not_shared")
 
@@ -70,7 +82,7 @@ async def participant_development(
         user.id,
         "development.admin.profile.read",
         target_user_id=user_id,
-        metadata={"shared_summary": True},
+        metadata={"shared_summary": True, "permission": "development.admin.individual.read"},
     )
 
     return {
@@ -133,7 +145,7 @@ async def development_analytics(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    _require_admin(user)
+    _require_permission(user, "development.admin.analytics.read")
     result = await dev_analytics.community_analytics(session, period_days=period_days)
     await dev.audit(
         session,
@@ -143,6 +155,7 @@ async def development_analytics(
             "period_days": max(1, min(period_days, 365)),
             "suppressed": result["suppressed"],
             "sample_size": result["sample_size"],
+            "permission": "development.admin.analytics.read",
         },
     )
     return result
