@@ -65,12 +65,12 @@ def main_miniapp_deep_link(bot_username: str, start_param: str) -> str:
 def miniapp_path_url(
     miniapp_url: str, path: str, params: dict[str, str | int] | None = None
 ) -> str:
-    """Build a resilient direct WebAppInfo route URL.
+    """Build a Telegram-safe direct WebAppInfo route URL.
 
-    This remains the fallback for entity-level links and deployments without a
-    configured Main Mini App. Carry the destination in ERA's explicit query,
-    Telegram's start-param query and the hash fallback; the frontend
-    canonicalises whichever survives into one internal route.
+    URL fragments are deliberately avoided: Telegram clients do not reliably
+    preserve them when reopening an already-running Mini App. The destination
+    is carried as query data instead; the frontend consumes it before any stale
+    cached hash and then canonicalises the internal route.
     """
     if not miniapp_url:
         return ""
@@ -82,7 +82,7 @@ def miniapp_path_url(
     query[TELEGRAM_START_PARAM] = normalized_path
     if params:
         query.update({key: str(value) for key, value in params.items()})
-    return urlunsplit((parts.scheme, parts.netloc, app_path, urlencode(query), normalized_path))
+    return urlunsplit((parts.scheme, parts.netloc, app_path, urlencode(query), ""))
 
 
 def miniapp_project_url(miniapp_url: str, project_id: int) -> str:
