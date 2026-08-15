@@ -20,11 +20,16 @@ class FakeBot:
         self.sent: list[tuple[int, str, str | None]] = []
         self.edited: list[tuple[int, int, str, str | None]] = []
         self.pinned: list[tuple[int, int]] = []
+        self.last_markup = None
+
+    async def get_me(self):
+        return SimpleNamespace(username="EraTestBot")
 
     async def send_message(self, chat_id: int, text: str, reply_markup=None, parse_mode=None):
         if self.fail_send:
             raise TelegramNetworkError(method="sendMessage", message="network down")
         self.sent.append((chat_id, text, parse_mode))
+        self.last_markup = reply_markup
         return SimpleNamespace(message_id=555)
 
     async def edit_message_text(
@@ -37,6 +42,7 @@ class FakeBot:
         parse_mode=None,
     ):
         self.edited.append((chat_id, message_id, text, parse_mode))
+        self.last_markup = reply_markup
         return SimpleNamespace(message_id=message_id)
 
     async def pin_chat_message(self, chat_id: int, message_id: int, disable_notification: bool = True):
@@ -69,6 +75,15 @@ class ChatFaqServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(audit_rows[0].action, "chat.faq_published")
             self.assertEqual(audit_rows[0].entity_id, 555)
             self.assertEqual(audit_rows[0].new_value, {"chat": "general", "pinned": True})
+
+    async def test_publish_uses_links_that_open_private_bot_chat(self) -> None:
+        async with self.session_factory() as session:
+            bot = FakeBot()
+            settings = Settings(bot_token="1234567890:test-token", general_chat_id=-100555)
+            await publish_faq_message(bot, settings, session, actor_id=1)
+            urls = [row[0].url for row in bot.last_markup.inline_keyboard]
+            self.assertTrue(all(url and url.startswith("https://t.me/EraTestBot?start=faq_") for url in urls))
+            self.assertTrue(all(row[0].callback_data is None for row in bot.last_markup.inline_keyboard))
 
     async def test_second_publish_reuses_recorded_message_instead_of_spamming(self) -> None:
         async with self.session_factory() as session:
