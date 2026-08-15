@@ -6,7 +6,8 @@ from aiogram.types import Message
 from app.config import Settings
 from app.database.models import User
 from app.handlers.participant.navigation import _approved, _send_main_menu, _send_navigation_guide
-from app.keyboards.participant import contact_keyboard, open_app_button
+from app.keyboards.bot_shell import contact_keyboard
+from app.keyboards.participant import open_app_button
 from app.utils import texts
 from app.utils.deep_links import (
     miniapp_events_url,
@@ -78,11 +79,6 @@ async def events_command(message: Message, user: User | None, settings: Settings
 
 @router.message(Command("tasks"), F.chat.type == "private")
 async def tasks_command(message: Message, user: User | None, settings: Settings, state: FSMContext) -> None:
-    # Registered before task_reply.py's own /tasks handler in
-    # app/handlers/participant/__init__.py's include_routers() order, so
-    # this compatibility redirect wins over that file's old bot-native
-    # _task_menu() (2026-08 bot cleanup — that handler is now unreachable
-    # dead code, kept in place rather than deleted in this pass).
     await state.clear()
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
@@ -123,17 +119,12 @@ async def contact_command(message: Message, user: User | None, state: FSMContext
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
-    await message.answer("💬 Связь\n\nВыберите, что Вам нужно.", reply_markup=contact_keyboard())
+    await message.answer("💬 Связь с ЭРА\n\nВыберите, что нужно сейчас.", reply_markup=contact_keyboard())
 
 
 @router.message(Command("help"), F.chat.type == "private")
 async def help_command(
     message: Message, user: User | None, settings: Settings, state: FSMContext
 ) -> None:
-    # 2026-08 bot cleanup: /help used to open about_keyboard() -- a
-    # 6-button bot-native menu (Личный кабинет/Афиша/Задачи/Проекты/
-    # Возможности/Связь) duplicating the Mini App. Folded into the same
-    # "🧭 Навигация" explainer /navigation uses instead, per the brief's
-    # "предпочтительно объединить help в navigation".
     await state.clear()
     await _send_navigation_guide(message, user, settings)
