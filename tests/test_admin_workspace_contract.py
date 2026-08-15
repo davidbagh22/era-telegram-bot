@@ -10,14 +10,16 @@ class AdminWorkspaceContractTests(unittest.TestCase):
         app = (FRONTEND / "app" / "App.tsx").read_text(encoding="utf-8")
         profile = (FRONTEND / "screens" / "ProfileScreen.tsx").read_text(encoding="utf-8")
         self.assertIn("const [inWorkspace, setInWorkspace] = useState(false)", app)
-        self.assertIn('title="Управление ЭРА"', profile)
+        self.assertIn("Управление ЭРА", profile)
+        self.assertIn("onEnterWorkspace", profile)
         self.assertIn("onEnterWorkspace", app)
+        self.assertIn("adminWorkspaceRequested", app)
 
     def test_control_is_a_dedicated_admin_destination(self) -> None:
         nav = (FRONTEND / "components" / "AdminBottomNav.tsx").read_text(encoding="utf-8")
         screen = (FRONTEND / "screens" / "AdminScreen.tsx").read_text(encoding="utf-8")
         self.assertIn('label: "Контроль"', nav)
-        for marker in ['value: "analytics"', 'value: "system"', 'value: "maintenance"', "<AdminDashboardScreen />", "<SystemPanel />", "<AdminMaintenanceScreen />"]:
+        for marker in ['value: "analytics"', 'value: "system"', 'value: "maintenance"', "<AdminDashboardScreen", "<SystemPanel />", "<AdminMaintenanceScreen />"]:
             self.assertIn(marker, screen)
 
     def test_overview_and_communications_do_not_duplicate_control_tools(self) -> None:
