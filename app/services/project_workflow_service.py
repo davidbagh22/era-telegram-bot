@@ -149,14 +149,6 @@ def can_edit(project: Project) -> bool:
     return project.status in EDITABLE_STATUSES
 
 
-def can_submit_for_review(project: Project) -> bool:
-    return project.status in EDITABLE_STATUSES
-
-
-def can_delete(project: Project) -> bool:
-    return project.status in DELETABLE_STATUSES
-
-
 def missing_required_answers(project: Project) -> tuple[str, ...]:
     data = project.form_data or {}
     return tuple(
@@ -164,6 +156,14 @@ def missing_required_answers(project: Project) -> tuple[str, ...]:
         for question in PROJECT_QUESTIONS
         if not str(data.get(question.key) or "").strip()
     )
+
+
+def can_submit_for_review(project: Project) -> bool:
+    return project.status in EDITABLE_STATUSES and not missing_required_answers(project)
+
+
+def can_delete(project: Project) -> bool:
+    return project.status in DELETABLE_STATUSES
 
 
 async def create_draft(session: AsyncSession, user: User, idea: str) -> Project:
