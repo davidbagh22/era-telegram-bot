@@ -3,6 +3,9 @@
 // We only declare the surface this app actually uses.
 interface TelegramWebApp {
   initData: string;
+  initDataUnsafe?: {
+    start_param?: string;
+  };
   ready: () => void;
   expand: () => void;
   colorScheme: "light" | "dark";
@@ -28,6 +31,10 @@ export function getInitData(): string {
   return getTelegramWebApp()?.initData ?? "";
 }
 
+export function getTelegramStartParam(): string {
+  return getTelegramWebApp()?.initDataUnsafe?.start_param ?? "";
+}
+
 export function initTelegramWebApp(): void {
   const webApp = getTelegramWebApp();
   webApp?.ready();
@@ -40,11 +47,9 @@ export function getColorScheme(): "light" | "dark" {
   return getTelegramWebApp()?.colorScheme ?? "light";
 }
 
-// Mirrors Telegram's own light/dark theme onto the document so
-// tokens.css's `[data-theme="dark"]` overrides apply — without this the
-// Mini App stays light-only even when opened from a dark-themed Telegram
-// client. Safe to call outside Telegram (falls back to "light", matching
-// the existing browser-preview default).
+// Mirrors Telegram's own light/dark theme onto the document. ERA intentionally
+// uses its dark visual system in both modes, but keeping the attribute in sync
+// still lets platform-specific overrides react correctly.
 export function applyTelegramTheme(): void {
   document.documentElement.dataset.theme = getColorScheme();
 }
