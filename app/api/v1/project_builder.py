@@ -14,15 +14,12 @@ class ProjectBuilderQuestionOut(BaseModel):
     title: str
     prompt: str
     ai_hint: str | None
+    input_type: str
 
 
 @router.get("/questions", response_model=list[ProjectBuilderQuestionOut])
 async def read_project_builder_questions() -> list[ProjectBuilderQuestionOut]:
-    """Participant-facing editorial guidance for the Mini App constructor.
-
-    The existing project API intentionally exposes only editable text fields;
-    keep the same rule here while additionally returning each curated AI prompt.
-    """
+    """Full participant project constructor, including date and time steps."""
     return [
         ProjectBuilderQuestionOut(
             key=question.key,
@@ -30,7 +27,7 @@ async def read_project_builder_questions() -> list[ProjectBuilderQuestionOut]:
             title=question.title,
             prompt=question.prompt,
             ai_hint=question.ai_hint,
+            input_type=question.input_type,
         )
         for question in PROJECT_QUESTIONS
-        if question.input_type == "text"
     ]
