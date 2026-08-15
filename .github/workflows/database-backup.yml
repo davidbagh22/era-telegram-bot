@@ -26,23 +26,8 @@ jobs:
   backup-and-verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: restore
-          POSTGRES_PASSWORD: restore
-          POSTGRES_DB: era_restore_check
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U restore -d era_restore_check"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
 
     env:
-      RESTORE_DATABASE_URL: postgresql://restore:restore@localhost:5432/era_restore_check
       BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
       BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX }}
       BACKUP_S3_REGION: ${{ secrets.BACKUP_S3_REGION }}
@@ -54,10 +39,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install backup clients
+      - name: Install workflow utilities
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client jq
+          sudo apt-get install -y jq
 
       - name: Validate optional external storage
         id: config
@@ -161,7 +146,7 @@ jobs:
           echo "size_bytes=$(stat -c '%s' "${BACKUP_FILE}")" >> "${GITHUB_OUTPUT}"
           echo "backup_key=$(basename "${BACKUP_FILE}" .dump)" >> "${GITHUB_OUTPUT}"
 
-      - name: Verify restore on isolated PostgreSQL
+      - name: Verify restore on isolated PostgreSQL 18
         env:
           BACKUP_FILE: ${{ steps.backup.outputs.backup_file }}
           BACKUP_SHA256: ${{ steps.backup.outputs.sha256 }}
@@ -317,7 +302,8 @@ jobs:
             echo "- Production DB credentials exported to GitHub: no"
             echo "- GitHub authentication: short-lived OIDC, exact repo/main/workflow claims"
             echo "- Production commit matched before snapshot: yes"
-            echo "- Restore test required before persistence: yes"
+            echo "- Snapshot client: PostgreSQL 18 pinned in production image"
+            echo "- Restore test: isolated PostgreSQL 18 container, required before persistence"
             echo "- Stored copies encrypted with AES-256/PBKDF2: yes"
             echo "- GitHub artifact retention: ${{ steps.tier.outputs.github_retention_days || 'unknown' }} days"
             echo "- External S3-compatible copy active: ${{ steps.config.outputs.external_storage || 'false' }}"
