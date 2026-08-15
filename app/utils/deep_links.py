@@ -5,6 +5,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 TASK_SUBMIT_PREFIX = "task_submit_"
 ACTIVITY_SUBMIT_PREFIX = "activity_submit_"
 MINIAPP_ROUTE_PARAM = "eraPath"
+TELEGRAM_START_PARAM = "tgWebAppStartParam"
 
 
 def task_submit_deep_link(bot_username: str, task_id: int) -> str:
@@ -40,16 +41,25 @@ def parse_activity_submit_payload(payload: str) -> int | None:
         return None
 
 
+def bot_start_deep_link(bot_username: str, payload: str) -> str:
+    """Open a private conversation with the bot and pass a safe /start payload."""
+    username = bot_username.strip().lstrip("@")
+    if not username:
+        return ""
+    return f"https://t.me/{username}?{urlencode({'start': payload})}"
+
+
 def miniapp_path_url(
     miniapp_url: str, path: str, params: dict[str, str | int] | None = None
 ) -> str:
-    """Build a Telegram-safe Mini App deep link.
+    """Build a resilient Mini App route URL.
 
-    Telegram's iOS WebView may open a WebAppInfo URL after dropping or
-    normalising the fragment. The old contract stored the whole destination in
-    ``#/...`` and therefore occasionally landed on Home. Keep the destination
-    in a normal query parameter instead; the frontend converts it to its
-    internal hash route after boot. Existing query parameters are preserved.
+    Telegram clients have historically differed in how they preserve a
+    WebAppInfo URL fragment/query while opening an already-running Mini App.
+    Carry the same destination in three compatible places: ERA's explicit
+    query key, Telegram's start-param query key and the hash fallback. The
+    frontend canonicalises whichever survives into one internal route.
+    Existing query parameters are preserved.
     """
     if not miniapp_url:
         return ""
@@ -58,9 +68,10 @@ def miniapp_path_url(
     app_path = parts.path if parts.path.endswith("/") else f"{parts.path}/"
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     query[MINIAPP_ROUTE_PARAM] = normalized_path
+    query[TELEGRAM_START_PARAM] = normalized_path
     if params:
         query.update({key: str(value) for key, value in params.items()})
-    return urlunsplit((parts.scheme, parts.netloc, app_path, urlencode(query), ""))
+    return urlunsplit((parts.scheme, parts.netloc, app_path, urlencode(query), normalized_path))
 
 
 def miniapp_project_url(miniapp_url: str, project_id: int) -> str:
