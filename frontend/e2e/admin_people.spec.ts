@@ -9,16 +9,26 @@ async function enterAdminWorkspace(page: import("@playwright/test").Page) {
   await expect(page.getByText("Управление", { exact: true })).toBeVisible();
 }
 
-test("admin searches the people directory, opens a participant, and awards points", async ({ page }) => {
+test("admin opens a rich participant profile and awards points", async ({ page }) => {
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: "Люди" }).click();
   await page.getByRole("button", { name: "Участники" }).click();
   await page.getByPlaceholder("Имя, username или Telegram ID").fill("E2E Participant");
   await page.getByText("E2E Participant").click();
-  await expect(page.getByText("Роль и доступ")).toBeVisible();
-  await expect(page.getByText("Начислить или списать баллы")).toBeVisible();
-  await page.getByPlaceholder("±баллы").fill("15");
-  await page.getByPlaceholder("Причина").fill("E2E проверка начисления баллов");
-  await page.getByRole("button", { name: "Применить" }).click();
-  await expect(page.getByText("15 баллов")).toBeVisible();
+
+  await expect(page.getByText("Карточка участника")).toBeVisible();
+  await expect(page.getByText("Анкета при регистрации")).toBeVisible();
+  await expect(page.getByText("Показатели участника")).toBeVisible();
+
+  await page.getByRole("button", { name: "Управление", exact: true }).click();
+  await expect(page.getByText("Роль и статус доступа")).toBeVisible();
+  await expect(page.getByText("Баллы", { exact: true })).toBeVisible();
+
+  await page.getByPlaceholder("± баллы").fill("15");
+  await page.getByPlaceholder("Причина ручной корректировки").fill("E2E проверка начисления баллов");
+  await page.getByRole("button", { name: "Применить вручную" }).click();
+
+  await page.getByRole("button", { name: "Обзор", exact: true }).click();
+  const balanceCard = page.getByText("Баллов сейчас").locator("..");
+  await expect(balanceCard).toContainText("15");
 });
