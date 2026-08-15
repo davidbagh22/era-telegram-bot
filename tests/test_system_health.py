@@ -116,6 +116,8 @@ class SystemSchedulerTests(unittest.TestCase):
                 "system-heartbeat",
                 "system-full-diagnostic",
                 "system-daily-summary",
+                "configured-event-reminders",
+                "event-wizard-task-sync",
                 "general-chat-faq-pin",
             ],
         )
