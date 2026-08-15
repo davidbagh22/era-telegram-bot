@@ -9,7 +9,7 @@ import { GoalsPanel } from "./tools/GoalsPanel";
 import { GreetingsPanel } from "./tools/GreetingsPanel";
 import { StructurePanel } from "./tools/StructurePanel";
 
-type ToolsSection = "goals" | "contacts" | "structure" | "chats" | "greetings" | "broadcast" | "autocontent";
+export type ToolsSection = "goals" | "contacts" | "structure" | "chats" | "greetings" | "broadcast" | "autocontent";
 type ToolGroup = "team" | "communication";
 
 const SECTIONS: { value: ToolsSection; group: ToolGroup; label: string; description: string; icon: string }[] = [
@@ -27,8 +27,8 @@ const GROUP_LABELS: Record<ToolGroup, { title: string; description: string }> = 
   communication: { title: "Коммуникации", description: "Что, кому и где говорит ЭРА" },
 };
 
-export function AdminToolsScreen() {
-  const [section, setSection] = useState<ToolsSection | null>(null);
+export function AdminToolsScreen({ initialSection = null }: { initialSection?: ToolsSection | null }) {
+  const [section, setSection] = useState<ToolsSection | null>(initialSection);
 
   if (!section) {
     return (
@@ -38,9 +38,7 @@ export function AdminToolsScreen() {
           <div style={{ position: "relative" }}>
             <p style={{ margin: "0 0 0.3rem", color: "rgba(255,255,255,0.72)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Центр связи</p>
             <h2 style={{ margin: 0, fontSize: "var(--era-text-3xl)", lineHeight: 1.05 }}>Управляйте голосом ЭРА</h2>
-            <p style={{ margin: "0.6rem 0 0", maxWidth: 310, color: "rgba(255,255,255,0.84)", lineHeight: 1.45 }}>
-              Чаты, рассылки, приветствия и ежедневный ритм — в одном месте. Здесь видно не список настроек, а то, как организация общается с людьми.
-            </p>
+            <p style={{ margin: "0.6rem 0 0", maxWidth: 310, color: "rgba(255,255,255,0.84)", lineHeight: 1.45 }}>Чаты, рассылки, приветствия и ежедневный ритм — в одном месте.</p>
           </div>
         </Card>
 
@@ -51,9 +49,7 @@ export function AdminToolsScreen() {
               <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>{GROUP_LABELS[group].description}</p>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
-              {SECTIONS.filter((item) => item.group === group).map((item) => (
-                <ActionCell key={item.value} title={item.label} description={item.description} leading={item.icon} onClick={() => setSection(item.value)} />
-              ))}
+              {SECTIONS.filter((item) => item.group === group).map((item) => <ActionCell key={item.value} title={item.label} description={item.description} leading={item.icon} onClick={() => setSection(item.value)} />)}
             </div>
           </section>
         ))}
