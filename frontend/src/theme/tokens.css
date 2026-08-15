@@ -1,66 +1,67 @@
-/* ERA Dark Living System — vivid red/magenta energy on a black base. */
+/* ERA LIGHT / RED — warm, light, functional product system. */
 :root,
 :root[data-theme="light"],
 :root[data-theme="dark"] {
-  --era-red: #ff3048;
-  --era-violet: #6b3cff;
-  --era-magenta: #ff2b8a;
-  --era-crimson: #d3153f;
-  --era-gold: #e1b85d;
-  --era-gold-ink: #f2d898;
-  --era-gradient: linear-gradient(135deg, #ff3048 0%, #ff2b8a 42%, #6b3cff 100%);
+  --era-red: #e32636;
+  --era-deep-red: #981b28;
+  --era-violet: #e32636;
+  --era-magenta: #c81f32;
+  --era-crimson: #981b28;
+  --era-gold: #c5a264;
+  --era-gold-ink: #8c6a32;
+  --era-gradient: linear-gradient(135deg, #e32636 0%, #b91f2f 100%);
 
-  --era-black: #050407;
-  --era-plum: #0b080d;
-  --era-surface-dark: #151017;
-  --era-bg: #050407;
-  --era-bg-subtle: #0b080d;
-  --era-surface: rgba(20, 16, 23, 0.94);
-  --era-surface-2: rgba(30, 22, 32, 0.92);
-  --era-glass: rgba(22, 16, 25, 0.76);
+  --era-black: #151619;
+  --era-plum: #f5f3ef;
+  --era-surface-dark: #ffffff;
+  --era-bg: #f5f3ef;
+  --era-bg-subtle: #efede8;
+  --era-surface: #ffffff;
+  --era-surface-2: #faf9f6;
+  --era-glass: rgba(255, 255, 255, 0.9);
   --era-hero-bg:
-    radial-gradient(70% 82% at 98% 2%, rgba(255, 255, 255, 0.20), transparent 47%),
-    radial-gradient(105% 95% at 104% 24%, rgba(255, 182, 67, 0.24), transparent 55%),
-    radial-gradient(105% 86% at 12% 0%, rgba(107, 60, 255, 0.62), transparent 52%),
-    radial-gradient(92% 88% at 82% 48%, rgba(255, 43, 138, 0.62), transparent 57%),
-    linear-gradient(140deg, #140712 0%, #6c163c 42%, #e62b62 70%, #4d2fd2 100%);
+    radial-gradient(75% 92% at 96% 4%, rgba(227, 38, 54, 0.12), transparent 58%),
+    linear-gradient(145deg, #ffffff 0%, #fbf8f4 56%, #f3ebe7 100%);
 
-  --era-text: #fbf7fb;
-  --era-text-muted: #bdb1c1;
-  --era-border: rgba(255, 255, 255, 0.10);
-  --era-success: #43d39a;
-  --era-warning: #efb449;
-  --era-error: #ff6b65;
+  --era-text: #151619;
+  --era-text-muted: #74777f;
+  --era-border: rgba(20, 20, 20, 0.08);
+  --era-success: #3ea66b;
+  --era-warning: #d99a32;
+  --era-error: #b43b4c;
 
-  --era-shadow-soft: 0 12px 34px rgba(0, 0, 0, 0.30);
-  --era-shadow-lift: 0 20px 48px rgba(0, 0, 0, 0.46);
-  --era-shadow-dock: 0 22px 58px rgba(0, 0, 0, 0.58);
-  --era-shadow-overlay: 0 -18px 52px rgba(0, 0, 0, 0.60);
+  --era-shadow-soft: 0 8px 28px rgba(35, 28, 22, 0.07);
+  --era-shadow-lift: 0 14px 38px rgba(35, 28, 22, 0.11);
+  --era-shadow-dock: 0 14px 42px rgba(35, 28, 22, 0.14);
+  --era-shadow-overlay: 0 -16px 44px rgba(35, 28, 22, 0.16);
 
-  --era-tint-violet: rgba(107, 60, 255, 0.18);
-  --era-tint-red: rgba(255, 48, 72, 0.18);
-  --era-tint-gold: rgba(225, 184, 93, 0.16);
-  --era-ring-track: rgba(255, 255, 255, 0.13);
+  --era-tint-violet: rgba(227, 38, 54, 0.08);
+  --era-tint-red: rgba(227, 38, 54, 0.09);
+  --era-tint-gold: rgba(197, 162, 100, 0.12);
+  --era-ring-track: rgba(21, 22, 25, 0.09);
 
   --era-radius-sm: 0.75rem;
-  --era-radius-card: 24px;
-  --era-radius-control: 1rem;
+  --era-radius-card: 22px;
+  --era-radius-control: 14px;
   --era-radius-pill: 999px;
   --era-radius-sheet: 1.5rem;
-  --era-motion-fast: 0.16s ease;
+  --era-motion-tap: 0.12s ease;
+  --era-motion-fast: 0.18s ease;
   --era-motion: 0.24s ease;
+  --era-motion-card: 0.28s ease;
+  --era-motion-orbit: 0.82s cubic-bezier(0.22, 1, 0.36, 1);
 
-  --era-font-display: "Onest", "Segoe UI", system-ui, sans-serif;
-  --era-font-body: "Onest", "Segoe UI", system-ui, sans-serif;
+  --era-font-display: "Manrope", "Segoe UI", system-ui, sans-serif;
+  --era-font-body: "Manrope", "Segoe UI", system-ui, sans-serif;
 
   --era-text-xs: 0.75rem;
   --era-text-sm: 0.8125rem;
-  --era-text-base: 0.875rem;
-  --era-text-lg: 1rem;
-  --era-text-xl: 1.125rem;
-  --era-text-2xl: 1.375rem;
-  --era-text-3xl: 1.75rem;
-  --era-text-4xl: 2rem;
+  --era-text-base: 0.9375rem;
+  --era-text-lg: 1.0625rem;
+  --era-text-xl: 1.25rem;
+  --era-text-2xl: 1.5rem;
+  --era-text-3xl: 2rem;
+  --era-text-4xl: 3rem;
 
   --era-space-1: 0.25rem;
   --era-space-2: 0.5rem;
@@ -78,75 +79,69 @@
 
 html {
   overscroll-behavior-y: none;
-  background: #050407;
+  background: var(--era-bg);
 }
 
 body {
   margin: 0;
   min-width: 320px;
   background:
-    radial-gradient(68% 46% at 86% -4%, rgba(255, 255, 255, 0.10), transparent 60%),
-    radial-gradient(82% 58% at 110% 4%, rgba(255, 48, 72, 0.25), transparent 58%),
-    radial-gradient(82% 60% at -8% 8%, rgba(107, 60, 255, 0.28), transparent 62%),
-    radial-gradient(72% 58% at 88% 72%, rgba(255, 43, 138, 0.13), transparent 68%),
-    linear-gradient(180deg, #050407 0%, #0c070d 48%, #050407 100%);
+    radial-gradient(70% 38% at 104% -4%, rgba(227, 38, 54, 0.08), transparent 64%),
+    linear-gradient(180deg, #f8f6f2 0%, #f5f3ef 52%, #f2f0eb 100%);
   color: var(--era-text);
   font-family: var(--era-font-body);
   font-size: var(--era-text-base);
-  letter-spacing: 0;
+  line-height: 1.45;
+  letter-spacing: -0.005em;
   overscroll-behavior-y: none;
 }
 
-/* Fine film grain from the visual references. It is deliberately subtle and
-   non-interactive: typography stays clean while large gradients stop looking
-   like flat generated blobs. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  pointer-events: none;
-  opacity: 0.055;
-  mix-blend-mode: soft-light;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.88' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.72'/%3E%3C/svg%3E");
-  background-size: 180px 180px;
+button,
+input,
+textarea,
+select {
+  font: inherit;
 }
 
 button {
   font-family: var(--era-font-body);
   font-size: var(--era-text-base);
-  font-weight: 700;
-  min-height: 2.75rem;
+  font-weight: 750;
+  min-height: 44px;
   padding: 0.625rem 1rem;
   border-radius: var(--era-radius-control);
   border: 1px solid var(--era-border);
-  background: rgba(255, 255, 255, 0.052);
+  background: #fff;
   color: var(--era-text);
   cursor: pointer;
-  transition: transform var(--era-motion-fast), box-shadow var(--era-motion-fast), background var(--era-motion-fast), border-color var(--era-motion-fast), opacity var(--era-motion-fast);
+  transition:
+    transform var(--era-motion-tap),
+    box-shadow var(--era-motion-fast),
+    background var(--era-motion-fast),
+    border-color var(--era-motion-fast),
+    opacity var(--era-motion-fast);
 }
+
+button:active:not(:disabled) { transform: scale(0.985); }
+button:disabled { opacity: 0.48; cursor: not-allowed; }
+button:focus-visible { outline: 2px solid rgba(227, 38, 54, 0.58); outline-offset: 2px; }
 
 @media (hover: hover) and (pointer: fine) {
   button:hover:not(:disabled) {
-    border-color: rgba(255, 255, 255, 0.20);
-    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(20, 20, 20, 0.14);
+    background: #fcfbf8;
     box-shadow: var(--era-shadow-soft);
   }
-
   .era-btn-primary:hover:not(:disabled) {
-    box-shadow: 0 14px 32px rgba(255, 48, 72, 0.34);
+    box-shadow: 0 12px 28px rgba(227, 38, 54, 0.22);
     border-color: transparent;
   }
-
-  .era-card:hover {
+  .era-card[role="button"]:hover,
+  button.era-card:hover {
     box-shadow: var(--era-shadow-lift);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
   }
 }
-
-button:active:not(:disabled) { transform: scale(0.97); }
-button:disabled { opacity: 0.5; cursor: not-allowed; }
-button:focus-visible { outline: 2px solid var(--era-magenta); outline-offset: 2px; }
 
 input:not([type="checkbox"]):not([type="radio"]),
 textarea,
@@ -154,45 +149,46 @@ select {
   font-family: var(--era-font-body);
   font-size: 1rem;
   color: var(--era-text);
-  background: rgba(255, 255, 255, 0.06);
+  background: #fff;
   border: 1px solid var(--era-border);
   border-radius: var(--era-radius-control);
   padding: 0.75rem 0.875rem;
-  min-height: 2.75rem;
+  min-height: 44px;
   width: 100%;
   transition: border-color var(--era-motion-fast), box-shadow var(--era-motion-fast);
 }
-
-textarea { min-height: 4.5rem; line-height: 1.5; resize: vertical; }
-input::placeholder, textarea::placeholder { color: var(--era-text-muted); opacity: 1; }
-
+textarea { min-height: 5rem; line-height: 1.5; resize: vertical; }
+input::placeholder, textarea::placeholder { color: #9699a0; opacity: 1; }
 input:not([type="checkbox"]):not([type="radio"]):focus,
 textarea:focus,
 select:focus {
   outline: none;
-  border-color: rgba(255, 43, 138, 0.76);
-  box-shadow: 0 0 0 3px rgba(255, 43, 138, 0.16);
+  border-color: rgba(227, 38, 54, 0.5);
+  box-shadow: 0 0 0 3px rgba(227, 38, 54, 0.08);
 }
-
 input:disabled, textarea:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
-input[type="checkbox"] { width: 1.125rem; height: 1.125rem; accent-color: var(--era-red); cursor: pointer; flex-shrink: 0; }
+input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--era-red); cursor: pointer; flex-shrink: 0; }
 
 .era-btn-primary {
-  border: none;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.015)),
-    var(--era-gradient);
+  border: 1px solid transparent;
+  background: var(--era-red);
   color: #fff;
-  box-shadow: 0 14px 32px rgba(255, 48, 72, 0.28);
+  box-shadow: 0 9px 24px rgba(227, 38, 54, 0.18);
 }
+.era-btn-primary:active:not(:disabled) { background: var(--era-deep-red); }
 
-.era-card { transition: box-shadow var(--era-motion), transform var(--era-motion), border-color var(--era-motion); }
+.era-card {
+  transition: box-shadow var(--era-motion-card), transform var(--era-motion-tap), border-color var(--era-motion-fast);
+}
+.era-card[role="button"], button.era-card { cursor: pointer; }
+.era-card[role="button"]:active, button.era-card:active { transform: scale(0.985); }
+
 .era-pilltabs-scroller { scrollbar-width: none; -ms-overflow-style: none; }
 .era-pilltabs-scroller::-webkit-scrollbar { display: none; }
 .era-pilltabs-fade { mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent 100%); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent 100%); }
 
 @keyframes era-fade-in {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 .era-page { animation: era-fade-in var(--era-motion); min-width: 0; }
@@ -202,25 +198,19 @@ input[type="checkbox"] { width: 1.125rem; height: 1.125rem; accent-color: var(--
   100% { background-position: 120% 0; }
 }
 .era-skeleton {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.055) 25%, rgba(255, 255, 255, 0.11) 50%, rgba(255, 255, 255, 0.055) 75%);
+  background: linear-gradient(90deg, #eceae5 25%, #f7f5f1 50%, #eceae5 75%);
   background-size: 200% 100%;
-  animation: era-shimmer 1.4s ease-in-out infinite;
+  animation: era-shimmer 1.35s ease-in-out infinite;
   border-radius: var(--era-radius-sm);
 }
 
 @keyframes era-overlay-in { from { opacity: 0; } to { opacity: 1; } }
-.era-overlay-backdrop { position: fixed; inset: 0; background: rgba(3, 3, 5, 0.68); animation: era-overlay-in var(--era-motion-fast); z-index: 40; }
-
+.era-overlay-backdrop { position: fixed; inset: 0; background: rgba(21, 22, 25, 0.42); animation: era-overlay-in var(--era-motion-fast); z-index: 40; }
 @keyframes era-sheet-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .era-bottom-sheet { animation: era-sheet-in var(--era-motion) cubic-bezier(0.22, 1, 0.36, 1); }
-
-@keyframes era-modal-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
+@keyframes era-modal-in { from { opacity: 0; transform: translateY(8px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .era-modal { animation: era-modal-in var(--era-motion-fast); }
-
-@keyframes era-toast-in { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes era-toast-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 .era-toast { animation: era-toast-in var(--era-motion-fast); }
 
 @media (prefers-reduced-motion: reduce) {
