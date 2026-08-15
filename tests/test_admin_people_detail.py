@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from fastapi import FastAPI
+
 from app.api.v1.admin_people_detail import (
     ParticipantMetricsOut,
     _recognition_suggestions,
@@ -83,10 +85,12 @@ def test_recent_manual_bonus_suppresses_duplicate_point_prompt() -> None:
 
 
 def test_rich_user_route_precedes_legacy_compact_route() -> None:
+    app = FastAPI()
+    app.include_router(api_router)
     matches = [
         route
-        for route in api_router.routes
-        if getattr(route, "path", "").endswith("/admin/users/{user_id}")
+        for route in app.routes
+        if getattr(route, "path", "") == "/api/v1/admin/users/{user_id}"
         and "GET" in getattr(route, "methods", set())
     ]
     assert len(matches) >= 2
