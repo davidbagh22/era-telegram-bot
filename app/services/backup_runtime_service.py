@@ -67,6 +67,33 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _classify_pg_dump_failure(stderr: bytes) -> str:
+    """Return a safe machine code without ever exposing raw pg_dump stderr.
+
+    pg_dump diagnostics may contain database host/user information. The backup
+    endpoint and workflow therefore receive only a small allow-listed code.
+    """
+    text = stderr.decode("utf-8", errors="replace").lower()
+    if "server version:" in text and "pg_dump version:" in text and "version mismatch" in text:
+        return "pg_dump_version_mismatch"
+    if "password authentication failed" in text or "no password supplied" in text:
+        return "pg_dump_auth_failed"
+    if any(
+        marker in text
+        for marker in (
+            "could not translate host name",
+            "could not connect to server",
+            "connection to server",
+            "connection refused",
+            "network is unreachable",
+            "timeout expired",
+            "ssl error",
+        )
+    ):
+        return "pg_dump_connection_failed"
+    return "pg_dump_failed"
+
+
 async def create_database_snapshot(database_url: str) -> DatabaseSnapshot:
     fd, raw_path = tempfile.mkstemp(prefix="era-backup-", suffix=".dump")
     os.close(fd)
@@ -74,20 +101,26 @@ async def create_database_snapshot(database_url: str) -> DatabaseSnapshot:
     try:
         path.chmod(0o600)
         env = _pg_environment(database_url)
-        process = await asyncio.create_subprocess_exec(
-            "pg_dump",
-            "--format=custom",
-            "--no-owner",
-            "--no-acl",
-            "--file",
-            str(path),
-            env=env,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, _stderr = await process.communicate()
-        if process.returncode != 0 or not path.exists() or path.stat().st_size == 0:
-            raise BackupSnapshotError("pg_dump_failed")
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "pg_dump",
+                "--format=custom",
+                "--no-owner",
+                "--no-acl",
+                "--file",
+                str(path),
+                env=env,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError as exc:
+            raise BackupSnapshotError("pg_dump_unavailable") from exc
+
+        _, stderr = await process.communicate()
+        if process.returncode != 0:
+            raise BackupSnapshotError(_classify_pg_dump_failure(stderr))
+        if not path.exists() or path.stat().st_size == 0:
+            raise BackupSnapshotError("pg_dump_empty")
         checksum = await asyncio.to_thread(_sha256, path)
         return DatabaseSnapshot(
             path=path,

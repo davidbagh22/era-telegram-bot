@@ -35,3 +35,18 @@ test("admin control has analytics system and maintenance as separate destination
   await expect(page.getByRole("button", { name: /Состояние системы/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Обслуживание/ })).toBeVisible();
 });
+
+test("analytics metric opens the real records behind its count", async ({ page }) => {
+  await enterAdminWorkspace(page);
+  await page.getByRole("button", { name: "Контроль" }).click();
+  await page.getByRole("button", { name: /Аналитика/ }).click();
+
+  await expect(page.getByRole("heading", { name: "Данные ЭРА" })).toBeVisible();
+  const participantsMetric = page.getByRole("button", { name: /Участники: \d+\. Открыть список/ });
+  await expect(participantsMetric).toBeVisible();
+  await participantsMetric.click();
+
+  await expect(page.getByRole("heading", { name: "Участники" })).toBeVisible();
+  await expect(page.getByText("Найдено", { exact: true })).toBeVisible();
+  await expect(page.locator(".era-card").filter({ hasText: /participant|admin|leader|activist/i }).first()).toBeVisible();
+});

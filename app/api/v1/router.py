@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     activity,
     admin,
+    admin_analytics_details,
     admin_applications,
     admin_autocontent,
     admin_event_create,
@@ -45,6 +46,9 @@ api_router.include_router(surveys.router)
 # POST endpoints continue to live in admin.router.
 api_router.include_router(admin_applications.router)
 api_router.include_router(admin_autocontent.router)
+# Exact analytics drill-down lists are registered before the large legacy
+# admin router so /admin/analytics/details/{section} cannot be shadowed.
+api_router.include_router(admin_analytics_details.router)
 # Dedicated creator is registered before the large legacy admin router so its
 # explicit /admin/events/create path cannot be swallowed by /admin/events/{id}
 # style routes added later.

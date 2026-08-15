@@ -43,17 +43,34 @@ function parseOptionalId(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function routeValue(): string {
-  const hashRoute = window.location.hash.replace(/^#\/?/, "").replace(/\/$/, "");
-  if (hashRoute) return hashRoute;
+function normalizeRoute(value: string): string {
+  return value.replace(/^\/?/, "").replace(/\/$/, "");
+}
 
+function telegramQueryRoute(): string {
   const query = new URLSearchParams(window.location.search);
-  // eraPath is the first-class Bot -> Mini App route. tgWebAppStartParam is
-  // accepted too so a future Main Mini App `startapp` link can use the same
-  // parser without another navigation layer.
-  return (query.get("eraPath") ?? query.get("tgWebAppStartParam") ?? "")
-    .replace(/^\/?/, "")
-    .replace(/\/$/, "");
+  return normalizeRoute(query.get("eraPath") ?? query.get("tgWebAppStartParam") ?? "");
+}
+
+function routeValue(): string {
+  // A fresh Bot -> Mini App button is an explicit navigation command and must
+  // win over a hash left in Telegram's cached WebView from the previous visit.
+  // We canonicalize this query route into the hash immediately after boot so
+  // normal in-app hash navigation works from then on.
+  const queryRoute = telegramQueryRoute();
+  if (queryRoute) return queryRoute;
+  return normalizeRoute(window.location.hash.replace(/^#\/?/, ""));
+}
+
+function canonicalizeTelegramQueryRoute(): void {
+  const route = telegramQueryRoute();
+  if (!route) return;
+
+  const url = new URL(window.location.href);
+  url.searchParams.delete("eraPath");
+  url.searchParams.delete("tgWebAppStartParam");
+  url.hash = `/${route}`;
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
 function parseDeepLink(): DeepLink | null {
@@ -200,6 +217,8 @@ export function App() {
   const [inWorkspace, setInWorkspace] = useState(false);
 
   useEffect(() => {
+    canonicalizeTelegramQueryRoute();
+
     const syncFromLocation = () => {
       const next = parseDeepLink();
       setDeepLink(next);

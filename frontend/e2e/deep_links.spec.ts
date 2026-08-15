@@ -10,6 +10,14 @@ test("eraPath query opens Projects when Telegram provides no fragment", async ({
   await expect(page.getByText("Начните с одной мысли")).toBeVisible();
 });
 
+test("fresh Telegram eraPath overrides a stale cached hash", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}&eraPath=projects#/events`);
+
+  await expect(page.getByRole("heading", { name: "Проекты" })).toBeVisible();
+  await expect(page).toHaveURL(/#\/projects$/);
+  await expect(page).not.toHaveURL(/eraPath=/);
+});
+
 test("eraPath admin opens the separate Admin workspace directly", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}&eraPath=admin`);
 

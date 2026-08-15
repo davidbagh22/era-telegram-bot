@@ -6,11 +6,10 @@ interface MetricCardProps {
   label: string;
   value: string | number;
   /** Tinted background + tinted value color, for a row of metrics that
-   * benefits from being told apart at a glance (HomeScreen's activity
-   * grid). Omitted everywhere else (AdminDashboardScreen, OverviewTab,
-   * ProjectWorkspace) — those stay the plain neutral card they always
-   * were, unchanged. */
+   * benefits from being told apart at a glance. */
   tone?: MetricTone;
+  onClick?: () => void;
+  hint?: string;
 }
 
 const TONE_STYLES: Record<MetricTone, { background: string; color: string }> = {
@@ -20,33 +19,55 @@ const TONE_STYLES: Record<MetricTone, { background: string; color: string }> = {
   magenta: { background: "var(--era-surface-2)", color: "var(--era-magenta)" },
 };
 
-export function MetricCard({ label, value, tone }: MetricCardProps) {
+export function MetricCard({ label, value, tone, onClick, hint }: MetricCardProps) {
   const toneStyle = tone ? TONE_STYLES[tone] : undefined;
-  return (
+  const card = (
     <Card
       style={{
-        textAlign: "center",
-        // Only overridden when a tone is set — omitting the keys entirely
-        // otherwise (rather than passing them as `undefined`) matters:
-        // Card's own style object spreads its caller-supplied `style` last,
-        // so an explicit `undefined` here would still win the spread and
-        // strip Card's own default border/background instead of leaving
-        // them alone.
+        height: "100%",
+        textAlign: "left",
+        position: "relative",
         ...(toneStyle ? { background: toneStyle.background, border: "none" } : null),
       }}
     >
       <div
         style={{
           fontFamily: "var(--era-font-display)",
-          fontSize: "1.5rem",
-          fontWeight: 800,
+          fontSize: "1.75rem",
+          lineHeight: 1,
+          fontWeight: 850,
           fontVariantNumeric: "tabular-nums",
           color: toneStyle?.color,
         }}
       >
         {value}
       </div>
-      <div style={{ fontSize: "0.75rem", color: "var(--era-text-muted)", fontWeight: 600 }}>{label}</div>
+      <div style={{ marginTop: "0.4rem", fontSize: "0.8125rem", color: "var(--era-text)", fontWeight: 750 }}>{label}</div>
+      {(hint || onClick) && (
+        <div style={{ marginTop: "0.35rem", fontSize: "0.6875rem", color: "var(--era-text-muted)", fontWeight: 600 }}>
+          {hint ?? "Открыть список →"}
+        </div>
+      )}
     </Card>
+  );
+
+  if (!onClick) return card;
+
+  return (
+    <button
+      type="button"
+      aria-label={`${label}: ${value}. Открыть список`}
+      onClick={onClick}
+      style={{
+        all: "unset",
+        display: "block",
+        width: "100%",
+        minWidth: 0,
+        cursor: "pointer",
+        WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      {card}
+    </button>
   );
 }

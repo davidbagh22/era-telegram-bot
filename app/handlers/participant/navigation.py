@@ -1,4 +1,5 @@
 from aiogram import F, Router
+from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -172,6 +173,7 @@ async def _send_navigation_guide(message: Message, user: User | None, settings: 
         text = NAVIGATION_PARTICIPANT
     await message.answer(
         text,
+        parse_mode=ParseMode.HTML,
         reply_markup=navigation_guide_keyboard(
             settings.effective_miniapp_url,
             admin=is_admin,

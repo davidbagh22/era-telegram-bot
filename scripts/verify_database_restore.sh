@@ -5,7 +5,7 @@ set -Eeuo pipefail
 : "${BACKUP_FILE:?BACKUP_FILE is required}"
 
 if [[ ! -s "${BACKUP_FILE}" ]]; then
-  echo "Backup file does not exist or is empty: ${BACKUP_FILE}" >&2
+  echo "Backup file does not exist or is empty" >&2
   exit 1
 fi
 
@@ -23,6 +23,7 @@ pg_restore \
   --if-exists \
   --no-owner \
   --no-privileges \
+  --exit-on-error \
   "${BACKUP_FILE}"
 
 psql "${RESTORE_DATABASE_URL}" -v ON_ERROR_STOP=1 <<'SQL'
@@ -35,9 +36,27 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Required table public.users is missing after restore';
   END IF;
-END $$;
 
-SELECT COUNT(*) AS users_count FROM users;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'alembic_version'
+  ) THEN
+    RAISE EXCEPTION 'Required table public.alembic_version is missing after restore';
+  END IF;
+END $$;
 SQL
+
+CODE_HEADS="$(alembic heads | awk '{print $1}' | sort -u)"
+RESTORED_HEADS="$(psql "${RESTORE_DATABASE_URL}" -At -v ON_ERROR_STOP=1 -c 'SELECT version_num FROM alembic_version ORDER BY version_num;' | sort -u)"
+
+if [[ -z "${CODE_HEADS}" || -z "${RESTORED_HEADS}" || "${CODE_HEADS}" != "${RESTORED_HEADS}" ]]; then
+  echo "Restored Alembic revision does not match code migration head(s)" >&2
+  exit 1
+fi
+
+psql "${RESTORE_DATABASE_URL}" -At -v ON_ERROR_STOP=1 -c \
+  "SELECT CASE WHEN EXISTS (SELECT 1 FROM public.users LIMIT 1) THEN 'users_table_readable' ELSE 'users_table_readable_empty' END;" \
+  >/dev/null
 
 echo "Restore verification completed successfully"
