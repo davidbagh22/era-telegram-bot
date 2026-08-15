@@ -177,8 +177,13 @@ async def read_full_applications(
             User.application_status.in_(
                 [ApplicationStatus.PENDING, ApplicationStatus.NEEDS_INFO]
             ),
-            User.is_archived.is_(False),
+            # Legacy rows may contain NULL from older schema revisions. They
+            # are still active applications and must not disappear from the
+            # review queue; only an explicit True means archived.
+            User.is_archived.is_not(True),
         )
-        .order_by(User.created_at)
+        # The admin opens this screen because a new application just arrived,
+        # so newest first is the operationally useful order.
+        .order_by(User.created_at.desc(), User.id.desc())
     )
     return [await _application_out(session, bot, user) for user in rows.all()]
