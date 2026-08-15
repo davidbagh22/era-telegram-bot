@@ -6,7 +6,7 @@ from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import ErrorEvent, Message
 
 from app.config import Settings
-from app.handlers import chat, chat_binding, chat_faq, emergency, leader_event_photo, registration, start
+from app.handlers import chat, chat_binding, chat_faq, emergency, faq_start, leader_event_photo, registration, start
 from app.handlers.admin import router as admin_router
 from app.handlers.leader import router as leader_router
 from app.handlers.participant import router as participant_router
@@ -32,9 +32,6 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     dispatcher["settings"] = settings
     dispatcher["ai_service"] = AIService(settings)
     dispatcher.update.outer_middleware(DatabaseAuthMiddleware(session_factory))
-    # Must run after DatabaseAuthMiddleware (needs data["user"]/data["bot"]
-    # already populated) — see LegacyKeyboardCleanupMiddleware's own
-    # docstring.
     dispatcher.update.outer_middleware(LegacyKeyboardCleanupMiddleware())
 
     subscription = SubscriptionMiddleware(settings)
@@ -46,6 +43,10 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     leader_router.callback_query.outer_middleware(subscription)
 
     dispatcher.include_routers(
+        # FAQ /start payloads are intentionally first. emergency.router owns a
+        # StateFilter("*") CommandStart recovery handler and would otherwise
+        # swallow every pinned-chat deep link before it could answer privately.
+        faq_start.router,
         emergency.router,
         start.router,
         registration.router,
