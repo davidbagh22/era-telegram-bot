@@ -36,9 +36,6 @@ REVIEW_STATUSES = {
 }
 OPEN_STATUSES = {ProjectStatus.APPROVED, ProjectStatus.IN_PROGRESS}
 
-# Same question-key -> Project column mapping the bot's guided wizard uses
-# (app/handlers/participant/projects.py::project_answer). Kept here so the
-# Mini App's single-form edit stays in sync with it instead of drifting.
 _COLUMN_BY_QUESTION_KEY: dict[str, str] = {
     "title": "title",
     "idea": "short_description",
@@ -50,17 +47,6 @@ _COLUMN_BY_QUESTION_KEY: dict[str, str] = {
 }
 
 QUESTION_KEYS: tuple[str, ...] = tuple(question.key for question in PROJECT_QUESTIONS)
-
-# "Looking for a team" broadcast to the general chat — a project author
-# writes it (app/handlers/participant/projects_block5.py::team_submit),
-# then it needs admin sign-off before going out publicly. Storage is a
-# couple of keys inside the existing form_data JSON blob (not a dedicated
-# column) — this mirrors app/handlers/admin/projects_block5_team.py exactly
-# so the bot and the Mini App read/write the identical state and can't
-# drift into two different ideas of what stage a post is at. Distinct from
-# ProjectWorkspace's in-app role/application system (PR5): this reaches
-# people in the general Telegram chat who aren't necessarily browsing the
-# Mini App at all.
 TEAM_POST_PENDING_STATUSES = {"pending", "edited"}
 
 
@@ -88,8 +74,6 @@ async def list_projects_with_pending_team_post(session: AsyncSession) -> list[Pr
 
 
 def prepare_team_post(project: Project) -> bool:
-    """Marks a pending/edited post ready to publish. False if there's no
-    post to prepare."""
     data = dict(project.form_data or {})
     if not data.get("team_search_post"):
         return False
@@ -118,8 +102,6 @@ def reject_team_post(project: Project) -> bool:
 
 
 def publish_team_post(project: Project) -> str | None:
-    """Returns the text to actually publish, only when it was prepared
-    first — mirrors the bot's own "Сначала нажмите «Одобрить 1/2»" guard."""
     data = dict(project.form_data or {})
     if data.get("team_search_status") != "prepared":
         return None
@@ -155,10 +137,6 @@ async def list_projects_for_user(
             .order_by(Project.updated_at.desc())
         )
         return list(rows.all())
-    # "open": a directory of live ERA projects across all authors — this is
-    # new (participants previously only ever saw their own projects), but it
-    # is a real query with no fabricated data, and it's a prerequisite for
-    # PR 5's "find a team" workspace to have anything to browse.
     rows = await session.scalars(
         select(Project)
         .where(Project.status.in_(OPEN_STATUSES))
@@ -171,8 +149,17 @@ def can_edit(project: Project) -> bool:
     return project.status in EDITABLE_STATUSES
 
 
+def missing_required_answers(project: Project) -> tuple[str, ...]:
+    data = project.form_data or {}
+    return tuple(
+        question.key
+        for question in PROJECT_QUESTIONS
+        if not str(data.get(question.key) or "").strip()
+    )
+
+
 def can_submit_for_review(project: Project) -> bool:
-    return project.status in EDITABLE_STATUSES
+    return project.status in EDITABLE_STATUSES and not missing_required_answers(project)
 
 
 def can_delete(project: Project) -> bool:
@@ -199,12 +186,48 @@ async def create_draft(session: AsyncSession, user: User, idea: str) -> Project:
     return project
 
 
+def _parse_project_date(value: str):
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    for pattern in ("%Y-%m-%d", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(cleaned, pattern).date()
+        except ValueError:
+            continue
+    raise ValueError("invalid_project_date")
+
+
+def _parse_project_time(value: str):
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    try:
+        return datetime.strptime(cleaned, "%H:%M").time()
+    except ValueError as exc:
+        raise ValueError("invalid_project_time") from exc
+
+
 def update_answers(project: Project, answers: dict[str, str]) -> None:
-    """Apply a partial set of question-key -> answer updates, mirroring the
-    Bot wizard's per-question field mapping. Unknown keys are ignored."""
+    """Apply a true partial update from either Bot or Mini App.
+
+    Date/time are first-class project fields now too. The Mini App uses ISO
+    date + HH:MM inputs while the older Bot may still send DD.MM.YYYY; both
+    formats are accepted and normalized in the typed Project columns.
+    """
     form_data = dict(project.form_data or {})
     for key, value in answers.items():
         if key not in QUESTION_KEYS:
+            continue
+        if key == "proposed_date":
+            parsed = _parse_project_date(value)
+            project.proposed_date = parsed
+            form_data[key] = parsed.isoformat() if parsed else ""
+            continue
+        if key == "proposed_time":
+            parsed = _parse_project_time(value)
+            project.proposed_time = parsed
+            form_data[key] = parsed.strftime("%H:%M") if parsed else ""
             continue
         form_data[key] = value
         column = _COLUMN_BY_QUESTION_KEY.get(key)
@@ -265,9 +288,6 @@ class ModerationResult:
 async def decide_project(
     session: AsyncSession, project: Project, *, action: str, comment: str, actor: User
 ) -> ModerationResult:
-    """Mirrors app/handlers/admin/projects_block5_decision.py::decision_finish
-    exactly, including the old_status guard that stops points/portfolio
-    credit from being awarded twice if a project is re-approved."""
     if action not in PROJECT_DECISION_ACTIONS:
         raise ValueError(f"unknown project decision action: {action!r}")
 
@@ -316,7 +336,7 @@ async def decide_project(
         project.status = ProjectStatus.POSTPONED
         project.venue_remind_at = None
         notice = "Проект перенесён"
-    else:  # reject
+    else:
         project.status = ProjectStatus.REJECTED
         project.venue_remind_at = None
         notice = "Проект отклонён"

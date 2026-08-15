@@ -13,6 +13,7 @@ from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.v1.projects import _notify_reviewers
 from app.api.v1.router import api_router
 from app.config import Settings
+from app.services.project_builder import PROJECT_QUESTIONS
 from app.services.project_workspace_service import ProjectWorkspaceSnapshot
 
 
@@ -37,6 +38,12 @@ def _project(**overrides) -> SimpleNamespace:
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
+
+
+def _complete_project(**overrides) -> SimpleNamespace:
+    defaults = {"form_data": {question.key: "filled" for question in PROJECT_QUESTIONS}}
+    defaults.update(overrides)
+    return _project(**defaults)
 
 
 def _build_app(session: SimpleNamespace, bot=None) -> FastAPI:
@@ -195,7 +202,7 @@ class ProjectUpdateApiTests(unittest.TestCase):
 
 class ProjectSubmitApiTests(unittest.TestCase):
     def test_submit_notifies_via_bot_when_available(self) -> None:
-        project = _project(author_id=1, status="draft")
+        project = _complete_project(author_id=1, status="draft")
         session = SimpleNamespace(get=AsyncMock(return_value=project))
         bot = SimpleNamespace()
         app = _build_app(session, bot=bot)
@@ -214,7 +221,7 @@ class ProjectSubmitApiTests(unittest.TestCase):
         notify_mock.assert_awaited_once()
 
     def test_submit_skips_notification_when_no_bot(self) -> None:
-        project = _project(author_id=1, status="draft")
+        project = _complete_project(author_id=1, status="draft")
         session = SimpleNamespace(get=AsyncMock(return_value=project))
         app = _build_app(session, bot=None)
         client = TestClient(app)
@@ -229,8 +236,16 @@ class ProjectSubmitApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         notify_mock.assert_not_awaited()
 
+    def test_submit_conflict_when_incomplete(self) -> None:
+        project = _project(author_id=1, status="draft", form_data={"idea": "only idea"})
+        session = SimpleNamespace(get=AsyncMock(return_value=project))
+        app = _build_app(session)
+        client = TestClient(app)
+        response = client.post("/api/v1/projects/10/submit")
+        self.assertEqual(response.status_code, 409)
+
     def test_submit_conflict_when_not_submittable(self) -> None:
-        project = _project(author_id=1, status="initial_review")
+        project = _complete_project(author_id=1, status="initial_review")
         session = SimpleNamespace(get=AsyncMock(return_value=project))
         app = _build_app(session)
         client = TestClient(app)
