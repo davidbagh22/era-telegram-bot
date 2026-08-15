@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, time
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text, Time
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text, Time, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -53,3 +53,23 @@ class EventExperience(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.now, onupdate=datetime.now
     )
+
+
+class EventReminderDelivery(Base):
+    """One row per registration/reminder threshold prevents duplicate sends."""
+
+    __tablename__ = "event_reminder_deliveries"
+    __table_args__ = (
+        UniqueConstraint(
+            "registration_id",
+            "reminder_minutes",
+            name="uq_event_reminder_delivery_registration_minutes",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    registration_id: Mapped[int] = mapped_column(
+        ForeignKey("event_registrations.id", ondelete="CASCADE"), index=True
+    )
+    reminder_minutes: Mapped[int] = mapped_column(Integer)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now)
