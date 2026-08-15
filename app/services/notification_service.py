@@ -77,9 +77,21 @@ async def _database_admin_ids(settings: Settings) -> set[int]:
         return set()
 
 
-async def safe_send(bot: Bot, chat_id: int, text: str, reply_markup=None) -> bool:
+async def safe_send(
+    bot: Bot,
+    chat_id: int,
+    text: str,
+    reply_markup=None,
+    *,
+    parse_mode: str | None = None,
+) -> bool:
     try:
-        await bot.send_message(chat_id, text, reply_markup=reply_markup)
+        await bot.send_message(
+            chat_id,
+            text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+        )
         return True
     except TelegramAPIError:
         logger.exception("Could not deliver notification to chat %s", chat_id)
