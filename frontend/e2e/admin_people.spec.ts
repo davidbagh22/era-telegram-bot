@@ -28,7 +28,9 @@ test("admin opens a rich participant profile and awards points", async ({ page }
   await page.getByPlaceholder("Причина ручной корректировки").fill("E2E проверка начисления баллов");
   await page.getByRole("button", { name: "Применить вручную" }).click();
 
-  await page.getByRole("button", { name: "Обзор", exact: true }).click();
+  // The Admin workspace itself also has an "Обзор" destination in its bottom
+  // navigation. The first exact match is the local participant-profile tab.
+  await page.getByRole("button", { name: "Обзор", exact: true }).first().click();
   const balanceCard = page.getByText("Баллов сейчас").locator("..");
   await expect(balanceCard).toContainText("15");
 });
