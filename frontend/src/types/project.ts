@@ -24,6 +24,7 @@ export interface ProjectQuestion {
   title: string;
   prompt: string;
   ai_hint: string | null;
+  input_type: "text" | "date" | "time";
 }
 
 export interface ProjectRole {
