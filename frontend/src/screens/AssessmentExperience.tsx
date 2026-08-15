@@ -78,14 +78,7 @@ export function AssessmentExperience({ onBack }: AssessmentExperienceProps) {
     if (!runner) return;
     setBusy(true);
     try {
-      const updated = await saveAssessmentAnswer(runner.id, questionCode, value);
-      setRunner(updated);
-      if (updated.answered_count === updated.question_count) {
-        const completed = await completeAssessment(updated.id);
-        setResult(completed);
-        setRunner(null);
-        await reloadList();
-      }
+      setRunner(await saveAssessmentAnswer(runner.id, questionCode, value));
     } catch {
       toast.show("Ответ не сохранился. Попробуй ещё раз.", "error");
     } finally {
@@ -93,8 +86,31 @@ export function AssessmentExperience({ onBack }: AssessmentExperienceProps) {
     }
   }
 
+  async function finalizeAssessment() {
+    if (!runner) return;
+    setBusy(true);
+    try {
+      const completed = await completeAssessment(runner.id);
+      setResult(completed);
+      setRunner(null);
+      await reloadList();
+    } catch {
+      toast.show("Не удалось завершить исследование. Проверь ответы и попробуй ещё раз.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (runner) {
-    return <AssessmentRunner session={runner} busy={busy} onAnswer={answer} onBack={() => setRunner(null)} />;
+    return (
+      <AssessmentRunner
+        session={runner}
+        busy={busy}
+        onAnswer={answer}
+        onComplete={finalizeAssessment}
+        onBack={() => setRunner(null)}
+      />
+    );
   }
 
   if (selected) {
@@ -196,7 +212,7 @@ function AssessmentDetail({
               ))}
             </ul>
           ) : (
-            <p>Пройди Big Five — после этого здесь появится аккуратный синтез выраженных сторон.</p>
+            <p>Пройди базовые исследования — после этого здесь появится аккуратный синтез выраженных сторон.</p>
           )}
           {item.interest_code?.length ? <p>Код интересов: {item.interest_code.join("–")}</p> : null}
         </Card>
@@ -213,9 +229,9 @@ function AssessmentDetail({
       )}
 
       <Card>
-        <strong>Данные</strong>
+        <strong>Что будет с результатами</strong>
         <p style={{ marginBottom: 0 }}>
-          Ответы нужны для твоей личной карты. Они не превращаются в рейтинг и не определяют доступ к ролям или проектам ЭРА.
+          Ты видишь полный результат. Команда ЭРА получает только те итоговые показатели развития, которыми ты разрешил делиться. Сырые ответы и личные заметки не используются для рейтинга, отбора в проекты или назначения ролей.
         </p>
       </Card>
     </div>
@@ -226,17 +242,31 @@ function AssessmentRunner({
   session,
   busy,
   onAnswer,
+  onComplete,
   onBack,
 }: {
   session: AssessmentSession;
   busy: boolean;
   onAnswer: (questionCode: string, value: number) => Promise<void>;
+  onComplete: () => Promise<void>;
   onBack: () => void;
 }) {
-  const current = useMemo(
-    () => session.questions.find((question) => session.answers[question.code] === undefined),
-    [session],
-  );
+  const firstUnanswered = useMemo(() => {
+    const index = session.questions.findIndex((question) => session.answers[question.code] === undefined);
+    return index === -1 ? Math.max(0, session.questions.length - 1) : index;
+  }, [session.questions, session.answers]);
+  const [cursor, setCursor] = useState(firstUnanswered);
+  const [reviewing, setReviewing] = useState(session.answered_count === session.question_count);
+
+  useEffect(() => {
+    if (session.answered_count === session.question_count) setReviewing(true);
+  }, [session.answered_count, session.question_count]);
+
+  useEffect(() => {
+    if (cursor >= session.questions.length) setCursor(Math.max(0, session.questions.length - 1));
+  }, [cursor, session.questions.length]);
+
+  const current = session.questions[cursor];
   const progress = session.question_count
     ? Math.round((session.answered_count / session.question_count) * 100)
     : 0;
@@ -249,6 +279,36 @@ function AssessmentRunner({
     );
   }
 
+  if (reviewing) {
+    return (
+      <div className="era-page" style={{ padding: "1.2rem", display: "grid", gap: 12 }}>
+        <Header title={session.title} onBack={onBack} />
+        <Card gradient>
+          <small>ГОТОВО К РЕЗУЛЬТАТУ</small>
+          <h2 style={{ marginBottom: 6 }}>Все ответы сохранены</h2>
+          <p style={{ margin: 0, color: "rgba(255,255,255,.78)" }}>
+            До отправки можно вернуться и изменить любой ответ. После завершения эта сессия останется отдельной записью в истории.
+          </p>
+        </Card>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setCursor(Math.max(0, session.questions.length - 1));
+            setReviewing(false);
+          }}
+        >
+          ← Проверить последний ответ
+        </button>
+        <button className="era-btn-primary" disabled={busy} onClick={() => void onComplete()}>
+          {busy ? "Сохраняем…" : "Получить результат"}
+        </button>
+        <button disabled={busy} onClick={onBack}>Продолжить позже</button>
+      </div>
+    );
+  }
+
+  const selectedValue = session.answers[current.code];
   return (
     <div className="era-page" style={{ padding: "1.2rem", display: "grid", gap: 10 }}>
       <Header title={session.title} onBack={onBack} />
@@ -271,7 +331,7 @@ function AssessmentRunner({
           />
         </div>
         <small style={{ color: "var(--era-text-muted)" }}>
-          {session.answered_count + 1} из {session.question_count}
+          {cursor + 1} из {session.question_count} · ещё около {Math.max(1, Math.ceil((session.question_count - session.answered_count) * 0.12))} мин
         </small>
       </div>
 
@@ -284,19 +344,28 @@ function AssessmentRunner({
           <button
             key={option.value}
             disabled={busy}
-            style={{ minHeight: 52, textAlign: "left" }}
-            onClick={() => void onAnswer(current.code, option.value)}
+            aria-pressed={selectedValue === option.value}
+            style={{
+              minHeight: 52,
+              textAlign: "left",
+              borderColor: selectedValue === option.value ? "var(--era-red)" : undefined,
+            }}
+            onClick={async () => {
+              await onAnswer(current.code, option.value);
+              if (cursor < session.questions.length - 1) setCursor(cursor + 1);
+            }}
           >
             {option.label}
           </button>
         ))}
       </div>
 
-      <button disabled={busy} onClick={onBack}>
-        Продолжить позже
-      </button>
+      {cursor > 0 ? (
+        <button disabled={busy} onClick={() => setCursor(cursor - 1)}>← Предыдущий вопрос</button>
+      ) : null}
+      <button disabled={busy} onClick={onBack}>Продолжить позже</button>
       <small style={{ color: "var(--era-text-muted)" }}>
-        Последний выбранный ответ сохраняется сразу. Можно выйти и вернуться позже.
+        Каждый ответ сохраняется сразу. Можно выйти и вернуться позже без потери данных.
       </small>
     </div>
   );
@@ -368,7 +437,7 @@ function prettyScale(scale: string): string {
 function Header({ title, onBack }: { title: string; onBack: () => void }) {
   return (
     <header style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <button onClick={onBack}>←</button>
+      <button onClick={onBack} aria-label="Назад">←</button>
       <h1 style={{ margin: 0 }}>{title}</h1>
     </header>
   );
