@@ -9,9 +9,8 @@ test("participant completes WHO-5 through My Vector and sees the saved result", 
   await page.getByRole("button", { name: /Как ты изменился за последний месяц/ }).click();
 
   const consentButton = page.getByRole("button", { name: "Понятно, продолжить" });
-  if (await consentButton.isVisible().catch(() => false)) {
-    await consentButton.click();
-  }
+  await expect(consentButton).toBeVisible();
+  await consentButton.click();
 
   await expect(page.getByRole("heading", { name: "Мой вектор" })).toBeVisible();
   await page.getByRole("button", { name: /Исследования/ }).click();
