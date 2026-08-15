@@ -37,10 +37,11 @@ class BackupRecoveryContractTests(unittest.TestCase):
         self.assertNotIn("BACKUP_DATABASE_URL", workflow)
         self.assertNotIn("BACKUP_REPORT_SECRET", workflow)
         self.assertNotIn("BACKUP_REPORT_URL", workflow)
+        self.assertNotIn("set -x", workflow)
 
         deploy_gate_pos = workflow.index("Wait for matching production commit")
         snapshot_pos = workflow.index("Download transient production snapshot using GitHub OIDC")
-        restore_pos = workflow.index("Verify restore on isolated PostgreSQL")
+        restore_pos = workflow.index("Verify restore on isolated PostgreSQL 18")
         encrypt_pos = workflow.index("Encrypt verified backup package")
         artifact_pos = workflow.index("Upload encrypted verified GitHub artifact")
         self.assertLess(deploy_gate_pos, snapshot_pos)
@@ -48,9 +49,21 @@ class BackupRecoveryContractTests(unittest.TestCase):
         self.assertLess(restore_pos, encrypt_pos)
         self.assertLess(encrypt_pos, artifact_pos)
 
-    def test_base_backup_does_not_depend_on_ubuntu_awscli_package(self) -> None:
+    def test_backup_major_is_pinned_for_snapshot_and_restore(self) -> None:
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        restore = (ROOT / "scripts" / "verify_database_restore.sh").read_text(encoding="utf-8")
         workflow = (ROOT / ".github" / "workflows" / "database-backup.yml").read_text(encoding="utf-8")
-        self.assertIn("sudo apt-get install -y postgresql-client jq", workflow)
+        self.assertIn("postgresql-client-18", dockerfile)
+        self.assertIn("pg_dump --version", dockerfile)
+        self.assertIn("postgres:18", restore)
+        self.assertIn("Verify restore on isolated PostgreSQL 18", workflow)
+        self.assertNotIn("image: postgres:16", workflow)
+        self.assertNotIn("sudo apt-get install -y postgresql-client", workflow)
+
+    def test_base_backup_does_not_depend_on_ubuntu_postgres_or_awscli_packages(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "database-backup.yml").read_text(encoding="utf-8")
+        self.assertIn("sudo apt-get install -y jq", workflow)
+        self.assertNotIn("sudo apt-get install -y postgresql-client jq", workflow)
         self.assertNotIn("sudo apt-get install -y postgresql-client jq awscli", workflow)
         self.assertIn("Install AWS CLI for external storage only", workflow)
         self.assertIn("if: steps.config.outputs.external_storage == 'true'", workflow)
@@ -69,17 +82,19 @@ class BackupRecoveryContractTests(unittest.TestCase):
         ]:
             self.assertIn(marker, script)
 
-    def test_runtime_snapshot_never_exports_database_url(self) -> None:
+    def test_runtime_snapshot_never_exports_database_url_or_logs_subprocess_stderr(self) -> None:
         service = (ROOT / "app" / "services" / "backup_runtime_service.py").read_text(encoding="utf-8")
-        for marker in ["PGHOST", "PGDATABASE", "PGUSER", "PGPASSWORD", "pg_dump", "--format=custom"]:
+        for marker in ["PGHOST", "PGDATABASE", "PGUSER", "PGPASSWORD", "pg_dump", "--format=custom", "verify_pg_dump_compatibility"]:
             self.assertIn(marker, service)
         self.assertNotIn('"database_url":', service)
         self.assertNotIn("print(database_url", service)
+        self.assertIn("stderr=asyncio.subprocess.DEVNULL", service)
 
-    def test_restore_script_checks_integrity_and_required_schema(self) -> None:
+    def test_restore_script_checks_integrity_required_schema_and_has_no_trace_mode(self) -> None:
         script = (ROOT / "scripts" / "verify_database_restore.sh").read_text(encoding="utf-8")
-        for marker in ["sha256sum", "pg_restore", "ON_ERROR_STOP=1", "public.users"]:
+        for marker in ["sha256sum", "pg_restore", "ON_ERROR_STOP=1", "public.users", "postgres:18"]:
             self.assertIn(marker, script)
+        self.assertNotIn("set -x", script)
 
     def test_recovery_document_exists(self) -> None:
         document = (ROOT / "docs" / "BACKUP_AND_RECOVERY.md").read_text(encoding="utf-8")
