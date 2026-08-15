@@ -49,8 +49,7 @@ async def send_monthly_development_reminders(
     settings: Settings,
     session_factory,
 ) -> None:
-    """Send at most one native My Vector Check-in reminder per month."""
-    del settings
+    """Send monthly Check-in reminders, then run the idempotent weekly pulse pass."""
     now = datetime.now(timezone.utc)
     month = now.strftime("%Y-%m")
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -101,6 +100,11 @@ async def send_monthly_development_reminders(
                 )
             )
         await session.commit()
+
+    # The scheduler already runs this function daily. A separate job is not
+    # needed: the weekly pass is idempotent and therefore sends at most once in
+    # each calendar week even after restarts.
+    await send_weekly_development_pulses(bot, settings, session_factory)
 
 
 async def send_weekly_development_pulses(
