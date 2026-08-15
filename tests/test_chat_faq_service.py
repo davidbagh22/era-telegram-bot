@@ -81,9 +81,15 @@ class ChatFaqServiceTests(unittest.IsolatedAsyncioTestCase):
             bot = FakeBot()
             settings = Settings(bot_token="1234567890:test-token", general_chat_id=-100555)
             await publish_faq_message(bot, settings, session, actor_id=1)
-            urls = [row[0].url for row in bot.last_markup.inline_keyboard]
+
+            rows = bot.last_markup.inline_keyboard
+            self.assertEqual(rows[0][0].callback_data, "faq:events")
+            self.assertEqual(rows[0][1].callback_data, "faq:profile")
+
+            topic_rows = rows[1:]
+            urls = [row[0].url for row in topic_rows]
             self.assertTrue(all(url and url.startswith("https://t.me/EraTestBot?start=faq_") for url in urls))
-            self.assertTrue(all(row[0].callback_data is None for row in bot.last_markup.inline_keyboard))
+            self.assertTrue(all(row[0].callback_data is None for row in topic_rows))
 
     async def test_second_publish_reuses_recorded_message_instead_of_spamming(self) -> None:
         async with self.session_factory() as session:
