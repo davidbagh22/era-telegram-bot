@@ -34,15 +34,16 @@ def _group_state(bot_id: int = 1, group_chat_id: int = -100, user_id: int = 777)
 
 
 class ChatFaqHandlerTests(unittest.IsolatedAsyncioTestCase):
-    async def test_faq_answer_sends_canned_text_to_dm(self) -> None:
+    async def test_faq_answer_sends_canned_html_text_to_dm(self) -> None:
         call = SimpleNamespace(data="faq:what_is_era", answer=AsyncMock())
         user = _approved_user()
         with patch.object(chat_faq, "safe_send", AsyncMock(return_value=True)) as safe_send:
             await chat_faq.faq_answer(call, user, bot=SimpleNamespace(id=1))
         safe_send.assert_awaited_once()
-        args, _ = safe_send.call_args
+        args, kwargs = safe_send.call_args
         self.assertEqual(args[1], user.telegram_id)
         self.assertEqual(args[2], FAQ_ANSWERS["faq:what_is_era"])
+        self.assertEqual(kwargs["parse_mode"], "HTML")
         call.answer.assert_awaited_once()
         self.assertNotIn("show_alert", call.answer.call_args.kwargs)
 
