@@ -5,35 +5,38 @@ const ADMIN_TELEGRAM_ID = 900003;
 
 test("eraPath query opens Projects when Telegram provides no fragment", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}&eraPath=projects`);
-
   await expect(page.getByRole("heading", { name: "Проекты" })).toBeVisible();
   await expect(page.getByText("Начните с одной мысли")).toBeVisible();
 });
 
-test("eraPath admin opens the separate Admin workspace directly", async ({ page }) => {
-  await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}&eraPath=admin`);
+test("fresh Telegram eraPath overrides a stale cached Home hash", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}&eraPath=projects#/home`);
+  await expect(page.getByRole("heading", { name: "Проекты" })).toBeVisible();
+  await expect(page).toHaveURL(/#\/projects$/);
+  expect(new URL(page.url()).searchParams.has("eraPath")).toBe(false);
+});
 
+test("eraPath admin opens the separate Admin workspace directly even with stale user hash", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}&eraPath=admin#/home`);
   await expect(page.getByText("Управление", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Пульт управления" })).toBeVisible();
+  await expect(page).toHaveURL(/#\/admin$/);
 });
 
 test("#/tasks deep link opens the legacy task surface directly", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/tasks`);
-
   await expect(page.getByRole("heading", { name: "Задачи" })).toBeVisible();
   await expect(page.getByText("Задач в этом разделе пока нет.")).toBeVisible();
 });
 
 test("#/events deep link opens the Events tab", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/events`);
-
   await expect(page.getByRole("heading", { name: "События" })).toBeVisible();
   await expect(page.getByText("E2E тестовое мероприятие")).toBeVisible();
 });
 
 test("#/opportunities deep link opens Community on offers", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/opportunities`);
-
   await expect(page.getByRole("heading", { name: "Предложения" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Фильтр" })).toBeVisible();
 });
