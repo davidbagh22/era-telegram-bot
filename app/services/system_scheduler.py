@@ -9,6 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import Settings
 from app.services.chat_faq_service import ensure_general_faq_pinned
 from app.services.event_custom_reminder_service import send_configured_event_reminders
+from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
 from app.services.system_health_service import run_system_diagnostics, send_daily_system_summary
 
 
@@ -67,6 +68,20 @@ def add_system_jobs(
         replace_existing=True,
         max_instances=1,
         coalesce=True,
+    )
+    # Tasks configured in the event wizard are editor-friendly JSON until
+    # publish. This job materialises/updates them in the existing EventActivity
+    # workflow, where participants can submit work and receive real points.
+    scheduler.add_job(
+        sync_event_wizard_tasks_job,
+        "interval",
+        minutes=1,
+        args=(session_factory,),
+        id="event-wizard-task-sync",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
     )
     # Infrastructure maintenance, not a health check: refresh and re-pin the
     # same FAQ card immediately after deploy and then twice a day. The service
