@@ -33,7 +33,12 @@ async def faq_answer(call: CallbackQuery, user: User | None, bot: Bot) -> None:
     if not _approved(user):
         await call.answer(texts.APPLICATION_PENDING, show_alert=True)
         return
-    ok = await safe_send(bot, user.telegram_id, FAQ_ANSWERS[call.data])
+    ok = await safe_send(
+        bot,
+        user.telegram_id,
+        FAQ_ANSWERS[call.data],
+        parse_mode="HTML",
+    )
     if ok:
         await call.answer("Ответ отправлен вам в личные сообщения 👍")
     else:

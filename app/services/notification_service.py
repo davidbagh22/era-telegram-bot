@@ -77,9 +77,21 @@ async def _database_admin_ids(settings: Settings) -> set[int]:
         return set()
 
 
-async def safe_send(bot: Bot, chat_id: int, text: str, reply_markup=None) -> bool:
+async def safe_send(
+    bot: Bot,
+    chat_id: int,
+    text: str,
+    reply_markup=None,
+    *,
+    parse_mode: str | None = None,
+) -> bool:
     try:
-        await bot.send_message(chat_id, text, reply_markup=reply_markup)
+        kwargs = {"reply_markup": reply_markup}
+        # Preserve the historical send_message call shape for every existing
+        # plain-text caller; only FAQ/rich-text callers opt into parse_mode.
+        if parse_mode is not None:
+            kwargs["parse_mode"] = parse_mode
+        await bot.send_message(chat_id, text, **kwargs)
         return True
     except TelegramAPIError:
         logger.exception("Could not deliver notification to chat %s", chat_id)
