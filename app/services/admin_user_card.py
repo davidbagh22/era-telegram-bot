@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardMarkup, Message
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,7 @@ from app.utils.constants import (
     ROLE_LABELS,
     STATUS_LABELS,
 )
+from app.utils.deep_links import miniapp_path_url
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,11 @@ def _telegram(user: User) -> str:
 
 def _date_text(value: date | None) -> str:
     return value.strftime("%d.%m.%Y") if value else "не указана"
+
+
+def _created_at_text(user: User) -> str:
+    value = getattr(user, "created_at", None)
+    return value.strftime("%d.%m.%Y %H:%M") if value else "не указана"
 
 
 def _minor_label(age: int | None) -> str | None:
@@ -131,6 +137,31 @@ def _permissions(target: User) -> str:
     return ", ".join(PERMISSION_LABELS.get(item, item) for item in sorted(active)) or "нет отдельных прав"
 
 
+def _application_miniapp_markup(
+    reply_markup: InlineKeyboardMarkup,
+    miniapp_url: str,
+    user_id: int,
+) -> InlineKeyboardMarkup:
+    if not miniapp_url:
+        return reply_markup
+    url = miniapp_path_url(
+        miniapp_url,
+        "admin",
+        {"adminSection": "applications", "applicationId": user_id},
+    )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📲 Открыть заявку в приложении",
+                    web_app=WebAppInfo(url=url),
+                )
+            ],
+            *reply_markup.inline_keyboard,
+        ]
+    )
+
+
 async def build_admin_user_card(
     session: AsyncSession,
     target: User,
@@ -172,6 +203,7 @@ async def build_admin_user_card(
 
     if mode == "application":
         title = f"📝 Заявка #{target.id}"
+        skills = ", ".join(getattr(target, "skills", None) or []) or "не указаны"
         extra = (
             "\n\n"
             + _lines(
@@ -179,8 +211,12 @@ async def build_admin_user_card(
                 [
                     ("Учёба / работа", target.education_work),
                     ("Занятие", target.occupation),
+                    ("Навыки", skills),
+                    ("Опыт", getattr(target, "experience", None)),
                     ("Доступное время", target.available_time),
                     ("Желаемый путь", target.desired_path),
+                    ("Согласие на обработку данных", "получено" if target.personal_data_consent else "не получено"),
+                    ("Дата подачи", _created_at_text(target)),
                 ],
             )
             + f"\n\nСоцсети\n{social_text}"
@@ -225,12 +261,22 @@ async def send_admin_application_cards(
     target: User,
 ) -> tuple[int, int]:
     card = await build_admin_user_card(session, target, mode="application")
+    reply_markup = _application_miniapp_markup(
+        card.reply_markup,
+        settings.effective_miniapp_url,
+        target.id,
+    )
     recipients = await admin_notification_recipients(settings)
     sent = failed = 0
     for chat_id in recipients:
         if card.photo_file_id:
-            await safe_send_photo(bot, chat_id, card.photo_file_id, caption="Фото участника")
-        if await safe_send(bot, chat_id, card.text, card.reply_markup):
+            await safe_send_photo(
+                bot,
+                chat_id,
+                card.photo_file_id,
+                caption=f"🆕 Новая заявка #{target.id}\n{_name(target)}",
+            )
+        if await safe_send(bot, chat_id, card.text, reply_markup):
             sent += 1
         else:
             failed += 1
