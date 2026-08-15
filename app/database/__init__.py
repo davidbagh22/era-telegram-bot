@@ -6,5 +6,6 @@ import app.database.chat_moderation  # noqa: F401
 import app.database.management_models  # noqa: F401
 import app.database.system_models  # noqa: F401
 import app.database.autocontent_models  # noqa: F401
+import app.database.development_models  # noqa: F401
 
 __all__ = ["Base"]
