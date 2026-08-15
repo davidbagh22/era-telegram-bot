@@ -21,6 +21,14 @@ interface ProjectDetailProps {
 }
 
 type AiOperation = "formulate" | "shorten" | "improve";
+type SaveIntent = "next" | "close";
+
+type PendingRetry = {
+  questionKey: string;
+  questionIndex: number;
+  answer: string;
+  intent: SaveIntent;
+};
 
 const LEGACY_LABELS: Record<string, string> = {
   department_direction: "Отдел и направление",
@@ -52,6 +60,8 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [pendingRetry, setPendingRetry] = useState<PendingRetry | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -104,8 +114,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
     ? Math.round((answeredQuestions.length / questions.length) * (constructorComplete ? 100 : 94))
     : 0;
 
-  const saveQuestion = async (question: ProjectQuestion) => {
-    const value = answers[question.key] ?? "";
+  const saveQuestion = async (question: ProjectQuestion, value: string) => {
     const updated = await updateProject(projectId, { [question.key]: value });
     setProject(updated);
     const savedValue = updated.form_data?.[question.key];
@@ -115,30 +124,54 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
     return updated;
   };
 
-  const handleNext = async () => {
-    if (!currentQuestion) return;
-    if (!(answers[currentQuestion.key] ?? "").trim()) {
-      setActionError("Заполните этот шаг — так проект не останется пустой карточкой.");
-      return;
-    }
+  const persistStep = async (
+    question: ProjectQuestion,
+    sourceIndex: number,
+    answer: string,
+    intent: SaveIntent,
+  ) => {
     setBusy(true);
     setActionError(null);
+    setSaveError(null);
     setSavedNotice(null);
     try {
-      await saveQuestion(currentQuestion);
+      await saveQuestion(question, answer);
+      setPendingRetry(null);
       setAiSuggestion(null);
-      if (questionIndex < questions.length - 1) {
-        setSavedNotice("Сохранено");
-        setQuestionIndex((index) => index + 1);
+
+      if (intent === "next") {
+        if (sourceIndex < questions.length - 1) {
+          setSavedNotice("Сохранено");
+          setQuestionIndex(Math.min(sourceIndex + 1, questions.length - 1));
+        } else {
+          setEditing(false);
+          setSavedNotice("Проект собран. Проверьте финальный preview перед отправкой.");
+        }
       } else {
         setEditing(false);
-        setSavedNotice("Проект собран. Проверьте финальный preview перед отправкой.");
+        setSavedNotice("Черновик сохранён");
       }
     } catch (error) {
-      setActionError(actionMessage(error, "Не удалось сохранить этот шаг. Ответ остался на экране — попробуйте ещё раз."));
+      setSaveError(actionMessage(error, "Не удалось сохранить этот шаг. Ответ не потерян."));
+      setPendingRetry({
+        questionKey: question.key,
+        questionIndex: sourceIndex,
+        answer,
+        intent,
+      });
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleNext = async () => {
+    if (!currentQuestion) return;
+    const answer = answers[currentQuestion.key] ?? "";
+    if (!answer.trim()) {
+      setActionError("Заполните этот шаг — так проект не останется пустой карточкой.");
+      return;
+    }
+    await persistStep(currentQuestion, questionIndex, answer, "next");
   };
 
   const handleSaveAndClose = async () => {
@@ -146,23 +179,24 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
       setEditing(false);
       return;
     }
-    const value = answers[currentQuestion.key] ?? "";
-    if (!value.trim()) {
+    const answer = answers[currentQuestion.key] ?? "";
+    if (!answer.trim()) {
       setEditing(false);
       return;
     }
-    setBusy(true);
-    setActionError(null);
-    try {
-      await saveQuestion(currentQuestion);
-      setEditing(false);
-      setAiSuggestion(null);
-      setSavedNotice("Черновик сохранён");
-    } catch (error) {
-      setActionError(actionMessage(error, "Не удалось сохранить текущий ответ. Он не потерян — повторите сохранение."));
-    } finally {
-      setBusy(false);
+    await persistStep(currentQuestion, questionIndex, answer, "close");
+  };
+
+  const handleRetrySave = async () => {
+    if (!pendingRetry) return;
+    const question = questions.find((item) => item.key === pendingRetry.questionKey);
+    if (!question) {
+      setPendingRetry(null);
+      setSaveError(null);
+      setActionError("Не удалось определить шаг для повторного сохранения. Откройте конструктор ещё раз.");
+      return;
     }
+    await persistStep(question, pendingRetry.questionIndex, pendingRetry.answer, pendingRetry.intent);
   };
 
   const handleSubmit = async () => {
@@ -201,6 +235,8 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
 
   const openEditor = () => {
     setActionError(null);
+    setSaveError(null);
+    setPendingRetry(null);
     setSavedNotice(null);
     setAiSuggestion(null);
     setQuestionIndex(firstUnansweredIndex(questions, answers));
@@ -248,7 +284,16 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
           <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>{actionError}</p>
         </Card>
       )}
-      {savedNotice && !actionError && <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.78rem" }}>✓ {savedNotice}</p>}
+      {saveError && pendingRetry && currentQuestion?.key === pendingRetry.questionKey && (
+        <Card style={{ borderColor: "rgba(255,68,100,0.45)", background: "rgba(255,48,72,0.07)" }}>
+          <strong style={{ color: "var(--era-error)" }}>Шаг не сохранён</strong>
+          <p style={{ margin: "0.3rem 0 0.7rem", color: "var(--era-text-muted)", lineHeight: 1.45 }}>{saveError}</p>
+          <button type="button" className="era-btn-primary" disabled={busy} onClick={() => void handleRetrySave()}>
+            {busy ? "Повторяем…" : "Повторить сохранение"}
+          </button>
+        </Card>
+      )}
+      {savedNotice && !actionError && !saveError && <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.78rem" }}>✓ {savedNotice}</p>}
 
       {project.admin_comment && (
         <Card>
@@ -281,7 +326,13 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
               id={`project-answer-${currentQuestion.key}`}
               value={answers[currentQuestion.key] ?? ""}
               onChange={(event) => {
-                setAnswers((previous) => ({ ...previous, [currentQuestion.key]: event.target.value }));
+                const value = event.target.value;
+                setAnswers((previous) => ({ ...previous, [currentQuestion.key]: value }));
+                setPendingRetry((previous) => (
+                  previous?.questionKey === currentQuestion.key
+                    ? { ...previous, answer: value }
+                    : previous
+                ));
                 setActionError(null);
                 setSavedNotice(null);
                 setAiSuggestion(null);
@@ -312,14 +363,14 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
               <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: ".76rem", fontWeight: 800, textTransform: "uppercase" }}>Вариант ИИ — решаете вы</p>
               <p style={{ margin: ".5rem 0", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{aiSuggestion}</p>
               <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: ".45rem" }}>
-                <button type="button" className="era-btn-primary" onClick={() => { setAnswers((previous) => ({ ...previous, [currentQuestion.key]: aiSuggestion })); setAiSuggestion(null); setSavedNotice("Вариант принят. Можно отредактировать перед сохранением."); }}>Использовать вариант</button>
+                <button type="button" className="era-btn-primary" onClick={() => { setAnswers((previous) => ({ ...previous, [currentQuestion.key]: aiSuggestion })); setPendingRetry((previous) => previous?.questionKey === currentQuestion.key ? { ...previous, answer: aiSuggestion } : previous); setAiSuggestion(null); setSavedNotice("Вариант принят. Можно отредактировать перед сохранением."); }}>Использовать вариант</button>
                 <button type="button" onClick={() => setAiSuggestion(null)}>Оставить мой</button>
               </div>
             </Card>
           )}
 
           <div style={{ display: "grid", gridTemplateColumns: questionIndex > 0 ? "0.8fr 1.2fr" : "1fr", gap: "0.5rem" }}>
-            {questionIndex > 0 && <button type="button" disabled={busy} onClick={() => { setActionError(null); setAiSuggestion(null); setQuestionIndex((index) => Math.max(0, index - 1)); }}>← Назад</button>}
+            {questionIndex > 0 && <button type="button" disabled={busy} onClick={() => { if (pendingRetry) { setActionError("Сначала повторите сохранение этого шага — ответ уже сохранён на экране и не потерян."); return; } setActionError(null); setAiSuggestion(null); setQuestionIndex((index) => Math.max(0, index - 1)); }}>← Назад</button>}
             <button type="button" className="era-btn-primary" disabled={busy || aiBusy !== null} onClick={() => void handleNext()}>{busy ? "Сохраняю…" : questionIndex === questions.length - 1 ? "К финальному preview →" : "Сохранить и дальше →"}</button>
           </div>
           <button type="button" disabled={busy || aiBusy !== null} onClick={() => void handleSaveAndClose()}>Сохранить и выйти</button>
