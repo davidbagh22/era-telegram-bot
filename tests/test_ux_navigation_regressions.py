@@ -20,13 +20,13 @@ from app.utils.deep_links import (
 
 
 class TelegramSafeDeepLinkTests(unittest.TestCase):
-    def test_sections_have_query_start_param_and_hash_fallback(self) -> None:
+    def test_sections_have_query_routes_without_fragment_dependency(self) -> None:
         url = miniapp_projects_url("https://era.example/app/")
         parsed = urlsplit(url)
         query = parse_qs(parsed.query)
         self.assertEqual(query["eraPath"], ["projects"])
         self.assertEqual(query["tgWebAppStartParam"], ["projects"])
-        self.assertEqual(parsed.fragment, "projects")
+        self.assertEqual(parsed.fragment, "")
 
     def test_entity_route_preserves_existing_query(self) -> None:
         url = miniapp_event_url("https://era.example/app/?devTelegramId=42", 17)
@@ -35,11 +35,13 @@ class TelegramSafeDeepLinkTests(unittest.TestCase):
         self.assertEqual(query["devTelegramId"], ["42"])
         self.assertEqual(query["eraPath"], ["events/17"])
         self.assertEqual(query["tgWebAppStartParam"], ["events/17"])
-        self.assertEqual(parsed.fragment, "events/17")
+        self.assertEqual(parsed.fragment, "")
 
     def test_admin_route_is_explicit(self) -> None:
         url = miniapp_admin_url("https://era.example/app/")
-        self.assertEqual(parse_qs(urlsplit(url).query)["eraPath"], ["admin"])
+        parsed = urlsplit(url)
+        self.assertEqual(parse_qs(parsed.query)["eraPath"], ["admin"])
+        self.assertEqual(parsed.fragment, "")
 
     def test_main_miniapp_link_uses_startapp_destination(self) -> None:
         url = main_miniapp_deep_link("@EraExampleBot", "projects")
