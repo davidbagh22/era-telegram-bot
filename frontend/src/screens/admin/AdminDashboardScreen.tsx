@@ -1,11 +1,12 @@
 import { useCallback, useState } from "react";
 import {
   downloadAnalyticsSectionTable,
+  downloadFullAnalyticsReport,
   fetchAdminAnalyticsDetails,
   fetchEraEfficiency,
   type AnalyticsDetailSection,
 } from "../../api/adminAnalytics";
-import { downloadAnalyticsExcel, fetchAdminAnalyticsSummary, fetchAdminDashboard } from "../../api/client";
+import { fetchAdminAnalyticsSummary, fetchAdminDashboard } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
@@ -110,7 +111,7 @@ function DetailView({ section, onBack }: { section: AnalyticsDetailSection; onBa
   const downloadFull = async () => {
     setDownloading(true);
     try {
-      saveBlob(await downloadAnalyticsExcel("all"), "ERA_full_report.xlsx");
+      saveBlob(await downloadFullAnalyticsReport(), "ERA_full_report.xlsx");
     } catch {
       toast.show("Не удалось собрать полный отчёт.", "error");
     } finally {
@@ -204,7 +205,7 @@ export function AdminDashboardScreen() {
   const handleFullReport = useCallback(async () => {
     setDownloadingSection("all");
     try {
-      saveBlob(await downloadAnalyticsExcel("all"), "ERA_full_report.xlsx");
+      saveBlob(await downloadFullAnalyticsReport(), "ERA_full_report.xlsx");
     } catch {
       toast.show("Не удалось собрать полный отчёт.", "error");
     } finally {
