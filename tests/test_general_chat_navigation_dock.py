@@ -5,13 +5,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from urllib.parse import parse_qs, urlsplit
 
-from aiogram.types import BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, BotCommandScopeChat
+from aiogram.types import BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, BotCommandScopeChat, ReplyKeyboardRemove
 
 from app.config import Settings
 from app.handlers import chat, chat_faq
 from app.keyboards.faq import (
     GENERAL_CHAT_EVENTS_TEXT,
-    GENERAL_CHAT_PROFILE_TEXT,
     faq_keyboard,
     general_chat_navigation_keyboard,
 )
@@ -32,20 +31,19 @@ def _approved_user(telegram_id: int = 777) -> SimpleNamespace:
 
 
 class GeneralChatKeyboardShapeTests(unittest.TestCase):
-    def test_pinned_faq_has_events_and_profile_actions(self) -> None:
-        markup = faq_keyboard()
-        first_row = markup.inline_keyboard[0]
-        self.assertEqual([button.text for button in first_row], [GENERAL_CHAT_EVENTS_TEXT, GENERAL_CHAT_PROFILE_TEXT])
-        self.assertEqual([button.callback_data for button in first_row], ["faq:events", "faq:profile"])
+    def test_pinned_faq_has_seven_private_deep_links(self) -> None:
+        markup = faq_keyboard("era_bot")
+        buttons = [button for row in markup.inline_keyboard for button in row]
+        self.assertEqual(len(buttons), 7)
+        self.assertEqual(buttons[0].text, "📅 Ближайшие события")
+        self.assertEqual(buttons[-1].text, "💬 Связаться с командой")
+        self.assertTrue(all(button.url and button.url.startswith("https://t.me/era_bot?start=faq_") for button in buttons))
+        self.assertTrue(all(button.callback_data is None for button in buttons))
 
-    def test_bottom_keyboard_is_persistent_and_only_has_two_primary_routes(self) -> None:
+    def test_old_persistent_group_keyboard_is_actively_removed(self) -> None:
         markup = general_chat_navigation_keyboard()
-        self.assertTrue(markup.is_persistent)
-        self.assertTrue(markup.resize_keyboard)
-        self.assertEqual(
-            [button.text for button in markup.keyboard[0]],
-            [GENERAL_CHAT_EVENTS_TEXT, GENERAL_CHAT_PROFILE_TEXT],
-        )
+        self.assertIsInstance(markup, ReplyKeyboardRemove)
+        self.assertTrue(markup.remove_keyboard)
 
 
 class PinnedFaqRouteTests(unittest.IsolatedAsyncioTestCase):
