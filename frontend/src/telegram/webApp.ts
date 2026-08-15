@@ -1,6 +1,12 @@
 // Minimal typed bridge to the Telegram WebApp JS SDK loaded via the
-// <script> tag in index.html (https://core.telegram.org/bots/webapps).
-// We only declare the surface this app actually uses.
+// <script> tag in index.html. ERA intentionally keeps its own dark visual
+// system instead of inheriting Telegram's light palette.
+interface TelegramHapticFeedback {
+  impactOccurred?: (style: "light" | "medium" | "heavy" | "rigid" | "soft") => void;
+  notificationOccurred?: (type: "error" | "success" | "warning") => void;
+  selectionChanged?: () => void;
+}
+
 interface TelegramWebApp {
   initData: string;
   ready: () => void;
@@ -8,6 +14,10 @@ interface TelegramWebApp {
   colorScheme: "light" | "dark";
   themeParams: Record<string, string | undefined>;
   onEvent: (eventType: string, callback: () => void) => void;
+  setHeaderColor?: (color: string) => void;
+  setBackgroundColor?: (color: string) => void;
+  setBottomBarColor?: (color: string) => void;
+  HapticFeedback?: TelegramHapticFeedback;
 }
 
 interface TelegramNamespace {
@@ -30,21 +40,33 @@ export function getInitData(): string {
 
 export function initTelegramWebApp(): void {
   const webApp = getTelegramWebApp();
+  applyTelegramTheme();
   webApp?.ready();
   webApp?.expand();
-  applyTelegramTheme();
+  // Re-apply ERA chrome if Telegram itself changes theme while the Mini App is open.
   webApp?.onEvent("themeChanged", applyTelegramTheme);
 }
 
 export function getColorScheme(): "light" | "dark" {
-  return getTelegramWebApp()?.colorScheme ?? "light";
+  return "dark";
 }
 
-// Mirrors Telegram's own light/dark theme onto the document so
-// tokens.css's `[data-theme="dark"]` overrides apply — without this the
-// Mini App stays light-only even when opened from a dark-themed Telegram
-// client. Safe to call outside Telegram (falls back to "light", matching
-// the existing browser-preview default).
 export function applyTelegramTheme(): void {
-  document.documentElement.dataset.theme = getColorScheme();
+  document.documentElement.dataset.theme = "dark";
+  document.documentElement.style.backgroundColor = "#0b0c0e";
+  document.body?.style.setProperty("background-color", "#0b0c0e");
+
+  const webApp = getTelegramWebApp();
+  // Keep Telegram's surrounding Mini App chrome visually continuous with ERA.
+  try { webApp?.setHeaderColor?.("#0b0c0e"); } catch { /* older clients */ }
+  try { webApp?.setBackgroundColor?.("#0b0c0e"); } catch { /* older clients */ }
+  try { webApp?.setBottomBarColor?.("#0b0c0e"); } catch { /* older clients */ }
+}
+
+export function selectionHaptic(): void {
+  try { getTelegramWebApp()?.HapticFeedback?.selectionChanged?.(); } catch { /* unsupported client */ }
+}
+
+export function successHaptic(): void {
+  try { getTelegramWebApp()?.HapticFeedback?.notificationOccurred?.("success"); } catch { /* unsupported client */ }
 }
