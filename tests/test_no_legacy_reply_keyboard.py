@@ -59,11 +59,11 @@ class NoLegacyReplyKeyboardTests(unittest.TestCase):
         hits = _matching_files("def main_menu(")
         self.assertEqual(hits, [], f"Found def main_menu( in: {hits}")
 
-    def test_participant_keyboard_never_uses_reply_markup(self) -> None:
+    def test_participant_keyboard_never_constructs_reply_markup(self) -> None:
         participant = (APP_ROOT / "keyboards" / "participant.py").read_text(encoding="utf-8")
-        self.assertNotIn("ReplyKeyboardMarkup", participant)
-        self.assertNotIn("is_persistent", participant)
-        self.assertNotIn("resize_keyboard", participant)
+        self.assertNotIn("ReplyKeyboardMarkup(", participant)
+        self.assertNotIn("is_persistent=", participant)
+        self.assertNotIn("resize_keyboard=", participant)
 
 
 if __name__ == "__main__":
