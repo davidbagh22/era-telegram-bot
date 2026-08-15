@@ -21,7 +21,7 @@ from app.database.development_models import (
     UserVectorProfile,
 )
 from app.database.models import User
-from app.services.assessment_catalog import ASSESSMENT_BY_CODE, ASSESSMENTS, STRENGTHS_DEFINITION
+from app.services.assessment_catalog import ASSESSMENTS, STRENGTHS_DEFINITION
 
 
 def utcnow() -> datetime:
@@ -57,7 +57,7 @@ async def _upsert_definition(session: AsyncSession, item: dict[str, Any]) -> Ass
 
 
 async def ensure_catalog(session: AsyncSession) -> None:
-    """Idempotently seeds the exact versions, questions and scoring rules used in production."""
+    """Idempotently seed the exact versions, questions and rules used by the app."""
     for item in [*ASSESSMENTS, STRENGTHS_DEFINITION]:
         definition = await _upsert_definition(session, item)
         if item["code"] == STRENGTHS_DEFINITION["code"]:
@@ -78,7 +78,7 @@ async def ensure_catalog(session: AsyncSession) -> None:
                 translation_source=item["translation_source"],
                 response_scale_json=response_scale,
                 interpretation_constraints_json=item["constraints"],
-                scoring_notes="Deterministic scoring from catalog; no AI-generated score or diagnosis.",
+                scoring_notes="Deterministic catalog scoring; no AI-generated score or diagnosis.",
                 active=True,
             )
             session.add(version)
@@ -88,7 +88,7 @@ async def ensure_catalog(session: AsyncSession) -> None:
             version.translation_source = item["translation_source"]
             version.response_scale_json = response_scale
             version.interpretation_constraints_json = item["constraints"]
-            version.scoring_notes = "Deterministic scoring from catalog; no AI-generated score or diagnosis."
+            version.scoring_notes = "Deterministic catalog scoring; no AI-generated score or diagnosis."
             version.active = True
 
         existing_scales = {
@@ -98,14 +98,19 @@ async def ensure_catalog(session: AsyncSession) -> None:
             ).all()
         }
         for scale in item["scales"]:
-            row = existing_scales.get(scale["code"])
-            if row is None:
-                row = AssessmentScale(version_id=version.id, code=scale["code"], title=scale["title"])
-                session.add(row)
+            scale_row = existing_scales.get(scale["code"])
+            if scale_row is None:
+                session.add(
+                    AssessmentScale(
+                        version_id=version.id,
+                        code=scale["code"],
+                        title=scale["title"],
+                    )
+                )
             else:
-                row.title = scale["title"]
+                scale_row.title = scale["title"]
 
-        rules = {
+        existing_rules = {
             row.scale_code: row
             for row in (
                 await session.scalars(
@@ -114,13 +119,17 @@ async def ensure_catalog(session: AsyncSession) -> None:
             ).all()
         }
         for scale_code, rule in item["scoring"].items():
-            row = rules.get(scale_code)
-            if row is None:
+            rule_row = existing_rules.get(scale_code)
+            if rule_row is None:
                 session.add(
-                    AssessmentScoringRule(version_id=version.id, scale_code=scale_code, rule_json=rule)
+                    AssessmentScoringRule(
+                        version_id=version.id,
+                        scale_code=scale_code,
+                        rule_json=rule,
+                    )
                 )
             else:
-                row.rule_json = rule
+                rule_row.rule_json = rule
 
         existing_questions = {
             row.code: row
@@ -131,9 +140,9 @@ async def ensure_catalog(session: AsyncSession) -> None:
             ).all()
         }
         for position, question in enumerate(item["questions"], start=1):
-            row = existing_questions.get(question["code"])
-            if row is None:
-                row = AssessmentQuestion(
+            question_row = existing_questions.get(question["code"])
+            if question_row is None:
+                question_row = AssessmentQuestion(
                     version_id=version.id,
                     code=question["code"],
                     text=question["text"],
@@ -141,19 +150,19 @@ async def ensure_catalog(session: AsyncSession) -> None:
                     scale_code=question["scale"],
                     reverse_keyed=bool(question.get("reverse")),
                 )
-                session.add(row)
+                session.add(question_row)
                 await session.flush()
             else:
-                row.text = question["text"]
-                row.position = position
-                row.scale_code = question["scale"]
-                row.reverse_keyed = bool(question.get("reverse"))
+                question_row.text = question["text"]
+                question_row.position = position
+                question_row.scale_code = question["scale"]
+                question_row.reverse_keyed = bool(question.get("reverse"))
 
             existing_options = {
                 option.value: option
                 for option in (
                     await session.scalars(
-                        select(AssessmentOption).where(AssessmentOption.question_id == row.id)
+                        select(AssessmentOption).where(AssessmentOption.question_id == question_row.id)
                     )
                 ).all()
             }
@@ -162,7 +171,7 @@ async def ensure_catalog(session: AsyncSession) -> None:
                 if option_row is None:
                     session.add(
                         AssessmentOption(
-                            question_id=row.id,
+                            question_id=question_row.id,
                             value=option["value"],
                             label=option["label"],
                             position=option_position,
@@ -403,9 +412,7 @@ async def save_answer(
         )
     )
     if answer is None:
-        session.add(
-            AssessmentAnswer(session_id=row.id, question_code=question_code, value_json=value)
-        )
+        session.add(AssessmentAnswer(session_id=row.id, question_code=question_code, value_json=value))
     else:
         answer.value_json = value
     await session.flush()
@@ -419,11 +426,8 @@ def score_scale(values: list[tuple[int, bool]], rule: dict[str, Any]) -> tuple[f
     maximum = float(rule["max"])
     method = rule["method"]
 
-    adjusted: list[float] = []
     if method == "mean_reverse":
-        for value, reverse in values:
-            adjusted.append((minimum + maximum - value) if reverse else float(value))
-        raw = mean(adjusted)
+        raw = mean((minimum + maximum - value) if reverse else float(value) for value, reverse in values)
     elif method == "mean":
         raw = mean(float(value) for value, _ in values)
     elif method == "sum":
@@ -453,7 +457,13 @@ def _score_interpretation(code: str, scores: dict[str, dict[str, Any]]) -> dict[
             "summary": f"Сумма по шкале: {round(raw)} из 40.",
             "note": "Это то, насколько уверенно ты сейчас воспринимаешь свою способность находить решения, а не измерение реальных способностей.",
         }
-    if code in {"IPIP_BIG5_RU", "IPIP_FOLLOW_THROUGH_RU", "IPIP_SOCIAL_RU", "IPIP_NEWNESS_RU", "IPIP_INTERACTION_RU"}:
+    if code in {
+        "IPIP_BIG5_RU",
+        "IPIP_FOLLOW_THROUGH_RU",
+        "IPIP_SOCIAL_RU",
+        "IPIP_NEWNESS_RU",
+        "IPIP_INTERACTION_RU",
+    }:
         labels = {
             "extraversion": "проявленность среди людей",
             "agreeableness": "ориентация на людей",
@@ -479,7 +489,9 @@ def _score_interpretation(code: str, scores: dict[str, dict[str, Any]]) -> dict[
         top_codes = [scale for scale, _ in ordered[:3]]
         return {
             "title": "Карта интересов",
-            "summary": f"Твой текущий код интересов: {'–'.join(top_codes)}. Сильнее всего притягивают направления: " + ", ".join(labels[code] for code in top_codes) + ".",
+            "summary": f"Твой текущий код интересов: {'–'.join(top_codes)}. Сильнее всего притягивают направления: "
+            + ", ".join(labels[item] for item in top_codes)
+            + ".",
             "note": "Интерес — не способность и не профессия. Это подсказка, какие форматы деятельности стоит чаще пробовать.",
         }
     if code == "ERA_NEEDS_RU":
@@ -666,10 +678,7 @@ async def result_payload(session: AsyncSession, row: AssessmentSession) -> dict[
     if definition is None:
         raise ValueError("assessment_definition_not_found")
     scores = {
-        score.scale_code: {
-            "raw": score.raw_score,
-            "normalized": score.normalized_score,
-        }
+        score.scale_code: {"raw": score.raw_score, "normalized": score.normalized_score}
         for score in (
             await session.scalars(select(AssessmentScore).where(AssessmentScore.session_id == row.id))
         ).all()
