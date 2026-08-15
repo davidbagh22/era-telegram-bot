@@ -6,21 +6,22 @@ test("cancelling a registration goes through a confirm sheet, not an immediate t
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
   await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "События" }).click();
   await expect(page.getByText("E2E тестовое мероприятие")).toBeVisible();
+  await page.getByRole("button", { name: "Открыть событие" }).first().click();
 
   await page.getByRole("button", { name: "Зарегистрироваться" }).click();
-  const cancelTrigger = page.getByRole("button", { name: "Планы изменились" });
+  const cancelTrigger = page.getByRole("button", { name: "Отказаться от участия" });
   await expect(cancelTrigger).toBeVisible();
 
   await cancelTrigger.click();
-  await expect(page.getByText("Отменить регистрацию?")).toBeVisible();
+  await expect(page.getByText("Отказаться от участия?")).toBeVisible();
 
-  await page.getByRole("button", { name: "Не отменять" }).click();
-  await expect(page.getByText("Отменить регистрацию?")).not.toBeVisible();
+  await page.getByRole("button", { name: "Остаться" }).click();
+  await expect(page.getByText("Отказаться от участия?")).not.toBeVisible();
   await expect(cancelTrigger).toBeVisible();
 
   await cancelTrigger.click();
-  await page.getByRole("button", { name: "Отменить регистрацию" }).click();
+  await page.getByRole("button", { name: "Отказаться", exact: true }).click();
 
   await expect(page.getByRole("button", { name: "Зарегистрироваться" })).toBeVisible();
-  await expect(page.getByText("Регистрация отменена")).toBeVisible();
+  await expect(page.getByText("Участие отменено")).toBeVisible();
 });
