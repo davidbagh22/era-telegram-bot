@@ -9,6 +9,7 @@ from app.api.v1 import (
     admin_applications,
     admin_autocontent,
     admin_event_create,
+    admin_event_operations,
     admin_project_detail,
     auctions,
     auth,
@@ -53,10 +54,11 @@ api_router.include_router(admin_analytics_details.router)
 # Full project review detail is also registered before the large admin router
 # so reviewers can inspect the complete submitted form before deciding.
 api_router.include_router(admin_project_detail.router)
-# Dedicated creator is registered before the large legacy admin router so its
-# explicit /admin/events/create path cannot be swallowed by /admin/events/{id}
-# style routes added later.
+# Rich event creator/operations are registered before the legacy admin router.
+# This lets the new participant read-model and secure participant exports own
+# the exact paths while old moderation/attendance actions remain compatible.
 api_router.include_router(admin_event_create.router)
+api_router.include_router(admin_event_operations.router)
 api_router.include_router(admin.router)
 api_router.include_router(system.router)
 api_router.include_router(profile.router)
