@@ -51,6 +51,9 @@ class ProjectWorkflowServiceTests(unittest.IsolatedAsyncioTestCase):
         defaults.update(overrides)
         return Project(**defaults)
 
+    def _complete_form_data(self) -> dict[str, str]:
+        return {question.key: "filled" for question in project_workflow_service.PROJECT_QUESTIONS}
+
     async def test_create_draft_uses_idea_as_title_and_description(self) -> None:
         async with self.session_factory() as session:
             user = await self._make_user(session)
@@ -91,13 +94,23 @@ class ProjectWorkflowServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("unknown_key", project.form_data)
 
     async def test_can_edit_submit_delete_gates(self) -> None:
-        draft = self._project(author_id=1, status=ProjectStatus.DRAFT)
+        draft = self._project(
+            author_id=1,
+            status=ProjectStatus.DRAFT,
+            form_data=self._complete_form_data(),
+        )
+        incomplete = self._project(
+            author_id=1,
+            status=ProjectStatus.DRAFT,
+            form_data={"idea": "only one step"},
+        )
         review = self._project(author_id=1, status=ProjectStatus.INITIAL_REVIEW)
         rejected = self._project(author_id=1, status=ProjectStatus.REJECTED)
 
         self.assertTrue(project_workflow_service.can_edit(draft))
         self.assertTrue(project_workflow_service.can_submit_for_review(draft))
         self.assertTrue(project_workflow_service.can_delete(draft))
+        self.assertFalse(project_workflow_service.can_submit_for_review(incomplete))
 
         self.assertFalse(project_workflow_service.can_edit(review))
         self.assertFalse(project_workflow_service.can_submit_for_review(review))
