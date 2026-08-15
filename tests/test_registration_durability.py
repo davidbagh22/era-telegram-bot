@@ -25,6 +25,8 @@ def _registration_data() -> dict:
         "city": "Ереван",
         "education_work": "Университет",
         "occupation": "Студент",
+        "skills": ["Организация мероприятий", "SMM"],
+        "experience": "Помогал организовывать студенческие и волонтёрские проекты",
         "motivation": "Хочу развиваться в ЭРА",
         "available_time": "1–2 часа в неделю",
         "desired_path": "Участник",
@@ -107,6 +109,11 @@ class RegistrationDurabilityTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNotNone(user)
                 self.assertEqual(user.application_status, ApplicationStatus.PENDING)
                 self.assertEqual(user.role, Role.PARTICIPANT)
+                self.assertEqual(user.skills, ["Организация мероприятий", "SMM"])
+                self.assertEqual(
+                    user.experience,
+                    "Помогал организовывать студенческие и волонтёрские проекты",
+                )
 
             fallback_send.assert_awaited()
             state.clear.assert_awaited_once()
