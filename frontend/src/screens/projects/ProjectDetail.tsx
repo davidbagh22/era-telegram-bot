@@ -93,6 +93,12 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
     };
   }, [projectId]);
 
+  useEffect(() => {
+    if (savedNotice !== "Сохранено" && savedNotice !== "Черновик сохранён") return;
+    const timeout = window.setTimeout(() => setSavedNotice(null), 1600);
+    return () => window.clearTimeout(timeout);
+  }, [savedNotice]);
+
   const answeredQuestions = useMemo(
     () => questions.filter((question) => (answers[question.key] ?? "").trim()),
     [answers, questions],
@@ -201,7 +207,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
 
   const handleSubmit = async () => {
     if (!constructorComplete) {
-      setActionError("Сначала завершите все 16 вопросов конструктора и проверьте финальный preview.");
+      setActionError(`Сначала завершите все ${questions.length || 16} вопросов конструктора и проверьте финальный preview.`);
       return;
     }
     setBusy(true);
@@ -264,28 +270,28 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+    <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <button type="button" onClick={onBack}>← К проектам</button>
 
       <Card gradient style={{ position: "relative", overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
           <div style={{ minWidth: 0 }}>
-            <p style={{ margin: "0 0 0.25rem", color: "rgba(255,255,255,0.7)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Проект ЭРА</p>
+            <p style={{ margin: "0 0 0.25rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Проект ЭРА</p>
             <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-xl)", overflowWrap: "anywhere" }}>{project.title}</strong>
-            {project.short_description && <p style={{ margin: "0.5rem 0 0", color: "rgba(255,255,255,0.82)" }}>{project.short_description}</p>}
+            {project.short_description && <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)" }}>{project.short_description}</p>}
           </div>
           <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
         </div>
       </Card>
 
       {actionError && (
-        <Card style={{ borderColor: "rgba(255,68,100,0.45)", background: "rgba(255,48,72,0.07)" }}>
+        <Card style={{ borderColor: "rgba(255,102,117,0.35)", background: "rgba(255,102,117,0.06)" }}>
           <strong style={{ color: "var(--era-error)" }}>Нужно действие</strong>
           <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>{actionError}</p>
         </Card>
       )}
       {saveError && pendingRetry && currentQuestion?.key === pendingRetry.questionKey && (
-        <Card style={{ borderColor: "rgba(255,68,100,0.45)", background: "rgba(255,48,72,0.07)" }}>
+        <Card style={{ borderColor: "rgba(255,102,117,0.35)", background: "rgba(255,102,117,0.06)" }}>
           <strong style={{ color: "var(--era-error)" }}>Шаг не сохранён</strong>
           <p style={{ margin: "0.3rem 0 0.7rem", color: "var(--era-text-muted)", lineHeight: 1.45 }}>{saveError}</p>
           <button type="button" className="era-btn-primary" disabled={busy} onClick={() => void handleRetrySave()}>
@@ -293,7 +299,13 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
           </button>
         </Card>
       )}
-      {savedNotice && !actionError && !saveError && <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.78rem" }}>✓ {savedNotice}</p>}
+
+      {editing && busy && aiBusy === null && <p className="era-save-indicator">● Сохраняем…</p>}
+      {savedNotice && !actionError && !saveError && (
+        <p className="era-save-indicator" data-state={savedNotice === "Сохранено" || savedNotice === "Черновик сохранён" ? "saved" : "info"}>
+          ✓ {savedNotice}
+        </p>
+      )}
 
       {project.admin_comment && (
         <Card>
@@ -306,81 +318,105 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", marginBottom: "0.35rem" }}>
-              <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Конструктор · {questionIndex + 1}/17</p>
+              <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
+                Конструктор · {String(questionIndex + 1).padStart(2, "0")} / {String(questions.length).padStart(2, "0")}
+              </p>
               <strong style={{ fontSize: "var(--era-text-xs)" }}>{progress}%</strong>
             </div>
             <div style={{ height: 6, borderRadius: 999, background: "var(--era-ring-track)", overflow: "hidden" }}>
-              <div style={{ width: `${progress}%`, height: "100%", borderRadius: 999, background: "var(--era-gradient)", transition: "width var(--era-motion)" }} />
+              <div style={{ width: `${progress}%`, height: "100%", borderRadius: 999, background: "var(--era-gradient)", transition: "width 240ms cubic-bezier(0.22,1,0.36,1)" }} />
             </div>
           </div>
 
-          <Card style={{ borderColor: "rgba(255,48,72,0.28)" }}>
-            <p style={{ margin: "0 0 0.25rem", color: "var(--era-red)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>{currentQuestion.block}</p>
-            <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{currentQuestion.title}</h2>
-            <p style={{ margin: "0.6rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{currentQuestion.prompt}</p>
-          </Card>
-
-          <Card>
-            <label htmlFor={`project-answer-${currentQuestion.key}`} style={{ display: "block", fontWeight: 800, marginBottom: "0.5rem" }}>Ваш ответ</label>
-            <textarea
-              id={`project-answer-${currentQuestion.key}`}
-              value={answers[currentQuestion.key] ?? ""}
-              onChange={(event) => {
-                const value = event.target.value;
-                setAnswers((previous) => ({ ...previous, [currentQuestion.key]: value }));
-                setPendingRetry((previous) => (
-                  previous?.questionKey === currentQuestion.key
-                    ? { ...previous, answer: value }
-                    : previous
-                ));
-                setActionError(null);
-                setSavedNotice(null);
-                setAiSuggestion(null);
-              }}
-              rows={6}
-              placeholder="Пишите своими словами — ИИ может помочь только с вашим текстом"
-              style={{ minHeight: 150 }}
-            />
-          </Card>
-
-          <Card style={{ background: "linear-gradient(135deg, rgba(255,48,72,.09), rgba(107,60,255,.11)), var(--era-surface)" }}>
-            <strong>✨ AI-подсказка</strong>
-            <p style={{ margin: ".35rem 0 .7rem", color: "var(--era-text-muted)", fontSize: ".82rem", lineHeight: 1.4 }}>
-              Работает только с текущим ответом. Не придумывает партнёров, бюджет, показатели, участников или результаты.
-            </p>
-            <div style={{ display: "grid", gap: ".45rem" }}>
-              <button type="button" disabled={aiBusy !== null} onClick={() => void runAi("formulate")}>{aiBusy === "formulate" ? "Формулирую…" : "Помоги сформулировать"}</button>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".45rem" }}>
-                <button type="button" disabled={aiBusy !== null} onClick={() => void runAi("shorten")}>{aiBusy === "shorten" ? "Сокращаю…" : "Сделай короче"}</button>
-                <button type="button" disabled={aiBusy !== null} onClick={() => void runAi("improve")}>{aiBusy === "improve" ? "Улучшаю…" : "Улучши мой вариант"}</button>
-              </div>
-            </div>
-            {currentQuestion.ai_hint && <p style={{ margin: ".65rem 0 0", color: "var(--era-text-muted)", fontSize: ".76rem" }}>{currentQuestion.ai_hint}</p>}
-          </Card>
-
-          {aiSuggestion && (
-            <Card style={{ borderColor: "rgba(245,185,66,.35)", background: "rgba(245,185,66,.055)" }}>
-              <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: ".76rem", fontWeight: 800, textTransform: "uppercase" }}>Вариант ИИ — решаете вы</p>
-              <p style={{ margin: ".5rem 0", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{aiSuggestion}</p>
-              <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: ".45rem" }}>
-                <button type="button" className="era-btn-primary" onClick={() => { setAnswers((previous) => ({ ...previous, [currentQuestion.key]: aiSuggestion })); setPendingRetry((previous) => previous?.questionKey === currentQuestion.key ? { ...previous, answer: aiSuggestion } : previous); setAiSuggestion(null); setSavedNotice("Вариант принят. Можно отредактировать перед сохранением."); }}>Использовать вариант</button>
-                <button type="button" onClick={() => setAiSuggestion(null)}>Оставить мой</button>
-              </div>
+          <div key={currentQuestion.key} className="era-question-step" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            <Card style={{ borderColor: "rgba(227,38,54,0.22)" }}>
+              <p style={{ margin: "0 0 0.25rem", color: "var(--era-red-bright)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>{currentQuestion.block}</p>
+              <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{currentQuestion.title}</h2>
+              <p style={{ margin: "0.6rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{currentQuestion.prompt}</p>
             </Card>
-          )}
 
-          <div style={{ display: "grid", gridTemplateColumns: questionIndex > 0 ? "0.8fr 1.2fr" : "1fr", gap: "0.5rem" }}>
-            {questionIndex > 0 && <button type="button" disabled={busy} onClick={() => { if (pendingRetry) { setActionError("Сначала повторите сохранение этого шага — ответ уже сохранён на экране и не потерян."); return; } setActionError(null); setAiSuggestion(null); setQuestionIndex((index) => Math.max(0, index - 1)); }}>← Назад</button>}
-            <button type="button" className="era-btn-primary" disabled={busy || aiBusy !== null} onClick={() => void handleNext()}>{busy ? "Сохраняю…" : questionIndex === questions.length - 1 ? "К финальному preview →" : "Сохранить и дальше →"}</button>
+            <Card>
+              <label htmlFor={`project-answer-${currentQuestion.key}`} style={{ display: "block", fontWeight: 800, marginBottom: "0.5rem" }}>Ваш ответ</label>
+              <textarea
+                id={`project-answer-${currentQuestion.key}`}
+                value={answers[currentQuestion.key] ?? ""}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setAnswers((previous) => ({ ...previous, [currentQuestion.key]: value }));
+                  setPendingRetry((previous) => (
+                    previous?.questionKey === currentQuestion.key
+                      ? { ...previous, answer: value }
+                      : previous
+                  ));
+                  setActionError(null);
+                  setSavedNotice(null);
+                  setAiSuggestion(null);
+                }}
+                rows={6}
+                placeholder="Пишите своими словами — ИИ может помочь только с вашим текстом"
+                style={{ minHeight: 150 }}
+              />
+            </Card>
+
+            <Card style={{ background: "linear-gradient(135deg, rgba(227,38,54,.08), rgba(197,162,100,.045)), var(--era-surface)" }}>
+              <strong>AI-подсказка</strong>
+              <p style={{ margin: ".35rem 0 .7rem", color: "var(--era-text-muted)", fontSize: ".82rem", lineHeight: 1.4 }}>
+                Работает только с текущим ответом. Не придумывает партнёров, бюджет, показатели, участников или результаты.
+              </p>
+              <div style={{ display: "grid", gap: ".45rem" }}>
+                <button type="button" disabled={aiBusy !== null} onClick={() => void runAi("formulate")}>{aiBusy === "formulate" ? "Формулирую…" : "Помоги сформулировать"}</button>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".45rem" }}>
+                  <button type="button" disabled={aiBusy !== null} onClick={() => void runAi("shorten")}>{aiBusy === "shorten" ? "Сокращаю…" : "Сделай короче"}</button>
+                  <button type="button" disabled={aiBusy !== null} onClick={() => void runAi("improve")}>{aiBusy === "improve" ? "Улучшаю…" : "Улучши мой вариант"}</button>
+                </div>
+              </div>
+              {currentQuestion.ai_hint && <p style={{ margin: ".65rem 0 0", color: "var(--era-text-muted)", fontSize: ".76rem" }}>{currentQuestion.ai_hint}</p>}
+            </Card>
+
+            {aiSuggestion && (
+              <Card style={{ borderColor: "rgba(197,162,100,.32)", background: "rgba(197,162,100,.055)" }}>
+                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: ".76rem", fontWeight: 800, textTransform: "uppercase" }}>Вариант ИИ — решаете вы</p>
+                <p style={{ margin: ".5rem 0", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{aiSuggestion}</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: ".45rem" }}>
+                  <button type="button" className="era-btn-primary" onClick={() => { setAnswers((previous) => ({ ...previous, [currentQuestion.key]: aiSuggestion })); setPendingRetry((previous) => previous?.questionKey === currentQuestion.key ? { ...previous, answer: aiSuggestion } : previous); setAiSuggestion(null); setSavedNotice("Вариант принят. Можно отредактировать перед сохранением."); }}>Использовать вариант</button>
+                  <button type="button" onClick={() => setAiSuggestion(null)}>Оставить мой</button>
+                </div>
+              </Card>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: questionIndex > 0 ? "0.8fr 1.2fr" : "1fr", gap: "0.5rem" }}>
+              {questionIndex > 0 && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (pendingRetry) {
+                      setActionError("Сначала повторите сохранение этого шага — ответ уже сохранён на экране и не потерян.");
+                      return;
+                    }
+                    setActionError(null);
+                    setAiSuggestion(null);
+                    setQuestionIndex((index) => Math.max(0, index - 1));
+                  }}
+                >
+                  ← Назад
+                </button>
+              )}
+              <button type="button" className="era-btn-primary" disabled={busy || aiBusy !== null} onClick={() => void handleNext()}>
+                {busy ? "● Сохраняем…" : questionIndex === questions.length - 1 ? "К финальному preview →" : "Сохранить и дальше →"}
+              </button>
+            </div>
+            <button type="button" disabled={busy || aiBusy !== null} onClick={() => void handleSaveAndClose()}>Сохранить и выйти</button>
           </div>
-          <button type="button" disabled={busy || aiBusy !== null} onClick={() => void handleSaveAndClose()}>Сохранить и выйти</button>
         </div>
       ) : (
         <>
-          <Card style={constructorComplete ? { borderColor: "rgba(245,185,66,.32)" } : undefined}>
+          <Card style={constructorComplete ? { borderColor: "rgba(197,162,100,.28)" } : undefined}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
               <div>
-                <p style={{ margin: "0 0 .2rem", color: constructorComplete ? "var(--era-gold)" : "var(--era-text-muted)", fontSize: ".72rem", fontWeight: 850, textTransform: "uppercase" }}>{constructorComplete ? "Шаг 17 из 17 · Финальный preview" : "Паспорт проекта"}</p>
+                <p style={{ margin: "0 0 .2rem", color: constructorComplete ? "var(--era-gold-ink)" : "var(--era-text-muted)", fontSize: ".72rem", fontWeight: 850, textTransform: "uppercase" }}>
+                  {constructorComplete ? `Шаг ${questions.length + 1} из ${questions.length + 1} · Финальный preview` : "Паспорт проекта"}
+                </p>
                 <strong style={{ fontSize: "var(--era-text-lg)" }}>{constructorComplete ? "Проверьте проект перед отправкой" : "Проект собирается"}</strong>
                 <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>Заполнено {answeredQuestions.length} из {questions.length} вопросов</p>
               </div>
@@ -390,7 +426,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
             {answeredQuestions.length === 0 ? (
               <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)" }}>Пока есть только идея. Откройте конструктор и доведите её до полноценного проекта.</p>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem", marginTop: "0.85rem" }}>
+              <div className="era-stagger" style={{ display: "flex", flexDirection: "column", gap: "0.9rem", marginTop: "0.85rem" }}>
                 {answeredQuestions.map((question) => (
                   <div key={question.key}>
                     <p style={{ margin: 0, fontSize: "0.78rem", fontWeight: 750, color: "var(--era-text-muted)" }}>{question.title}</p>
