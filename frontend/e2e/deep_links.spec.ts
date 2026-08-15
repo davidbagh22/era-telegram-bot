@@ -10,6 +10,14 @@ test("eraPath query opens Projects when Telegram provides no fragment", async ({
   await expect(page.getByText("Начните с одной мысли")).toBeVisible();
 });
 
+test("Telegram tgWebAppStartParam opens Projects instead of cached Home", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}&tgWebAppStartParam=projects#/home`);
+
+  await expect(page.getByRole("heading", { name: "Проекты" })).toBeVisible();
+  await expect(page).toHaveURL(/#\/projects$/);
+  await expect(page).not.toHaveURL(/tgWebAppStartParam=/);
+});
+
 test("fresh Telegram eraPath overrides a stale cached hash", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}&eraPath=projects#/events`);
 
@@ -22,7 +30,8 @@ test("eraPath admin opens the separate Admin workspace directly", async ({ page 
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}&eraPath=admin`);
 
   await expect(page.getByText("Управление", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Пульт управления" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Что делаем сейчас?" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Создать мероприятие/ })).toBeVisible();
 });
 
 test("#/tasks deep link opens the legacy task surface directly", async ({ page }) => {
