@@ -23,6 +23,11 @@ type ControlSection = "analytics" | "system" | "maintenance";
 
 type SectionOption<T extends string> = { value: T; label: string; description: string };
 
+type InitialAdminRoute = {
+  openApplications: boolean;
+  applicationId: number | null;
+};
+
 const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
   { value: "participants", label: "Участники", description: "Люди, роли и состояние сообщества" },
   { value: "applications", label: "Заявки", description: "Новые регистрации и решения по ним" },
@@ -47,6 +52,19 @@ const CONTROL_SECTIONS: SectionOption<ControlSection>[] = [
   { value: "system", label: "Состояние системы", description: "Диагностика, инциденты, резервные копии и здоровье ЭРА" },
   { value: "maintenance", label: "Обслуживание", description: "Редкие технические операции с отдельной серверной защитой" },
 ];
+
+function initialAdminRoute(): InitialAdminRoute {
+  const query = new URLSearchParams(window.location.search);
+  if (query.get("adminSection") !== "applications") {
+    return { openApplications: false, applicationId: null };
+  }
+  const rawId = query.get("applicationId");
+  const parsedId = rawId ? Number(rawId) : NaN;
+  return {
+    openApplications: true,
+    applicationId: Number.isInteger(parsedId) && parsedId > 0 ? parsedId : null,
+  };
+}
 
 function SectionMenu<T extends string>({ title, description, options, onOpen }: { title: string; description: string; options: SectionOption<T>[]; onOpen: (value: T) => void }) {
   return (
@@ -73,8 +91,9 @@ function SectionHeader({ title, onBack }: { title: string; onBack: () => void })
 }
 
 export function AdminScreen() {
-  const [group, setGroup] = useState<AdminGroup>("overview");
-  const [peopleSection, setPeopleSection] = useState<PeopleSection | null>(null);
+  const [launchRoute] = useState<InitialAdminRoute>(() => initialAdminRoute());
+  const [group, setGroup] = useState<AdminGroup>(launchRoute.openApplications ? "people" : "overview");
+  const [peopleSection, setPeopleSection] = useState<PeopleSection | null>(launchRoute.openApplications ? "applications" : null);
   const [workSection, setWorkSection] = useState<WorkSection | null>(null);
   const [commsSection, setCommsSection] = useState<CommsSection | null>(null);
   const [controlSection, setControlSection] = useState<ControlSection | null>(null);
@@ -128,7 +147,7 @@ export function AdminScreen() {
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={PEOPLE_SECTIONS.find((item) => item.value === peopleSection)?.label ?? "Люди"} onBack={() => setPeopleSection(null)} />
             {peopleSection === "participants" && <AdminUsersScreen />}
-            {peopleSection === "applications" && <AdminApplicationsScreen />}
+            {peopleSection === "applications" && <AdminApplicationsScreen initialApplicationId={launchRoute.applicationId} />}
             {peopleSection === "offices" && <AdminOfficesScreen />}
             {peopleSection === "data-rights" && <AdminDataRightsScreen />}
           </div>
