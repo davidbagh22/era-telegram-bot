@@ -22,20 +22,23 @@ class AdminWorkspaceContractTests(unittest.TestCase):
             'value: "analytics"',
             'value: "system"',
             'value: "maintenance"',
-            "<AdminDashboardScreen",
+            "<AdminDashboardScreen />",
             "<SystemPanel />",
             "<AdminMaintenanceScreen />",
-            'onOpenParticipants={() => openPeople("participants")}',
-            'onOpenProjects={() => openWork("projects")}',
-            'onOpenEvents={() => openWork("events")}',
         ]:
             self.assertIn(marker, screen)
         for marker in [
+            "fetchAdminAnalyticsDetails",
+            "MetricCard",
+            "selectedSection",
+            "<DetailView section={selectedSection}",
+            "onClick={() => setSelectedSection(section)}",
             'label: "Участники"',
             'label: "Проекты"',
             'label: "Мероприятия"',
-            "onClick={item.onClick}",
-            "Открыть реальные записи",
+            'label: "Организации"',
+            'label: "Цели"',
+            "Реальные данные",
         ]:
             self.assertIn(marker, dashboard)
 
