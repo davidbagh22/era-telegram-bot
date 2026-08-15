@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -42,6 +43,8 @@ class AnalyticsDetailsOut(BaseModel):
 def _text(value: object | None) -> str | None:
     if value is None:
         return None
+    if isinstance(value, Enum):
+        value = value.value
     rendered = str(value).strip()
     return rendered or None
 
