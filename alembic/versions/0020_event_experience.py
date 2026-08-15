@@ -41,6 +41,7 @@ def upgrade() -> None:
             sa.Column("registration_audience", sa.String(length=64), nullable=False, server_default="all"),
             sa.Column("program", sa.JSON(), nullable=False, server_default="[]"),
             sa.Column("participant_tasks", sa.JSON(), nullable=False, server_default="[]"),
+            sa.Column("participant_task_activity_ids", sa.JSON(), nullable=False, server_default="[]"),
             sa.Column("reminders", sa.JSON(), nullable=False, server_default="[]"),
             sa.Column("broadcast_targets", sa.JSON(), nullable=False, server_default="[]"),
             sa.Column("broadcast_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
