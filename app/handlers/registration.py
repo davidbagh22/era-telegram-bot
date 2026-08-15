@@ -94,6 +94,27 @@ def _normalize_url(value: str) -> str | None:
     return value
 
 
+def _parse_skills(value: str) -> list[str]:
+    """Turn a natural Telegram answer into a clean, compact skills list."""
+    normalized = clean_text(value or "", 1000)
+    if not normalized:
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for raw_item in normalized.replace("\n", ",").replace(";", ",").split(","):
+        item = clean_text(raw_item, 120)
+        if not item:
+            continue
+        identity = item.casefold()
+        if identity in seen:
+            continue
+        seen.add(identity)
+        result.append(item)
+        if len(result) >= 20:
+            break
+    return result
+
+
 async def _fallback_registration_notice(
     bot: Bot,
     settings: Settings,
@@ -321,6 +342,28 @@ async def occupation(message: Message, state: FSMContext) -> None:
         await message.answer(texts.INVALID_INPUT)
         return
     await state.update_data(occupation=value)
+    await state.set_state(RegistrationStates.skills)
+    await message.answer(texts.REG_SKILLS)
+
+
+@router.message(RegistrationStates.skills)
+async def skills(message: Message, state: FSMContext) -> None:
+    values = _parse_skills(message.text or "")
+    if not values:
+        await message.answer(texts.INVALID_INPUT)
+        return
+    await state.update_data(skills=values)
+    await state.set_state(RegistrationStates.experience)
+    await message.answer(texts.REG_EXPERIENCE)
+
+
+@router.message(RegistrationStates.experience)
+async def experience(message: Message, state: FSMContext) -> None:
+    value = clean_text(message.text or "", 1500)
+    if not value:
+        await message.answer(texts.INVALID_INPUT)
+        return
+    await state.update_data(experience=value)
     await state.set_state(RegistrationStates.department)
     await message.answer(texts.REG_DEPARTMENT, reply_markup=department_keyboard())
 
@@ -397,7 +440,7 @@ async def available_time(call: CallbackQuery, state: FSMContext) -> None:
     key = call.data.rsplit(":", 1)[-1]
     if key not in TIME_VALUES:
         return
-    await state.update_data(available_time=TIME_VALUES[key], skills=[])
+    await state.update_data(available_time=TIME_VALUES[key])
     await state.set_state(RegistrationStates.desired_path)
     await call.message.answer(texts.REG_DESIRED_PATH, reply_markup=desired_path_keyboard())
 
