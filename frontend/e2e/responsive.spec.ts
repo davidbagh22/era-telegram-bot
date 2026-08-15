@@ -7,29 +7,21 @@ const OVERFLOW_TOLERANCE_PX = 5;
 
 async function expectNoHorizontalOverflow(page: import("@playwright/test").Page, width: number) {
   const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-  if (scrollWidth <= width + OVERFLOW_TOLERANCE_PX) {
-    return;
-  }
+  if (scrollWidth <= width + OVERFLOW_TOLERANCE_PX) return;
 
   const culprit = await page.evaluate(() => {
     let widest: { el: Element; right: number } | null = null;
     for (const el of document.querySelectorAll<HTMLElement>("body *")) {
       const right = el.getBoundingClientRect().right;
-      if (!widest || right > widest.right) {
-        widest = { el, right };
-      }
+      if (!widest || right > widest.right) widest = { el, right };
     }
     if (!widest) return "no element found";
     const el = widest.el;
-    const label = `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}${
-      el.className && typeof el.className === "string" ? `.${el.className.split(" ").join(".")}` : ""
-    }`;
+    const label = `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}${el.className && typeof el.className === "string" ? `.${el.className.split(" ").join(".")}` : ""}`;
     return `${label} (right edge at ${Math.round(widest.right)}px): "${(el.textContent ?? "").slice(0, 60)}"`;
   });
 
-  expect(scrollWidth, `horizontal overflow at ${width}px; widest element: ${culprit}`).toBeLessThanOrEqual(
-    width + OVERFLOW_TOLERANCE_PX,
-  );
+  expect(scrollWidth, `horizontal overflow at ${width}px; widest element: ${culprit}`).toBeLessThanOrEqual(width + OVERFLOW_TOLERANCE_PX);
 }
 
 for (const width of WIDTHS) {
@@ -38,7 +30,7 @@ for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
 
-    await expect(page.getByRole("heading", { name: /держим темп/ })).toBeVisible();
+    await expect(page.getByText("ERA SCORE", { exact: true })).toBeVisible();
     await expectNoHorizontalOverflow(page, width);
 
     const nav = page.getByRole("navigation", { name: "Основная навигация" });
