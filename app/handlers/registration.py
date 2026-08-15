@@ -96,12 +96,13 @@ def _normalize_url(value: str) -> str | None:
 
 def _parse_skills(value: str) -> list[str]:
     """Turn a natural Telegram answer into a clean, compact skills list."""
-    normalized = clean_text(value or "", 1000)
-    if not normalized:
+    raw_value = (value or "")[:1000]
+    if not clean_text(raw_value, 1000):
         return []
     result: list[str] = []
     seen: set[str] = set()
-    for raw_item in normalized.replace("\n", ",").replace(";", ",").split(","):
+    normalized_separators = raw_value.replace("\r\n", "\n").replace("\r", "\n")
+    for raw_item in normalized_separators.replace(";", ",").replace("\n", ",").split(","):
         item = clean_text(raw_item, 120)
         if not item:
             continue
