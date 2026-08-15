@@ -12,6 +12,7 @@ from app.config import Settings
 from app.services.chat_faq_service import FAQ_ANSWERS, FAQ_PINNED_MESSAGE
 from app.services.system_scheduler import add_system_jobs
 from app.utils.deep_links import (
+    main_miniapp_deep_link,
     miniapp_admin_url,
     miniapp_event_url,
     miniapp_projects_url,
@@ -19,11 +20,13 @@ from app.utils.deep_links import (
 
 
 class TelegramSafeDeepLinkTests(unittest.TestCase):
-    def test_sections_use_query_route_not_fragment(self) -> None:
+    def test_sections_have_query_start_param_and_hash_fallback(self) -> None:
         url = miniapp_projects_url("https://era.example/app/")
         parsed = urlsplit(url)
-        self.assertEqual(parsed.fragment, "")
-        self.assertEqual(parse_qs(parsed.query)["eraPath"], ["projects"])
+        query = parse_qs(parsed.query)
+        self.assertEqual(query["eraPath"], ["projects"])
+        self.assertEqual(query["tgWebAppStartParam"], ["projects"])
+        self.assertEqual(parsed.fragment, "projects")
 
     def test_entity_route_preserves_existing_query(self) -> None:
         url = miniapp_event_url("https://era.example/app/?devTelegramId=42", 17)
@@ -31,10 +34,19 @@ class TelegramSafeDeepLinkTests(unittest.TestCase):
         query = parse_qs(parsed.query)
         self.assertEqual(query["devTelegramId"], ["42"])
         self.assertEqual(query["eraPath"], ["events/17"])
+        self.assertEqual(query["tgWebAppStartParam"], ["events/17"])
+        self.assertEqual(parsed.fragment, "events/17")
 
     def test_admin_route_is_explicit(self) -> None:
         url = miniapp_admin_url("https://era.example/app/")
         self.assertEqual(parse_qs(urlsplit(url).query)["eraPath"], ["admin"])
+
+    def test_main_miniapp_link_uses_startapp_destination(self) -> None:
+        url = main_miniapp_deep_link("@EraExampleBot", "projects")
+        parsed = urlsplit(url)
+        self.assertEqual(parsed.netloc, "t.me")
+        self.assertEqual(parsed.path, "/EraExampleBot")
+        self.assertEqual(parse_qs(parsed.query)["startapp"], ["projects"])
 
 
 class ProjectBuilderContractTests(unittest.TestCase):
@@ -48,7 +60,7 @@ class ProjectBuilderContractTests(unittest.TestCase):
 
 class GeneralFaqContractTests(unittest.TestCase):
     def test_pinned_card_and_private_answers_are_editorially_complete(self) -> None:
-        self.assertIn("лично вам", FAQ_PINNED_MESSAGE)
+        self.assertIn("личный диалог", FAQ_PINNED_MESSAGE)
         self.assertEqual(
             set(FAQ_ANSWERS),
             {"faq:what_is_era", "faq:what_it_gives", "faq:what_to_do", "faq:what_can_i_do"},
