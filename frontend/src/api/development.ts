@@ -53,6 +53,19 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   return (await response.json()) as T;
 }
 
+async function requestBlob(path: string, retry = true): Promise<Blob> {
+  const bearer = await token();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { Authorization: `Bearer ${bearer}` },
+  });
+  if (response.status === 401 && retry) {
+    developmentToken = null;
+    return requestBlob(path, false);
+  }
+  if (!response.ok) throw new Error(response.statusText || "download_failed");
+  return response.blob();
+}
+
 export const fetchDevelopmentHome = () => request<DevelopmentHome>("/api/v1/development/home");
 export const acceptDevelopmentConsent = (accepted: boolean) =>
   request<{ accepted: boolean; version: string }>("/api/v1/development/consent", {
@@ -156,6 +169,7 @@ export const updateDevelopmentPrivacy = (payload: {
 
 export const fetchAdminDevelopmentAnalytics = (periodDays = 30) =>
   request<DevelopmentAnalytics>(`/api/v1/admin/development/analytics?period_days=${periodDays}`);
-
+export const downloadAdminDevelopmentAnalytics = (periodDays = 30) =>
+  requestBlob(`/api/v1/admin/development/analytics/export?period_days=${periodDays}`);
 export const fetchAdminDevelopmentProfile = (userId: number) =>
   request<AdminDevelopmentProfile>(`/api/v1/admin/development/participants/${userId}`);
