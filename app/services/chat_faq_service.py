@@ -77,8 +77,6 @@ FAQ_ANSWERS: dict[str, str] = {
 Идея может быть сырой. Важно, чтобы в ней была понятная польза — форму мы поможем собрать.""",
 }
 
-# /start payload -> answer key. Kept next to the editorial copy so the pinned
-# card, emergency /start route and tests share one source of truth.
 FAQ_START_PAYLOADS: dict[str, str] = {
     "faq_what_is_era": "faq:what_is_era",
     "faq_what_it_gives": "faq:what_it_gives",
@@ -122,17 +120,19 @@ async def _latest_faq_message_id(session: AsyncSession) -> int | None:
 
 
 async def _resolve_bot_username(bot: Bot, settings: Settings) -> str:
-    configured = settings.bot_username.strip().lstrip("@")
+    configured = str(getattr(settings, "bot_username", "") or "").strip().lstrip("@")
     if configured:
         return configured
     try:
-        me = await bot.get_me()
-    except TelegramAPIError as exc:
-        raise ChatFaqError("bot_identity_unavailable") from exc
-    username = (me.username or "").strip().lstrip("@")
-    if not username:
-        raise ChatFaqError("bot_username_missing")
-    return username
+        get_me = getattr(bot, "get_me")
+        me = await get_me()
+    except (AttributeError, TelegramAPIError):
+        # FAQ publishing itself must not fail just because identity lookup is
+        # unavailable. The keyboard has callback fallbacks; a real Telegram
+        # Bot normally resolves its username here and therefore uses direct DM
+        # links in production.
+        return ""
+    return (getattr(me, "username", "") or "").strip().lstrip("@")
 
 
 async def _upsert_faq_message(
