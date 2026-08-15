@@ -52,12 +52,21 @@ class BackupRecoveryContractTests(unittest.TestCase):
         self.assertLess(restore_pos, encrypt_pos)
         self.assertLess(encrypt_pos, artifact_pos)
 
-    def test_backup_clients_are_pinned_to_supported_major(self) -> None:
+    def test_backup_clients_are_pinned_and_selected_from_supported_major(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "database-backup.yml").read_text(encoding="utf-8")
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        restore = (ROOT / "scripts" / "verify_database_restore.sh").read_text(encoding="utf-8")
         self.assertIn('PG_MAJOR: "18"', workflow)
         self.assertIn("image: postgres:18", workflow)
         self.assertIn('postgresql-client-${PG_MAJOR}', workflow)
+        self.assertIn('PG_BIN="/usr/lib/postgresql/${PG_MAJOR}/bin"', workflow)
+        self.assertIn('echo "${PG_BIN}" >> "${GITHUB_PATH}"', workflow)
+        self.assertIn('"${PG_BIN}/pg_restore" --version', workflow)
+        self.assertIn('"${PG_BIN}/psql" --version', workflow)
+        self.assertIn('PG_BIN="${PG_BIN:-/usr/lib/postgresql/${PG_MAJOR}/bin}"', restore)
+        self.assertIn('PG_RESTORE="${PG_BIN}/pg_restore"', restore)
+        self.assertIn('PSQL="${PG_BIN}/psql"', restore)
+        self.assertIn("pg_restore major does not match required PostgreSQL major", restore)
         self.assertIn("ARG PG_MAJOR=18", dockerfile)
         self.assertIn('"postgresql-client-${PG_MAJOR}"', dockerfile)
         self.assertNotIn("\n    postgresql-client \\", dockerfile)
@@ -111,11 +120,12 @@ class BackupRecoveryContractTests(unittest.TestCase):
         )
         self.assertNotIn("secret", _classify_pg_dump_failure(b"secret token key"))
 
-    def test_restore_script_checks_integrity_schema_and_migration_heads(self) -> None:
+    def test_restore_script_checks_integrity_schema_migration_heads_and_client_major(self) -> None:
         script = (ROOT / "scripts" / "verify_database_restore.sh").read_text(encoding="utf-8")
         for marker in [
             "sha256sum",
-            "pg_restore",
+            '"${PG_RESTORE}"',
+            '"${PSQL}"',
             "--exit-on-error",
             "ON_ERROR_STOP=1",
             "public.users",
@@ -123,6 +133,7 @@ class BackupRecoveryContractTests(unittest.TestCase):
             "alembic heads",
             "CODE_HEADS",
             "RESTORED_HEADS",
+            "PG_MAJOR",
         ]:
             self.assertIn(marker, script)
         self.assertNotIn("SELECT COUNT(*) AS users_count", script)
