@@ -1,27 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  cancelProject,
-  describeActionError,
-  fetchProject,
-  submitProject,
-  updateProject,
-} from "../../api/client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { cancelProject, describeActionError, fetchProject, submitProject, updateProject } from "../../api/client";
 import { assistProjectAnswer, fetchProjectBuilderQuestions } from "../../api/projectBuilder";
+import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
-import { StatusBadge } from "../../components/StatusBadge";
+import { PageHeader } from "../../components/PageHeader";
+import { PrimaryButton, SecondaryButton } from "../../components/Buttons";
+import { SkeletonList } from "../../components/Skeleton";
+import { SparkIcon } from "../../components/icons";
 import type { ProjectDetail as ProjectDetailType, ProjectQuestion } from "../../types/project";
 import { projectStatusLabel } from "./statusLabels";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 
-interface ProjectDetailProps {
-  projectId: number;
-  onBack: () => void;
-  initialShowWorkspace?: boolean;
-}
-
 type AiOperation = "formulate" | "shorten" | "improve";
 type SaveIntent = "next" | "close";
+type AutosaveState = "idle" | "saving" | "saved" | "error";
 
 type PendingRetry = {
   questionKey: string;
@@ -30,395 +23,252 @@ type PendingRetry = {
   intent: SaveIntent;
 };
 
-const LEGACY_LABELS: Record<string, string> = {
-  department_direction: "Отдел и направление",
-  audience_need: "Потребность аудитории",
-  differentiator: "Фишка проекта",
-  venue_request: "Площадка",
-  proposed_date: "Предложенная дата",
-  proposed_time: "Предложенное время",
-  budget: "Бюджет / расходы",
-  marketing_plan: "План продвижения",
-  announcement: "Анонс",
-  participant_reminder: "Сообщение участникам",
-  follow_up_plan: "План после проекта",
-};
+interface ProjectDetailProps {
+  projectId: number;
+  onBack: () => void;
+  initialShowWorkspace?: boolean;
+}
+
+const AUTOSAVE_DELAY = 700;
+
+function draftKey(projectId: number): string { return `era:project:${projectId}:answers`; }
+
+function readDraft(projectId: number): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(draftKey(projectId));
+    if (!raw) return {};
+    const value = JSON.parse(raw) as unknown;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([, item]) => typeof item === "string")) as Record<string, string>;
+  } catch { return {}; }
+}
+
+function writeDraft(projectId: number, answers: Record<string, string>): void {
+  try { window.localStorage.setItem(draftKey(projectId), JSON.stringify(answers)); } catch { /* server save remains primary */ }
+}
+
+function clearDraft(projectId: number): void {
+  try { window.localStorage.removeItem(draftKey(projectId)); } catch { /* ignore storage restrictions */ }
+}
 
 function firstUnansweredIndex(questions: ProjectQuestion[], answers: Record<string, string>): number {
   const index = questions.findIndex((question) => !(answers[question.key] ?? "").trim());
   return index >= 0 ? index : 0;
 }
 
-function actionMessage(error: unknown, fallback: string): string {
-  const message = describeActionError(error);
-  return message.startsWith("Не удалось выполнить действие") ? fallback : message;
+function humanError(error: unknown, fallback: string): string {
+  const value = describeActionError(error);
+  return value.startsWith("Не удалось выполнить действие") ? fallback : value;
 }
 
 export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false }: ProjectDetailProps) {
   const [project, setProject] = useState<ProjectDetailType | null>(null);
   const [questions, setQuestions] = useState<ProjectQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [pendingRetry, setPendingRetry] = useState<PendingRetry | null>(null);
-  const [savedNotice, setSavedNotice] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState(false);
   const [questionIndex, setQuestionIndex] = useState(0);
+  const [busy, setBusy] = useState(false);
   const [showWorkspace, setShowWorkspace] = useState(initialShowWorkspace);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingRetry, setPendingRetry] = useState<PendingRetry | null>(null);
+  const [autosave, setAutosave] = useState<AutosaveState>("idle");
   const [aiBusy, setAiBusy] = useState<AiOperation | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<"submit" | "cancel" | null>(null);
+  const lastSavedRef = useRef<Record<string, string>>({});
+  const autosaveSequence = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
-    setLoadError(null);
+    setLoadError(false);
     Promise.all([fetchProject(projectId), fetchProjectBuilderQuestions()])
       .then(([projectData, questionData]) => {
         if (cancelled) return;
-        const formData = projectData.form_data ?? {};
+        const server = projectData.form_data ?? {};
+        const local = readDraft(projectId);
+        const merged = { ...server, ...local };
+        lastSavedRef.current = { ...server };
         setProject(projectData);
         setQuestions(questionData);
-        setAnswers(formData);
-        const nextIndex = firstUnansweredIndex(questionData, formData);
-        setQuestionIndex(nextIndex);
-        const answeredCount = questionData.filter((question) => (formData[question.key] ?? "").trim()).length;
-        if (projectData.can_edit && answeredCount <= 1) setEditing(true);
+        setAnswers(merged);
+        writeDraft(projectId, merged);
+        setQuestionIndex(firstUnansweredIndex(questionData, merged));
+        const answered = questionData.filter((question) => (merged[question.key] ?? "").trim()).length;
+        if (projectData.can_edit && answered <= 1) setEditing(true);
       })
-      .catch(() => {
-        if (!cancelled) setLoadError("Не удалось загрузить проект. Попробуйте открыть его ещё раз.");
-      });
-    return () => {
-      cancelled = true;
-    };
+      .catch(() => { if (!cancelled) setLoadError(true); });
+    return () => { cancelled = true; };
   }, [projectId]);
 
-  const answeredQuestions = useMemo(
-    () => questions.filter((question) => (answers[question.key] ?? "").trim()),
-    [answers, questions],
-  );
-
-  const legacyAnswers = useMemo(() => {
-    const questionKeys = new Set(questions.map((question) => question.key));
-    return Object.entries(answers).filter(([key, value]) => {
-      return Boolean(value?.trim()) && !questionKeys.has(key) && Boolean(LEGACY_LABELS[key]);
-    });
-  }, [answers, questions]);
-
-  if (loadError) return <EmptyState text={loadError} />;
-  if (!project) return <p style={{ color: "var(--era-text-muted)" }}>Загрузка проекта…</p>;
-
   const currentQuestion = questions[questionIndex] ?? null;
-  const constructorComplete = questions.length > 0 && answeredQuestions.length === questions.length;
-  const progress = questions.length
-    ? Math.round((answeredQuestions.length / questions.length) * (constructorComplete ? 100 : 94))
-    : 0;
+  const currentAnswer = currentQuestion ? answers[currentQuestion.key] ?? "" : "";
+  const answeredQuestions = useMemo(() => questions.filter((question) => (answers[question.key] ?? "").trim()), [answers, questions]);
+  const complete = questions.length > 0 && answeredQuestions.length === questions.length;
+  const progress = questions.length ? Math.round((answeredQuestions.length / questions.length) * 100) : 0;
 
-  const saveQuestion = async (question: ProjectQuestion, value: string) => {
-    const updated = await updateProject(projectId, { [question.key]: value });
-    setProject(updated);
-    const savedValue = updated.form_data?.[question.key];
-    if (typeof savedValue === "string") {
-      setAnswers((previous) => ({ ...previous, [question.key]: savedValue }));
+  useEffect(() => {
+    if (!editing || !currentQuestion || !project?.can_edit || busy) return;
+    const value = currentAnswer;
+    if (!value.trim() || value === (lastSavedRef.current[currentQuestion.key] ?? "")) {
+      setAutosave("idle");
+      return;
     }
-    return updated;
-  };
+    const sequence = ++autosaveSequence.current;
+    setAutosave("saving");
+    const timer = window.setTimeout(() => {
+      updateProject(projectId, { [currentQuestion.key]: value })
+        .then((updated) => {
+          if (sequence !== autosaveSequence.current) return;
+          lastSavedRef.current[currentQuestion.key] = updated.form_data?.[currentQuestion.key] ?? value;
+          setProject(updated);
+          setAutosave("saved");
+          window.setTimeout(() => { if (sequence === autosaveSequence.current) setAutosave("idle"); }, 1300);
+        })
+        .catch(() => {
+          if (sequence === autosaveSequence.current) setAutosave("error");
+        });
+    }, AUTOSAVE_DELAY);
+    return () => window.clearTimeout(timer);
+  }, [busy, currentAnswer, currentQuestion, editing, project?.can_edit, projectId]);
 
-  const persistStep = async (
-    question: ProjectQuestion,
-    sourceIndex: number,
-    answer: string,
-    intent: SaveIntent,
-  ) => {
-    setBusy(true);
-    setActionError(null);
-    setSaveError(null);
-    setSavedNotice(null);
-    try {
-      await saveQuestion(question, answer);
-      setPendingRetry(null);
-      setAiSuggestion(null);
+  if (loadError) return <><PageHeader title="Проект" onBack={onBack} /><EmptyState title="Проект не загрузился" description="Проверьте соединение. Черновик на этом устройстве не удалён." actionLabel="К проектам" onAction={onBack} /></>;
+  if (!project) return <SkeletonList count={3} />;
 
-      if (intent === "next") {
-        if (sourceIndex < questions.length - 1) {
-          setSavedNotice("Сохранено");
-          setQuestionIndex(Math.min(sourceIndex + 1, questions.length - 1));
-        } else {
-          setEditing(false);
-          setSavedNotice("Проект собран. Проверьте финальный preview перед отправкой.");
-        }
-      } else {
-        setEditing(false);
-        setSavedNotice("Черновик сохранён");
-      }
-    } catch (error) {
-      setSaveError(actionMessage(error, "Не удалось сохранить этот шаг. Ответ не потерян."));
-      setPendingRetry({
-        questionKey: question.key,
-        questionIndex: sourceIndex,
-        answer,
-        intent,
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleNext = async () => {
+  const setAnswer = (value: string) => {
     if (!currentQuestion) return;
-    const answer = answers[currentQuestion.key] ?? "";
-    if (!answer.trim()) {
-      setActionError("Заполните этот шаг — так проект не останется пустой карточкой.");
-      return;
-    }
-    await persistStep(currentQuestion, questionIndex, answer, "next");
+    const next = { ...answers, [currentQuestion.key]: value };
+    setAnswers(next);
+    writeDraft(projectId, next);
+    setPendingRetry((previous) => previous?.questionKey === currentQuestion.key ? { ...previous, answer: value } : previous);
+    setActionError(null);
+    setAiSuggestion(null);
   };
 
-  const handleSaveAndClose = async () => {
-    if (!currentQuestion) {
-      setEditing(false);
-      return;
-    }
-    const answer = answers[currentQuestion.key] ?? "";
-    if (!answer.trim()) {
-      setEditing(false);
-      return;
-    }
-    await persistStep(currentQuestion, questionIndex, answer, "close");
+  const saveStep = async (question: ProjectQuestion, index: number, answer: string, intent: SaveIntent) => {
+    if (!answer.trim()) { setActionError("Заполните этот шаг, чтобы продолжить."); return; }
+    ++autosaveSequence.current;
+    setBusy(true);
+    setAutosave("saving");
+    setActionError(null);
+    try {
+      const updated = await updateProject(projectId, { [question.key]: answer });
+      const saved = updated.form_data?.[question.key] ?? answer;
+      lastSavedRef.current[question.key] = saved;
+      const nextAnswers = { ...answers, [question.key]: saved };
+      setProject(updated);
+      setAnswers(nextAnswers);
+      writeDraft(projectId, nextAnswers);
+      setPendingRetry(null);
+      setAutosave("saved");
+      setAiSuggestion(null);
+      if (intent === "next") {
+        if (index < questions.length - 1) setQuestionIndex(index + 1);
+        else setEditing(false);
+      } else setEditing(false);
+    } catch (error) {
+      setAutosave("error");
+      setPendingRetry({ questionKey: question.key, questionIndex: index, answer, intent });
+      setActionError(humanError(error, "Не удалось сохранить. Ваш ответ не потерян."));
+    } finally { setBusy(false); }
   };
 
-  const handleRetrySave = async () => {
+  const retry = async () => {
     if (!pendingRetry) return;
     const question = questions.find((item) => item.key === pendingRetry.questionKey);
-    if (!question) {
-      setPendingRetry(null);
-      setSaveError(null);
-      setActionError("Не удалось определить шаг для повторного сохранения. Откройте конструктор ещё раз.");
-      return;
-    }
-    await persistStep(question, pendingRetry.questionIndex, pendingRetry.answer, pendingRetry.intent);
+    if (!question) return;
+    await saveStep(question, pendingRetry.questionIndex, pendingRetry.answer, pendingRetry.intent);
   };
 
-  const handleSubmit = async () => {
-    if (!constructorComplete) {
-      setActionError("Сначала завершите все 16 вопросов конструктора и проверьте финальный preview.");
-      return;
-    }
+  const copyCurrentAnswer = async () => {
+    const value = pendingRetry?.answer ?? currentAnswer;
+    if (!value) return;
+    try { await navigator.clipboard.writeText(value); setActionError("Ответ скопирован. Черновик также остаётся сохранён на устройстве."); }
+    catch { setActionError("Не удалось скопировать автоматически. Текст остаётся в поле и в локальном черновике."); }
+  };
+
+  const runAi = async (operation: AiOperation) => {
+    if (!currentQuestion || !currentAnswer.trim()) { setActionError("Сначала напишите свой вариант. ИИ улучшает ваш текст, а не придумывает факты вместо вас."); return; }
+    setAiBusy(operation);
+    setActionError(null);
+    try { setAiSuggestion(await assistProjectAnswer(currentQuestion.key, currentAnswer.trim(), operation)); }
+    catch (error) { setActionError(humanError(error, "ИИ-подсказка сейчас недоступна. Ваш текст не изменён.")); }
+    finally { setAiBusy(null); }
+  };
+
+  const submit = async () => {
+    if (!complete) { setActionError("Сначала завершите все 16 вопросов и проверьте preview."); return; }
     setBusy(true);
     setActionError(null);
-    setSavedNotice(null);
     try {
       const updated = await submitProject(projectId);
       setProject(updated);
       setAnswers(updated.form_data ?? answers);
-      setSavedNotice("Проект отправлен на рассмотрение команды ЭРА");
-    } catch (error) {
-      setActionError(actionMessage(error, "Не удалось отправить проект на рассмотрение. Проверьте соединение и попробуйте снова."));
-    } finally {
-      setBusy(false);
-    }
+      clearDraft(projectId);
+      setConfirmAction(null);
+    } catch (error) { setActionError(humanError(error, "Не удалось отправить проект. Черновик сохранён, попробуйте снова.")); }
+    finally { setBusy(false); }
   };
 
-  const handleCancel = async () => {
+  const cancel = async () => {
     setBusy(true);
     setActionError(null);
-    try {
-      const updated = await cancelProject(projectId);
-      setProject(updated);
-      setSavedNotice("Проект удалён из активной работы");
-    } catch (error) {
-      setActionError(actionMessage(error, "Не удалось удалить проект."));
-    } finally {
-      setBusy(false);
-    }
+    try { setProject(await cancelProject(projectId)); clearDraft(projectId); setConfirmAction(null); }
+    catch (error) { setActionError(humanError(error, "Не удалось отменить проект.")); }
+    finally { setBusy(false); }
   };
 
-  const openEditor = () => {
-    setActionError(null);
-    setSaveError(null);
-    setPendingRetry(null);
-    setSavedNotice(null);
-    setAiSuggestion(null);
-    setQuestionIndex(firstUnansweredIndex(questions, answers));
-    setEditing(true);
-  };
-
-  const runAi = async (operation: AiOperation) => {
-    if (!currentQuestion) return;
-    const answer = (answers[currentQuestion.key] ?? "").trim();
-    if (!answer) {
-      setActionError("Сначала напишите свой черновик. ИИ помогает с формулировкой, но не придумывает ответ вместо вас.");
-      return;
-    }
-    setActionError(null);
-    setAiBusy(operation);
-    setAiSuggestion(null);
-    try {
-      const result = await assistProjectAnswer(currentQuestion.key, answer, operation);
-      setAiSuggestion(result);
-    } catch (error) {
-      setActionError(actionMessage(error, "ИИ-подсказка сейчас недоступна. Ваш текст не изменён."));
-    } finally {
-      setAiBusy(null);
-    }
-  };
+  const editQuestion = (index: number) => { setQuestionIndex(index); setEditing(true); setActionError(null); setPendingRetry(null); setAiSuggestion(null); };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-      <button type="button" onClick={onBack}>← К проектам</button>
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <PageHeader title={project.title} eyebrow={`Проект · ${projectStatusLabel(project.status)}`} subtitle={project.short_description || undefined} onBack={onBack} />
 
-      <Card gradient style={{ position: "relative", overflow: "hidden" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
-          <div style={{ minWidth: 0 }}>
-            <p style={{ margin: "0 0 0.25rem", color: "rgba(255,255,255,0.7)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Проект ЭРА</p>
-            <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-xl)", overflowWrap: "anywhere" }}>{project.title}</strong>
-            {project.short_description && <p style={{ margin: "0.5rem 0 0", color: "rgba(255,255,255,0.82)" }}>{project.short_description}</p>}
-          </div>
-          <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
-        </div>
-      </Card>
-
-      {actionError && (
-        <Card style={{ borderColor: "rgba(255,68,100,0.45)", background: "rgba(255,48,72,0.07)" }}>
-          <strong style={{ color: "var(--era-error)" }}>Нужно действие</strong>
-          <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>{actionError}</p>
-        </Card>
-      )}
-      {saveError && pendingRetry && currentQuestion?.key === pendingRetry.questionKey && (
-        <Card style={{ borderColor: "rgba(255,68,100,0.45)", background: "rgba(255,48,72,0.07)" }}>
-          <strong style={{ color: "var(--era-error)" }}>Шаг не сохранён</strong>
-          <p style={{ margin: "0.3rem 0 0.7rem", color: "var(--era-text-muted)", lineHeight: 1.45 }}>{saveError}</p>
-          <button type="button" className="era-btn-primary" disabled={busy} onClick={() => void handleRetrySave()}>
-            {busy ? "Повторяем…" : "Повторить сохранение"}
-          </button>
-        </Card>
-      )}
-      {savedNotice && !actionError && !saveError && <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.78rem" }}>✓ {savedNotice}</p>}
-
-      {project.admin_comment && (
-        <Card>
-          <strong>Комментарий команды ЭРА</strong>
-          <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)" }}>{project.admin_comment}</p>
-        </Card>
-      )}
+      {project.admin_comment && <Card><p className="era-kicker">Комментарий команды</p><p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)" }}>{project.admin_comment}</p></Card>}
+      {actionError && <Card style={{ borderColor: "rgba(101,90,115,.2)", background: "rgba(101,90,115,.05)" }}><strong>{autosave === "error" ? "Не удалось сохранить" : "Нужно действие"}</strong><p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)" }}>{actionError}</p>{pendingRetry && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginTop: "0.75rem" }}><PrimaryButton busy={busy} busyLabel="Повторяем…" onClick={() => void retry()}>Попробовать снова</PrimaryButton><SecondaryButton onClick={() => void copyCurrentAnswer()}>Скопировать ответ</SecondaryButton></div>}</Card>}
 
       {editing && currentQuestion ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", marginBottom: "0.35rem" }}>
-              <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Конструктор · {questionIndex + 1}/17</p>
-              <strong style={{ fontSize: "var(--era-text-xs)" }}>{progress}%</strong>
-            </div>
-            <div style={{ height: 6, borderRadius: 999, background: "var(--era-ring-track)", overflow: "hidden" }}>
-              <div style={{ width: `${progress}%`, height: "100%", borderRadius: 999, background: "var(--era-gradient)", transition: "width var(--era-motion)" }} />
-            </div>
-          </div>
+        <>
+          <div><div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "center" }}><p className="era-kicker">{String(questionIndex + 1).padStart(2, "0")} / {questions.length}</p><span style={{ color: autosave === "error" ? "var(--era-error)" : "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>{autosave === "saving" ? "Сохраняем…" : autosave === "saved" ? "✓ Сохранено" : autosave === "error" ? "Не удалось сохранить · ответ не потерян" : "Черновик сохранён на устройстве"}</span></div><div style={{ height: 6, marginTop: "0.45rem", borderRadius: 999, background: "var(--era-ring-track)", overflow: "hidden" }}><div style={{ width: `${Math.max(progress, ((questionIndex + 1) / questions.length) * 100)}%`, height: "100%", background: "var(--era-red)", borderRadius: 999, transition: "width var(--era-motion)" }} /></div></div>
 
-          <Card style={{ borderColor: "rgba(255,48,72,0.28)" }}>
-            <p style={{ margin: "0 0 0.25rem", color: "var(--era-red)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>{currentQuestion.block}</p>
-            <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{currentQuestion.title}</h2>
-            <p style={{ margin: "0.6rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{currentQuestion.prompt}</p>
-          </Card>
+          <Card><p className="era-kicker">{currentQuestion.block}</p><h2 style={{ margin: "0.3rem 0 0", fontSize: "var(--era-text-2xl)" }}>{currentQuestion.title}</h2><p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)", whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{currentQuestion.prompt}</p></Card>
 
           <Card>
-            <label htmlFor={`project-answer-${currentQuestion.key}`} style={{ display: "block", fontWeight: 800, marginBottom: "0.5rem" }}>Ваш ответ</label>
-            <textarea
-              id={`project-answer-${currentQuestion.key}`}
-              value={answers[currentQuestion.key] ?? ""}
-              onChange={(event) => {
-                const value = event.target.value;
-                setAnswers((previous) => ({ ...previous, [currentQuestion.key]: value }));
-                setPendingRetry((previous) => (
-                  previous?.questionKey === currentQuestion.key
-                    ? { ...previous, answer: value }
-                    : previous
-                ));
-                setActionError(null);
-                setSavedNotice(null);
-                setAiSuggestion(null);
-              }}
-              rows={6}
-              placeholder="Пишите своими словами — ИИ может помочь только с вашим текстом"
-              style={{ minHeight: 150 }}
-            />
+            <label htmlFor={`project-answer-${currentQuestion.key}`} style={{ display: "block", fontWeight: 850, marginBottom: "0.5rem" }}>Ваш ответ</label>
+            {currentQuestion.input_type === "text" ? <textarea id={`project-answer-${currentQuestion.key}`} value={currentAnswer} onChange={(event) => setAnswer(event.target.value)} rows={7} placeholder="Пишите своими словами — ответ сохраняется локально сразу" /> : <input id={`project-answer-${currentQuestion.key}`} type={currentQuestion.input_type} value={currentAnswer} onChange={(event) => setAnswer(event.target.value)} />}
           </Card>
 
-          <Card style={{ background: "linear-gradient(135deg, rgba(255,48,72,.09), rgba(107,60,255,.11)), var(--era-surface)" }}>
-            <strong>✨ AI-подсказка</strong>
-            <p style={{ margin: ".35rem 0 .7rem", color: "var(--era-text-muted)", fontSize: ".82rem", lineHeight: 1.4 }}>
-              Работает только с текущим ответом. Не придумывает партнёров, бюджет, показатели, участников или результаты.
-            </p>
-            <div style={{ display: "grid", gap: ".45rem" }}>
-              <button type="button" disabled={aiBusy !== null} onClick={() => void runAi("formulate")}>{aiBusy === "formulate" ? "Формулирую…" : "Помоги сформулировать"}</button>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".45rem" }}>
-                <button type="button" disabled={aiBusy !== null} onClick={() => void runAi("shorten")}>{aiBusy === "shorten" ? "Сокращаю…" : "Сделай короче"}</button>
-                <button type="button" disabled={aiBusy !== null} onClick={() => void runAi("improve")}>{aiBusy === "improve" ? "Улучшаю…" : "Улучши мой вариант"}</button>
-              </div>
-            </div>
-            {currentQuestion.ai_hint && <p style={{ margin: ".65rem 0 0", color: "var(--era-text-muted)", fontSize: ".76rem" }}>{currentQuestion.ai_hint}</p>}
-          </Card>
+          {currentQuestion.input_type === "text" && <Card style={{ background: "linear-gradient(145deg,rgba(227,38,54,.045),rgba(197,162,100,.055)),#fff", boxShadow: "none" }}><div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}><SparkIcon width={20} height={20} style={{ color: "var(--era-red)" }} /><strong>Помочь сформулировать</strong></div><p style={{ margin: "0.35rem 0 0.7rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>ИИ работает только с вашим текущим текстом и не добавляет выдуманные цифры, партнёров или результаты.</p><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.45rem" }}><SecondaryButton disabled={aiBusy !== null} onClick={() => void runAi("formulate")}>{aiBusy === "formulate" ? "Формулирую…" : "Сформулировать"}</SecondaryButton><SecondaryButton disabled={aiBusy !== null} onClick={() => void runAi("shorten")}>{aiBusy === "shorten" ? "Сокращаю…" : "Сделать короче"}</SecondaryButton></div><SecondaryButton disabled={aiBusy !== null} onClick={() => void runAi("improve")} style={{ width: "100%", marginTop: "0.45rem" }}>{aiBusy === "improve" ? "Улучшаю…" : "Улучшить мой вариант"}</SecondaryButton>{currentQuestion.ai_hint && <p style={{ margin: "0.6rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>{currentQuestion.ai_hint}</p>}</Card>}
 
-          {aiSuggestion && (
-            <Card style={{ borderColor: "rgba(245,185,66,.35)", background: "rgba(245,185,66,.055)" }}>
-              <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: ".76rem", fontWeight: 800, textTransform: "uppercase" }}>Вариант ИИ — решаете вы</p>
-              <p style={{ margin: ".5rem 0", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{aiSuggestion}</p>
-              <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: ".45rem" }}>
-                <button type="button" className="era-btn-primary" onClick={() => { setAnswers((previous) => ({ ...previous, [currentQuestion.key]: aiSuggestion })); setPendingRetry((previous) => previous?.questionKey === currentQuestion.key ? { ...previous, answer: aiSuggestion } : previous); setAiSuggestion(null); setSavedNotice("Вариант принят. Можно отредактировать перед сохранением."); }}>Использовать вариант</button>
-                <button type="button" onClick={() => setAiSuggestion(null)}>Оставить мой</button>
-              </div>
-            </Card>
-          )}
+          {aiSuggestion && <Card style={{ borderColor: "rgba(197,162,100,.28)" }}><p className="era-kicker" style={{ color: "var(--era-gold-ink)" }}>Вариант ИИ — решение за вами</p><p style={{ whiteSpace: "pre-wrap" }}>{aiSuggestion}</p><div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: "0.5rem" }}><PrimaryButton onClick={() => { setAnswer(aiSuggestion); setAiSuggestion(null); }}>Использовать</PrimaryButton><SecondaryButton onClick={() => setAiSuggestion(null)}>Оставить мой</SecondaryButton></div></Card>}
 
           <div style={{ display: "grid", gridTemplateColumns: questionIndex > 0 ? "0.8fr 1.2fr" : "1fr", gap: "0.5rem" }}>
-            {questionIndex > 0 && <button type="button" disabled={busy} onClick={() => { if (pendingRetry) { setActionError("Сначала повторите сохранение этого шага — ответ уже сохранён на экране и не потерян."); return; } setActionError(null); setAiSuggestion(null); setQuestionIndex((index) => Math.max(0, index - 1)); }}>← Назад</button>}
-            <button type="button" className="era-btn-primary" disabled={busy || aiBusy !== null} onClick={() => void handleNext()}>{busy ? "Сохраняю…" : questionIndex === questions.length - 1 ? "К финальному preview →" : "Сохранить и дальше →"}</button>
+            {questionIndex > 0 && <SecondaryButton disabled={busy} onClick={() => { setQuestionIndex((value) => Math.max(0, value - 1)); setAiSuggestion(null); }}>Назад</SecondaryButton>}
+            <PrimaryButton busy={busy} busyLabel="Сохраняем…" disabled={aiBusy !== null || !currentAnswer.trim()} onClick={() => void saveStep(currentQuestion, questionIndex, currentAnswer, "next")}>{questionIndex === questions.length - 1 ? "К финальному preview" : "Продолжить"}</PrimaryButton>
           </div>
-          <button type="button" disabled={busy || aiBusy !== null} onClick={() => void handleSaveAndClose()}>Сохранить и выйти</button>
-        </div>
+          <SecondaryButton busy={busy} disabled={aiBusy !== null} onClick={() => currentAnswer.trim() ? void saveStep(currentQuestion, questionIndex, currentAnswer, "close") : setEditing(false)}>Сохранить и выйти</SecondaryButton>
+        </>
       ) : (
         <>
-          <Card style={constructorComplete ? { borderColor: "rgba(245,185,66,.32)" } : undefined}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
-              <div>
-                <p style={{ margin: "0 0 .2rem", color: constructorComplete ? "var(--era-gold)" : "var(--era-text-muted)", fontSize: ".72rem", fontWeight: 850, textTransform: "uppercase" }}>{constructorComplete ? "Шаг 17 из 17 · Финальный preview" : "Паспорт проекта"}</p>
-                <strong style={{ fontSize: "var(--era-text-lg)" }}>{constructorComplete ? "Проверьте проект перед отправкой" : "Проект собирается"}</strong>
-                <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>Заполнено {answeredQuestions.length} из {questions.length} вопросов</p>
-              </div>
-              {project.can_edit && <button type="button" onClick={openEditor}>{answeredQuestions.length ? "Редактировать" : "Начать"}</button>}
-            </div>
-
-            {answeredQuestions.length === 0 ? (
-              <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)" }}>Пока есть только идея. Откройте конструктор и доведите её до полноценного проекта.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem", marginTop: "0.85rem" }}>
-                {answeredQuestions.map((question) => (
-                  <div key={question.key}>
-                    <p style={{ margin: 0, fontSize: "0.78rem", fontWeight: 750, color: "var(--era-text-muted)" }}>{question.title}</p>
-                    <p style={{ margin: "0.25rem 0 0", whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{answers[question.key]}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+          <Card>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}><div><p className="era-kicker">{complete ? "Финальный preview" : "Паспорт проекта"}</p><strong style={{ display: "block", marginTop: "0.25rem", fontSize: "var(--era-text-lg)" }}>{complete ? "Проверьте все 16 разделов" : `Заполнено ${answeredQuestions.length} из ${questions.length}`}</strong></div>{project.can_edit && <SecondaryButton onClick={() => editQuestion(firstUnansweredIndex(questions, answers))}>{answeredQuestions.length ? "Продолжить" : "Начать"}</SecondaryButton>}</div>
+            {answeredQuestions.length === 0 ? <p style={{ margin: "0.6rem 0 0", color: "var(--era-text-muted)" }}>Есть только идея. Откройте конструктор и соберите полноценный проект.</p> : <div style={{ display: "grid", gap: "0.9rem", marginTop: "1rem" }}>{answeredQuestions.map((question) => { const index = questions.findIndex((item) => item.key === question.key); return <div key={question.key} style={{ paddingTop: "0.8rem", borderTop: "1px solid var(--era-border)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><strong>{question.title}</strong>{project.can_edit && <button type="button" className="era-btn-ghost" onClick={() => editQuestion(index)} style={{ minHeight: 36, padding: "0.25rem 0.5rem", color: "var(--era-red)" }}>Изменить</button>}</div><p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", whiteSpace: "pre-wrap" }}>{answers[question.key]}</p></div>; })}</div>}
           </Card>
 
-          {legacyAnswers.length > 0 && (
-            <Card>
-              <strong>Ранее заполненные данные</strong>
-              <p style={{ margin: ".25rem 0 .65rem", color: "var(--era-text-muted)", fontSize: ".8rem" }}>Старые поля проекта сохранены и не потеряны после обновления конструктора.</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
-                {legacyAnswers.map(([key, value]) => <div key={key}><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: ".76rem", fontWeight: 750 }}>{LEGACY_LABELS[key]}</p><p style={{ margin: ".2rem 0 0", whiteSpace: "pre-wrap" }}>{value}</p></div>)}
-              </div>
-            </Card>
-          )}
-
-          {project.can_edit && !constructorComplete && <button type="button" className="era-btn-primary" onClick={openEditor}>Продолжить конструктор</button>}
-          {project.can_submit && <button type="button" className="era-btn-primary" disabled={busy || !constructorComplete} onClick={() => void handleSubmit()}>{busy ? "Отправляем…" : "Отправить на рассмотрение"}</button>}
-          {project.can_delete && <button type="button" disabled={busy} onClick={() => void handleCancel()}>Удалить проект</button>}
-
-          <button type="button" onClick={() => setShowWorkspace((value) => !value)}>{showWorkspace ? "Скрыть рабочую зону" : "Открыть рабочую зону →"}</button>
+          {project.can_submit && <PrimaryButton busy={busy} disabled={!complete} onClick={() => setConfirmAction("submit")}>Отправить на рассмотрение</PrimaryButton>}
+          {project.can_edit && !complete && <PrimaryButton onClick={() => editQuestion(firstUnansweredIndex(questions, answers))}>Продолжить конструктор</PrimaryButton>}
+          <SecondaryButton onClick={() => setShowWorkspace((value) => !value)}>{showWorkspace ? "Скрыть рабочую зону" : "Открыть команду и задачи"}</SecondaryButton>
           {showWorkspace && <ProjectWorkspace projectId={projectId} />}
+          {project.can_delete && <button type="button" className="era-btn-danger" disabled={busy} onClick={() => setConfirmAction("cancel")}>Отменить проект</button>}
         </>
       )}
+
+      <BottomSheet open={confirmAction === "submit"} onClose={() => setConfirmAction(null)} title="Отправить проект на рассмотрение?">
+        <p style={{ margin: 0, color: "var(--era-text-muted)" }}>После отправки команда ЭРА увидит текущую версию всех 16 ответов. Вы получите статус проекта после решения.</p><div style={{ display: "grid", gridTemplateColumns: "0.8fr 1.2fr", gap: "0.5rem", marginTop: "1rem" }}><SecondaryButton onClick={() => setConfirmAction(null)}>Проверить ещё</SecondaryButton><PrimaryButton busy={busy} onClick={() => void submit()}>Отправить</PrimaryButton></div>
+      </BottomSheet>
+      <BottomSheet open={confirmAction === "cancel"} onClose={() => setConfirmAction(null)} title="Отменить проект?">
+        <p style={{ margin: 0, color: "var(--era-text-muted)" }}>Это уберёт проект из активной работы. Действие требует подтверждения.</p><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginTop: "1rem" }}><SecondaryButton onClick={() => setConfirmAction(null)}>Оставить</SecondaryButton><button type="button" className="era-btn-danger" disabled={busy} onClick={() => void cancel()}>{busy ? "Отменяем…" : "Отменить проект"}</button></div>
+      </BottomSheet>
     </div>
   );
 }
