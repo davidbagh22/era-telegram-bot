@@ -218,6 +218,14 @@ PERMISSIONS = (
     "people.manage",
     "portfolio.review",
     "broadcasts.create",
+    "development.self.read",
+    "development.self.write",
+    "development.admin.summary.read",
+    "development.admin.individual.read",
+    "development.admin.analytics.read",
+    "development.admin.export",
+    "development.methodology.manage",
+    "development.content.manage",
 )
 
 PERMISSION_LABELS = {
@@ -234,4 +242,12 @@ PERMISSION_LABELS = {
     "people.manage": "Управление участниками",
     "portfolio.review": "Портфолио и сертификаты",
     "broadcasts.create": "Рассылки и ответы",
+    "development.self.read": "Мой вектор: свои данные",
+    "development.self.write": "Мой вектор: свои ответы",
+    "development.admin.summary.read": "Мой вектор: разрешённые сводки",
+    "development.admin.individual.read": "Мой вектор: индивидуальные профили",
+    "development.admin.analytics.read": "Мой вектор: групповая аналитика",
+    "development.admin.export": "Мой вектор: экспорт агрегатов",
+    "development.methodology.manage": "Мой вектор: методики",
+    "development.content.manage": "Мой вектор: контент рекомендаций",
 }
