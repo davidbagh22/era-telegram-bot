@@ -1,6 +1,7 @@
 import hashlib
 from functools import lru_cache
 from typing import Annotated
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import BeforeValidator, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -12,6 +13,24 @@ def _parse_ids(value: object) -> list[int]:
     if isinstance(value, list):
         return [int(item) for item in value]
     return [int(item.strip()) for item in str(value).split(",") if item.strip()]
+
+
+def _with_release_cache_buster(url: str, release: str) -> str:
+    """Give Telegram a new WebApp URL for every deployed release.
+
+    Telegram may reuse an already-cached WebView when the bot keeps publishing
+    exactly the same WebAppInfo URL. Render exposes RENDER_GIT_COMMIT at
+    runtime, so adding its short SHA as a normal query parameter makes each
+    deploy a distinct launch URL while preserving existing query parameters.
+    Local/dev environments without a release SHA keep the historical URL.
+    """
+    normalized_release = release.strip()
+    if not url or not normalized_release:
+        return url
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["v"] = normalized_release[:12]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
 IdList = Annotated[list[int], BeforeValidator(_parse_ids)]
@@ -26,6 +45,7 @@ class Settings(BaseSettings):
     public_base_url: str = ""
     webhook_secret: str = ""
     render_external_hostname: str = ""
+    render_git_commit: str = ""
     dev_auth_enabled: bool = False
     init_data_max_age_seconds: int = 3600
     miniapp_url: str = ""
@@ -89,10 +109,12 @@ class Settings(BaseSettings):
         if not self.miniapp_auth_secret:
             return ""
         if self.miniapp_url:
-            return self.miniapp_url.rstrip("/")
-        if self.effective_base_url:
-            return f"{self.effective_base_url}/app/"
-        return ""
+            base_url = self.miniapp_url.rstrip("/")
+        elif self.effective_base_url:
+            base_url = f"{self.effective_base_url}/app/"
+        else:
+            return ""
+        return _with_release_cache_buster(base_url, self.render_git_commit)
 
     @property
     def effective_webhook_secret(self) -> str:
