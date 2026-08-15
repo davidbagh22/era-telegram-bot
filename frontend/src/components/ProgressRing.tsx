@@ -13,8 +13,9 @@ export function ProgressRing({ percent, size = 92, trackColor }: ProgressRingPro
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const drawingContext = canvas.getContext("2d");
+    if (!drawingContext) return;
+    const ctx: CanvasRenderingContext2D = drawingContext;
 
     const normalized = Math.max(0, Math.min(1, percent));
     const dpr = window.devicePixelRatio || 1;
