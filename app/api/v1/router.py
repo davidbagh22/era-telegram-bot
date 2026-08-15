@@ -13,6 +13,7 @@ from app.api.v1 import (
     admin_project_detail,
     auctions,
     auth,
+    event_posters,
     events,
     home,
     leader,
@@ -33,6 +34,7 @@ api_router.include_router(auth.router)
 api_router.include_router(me.router)
 api_router.include_router(home.router)
 api_router.include_router(leaderboard.router)
+api_router.include_router(event_posters.router)
 api_router.include_router(events.router)
 api_router.include_router(tasks.router)
 api_router.include_router(activity.router)
