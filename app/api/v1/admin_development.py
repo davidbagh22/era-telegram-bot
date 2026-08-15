@@ -14,6 +14,7 @@ from app.database.development_models import (
     UserVectorProfile,
 )
 from app.database.models import User
+from app.services import development_analytics as dev_analytics
 from app.services import development_service as dev
 
 router = APIRouter(prefix="/admin/development", tags=["admin-development"])
@@ -133,7 +134,7 @@ async def development_analytics(
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     _require_admin(user)
-    result = await dev.community_analytics(session, period_days=period_days)
+    result = await dev_analytics.community_analytics(session, period_days=period_days)
     await dev.audit(
         session,
         user.id,
@@ -141,6 +142,7 @@ async def development_analytics(
         metadata={
             "period_days": max(1, min(period_days, 365)),
             "suppressed": result["suppressed"],
+            "sample_size": result["sample_size"],
         },
     )
     return result
