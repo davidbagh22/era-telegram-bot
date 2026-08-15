@@ -8,6 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import Settings
 from app.services.chat_faq_service import ensure_general_faq_pinned
+from app.services.event_custom_reminder_service import send_configured_event_reminders
 from app.services.system_health_service import run_system_diagnostics, send_daily_system_summary
 
 
@@ -50,6 +51,19 @@ def add_system_jobs(
         minute=30,
         args=(bot, settings, session_factory),
         id="system-daily-summary",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    # Rich event drafts can define any set of reminder thresholds (24h, 3h,
+    # 1h or custom). Delivery has its own idempotency table, so restarts and
+    # overlapping scheduler ticks cannot duplicate messages.
+    scheduler.add_job(
+        send_configured_event_reminders,
+        "interval",
+        minutes=1,
+        args=(bot, settings, session_factory),
+        id="configured-event-reminders",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
