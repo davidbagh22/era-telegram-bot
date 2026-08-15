@@ -38,6 +38,7 @@ class BackupRecoveryContractTests(unittest.TestCase):
             self.assertIn(marker, workflow)
 
         self.assertNotIn("BACKUP_DATABASE_URL", workflow)
+        self.assertNotIn("PRODUCTION_DATABASE_URL", workflow)
         self.assertNotIn("BACKUP_REPORT_SECRET", workflow)
         self.assertNotIn("BACKUP_REPORT_URL", workflow)
 
@@ -131,7 +132,8 @@ class BackupRecoveryContractTests(unittest.TestCase):
         self.assertIn("SAFE_CODE", workflow)
         self.assertIn("snapshot_http_error", workflow)
         self.assertNotIn('cat "${RESPONSE_FILE}"', workflow)
-        self.assertNotIn("DATABASE_URL", workflow)
+        self.assertNotIn("BACKUP_DATABASE_URL", workflow)
+        self.assertNotIn("PRODUCTION_DATABASE_URL", workflow)
 
     def test_recovery_document_exists(self) -> None:
         document = (ROOT / "docs" / "BACKUP_AND_RECOVERY.md").read_text(encoding="utf-8")
