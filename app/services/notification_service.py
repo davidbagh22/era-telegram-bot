@@ -86,12 +86,12 @@ async def safe_send(
     parse_mode: str | None = None,
 ) -> bool:
     try:
-        await bot.send_message(
-            chat_id,
-            text,
-            reply_markup=reply_markup,
-            parse_mode=parse_mode,
-        )
+        kwargs = {"reply_markup": reply_markup}
+        # Preserve the historical send_message call shape for every existing
+        # plain-text caller; only FAQ/rich-text callers opt into parse_mode.
+        if parse_mode is not None:
+            kwargs["parse_mode"] = parse_mode
+        await bot.send_message(chat_id, text, **kwargs)
         return True
     except TelegramAPIError:
         logger.exception("Could not deliver notification to chat %s", chat_id)
