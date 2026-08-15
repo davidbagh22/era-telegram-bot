@@ -6,8 +6,6 @@ import {
   ProjectsIcon,
 } from "./icons";
 
-// ERA Dark Living System: participant navigation has five permanent
-// product areas. Leader/Admin management remains outside this dock.
 export type TabKey = "home" | "projects" | "events" | "community" | "profile";
 
 const TABS: { key: TabKey; label: string; Icon: typeof HomeIcon }[] = [
@@ -32,7 +30,7 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
         bottom: 0,
         display: "flex",
         minWidth: 0,
-        gap: "0.0625rem",
+        gap: "0.125rem",
         margin: "0 0.625rem calc(0.55rem + env(safe-area-inset-bottom, 0px))",
         padding: "0.3rem",
         background: "var(--era-glass)",
@@ -52,42 +50,43 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
             type="button"
             onClick={() => onChange(key)}
             aria-current={isActive ? "page" : undefined}
+            aria-label={label}
             style={{
               position: "relative",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: "0.125rem",
-              minHeight: "3rem",
+              justifyContent: "center",
+              gap: "0.1rem",
+              minHeight: 52,
               flex: "1 1 0",
               minWidth: 0,
-              background: "none",
+              background: "transparent",
               border: "none",
-              color: isActive ? "var(--era-text)" : "var(--era-text-muted)",
-              fontFamily: "var(--era-font-body)",
+              boxShadow: "none",
+              color: isActive ? "var(--era-red)" : "var(--era-text-muted)",
               fontSize: "0.625rem",
-              fontWeight: isActive ? 800 : 600,
-              padding: "0.45rem 0.125rem",
-              borderRadius: "1.35rem",
-              transition: "color var(--era-motion-fast), transform var(--era-motion-fast)",
-              zIndex: 0,
+              fontWeight: isActive ? 800 : 650,
+              padding: "0.4rem 0.125rem",
+              borderRadius: "1.25rem",
+              transition: "color var(--era-motion-fast), transform var(--era-motion-fast), background var(--era-motion-fast)",
             }}
           >
-            {isActive && (
-              <span
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  borderRadius: "var(--era-radius-pill)",
-                  background:
-                    "linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.04)), var(--era-gradient)",
-                  boxShadow: "0 10px 24px rgba(227, 59, 73, 0.26)",
-                  zIndex: -1,
-                }}
-              />
-            )}
-            <Icon width={22} height={22} />
+            <span
+              aria-hidden="true"
+              style={{
+                display: "grid",
+                placeItems: "center",
+                width: 34,
+                height: 28,
+                borderRadius: "var(--era-radius-pill)",
+                background: isActive ? "rgba(227,38,54,0.09)" : "transparent",
+                transform: isActive ? "scale(1.05)" : "scale(1)",
+                transition: "transform var(--era-motion-fast), background var(--era-motion-fast)",
+              }}
+            >
+              <Icon width={21} height={21} />
+            </span>
             <span
               style={{
                 maxWidth: "100%",
