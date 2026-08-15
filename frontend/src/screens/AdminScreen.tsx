@@ -4,7 +4,7 @@ import { AdminBottomNav, type AdminGroup } from "../components/AdminBottomNav";
 import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
 import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
-import { AdminEventsScreen } from "./admin/AdminEventsScreen";
+import { AdminEventsScreen, type EventsSection } from "./admin/AdminEventsScreen";
 import { AdminMaintenanceScreen } from "./admin/AdminMaintenanceScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
 import { AdminOffersScreen } from "./admin/AdminOffersScreen";
@@ -31,8 +31,8 @@ const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
 ];
 
 const WORK_SECTIONS: SectionOption<WorkSection>[] = [
-  { value: "projects", label: "Проекты", description: "Создание, модерация и команды проектов" },
-  { value: "events", label: "Мероприятия", description: "Создание, публикация, участники и активности" },
+  { value: "projects", label: "Проекты", description: "Модерация, команды и проектная работа" },
+  { value: "events", label: "Мероприятия", description: "Создать событие и провести его через весь цикл" },
   { value: "tasks", label: "Задания", description: "Создание задач и проверка результатов" },
   { value: "offers", label: "Возможности", description: "Партнёрские предложения и заявки" },
 ];
@@ -43,7 +43,7 @@ const COMMS_SECTIONS: SectionOption<CommsSection>[] = [
 ];
 
 const CONTROL_SECTIONS: SectionOption<ControlSection>[] = [
-  { value: "analytics", label: "Аналитика", description: "Показатели сообщества, динамика и Excel-выгрузка" },
+  { value: "analytics", label: "Аналитика", description: "Живые показатели и детализация существующих данных" },
   { value: "system", label: "Состояние системы", description: "Диагностика, инциденты, резервные копии и здоровье ЭРА" },
   { value: "maintenance", label: "Обслуживание", description: "Редкие технические операции с отдельной серверной защитой" },
 ];
@@ -52,7 +52,7 @@ function SectionMenu<T extends string>({ title, description, options, onOpen }: 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
       <div>
-        <p style={{ margin: "0 0 0.25rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Управление ЭРА</p>
+        <p style={{ margin: "0 0 0.25rem", color: "var(--era-red)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Управление ЭРА</p>
         <h1 style={{ margin: 0, fontSize: "var(--era-text-3xl)" }}>{title}</h1>
         <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)" }}>{description}</p>
       </div>
@@ -76,36 +76,56 @@ export function AdminScreen() {
   const [group, setGroup] = useState<AdminGroup>("overview");
   const [peopleSection, setPeopleSection] = useState<PeopleSection | null>(null);
   const [workSection, setWorkSection] = useState<WorkSection | null>(null);
+  const [eventInitialSection, setEventInitialSection] = useState<EventsSection | null>(null);
   const [commsSection, setCommsSection] = useState<CommsSection | null>(null);
   const [controlSection, setControlSection] = useState<ControlSection | null>(null);
 
-  const changeGroup = (next: AdminGroup) => {
-    setGroup(next);
+  const resetNested = () => {
     setPeopleSection(null);
     setWorkSection(null);
+    setEventInitialSection(null);
     setCommsSection(null);
     setControlSection(null);
+  };
+
+  const changeGroup = (next: AdminGroup) => {
+    setGroup(next);
+    resetNested();
   };
 
   const openPeople = (section: PeopleSection) => {
     setGroup("people");
     setPeopleSection(section);
     setWorkSection(null);
+    setEventInitialSection(null);
     setCommsSection(null);
     setControlSection(null);
   };
+
   const openWork = (section: WorkSection) => {
     setGroup("work");
     setWorkSection(section);
+    setEventInitialSection(null);
     setPeopleSection(null);
     setCommsSection(null);
     setControlSection(null);
   };
+
+  const createEventNow = () => {
+    setGroup("work");
+    setWorkSection("events");
+    setEventInitialSection("create");
+    setPeopleSection(null);
+    setCommsSection(null);
+    setControlSection(null);
+  };
+
   const openComms = () => {
     setGroup("comms");
     setCommsSection("tools");
     setPeopleSection(null);
     setWorkSection(null);
+    setEventInitialSection(null);
     setControlSection(null);
   };
 
@@ -117,6 +137,7 @@ export function AdminScreen() {
             onOpenApplications={() => openPeople("applications")}
             onOpenProjects={() => openWork("projects")}
             onOpenEvents={() => openWork("events")}
+            onCreateEvent={createEventNow}
             onOpenComms={openComms}
           />
         )}
@@ -132,12 +153,12 @@ export function AdminScreen() {
           </div>
         )}
 
-        {group === "work" && !workSection && <SectionMenu title="Работа" description="Создание и управление проектами, мероприятиями, заданиями и возможностями." options={WORK_SECTIONS} onOpen={setWorkSection} />}
+        {group === "work" && !workSection && <SectionMenu title="Работа" description="Сначала выберите объект: проект, мероприятие, задание или возможность." options={WORK_SECTIONS} onOpen={(section) => { setEventInitialSection(null); setWorkSection(section); }} />}
         {group === "work" && workSection && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <SectionHeader title={WORK_SECTIONS.find((item) => item.value === workSection)?.label ?? "Работа"} onBack={() => setWorkSection(null)} />
+            <SectionHeader title={WORK_SECTIONS.find((item) => item.value === workSection)?.label ?? "Работа"} onBack={() => { setWorkSection(null); setEventInitialSection(null); }} />
             {workSection === "projects" && <AdminProjectsScreen />}
-            {workSection === "events" && <AdminEventsScreen />}
+            {workSection === "events" && <AdminEventsScreen initialSection={eventInitialSection} />}
             {workSection === "tasks" && <AdminTasksScreen />}
             {workSection === "offers" && <AdminOffersScreen />}
           </div>
@@ -152,7 +173,7 @@ export function AdminScreen() {
           </div>
         )}
 
-        {group === "control" && !controlSection && <SectionMenu title="Контроль" description="Аналитика, здоровье платформы и редкое техническое обслуживание." options={CONTROL_SECTIONS} onOpen={setControlSection} />}
+        {group === "control" && !controlSection && <SectionMenu title="Контроль" description="Нажмите на показатель, чтобы открыть реальные записи за этой цифрой; технические функции вынесены отдельно." options={CONTROL_SECTIONS} onOpen={setControlSection} />}
         {group === "control" && controlSection && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={CONTROL_SECTIONS.find((item) => item.value === controlSection)?.label ?? "Контроль"} onBack={() => setControlSection(null)} />
