@@ -7,17 +7,9 @@ interface BottomSheetProps {
   children: ReactNode;
 }
 
-/** Slides up from the bottom — the mobile-idiomatic equivalent of Modal.tsx
- * for this touch-only app (see frontend/e2e/*.spec.ts's fixed mobile
- * viewport). Prefer this over Modal for anything the user reaches for
- * with a thumb: confirmations on a card's own action row, quick pickers,
- * short in-context forms. Reach for Modal instead only when the content
- * genuinely wants to be centered (e.g. a first-load informational
- * dialog). See docs/UI_DESIGN_SYSTEM.md. */
+/** Mobile bottom sheet with a real 44px close target. */
 export function BottomSheet({ open, onClose, title, children }: BottomSheetProps) {
-  if (!open) {
-    return null;
-  }
+  if (!open) return null;
 
   return (
     <div
@@ -34,11 +26,13 @@ export function BottomSheet({ open, onClose, title, children }: BottomSheetProps
         style={{
           width: "100%",
           maxWidth: "28rem",
+          maxHeight: "min(88dvh, 48rem)",
+          overflowY: "auto",
           borderTopLeftRadius: "var(--era-radius-sheet)",
           borderTopRightRadius: "var(--era-radius-sheet)",
           background: "var(--era-surface)",
           boxShadow: "var(--era-shadow-overlay)",
-          padding: "1.25rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom, 0px))",
+          padding: "0.75rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom, 0px))",
           zIndex: 41,
         }}
       >
@@ -48,15 +42,37 @@ export function BottomSheet({ open, onClose, title, children }: BottomSheetProps
             height: "0.25rem",
             borderRadius: "var(--era-radius-pill)",
             background: "var(--era-border)",
-            margin: "0 auto 1rem",
+            margin: "0 auto 0.55rem",
           }}
           aria-hidden="true"
         />
-        {title && (
-          <h2 style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-xl)", margin: "0 0 0.75rem" }}>
-            {title}
-          </h2>
-        )}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", marginBottom: title ? "0.75rem" : "0.35rem" }}>
+          {title ? (
+            <h2 style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-xl)", margin: 0, lineHeight: 1.2 }}>
+              {title}
+            </h2>
+          ) : <span />}
+          <button
+            type="button"
+            aria-label="Закрыть"
+            onClick={onClose}
+            style={{
+              width: 44,
+              height: 44,
+              minWidth: 44,
+              minHeight: 44,
+              padding: 0,
+              borderRadius: "50%",
+              border: "1px solid var(--era-border)",
+              background: "var(--era-bg-subtle)",
+              color: "var(--era-text)",
+              fontSize: "1.25rem",
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
         {children}
       </div>
     </div>
