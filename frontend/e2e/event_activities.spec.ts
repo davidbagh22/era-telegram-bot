@@ -33,7 +33,7 @@ test("leader pre-approves an activity submission, then the admin does the final 
     await expect(adminPage.getByText("Управление", { exact: true })).toBeVisible();
     await adminPage.getByRole("button", { name: "Работа" }).click();
     await adminPage.getByRole("button", { name: /Мероприятия/ }).click();
-    await adminPage.getByRole("button", { name: /Активности после события/ }).click();
+    await adminPage.getByRole("button", { name: /Добавить активности/ }).click();
     await adminPage.getByRole("button", { name: /Проверить результаты/ }).click();
 
     const adminCard = adminPage.locator(".era-card", { hasText: ACTIVITY_TITLE });
@@ -42,7 +42,7 @@ test("leader pre-approves an activity submission, then the admin does the final 
     await adminCard.getByRole("button", { name: "✅ Принять и начислить" }).click();
     await expect(adminPage.locator(".era-card", { hasText: ACTIVITY_TITLE })).toHaveCount(0);
   } finally {
-    await leaderContext.close();
-    await adminContext.close();
+    await leaderContext.close().catch(() => undefined);
+    await adminContext.close().catch(() => undefined);
   }
 });

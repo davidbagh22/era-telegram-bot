@@ -27,10 +27,12 @@ export function AdminBottomNav({ active, onChange }: AdminBottomNavProps) {
         gap: "0.125rem",
         margin: "0 0.5rem calc(0.6rem + env(safe-area-inset-bottom, 0px))",
         padding: "0.35rem",
-        background: "var(--era-surface)",
+        background: "linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012)), var(--era-surface)",
         border: "1px solid var(--era-border)",
         borderRadius: "var(--era-radius-pill)",
-        boxShadow: "var(--era-shadow-lift)",
+        boxShadow: "var(--era-shadow-dock)",
+        backdropFilter: "blur(22px)",
+        WebkitBackdropFilter: "blur(22px)",
       }}
     >
       {GROUPS.map(({ key, label, Icon }) => {
@@ -69,8 +71,8 @@ export function AdminBottomNav({ active, onChange }: AdminBottomNavProps) {
                   position: "absolute",
                   inset: 0,
                   borderRadius: "var(--era-radius-pill)",
-                  background: "linear-gradient(135deg, var(--era-violet), var(--era-red))",
-                  boxShadow: "0 8px 18px rgba(116, 44, 196, 0.4)",
+                  background: "linear-gradient(135deg, var(--era-red), var(--era-magenta))",
+                  boxShadow: "0 9px 22px rgba(255, 32, 56, 0.36)",
                   zIndex: -1,
                 }}
               />

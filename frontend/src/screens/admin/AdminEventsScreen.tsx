@@ -8,18 +8,22 @@ import { EventModerationPanel } from "./events/EventModerationPanel";
 import { EventParticipantsPanel } from "./events/EventParticipantsPanel";
 import { EventsList } from "./events/EventsList";
 
-type EventsSection = "create" | "moderation" | "operations" | "activities";
+export type EventsSection = "create" | "moderation" | "operations" | "activities";
 type ActivitiesMode = "review" | "manage";
 
-const SECTIONS: { value: EventsSection; label: string; description: string; icon: string }[] = [
-  { value: "create", label: "Создать мероприятие", description: "Черновик или сразу открыть регистрацию", icon: "＋" },
-  { value: "moderation", label: "На согласовании", description: "Проверить предложения мероприятий от команды", icon: "✓" },
-  { value: "operations", label: "Участники и посещаемость", description: "Регистрации, отметка присутствия и баллы", icon: "◎" },
-  { value: "activities", label: "Активности после события", description: "Задания, материалы и результаты участников", icon: "✦" },
+const SECTIONS: { value: EventsSection; label: string; description: string; icon: string; step: string }[] = [
+  { value: "create", label: "Создать мероприятие", description: "Название, дата, место, лимит и публикация", icon: "＋", step: "СТАРТ" },
+  { value: "moderation", label: "Проверить предложения", description: "События, которые команда отправила на согласование", icon: "✓", step: "02" },
+  { value: "operations", label: "Вести участников", description: "Регистрации, посещаемость, баллы и списки", icon: "◎", step: "03" },
+  { value: "activities", label: "Добавить активности", description: "Задания после события и проверка результатов", icon: "✦", step: "04" },
 ];
 
-export function AdminEventsScreen() {
-  const [section, setSection] = useState<EventsSection | null>(null);
+interface AdminEventsScreenProps {
+  initialSection?: EventsSection | null;
+}
+
+export function AdminEventsScreen({ initialSection = null }: AdminEventsScreenProps) {
+  const [section, setSection] = useState<EventsSection | null>(initialSection);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   const [activitiesMode, setActivitiesMode] = useState<ActivitiesMode | null>(null);
 
@@ -33,25 +37,31 @@ export function AdminEventsScreen() {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         <Card gradient>
-          <p style={{ margin: "0 0 0.25rem", color: "rgba(255,255,255,0.72)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Мероприятия</p>
-          <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>Полный цикл в одном месте</h2>
-          <p style={{ margin: "0.5rem 0 0", color: "rgba(255,255,255,0.82)" }}>
-            Сначала создайте или согласуйте событие. После публикации здесь же ведите регистрации, посещаемость и активности.
+          <p style={{ margin: "0 0 0.25rem", color: "rgba(255,255,255,0.72)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Мероприятия · полный цикл</p>
+          <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>От идеи до результата</h2>
+          <p style={{ margin: "0.5rem 0 0", color: "rgba(255,255,255,0.86)", lineHeight: 1.45 }}>
+            Выберите действие. Для нового события начинайте с первой карточки — дальше система сама ведёт по этапам.
           </p>
         </Card>
         {SECTIONS.map((item) => (
-          <ActionCell key={item.value} title={item.label} description={item.description} leading={item.icon} onClick={() => setSection(item.value)} />
+          <div key={item.value} style={{ position: "relative" }}>
+            <span style={{ position: "absolute", zIndex: 2, right: "0.8rem", top: "0.7rem", fontSize: "0.65rem", fontWeight: 900, color: item.value === "create" ? "var(--era-red)" : "var(--era-text-muted)", letterSpacing: "0.08em" }}>{item.step}</span>
+            <ActionCell title={item.label} description={item.description} leading={item.icon} onClick={() => setSection(item.value)} />
+          </div>
         ))}
       </div>
     );
   }
 
+  const current = SECTIONS.find((item) => item.value === section);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-      <button type="button" onClick={backToMenu} style={{ alignSelf: "flex-start" }}>← К мероприятиям</button>
+      <button type="button" onClick={backToMenu} style={{ alignSelf: "flex-start" }}>← К этапам мероприятий</button>
       <div>
-        <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{SECTIONS.find((item) => item.value === section)?.label}</h2>
-        <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)" }}>{SECTIONS.find((item) => item.value === section)?.description}</p>
+        <p style={{ margin: "0 0 0.2rem", color: "var(--era-red)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Мероприятия · {current?.step}</p>
+        <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{current?.label}</h2>
+        <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)" }}>{current?.description}</p>
       </div>
 
       {section === "create" && <AdminEventCreatePanel />}

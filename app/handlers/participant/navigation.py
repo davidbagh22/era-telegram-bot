@@ -1,5 +1,6 @@
-from aiogram import F, Router
+from aiogram import F, Bot, Router
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -21,7 +22,7 @@ from app.services.event_service import published_events
 from app.services.points_service import total_points
 from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role, STATUS_LABELS
-from app.utils.deep_links import miniapp_admin_url, miniapp_leader_url
+from app.utils.deep_links import main_miniapp_deep_link, miniapp_admin_url, miniapp_leader_url
 
 router = Router(name="participant_navigation")
 
@@ -31,26 +32,39 @@ LEADER_PANEL_TEXT = """Панель лидера
 
 Лидер в ЭРА — это ответственность за людей, движение и результат."""
 
-NAVIGATION_PARTICIPANT = """🧭 <b>Навигация по ЭРА</b>
+NAVIGATION_PARTICIPANT = """🧭 <b>Куда хотите перейти?</b>
 
-Приложение — основная рабочая среда. Выберите не «меню», а то, что хотите сделать:
+<b>ЭРА работает через действия.</b> Выберите то, что нужно сейчас — кнопка откроет нужный экран приложения, а не главную страницу.
 
-💡 <b>Проекты</b> — придумать, собрать и вести свою идею
-📅 <b>События</b> — увидеть ближайшее и зарегистрироваться
-✅ <b>Мои задачи</b> — включиться в реальную работу
-⭐ <b>Возможности</b> — предложения, награды и специальные форматы
-👥 <b>Сообщество</b> — рейтинг, активность и жизнь ЭРА
-👤 <b>Профиль</b> — ваш путь, баллы, достижения и портфолио
+💡 <b>Проекты</b>
+Создать идею, продолжить черновик или войти в команду.
 
-Если нужен не раздел, а человек — нажмите «💬 Связь»."""
+📅 <b>События</b>
+Посмотреть ближайшее и зарегистрироваться.
+
+✅ <b>Мои задачи</b>
+Увидеть работу, которую можно взять или завершить.
+
+⭐ <b>Возможности</b>
+Награды, предложения и специальные форматы.
+
+👥 <b>Сообщество</b>
+Люди, рейтинг и движение ЭРА.
+
+👤 <b>Профиль</b>
+Ваш путь, баллы, достижения и портфолио.
+
+Нужен человек, а не раздел? Нажмите <b>«💬 Связь»</b>."""
 
 NAVIGATION_LEADER = NAVIGATION_PARTICIPANT + """
 
-🧭 <b>Режим лидера</b> — отдельное рабочее пространство для команды, задач и решений по вашему направлению."""
+🧭 <b>Режим лидера</b>
+Команда, задачи и решения по вашему направлению — в отдельном рабочем пространстве."""
 
 NAVIGATION_ADMIN = NAVIGATION_PARTICIPANT + """
 
-⚙️ <b>Режим администратора</b> — отдельный пульт управления ЭРА: заявки, проекты, мероприятия, задания, коммуникации, аналитика и состояние системы."""
+⚙️ <b>Режим администратора</b>
+Пульт управления: участники, проекты, мероприятия, коммуникации, аналитика и состояние системы."""
 
 
 def _approved(user: User | None) -> bool:
@@ -159,7 +173,47 @@ async def contact_button(message: Message, user: User | None, state: FSMContext)
     await message.answer(ux_texts.CONTACT_MENU, reply_markup=contact_keyboard())
 
 
-async def _send_navigation_guide(message: Message, user: User | None, settings: Settings) -> None:
+async def _resolve_bot_username(bot: Bot | None, settings: Settings) -> str:
+    configured = str(getattr(settings, "bot_username", "") or "").strip().lstrip("@")
+    if configured:
+        return configured
+    if bot is None:
+        return ""
+    try:
+        me = await bot.get_me()
+    except (TelegramAPIError, AttributeError):
+        return ""
+    return (me.username or "").strip().lstrip("@")
+
+
+def _main_app_navigation_keyboard(
+    bot_username: str,
+    *,
+    admin: bool,
+    privileged: bool,
+) -> InlineKeyboardMarkup:
+    def launch(label: str, route: str) -> InlineKeyboardButton:
+        return InlineKeyboardButton(text=label, url=main_miniapp_deep_link(bot_username, route))
+
+    rows = [
+        [launch("💡 Проекты", "projects"), launch("📅 События", "events")],
+        [launch("👥 Сообщество", "community"), launch("👤 Профиль", "profile")],
+        [launch("✅ Мои задачи", "tasks"), launch("⭐ Возможности", "opportunities")],
+    ]
+    if admin:
+        rows.append([launch("⚙️ Режим администратора", "admin")])
+    elif privileged:
+        rows.append([launch("🧭 Режим лидера", "leader")])
+    rows.append([InlineKeyboardButton(text="💬 Связь", callback_data="contact:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _send_navigation_guide(
+    message: Message,
+    user: User | None,
+    settings: Settings,
+    bot: Bot | None = None,
+) -> None:
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
@@ -171,27 +225,45 @@ async def _send_navigation_guide(message: Message, user: User | None, settings: 
         text = NAVIGATION_LEADER
     else:
         text = NAVIGATION_PARTICIPANT
-    await message.answer(
-        text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=navigation_guide_keyboard(
+
+    bot_username = await _resolve_bot_username(bot, settings)
+    keyboard = (
+        _main_app_navigation_keyboard(
+            bot_username,
+            admin=is_admin,
+            privileged=is_privileged,
+        )
+        if bot_username
+        else navigation_guide_keyboard(
             settings.effective_miniapp_url,
             admin=is_admin,
             privileged=is_privileged,
-        ),
+        )
     )
+    await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "nav:guide")
-async def nav_guide_callback(call: CallbackQuery, user: User | None, settings: Settings) -> None:
+async def nav_guide_callback(
+    call: CallbackQuery,
+    user: User | None,
+    settings: Settings,
+    bot: Bot | None = None,
+) -> None:
     await call.answer()
-    await _send_navigation_guide(call.message, user, settings)
+    await _send_navigation_guide(call.message, user, settings, bot)
 
 
 @router.message(Command("navigation"), F.chat.type == "private")
-async def navigation_command(message: Message, user: User | None, settings: Settings, state: FSMContext) -> None:
+async def navigation_command(
+    message: Message,
+    user: User | None,
+    settings: Settings,
+    state: FSMContext,
+    bot: Bot | None = None,
+) -> None:
     await state.clear()
-    await _send_navigation_guide(message, user, settings)
+    await _send_navigation_guide(message, user, settings, bot)
 
 
 @router.callback_query(F.data == "contact:menu")

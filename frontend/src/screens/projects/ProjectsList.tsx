@@ -67,21 +67,17 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
       </BottomSheet>
 
       {scope === "mine" && (
-        <Card style={{ background: "linear-gradient(135deg, rgba(255,48,72,0.11), rgba(107,60,255,0.10)), var(--era-surface)" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+        <Card style={{ position: "relative", overflow: "hidden", background: "radial-gradient(70% 120% at 100% 0%, rgba(255,255,255,.08), transparent 58%), linear-gradient(135deg, rgba(255,32,56,0.15), rgba(255,37,111,0.08)), var(--era-surface)", borderColor: "rgba(255,32,56,.2)" }}>
+          <div aria-hidden="true" style={{ position: "absolute", width: 130, height: 130, borderRadius: "50%", right: -72, top: -78, border: "1px solid rgba(255,255,255,.11)" }} />
+          <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: "0.55rem" }}>
             <div>
               <p style={{ margin: "0 0 0.2rem", color: "var(--era-red)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Новый проект</p>
               <strong style={{ fontSize: "var(--era-text-xl)" }}>Начните с одной мысли</strong>
               <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>
-                Не нужно заполнять проект целиком сейчас. Опишите идею одним предложением — дальше конструктор сам проведёт по аудитории, сценарию, команде, бюджету и продвижению.
+                Опишите идею одним предложением. Дальше конструктор разобьёт её на понятные шаги и объяснит, что писать в каждом поле.
               </p>
             </div>
-            <textarea
-              value={idea}
-              onChange={(event) => setIdea(event.target.value)}
-              placeholder="Мы делаем [что] для [кого], чтобы [зачем]"
-              rows={3}
-            />
+            <textarea value={idea} onChange={(event) => setIdea(event.target.value)} placeholder="Мы делаем [что] для [кого], чтобы [зачем]" rows={3} />
             <button type="button" className="era-btn-primary" disabled={creating || !idea.trim()} onClick={handleCreate}>
               {creating ? "Создаю…" : "Начать конструктор →"}
             </button>
@@ -98,7 +94,7 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
           <button type="button" onClick={() => onSelect(project.id)} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
               <strong>{project.title}</strong>
-              <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
+              <StatusBadge label={projectStatusLabel(project.status)} tone="red" />
             </div>
             <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>{project.short_description}</p>
           </button>

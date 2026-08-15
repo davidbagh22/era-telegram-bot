@@ -5,6 +5,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 TASK_SUBMIT_PREFIX = "task_submit_"
 ACTIVITY_SUBMIT_PREFIX = "activity_submit_"
 MINIAPP_ROUTE_PARAM = "eraPath"
+TELEGRAM_START_PARAM = "tgWebAppStartParam"
 
 
 def task_submit_deep_link(bot_username: str, task_id: int) -> str:
@@ -40,16 +41,36 @@ def parse_activity_submit_payload(payload: str) -> int | None:
         return None
 
 
+def bot_start_deep_link(bot_username: str, payload: str) -> str:
+    """Open a private conversation with the bot and pass a /start payload."""
+    username = bot_username.strip().lstrip("@")
+    if not username:
+        return ""
+    return f"https://t.me/{username}?{urlencode({'start': payload})}"
+
+
+def main_miniapp_deep_link(bot_username: str, start_param: str) -> str:
+    """Open the bot's configured Main Mini App with Telegram startapp data.
+
+    This is the preferred Bot -> section handoff because Telegram owns the
+    launch and exposes the destination through its Mini App start parameter.
+    """
+    username = bot_username.strip().lstrip("@")
+    payload = start_param.strip().strip("/")
+    if not username or not payload:
+        return ""
+    return f"https://t.me/{username}?{urlencode({'startapp': payload})}"
+
+
 def miniapp_path_url(
     miniapp_url: str, path: str, params: dict[str, str | int] | None = None
 ) -> str:
-    """Build a Telegram-safe Mini App deep link.
+    """Build a Telegram-safe direct WebAppInfo route URL.
 
-    Telegram's iOS WebView may open a WebAppInfo URL after dropping or
-    normalising the fragment. The old contract stored the whole destination in
-    ``#/...`` and therefore occasionally landed on Home. Keep the destination
-    in a normal query parameter instead; the frontend converts it to its
-    internal hash route after boot. Existing query parameters are preserved.
+    URL fragments are deliberately avoided: Telegram clients do not reliably
+    preserve them when reopening an already-running Mini App. The destination
+    is carried as query data instead; the frontend consumes it before any stale
+    cached hash and then canonicalises the internal route.
     """
     if not miniapp_url:
         return ""
@@ -58,6 +79,7 @@ def miniapp_path_url(
     app_path = parts.path if parts.path.endswith("/") else f"{parts.path}/"
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     query[MINIAPP_ROUTE_PARAM] = normalized_path
+    query[TELEGRAM_START_PARAM] = normalized_path
     if params:
         query.update({key: str(value) for key, value in params.items()})
     return urlunsplit((parts.scheme, parts.netloc, app_path, urlencode(query), ""))

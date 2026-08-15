@@ -28,6 +28,14 @@ test("admin enters separate management workspace and approves a pending applican
   await expect(page.locator(".era-card", { hasText: "E2E Pending Applicant" })).not.toBeVisible();
 });
 
+test("admin overview exposes event creation without hunting through menus", async ({ page }) => {
+  await enterAdminWorkspace(page);
+  await expect(page.getByRole("heading", { name: "Что делаем сейчас?" })).toBeVisible();
+  await page.getByRole("button", { name: /Создать мероприятие/ }).click();
+  await expect(page.getByRole("heading", { name: "Создать мероприятие" })).toBeVisible();
+  await expect(page.getByText(/Название, дата, место, лимит и публикация/)).toBeVisible();
+});
+
 test("admin control has analytics system and maintenance as separate destinations", async ({ page }) => {
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: "Контроль" }).click();
@@ -41,12 +49,12 @@ test("analytics metric opens the real records behind its count", async ({ page }
   await page.getByRole("button", { name: "Контроль" }).click();
   await page.getByRole("button", { name: /Аналитика/ }).click();
 
-  await expect(page.getByRole("heading", { name: "Данные ЭРА" })).toBeVisible();
-  const participantsMetric = page.getByRole("button", { name: /Участники: \d+\. Открыть список/ });
+  await expect(page.getByRole("heading", { name: "Живые данные ЭРА" })).toBeVisible();
+  const participantsMetric = page.getByRole("button", { name: /Участники.*открыть список/i });
   await expect(participantsMetric).toBeVisible();
   await participantsMetric.click();
 
   await expect(page.getByRole("heading", { name: "Участники" })).toBeVisible();
-  await expect(page.getByText("Найдено", { exact: true })).toBeVisible();
+  await expect(page.getByText("Сейчас в базе", { exact: true })).toBeVisible();
   await expect(page.locator(".era-card").filter({ hasText: /participant|admin|leader|activist/i }).first()).toBeVisible();
 });

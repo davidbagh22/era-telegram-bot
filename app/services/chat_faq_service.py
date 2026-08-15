@@ -1,8 +1,9 @@
 """Pinned private-help FAQ and persistent quick navigation for the general chat.
 
-The FAQ card answers privately so the shared chat stays clean. The separate
-persistent reply keyboard gives the group two always-visible shortcuts; presses
-are intercepted and converted into private Mini App routes by app.handlers.chat.
+The FAQ card keeps shared-chat noise low: Events/Profile are routed privately to
+exact Mini App screens, while FAQ questions open a private bot conversation when
+the bot username is available. A persistent reply keyboard keeps Events/Profile
+visible under the general-chat composer.
 """
 
 from __future__ import annotations
@@ -21,13 +22,13 @@ from app.services.audit_service import audit
 
 FAQ_PINNED_MESSAGE = """🔥 <b>ЭРА — быстро о главном</b>
 
-ЭРА — это не просто чат. Здесь участие превращается в проекты, опыт, новые связи и возможности.
+Здесь не нужно искать нужное сообщение в истории чата.
 
-<b>События</b> и <b>мой профиль</b> всегда доступны кнопками внизу чата. Остальные быстрые ответы — ниже.
+<b>События</b> и <b>мой профиль</b> всегда доступны кнопками внизу. А вопросы ниже открывают личный диалог с ботом — общий чат остаётся чистым.
 
-Выберите вопрос — бот ответит <b>лично вам</b>, а общий чат останется чистым.
+<b>ЭРА — это движение:</b> события → задачи → проекты → опыт → новые возможности.
 
-Если нужен человек — нажмите «💬 Задать вопрос»."""
+Нужен не готовый ответ, а человек? Нажмите «💬 Задать вопрос»."""
 
 GENERAL_NAV_MESSAGE = """⚡ <b>Быстрый доступ включён</b>
 
@@ -38,50 +39,56 @@ FAQ_ANSWERS: dict[str, str] = {
 
 ЭРА — среда, где из участника вырастают лидеры через реальные проекты.
 
-Здесь не просто приходят на мероприятия: участники знакомятся, берут задачи, создают идеи, собирают команды и постепенно начинают сами влиять на то, что происходит вокруг.
+Здесь не просто приходят на мероприятия. Можно включиться в задачу, собрать команду, предложить свою идею и постепенно брать больше ответственности.
 
-Главная логика:
-<b>участие → опыт → баллы → возможности → лидерство.</b>
+<b>Как устроен путь:</b>
+Участник → Активный → Лидер.
 
-Не нужно сразу знать свою идеальную роль. Достаточно начать с одного реального действия.""",
+Каждое действие остаётся в вашей истории: опыт, баллы, достижения и портфолио. Начать можно с одного шага — дальше система подскажет следующий.""",
     "faq:what_it_gives": """🚀 <b>Как здесь расти?</b>
 
-Не нужно ждать, пока вас кто-то назовёт активным. Рост начинается с того, что вы делаете.
+В ЭРА рост не зависит от того, сколько месяцев вы состоите в чате. Он виден по действиям и результату.
 
-• приходите на события;
-• берите задачи;
-• участвуйте в проектах;
-• предлагайте идеи;
-• помогайте команде.
+<b>Что двигает вас вперёд:</b>
+• участие в событиях;
+• выполненные задачи;
+• работа в проектной команде;
+• собственные инициативы;
+• помощь другим участникам.
 
-За реальную активность вы получаете опыт, баллы, достижения и доступ к новым возможностям.
+За реальную активность формируются баллы, портфолио, новые роли и доступ к возможностям.
 
-Ваш путь в ЭРА:
-<b>Участник → Активный → Лидер.</b>
-
-Здесь растут не «по стажу», а через ответственность и результат.""",
+<b>Главное:</b> одно хорошо доведённое дело сильнее десяти намерений.""",
     "faq:what_to_do": """🧭 <b>С чего начать?</b>
 
-Если вы только пришли в ЭРА — не пытайтесь разобраться во всём сразу.
+Если вы только вошли в ЭРА, не нужно изучать всю систему за один вечер.
 
-<b>1.</b> Откройте приложение ЭРА и заполните профиль.
-<b>2.</b> Посмотрите ближайшие события и проекты.
-<b>3.</b> Выберите одно действие: запишитесь, возьмите задачу или присоединитесь к проекту.
+<b>Первый маршрут:</b>
+1. Откройте приложение ЭРА и проверьте профиль.
+2. Посмотрите ближайшие события.
+3. Выберите одну задачу или проект, где хочется включиться.
+4. Сделайте первое действие — оно уже станет частью вашего пути.
 
-Первый шаг важнее идеального плана. Всё остальное станет понятнее уже в движении.""",
+Если пока не понимаете, что подходит именно вам, нажмите «💬 Задать вопрос» — поможем выбрать точку входа.""",
     "faq:what_can_i_do": """💡 <b>Как предложить идею?</b>
 
-Идея в ЭРА не должна оставаться сообщением в чате.
+Не нужно заранее готовить презентацию или длинный документ.
 
-Откройте <b>ЭРА → Проекты → Новый проект</b> и коротко опишите:
-• что хотите сделать;
-• для кого;
-• какой результат хотите получить.
+Откройте <b>ЭРА → Проекты → Новый проект</b> и начните с простой формулы:
+<i>что хотим сделать → для кого → зачем.</i>
 
-Дальше система поможет собрать идею в полноценный проект, а команда сможет дать обратную связь и провести её дальше.
+Дальше конструктор проведёт по шагам: аудитория, сценарий, команда, бюджет, продвижение, риски и результат. У каждого вопроса есть объяснение и короткий промпт для ИИ.
 
-Даже если идея пока сырая — начните с первого варианта. Сильные проекты редко рождаются идеально готовыми.""",
+Идея может быть сырой. Важно, чтобы в ней была понятная польза — форму мы поможем собрать.""",
 }
+
+FAQ_START_PAYLOADS: dict[str, str] = {
+    "faq_what_is_era": "faq:what_is_era",
+    "faq_what_it_gives": "faq:what_it_gives",
+    "faq_what_to_do": "faq:what_to_do",
+    "faq_what_can_i_do": "faq:what_can_i_do",
+}
+FAQ_CONTACT_PAYLOAD = "faq_contact"
 
 
 class ChatFaqError(Exception):
@@ -127,15 +134,33 @@ async def _navigation_keyboard_already_published(session: AsyncSession) -> bool:
     return marker is not None
 
 
-async def _upsert_faq_message(bot: Bot, chat_id: int, session: AsyncSession) -> int:
+async def _resolve_bot_username(bot: Bot, settings: Settings) -> str:
+    configured = str(getattr(settings, "bot_username", "") or "").strip().lstrip("@")
+    if configured:
+        return configured
+    try:
+        get_me = getattr(bot, "get_me")
+        me = await get_me()
+    except (AttributeError, TelegramAPIError):
+        return ""
+    return (getattr(me, "username", "") or "").strip().lstrip("@")
+
+
+async def _upsert_faq_message(
+    bot: Bot,
+    chat_id: int,
+    session: AsyncSession,
+    bot_username: str,
+) -> int:
     message_id = await _latest_faq_message_id(session)
+    keyboard = faq_keyboard(bot_username)
     if message_id:
         try:
             await bot.edit_message_text(
                 FAQ_PINNED_MESSAGE,
                 chat_id=chat_id,
                 message_id=message_id,
-                reply_markup=faq_keyboard(),
+                reply_markup=keyboard,
                 parse_mode="HTML",
             )
             return message_id
@@ -149,7 +174,7 @@ async def _upsert_faq_message(bot: Bot, chat_id: int, session: AsyncSession) -> 
         sent = await bot.send_message(
             chat_id,
             FAQ_PINNED_MESSAGE,
-            reply_markup=faq_keyboard(),
+            reply_markup=keyboard,
             parse_mode="HTML",
         )
     except TelegramAPIError as exc:
@@ -164,7 +189,13 @@ async def publish_faq_message(
     if not chat_id:
         raise ChatFaqError("chat_not_bound")
 
-    message_id = await _upsert_faq_message(bot, int(chat_id), session)
+    bot_username = await _resolve_bot_username(bot, settings)
+    message_id = await _upsert_faq_message(
+        bot,
+        int(chat_id),
+        session,
+        bot_username,
+    )
     pinned = True
     try:
         await bot.pin_chat_message(int(chat_id), message_id, disable_notification=True)
@@ -189,11 +220,7 @@ async def publish_general_navigation_keyboard(
     session: AsyncSession,
     actor_id: int | None = None,
 ) -> int | None:
-    """Publish the persistent group dock once for existing members.
-
-    New members receive the same keyboard from the welcome handler, so deploys
-    must not create repeated navigation messages in the shared chat.
-    """
+    """Publish the persistent group dock once for existing members."""
     if not settings.general_chat_id:
         raise ChatFaqError("chat_not_bound")
     if await _navigation_keyboard_already_published(session):

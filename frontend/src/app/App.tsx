@@ -15,6 +15,7 @@ import { LeaderScreen } from "../screens/LeaderScreen";
 import { PendingScreen } from "../screens/PendingScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { ProjectsScreen } from "../screens/ProjectsScreen";
+import { getTelegramStartParam } from "../telegram/webApp";
 import type { MiniAppUserSummary } from "../types/auth";
 
 type LegacyActivitySection = "tasks" | "calendar" | "history";
@@ -37,6 +38,8 @@ const TAB_HASH: Record<TabKey, string> = {
   profile: "#/profile",
 };
 
+let telegramStartParamConsumed = false;
+
 function parseOptionalId(value: string | undefined): number | null {
   if (!value) return null;
   const parsed = Number(value);
@@ -52,18 +55,25 @@ function telegramQueryRoute(): string {
   return normalizeRoute(query.get("eraPath") ?? query.get("tgWebAppStartParam") ?? "");
 }
 
-function routeValue(): string {
-  // A fresh Bot -> Mini App button is an explicit navigation command and must
-  // win over a hash left in Telegram's cached WebView from the previous visit.
-  // We canonicalize this query route into the hash immediately after boot so
-  // normal in-app hash navigation works from then on.
+function telegramLaunchRoute(): string {
   const queryRoute = telegramQueryRoute();
   if (queryRoute) return queryRoute;
+  if (!telegramStartParamConsumed) return normalizeRoute(getTelegramStartParam());
+  return "";
+}
+
+function routeValue(): string {
+  // A fresh Bot -> Mini App command must win over a hash left in Telegram's
+  // cached WebView from the previous visit. We read both URL routing and the
+  // Telegram SDK start_param, then consume the launch route exactly once.
+  const launchRoute = telegramLaunchRoute();
+  if (launchRoute) return launchRoute;
   return normalizeRoute(window.location.hash.replace(/^#\/?/, ""));
 }
 
-function canonicalizeTelegramQueryRoute(): void {
-  const route = telegramQueryRoute();
+function canonicalizeTelegramLaunchRoute(): void {
+  const route = telegramLaunchRoute();
+  telegramStartParamConsumed = true;
   if (!route) return;
 
   const url = new URL(window.location.href);
@@ -217,7 +227,7 @@ export function App() {
   const [inWorkspace, setInWorkspace] = useState(false);
 
   useEffect(() => {
-    canonicalizeTelegramQueryRoute();
+    canonicalizeTelegramLaunchRoute();
 
     const syncFromLocation = () => {
       const next = parseDeepLink();
