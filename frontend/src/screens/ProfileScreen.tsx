@@ -6,6 +6,7 @@ import { BottomSheet } from "../components/BottomSheet";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { ProgressBar } from "../components/ProgressBar";
+import { ProgressRing } from "../components/ProgressRing";
 import { Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { useToast } from "../components/Toast";
@@ -43,7 +44,7 @@ function PortfolioSection({ title, entries }: { title: string; entries: Portfoli
       {entries.length === 0 ? (
         <EmptyState text="Здесь пока нет записей." />
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <div className="era-stagger" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           {entries.map((entry, index) => (
             <Card key={`${entry.title}-${index}`}>
               <strong>{entry.title}</strong>
@@ -181,27 +182,42 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileSc
 
   const points = data.stats.points ?? 0;
   const totalResults = Object.values(resultEntries).reduce((total, entries) => total + entries.length, 0);
+  const orbitPercent = data.growth.level_count <= 1
+    ? 1
+    : Math.max(0, Math.min(1, data.growth.level_index / (data.growth.level_count - 1)));
 
   return (
-    <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
+    <div className="era-page era-stagger" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
       <Card gradient style={{ position: "relative", overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.875rem" }}>
-          <Avatar firstName={data.first_name} lastName={data.last_name} />
-          <div style={{ minWidth: 0 }}>
-            <p style={{ margin: "0 0 0.2rem", color: "rgba(255,255,255,0.7)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
-              Мой путь в ЭРА
-            </p>
-            <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)", margin: 0, overflowWrap: "anywhere" }}>
-              {data.full_name || data.first_name}
-            </h1>
-            <p style={{ margin: "0.25rem 0 0", color: "rgba(255,255,255,0.78)" }}>
-              {data.growth.label}{data.city ? ` · ${data.city}` : ""}
-            </p>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: "0.875rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.875rem", minWidth: 0 }}>
+            <Avatar firstName={data.first_name} lastName={data.last_name} />
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: "0 0 0.2rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
+                Мой путь в ЭРА
+              </p>
+              <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)", margin: 0, overflowWrap: "anywhere" }}>
+                {data.full_name || data.first_name}
+              </h1>
+              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>
+                {data.growth.label}{data.city ? ` · ${data.city}` : ""}
+              </p>
+            </div>
+          </div>
+
+          <div style={{ position: "relative", width: 82, height: 82 }} aria-label={`Статус роста ${Math.round(orbitPercent * 100)} процентов`}>
+            <ProgressRing percent={orbitPercent} size={82} animationKey="profile-status-orbit" />
+            <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", textAlign: "center" }}>
+              <div>
+                <strong style={{ display: "block", fontSize: ".98rem", lineHeight: 1 }}>{Math.round(orbitPercent * 100)}%</strong>
+                <span style={{ display: "block", marginTop: 2, color: "var(--era-text-muted)", fontSize: ".58rem" }}>STATUS</span>
+              </div>
+            </div>
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem", marginTop: "1rem" }}>
-          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{points}</strong><span style={{ display: "block", color: "rgba(255,255,255,0.68)", fontSize: "var(--era-text-xs)" }}>баллов</span></div>
-          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{totalResults}</strong><span style={{ display: "block", color: "rgba(255,255,255,0.68)", fontSize: "var(--era-text-xs)" }}>результатов</span></div>
+          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{points}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>баллов</span></div>
+          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{totalResults}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>результатов</span></div>
         </div>
       </Card>
 
@@ -215,7 +231,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileSc
               const current = index === data.growth.level_index;
               return (
                 <div key={label} style={{ display: "grid", gridTemplateColumns: "1.25rem 1fr", gap: "0.75rem", alignItems: "start" }}>
-                  <span aria-hidden="true" style={{ width: 12, height: 12, marginTop: 3, borderRadius: "50%", background: reached ? "var(--era-violet)" : "var(--era-ring-track)", boxShadow: current ? "0 0 0 5px var(--era-tint-violet)" : "none" }} />
+                  <span aria-hidden="true" style={{ width: 12, height: 12, marginTop: 3, borderRadius: "50%", background: reached ? "var(--era-red)" : "var(--era-ring-track)", boxShadow: current ? "0 0 0 5px var(--era-tint-red)" : "none" }} />
                   <div>
                     <strong style={{ color: reached ? "var(--era-text)" : "var(--era-text-muted)" }}>{label}</strong>
                     {current && <span style={{ display: "block", marginTop: "0.15rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>Вы здесь сейчас</span>}
