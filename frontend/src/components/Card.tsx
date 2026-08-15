@@ -3,24 +3,29 @@ import type { CSSProperties, ReactNode } from "react";
 interface CardProps {
   children: ReactNode;
   gradient?: boolean;
+  interactive?: boolean;
+  onClick?: () => void;
   style?: CSSProperties;
+  ariaLabel?: string;
 }
 
-export function Card({ children, gradient = false, style }: CardProps) {
+export function Card({ children, gradient = false, interactive = false, onClick, style, ariaLabel }: CardProps) {
+  const isInteractive = interactive || Boolean(onClick);
   return (
     <div
-      className="era-card"
+      className={`era-card${isInteractive ? " era-interactive" : ""}`}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={ariaLabel}
+      onClick={onClick}
+      onKeyDown={onClick ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(); } } : undefined}
       style={{
         borderRadius: "var(--era-radius-card)",
         padding: "1rem",
-        border: gradient ? "1px solid rgba(255,255,255,0.12)" : "1px solid var(--era-border)",
-        background: gradient
-          ? "linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.02)), var(--era-gradient)"
-          : "linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018)), var(--era-surface)",
-        boxShadow: gradient ? "0 18px 42px rgba(120, 61, 255, 0.18)" : "var(--era-shadow-soft)",
+        border: gradient ? "1px solid rgba(152,27,40,.16)" : "1px solid var(--era-border)",
+        background: gradient ? "var(--era-gradient)" : "var(--era-surface)",
+        boxShadow: gradient ? "0 14px 34px rgba(152,27,40,.14)" : "var(--era-shadow-soft)",
         color: gradient ? "#fff" : "var(--era-text)",
-        backdropFilter: "blur(18px)",
-        WebkitBackdropFilter: "blur(18px)",
         ...style,
       }}
     >

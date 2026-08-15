@@ -9,51 +9,44 @@ import {
 import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
+import { EventCard } from "../../components/EventCard";
+import { PageHeader } from "../../components/PageHeader";
+import { PrimaryButton, SecondaryButton } from "../../components/Buttons";
 import { SkeletonList } from "../../components/Skeleton";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useToast } from "../../components/Toast";
+import { CalendarIcon, FilterIcon, MapPinIcon, ShareIcon } from "../../components/icons";
 import { useAsync } from "../../hooks/useAsync";
 import type { EventActivity, EventItem, EventScope } from "../../types/activity";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
-
-const ACTIVITY_STATUS_LABELS: Record<string, string> = {
-  pending: "На проверке",
-  leader_approved: "Проверено лидером",
-  approved: "Принято",
-  rejected: "Нужно исправить",
-};
-
-const ACTIVE_REGISTRATION_STATUSES = new Set(["registered", "will_come", "attended"]);
-const WAITLIST_STATUS = "waitlist";
-
-const SCOPES: { value: EventScope; label: string; description: string }[] = [
-  { value: "for_me", label: "Для меня", description: "Ближайшие события и то, где вы уже участвуете" },
-  { value: "all", label: "Все события", description: "Вся открытая афиша ЭРА" },
-  { value: "mine", label: "Мои регистрации", description: "События, на которые вы записаны" },
-  { value: "past", label: "Прошедшие", description: "История мероприятий" },
+const ACTIVE = new Set(["registered", "will_come", "attended"]);
+const SCOPES: { value: EventScope; label: string }[] = [
+  { value: "for_me", label: "Для меня" },
+  { value: "all", label: "Все события" },
+  { value: "mine", label: "Мои регистрации" },
+  { value: "past", label: "Прошедшие" },
 ];
+
+function todayIso(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
 
 function formatDate(value: string): string {
   const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", weekday: "short" }).format(date);
 }
 
-function capacityText(event: EventItem): string {
-  if (event.participant_limit === null) return "Без ограничения мест";
-  return `${event.registered_count} / ${event.participant_limit} участников`;
-}
-
 function posterSrc(event: EventItem): string | null {
-  if (!event.poster_url) return null;
-  return `${API_BASE_URL}/api/v1/event-posters/${event.id}`;
+  return event.poster_url ? `${API_BASE_URL}/api/v1/event-posters/${event.id}` : null;
 }
 
 function addToCalendar(event: EventItem): void {
-  const pad = (value: string) => value.replace(/[-:]/g, "");
-  const start = `${pad(event.event_date)}T${pad(event.event_time)}00`;
-  const endTime = event.end_time ?? event.event_time;
-  const end = `${pad(event.event_date)}T${pad(endTime)}00`;
+  const compact = (value: string) => value.replace(/[-:]/g, "");
+  const start = `${compact(event.event_date)}T${compact(event.event_time)}00`;
+  const end = `${compact(event.event_date)}T${compact(event.end_time ?? event.event_time)}00`;
   const description = (event.full_description ?? event.description).replace(/\n/g, "\\n");
   const location = [event.location, event.address].filter(Boolean).join(", ");
   const ics = [
@@ -70,398 +63,223 @@ function addToCalendar(event: EventItem): void {
     "END:VEVENT",
     "END:VCALENDAR",
   ].join("\r\n");
-  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `ERA-${event.id}.ics`;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 500);
+  const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `ERA-${event.id}.ics`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
+function openMap(event: EventItem): void {
+  const query = [event.location, event.address].filter(Boolean).join(", ");
+  if (!query) return;
+  window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, "_blank", "noopener,noreferrer");
+}
+
+async function shareEvent(event: EventItem): Promise<void> {
+  const url = `${window.location.origin}${window.location.pathname}#/events/${event.id}`;
+  const text = `${event.title} · ${event.event_date} ${event.event_time}`;
+  if (navigator.share) {
+    await navigator.share({ title: event.title, text, url });
+    return;
+  }
+  window.open(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
 }
 
 function EventActivitiesPanel({ eventId }: { eventId: number }) {
   const state = useAsync(() => fetchEventActivities(eventId), [eventId]);
-
-  if (state.status === "loading") {
-    return <p style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>Загружаем задания…</p>;
-  }
-  if (state.status === "error") {
-    return <p style={{ color: "var(--era-error)", fontSize: "0.8125rem" }}>Не удалось загрузить задания мероприятия.</p>;
-  }
-  if (state.data.length === 0) {
-    return <p style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>Дополнительных заданий пока нет.</p>;
-  }
+  if (state.status === "loading") return <SkeletonList count={1} />;
+  if (state.status === "error") return <EmptyState title="Задания не загрузились" description="Регистрация сохранена; дополнительные активности можно открыть позже." />;
+  if (state.data.length === 0) return null;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+    <section className="era-section">
+      <h3 style={{ margin: 0, fontSize: "var(--era-text-lg)" }}>Активности после события</h3>
       {state.data.map((activity: EventActivity) => (
-        <div
-          key={activity.id}
-          style={{
-            border: "1px solid var(--era-border)",
-            background: "rgba(255,255,255,.025)",
-            borderRadius: "0.9rem",
-            padding: "0.8rem",
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.35rem",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "flex-start" }}>
-            <strong>{activity.title}</strong>
-            {activity.my_status && <StatusBadge label={ACTIVITY_STATUS_LABELS[activity.my_status] ?? "В работе"} tone="violet" />}
-          </div>
-          <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.85rem" }}>{activity.description}</p>
-          <strong style={{ fontSize: "0.82rem" }}>+{activity.points} баллов</strong>
-          {activity.submit_deep_link && (
-            <a href={activity.submit_deep_link} target="_blank" rel="noreferrer" className="era-btn-primary" style={{ textAlign: "center", textDecoration: "none", marginTop: "0.35rem" }}>
-              Отправить результат
-            </a>
-          )}
-        </div>
+        <Card key={activity.id} style={{ boxShadow: "none" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><strong>{activity.title}</strong><strong style={{ color: "var(--era-red)", whiteSpace: "nowrap" }}>+{activity.points}</strong></div>
+          <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)" }}>{activity.description}</p>
+          {activity.my_status && <p style={{ margin: "0.45rem 0 0", fontSize: "var(--era-text-xs)", color: "var(--era-text-muted)" }}>Статус: {activity.my_status}</p>}
+          {activity.submit_deep_link && <a href={activity.submit_deep_link} target="_blank" rel="noreferrer" className="era-btn-secondary" style={{ marginTop: "0.7rem" }}>Отправить результат</a>}
+        </Card>
       ))}
-    </div>
+    </section>
   );
 }
 
-function EventPoster({ event, compact = false }: { event: EventItem; compact?: boolean }) {
-  const src = posterSrc(event);
-  const height = compact ? 150 : 245;
-  if (src) {
-    return (
-      <img
-        src={src}
-        alt={`Афиша ${event.title}`}
-        style={{ width: "100%", height, objectFit: "cover", borderRadius: compact ? "1rem" : "1.25rem", display: "block" }}
-      />
-    );
-  }
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        height,
-        borderRadius: compact ? "1rem" : "1.25rem",
-        background: "radial-gradient(circle at 80% 20%, rgba(255,255,255,.18), transparent 28%), linear-gradient(135deg, #710016 0%, #E51B36 55%, #8A1FE0 100%)",
-        display: "flex",
-        alignItems: "flex-end",
-        padding: compact ? "1rem" : "1.25rem",
-        boxSizing: "border-box",
-        overflow: "hidden",
-      }}
-    >
-      <span style={{ fontSize: compact ? "2rem" : "3rem", fontWeight: 900, opacity: 0.85 }}>ЭРА</span>
-    </div>
-  );
-}
-
-interface EventDetailProps {
-  event: EventItem;
-  pending: boolean;
-  actionError: string | null;
-  onRegister: () => void;
-  onCancelRequest: () => void;
-  onBack: () => void;
-}
-
-function EventDetail({ event, pending, actionError, onRegister, onCancelRequest, onBack }: EventDetailProps) {
-  const registered = ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "");
-  const waitlisted = event.registration_status === WAITLIST_STATUS;
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", paddingBottom: "6rem" }}>
-      <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← К событиям</button>
-      <EventPoster event={event} />
-
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-        <StatusBadge label={event.display_status} tone={registered ? "violet" : "neutral"} />
-        <h2 style={{ fontSize: "clamp(1.65rem, 7vw, 2.35rem)", lineHeight: 1.05, margin: 0 }}>{event.title}</h2>
-        {event.short_description && <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "1rem", lineHeight: 1.45 }}>{event.short_description}</p>}
-      </div>
-
-      <Card style={{ padding: "0.95rem" }}>
-        <div style={{ display: "grid", gap: "0.75rem" }}>
-          <div><span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>КОГДА</span><div style={{ fontWeight: 800, marginTop: 2 }}>{formatDate(event.event_date)} · {event.event_time}{event.end_time ? `–${event.end_time}` : ""}</div></div>
-          <div><span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>ГДЕ</span><div style={{ fontWeight: 800, marginTop: 2 }}>{event.location}</div>{event.address && <div style={{ color: "var(--era-text-muted)", fontSize: "0.85rem" }}>{event.address}</div>}</div>
-          {event.organizer && <div><span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>ОРГАНИЗАТОР</span><div style={{ fontWeight: 800, marginTop: 2 }}>{event.organizer}</div></div>}
-        </div>
-      </Card>
-
-      <Card>
-        <strong style={{ fontSize: "1.05rem" }}>О событии</strong>
-        <p style={{ whiteSpace: "pre-wrap", lineHeight: 1.55, margin: "0.55rem 0 0", color: "var(--era-text-muted)" }}>{event.full_description ?? event.description}</p>
-      </Card>
-
-      {event.participant_value && (
-        <Card style={{ background: "linear-gradient(145deg, rgba(229,27,54,.13), rgba(138,31,224,.08))" }}>
-          <strong>Что вы получите</strong>
-          <p style={{ whiteSpace: "pre-wrap", margin: "0.45rem 0 0", lineHeight: 1.5 }}>{event.participant_value}</p>
-        </Card>
-      )}
-
-      {event.program.length > 0 && (
-        <section>
-          <h3 style={{ margin: "0 0 0.6rem" }}>Программа</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            {event.program.map((item, index) => (
-              <Card key={`${item.title ?? "activity"}-${index}`} style={{ padding: "0.8rem 0.9rem" }}>
-                <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-                  {item.time && <strong style={{ minWidth: 48 }}>{item.time}</strong>}
-                  <div>
-                    <strong>{item.title || `Активность ${index + 1}`}</strong>
-                    {item.description && <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.86rem" }}>{item.description}</p>}
-                    {item.responsible && <p style={{ margin: "0.25rem 0 0", fontSize: "0.8rem" }}>Ведёт: {item.responsible}</p>}
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {event.participant_tasks.length > 0 && (
-        <section>
-          <h3 style={{ margin: "0 0 0.6rem" }}>Задания и баллы</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            {event.participant_tasks.map((task, index) => (
-              <Card key={`${task.title ?? "task"}-${index}`} style={{ padding: "0.8rem 0.9rem" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}>
-                  <strong>{task.title || `Задание ${index + 1}`}</strong>
-                  {typeof task.points === "number" && <strong style={{ whiteSpace: "nowrap" }}>+{task.points}</strong>}
-                </div>
-                {task.description && <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", fontSize: "0.86rem" }}>{task.description}</p>}
-              </Card>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <Card>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.7rem" }}>
-          <div><span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>УЧАСТНИКИ</span><div style={{ fontSize: "1.25rem", fontWeight: 900 }}>{capacityText(event)}</div>{event.remaining_count !== null && <div style={{ color: "var(--era-text-muted)", fontSize: "0.82rem" }}>Осталось {event.remaining_count}</div>}</div>
-          <div><span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>ЗА ПОСЕЩЕНИЕ</span><div style={{ fontSize: "1.25rem", fontWeight: 900 }}>{event.points_for_visit > 0 ? `+${event.points_for_visit}` : "—"}</div><div style={{ color: "var(--era-text-muted)", fontSize: "0.82rem" }}>баллов</div></div>
-        </div>
-      </Card>
-
-      {(registered || waitlisted) && (
-        <Card>
-          <strong>{waitlisted ? "Вы в листе ожидания" : "Вы участвуете ✓"}</strong>
-          <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "0.86rem" }}>
-            {waitlisted ? "Если место освободится, бот сообщит вам автоматически." : "Подробности и напоминания придут в бот."}
-          </p>
-          {registered && <div style={{ marginTop: "0.75rem" }}><EventActivitiesPanel eventId={event.id} /></div>}
-        </Card>
-      )}
-
-      {event.project_id && <button type="button" onClick={() => { window.location.hash = `#/projects/${event.project_id}`; }}>Открыть связанный проект →</button>}
-      <button type="button" onClick={() => addToCalendar(event)}>Добавить в календарь</button>
-      {event.chat_url && <a href={event.chat_url} target="_blank" rel="noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть чат</a>}
-      {event.contact && <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.86rem" }}>Связь: {event.contact}</p>}
-      {actionError && <p style={{ color: "var(--era-error)", margin: 0 }}>{actionError}</p>}
-
-      <div
-        style={{
-          position: "fixed",
-          left: "max(1rem, env(safe-area-inset-left))",
-          right: "max(1rem, env(safe-area-inset-right))",
-          bottom: "calc(5.4rem + env(safe-area-inset-bottom))",
-          zIndex: 20,
-          padding: "0.55rem",
-          border: "1px solid var(--era-border)",
-          borderRadius: "1.25rem",
-          background: "rgba(11,9,16,.88)",
-          backdropFilter: "blur(18px)",
-          boxShadow: "0 16px 50px rgba(0,0,0,.35)",
-        }}
-      >
-        {registered || waitlisted ? (
-          <button type="button" disabled={pending} onClick={onCancelRequest} style={{ width: "100%" }}>
-            {pending ? "Сохраняем…" : "Отказаться от участия"}
-          </button>
-        ) : event.can_register ? (
-          <button type="button" className="era-btn-primary" disabled={pending} onClick={onRegister} style={{ width: "100%" }}>
-            {pending ? "Регистрируем…" : event.remaining_count === 0 && event.waitlist_enabled ? "Встать в лист ожидания" : "Зарегистрироваться"}
-          </button>
-        ) : (
-          <button type="button" disabled style={{ width: "100%" }}>Регистрация недоступна</button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-interface EventsTabProps {
-  initialItemId?: number | null;
-}
-
-export function EventsTab({ initialItemId }: EventsTabProps = {}) {
+export function EventsTab({ initialItemId = null }: { initialItemId?: number | null }) {
   const [scope, setScope] = useState<EventScope>(initialItemId ? "all" : "for_me");
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchEvents(scope), [scope, refreshKey]);
-  const [selectedId, setSelectedId] = useState<number | null>(initialItemId ?? null);
-  const [selectedOverride, setSelectedOverride] = useState<EventItem | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [formatFilter, setFormatFilter] = useState<string>("all");
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedOverride, setSelectedOverride] = useState<EventItem | null>(null);
   const [cancelTarget, setCancelTarget] = useState<EventItem | null>(null);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [deepLinkFallbackTried, setDeepLinkFallbackTried] = useState(false);
+  const [successEvent, setSuccessEvent] = useState<EventItem | null>(null);
   const toast = useToast();
 
-  const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
-
   useEffect(() => {
-    if (initialItemId) {
-      setSelectedId(initialItemId);
-      setScope("all");
-      setDeepLinkFallbackTried(false);
-    }
+    if (initialItemId) setScope("all");
   }, [initialItemId]);
 
-  useEffect(() => {
-    if (!initialItemId || state.status !== "ready" || selectedId !== initialItemId) return;
-    const found = state.data.some((item) => item.id === initialItemId);
-    if (!found && scope === "all" && !deepLinkFallbackTried) {
-      setDeepLinkFallbackTried(true);
-      setScope("past");
-    }
-  }, [deepLinkFallbackTried, initialItemId, scope, selectedId, state]);
+  const events = state.status === "ready" ? state.data : [];
+  const selected = initialItemId !== null
+    ? selectedOverride?.id === initialItemId ? selectedOverride : events.find((event) => event.id === initialItemId) ?? null
+    : null;
 
-  const selected = useMemo(() => {
-    if (selectedOverride?.id === selectedId) return selectedOverride;
-    if (state.status !== "ready" || selectedId === null) return null;
-    return state.data.find((item) => item.id === selectedId) ?? null;
-  }, [selectedId, selectedOverride, state]);
+  const formats = useMemo(() => Array.from(new Set(events.map((event) => event.format).filter(Boolean))).sort(), [events]);
+  const filtered = useMemo(() => events.filter((event) => {
+    if (formatFilter !== "all" && event.format !== formatFilter) return false;
+    if (onlyAvailable && !event.can_register && !ACTIVE.has(event.registration_status ?? "")) return false;
+    return true;
+  }), [events, formatFilter, onlyAvailable]);
 
-  const handleRegister = useCallback(async (eventId: number) => {
-    setPendingId(eventId);
+  const refresh = useCallback(() => setRefreshKey((value) => value + 1), []);
+
+  const register = useCallback(async (event: EventItem) => {
+    if (pendingId !== null) return;
+    setPendingId(event.id);
     setActionError(null);
     try {
-      const result = await registerForEvent(eventId);
+      const result = await registerForEvent(event.id);
       setSelectedOverride(result);
+      setSuccessEvent(result);
       refresh();
-      toast.show(result.registration_status === WAITLIST_STATUS ? "Вы в листе ожидания" : "Вы зарегистрированы", "success");
+      toast.show(result.registration_status === "waitlist" ? "Вы в листе ожидания" : "Место за вами", "success");
     } catch (error) {
       setActionError(describeActionError(error));
     } finally {
       setPendingId(null);
     }
-  }, [refresh, toast]);
+  }, [pendingId, refresh, toast]);
 
-  const handleCancel = useCallback(async (eventId: number) => {
-    setPendingId(eventId);
+  const cancel = useCallback(async (event: EventItem) => {
+    if (pendingId !== null) return;
+    setPendingId(event.id);
     setActionError(null);
     try {
-      const result = await cancelEventRegistration(eventId);
+      const result = await cancelEventRegistration(event.id);
       setSelectedOverride(result);
+      setCancelTarget(null);
+      setSuccessEvent(null);
       refresh();
       toast.show("Участие отменено", "info");
     } catch (error) {
       setActionError(describeActionError(error));
     } finally {
       setPendingId(null);
-      setCancelTarget(null);
     }
-  }, [refresh, toast]);
+  }, [pendingId, refresh, toast]);
 
-  const openEvent = (id: number) => {
-    setSelectedId(id);
-    setSelectedOverride(null);
-    setActionError(null);
-    window.location.hash = `#/events/${id}`;
-  };
-
-  const closeEvent = () => {
-    setSelectedId(null);
-    setSelectedOverride(null);
-    setActionError(null);
-    setScope("for_me");
-    window.location.hash = "#/events";
-  };
-
-  if (selectedId !== null) {
+  if (initialItemId !== null) {
     if (state.status === "loading") return <SkeletonList count={3} />;
-    if (state.status === "error") return <EmptyState text="Не удалось открыть мероприятие. Проверьте соединение и попробуйте снова." />;
-    if (!selected && (scope !== "all" || deepLinkFallbackTried)) {
-      return (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <button type="button" onClick={closeEvent} style={{ alignSelf: "flex-start" }}>← К событиям</button>
-          <Card>
-            <h2 style={{ marginTop: 0 }}>Этот объект больше недоступен</h2>
-            <p style={{ marginBottom: 0, color: "var(--era-text-muted)" }}>Мероприятие удалено, закрыто для просмотра или ссылка больше неактуальна.</p>
-          </Card>
-        </div>
-      );
+    if (state.status === "error" || !selected) {
+      return <><PageHeader title="Событие" onBack={() => window.location.hash = "#/events"} /><EmptyState title="Это событие больше недоступно" description="Возможно, его удалили или доступ изменился." actionLabel="Вернуться к событиям" onAction={() => window.location.hash = "#/events"} /></>;
     }
-    if (selected) {
-      return (
-        <>
-          <EventDetail
-            event={selected}
-            pending={pendingId === selected.id}
-            actionError={actionError}
-            onRegister={() => void handleRegister(selected.id)}
-            onCancelRequest={() => setCancelTarget(selected)}
-            onBack={closeEvent}
-          />
-          <BottomSheet open={cancelTarget !== null} onClose={() => setCancelTarget(null)} title="Отказаться от участия?">
-            <p style={{ color: "var(--era-text-muted)", margin: "0 0 1rem" }}>Место освободится для другого участника. Вернуться можно будет только если регистрация всё ещё открыта.</p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
-              <button type="button" onClick={() => setCancelTarget(null)}>Остаться</button>
-              <button type="button" className="era-btn-primary" disabled={pendingId === selected.id} onClick={() => void handleCancel(selected.id)}>Отказаться</button>
+    return (
+      <EventDetail
+        event={selected}
+        pending={pendingId === selected.id}
+        actionError={actionError}
+        onRegister={() => void register(selected)}
+        onCancel={() => setCancelTarget(selected)}
+      >
+        <BottomSheet open={Boolean(cancelTarget)} onClose={() => setCancelTarget(null)} title="Отказаться от участия?">
+          <p style={{ margin: 0, color: "var(--era-text-muted)" }}>Место освободится для другого участника. Если передумали — просто останьтесь зарегистрированы.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.55rem", marginTop: "1rem" }}>
+            <SecondaryButton onClick={() => setCancelTarget(null)}>Остаться</SecondaryButton>
+            <button type="button" className="era-btn-danger" disabled={pendingId !== null} onClick={() => cancelTarget && void cancel(cancelTarget)}>{pendingId ? "Отменяем…" : "Отказаться"}</button>
+          </div>
+        </BottomSheet>
+        <BottomSheet open={Boolean(successEvent)} onClose={() => setSuccessEvent(null)} title={successEvent?.registration_status === "waitlist" ? "Вы в листе ожидания" : "Место за вами"}>
+          {successEvent && <>
+            <Card style={{ boxShadow: "none" }}><strong>{formatDate(successEvent.event_date)} · {successEvent.event_time}</strong><p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)" }}>{successEvent.location}{successEvent.address ? ` · ${successEvent.address}` : ""}</p></Card>
+            <div style={{ display: "grid", gap: "0.55rem", marginTop: "0.75rem" }}>
+              <SecondaryButton onClick={() => addToCalendar(successEvent)}><CalendarIcon width={18} height={18} />Добавить в календарь</SecondaryButton>
+              {successEvent.chat_url && <a href={successEvent.chat_url} target="_blank" rel="noreferrer" className="era-btn-secondary">Открыть чат</a>}
+              {ACTIVE.has(successEvent.registration_status ?? "") && <button type="button" className="era-btn-danger" onClick={() => { setSuccessEvent(null); setCancelTarget(successEvent); }}>Отказаться от участия</button>}
             </div>
-          </BottomSheet>
-        </>
-      );
-    }
+            <p style={{ margin: "0.75rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>Подробности и выбранные администратором напоминания придут в бот.</p>
+          </>}
+        </BottomSheet>
+      </EventDetail>
+    );
   }
 
-  const scopeMeta = SCOPES.find((item) => item.value === scope) ?? SCOPES[0];
+  const today = todayIso();
+  const todayItems = filtered.filter((event) => event.event_date === today);
+  const soonItems = filtered.filter((event) => event.event_date > today);
+  const pastItems = filtered.filter((event) => event.event_date < today);
+  const primaryList = scope === "past" ? pastItems : soonItems;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
-      <button type="button" onClick={() => setFilterOpen(true)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span>Показать: <strong>{scopeMeta.label}</strong></span><span>⌄</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+      <button type="button" onClick={() => setFilterOpen(true)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: "0.7rem 0.85rem" }}>
+        <span><strong>{SCOPES.find((item) => item.value === scope)?.label}</strong><span style={{ display: "block", marginTop: 2, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", textAlign: "left" }}>{formatFilter === "all" ? "Все форматы" : formatFilter}{onlyAvailable ? " · есть места" : ""}</span></span>
+        <FilterIcon width={20} height={20} style={{ color: "var(--era-red)" }} />
       </button>
 
-      {state.status === "loading" && <SkeletonList count={3} />}
-      {state.status === "error" && <EmptyState text="Не удалось загрузить события. Попробуйте ещё раз чуть позже." />}
-      {state.status === "ready" && state.data.length === 0 && (
-        <EmptyState text="Пока нет событий в этом разделе. Как только появится новое мероприятие, оно будет здесь." />
-      )}
-      {state.status === "ready" && state.data.map((event) => (
-        <Card key={event.id} style={{ padding: "0.65rem", overflow: "hidden" }}>
-          <EventPoster event={event} compact />
-          <div style={{ padding: "0.7rem 0.3rem 0.2rem", display: "flex", flexDirection: "column", gap: "0.45rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "flex-start" }}>
-              <StatusBadge label={event.display_status} tone={ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "") ? "violet" : "neutral"} />
-              {event.points_for_visit > 0 && <strong style={{ fontSize: "0.82rem" }}>+{event.points_for_visit} баллов</strong>}
-            </div>
-            <strong style={{ fontSize: "1.18rem", lineHeight: 1.15 }}>{event.title}</strong>
-            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.88rem" }}>{formatDate(event.event_date)} · {event.event_time}</p>
-            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.88rem" }}>📍 {event.location}</p>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>
-              <span>{capacityText(event)}</span>
-              {event.remaining_count !== null && <span>Осталось {event.remaining_count}</span>}
-            </div>
-            <button type="button" className="era-btn-primary" onClick={() => openEvent(event.id)} style={{ width: "100%", marginTop: "0.25rem" }}>Открыть событие</button>
-          </div>
-        </Card>
-      ))}
-
-      <BottomSheet open={filterOpen} onClose={() => setFilterOpen(false)} title="Какие события показать?">
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-          {SCOPES.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => { setScope(option.value); setFilterOpen(false); }}
-              style={{ textAlign: "left", padding: "0.85rem" }}
-            >
-              <strong>{option.label}</strong>
-              <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: "0.8rem" }}>{option.description}</span>
-            </button>
-          ))}
-        </div>
+      <BottomSheet open={filterOpen} onClose={() => setFilterOpen(false)} title="Фильтры событий">
+        <p className="era-kicker">Показывать</p>
+        <div style={{ display: "grid", gap: "0.4rem", marginTop: "0.5rem" }}>{SCOPES.map((item) => <button key={item.value} type="button" onClick={() => setScope(item.value)} style={{ textAlign: "left", background: scope === item.value ? "var(--era-tint-red)" : "#fff", borderColor: scope === item.value ? "rgba(227,38,54,.2)" : "var(--era-border)" }}>{item.label}</button>)}</div>
+        {formats.length > 0 && <><p className="era-kicker" style={{ marginTop: "1rem" }}>Формат</p><select value={formatFilter} onChange={(event) => setFormatFilter(event.target.value)} style={{ marginTop: "0.5rem" }}><option value="all">Все форматы</option>{formats.map((format) => <option key={format} value={format}>{format}</option>)}</select></>}
+        <label style={{ display: "flex", alignItems: "center", gap: "0.65rem", minHeight: 44, marginTop: "0.75rem" }}><input type="checkbox" checked={onlyAvailable} onChange={(event) => setOnlyAvailable(event.target.checked)} />Только доступные для регистрации</label>
+        <PrimaryButton onClick={() => setFilterOpen(false)} style={{ width: "100%", marginTop: "0.75rem" }}>Готово</PrimaryButton>
       </BottomSheet>
+
+      {state.status === "loading" && <SkeletonList count={3} />}
+      {state.status === "error" && <EmptyState title="События не загрузились" description="Проверьте соединение и откройте раздел снова." />}
+      {state.status === "ready" && filtered.length === 0 && <EmptyState title="По этим фильтрам событий нет" description="Измените фильтр или вернитесь ко всей афише." actionLabel="Сбросить фильтры" onAction={() => { setScope("all"); setFormatFilter("all"); setOnlyAvailable(false); }} />}
+
+      {state.status === "ready" && todayItems.length > 0 && <EventGroup title="Сегодня" events={todayItems} />}
+      {state.status === "ready" && primaryList.length > 0 && <EventGroup title={scope === "past" ? "Прошедшие" : "Скоро"} events={primaryList} />}
+      {state.status === "ready" && scope !== "past" && pastItems.length > 0 && <section className="era-section"><h2 className="era-section-title">Ранее</h2><SecondaryButton onClick={() => setScope("past")}>Посмотреть прошедшие</SecondaryButton></section>}
     </div>
   );
 }
+
+function EventGroup({ title, events }: { title: string; events: EventItem[] }) {
+  return <section className="era-section"><h2 className="era-section-title">{title}</h2><div style={{ display: "grid", gap: "0.75rem" }}>{events.map((event) => <EventCard key={event.id} event={event} onClick={() => { window.location.hash = `#/events/${event.id}`; }} />)}</div></section>;
+}
+
+function EventDetail({ event, pending, actionError, onRegister, onCancel, children }: { event: EventItem; pending: boolean; actionError: string | null; onRegister: () => void; onCancel: () => void; children: React.ReactNode }) {
+  const registered = ACTIVE.has(event.registration_status ?? "");
+  const waitlisted = event.registration_status === "waitlist";
+  const poster = posterSrc(event);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <PageHeader title={event.title} eyebrow="Событие ЭРА" subtitle={event.short_description ?? undefined} onBack={() => { if (window.history.length > 1) window.history.back(); else window.location.hash = "#/events"; }} />
+      {poster ? <img src={poster} alt={`Афиша ${event.title}`} style={{ width: "100%", maxHeight: 360, objectFit: "cover", borderRadius: "var(--era-radius-card)" }} /> : <div aria-hidden="true" style={{ height: 190, borderRadius: "var(--era-radius-card)", background: "linear-gradient(145deg,#151619,#981b28)", display: "flex", alignItems: "flex-end", padding: "1.25rem", color: "#fff" }}><strong style={{ fontSize: "2rem" }}>ЭРА</strong></div>}
+
+      <Card><div style={{ display: "grid", gap: "0.8rem" }}><Info label="Когда" value={`${formatDate(event.event_date)} · ${event.event_time}${event.end_time ? `–${event.end_time}` : ""}`} /><Info label="Где" value={[event.location, event.address].filter(Boolean).join(" · ")} />{event.organizer && <Info label="Организатор" value={event.organizer} />}<Info label="Места" value={event.participant_limit === null ? `${event.registered_count} зарегистрировано` : `${event.registered_count} из ${event.participant_limit} · ${event.remaining_count ?? 0} свободно`} /></div></Card>
+
+      <Card><h2 style={{ margin: 0, fontSize: "var(--era-text-xl)" }}>О событии</h2><p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{event.full_description ?? event.description}</p></Card>
+      {event.participant_value && <Card style={{ borderColor: "rgba(197,162,100,.24)" }}><p className="era-kicker" style={{ color: "var(--era-gold-ink)" }}>Что вы получите</p><p style={{ margin: "0.4rem 0 0", whiteSpace: "pre-wrap" }}>{event.participant_value}</p></Card>}
+
+      {event.program.length > 0 && <section className="era-section"><h2 className="era-section-title">Программа</h2>{event.program.map((item, index) => <Card key={`${item.title}-${index}`} style={{ boxShadow: "none" }}><div style={{ display: "flex", gap: "0.75rem" }}>{item.time && <strong style={{ color: "var(--era-red)", minWidth: 52 }}>{item.time}</strong>}<div><strong>{item.title || `Активность ${index + 1}`}</strong>{item.description && <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>{item.description}</p>}{item.responsible && <p style={{ margin: "0.25rem 0 0", fontSize: "var(--era-text-xs)" }}>Ответственный: {item.responsible}</p>}</div></div></Card>)}</section>}
+
+      {event.participant_tasks.length > 0 && <section className="era-section"><h2 className="era-section-title">Задания и баллы</h2>{event.participant_tasks.map((task, index) => <Card key={`${task.title}-${index}`} style={{ boxShadow: "none" }}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><strong>{task.title || `Задание ${index + 1}`}</strong>{typeof task.points === "number" && <strong style={{ color: "var(--era-red)" }}>+{task.points}</strong>}</div>{task.description && <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)" }}>{task.description}</p>}</Card>)}</section>}
+
+      {(registered || waitlisted) && <Card style={{ background: waitlisted ? "var(--era-tint-gold)" : "var(--era-tint-success)", boxShadow: "none" }}><StatusBadge label={waitlisted ? "Лист ожидания" : "Вы участвуете"} tone="neutral" /><p style={{ margin: "0.45rem 0 0", color: "var(--era-text-muted)" }}>{waitlisted ? "Если место освободится, бот сообщит вам." : "Подробности и напоминания придут в бот."}</p></Card>}
+      {registered && <EventActivitiesPanel eventId={event.id} />}
+
+      {actionError && <Card style={{ borderColor: "rgba(101,90,115,.18)", background: "rgba(101,90,115,.05)" }}><strong>Не получилось выполнить действие</strong><p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)" }}>{actionError}</p></Card>}
+
+      <div style={{ display: "grid", gap: "0.55rem" }}>
+        {!registered && !waitlisted && event.can_register && <PrimaryButton busy={pending} busyLabel="Регистрируем…" onClick={onRegister}>{event.waitlist_enabled && event.remaining_count === 0 ? "Встать в лист ожидания" : "Участвовать"}</PrimaryButton>}
+        {registered && <button type="button" className="era-btn-danger" disabled={pending} onClick={onCancel}>Отказаться от участия</button>}
+        <SecondaryButton onClick={() => addToCalendar(event)}><CalendarIcon width={18} height={18} />Добавить в календарь</SecondaryButton>
+        {(event.address || event.location) && <SecondaryButton onClick={() => openMap(event)}><MapPinIcon width={18} height={18} />Показать место</SecondaryButton>}
+        {event.chat_url && <a href={event.chat_url} target="_blank" rel="noreferrer" className="era-btn-secondary">Открыть чат</a>}
+        <SecondaryButton onClick={() => void shareEvent(event)}><ShareIcon width={18} height={18} />Поделиться</SecondaryButton>
+        {event.project_id && <SecondaryButton onClick={() => { window.location.hash = `#/projects/${event.project_id}`; }}>Открыть связанный проект</SecondaryButton>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) { return <div><span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>{label}</span><strong style={{ display: "block", marginTop: 2 }}>{value}</strong></div>; }

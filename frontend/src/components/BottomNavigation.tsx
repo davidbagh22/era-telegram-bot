@@ -1,13 +1,5 @@
-import {
-  CommunityIcon,
-  EventIcon,
-  HomeIcon,
-  ProfileIcon,
-  ProjectsIcon,
-} from "./icons";
+import { CommunityIcon, EventIcon, HomeIcon, ProfileIcon, ProjectsIcon } from "./icons";
 
-// ERA Dark Living System: participant navigation has five permanent
-// product areas. Leader/Admin management remains outside this dock.
 export type TabKey = "home" | "projects" | "events" | "community" | "profile";
 
 const TABS: { key: TabKey; label: string; Icon: typeof HomeIcon }[] = [
@@ -28,20 +20,22 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
     <nav
       aria-label="Основная навигация"
       style={{
-        position: "sticky",
-        bottom: 0,
+        position: "fixed",
+        left: "max(0.75rem, env(safe-area-inset-left, 0px))",
+        right: "max(0.75rem, env(safe-area-inset-right, 0px))",
+        bottom: "calc(0.65rem + env(safe-area-inset-bottom, 0px))",
+        maxWidth: 720,
+        margin: "0 auto",
         display: "flex",
-        minWidth: 0,
-        gap: "0.0625rem",
-        margin: "0 0.625rem calc(0.55rem + env(safe-area-inset-bottom, 0px))",
-        padding: "0.3rem",
+        gap: 2,
+        padding: 5,
         background: "var(--era-glass)",
-        border: "1px solid var(--era-border)",
-        borderRadius: "var(--era-radius-pill)",
+        border: "1px solid rgba(20,20,20,.075)",
+        borderRadius: 24,
         boxShadow: "var(--era-shadow-dock)",
-        backdropFilter: "blur(24px)",
-        WebkitBackdropFilter: "blur(24px)",
-        zIndex: 20,
+        backdropFilter: "blur(22px)",
+        WebkitBackdropFilter: "blur(22px)",
+        zIndex: 30,
       }}
     >
       {TABS.map(({ key, label, Icon }) => {
@@ -50,54 +44,34 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
           <button
             key={key}
             type="button"
-            onClick={() => onChange(key)}
+            aria-label={label}
             aria-current={isActive ? "page" : undefined}
+            onClick={() => onChange(key)}
             style={{
               position: "relative",
+              flex: "1 1 0",
+              minWidth: 0,
+              minHeight: 54,
+              padding: "0.4rem 0.08rem",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: "0.125rem",
-              minHeight: "3rem",
-              flex: "1 1 0",
-              minWidth: 0,
-              background: "none",
-              border: "none",
-              color: isActive ? "var(--era-text)" : "var(--era-text-muted)",
-              fontFamily: "var(--era-font-body)",
-              fontSize: "0.625rem",
-              fontWeight: isActive ? 800 : 600,
-              padding: "0.45rem 0.125rem",
-              borderRadius: "1.35rem",
-              transition: "color var(--era-motion-fast), transform var(--era-motion-fast)",
-              zIndex: 0,
+              justifyContent: "center",
+              gap: 2,
+              border: 0,
+              borderRadius: 19,
+              background: isActive ? "rgba(227,38,54,.085)" : "transparent",
+              color: isActive ? "var(--era-red)" : "#777a81",
+              boxShadow: "none",
+              fontSize: "0.62rem",
+              fontWeight: isActive ? 850 : 700,
+              transition: "background var(--era-motion-fast), color var(--era-motion-fast), transform var(--era-motion-tap)",
             }}
           >
-            {isActive && (
-              <span
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  borderRadius: "var(--era-radius-pill)",
-                  background:
-                    "linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.04)), var(--era-gradient)",
-                  boxShadow: "0 10px 24px rgba(227, 59, 73, 0.26)",
-                  zIndex: -1,
-                }}
-              />
-            )}
-            <Icon width={22} height={22} />
-            <span
-              style={{
-                maxWidth: "100%",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {label}
+            <span style={{ display: "flex", transform: isActive ? "scale(1.05)" : "scale(1)", transition: "transform var(--era-motion-fast)" }}>
+              <Icon width={21} height={21} />
             </span>
+            <span style={{ width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
           </button>
         );
       })}

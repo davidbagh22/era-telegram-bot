@@ -3,21 +3,20 @@ import { createProject, describeActionError, fetchProjects } from "../../api/cli
 import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
-import { StatusBadge } from "../../components/StatusBadge";
+import { ProjectCard } from "../../components/ProjectCard";
+import { SkeletonList } from "../../components/Skeleton";
+import { FilterIcon, PlusIcon } from "../../components/icons";
 import { useAsync } from "../../hooks/useAsync";
 import type { ProjectScope } from "../../types/project";
-import { projectStatusLabel } from "./statusLabels";
 
-const SCOPES: { value: ProjectScope; label: string }[] = [
-  { value: "mine", label: "Мои" },
-  { value: "open", label: "Открытые" },
-  { value: "proposals", label: "Предложения" },
-  { value: "completed", label: "Завершённые" },
+const SCOPES: { value: ProjectScope; label: string; description: string }[] = [
+  { value: "mine", label: "Мои", description: "Ваши проекты и черновики" },
+  { value: "open", label: "Открытые", description: "Проекты, куда можно включиться" },
+  { value: "proposals", label: "На рассмотрении", description: "Проекты в процессе решения" },
+  { value: "completed", label: "Завершённые", description: "Архив результатов" },
 ];
 
-interface ProjectsListProps {
-  onSelect: (projectId: number) => void;
-}
+interface ProjectsListProps { onSelect: (projectId: number) => void; }
 
 export function ProjectsList({ onSelect }: ProjectsListProps) {
   const [scope, setScope] = useState<ProjectScope>("mine");
@@ -26,14 +25,15 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const state = useAsync(() => fetchProjects(scope), [scope]);
-  const scopeLabel = SCOPES.find((option) => option.value === scope)?.label ?? scope;
+  const scopeConfig = SCOPES.find((option) => option.value === scope) ?? SCOPES[0];
 
   const handleCreate = async () => {
-    if (!idea.trim()) return;
+    const draft = idea.trim();
+    if (!draft || creating) return;
     setCreating(true);
     setCreateError(null);
     try {
-      const project = await createProject(idea);
+      const project = await createProject(draft);
       setIdea("");
       onSelect(project.id);
     } catch (error) {
@@ -44,66 +44,47 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <strong>{scopeLabel}</strong>
-        <button type="button" onClick={() => setShowFilterSheet(true)}>Фильтр</button>
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <button type="button" onClick={() => setShowFilterSheet(true)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: "0.7rem 0.85rem", background: "var(--era-surface)" }}>
+        <span style={{ textAlign: "left" }}><strong>{scopeConfig.label}</strong><span style={{ display: "block", marginTop: 2, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 600 }}>{scopeConfig.description}</span></span>
+        <FilterIcon width={20} height={20} style={{ color: "var(--era-red)" }} />
+      </button>
 
-      <BottomSheet open={showFilterSheet} onClose={() => setShowFilterSheet(false)} title="Показать">
-        <div style={{ display: "flex", flexDirection: "column" }}>
+      <BottomSheet open={showFilterSheet} onClose={() => setShowFilterSheet(false)} title="Какие проекты показать">
+        <div style={{ display: "grid", gap: "0.45rem" }}>
           {SCOPES.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              style={{ display: "flex", alignItems: "center", gap: "0.5rem", width: "100%", textAlign: "left", fontFamily: "var(--era-font-body)", fontSize: "0.9375rem", padding: "0.625rem 0.25rem", border: "none", borderBottom: "1px solid var(--era-border)", background: "transparent", color: "var(--era-text)" }}
-              onClick={() => { setScope(option.value); setShowFilterSheet(false); }}
-            >
+            <button key={option.value} type="button" onClick={() => { setScope(option.value); setShowFilterSheet(false); }} style={{ display: "flex", alignItems: "center", gap: "0.7rem", width: "100%", padding: "0.75rem", textAlign: "left", background: scope === option.value ? "var(--era-tint-red)" : "var(--era-surface)", borderColor: scope === option.value ? "rgba(227,38,54,.18)" : "var(--era-border)" }}>
               <input type="radio" readOnly checked={scope === option.value} />
-              {option.label}
+              <span><strong>{option.label}</strong><span style={{ display: "block", marginTop: 2, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>{option.description}</span></span>
             </button>
           ))}
         </div>
       </BottomSheet>
 
       {scope === "mine" && (
-        <Card style={{ background: "linear-gradient(135deg, rgba(255,48,72,0.11), rgba(107,60,255,0.10)), var(--era-surface)" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-            <div>
-              <p style={{ margin: "0 0 0.2rem", color: "var(--era-red)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Новый проект</p>
-              <strong style={{ fontSize: "var(--era-text-xl)" }}>Начните с одной мысли</strong>
-              <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>
-                Не нужно заполнять проект целиком сейчас. Опишите идею одним предложением — дальше конструктор сам проведёт по аудитории, сценарию, команде, бюджету и продвижению.
-              </p>
-            </div>
-            <textarea
-              value={idea}
-              onChange={(event) => setIdea(event.target.value)}
-              placeholder="Мы делаем [что] для [кого], чтобы [зачем]"
-              rows={3}
-            />
-            <button type="button" className="era-btn-primary" disabled={creating || !idea.trim()} onClick={handleCreate}>
-              {creating ? "Создаю…" : "Начать конструктор →"}
-            </button>
-            {createError && <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{createError}</p>}
-          </div>
+        <Card style={{ borderColor: "rgba(227,38,54,.12)", background: "linear-gradient(145deg,rgba(227,38,54,.045),rgba(197,162,100,.04)),#fff" }}>
+          <p className="era-kicker">Новый проект</p>
+          <strong style={{ display: "block", marginTop: "0.3rem", fontSize: "var(--era-text-xl)" }}>Начните с одной мысли</strong>
+          <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)" }}>Опишите идею одним предложением. После создания откроется конструктор из 16 шагов.</p>
+          <textarea value={idea} onChange={(event) => { setIdea(event.target.value); setCreateError(null); }} placeholder="Мы делаем [что] для [кого], чтобы [зачем]" rows={3} style={{ marginTop: "0.75rem" }} />
+          <button type="button" className="era-btn-primary" disabled={creating || !idea.trim()} onClick={() => void handleCreate()} style={{ width: "100%", marginTop: "0.65rem" }}>
+            <PlusIcon width={19} height={19} />{creating ? "Создаю проект…" : "Начать конструктор"}
+          </button>
+          {createError && <p style={{ margin: "0.6rem 0 0", color: "var(--era-error)", fontSize: "var(--era-text-sm)" }}>Не получилось создать проект. {createError}</p>}
         </Card>
       )}
 
-      {state.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>}
-      {state.status === "error" && <EmptyState text="Не удалось загрузить проекты." />}
-      {state.status === "ready" && state.data.length === 0 && <EmptyState text="Проектов в этом разделе пока нет." />}
-      {state.status === "ready" && state.data.map((project) => (
-        <Card key={project.id}>
-          <button type="button" onClick={() => onSelect(project.id)} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
-              <strong>{project.title}</strong>
-              <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
-            </div>
-            <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>{project.short_description}</p>
-          </button>
-        </Card>
-      ))}
+      {state.status === "loading" && <SkeletonList count={3} />}
+      {state.status === "error" && <EmptyState title="Проекты не загрузились" description="Проверьте соединение и откройте раздел снова." />}
+      {state.status === "ready" && state.data.length === 0 && (
+        <EmptyState
+          title={scope === "mine" ? "У вас пока нет проектов" : `В разделе «${scopeConfig.label}» пока пусто`}
+          description={scope === "mine" ? "Создайте первую идею выше или посмотрите открытые проекты." : "Выберите другой фильтр — данные не скрываются за пустыми карточками."}
+          actionLabel={scope === "mine" ? "Посмотреть открытые" : undefined}
+          onAction={scope === "mine" ? () => setScope("open") : undefined}
+        />
+      )}
+      {state.status === "ready" && <div style={{ display: "grid", gap: "0.75rem" }}>{state.data.map((project) => <ProjectCard key={project.id} project={project} onClick={() => onSelect(project.id)} />)}</div>}
     </div>
   );
 }

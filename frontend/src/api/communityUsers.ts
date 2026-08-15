@@ -7,11 +7,17 @@ let tokenPromise: Promise<string> | null = null;
 export interface CommunityUser {
   id: number;
   name: string;
+  username: string | null;
+  telegram_url: string | null;
   role: string;
   role_label: string;
   participation_status: string;
   participation_label: string;
   departments: string[];
+  directions: string[];
+  events_attended: number;
+  project_memberships: number;
+  tasks_completed: number;
 }
 
 function devTelegramId(): number | undefined {
@@ -33,19 +39,23 @@ async function token(): Promise<string> {
   return tokenPromise;
 }
 
-export async function fetchCommunityUser(userId: number): Promise<CommunityUser> {
+async function get<T>(path: string): Promise<T> {
   const sessionToken = await token();
-  const response = await fetch(`${API_BASE_URL}/api/v1/users/${userId}`, {
-    headers: { Authorization: `Bearer ${sessionToken}` },
-  });
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers: { Authorization: `Bearer ${sessionToken}` } });
   if (!response.ok) {
     let detail = response.statusText;
-    try {
-      detail = ((await response.json()) as { detail?: string }).detail ?? detail;
-    } catch {
-      // Do not log response bodies or personal data.
-    }
+    try { detail = ((await response.json()) as { detail?: string }).detail ?? detail; } catch { /* no PII logging */ }
     throw new ApiError(response.status, detail);
   }
-  return (await response.json()) as CommunityUser;
+  return (await response.json()) as T;
+}
+
+export function fetchCommunityUsers(q = ""): Promise<CommunityUser[]> {
+  const params = new URLSearchParams();
+  if (q.trim()) params.set("q", q.trim());
+  return get<CommunityUser[]>(`/api/v1/users${params.size ? `?${params.toString()}` : ""}`);
+}
+
+export function fetchCommunityUser(userId: number): Promise<CommunityUser> {
+  return get<CommunityUser>(`/api/v1/users/${userId}`);
 }
