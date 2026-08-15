@@ -23,6 +23,7 @@ export interface ProjectQuestion {
   block: string;
   title: string;
   prompt: string;
+  ai_hint: string | null;
 }
 
 export interface ProjectRole {

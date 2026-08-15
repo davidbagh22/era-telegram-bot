@@ -18,6 +18,7 @@ import { ProjectsScreen } from "../screens/ProjectsScreen";
 import type { MiniAppUserSummary } from "../types/auth";
 
 type LegacyActivitySection = "tasks" | "calendar" | "history";
+type WorkspaceKind = "admin" | "leader";
 
 interface DeepLink {
   tab: TabKey;
@@ -25,6 +26,7 @@ interface DeepLink {
   activitySection: LegacyActivitySection | null;
   communitySection: CommunitySection | null;
   itemId: number | null;
+  workspace: WorkspaceKind | null;
 }
 
 const TAB_HASH: Record<TabKey, string> = {
@@ -41,21 +43,57 @@ function parseOptionalId(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function parseDeepLink(): DeepLink | null {
-  const hash = window.location.hash;
+function routeValue(): string {
+  const hashRoute = window.location.hash.replace(/^#\/?/, "").replace(/\/$/, "");
+  if (hashRoute) return hashRoute;
 
-  const projectMatch = hash.match(/^#\/(?:admin\/)?projects\/(\d+)\/?$/);
+  const query = new URLSearchParams(window.location.search);
+  // eraPath is the first-class Bot -> Mini App route. tgWebAppStartParam is
+  // accepted too so a future Main Mini App `startapp` link can use the same
+  // parser without another navigation layer.
+  return (query.get("eraPath") ?? query.get("tgWebAppStartParam") ?? "")
+    .replace(/^\/?/, "")
+    .replace(/\/$/, "");
+}
+
+function parseDeepLink(): DeepLink | null {
+  const route = routeValue();
+  if (!route) return null;
+
+  const adminProjectMatch = route.match(/^admin\/projects\/(\d+)$/);
+  if (adminProjectMatch) {
+    const projectId = parseOptionalId(adminProjectMatch[1]);
+    if (projectId !== null) {
+      return {
+        tab: "projects",
+        projectId,
+        activitySection: null,
+        communitySection: null,
+        itemId: null,
+        workspace: "admin",
+      };
+    }
+  }
+
+  const projectMatch = route.match(/^projects\/(\d+)$/);
   if (projectMatch) {
     const projectId = parseOptionalId(projectMatch[1]);
     if (projectId !== null) {
-      return { tab: "projects", projectId, activitySection: null, communitySection: null, itemId: null };
+      return {
+        tab: "projects",
+        projectId,
+        activitySection: null,
+        communitySection: null,
+        itemId: null,
+        workspace: null,
+      };
     }
   }
-  if (/^#\/projects\/?$/.test(hash)) {
-    return { tab: "projects", projectId: null, activitySection: null, communitySection: null, itemId: null };
+  if (route === "projects") {
+    return { tab: "projects", projectId: null, activitySection: null, communitySection: null, itemId: null, workspace: null };
   }
 
-  const activityMatch = hash.match(/^#\/(tasks|calendar|history)(?:\/(\d+))?\/?$/);
+  const activityMatch = route.match(/^(tasks|calendar|history)(?:\/(\d+))?$/);
   if (activityMatch) {
     return {
       tab: "home",
@@ -63,10 +101,11 @@ function parseDeepLink(): DeepLink | null {
       activitySection: activityMatch[1] as LegacyActivitySection,
       communitySection: null,
       itemId: parseOptionalId(activityMatch[2]),
+      workspace: null,
     };
   }
 
-  const eventMatch = hash.match(/^#\/events(?:\/(\d+))?\/?$/);
+  const eventMatch = route.match(/^events(?:\/(\d+))?$/);
   if (eventMatch) {
     return {
       tab: "events",
@@ -74,10 +113,11 @@ function parseDeepLink(): DeepLink | null {
       activitySection: null,
       communitySection: null,
       itemId: parseOptionalId(eventMatch[1]),
+      workspace: null,
     };
   }
 
-  const communityMatch = hash.match(/^#\/(opportunities|auctions|rewards|surveys)(?:\/(\d+))?\/?$/);
+  const communityMatch = route.match(/^(opportunities|auctions|rewards|surveys)(?:\/(\d+))?$/);
   if (communityMatch) {
     return {
       tab: "community",
@@ -85,23 +125,27 @@ function parseDeepLink(): DeepLink | null {
       activitySection: null,
       communitySection: communityMatch[1] as CommunitySection,
       itemId: parseOptionalId(communityMatch[2]),
+      workspace: null,
     };
   }
 
-  if (/^#\/leaderboard\/?$/.test(hash)) {
-    return { tab: "community", projectId: null, activitySection: null, communitySection: "leaderboard", itemId: null };
+  if (route === "leaderboard") {
+    return { tab: "community", projectId: null, activitySection: null, communitySection: "leaderboard", itemId: null, workspace: null };
   }
-
-  if (/^#\/community\/?$/.test(hash)) {
-    return { tab: "community", projectId: null, activitySection: null, communitySection: null, itemId: null };
+  if (route === "community") {
+    return { tab: "community", projectId: null, activitySection: null, communitySection: null, itemId: null, workspace: null };
   }
-
-  if (/^#\/profile\/?$/.test(hash)) {
-    return { tab: "profile", projectId: null, activitySection: null, communitySection: null, itemId: null };
+  if (route === "profile") {
+    return { tab: "profile", projectId: null, activitySection: null, communitySection: null, itemId: null, workspace: null };
   }
-
-  if (/^#\/home\/?$/.test(hash)) {
-    return { tab: "home", projectId: null, activitySection: null, communitySection: null, itemId: null };
+  if (route === "admin") {
+    return { tab: "profile", projectId: null, activitySection: null, communitySection: null, itemId: null, workspace: "admin" };
+  }
+  if (route === "leader") {
+    return { tab: "profile", projectId: null, activitySection: null, communitySection: null, itemId: null, workspace: "leader" };
+  }
+  if (route === "home") {
+    return { tab: "home", projectId: null, activitySection: null, communitySection: null, itemId: null, workspace: null };
   }
 
   return null;
@@ -136,14 +180,8 @@ function renderTab(
     );
   }
 
-  if (tab === "projects") {
-    return <ProjectsScreen initialProjectId={initialProjectId} />;
-  }
-
-  if (tab === "events") {
-    return <EventsScreen initialItemId={isDeepLinkedTab ? initialItemId : null} />;
-  }
-
+  if (tab === "projects") return <ProjectsScreen initialProjectId={initialProjectId} />;
+  if (tab === "events") return <EventsScreen initialItemId={isDeepLinkedTab ? initialItemId : null} />;
   if (tab === "community") {
     return (
       <CommunityScreen
@@ -152,7 +190,6 @@ function renderTab(
       />
     );
   }
-
   return <ProfileScreen />;
 }
 
@@ -163,16 +200,16 @@ export function App() {
   const [inWorkspace, setInWorkspace] = useState(false);
 
   useEffect(() => {
-    const syncFromHash = () => {
+    const syncFromLocation = () => {
       const next = parseDeepLink();
       setDeepLink(next);
       setActiveTab(next?.tab ?? "home");
     };
-    window.addEventListener("hashchange", syncFromHash);
-    window.addEventListener("popstate", syncFromHash);
+    window.addEventListener("hashchange", syncFromLocation);
+    window.addEventListener("popstate", syncFromLocation);
     return () => {
-      window.removeEventListener("hashchange", syncFromHash);
-      window.removeEventListener("popstate", syncFromHash);
+      window.removeEventListener("hashchange", syncFromLocation);
+      window.removeEventListener("popstate", syncFromLocation);
     };
   }, []);
 
@@ -181,31 +218,35 @@ export function App() {
     navigateToTab(tab);
   };
 
+  const exitWorkspace = () => {
+    setInWorkspace(false);
+    navigateToTab("profile");
+  };
+
   const initialProjectId = deepLink?.projectId ?? null;
 
   if (auth.status === "loading") return null;
-  if (auth.status === "error") {
-    return <AuthErrorScreen code={auth.code} detail={auth.detail} onRetry={auth.refresh} />;
-  }
+  if (auth.status === "error") return <AuthErrorScreen code={auth.code} detail={auth.detail} onRetry={auth.refresh} />;
 
   const { user } = auth;
   if (user.application_status === "pending" || user.application_status === "needs_info") {
     return <PendingScreen onRefresh={auth.refresh} />;
   }
-  if (user.application_status === "rejected" || user.is_blocked) {
-    return <BlockedScreen />;
-  }
+  if (user.application_status === "rejected" || user.is_blocked) return <BlockedScreen />;
 
-  if (user.is_admin && inWorkspace) {
+  const adminWorkspaceRequested = user.is_admin && (inWorkspace || deepLink?.workspace === "admin");
+  const leaderWorkspaceRequested = user.is_leader && (inWorkspace || deepLink?.workspace === "leader");
+
+  if (adminWorkspaceRequested) {
     return (
-      <AdminLayout onExitWorkspace={() => setInWorkspace(false)}>
+      <AdminLayout onExitWorkspace={exitWorkspace}>
         {initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <AdminScreen />}
       </AdminLayout>
     );
   }
-  if (user.is_leader && inWorkspace) {
+  if (leaderWorkspaceRequested) {
     return (
-      <LeaderLayout onExitWorkspace={() => setInWorkspace(false)}>
+      <LeaderLayout onExitWorkspace={exitWorkspace}>
         {initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <LeaderScreen />}
       </LeaderLayout>
     );

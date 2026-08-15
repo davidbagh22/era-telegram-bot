@@ -4,6 +4,7 @@ import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -301,7 +302,9 @@ class ProjectNotificationDeepLinkTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bot.messages[0]["chat_id"], 100)
         button = bot.messages[0]["reply_markup"].inline_keyboard[0][0]
         self.assertEqual(button.text, "Открыть модерацию")
-        self.assertEqual(button.url, "https://era.example/app/#/admin/projects/10")
+        parsed = urlsplit(button.url)
+        self.assertEqual(parsed.fragment, "")
+        self.assertEqual(parse_qs(parsed.query).get("eraPath"), ["admin/projects/10"])
 
 
 if __name__ == "__main__":

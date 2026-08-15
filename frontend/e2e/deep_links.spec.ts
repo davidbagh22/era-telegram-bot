@@ -1,6 +1,21 @@
 import { expect, test } from "@playwright/test";
 
 const PARTICIPANT_TELEGRAM_ID = 900001;
+const ADMIN_TELEGRAM_ID = 900003;
+
+test("eraPath query opens Projects when Telegram provides no fragment", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}&eraPath=projects`);
+
+  await expect(page.getByRole("heading", { name: "Проекты" })).toBeVisible();
+  await expect(page.getByText("Начните с одной мысли")).toBeVisible();
+});
+
+test("eraPath admin opens the separate Admin workspace directly", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}&eraPath=admin`);
+
+  await expect(page.getByText("Управление", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Пульт управления" })).toBeVisible();
+});
 
 test("#/tasks deep link opens the legacy task surface directly", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/tasks`);

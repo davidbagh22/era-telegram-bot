@@ -10,6 +10,7 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from urllib.parse import parse_qs, urlsplit
 
 from app.handlers.participant import about, commands_ready, navigation
 from app.utils import texts
@@ -51,7 +52,6 @@ class CommandMenuShapeTests(unittest.TestCase):
             [c.command for c in ADMIN_COMMANDS],
             ["start", "navigation", "contact", "version"],
         )
-        # No legacy admin panel commands leak into the admin scope either.
         admin_advertised = {c.command for c in ADMIN_COMMANDS}
         self.assertNotIn("panel", admin_advertised)
         self.assertNotIn("admin", admin_advertised)
@@ -70,14 +70,16 @@ class RemovedCommandsStillRedirectTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(text, texts.TASKS_MOVED)
         button = kwargs["reply_markup"].inline_keyboard[0][0]
         self.assertIsNotNone(button.web_app)
-        self.assertIn("/#/tasks", button.web_app.url)
+        parsed = urlsplit(button.web_app.url)
+        self.assertEqual(parsed.fragment, "")
+        self.assertEqual(parse_qs(parsed.query).get("eraPath"), ["tasks"])
 
     async def test_help_command_shows_the_navigation_guide_not_the_old_about_menu(self) -> None:
         message = _message()
         state = SimpleNamespace(clear=AsyncMock())
         await commands_ready.help_command(message, _user(), _settings(), state)
         (text,), kwargs = message.answer.call_args
-        self.assertEqual(text, texts.NAVIGATION_GUIDE_PARTICIPANT)
+        self.assertEqual(text, navigation.NAVIGATION_PARTICIPANT)
         buttons = [b for row in kwargs["reply_markup"].inline_keyboard for b in row]
         self.assertTrue(all(b.callback_data != "cabinet:open" for b in buttons))
 
@@ -87,7 +89,7 @@ class RemovedCommandsStillRedirectTests(unittest.IsolatedAsyncioTestCase):
         await navigation.navigation_command(message, _user(), _settings(), state)
         state.clear.assert_awaited_once()
         (text,), kwargs = message.answer.call_args
-        self.assertEqual(text, texts.NAVIGATION_GUIDE_PARTICIPANT)
+        self.assertEqual(text, navigation.NAVIGATION_PARTICIPANT)
         self.assertIsNotNone(kwargs["reply_markup"])
 
     async def test_about_command_no_longer_shows_the_legacy_menu(self) -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -172,7 +173,9 @@ class AdminOfferApplicationsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         keyboard = safe_send_mock.await_args.args[3]
         url = keyboard.inline_keyboard[0][0].web_app.url
-        self.assertEqual(url, "https://era.example/app/#/opportunities/9")
+        parsed = urlsplit(url)
+        self.assertEqual(parsed.fragment, "")
+        self.assertEqual(parse_qs(parsed.query).get("eraPath"), ["opportunities/9"])
 
 
 if __name__ == "__main__":

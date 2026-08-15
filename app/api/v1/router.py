@@ -7,6 +7,7 @@ from app.api.v1 import (
     admin,
     admin_applications,
     admin_autocontent,
+    admin_event_create,
     auctions,
     auth,
     events,
@@ -16,6 +17,7 @@ from app.api.v1 import (
     me,
     opportunities,
     profile,
+    project_builder,
     projects,
     rewards,
     surveys,
@@ -31,6 +33,7 @@ api_router.include_router(leaderboard.router)
 api_router.include_router(events.router)
 api_router.include_router(tasks.router)
 api_router.include_router(activity.router)
+api_router.include_router(project_builder.router)
 api_router.include_router(projects.router)
 api_router.include_router(opportunities.router)
 api_router.include_router(auctions.router)
@@ -42,6 +45,10 @@ api_router.include_router(surveys.router)
 # POST endpoints continue to live in admin.router.
 api_router.include_router(admin_applications.router)
 api_router.include_router(admin_autocontent.router)
+# Dedicated creator is registered before the large legacy admin router so its
+# explicit /admin/events/create path cannot be swallowed by /admin/events/{id}
+# style routes added later.
+api_router.include_router(admin_event_create.router)
 api_router.include_router(admin.router)
 api_router.include_router(system.router)
 api_router.include_router(profile.router)

@@ -56,8 +56,8 @@ export function ChatsPanel() {
       const result = await publishChatFaq();
       setFaqResult(
         result.pinned
-          ? "FAQ опубликован и закреплён в общем чате ✅"
-          : "FAQ опубликован, но не удалось закрепить — проверьте права бота на закрепление сообщений.",
+          ? "FAQ обновлён и закреплён наверху общего чата ✅"
+          : "FAQ обновлён, но Telegram не дал закрепить его — проверьте право бота «Закреплять сообщения».",
       );
       refresh();
     } catch (error) {
@@ -72,10 +72,10 @@ export function ChatsPanel() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-      <Card style={{ background: "var(--era-tint-violet)", border: "none" }}>
+      <Card style={{ background: "linear-gradient(135deg, rgba(255,48,72,0.10), rgba(107,60,255,0.12)), var(--era-surface)", border: "1px solid rgba(255,48,72,0.16)" }}>
         <strong>Чаты привязываются из самого Telegram</strong>
         <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-          Добавьте бота администратором нужного чата и отправьте указанную команду прямо в этом чате. ЭРА сама сохранит реальный chat_id в БД — вручную вводить или угадывать ID не нужно.
+          Добавьте бота администратором нужного чата и отправьте указанную команду прямо там. ЭРА сохранит реальный chat_id в БД — вручную вводить или угадывать ID не нужно.
         </p>
       </Card>
 
@@ -103,14 +103,18 @@ export function ChatsPanel() {
               {chat.last_error_at && <span style={{ color: "var(--era-error)" }}> · Последняя ошибка: {formatDate(chat.last_error_at)}</span>}
             </p>
             {!chat.is_bound && (
-              <div style={{ marginTop: "0.625rem", padding: "0.65rem", borderRadius: "var(--era-radius-control)", background: "var(--era-surface-raised)" }}>
+              <div style={{ marginTop: "0.625rem", padding: "0.65rem", borderRadius: "var(--era-radius-control)", background: "var(--era-surface-2)" }}>
                 <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>Команда для этого чата:</p>
                 <code style={{ display: "block", marginTop: "0.25rem", color: "var(--era-text)" }}>{bindCommand}</code>
               </div>
             )}
             {chat.chat_key === "general" && chat.is_bound && (
-              <div style={{ marginTop: "0.5rem" }}>
-                <button type="button" disabled={publishingFaq} onClick={handlePublishFaq}>{publishingFaq ? "Публикуем…" : "📌 Опубликовать FAQ в общем чате"}</button>
+              <div style={{ marginTop: "0.7rem", paddingTop: "0.65rem", borderTop: "1px solid var(--era-border)" }}>
+                <strong style={{ fontSize: "var(--era-text-sm)" }}>📌 FAQ общего чата</strong>
+                <p style={{ margin: "0.25rem 0 0.55rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>
+                  Бот автоматически поддерживает одну FAQ-карточку закреплённой. Ответы по быстрым кнопкам приходят человеку в личные сообщения.
+                </p>
+                <button type="button" disabled={publishingFaq} onClick={handlePublishFaq}>{publishingFaq ? "Обновляем…" : "📌 Обновить и закрепить FAQ"}</button>
                 {faqResult && <p style={{ margin: "0.375rem 0 0", fontSize: "0.8125rem", color: "var(--era-text-muted)" }}>{faqResult}</p>}
                 {faqError && <p style={{ margin: "0.375rem 0 0", fontSize: "0.8125rem", color: "var(--era-error)" }}>{faqError}</p>}
               </div>
