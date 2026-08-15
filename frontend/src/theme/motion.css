@@ -5,6 +5,15 @@
   --era-motion: var(--era-motion-screen);
 }
 
+/* A staggered entrance owns the transform/opacity animation. Do not let the
+   optional ambient material animation override it and leave a card invisible. */
+.era-stagger > .era-premium-ambient {
+  animation-name: era-card-in !important;
+  animation-duration: var(--era-motion-card) !important;
+  animation-iteration-count: 1 !important;
+  animation-fill-mode: both !important;
+}
+
 @keyframes era-question-in {
   from { opacity: 0; transform: translateX(12px); }
   to { opacity: 1; transform: translateX(0); }
