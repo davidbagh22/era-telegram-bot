@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import Event, EventRegistration
 from app.services.event_service import event_datetime
-from app.services.points_service import add_points, make_idempotency_key
+from app.services.points_service import add_points, add_portfolio_item, make_idempotency_key
 from app.utils.constants import EventStatus, RegistrationStatus
 
 CHECKIN_OPEN_BEFORE = timedelta(hours=2)
@@ -37,6 +37,7 @@ class CheckInResult:
     registration: EventRegistration
     already_attended: bool
     points_awarded: int
+    requires_selfie: bool
 
 
 def qr_png(link: str) -> bytes:
@@ -90,27 +91,52 @@ async def check_in(
             registration=registration,
             already_attended=True,
             points_awarded=0,
+            requires_selfie=bool(event.selfie_required),
         )
 
     registration.status = RegistrationStatus.ATTENDED
     registration.last_confirmation_at = now
+
+    # QR confirms physical check-in. If the event explicitly requires a selfie,
+    # the existing proof-review flow remains the authority for points and the
+    # portfolio entry; awarding here as well would double the visit reward.
+    if event.selfie_required:
+        await session.flush()
+        return CheckInResult(
+            event=event,
+            registration=registration,
+            already_attended=False,
+            points_awarded=0,
+            requires_selfie=True,
+        )
+
     points = max(0, int(event.points_for_visit or 0))
     if points:
         await add_points(
             session,
             user_id=user_id,
             points=points,
-            reason=f"Посещение мероприятия: {event.title}",
+            reason=f"Участие в мероприятии: {event.title}",
             approved_by=event.responsible_id,
             related_event_id=event.id,
             source_type="event_attendance",
             source_id=registration.id,
             idempotency_key=make_idempotency_key("event_attendance", event.id, user_id),
         )
+    await add_portfolio_item(
+        session,
+        user_id=user_id,
+        title=f"Участие: {event.title}",
+        item_type="event",
+        description="Участие подтверждено через QR ЭРА",
+        issued_by=event.responsible_id,
+        related_event_id=event.id,
+    )
     await session.flush()
     return CheckInResult(
         event=event,
         registration=registration,
         already_attended=False,
         points_awarded=points,
+        requires_selfie=False,
     )
