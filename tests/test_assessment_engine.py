@@ -35,35 +35,20 @@ class AssessmentCatalogTests(unittest.TestCase):
         self.assertIn("General Self-Efficacy", GSE["methodology"])
         self.assertEqual(IPIP_BIG5["license"], "Public domain")
         self.assertIn("ERA Russian RIASEC", ERA_RIASEC["methodology"])
-        self.assertIn(
-            "not presented as an official O*NET translation",
-            ERA_RIASEC["translation_source"],
-        )
+        self.assertIn("not presented as an official O*NET translation", ERA_RIASEC["translation_source"])
         self.assertIn("ERA Basic Needs Snapshot", ERA_NEEDS["methodology"])
         self.assertIn("Not presented as BPNSFS/BPNSS", ERA_NEEDS["translation_source"])
 
     def test_who5_uses_five_items_and_zero_to_five_response_values(self) -> None:
         self.assertEqual(len(WHO5["questions"]), 5)
-        self.assertEqual(
-            {option["value"] for option in WHO5["response_scale"]},
-            {0, 1, 2, 3, 4, 5},
-        )
+        self.assertEqual({option["value"] for option in WHO5["response_scale"]}, {0, 1, 2, 3, 4, 5})
 
     def test_big_five_has_fifty_items_and_ten_per_scale(self) -> None:
         self.assertEqual(len(IPIP_BIG5["questions"]), 50)
         counts: dict[str, int] = {}
         for question in IPIP_BIG5["questions"]:
             counts[question["scale"]] = counts.get(question["scale"], 0) + 1
-        self.assertEqual(
-            counts,
-            {
-                "extraversion": 10,
-                "agreeableness": 10,
-                "conscientiousness": 10,
-                "emotional_stability": 10,
-                "intellect": 10,
-            },
-        )
+        self.assertEqual(counts, {"extraversion": 10, "agreeableness": 10, "conscientiousness": 10, "emotional_stability": 10, "intellect": 10})
 
 
 class AssessmentScoringTests(unittest.TestCase):
