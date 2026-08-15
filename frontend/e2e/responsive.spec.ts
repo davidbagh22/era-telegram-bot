@@ -38,7 +38,8 @@ for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
 
-    await expect(page.getByRole("heading", { name: /держим темп/ })).toBeVisible();
+    await expect(page.getByText("ERA SCORE")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await expectNoHorizontalOverflow(page, width);
 
     const nav = page.getByRole("navigation", { name: "Основная навигация" });
