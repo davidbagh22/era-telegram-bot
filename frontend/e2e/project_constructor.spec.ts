@@ -30,7 +30,7 @@ test("project constructor keeps the typed answer visible when one PATCH fails", 
 
   await expect(page.getByText("Ответ не потерян", { exact: true })).toBeVisible();
   await expect(answer).toHaveValue("Название, которое нельзя потерять");
-  await expect(page.getByText(/сохранён на устройстве/)).toBeVisible();
+  await expect(page.getByText("сохранён на устройстве", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Повторить сохранение" }).click();
   await expect(page.getByText("Ответ не потерян", { exact: true })).toBeHidden();
