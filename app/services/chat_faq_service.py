@@ -1,10 +1,9 @@
-"""Pinned private-help FAQ for the registered general Telegram chat.
+"""Pinned private-help FAQ and persistent quick navigation for the general chat.
 
-The general chat contains one compact card. Its primary buttons are t.me /start
-links that open the participant's private bot chat immediately; the production
-/start handler then returns the requested answer. Publishing is idempotent — we
-reuse the latest recorded FAQ message when Telegram still has it, so deploys do
-not create FAQ spam.
+The FAQ card keeps shared-chat noise low: Events/Profile are routed privately to
+exact Mini App screens, while FAQ questions open a private bot conversation when
+the bot username is available. A persistent reply keyboard keeps Events/Profile
+visible under the general-chat composer.
 """
 
 from __future__ import annotations
@@ -18,16 +17,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import AuditLog
-from app.keyboards.faq import faq_keyboard
+from app.keyboards.faq import faq_keyboard, general_chat_navigation_keyboard
 from app.services.audit_service import audit
 
 FAQ_PINNED_MESSAGE = """🔥 <b>ЭРА — быстро о главном</b>
 
-Здесь не нужно искать нужное сообщение в истории чата. Выберите вопрос — Telegram сразу откроет личный диалог с ботом и покажет ответ.
+Здесь не нужно искать нужное сообщение в истории чата.
+
+<b>События</b> и <b>мой профиль</b> всегда доступны кнопками внизу. А вопросы ниже открывают личный диалог с ботом — общий чат остаётся чистым.
 
 <b>ЭРА — это движение:</b> события → задачи → проекты → опыт → новые возможности.
 
 Нужен не готовый ответ, а человек? Нажмите «💬 Задать вопрос»."""
+
+GENERAL_NAV_MESSAGE = """⚡ <b>Быстрый доступ включён</b>
+
+События и ваш профиль теперь всегда доступны кнопками внизу общего чата."""
 
 FAQ_ANSWERS: dict[str, str] = {
     "faq:what_is_era": """🔥 <b>Что такое ЭРА?</b>
@@ -53,7 +58,7 @@ FAQ_ANSWERS: dict[str, str] = {
 
 За реальную активность формируются баллы, портфолио, новые роли и доступ к возможностям.
 
-<b>Главное:</b> не пытайтесь сделать всё сразу. Одно хорошо доведённое дело сильнее десяти намерений.""",
+<b>Главное:</b> одно хорошо доведённое дело сильнее десяти намерений.""",
     "faq:what_to_do": """🧭 <b>С чего начать?</b>
 
 Если вы только вошли в ЭРА, не нужно изучать всю систему за один вечер.
@@ -64,7 +69,7 @@ FAQ_ANSWERS: dict[str, str] = {
 3. Выберите одну задачу или проект, где хочется включиться.
 4. Сделайте первое действие — оно уже станет частью вашего пути.
 
-Если пока не понимаете, что подходит именно вам, напишите через «💬 Задать вопрос» — поможем выбрать точку входа.""",
+Если пока не понимаете, что подходит именно вам, нажмите «💬 Задать вопрос» — поможем выбрать точку входа.""",
     "faq:what_can_i_do": """💡 <b>Как предложить идею?</b>
 
 Не нужно заранее готовить презентацию или длинный документ.
@@ -119,6 +124,16 @@ async def _latest_faq_message_id(session: AsyncSession) -> int | None:
     return None
 
 
+async def _navigation_keyboard_already_published(session: AsyncSession) -> bool:
+    marker = await session.scalar(
+        select(AuditLog.id)
+        .where(AuditLog.action == "chat.navigation_keyboard_published")
+        .order_by(AuditLog.created_at.desc())
+        .limit(1)
+    )
+    return marker is not None
+
+
 async def _resolve_bot_username(bot: Bot, settings: Settings) -> str:
     configured = str(getattr(settings, "bot_username", "") or "").strip().lstrip("@")
     if configured:
@@ -127,10 +142,6 @@ async def _resolve_bot_username(bot: Bot, settings: Settings) -> str:
         get_me = getattr(bot, "get_me")
         me = await get_me()
     except (AttributeError, TelegramAPIError):
-        # FAQ publishing itself must not fail just because identity lookup is
-        # unavailable. The keyboard has callback fallbacks; a real Telegram
-        # Bot normally resolves its username here and therefore uses direct DM
-        # links in production.
         return ""
     return (getattr(me, "username", "") or "").strip().lstrip("@")
 
@@ -203,14 +214,50 @@ async def publish_faq_message(
     return FaqPublishResult(pinned=pinned, message_id=message_id)
 
 
+async def publish_general_navigation_keyboard(
+    bot: Bot,
+    settings: Settings,
+    session: AsyncSession,
+    actor_id: int | None = None,
+) -> int | None:
+    """Publish the persistent group dock once for existing members."""
+    if not settings.general_chat_id:
+        raise ChatFaqError("chat_not_bound")
+    if await _navigation_keyboard_already_published(session):
+        return None
+    try:
+        sent = await bot.send_message(
+            int(settings.general_chat_id),
+            GENERAL_NAV_MESSAGE,
+            reply_markup=general_chat_navigation_keyboard(),
+            parse_mode="HTML",
+        )
+    except TelegramAPIError as exc:
+        raise ChatFaqError("navigation_keyboard_send_failed") from exc
+    await audit(
+        session,
+        actor_id=actor_id,
+        action="chat.navigation_keyboard_published",
+        entity_type="chat",
+        entity_id=sent.message_id,
+        new_value={"chat": "general"},
+    )
+    await session.commit()
+    return sent.message_id
+
+
 async def ensure_general_faq_pinned(
     bot: Bot, settings: Settings, session_factory
 ) -> None:
-    """Fail-soft startup/maintenance job: keep the FAQ current and pinned."""
+    """Fail-soft startup/maintenance job: keep FAQ current and quick nav available."""
     if not settings.general_chat_id:
         return
     async with session_factory() as session:
         try:
             await publish_faq_message(bot, settings, session, actor_id=None)
+        except ChatFaqError:
+            await session.rollback()
+        try:
+            await publish_general_navigation_keyboard(bot, settings, session, actor_id=None)
         except ChatFaqError:
             await session.rollback()
