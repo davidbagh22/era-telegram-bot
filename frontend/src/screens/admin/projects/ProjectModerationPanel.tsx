@@ -117,7 +117,7 @@ function OpenProjectReview({
           <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem", marginTop: "0.75rem" }}>
             {fields.map(([key, value]) => (
               <div key={key}>
-                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.75rem", fontWeight: 800 }}>{FIELD_LABELS[key] ?? key.replaceAll("_", " ")}</p>
+                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.75rem", fontWeight: 800 }}>{FIELD_LABELS[key] ?? key.replace(/_/g, " ")}</p>
                 <p style={{ margin: "0.25rem 0 0", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{String(value)}</p>
               </div>
             ))}
