@@ -7,12 +7,6 @@ interface ProgressRingProps {
   trackColor?: string;
 }
 
-// HomeScreen hero's circular take on ProgressBar.tsx's growth-level track —
-// kept as its own component rather than a ProgressBar variant because it's
-// canvas-drawn (an animated conic-ish stroke isn't practical as a plain div
-// arc) and because ProgressBar's other two callers (ProfileScreen's own
-// growth bar, ProjectWorkspace's completion bar) are genuinely better as a
-// flat bar in their own layouts — this isn't a wholesale replacement.
 export function ProgressRing({ percent, size = 92, trackColor }: ProgressRingProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -22,6 +16,7 @@ export function ProgressRing({ percent, size = 92, trackColor }: ProgressRingPro
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    const normalized = Math.max(0, Math.min(1, percent));
     const dpr = window.devicePixelRatio || 1;
     canvas.width = size * dpr;
     canvas.height = size * dpr;
@@ -32,23 +27,21 @@ export function ProgressRing({ percent, size = 92, trackColor }: ProgressRingPro
     const cx = size / 2;
     const cy = size / 2;
     const r = size / 2 - 8;
-    const track = trackColor ?? "rgba(255,255,255,0.16)";
+    const track = trackColor ?? "rgba(21,22,25,0.09)";
 
     function frame(p: number) {
-      if (!ctx) return;
       ctx.clearRect(0, 0, size, size);
       ctx.lineCap = "round";
       ctx.lineWidth = 8;
-
       ctx.strokeStyle = track;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.stroke();
 
       const gradient = ctx.createLinearGradient(0, 0, size, size);
-      gradient.addColorStop(0, "#e8d59e");
-      gradient.addColorStop(0.48, "#e33b49");
-      gradient.addColorStop(1, "#783dff");
+      gradient.addColorStop(0, "#c5a264");
+      gradient.addColorStop(0.42, "#e32636");
+      gradient.addColorStop(1, "#981b28");
       ctx.strokeStyle = gradient;
       const start = -Math.PI / 2;
       const end = start + Math.PI * 2 * p;
@@ -59,20 +52,20 @@ export function ProgressRing({ percent, size = 92, trackColor }: ProgressRingPro
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) {
-      frame(percent);
+      frame(normalized);
       return;
     }
 
     let raf: number;
     let start: number | null = null;
-    const duration = 900;
+    const duration = 820;
     function ease(t: number) {
       return 1 - Math.pow(1 - t, 3);
     }
     function step(ts: number) {
       if (start === null) start = ts;
       const p = Math.min(1, (ts - start) / duration);
-      frame(ease(p) * percent);
+      frame(ease(p) * normalized);
       if (p < 1) raf = requestAnimationFrame(step);
     }
     raf = requestAnimationFrame(step);
