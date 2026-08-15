@@ -107,3 +107,7 @@ export function fetchEraEfficiency(): Promise<EfficiencySnapshot> {
 export function downloadAnalyticsSectionTable(section: AnalyticsDetailSection): Promise<Blob> {
   return adminBlob(`/api/v1/admin/analytics/details/${section}/export.csv`);
 }
+
+export function downloadFullAnalyticsReport(): Promise<Blob> {
+  return adminBlob("/api/v1/admin/analytics/full-report.xlsx");
+}
