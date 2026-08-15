@@ -1,9 +1,4 @@
-"""Pinned private-help FAQ and persistent quick navigation for the general chat.
-
-The FAQ card answers privately so the shared chat stays clean. The separate
-persistent reply keyboard gives the group two always-visible shortcuts; presses
-are intercepted and converted into private Mini App routes by app.handlers.chat.
-"""
+"""Single pinned FAQ/navigation card for the general ERA chat."""
 
 from __future__ import annotations
 
@@ -16,71 +11,59 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import AuditLog
-from app.keyboards.faq import faq_keyboard, general_chat_navigation_keyboard
+from app.keyboards.faq import faq_keyboard
 from app.services.audit_service import audit
 
-FAQ_PINNED_MESSAGE = """🔥 <b>ЭРА — быстро о главном</b>
+FAQ_PINNED_MESSAGE = """🔥 <b>ЭРА — всё нужное в одном месте</b>
 
-ЭРА — это не просто чат. Здесь участие превращается в проекты, опыт, новые связи и возможности.
+Не знаете, где найти мероприятие, посмотреть баллы или разобраться с заданиями?
 
-<b>События</b> и <b>мой профиль</b> всегда доступны кнопками внизу чата. Остальные быстрые ответы — ниже.
-
-Выберите вопрос — бот ответит <b>лично вам</b>, а общий чат останется чистым.
-
-Если нужен человек — нажмите «💬 Задать вопрос»."""
-
-GENERAL_NAV_MESSAGE = """⚡ <b>Быстрый доступ включён</b>
-
-События и ваш профиль теперь всегда доступны кнопками внизу общего чата."""
+Выберите нужный раздел — бот сразу откроет ответ лично для вас."""
 
 FAQ_ANSWERS: dict[str, str] = {
-    "faq:what_is_era": """🔥 <b>Что такое ЭРА?</b>
+    "faq:events": """📅 <b>Ближайшие события</b>
 
-ЭРА — среда, где из участника вырастают лидеры через реальные проекты.
+<b>Здесь начинается движение.</b>
 
-Здесь не просто приходят на мероприятия: участники знакомятся, берут задачи, создают идеи, собирают команды и постепенно начинают сами влиять на то, что происходит вокруг.
+Мы собрали ближайшие мероприятия ЭРА в одном месте.
 
-Главная логика:
-<b>участие → опыт → баллы → возможности → лидерство.</b>
+Вы можете посмотреть программу, количество свободных мест и сразу зарегистрироваться.""",
+    "faq:projects": """🚀 <b>Мои проекты</b>
 
-Не нужно сразу знать свою идеальную роль. Достаточно начать с одного реального действия.""",
-    "faq:what_it_gives": """🚀 <b>Как здесь расти?</b>
+<b>Ваши идеи и проекты — здесь.</b>
 
-Не нужно ждать, пока вас кто-то назовёт активным. Рост начинается с того, что вы делаете.
+Откройте проекты, в которых вы участвуете, посмотрите команду, задачи и следующий шаг.""",
+    "faq:tasks": """✅ <b>Мои задания</b>
 
-• приходите на события;
-• берите задачи;
-• участвуйте в проектах;
-• предлагайте идеи;
-• помогайте команде.
+<b>Здесь видно, что можно сделать прямо сейчас.</b>
 
-За реальную активность вы получаете опыт, баллы, достижения и доступ к новым возможностям.
+Выполняйте задания, участвуйте в проектах и получайте баллы за реальный вклад.""",
+    "faq:points": """⭐ <b>Баллы и возможности</b>
 
-Ваш путь в ЭРА:
-<b>Участник → Активный → Лидер.</b>
+<b>Баллы показывают вашу активность. Но главное — что они открывают дальше.</b>
 
-Здесь растут не «по стажу», а через ответственность и результат.""",
-    "faq:what_to_do": """🧭 <b>С чего начать?</b>
+Участие, проекты и выполненные задания помогают двигаться от участника к активной роли и лидерству.""",
+    "faq:registration": """🙋 <b>Как зарегистрироваться</b>
 
-Если вы только пришли в ЭРА — не пытайтесь разобраться во всём сразу.
+<b>Нашли мероприятие, куда хотите попасть?</b>
 
-<b>1.</b> Откройте приложение ЭРА и заполните профиль.
-<b>2.</b> Посмотрите ближайшие события и проекты.
-<b>3.</b> Выберите одно действие: запишитесь, возьмите задачу или присоединитесь к проекту.
+Откройте его и нажмите «Зарегистрироваться».
 
-Первый шаг важнее идеального плана. Всё остальное станет понятнее уже в движении.""",
-    "faq:what_can_i_do": """💡 <b>Как предложить идею?</b>
+После регистрации бот отправит подтверждение и напомнит о событии заранее.
 
-Идея в ЭРА не должна оставаться сообщением в чате.
+Если планы изменятся — участие можно отменить в один клик.""",
+    "faq:active": """🔥 <b>Как стать активным</b>
 
-Откройте <b>ЭРА → Проекты → Новый проект</b> и коротко опишите:
-• что хотите сделать;
-• для кого;
-• какой результат хотите получить.
+<b>Не обязательно ждать приглашения.</b>
 
-Дальше система поможет собрать идею в полноценный проект, а команда сможет дать обратную связь и провести её дальше.
+Выбирайте проекты, берите задания, помогайте командам и предлагайте собственные идеи.
 
-Даже если идея пока сырая — начните с первого варианта. Сильные проекты редко рождаются идеально готовыми.""",
+В ЭРА рост начинается с действия.""",
+    "faq:contact": """💬 <b>Связаться с командой</b>
+
+<b>Есть вопрос или идея?</b>
+
+Напишите команде ЭРА — сообщение попадёт ответственному человеку.""",
 }
 
 
@@ -117,17 +100,9 @@ async def _latest_faq_message_id(session: AsyncSession) -> int | None:
     return None
 
 
-async def _navigation_keyboard_already_published(session: AsyncSession) -> bool:
-    marker = await session.scalar(
-        select(AuditLog.id)
-        .where(AuditLog.action == "chat.navigation_keyboard_published")
-        .order_by(AuditLog.created_at.desc())
-        .limit(1)
-    )
-    return marker is not None
-
-
 async def _upsert_faq_message(bot: Bot, chat_id: int, session: AsyncSession) -> int:
+    me = await bot.get_me()
+    markup = faq_keyboard(me.username or None)
     message_id = await _latest_faq_message_id(session)
     if message_id:
         try:
@@ -135,7 +110,7 @@ async def _upsert_faq_message(bot: Bot, chat_id: int, session: AsyncSession) -> 
                 FAQ_PINNED_MESSAGE,
                 chat_id=chat_id,
                 message_id=message_id,
-                reply_markup=faq_keyboard(),
+                reply_markup=markup,
                 parse_mode="HTML",
             )
             return message_id
@@ -149,7 +124,7 @@ async def _upsert_faq_message(bot: Bot, chat_id: int, session: AsyncSession) -> 
         sent = await bot.send_message(
             chat_id,
             FAQ_PINNED_MESSAGE,
-            reply_markup=faq_keyboard(),
+            reply_markup=markup,
             parse_mode="HTML",
         )
     except TelegramAPIError as exc:
@@ -183,54 +158,14 @@ async def publish_faq_message(
     return FaqPublishResult(pinned=pinned, message_id=message_id)
 
 
-async def publish_general_navigation_keyboard(
-    bot: Bot,
-    settings: Settings,
-    session: AsyncSession,
-    actor_id: int | None = None,
-) -> int | None:
-    """Publish the persistent group dock once for existing members.
-
-    New members receive the same keyboard from the welcome handler, so deploys
-    must not create repeated navigation messages in the shared chat.
-    """
-    if not settings.general_chat_id:
-        raise ChatFaqError("chat_not_bound")
-    if await _navigation_keyboard_already_published(session):
-        return None
-    try:
-        sent = await bot.send_message(
-            int(settings.general_chat_id),
-            GENERAL_NAV_MESSAGE,
-            reply_markup=general_chat_navigation_keyboard(),
-            parse_mode="HTML",
-        )
-    except TelegramAPIError as exc:
-        raise ChatFaqError("navigation_keyboard_send_failed") from exc
-    await audit(
-        session,
-        actor_id=actor_id,
-        action="chat.navigation_keyboard_published",
-        entity_type="chat",
-        entity_id=sent.message_id,
-        new_value={"chat": "general"},
-    )
-    await session.commit()
-    return sent.message_id
-
-
 async def ensure_general_faq_pinned(
     bot: Bot, settings: Settings, session_factory
 ) -> None:
-    """Fail-soft startup/maintenance job: keep FAQ current and quick nav available."""
+    """Refresh/edit the same FAQ card. Never create a navigation-message stream."""
     if not settings.general_chat_id:
         return
     async with session_factory() as session:
         try:
             await publish_faq_message(bot, settings, session, actor_id=None)
-        except ChatFaqError:
-            await session.rollback()
-        try:
-            await publish_general_navigation_keyboard(bot, settings, session, actor_id=None)
         except ChatFaqError:
             await session.rollback()
