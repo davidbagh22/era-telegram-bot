@@ -7,10 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_qr_system_is_not_implemented_and_is_documented() -> None:
     """QR attendance remains intentionally absent.
 
-    A personal development "Check-in" now exists in My Vector, so the old
-    blanket assertion against the word ``checkin`` would confuse an unrelated
-    self-reflection feature with QR attendance. Keep this audit focused on
-    concrete QR implementation markers instead of generic product language.
+    My Vector now has a personal monthly reflection flow. The QR audit stays
+    focused on concrete attendance/QR implementation markers instead of
+    generic product terminology used by unrelated features.
     """
     qr_files = [
         path.relative_to(ROOT).as_posix()
