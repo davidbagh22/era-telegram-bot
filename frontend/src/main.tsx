@@ -4,12 +4,11 @@ import { App } from "./app/App";
 import { ToastProvider } from "./components/Toast";
 import { applyTelegramTheme } from "./telegram/webApp";
 import "./theme/tokens.css";
+import "./theme/motion.css";
 import "./theme/layout-safety.css";
 
-// Set light/dark before the first paint so there is no flash of the wrong
-// theme; initTelegramWebApp() (called from useAuth) re-applies this once
-// the Telegram WebApp SDK is confirmed ready and keeps it live via
-// themeChanged, but the app can render before that effect runs.
+// ERA uses one intentional dark product identity inside Telegram.
+// Apply it before first paint to avoid a light-theme flash.
 applyTelegramTheme();
 
 const container = document.getElementById("root");
