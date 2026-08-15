@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const PARTICIPANT_TELEGRAM_ID = 900002;
+const PARTICIPANT_TELEGRAM_ID = 900001;
 
 async function openVector(page: Page) {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
