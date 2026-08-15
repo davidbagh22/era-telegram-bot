@@ -57,27 +57,16 @@ async function adminToken(): Promise<string> {
     const initData = window.Telegram?.WebApp?.initData ?? "";
     tokenPromise = authenticate(initData, devTelegramId()).then((result) => result.token);
   }
-  try {
-    return await tokenPromise;
-  } catch (error) {
-    tokenPromise = null;
-    throw error;
-  }
+  try { return await tokenPromise; }
+  catch (error) { tokenPromise = null; throw error; }
 }
 
 async function adminGet<T>(path: string): Promise<T> {
   const token = await adminToken();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } });
   if (!response.ok) {
     let detail = response.statusText;
-    try {
-      const body = (await response.json()) as { detail?: string };
-      detail = body.detail ?? detail;
-    } catch {
-      // Keep status text for non-JSON responses.
-    }
+    try { detail = ((await response.json()) as { detail?: string }).detail ?? detail; } catch { /* status text */ }
     if (response.status === 401) tokenPromise = null;
     throw new ApiError(response.status, detail);
   }
@@ -86,9 +75,7 @@ async function adminGet<T>(path: string): Promise<T> {
 
 async function adminBlob(path: string): Promise<Blob> {
   const token = await adminToken();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } });
   if (!response.ok) {
     if (response.status === 401) tokenPromise = null;
     throw new ApiError(response.status, response.statusText);
@@ -104,8 +91,15 @@ export function fetchEraEfficiency(): Promise<EfficiencySnapshot> {
   return adminGet<EfficiencySnapshot>("/api/v1/admin/analytics/weekly");
 }
 
-export function downloadAnalyticsSectionTable(section: AnalyticsDetailSection): Promise<Blob> {
+export function downloadAnalyticsSectionCsv(section: AnalyticsDetailSection): Promise<Blob> {
   return adminBlob(`/api/v1/admin/analytics/details/${section}/export.csv`);
+}
+
+// Backward-compatible alias used by the existing admin screens.
+export const downloadAnalyticsSectionTable = downloadAnalyticsSectionCsv;
+
+export function downloadAnalyticsSectionXlsx(section: AnalyticsDetailSection): Promise<Blob> {
+  return adminBlob(`/api/v1/admin/analytics/details/${section}/export.xlsx`);
 }
 
 export function downloadFullAnalyticsReport(): Promise<Blob> {
