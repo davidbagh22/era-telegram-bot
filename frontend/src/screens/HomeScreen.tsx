@@ -14,6 +14,7 @@ interface HomeScreenProps {
   user: MiniAppUserSummary;
   onOpenProfile?: () => void;
   onOpenProgress?: () => void;
+  onOpenDevelopment?: () => void;
   onOpenEvents?: () => void;
   onOpenEvent?: (id: number) => void;
   onOpenProject?: (id: number) => void;
@@ -39,6 +40,7 @@ export function HomeScreen({
   user,
   onOpenProfile,
   onOpenProgress,
+  onOpenDevelopment,
   onOpenEvents,
   onOpenEvent,
   onOpenProject,
@@ -119,6 +121,29 @@ export function HomeScreen({
           </div>
         </div>
       </Card>
+
+      {onOpenDevelopment && (
+        <Card
+          onClick={onOpenDevelopment}
+          style={{
+            padding: "1.15rem",
+            overflow: "hidden",
+            border: "1px solid color-mix(in srgb, var(--era-red) 38%, var(--era-border))",
+            background: "radial-gradient(circle at 86% 10%, rgba(174,33,49,.25), transparent 40%), linear-gradient(145deg, rgba(43,14,20,.96), rgba(17,17,20,.98) 58%, rgba(31,28,25,.96))",
+          }}
+        >
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "1rem", alignItems: "center" }}>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, color: "var(--era-gold-ink)", fontSize: "var(--era-text-xs)", fontWeight: 850, letterSpacing: ".09em" }}>МОЙ ВЕКТОР</p>
+              <strong style={{ display: "block", marginTop: ".35rem", fontSize: "1.12rem", lineHeight: 1.2 }}>Как ты изменился за последний месяц?</strong>
+              <p style={{ margin: ".45rem 0 0", color: "var(--era-text-muted)" }}>Проверить себя · 6 мин</p>
+            </div>
+            <div aria-hidden="true" style={{ width: 58, height: 58, borderRadius: "50%", display: "grid", placeItems: "center", border: "7px solid rgba(213,50,65,.82)", boxShadow: "inset 0 0 0 5px rgba(183,151,95,.16), 0 0 24px rgba(174,33,49,.18)" }}>
+              <span style={{ fontSize: "1.2rem", fontWeight: 900 }}>↗</span>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <section style={{ display: "flex", flexDirection: "column", gap: ".75rem" }}>
         <div>
