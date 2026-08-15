@@ -26,8 +26,9 @@ def _checkin(row, context=None) -> dict[str, Any]:
     return {
         "id": row.id,
         "month": row.month,
+        "theme": dev.checkin_theme(row),
         "status": row.status,
-        "answers": row.answers_json or {},
+        "answers": dev.public_checkin_answers(row),
         "state": row.state_json or {},
         "index": row.index_value,
         "delta": row.delta_json or {},
@@ -93,6 +94,7 @@ async def development_home(
     profile = await session.get(UserVectorProfile, user.id)
     checkin = await dev.get_or_create_checkin(session, user.id) if consented else None
     context = await dev.checkin_context(session, checkin.id) if checkin else None
+    questions = await dev.checkin_questions(session, user.id, checkin) if checkin else dev.STATE_QUESTIONS
     goal = await dev.latest_goal(session, user.id) if consented else None
     review = (
         await session.scalar(select(GoalReview).where(GoalReview.goal_id == goal.id)) if goal else None
@@ -113,7 +115,7 @@ async def development_home(
         },
         "current_checkin": _checkin(checkin, context) if checkin else None,
         "current_goal": _goal(goal, review),
-        "questions": dev.STATE_QUESTIONS,
+        "questions": questions,
         "answer_options": dev.ANSWER_OPTIONS,
         "context_options": dev.CONTEXT_OPTIONS,
         "development_wants": dev.DEVELOPMENT_WANTS,
@@ -294,7 +296,7 @@ async def current_checkin(
     context = await dev.checkin_context(session, row.id)
     return {
         **_checkin(row, context),
-        "questions": dev.STATE_QUESTIONS,
+        "questions": await dev.checkin_questions(session, user.id, row),
         "answer_options": dev.ANSWER_OPTIONS,
         "context_options": dev.CONTEXT_OPTIONS,
         "development_wants": dev.DEVELOPMENT_WANTS,
@@ -459,6 +461,18 @@ async def add_note(
     return {"id": row.id, "created_at": row.created_at}
 
 
+@router.get("/notes/remember")
+async def remembered_notes(
+    user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+) -> list[dict[str, Any]]:
+    await _require_consent(session, user.id)
+    rows = await dev.due_personal_notes(session, user.id)
+    return [
+        {"id": row.id, "text": row.text, "created_at": row.created_at, "checkin_id": row.checkin_id}
+        for row in rows
+    ]
+
+
 class PulseIn(BaseModel):
     energy: int
 
@@ -553,3 +567,28 @@ async def insights(
         }
         for row in rows
     ]
+
+
+class InsightFeedbackIn(BaseModel):
+    accepted: bool
+
+
+@router.post("/insights/{insight_id}/feedback")
+async def insight_feedback(
+    insight_id: int,
+    payload: InsightFeedbackIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    await _require_consent(session, user.id)
+    try:
+        row = await dev.set_insight_feedback(session, user.id, insight_id, payload.accepted)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    await dev.audit(
+        session,
+        user.id,
+        "development.insight.feedback",
+        metadata={"insight_id": insight_id, "accepted": payload.accepted},
+    )
+    return {"id": row.id, "accepted": row.accepted, "hidden": row.hidden}
