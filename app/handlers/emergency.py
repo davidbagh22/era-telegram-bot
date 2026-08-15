@@ -110,12 +110,46 @@ async def _try_event_attendance_from_deep_link(
             "too_early": "QR вход ещё не открыт. Он станет доступен ближе к началу мероприятия.",
             "too_late": "Время QR входа уже завершилось.",
         }
-        await message.answer(messages.get(code, "Не удалось подтвердить посещение. Обратитесь к организатору."))
+        await message.answer(
+            messages.get(
+                code,
+                "Не удалось подтвердить посещение. Обратитесь к организатору.",
+            )
+        )
         return True
 
     if result.already_attended:
+        if result.requires_selfie:
+            await message.answer(
+                f"✅ Вход на «{result.event.title}» уже отмечен.\n\n"
+                "Для подтверждения участия и начисления баллов осталось отправить фото с мероприятия.",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text="📸 Подтвердить участие",
+                            callback_data=f"selfie:start:{result.event.id}",
+                        )
+                    ]]
+                ),
+            )
+        else:
+            await message.answer(
+                f"✅ Вы уже отмечены на мероприятии «{result.event.title}». Повторно ничего делать не нужно."
+            )
+        return True
+
+    if result.requires_selfie:
         await message.answer(
-            f"✅ Вы уже отмечены на мероприятии «{result.event.title}». Повторно ничего делать не нужно."
+            f"✅ Вы на месте\n\nВход на «{result.event.title}» отмечен.\n\n"
+            "Для подтверждения участия и начисления баллов отправьте фото с мероприятия.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="📸 Подтвердить участие",
+                        callback_data=f"selfie:start:{result.event.id}",
+                    )
+                ]]
+            ),
         )
         return True
 
@@ -254,9 +288,13 @@ async def rescue_start(
         command.args if command else None,
     ):
         return
-    if await _try_event_attendance_from_deep_link(message, user, session, settings, command):
+    if await _try_event_attendance_from_deep_link(
+        message, user, session, settings, command
+    ):
         return
-    if await _try_start_task_submission_from_deep_link(message, user, state, session, command):
+    if await _try_start_task_submission_from_deep_link(
+        message, user, state, session, command
+    ):
         return
     if await _try_start_activity_submission_from_deep_link(
         message, user, state, session, bot, settings, command
