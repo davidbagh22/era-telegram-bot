@@ -3,6 +3,7 @@ from aiogram import F, Router
 from app.handlers.participant import (
     navigation,
     development,
+    event_qr,
     commands_ready,
     achievements_block4,
     task_block2,
@@ -36,6 +37,7 @@ router.callback_query.filter(F.message.chat.type == "private")
 router.include_routers(
     navigation.router,
     development.router,
+    event_qr.router,
     commands_ready.router,
     achievements_block4.router,
     task_block2.router,
