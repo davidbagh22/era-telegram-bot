@@ -39,7 +39,10 @@ async def search_users(
     limit = max(1, min(limit, MAX_USER_SEARCH_LIMIT))
     conditions = []
     if not include_archived:
-        conditions.append(User.is_archived.is_(False))
+        # Some pre-migration production rows can still have NULL here. NULL
+        # means "not archived", so do not silently lose an existing participant
+        # from the admin directory just because the old row predates the bool default.
+        conditions.append(User.is_archived.is_not(True))
     if role:
         conditions.append(User.role == role)
     stripped = query.strip()
