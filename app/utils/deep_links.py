@@ -42,24 +42,35 @@ def parse_activity_submit_payload(payload: str) -> int | None:
 
 
 def bot_start_deep_link(bot_username: str, payload: str) -> str:
-    """Open a private conversation with the bot and pass a safe /start payload."""
+    """Open a private conversation with the bot and pass a /start payload."""
     username = bot_username.strip().lstrip("@")
     if not username:
         return ""
     return f"https://t.me/{username}?{urlencode({'start': payload})}"
 
 
+def main_miniapp_deep_link(bot_username: str, start_param: str) -> str:
+    """Open the bot's configured Main Mini App with Telegram startapp data.
+
+    This is the preferred Bot -> section handoff because Telegram owns the
+    launch and exposes the destination through its Mini App start parameter.
+    """
+    username = bot_username.strip().lstrip("@")
+    payload = start_param.strip().strip("/")
+    if not username or not payload:
+        return ""
+    return f"https://t.me/{username}?{urlencode({'startapp': payload})}"
+
+
 def miniapp_path_url(
     miniapp_url: str, path: str, params: dict[str, str | int] | None = None
 ) -> str:
-    """Build a resilient Mini App route URL.
+    """Build a resilient direct WebAppInfo route URL.
 
-    Telegram clients have historically differed in how they preserve a
-    WebAppInfo URL fragment/query while opening an already-running Mini App.
-    Carry the same destination in three compatible places: ERA's explicit
-    query key, Telegram's start-param query key and the hash fallback. The
-    frontend canonicalises whichever survives into one internal route.
-    Existing query parameters are preserved.
+    This remains the fallback for entity-level links and deployments without a
+    configured Main Mini App. Carry the destination in ERA's explicit query,
+    Telegram's start-param query and the hash fallback; the frontend
+    canonicalises whichever survives into one internal route.
     """
     if not miniapp_url:
         return ""
