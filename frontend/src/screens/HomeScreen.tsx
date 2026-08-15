@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { AnimatedScore } from "../components/AnimatedScore";
 import { Avatar } from "../components/Avatar";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
@@ -74,7 +75,7 @@ export function HomeScreen({
   const todayEventCount = data.nearest_event && isToday(data.nearest_event.event_date) ? 1 : 0;
 
   return (
-    <div className="era-page" style={{ padding: "1.15rem 1.15rem 1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+    <div className="era-page era-stagger" style={{ padding: "1.15rem 1.15rem 1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       <header style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
         <button
           type="button"
@@ -100,15 +101,15 @@ export function HomeScreen({
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, letterSpacing: ".08em" }}>ERA SCORE</p>
-            <div style={{ marginTop: ".15rem", fontFamily: "var(--era-font-display)", fontSize: "clamp(2.75rem, 13vw, 3.5rem)", fontWeight: 850, lineHeight: 1, letterSpacing: "-0.055em" }}>
-              {data.points_balance}
+            <div style={{ marginTop: ".15rem" }}>
+              <AnimatedScore value={data.points_balance} />
             </div>
             <p style={{ margin: ".65rem 0 0", color: "var(--era-text-muted)" }}>
               Нажмите, чтобы увидеть, из чего складывается ваш рост.
             </p>
           </div>
           <div style={{ position: "relative", width: 104, height: 104, flexShrink: 0 }}>
-            <ProgressRing percent={orbitPercent} size={104} />
+            <ProgressRing percent={orbitPercent} size={104} animationKey="home-status-orbit" />
             <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", textAlign: "center" }}>
               <div>
                 <strong style={{ display: "block", fontSize: "1.2rem" }}>{Math.round(orbitPercent * 100)}%</strong>
@@ -208,7 +209,7 @@ export function HomeScreen({
 }
 
 function TodayMetric({ label, value, onClick }: { label: string; value: number; onClick?: () => void }) {
-  const content = <><strong style={{ display: "block", fontSize: "1.45rem", color: value ? "var(--era-red)" : "var(--era-text)" }}>{value}</strong><span style={{ display: "block", marginTop: 2, color: "var(--era-text-muted)", fontSize: ".72rem" }}>{label}</span></>;
+  const content = <><strong style={{ display: "block", fontSize: "1.45rem", color: value ? "var(--era-red-bright)" : "var(--era-text)" }}>{value}</strong><span style={{ display: "block", marginTop: 2, color: "var(--era-text-muted)", fontSize: ".72rem" }}>{label}</span></>;
   if (!onClick) return <Card style={{ padding: ".8rem", textAlign: "center", boxShadow: "none" }}>{content}</Card>;
   return <Card onClick={onClick} style={{ padding: ".8rem", textAlign: "center", boxShadow: "none" }}>{content}</Card>;
 }
@@ -216,6 +217,6 @@ function TodayMetric({ label, value, onClick }: { label: string; value: number; 
 function IconBubble({ children, tone }: { children: ReactNode; tone: "red" | "gold" }) {
   const styleByTone = tone === "gold"
     ? { background: "var(--era-tint-gold)", color: "var(--era-gold-ink)" }
-    : { background: "var(--era-tint-red)", color: "var(--era-red)" };
+    : { background: "var(--era-tint-red)", color: "var(--era-red-bright)" };
   return <span style={{ flexShrink: 0, width: 40, height: 40, borderRadius: "50%", display: "grid", placeItems: "center", ...styleByTone }}>{children}</span>;
 }
