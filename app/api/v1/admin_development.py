@@ -37,92 +37,38 @@ async def participant_development(
 
     visibility = await session.get(AdminVisibilitySetting, user_id)
     if visibility is None or not visibility.summary_visible:
-        await dev.audit(
-            session,
-            user.id,
-            "development.admin.profile.denied",
-            target_user_id=user_id,
-        )
+        await dev.audit(session, user.id, "development.admin.profile.denied", target_user_id=user_id)
         raise HTTPException(status_code=403, detail="development_summary_not_shared")
 
     profile = await session.get(UserVectorProfile, user_id)
     history = (
         await session.scalars(
             select(MonthlyCheckin)
-            .where(
-                MonthlyCheckin.user_id == user_id,
-                MonthlyCheckin.status == "completed",
-            )
+            .where(MonthlyCheckin.user_id == user_id, MonthlyCheckin.status == "completed")
             .order_by(desc(MonthlyCheckin.month))
             .limit(12)
         )
     ).all()
     goal = await dev.latest_goal(session, user_id)
-    review = (
-        await session.scalar(select(GoalReview).where(GoalReview.goal_id == goal.id))
-        if goal
-        else None
-    )
+    review = await session.scalar(select(GoalReview).where(GoalReview.goal_id == goal.id)) if goal else None
 
-    await dev.audit(
-        session,
-        user.id,
-        "development.admin.profile.read",
-        target_user_id=user_id,
-        metadata={"shared_summary": True},
-    )
+    await dev.audit(session, user.id, "development.admin.profile.read", target_user_id=user_id, metadata={"shared_summary": True})
 
     return {
-        "user": {
-            "id": target.id,
-            "first_name": target.first_name,
-            "last_name": target.last_name,
-        },
+        "user": {"id": target.id, "first_name": target.first_name, "last_name": target.last_name},
         "last_checkin_at": profile.last_checkin_at if profile else None,
         "state": profile.state_json if profile else {},
         "index": profile.current_index if profile else None,
         "baseline": profile.baseline_json if profile else {},
         "traits": profile.traits_json if profile else {},
         "needs": profile.needs_json if profile else {},
-        "interests": (
-            profile.interests_json if profile and visibility.interests_visible else None
-        ),
-        "strengths": (
-            profile.strengths_json if profile and visibility.interests_visible else None
-        ),
-        "environment": (
-            profile.environment_json if profile and visibility.interests_visible else None
-        ),
-        "current_focus": (
-            {
-                "title": goal.title,
-                "experiment": goal.experiment,
-                "status": goal.status,
-                "review_result": review.result if review else None,
-            }
-            if goal and visibility.goals_visible
-            else None
-        ),
-        "history": [
-            {
-                "month": row.month,
-                "index": row.index_value,
-                "state": row.state_json,
-                "delta": row.delta_json,
-            }
-            for row in history
-        ],
-        "notice": (
-            "Эти данные помогают понимать потребности и развитие. Они не оценивают "
-            "пригодность, надёжность или ценность человека и не могут использоваться "
-            "для автоматического отбора."
-        ),
-        "never_exposed_here": [
-            "personal_notes",
-            "raw_sensitive_answers",
-            "hidden_insights",
-            "assessment_answer_rows",
-        ],
+        "interests": profile.interests_json if profile and visibility.interests_visible else None,
+        "strengths": profile.strengths_json if profile and visibility.interests_visible else None,
+        "environment": profile.environment_json if profile and visibility.interests_visible else None,
+        "current_focus": ({"title": goal.title, "experiment": goal.experiment, "status": goal.status, "review_result": review.result if review else None} if goal and visibility.goals_visible else None),
+        "history": [{"month": row.month, "index": row.index_value, "state": row.state_json, "delta": row.delta_json} for row in history],
+        "notice": "Эти данные помогают понимать потребности и развитие. Они не оценивают пригодность, надёжность или ценность человека и не могут использоваться для автоматического отбора.",
+        "never_exposed_here": ["personal_notes", "raw_sensitive_answers", "hidden_insights", "assessment_answer_rows"],
     }
 
 
@@ -134,13 +80,5 @@ async def development_analytics(
 ) -> dict[str, Any]:
     _require_admin(user)
     result = await dev.community_analytics(session, period_days=period_days)
-    await dev.audit(
-        session,
-        user.id,
-        "development.admin.analytics.read",
-        metadata={
-            "period_days": max(1, min(period_days, 365)),
-            "suppressed": result["suppressed"],
-        },
-    )
+    await dev.audit(session, user.id, "development.admin.analytics.read", metadata={"period_days": max(1, min(period_days, 365)), "suppressed": result["suppressed"]})
     return result
