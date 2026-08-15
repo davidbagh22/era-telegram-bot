@@ -7,6 +7,7 @@ alembic>=1.14,<2
 redis>=5.2,<6
 pydantic-settings>=2.7,<3
 python-dotenv>=1.0,<2
+python-multipart>=0.0.20,<1
 APScheduler>=3.11,<4
 openai>=1.59,<2
 greenlet>=3.1,<4
