@@ -173,13 +173,15 @@ async def contact_button(message: Message, user: User | None, state: FSMContext)
     await message.answer(ux_texts.CONTACT_MENU, reply_markup=contact_keyboard())
 
 
-async def _resolve_bot_username(bot: Bot, settings: Settings) -> str:
-    configured = settings.bot_username.strip().lstrip("@")
+async def _resolve_bot_username(bot: Bot | None, settings: Settings) -> str:
+    configured = str(getattr(settings, "bot_username", "") or "").strip().lstrip("@")
     if configured:
         return configured
+    if bot is None:
+        return ""
     try:
         me = await bot.get_me()
-    except TelegramAPIError:
+    except (TelegramAPIError, AttributeError):
         return ""
     return (me.username or "").strip().lstrip("@")
 
@@ -210,7 +212,7 @@ async def _send_navigation_guide(
     message: Message,
     user: User | None,
     settings: Settings,
-    bot: Bot,
+    bot: Bot | None = None,
 ) -> None:
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
@@ -242,13 +244,24 @@ async def _send_navigation_guide(
 
 
 @router.callback_query(F.data == "nav:guide")
-async def nav_guide_callback(call: CallbackQuery, user: User | None, settings: Settings, bot: Bot) -> None:
+async def nav_guide_callback(
+    call: CallbackQuery,
+    user: User | None,
+    settings: Settings,
+    bot: Bot | None = None,
+) -> None:
     await call.answer()
     await _send_navigation_guide(call.message, user, settings, bot)
 
 
 @router.message(Command("navigation"), F.chat.type == "private")
-async def navigation_command(message: Message, user: User | None, settings: Settings, state: FSMContext, bot: Bot) -> None:
+async def navigation_command(
+    message: Message,
+    user: User | None,
+    settings: Settings,
+    state: FSMContext,
+    bot: Bot | None = None,
+) -> None:
     await state.clear()
     await _send_navigation_guide(message, user, settings, bot)
 
