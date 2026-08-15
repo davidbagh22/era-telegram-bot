@@ -52,15 +52,29 @@ class BackupRecoveryContractTests(unittest.TestCase):
         self.assertLess(restore_pos, encrypt_pos)
         self.assertLess(encrypt_pos, artifact_pos)
 
-    def test_backup_clients_are_pinned_to_supported_major(self) -> None:
+    def test_backup_clients_are_pinned_and_invoked_from_pg18_directory(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "database-backup.yml").read_text(encoding="utf-8")
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn('PG_MAJOR: "18"', workflow)
+        self.assertIn("PG_BIN: /usr/lib/postgresql/18/bin", workflow)
         self.assertIn("image: postgres:18", workflow)
         self.assertIn('postgresql-client-${PG_MAJOR}', workflow)
+        self.assertIn('"${PG_BIN}/pg_restore" --version', workflow)
+        self.assertIn('"${PG_BIN}/pg_dump" --version', workflow)
+        self.assertIn('"${PG_BIN}/psql" --version', workflow)
+        self.assertNotIn("\n          pg_restore --version", workflow)
+        self.assertNotIn("\n          pg_dump --version", workflow)
         self.assertIn("ARG PG_MAJOR=18", dockerfile)
         self.assertIn('"postgresql-client-${PG_MAJOR}"', dockerfile)
         self.assertNotIn("\n    postgresql-client \\", dockerfile)
+
+    def test_backup_workflow_installs_migration_verifier_before_real_restore(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "database-backup.yml").read_text(encoding="utf-8")
+        verifier_pos = workflow.index("Install migration verifier")
+        restore_pos = workflow.index("Verify restore on isolated PostgreSQL")
+        self.assertLess(verifier_pos, restore_pos)
+        self.assertIn('"alembic>=1.14,<2"', workflow)
+        self.assertIn("ALEMBIC_BIN: /tmp/era-backup-tools/bin/alembic", workflow)
 
     def test_base_backup_does_not_depend_on_ubuntu_awscli_package(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "database-backup.yml").read_text(encoding="utf-8")
@@ -111,21 +125,26 @@ class BackupRecoveryContractTests(unittest.TestCase):
         )
         self.assertNotIn("secret", _classify_pg_dump_failure(b"secret token key"))
 
-    def test_restore_script_checks_integrity_schema_and_migration_heads(self) -> None:
+    def test_restore_script_checks_integrity_schema_migrations_and_explicit_clients(self) -> None:
         script = (ROOT / "scripts" / "verify_database_restore.sh").read_text(encoding="utf-8")
         for marker in [
             "sha256sum",
-            "pg_restore",
+            'PG_BIN="${PG_BIN:-/usr/lib/postgresql/${PG_MAJOR}/bin}"',
+            'PG_RESTORE="${PG_BIN}/pg_restore"',
+            'PSQL="${PG_BIN}/psql"',
+            '"${PG_RESTORE}"',
             "--exit-on-error",
             "ON_ERROR_STOP=1",
             "public.users",
             "alembic_version",
-            "alembic heads",
+            '"${ALEMBIC_BIN}" heads',
             "CODE_HEADS",
             "RESTORED_HEADS",
         ]:
             self.assertIn(marker, script)
         self.assertNotIn("SELECT COUNT(*) AS users_count", script)
+        self.assertNotIn("\npg_restore \\", script)
+        self.assertNotIn("\npsql ", script)
 
     def test_snapshot_failure_logs_only_allow_listed_machine_codes(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "database-backup.yml").read_text(encoding="utf-8")
@@ -134,6 +153,16 @@ class BackupRecoveryContractTests(unittest.TestCase):
         self.assertNotIn('cat "${RESPONSE_FILE}"', workflow)
         self.assertNotIn("BACKUP_DATABASE_URL", workflow)
         self.assertNotIn("PRODUCTION_DATABASE_URL", workflow)
+
+    def test_failure_reporting_and_summary_do_not_claim_skipped_checks_succeeded(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "database-backup.yml").read_text(encoding="utf-8")
+        self.assertIn("RESTORE_ERROR_CODE", workflow)
+        self.assertIn("restore_verification_failed", workflow)
+        self.assertIn("steps.restore.outcome", workflow)
+        self.assertIn("steps.package.outcome", workflow)
+        self.assertIn("steps.artifact.outcome", workflow)
+        self.assertNotIn("Migration head verification: yes", workflow)
+        self.assertNotIn("Encryption round-trip checksum verified: yes", workflow)
 
     def test_recovery_document_exists(self) -> None:
         document = (ROOT / "docs" / "BACKUP_AND_RECOVERY.md").read_text(encoding="utf-8")
