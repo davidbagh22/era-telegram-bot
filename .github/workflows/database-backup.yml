@@ -17,6 +17,7 @@ env:
   BACKUP_DIR: backups
   PRODUCTION_BASE: https://era-telegram-bot.onrender.com
   BACKUP_API_BASE: https://era-telegram-bot.onrender.com/api/v1/internal/backup
+  PG_MAJOR: "18"
 
 concurrency:
   group: database-backup
@@ -28,7 +29,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_USER: restore
           POSTGRES_PASSWORD: restore
@@ -54,10 +55,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install backup clients
+      - name: Install PostgreSQL 18 backup clients
+        shell: bash
         run: |
+          set -Eeuo pipefail
           sudo apt-get update
-          sudo apt-get install -y postgresql-client jq
+          sudo apt-get install -y ca-certificates curl gnupg jq
+          sudo install -d -m 0755 /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | gpg --dearmor \
+            | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg >/dev/null
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y "postgresql-client-${PG_MAJOR}"
+          pg_dump --version
+          pg_restore --version
 
       - name: Validate optional external storage
         id: config
@@ -139,18 +153,36 @@ jobs:
 
           BACKUP_FILE="${BACKUP_DIR}/era-$(date -u +%Y%m%dT%H%M%SZ).dump"
           HEADERS_FILE="$(mktemp)"
-          chmod 600 "${HEADERS_FILE}"
-          curl --fail-with-body --silent --show-error \
+          RESPONSE_FILE="$(mktemp)"
+          chmod 600 "${HEADERS_FILE}" "${RESPONSE_FILE}"
+          HTTP_STATUS="$(curl --silent --show-error --max-time 120 \
             -H "Authorization: Bearer ${OIDC_TOKEN}" \
             -D "${HEADERS_FILE}" \
-            -o "${BACKUP_FILE}" \
-            "${BACKUP_API_BASE}/snapshot"
+            -o "${RESPONSE_FILE}" \
+            -w '%{http_code}' \
+            "${BACKUP_API_BASE}/snapshot" || true)"
+
+          if [ "${HTTP_STATUS}" != "200" ]; then
+            SAFE_CODE="$(jq -r '.detail // empty' "${RESPONSE_FILE}" 2>/dev/null || true)"
+            case "${SAFE_CODE}" in
+              pg_dump_version_mismatch|pg_dump_auth_failed|pg_dump_connection_failed|pg_dump_unavailable|pg_dump_empty|pg_dump_failed|database_url_incomplete|snapshot_failed)
+                ;;
+              *) SAFE_CODE="snapshot_http_error" ;;
+            esac
+            echo "error_code=${SAFE_CODE}" >> "${GITHUB_OUTPUT}"
+            echo "Production snapshot endpoint failed: ${SAFE_CODE} (HTTP ${HTTP_STATUS:-000})." >&2
+            rm -f "${HEADERS_FILE}" "${RESPONSE_FILE}"
+            exit 1
+          fi
+
+          mv "${RESPONSE_FILE}" "${BACKUP_FILE}"
           chmod 600 "${BACKUP_FILE}"
 
           LOCAL_SHA="$(sha256sum "${BACKUP_FILE}" | awk '{print $1}')"
-          SERVER_SHA="$(awk '$1=="x-era-backup-sha256:" {gsub("\r", "", $2); print $2}' "${HEADERS_FILE}" | tail -n1)"
+          SERVER_SHA="$(awk 'tolower($1)=="x-era-backup-sha256:" {gsub("\r", "", $2); print $2}' "${HEADERS_FILE}" | tail -n1)"
           rm -f "${HEADERS_FILE}"
           if [ -z "${SERVER_SHA}" ] || [ "${LOCAL_SHA}" != "${SERVER_SHA}" ]; then
+            echo "error_code=snapshot_checksum_mismatch" >> "${GITHUB_OUTPUT}"
             echo "Production snapshot checksum mismatch" >&2
             rm -f "${BACKUP_FILE}"
             exit 1
@@ -185,19 +217,36 @@ jobs:
           echo "::add-mask::${KEY}"
           echo "BACKUP_ENCRYPTION_KEY=${KEY}" >> "${GITHUB_ENV}"
 
-      - name: Encrypt verified backup package
+      - name: Encrypt and verify backup package
         id: package
         shell: bash
         env:
           BACKUP_FILE: ${{ steps.backup.outputs.backup_file }}
+          SOURCE_SHA256: ${{ steps.backup.outputs.sha256 }}
         run: |
           set -Eeuo pipefail
           ARCHIVE_FILE="${BACKUP_FILE%.dump}.dump.enc"
+          VERIFY_FILE="$(mktemp)"
+          chmod 600 "${VERIFY_FILE}"
+
           openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
             -in "${BACKUP_FILE}" \
             -out "${ARCHIVE_FILE}" \
             -pass env:BACKUP_ENCRYPTION_KEY
           test -s "${ARCHIVE_FILE}"
+
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+            -in "${ARCHIVE_FILE}" \
+            -out "${VERIFY_FILE}" \
+            -pass env:BACKUP_ENCRYPTION_KEY
+          DECRYPTED_SHA="$(sha256sum "${VERIFY_FILE}" | awk '{print $1}')"
+          rm -f "${VERIFY_FILE}"
+          if [ "${DECRYPTED_SHA}" != "${SOURCE_SHA256}" ]; then
+            echo "Encrypted backup round-trip checksum mismatch" >&2
+            rm -f "${ARCHIVE_FILE}"
+            exit 1
+          fi
+
           rm -f "${BACKUP_FILE}"
           echo "archive_file=${ARCHIVE_FILE}" >> "${GITHUB_OUTPUT}"
           echo "archive_sha256=$(sha256sum "${ARCHIVE_FILE}" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
@@ -273,6 +322,7 @@ jobs:
           BACKUP_TYPE: ${{ steps.tier.outputs.backup_type }}
           BACKUP_KEY: ${{ steps.backup.outputs.backup_key }}
           STARTED_AT: ${{ steps.tier.outputs.started_at }}
+          SNAPSHOT_ERROR_CODE: ${{ steps.backup.outputs.error_code }}
         shell: bash
         run: |
           set +e
@@ -285,6 +335,7 @@ jobs:
           KEY="${BACKUP_KEY:-era-backup-run-${GITHUB_RUN_ID}}"
           TYPE="${BACKUP_TYPE:-manual}"
           START="${STARTED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+          ERROR_CODE="${SNAPSHOT_ERROR_CODE:-workflow_failed}"
           COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           PAYLOAD="$(jq -n \
             --arg backup_key "${KEY}" \
@@ -293,7 +344,7 @@ jobs:
             --arg storage_provider "backup-workflow" \
             --arg started_at "${START}" \
             --arg completed_at "${COMPLETED_AT}" \
-            --arg error_code "workflow_failed" \
+            --arg error_code "${ERROR_CODE}" \
             --arg error_detail "Database backup workflow failed; inspect the protected workflow run logs." \
             '{backup_key:$backup_key,backup_type:$backup_type,status:$status,storage_provider:$storage_provider,started_at:$started_at,completed_at:$completed_at,error_code:$error_code,error_detail:$error_detail}')"
           curl --silent --show-error \
@@ -307,7 +358,7 @@ jobs:
         shell: bash
         run: |
           unset BACKUP_ENCRYPTION_KEY || true
-          rm -f "${BACKUP_DIR}"/*.dump || true
+          rm -f "${BACKUP_DIR}"/*.dump "${BACKUP_DIR}"/*.dump.enc || true
 
       - name: Write job summary
         if: always()
@@ -316,8 +367,11 @@ jobs:
             echo "## PostgreSQL backup"
             echo "- Production DB credentials exported to GitHub: no"
             echo "- GitHub authentication: short-lived OIDC, exact repo/main/workflow claims"
+            echo "- PostgreSQL client major: ${PG_MAJOR}"
             echo "- Production commit matched before snapshot: yes"
             echo "- Restore test required before persistence: yes"
+            echo "- Alembic migration heads checked after restore: yes"
+            echo "- Encryption round-trip checksum verified: yes"
             echo "- Stored copies encrypted with AES-256/PBKDF2: yes"
             echo "- GitHub artifact retention: ${{ steps.tier.outputs.github_retention_days || 'unknown' }} days"
             echo "- External S3-compatible copy active: ${{ steps.config.outputs.external_storage || 'false' }}"
