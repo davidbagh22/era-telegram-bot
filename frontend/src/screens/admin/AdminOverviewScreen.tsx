@@ -5,7 +5,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { MetricCard, type MetricTone } from "../../components/MetricCard";
 import { useAsync } from "../../hooks/useAsync";
 
-const TONE_CYCLE: MetricTone[] = ["violet", "red", "gold", "magenta"];
+const TONE_CYCLE: MetricTone[] = ["red", "magenta", "gold", "violet"];
 
 const ATTENTION_LABELS: Record<string, string> = {
   users_pending: "Новые заявки",
@@ -32,6 +32,7 @@ interface AdminOverviewScreenProps {
   onOpenApplications?: () => void;
   onOpenProjects?: () => void;
   onOpenEvents?: () => void;
+  onCreateEvent?: () => void;
   onOpenComms?: () => void;
 }
 
@@ -45,7 +46,7 @@ function timeAgo(iso: string): string {
   return `${Math.round(hours / 24)} дн назад`;
 }
 
-export function AdminOverviewScreen({ onOpenApplications, onOpenProjects, onOpenEvents, onOpenComms }: AdminOverviewScreenProps) {
+export function AdminOverviewScreen({ onOpenApplications, onOpenProjects, onOpenEvents, onCreateEvent, onOpenComms }: AdminOverviewScreenProps) {
   const dashboard = useAsync(() => fetchAdminDashboard(), []);
   const activity = useAsync(() => fetchRecentActivity(), []);
 
@@ -56,38 +57,54 @@ export function AdminOverviewScreen({ onOpenApplications, onOpenProjects, onOpen
   const attentionItems = ATTENTION_ORDER.map((key) => ({ key, label: ATTENTION_LABELS[key], value: metrics[key] ?? 0 })).filter((item) => item.value > 0);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-      <Card gradient style={{ position: "relative", overflow: "hidden", minHeight: 178 }}>
-        <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: "radial-gradient(70% 90% at 92% 4%, rgba(255,255,255,0.24), transparent 60%)" }} />
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.15rem" }}>
+      <Card gradient style={{ position: "relative", overflow: "hidden", minHeight: 184 }}>
+        <div aria-hidden="true" style={{ position: "absolute", width: 210, height: 210, borderRadius: "50%", right: -74, top: -116, border: "1px solid rgba(255,255,255,0.22)", boxShadow: "0 0 80px rgba(255,255,255,0.08)" }} />
         <div style={{ position: "relative" }}>
-          <p style={{ margin: "0 0 0.25rem", color: "rgba(255,255,255,0.72)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Управление ЭРА</p>
-          <h1 style={{ margin: 0, fontSize: "var(--era-text-3xl)", lineHeight: 1.04 }}>Пульт управления</h1>
-          <p style={{ margin: "0.55rem 0 0", color: "rgba(255,255,255,0.84)", maxWidth: 320, lineHeight: 1.45 }}>
-            Сначала — то, что требует решения. Ниже — быстрые действия, состояние сообщества и последняя активность.
+          <p style={{ margin: "0 0 0.25rem", color: "rgba(255,255,255,0.75)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Админ · ЭРА</p>
+          <h1 style={{ margin: 0, fontSize: "var(--era-text-3xl)", lineHeight: 1.04 }}>Что делаем сейчас?</h1>
+          <p style={{ margin: "0.55rem 0 0", color: "rgba(255,255,255,0.88)", maxWidth: 330, lineHeight: 1.45 }}>
+            Основные действия — сразу здесь. Внутренние разделы нужны уже после выбора задачи.
           </p>
-          <div style={{ marginTop: "0.9rem", display: "inline-flex", padding: "0.4rem 0.65rem", borderRadius: 999, background: "rgba(255,255,255,0.14)", fontWeight: 800 }}>
-            {attention_total > 0 ? `${attention_total} требуют внимания` : "Сейчас всё спокойно"}
+          <div style={{ marginTop: "0.9rem", display: "inline-flex", padding: "0.4rem 0.7rem", borderRadius: 999, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.12)", fontWeight: 800 }}>
+            {attention_total > 0 ? `${attention_total} требуют решения` : "Очередь решений чистая"}
           </div>
         </div>
       </Card>
 
+      {onCreateEvent && (
+        <button
+          type="button"
+          className="era-btn-primary"
+          onClick={onCreateEvent}
+          style={{ minHeight: 78, width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", textAlign: "left", padding: "0.9rem 1rem", borderRadius: "var(--era-radius-card)" }}
+        >
+          <span>
+            <span style={{ display: "block", fontSize: "var(--era-text-xs)", opacity: 0.78, textTransform: "uppercase" }}>Самое частое действие</span>
+            <strong style={{ display: "block", marginTop: "0.15rem", fontSize: "var(--era-text-lg)" }}>＋ Создать мероприятие</strong>
+            <span style={{ display: "block", marginTop: "0.15rem", opacity: 0.82, fontSize: "var(--era-text-sm)" }}>Дата → место → описание → публикация</span>
+          </span>
+          <span style={{ fontSize: "1.4rem" }}>→</span>
+        </button>
+      )}
+
       <section>
-        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 0.55rem" }}>Быстрые действия</h2>
+        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 0.55rem" }}>Быстрый доступ</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-          {onOpenApplications && <ActionCell title="Новые заявки" description="Полная анкета, фото и решение по участнику" leading="👤" meta={metrics.users_pending ? `${metrics.users_pending} ждут решения` : "очередь пуста"} onClick={onOpenApplications} />}
-          {onOpenProjects && <ActionCell title="Проекты" description="Создать проект или проверить предложения команды" leading="💡" meta={metrics.projects_review ? `${metrics.projects_review} на проверке` : undefined} onClick={onOpenProjects} />}
-          {onOpenEvents && <ActionCell title="Мероприятия" description="Создать событие, открыть регистрацию и вести участников" leading="📅" meta={metrics.events_pending ? `${metrics.events_pending} на согласовании` : undefined} onClick={onOpenEvents} />}
-          {onOpenComms && <ActionCell title="Центр связи" description="Чаты, рассылки, FAQ, приветствия и автоконтент" leading="↗" onClick={onOpenComms} />}
+          {onOpenApplications && <ActionCell title="Новые заявки" description="Открыть анкету и принять решение по участнику" leading="👤" meta={metrics.users_pending ? `${metrics.users_pending} ждут решения` : "очередь пуста"} onClick={onOpenApplications} />}
+          {onOpenProjects && <ActionCell title="Проекты" description="Проверить предложения и управлять проектной работой" leading="💡" meta={metrics.projects_review ? `${metrics.projects_review} на проверке` : undefined} onClick={onOpenProjects} />}
+          {onOpenEvents && <ActionCell title="Все мероприятия" description="Регистрации, участники, посещаемость и активности" leading="📅" meta={metrics.events_pending ? `${metrics.events_pending} на согласовании` : undefined} onClick={onOpenEvents} />}
+          {onOpenComms && <ActionCell title="Центр связи" description="Чаты, FAQ, приветствия, рассылки и автоконтент" leading="↗" onClick={onOpenComms} />}
         </div>
       </section>
 
       <section>
         <h2 style={{ fontSize: "0.875rem", color: "var(--era-text-muted)", margin: "0 0 0.5rem" }}>Требует внимания</h2>
         {attention_total === 0 ? (
-          <Card style={{ background: "var(--era-tint-violet)", border: "none", textAlign: "center" }}>
-            <div style={{ fontSize: "1.75rem" }}>✨</div>
-            <strong style={{ color: "var(--era-violet)" }}>Всё спокойно</strong>
-            <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>Нет задач, требующих решения</p>
+          <Card style={{ background: "var(--era-tint-red)", border: "1px solid rgba(255,32,56,0.16)", textAlign: "center" }}>
+            <div style={{ fontSize: "1.75rem" }}>✓</div>
+            <strong style={{ color: "var(--era-red)" }}>Очередь чистая</strong>
+            <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>Нет решений, которые ждут администратора</p>
           </Card>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
