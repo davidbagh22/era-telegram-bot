@@ -40,6 +40,10 @@ class EventExperience(Base):
 
     program: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     participant_tasks: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    # IDs of EventActivity rows materialised from participant_tasks when an
+    # event is published. Keeping this explicit lets repeated publish/edit
+    # cycles update the same rows instead of duplicating participant tasks.
+    participant_task_activity_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
     reminders: Mapped[list[int]] = mapped_column(JSON, default=list)
     broadcast_targets: Mapped[list[str]] = mapped_column(JSON, default=list)
     broadcast_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
