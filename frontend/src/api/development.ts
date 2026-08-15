@@ -9,6 +9,8 @@ import type {
   DevelopmentGoal,
   DevelopmentHome,
   DevelopmentPrivacy,
+  PersonalInsightItem,
+  RememberedNote,
   VectorCheckin,
 } from "../types/development";
 
@@ -131,6 +133,15 @@ export const savePersonalNote = (text: string, checkinId?: number | null) =>
     method: "POST",
     body: JSON.stringify({ text, checkin_id: checkinId ?? null }),
   });
+export const fetchRememberedNotes = () =>
+  request<RememberedNote[]>("/api/v1/development/notes/remember");
+export const fetchPersonalInsights = () =>
+  request<PersonalInsightItem[]>("/api/v1/development/insights");
+export const submitInsightFeedback = (insightId: number, accepted: boolean) =>
+  request<{ id: number; accepted: boolean; hidden: boolean }>(
+    `/api/v1/development/insights/${insightId}/feedback`,
+    { method: "POST", body: JSON.stringify({ accepted }) },
+  );
 export const fetchDevelopmentPrivacy = () =>
   request<DevelopmentPrivacy>("/api/v1/development/privacy");
 export const updateDevelopmentPrivacy = (payload: {
