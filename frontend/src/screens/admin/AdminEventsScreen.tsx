@@ -1,65 +1,22 @@
 import { useEffect, useState } from "react";
-import { AdminEventOperationsPanel } from "./AdminEventOperationsPanel";
-import { AdminEventModerationPanel } from "./AdminEventModerationPanel";
-import { AdminEventActivitiesPanel } from "./AdminEventActivitiesPanel";
+import { ActionCell } from "../../components/ActionCell";
+import { Card } from "../../components/Card";
+import { ActivitySubmissionsPanel } from "./events/ActivitySubmissionsPanel";
+import { EventActivitiesPanel } from "./events/EventActivitiesPanel";
+import { EventModerationPanel } from "./events/EventModerationPanel";
+import { EventParticipantsPanel } from "./events/EventParticipantsPanel";
+import { EventsList } from "./events/EventsList";
 import { SuggestedEventCreatePanel } from "./events/SuggestedEventCreatePanel";
 
-const ACCENT = "#E32636";
 type EventsSection = "create" | "moderation" | "operations" | "activities";
+type ActivitiesMode = "review" | "manage";
 
-function ActionCell({
-  symbol,
-  title,
-  caption,
-  onClick,
-}: {
-  symbol: string;
-  title: string;
-  caption: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        all: "unset",
-        boxSizing: "border-box",
-        cursor: "pointer",
-        minHeight: 130,
-        borderRadius: 20,
-        padding: "1rem",
-        border: "1px solid var(--era-border)",
-        background: "var(--era-surface)",
-        boxShadow: "var(--era-shadow-soft)",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-      }}
-    >
-      <span
-        aria-hidden="true"
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 12,
-          display: "grid",
-          placeItems: "center",
-          background: "var(--era-tint-red)",
-          color: ACCENT,
-          fontSize: "1.05rem",
-          fontWeight: 900,
-        }}
-      >
-        {symbol}
-      </span>
-      <span>
-        <strong style={{ display: "block", fontSize: "1rem", lineHeight: 1.2 }}>{title}</strong>
-        <span style={{ display: "block", marginTop: 4, color: "var(--era-text-muted)", fontSize: "0.75rem", lineHeight: 1.35 }}>{caption}</span>
-      </span>
-    </button>
-  );
-}
+const SECTIONS: { value: EventsSection; label: string; description: string; icon: string }[] = [
+  { value: "create", label: "Создать мероприятие", description: "10 шагов, автосохранение, афиша, напоминания и публикация", icon: "＋" },
+  { value: "moderation", label: "На согласовании", description: "Проверить предложения мероприятий от команды", icon: "✓" },
+  { value: "operations", label: "Участники и посещаемость", description: "Реальные регистрации, поиск, отметка присутствия и экспорт", icon: "◎" },
+  { value: "activities", label: "Активности после события", description: "Задания, материалы, результаты и баллы участников", icon: "✦" },
+];
 
 interface AdminEventsScreenProps {
   initialEventId?: number | null;
@@ -75,10 +32,15 @@ export function AdminEventsScreen({
   const [section, setSection] = useState<EventsSection | null>(
     initialEventId ? "operations" : initialCreateTopic ? "create" : null,
   );
+  const [selectedEventId, setSelectedEventId] = useState<number | null>(initialEventId);
+  const [activitiesMode, setActivitiesMode] = useState<ActivitiesMode | null>(null);
   const [createTopic, setCreateTopic] = useState<string | null>(initialCreateTopic);
 
   useEffect(() => {
-    if (initialEventId) setSection("operations");
+    if (initialEventId) {
+      setSection("operations");
+      setSelectedEventId(initialEventId);
+    }
   }, [initialEventId]);
 
   useEffect(() => {
@@ -87,57 +49,77 @@ export function AdminEventsScreen({
     setSection("create");
   }, [initialCreateTopic]);
 
-  const handlePrepared = () => {
+  const backToMenu = () => {
+    setSection(null);
+    setSelectedEventId(null);
+    setActivitiesMode(null);
+    setCreateTopic(null);
+    if (initialEventId) window.location.hash = "#/admin";
+  };
+
+  const handleSuggestedDraftPrepared = () => {
     setCreateTopic(null);
     onCreateTopicConsumed?.();
   };
 
-  if (section) {
+  if (!section) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
-        <button
-          type="button"
-          onClick={() => setSection(null)}
-          style={{
-            alignSelf: "flex-start",
-            minHeight: 44,
-            padding: "0.5rem 0.75rem",
-            borderRadius: 14,
-            background: "var(--era-surface)",
-            border: "1px solid var(--era-border)",
-            color: "var(--era-text)",
-            fontWeight: 800,
-          }}
-        >
-          ← События
-        </button>
-
-        {section === "create" && (
-          <SuggestedEventCreatePanel suggestedTopic={createTopic} onPrepared={handlePrepared} />
-        )}
-        {section === "moderation" && <AdminEventModerationPanel />}
-        {section === "operations" && <AdminEventOperationsPanel initialEventId={initialEventId} />}
-        {section === "activities" && <AdminEventActivitiesPanel />}
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <Card style={{ borderColor: "rgba(227,38,54,.14)" }}>
+          <p className="era-kicker">Управление событиями</p>
+          <h2 style={{ margin: "0.3rem 0 0", fontSize: "var(--era-text-2xl)" }}>Полный цикл в одном месте</h2>
+          <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)" }}>
+            Создание → публикация → регистрации → посещаемость → активности → баллы. Каждый блок открывает реальные данные и действия.
+          </p>
+        </Card>
+        {SECTIONS.map((item) => (
+          <ActionCell key={item.value} title={item.label} description={item.description} leading={item.icon} onClick={() => setSection(item.value)} />
+        ))}
       </div>
     );
   }
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <header>
-        <p className="era-kicker">Управление событиями</p>
-        <h2 style={{ margin: "0.25rem 0 0", fontSize: "var(--era-text-2xl)", letterSpacing: "-0.03em" }}>События</h2>
-        <p style={{ margin: "0.4rem 0 0", color: "var(--era-text-muted)", maxWidth: 560 }}>
-          От создания до посещаемости, баллов и результатов — каждый блок ведёт к реальному действию.
-        </p>
-      </header>
+  const sectionMeta = SECTIONS.find((item) => item.value === section);
 
-      <div className="era-grid-2">
-        <ActionCell symbol="＋" title="Создать" caption="Новый черновик мероприятия" onClick={() => setSection("create")} />
-        <ActionCell symbol="✓" title="Модерация" caption="Проверка и публикация" onClick={() => setSection("moderation")} />
-        <ActionCell symbol="◎" title="Участники" caption="Регистрации, посещение, экспорт" onClick={() => setSection("operations")} />
-        <ActionCell symbol="✦" title="Активности" caption="Задания и баллы после события" onClick={() => setSection("activities")} />
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <button type="button" onClick={backToMenu} style={{ alignSelf: "flex-start" }}>← К мероприятиям</button>
+      <div>
+        <p className="era-kicker">События</p>
+        <h2 style={{ margin: "0.25rem 0 0", fontSize: "var(--era-text-2xl)" }}>{sectionMeta?.label}</h2>
+        <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)" }}>{sectionMeta?.description}</p>
       </div>
+
+      {section === "create" && (
+        <SuggestedEventCreatePanel suggestedTopic={createTopic} onPrepared={handleSuggestedDraftPrepared} />
+      )}
+      {section === "moderation" && <EventModerationPanel />}
+      {section === "operations" && (
+        selectedEventId === null
+          ? <EventsList onSelect={setSelectedEventId} />
+          : <EventParticipantsPanel eventId={selectedEventId} onBack={() => { setSelectedEventId(null); if (initialEventId) window.location.hash = "#/admin"; }} />
+      )}
+      {section === "activities" && activitiesMode === null && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <ActionCell title="Проверить результаты" description="Что участники уже отправили после мероприятий" leading="✓" onClick={() => setActivitiesMode("review")} />
+          <ActionCell title="Создать активности" description="Выбрать мероприятие и добавить задания участникам" leading="＋" onClick={() => setActivitiesMode("manage")} />
+        </div>
+      )}
+      {section === "activities" && activitiesMode === "review" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <button type="button" onClick={() => setActivitiesMode(null)} style={{ alignSelf: "flex-start" }}>← Назад</button>
+          <ActivitySubmissionsPanel />
+        </div>
+      )}
+      {section === "activities" && activitiesMode === "manage" && selectedEventId === null && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <button type="button" onClick={() => setActivitiesMode(null)} style={{ alignSelf: "flex-start" }}>← Назад</button>
+          <EventsList onSelect={setSelectedEventId} />
+        </div>
+      )}
+      {section === "activities" && activitiesMode === "manage" && selectedEventId !== null && (
+        <EventActivitiesPanel eventId={selectedEventId} onBack={() => setSelectedEventId(null)} />
+      )}
     </div>
   );
 }
