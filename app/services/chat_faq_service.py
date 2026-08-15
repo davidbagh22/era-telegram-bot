@@ -64,6 +64,14 @@ FAQ_ANSWERS: dict[str, str] = {
 <b>Есть вопрос или идея?</b>
 
 Напишите команде ЭРА — сообщение попадёт ответственному человеку.""",
+    # Backward-compatible aliases for already-sent callback buttons. They are
+    # not shown in the new pinned FAQ, but old Telegram messages must not die.
+    "faq:what_is_era": """🔥 <b>Что такое ЭРА?</b>
+
+ЭРА — среда, где участник растёт через реальные события, проекты, задания и командную работу.""",
+    "faq:what_it_gives": """⭐ <b>Что даёт ЭРА?</b>
+
+Опыт, команду, портфолио, баллы и доступ к новым возможностям через реальный вклад.""",
 }
 
 
@@ -100,9 +108,23 @@ async def _latest_faq_message_id(session: AsyncSession) -> int | None:
     return None
 
 
-async def _upsert_faq_message(bot: Bot, chat_id: int, session: AsyncSession) -> int:
-    me = await bot.get_me()
-    markup = faq_keyboard(me.username or None)
+async def _bot_username(bot: Bot, settings: Settings) -> str | None:
+    if settings.bot_username:
+        return settings.bot_username
+    getter = getattr(bot, "get_me", None)
+    if getter is None:
+        return None
+    me = await getter()
+    return getattr(me, "username", None)
+
+
+async def _upsert_faq_message(
+    bot: Bot,
+    settings: Settings,
+    chat_id: int,
+    session: AsyncSession,
+) -> int:
+    markup = faq_keyboard(await _bot_username(bot, settings))
     message_id = await _latest_faq_message_id(session)
     if message_id:
         try:
@@ -139,7 +161,7 @@ async def publish_faq_message(
     if not chat_id:
         raise ChatFaqError("chat_not_bound")
 
-    message_id = await _upsert_faq_message(bot, int(chat_id), session)
+    message_id = await _upsert_faq_message(bot, settings, int(chat_id), session)
     pinned = True
     try:
         await bot.pin_chat_message(int(chat_id), message_id, disable_notification=True)
