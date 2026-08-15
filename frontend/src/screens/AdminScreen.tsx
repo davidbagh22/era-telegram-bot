@@ -55,9 +55,7 @@ const CONTROL_SECTIONS: SectionOption<ControlSection>[] = [
 
 function initialAdminRoute(): InitialAdminRoute {
   const query = new URLSearchParams(window.location.search);
-  if (query.get("adminSection") !== "applications") {
-    return { openApplications: false, applicationId: null };
-  }
+  if (query.get("adminSection") !== "applications") return { openApplications: false, applicationId: null };
   const rawId = query.get("applicationId");
   const parsedId = rawId ? Number(rawId) : NaN;
   return {
@@ -97,6 +95,7 @@ export function AdminScreen() {
   const [workSection, setWorkSection] = useState<WorkSection | null>(null);
   const [commsSection, setCommsSection] = useState<CommsSection | null>(null);
   const [controlSection, setControlSection] = useState<ControlSection | null>(null);
+  const [suggestedEventTopic, setSuggestedEventTopic] = useState<string | null>(null);
 
   const changeGroup = (next: AdminGroup) => {
     setGroup(next);
@@ -104,6 +103,7 @@ export function AdminScreen() {
     setWorkSection(null);
     setCommsSection(null);
     setControlSection(null);
+    if (next !== "work") setSuggestedEventTopic(null);
   };
 
   const openPeople = (section: PeopleSection) => {
@@ -112,6 +112,7 @@ export function AdminScreen() {
     setWorkSection(null);
     setCommsSection(null);
     setControlSection(null);
+    setSuggestedEventTopic(null);
   };
   const openWork = (section: WorkSection) => {
     setGroup("work");
@@ -119,6 +120,7 @@ export function AdminScreen() {
     setPeopleSection(null);
     setCommsSection(null);
     setControlSection(null);
+    if (section !== "events") setSuggestedEventTopic(null);
   };
   const openComms = () => {
     setGroup("comms");
@@ -126,6 +128,11 @@ export function AdminScreen() {
     setPeopleSection(null);
     setWorkSection(null);
     setControlSection(null);
+    setSuggestedEventTopic(null);
+  };
+  const createActivityFromAnalytics = (topic?: string) => {
+    setSuggestedEventTopic(topic?.trim() || "Новая активность ЭРА");
+    openWork("events");
   };
 
   return (
@@ -158,7 +165,12 @@ export function AdminScreen() {
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={WORK_SECTIONS.find((item) => item.value === workSection)?.label ?? "Работа"} onBack={() => setWorkSection(null)} />
             {workSection === "projects" && <AdminProjectsScreen />}
-            {workSection === "events" && <AdminEventsScreen />}
+            {workSection === "events" && (
+              <AdminEventsScreen
+                initialCreateTopic={suggestedEventTopic}
+                onCreateTopicConsumed={() => setSuggestedEventTopic(null)}
+              />
+            )}
             {workSection === "tasks" && <AdminTasksScreen />}
             {workSection === "offers" && <AdminOffersScreen />}
           </div>
@@ -177,7 +189,7 @@ export function AdminScreen() {
         {group === "control" && controlSection && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={CONTROL_SECTIONS.find((item) => item.value === controlSection)?.label ?? "Контроль"} onBack={() => setControlSection(null)} />
-            {controlSection === "analytics" && <AdminDashboardScreen />}
+            {controlSection === "analytics" && <AdminDashboardScreen onCreateActivity={createActivityFromAnalytics} />}
             {controlSection === "system" && <SystemPanel />}
             {controlSection === "maintenance" && <AdminMaintenanceScreen />}
           </div>
