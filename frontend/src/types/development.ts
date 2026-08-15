@@ -16,3 +16,36 @@ export interface AssessmentQuestion { code: string; text: string; position: numb
 export interface AssessmentSession { id: number; assessment_code: string; title: string; version: string; status: "in_progress" | "completed"; started_at: string | null; completed_at: string | null; questions: AssessmentQuestion[]; answers: Record<string, number>; answered_count: number; question_count: number; notice?: string | null; }
 
 export interface DevelopmentPrivacy { consent_version: string; admin_visibility: { summary: boolean; interests: boolean; goals: boolean }; admin_can_see: string[]; private_only: string[]; }
+
+export interface DevelopmentAnalytics {
+  sample_size: number;
+  eligible_profiles: number;
+  coverage_percent: number;
+  minimum_cohort: number;
+  suppressed: boolean;
+  state: Partial<Record<VectorDimension, number>> | null;
+  index?: number | null;
+  disclaimer?: string;
+  message?: string;
+  delta?: Partial<Record<VectorDimension, number>>;
+  development_wants?: Array<{ key: string; count: number; percent: number }>;
+  interests?: Array<{ key: string; count: number; percent: number }>;
+  recommendation?: string | null;
+}
+
+export interface AdminDevelopmentProfile {
+  user: { id: number; first_name: string; last_name: string | null };
+  last_checkin_at: string | null;
+  state: Partial<Record<VectorDimension, number>>;
+  index: number | null;
+  baseline: Partial<Record<VectorDimension, number>>;
+  traits: Record<string, unknown>;
+  needs: Record<string, unknown>;
+  interests: Record<string, unknown> | null;
+  strengths: string[] | null;
+  environment: Record<string, unknown> | null;
+  current_focus: { title: string; experiment: string | null; status: string; review_result: string | null } | null;
+  history: Array<{ month: string; index: number | null; state: Partial<Record<VectorDimension, number>>; delta: Partial<Record<VectorDimension, number>> }>;
+  notice: string;
+  never_exposed_here: string[];
+}
