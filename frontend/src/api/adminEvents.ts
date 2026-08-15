@@ -85,12 +85,12 @@ export type AdminEventDraftPatch = Partial<{
   short_description: string;
   full_description: string;
   project_id: number | null;
-  category: string;
+  category: string | null;
   event_date: string;
   event_time: string;
-  end_time: string;
+  end_time: string | null;
   location: string;
-  address: string;
+  address: string | null;
   attendance_mode: "offline" | "online" | "hybrid";
   registration_required: boolean;
   participant_limit: number | null;
