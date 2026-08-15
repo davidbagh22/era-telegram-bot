@@ -5,7 +5,7 @@ const AUCTION_BIDDER_TELEGRAM_ID = 900006;
 
 async function enterAdminWorkspace(page: import("@playwright/test").Page) {
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
-  await page.getByRole("button", { name: "Профиль" }).click();
+  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Профиль", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
   await expect(page.getByText("Управление", { exact: true })).toBeVisible();
 }

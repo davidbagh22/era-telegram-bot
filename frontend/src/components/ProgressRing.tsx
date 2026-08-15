@@ -1,20 +1,25 @@
 import { useEffect, useRef } from "react";
 
+const animatedKeys = new Set<string>();
+
 interface ProgressRingProps {
   /** 0..1 */
   percent: number;
   size?: number;
   trackColor?: string;
+  /** Animate from 0 only once per mounted app session for this key. */
+  animationKey?: string;
 }
 
-export function ProgressRing({ percent, size = 92, trackColor }: ProgressRingProps) {
+export function ProgressRing({ percent, size = 92, trackColor, animationKey = "status-orbit" }: ProgressRingProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    const ctx: CanvasRenderingContext2D = context;
 
     const normalized = Math.max(0, Math.min(1, percent));
     const dpr = window.devicePixelRatio || 1;
@@ -22,12 +27,13 @@ export function ProgressRing({ percent, size = 92, trackColor }: ProgressRingPro
     canvas.height = size * dpr;
     canvas.style.width = `${size}px`;
     canvas.style.height = `${size}px`;
-    ctx.scale(dpr, dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const cx = size / 2;
     const cy = size / 2;
     const r = size / 2 - 8;
-    const track = trackColor ?? "rgba(21,22,25,0.09)";
+    const cssTrack = getComputedStyle(document.documentElement).getPropertyValue("--era-ring-track").trim();
+    const track = trackColor ?? (cssTrack || "rgba(255,255,255,0.10)");
 
     function frame(p: number) {
       ctx.clearRect(0, 0, size, size);
@@ -51,11 +57,13 @@ export function ProgressRing({ percent, size = 92, trackColor }: ProgressRingPro
     }
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduced) {
+    const alreadyAnimated = animatedKeys.has(animationKey);
+    if (reduced || alreadyAnimated) {
       frame(normalized);
       return;
     }
 
+    animatedKeys.add(animationKey);
     let raf: number;
     let start: number | null = null;
     const duration = 820;
@@ -70,7 +78,7 @@ export function ProgressRing({ percent, size = 92, trackColor }: ProgressRingPro
     }
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [percent, size, trackColor]);
+  }, [animationKey, percent, size, trackColor]);
 
   return <canvas ref={canvasRef} aria-hidden="true" />;
 }

@@ -4,7 +4,7 @@ const LEADER_TELEGRAM_ID = 900002;
 
 test("leader opens the separate workspace and creates a new open task", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${LEADER_TELEGRAM_ID}`);
-  await page.getByRole("button", { name: "Профиль" }).click();
+  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Профиль", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
   await expect(page.getByRole("heading", { name: "Пространство лидера" })).toBeVisible();
 

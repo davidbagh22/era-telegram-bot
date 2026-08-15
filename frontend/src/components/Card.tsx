@@ -12,18 +12,19 @@ export function Card({ children, gradient = false, style, onClick }: CardProps) 
   const sharedStyle: CSSProperties = {
     borderRadius: "var(--era-radius-card)",
     padding: "1rem",
-    border: gradient ? "1px solid rgba(227,38,54,0.10)" : "1px solid var(--era-border)",
+    border: gradient ? "1px solid rgba(227,38,54,0.14)" : "1px solid var(--era-border)",
     background: gradient ? "var(--era-hero-bg)" : "var(--era-surface)",
-    boxShadow: gradient ? "0 12px 34px rgba(152,27,40,0.09)" : "var(--era-shadow-soft)",
+    boxShadow: gradient ? "0 16px 42px rgba(0,0,0,0.28)" : "var(--era-shadow-soft)",
     color: "var(--era-text)",
     ...style,
   };
+  const className = gradient ? "era-card era-premium-ambient" : "era-card";
 
   if (interactive) {
     return (
       <button
         type="button"
-        className="era-card"
+        className={className}
         onClick={onClick}
         style={{
           ...sharedStyle,
@@ -39,7 +40,7 @@ export function Card({ children, gradient = false, style, onClick }: CardProps) 
   }
 
   return (
-    <div className="era-card" style={sharedStyle}>
+    <div className={className} style={sharedStyle}>
       {children}
     </div>
   );
