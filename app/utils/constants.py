@@ -42,6 +42,7 @@ class EventStatus(StrEnum):
 class RegistrationStatus(StrEnum):
     REGISTERED = "registered"
     WILL_COME = "will_come"
+    WAITLIST = "waitlist"
     NOT_COMING = "not_coming"
     ATTENDED = "attended"
     NO_SHOW = "no_show"
@@ -114,6 +115,7 @@ EVENT_STATUS_LABELS = {
 REGISTRATION_STATUS_LABELS = {
     RegistrationStatus.REGISTERED: "Зарегистрирован",
     RegistrationStatus.WILL_COME: "Подтвердил участие",
+    RegistrationStatus.WAITLIST: "Лист ожидания",
     RegistrationStatus.NOT_COMING: "Не сможет прийти",
     RegistrationStatus.ATTENDED: "Посетил",
     RegistrationStatus.NO_SHOW: "Не пришёл",

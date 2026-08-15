@@ -32,9 +32,6 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     dispatcher["settings"] = settings
     dispatcher["ai_service"] = AIService(settings)
     dispatcher.update.outer_middleware(DatabaseAuthMiddleware(session_factory))
-    # Must run after DatabaseAuthMiddleware (needs data["user"]/data["bot"]
-    # already populated) — see LegacyKeyboardCleanupMiddleware's own
-    # docstring.
     dispatcher.update.outer_middleware(LegacyKeyboardCleanupMiddleware())
 
     subscription = SubscriptionMiddleware(settings)
@@ -45,6 +42,8 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     leader_router.message.outer_middleware(subscription)
     leader_router.callback_query.outer_middleware(subscription)
 
+    # emergency.router must stay first: it owns global FSM recovery and now
+    # also dispatches FAQ /start payloads through try_handle_faq_payload().
     dispatcher.include_routers(
         emergency.router,
         start.router,

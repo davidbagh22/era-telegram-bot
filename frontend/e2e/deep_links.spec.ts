@@ -22,14 +22,17 @@ test("eraPath admin opens the separate Admin workspace directly", async ({ page 
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}&eraPath=admin`);
 
   await expect(page.getByText("Управление", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Пульт управления" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Вот что происходит в ЭРА сегодня" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Разделы управления ЭРА" })).toBeVisible();
+  await expect(page).toHaveURL(/#\/admin$/);
 });
 
-test("#/tasks deep link opens the legacy task surface directly", async ({ page }) => {
+test("#/tasks deep link opens the task surface directly", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/tasks`);
 
   await expect(page.getByRole("heading", { name: "Задачи" })).toBeVisible();
-  await expect(page.getByText("Задач в этом разделе пока нет.")).toBeVisible();
+  await expect(page.getByText(/Пока нет задач в этом разделе/)).toBeVisible();
+  await expect(page).toHaveURL(/#\/tasks$/);
 });
 
 test("#/events deep link opens the Events tab", async ({ page }) => {

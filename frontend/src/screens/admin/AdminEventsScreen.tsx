@@ -18,15 +18,20 @@ const SECTIONS: { value: EventsSection; label: string; description: string; icon
   { value: "activities", label: "Активности после события", description: "Задания, материалы и результаты участников", icon: "✦" },
 ];
 
-export function AdminEventsScreen() {
-  const [section, setSection] = useState<EventsSection | null>(null);
-  const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+interface AdminEventsScreenProps {
+  initialEventId?: number | null;
+}
+
+export function AdminEventsScreen({ initialEventId = null }: AdminEventsScreenProps) {
+  const [section, setSection] = useState<EventsSection | null>(initialEventId ? "operations" : null);
+  const [selectedEventId, setSelectedEventId] = useState<number | null>(initialEventId);
   const [activitiesMode, setActivitiesMode] = useState<ActivitiesMode | null>(null);
 
   const backToMenu = () => {
     setSection(null);
     setSelectedEventId(null);
     setActivitiesMode(null);
+    if (initialEventId) window.location.hash = "#/admin";
   };
 
   if (!section) {
@@ -57,7 +62,7 @@ export function AdminEventsScreen() {
       {section === "create" && <AdminEventCreatePanel />}
       {section === "moderation" && <EventModerationPanel />}
       {section === "operations" && (
-        selectedEventId === null ? <EventsList onSelect={setSelectedEventId} /> : <EventParticipantsPanel eventId={selectedEventId} onBack={() => setSelectedEventId(null)} />
+        selectedEventId === null ? <EventsList onSelect={setSelectedEventId} /> : <EventParticipantsPanel eventId={selectedEventId} onBack={() => { setSelectedEventId(null); if (initialEventId) window.location.hash = "#/admin"; }} />
       )}
       {section === "activities" && activitiesMode === null && (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>

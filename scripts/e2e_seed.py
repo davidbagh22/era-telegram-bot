@@ -24,6 +24,7 @@ from datetime import date, time, timedelta
 
 from app.config import get_settings
 from app.database.base import Base
+from app.database.event_experience import EventExperience, EventReminderDelivery  # noqa: F401
 from app.database.models import (
     Badge,
     Event,

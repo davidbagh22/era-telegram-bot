@@ -21,26 +21,40 @@ class _ScalarResult:
 
 
 class DomainTests(unittest.TestCase):
-    def test_project_builder_has_six_blocks_and_resumable_steps(self) -> None:
-        blocks = {question.block.split(" · ", 1)[0] for question in PROJECT_QUESTIONS}
-        self.assertEqual(blocks, {"1", "2", "3", "4", "5", "6"})
-        self.assertGreaterEqual(len(PROJECT_QUESTIONS), 15)
-        self.assertTrue(
-            any(question.input_type == "date" for question in PROJECT_QUESTIONS)
+    def test_project_builder_has_sixteen_questions_plus_final_preview(self) -> None:
+        self.assertEqual(len(PROJECT_QUESTIONS), 16)
+        self.assertEqual(
+            [question.key for question in PROJECT_QUESTIONS],
+            [
+                "idea", "title", "problem", "target_audience", "goal", "scenario",
+                "format", "team", "implementation_plan", "resources", "activities",
+                "tasks", "points", "expected_result", "success_metrics", "risks",
+            ],
         )
-        self.assertTrue(any(question.ai_hint for question in PROJECT_QUESTIONS))
+        self.assertTrue(all(question.ai_hint for question in PROJECT_QUESTIONS))
 
-    def test_project_document_contains_all_six_sections(self) -> None:
+    def test_project_document_contains_all_constructor_sections(self) -> None:
         document = render_project_document(
             {"title": "Тест", "idea": "Идея"}, "Имя", "@telegram"
         )
         for heading in (
             "1. ИДЕЯ",
-            "2. АУДИТОРИЯ",
-            "3. КОНЦЕПЦИЯ",
-            "4. ОРГАНИЗАЦИЯ",
-            "5. МАРКЕТИНГ",
-            "6. УСТОЙЧИВОСТЬ",
+            "2. НАЗВАНИЕ",
+            "3. ПРОБЛЕМА",
+            "4. ДЛЯ КОГО",
+            "5. ЦЕЛЬ",
+            "6. ЧТО ПРОИЗОЙДЁТ",
+            "7. ФОРМАТ",
+            "8. КОМАНДА",
+            "9. ПЛАН РЕАЛИЗАЦИИ",
+            "10. РЕСУРСЫ",
+            "11. АКТИВНОСТИ",
+            "12. ЗАДАНИЯ",
+            "13. БАЛЛЫ",
+            "14. ОЖИДАЕМЫЙ РЕЗУЛЬТАТ",
+            "15. МЕТРИКИ УСПЕХА",
+            "16. РИСКИ",
+            "17. ФИНАЛЬНЫЙ PREVIEW",
         ):
             self.assertIn(heading, document)
 
@@ -64,9 +78,7 @@ class DomainTests(unittest.TestCase):
             "directions": [],
         }
 
-        with patch(
-            "app.repositories.users.assign_interests", new=AsyncMock()
-        ) as assign:
+        with patch("app.repositories.users.assign_interests", new=AsyncMock()) as assign:
             user, created = asyncio.run(
                 create_user_from_registration(
                     session,
@@ -82,25 +94,13 @@ class DomainTests(unittest.TestCase):
         assign.assert_awaited_once()
 
     def test_registration_retry_reuses_existing_user(self) -> None:
-        existing = User(
-            telegram_id=123,
-            first_name="Тест",
-            departments=[],
-            directions=[],
-        )
+        existing = User(telegram_id=123, first_name="Тест", departments=[], directions=[])
         session = AsyncMock()
         session.add = Mock()
         session.scalar.return_value = existing
-
         user, created = asyncio.run(
-            create_user_from_registration(
-                session,
-                telegram_id=123,
-                username=None,
-                data={},
-            )
+            create_user_from_registration(session, telegram_id=123, username=None, data={})
         )
-
         self.assertIs(user, existing)
         self.assertFalse(created)
         session.add.assert_not_called()
@@ -108,39 +108,16 @@ class DomainTests(unittest.TestCase):
     def test_registration_interests_keep_loaded_relationships(self) -> None:
         department = Department(name="Внутренние связи")
         direction = Direction(name="Культура", department=department)
-        user = User(
-            telegram_id=1,
-            first_name="Тест",
-            departments=[],
-            directions=[],
-        )
+        user = User(telegram_id=1, first_name="Тест", departments=[], directions=[])
         session = AsyncMock()
-        session.scalars.side_effect = [
-            _ScalarResult([department]),
-            _ScalarResult([direction]),
-        ]
-
-        asyncio.run(
-            assign_interests(
-                session,
-                user,
-                [department.name],
-                [direction.name],
-            )
-        )
-
+        session.scalars.side_effect = [_ScalarResult([department]), _ScalarResult([direction])]
+        asyncio.run(assign_interests(session, user, [department.name], [direction.name]))
         self.assertIs(user.departments[0].department, department)
         self.assertIs(user.directions[0].direction, direction)
 
     def test_final_department_structure(self) -> None:
-        self.assertEqual(
-            DEPARTMENTS["Внутренние связи"],
-            ("Лидерство", "Культура", "Интерактив"),
-        )
-        self.assertEqual(
-            DEPARTMENTS["Внешние связи"],
-            ("Международное направление", "Медиа", "Социальные инициативы"),
-        )
+        self.assertEqual(DEPARTMENTS["Внутренние связи"], ("Лидерство", "Культура", "Интерактив"))
+        self.assertEqual(DEPARTMENTS["Внешние связи"], ("Международное направление", "Медиа", "Социальные инициативы"))
 
     def test_reference_data(self) -> None:
         self.assertEqual(len(BADGES), 10)
@@ -154,48 +131,19 @@ class DomainTests(unittest.TestCase):
         Base.metadata.create_all(engine)
         tables = set(inspect(engine).get_table_names())
         self.assertGreaterEqual(len(tables), 22)
-        self.assertTrue(
-            {
-                "users",
-                "events",
-                "projects",
-                "points",
-                "portfolio_items",
-                "audit_logs",
-                "offices",
-                "permission_grants",
-                "event_activities",
-                "reward_items",
-                "auctions",
-            }.issubset(tables)
-        )
+        self.assertTrue({"users", "events", "projects", "points", "portfolio_items", "audit_logs", "offices", "permission_grants", "event_activities", "reward_items", "auctions"}.issubset(tables))
 
     def test_project_fallback_works_without_api_key(self) -> None:
-        text = fallback_project_document(
-            {
-                "idea": "Культурный квест",
-                "department": "Внутренние связи",
-                "direction": "Культура",
-            }
-        )
+        text = fallback_project_document({"idea": "Культурный квест", "department": "Внутренние связи", "direction": "Культура"})
         self.assertIn("Культурный квест", text)
         self.assertIn("Внутренние связи", text)
 
     def test_render_postgres_url_is_normalized_for_asyncpg(self) -> None:
-        settings = Settings(
-            bot_token="test-token-for-settings",
-            database_url="postgresql://era:secret@host/era",
-        )
-        self.assertEqual(
-            settings.database_url,
-            "postgresql+asyncpg://era:secret@host/era",
-        )
+        settings = Settings(bot_token="test-token-for-settings", database_url="postgresql://era:secret@host/era")
+        self.assertEqual(settings.database_url, "postgresql+asyncpg://era:secret@host/era")
 
     def test_webhook_secret_is_telegram_safe(self) -> None:
-        settings = Settings(
-            bot_token="test-token-for-settings",
-            webhook_secret="unsafe secret with + / = characters",
-        )
+        settings = Settings(bot_token="test-token-for-settings", webhook_secret="unsafe secret with + / = characters")
         self.assertRegex(settings.effective_webhook_secret, r"^[A-Za-z0-9_-]{1,256}$")
 
 

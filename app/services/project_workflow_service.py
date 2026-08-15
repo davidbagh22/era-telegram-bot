@@ -36,14 +36,23 @@ REVIEW_STATUSES = {
 }
 OPEN_STATUSES = {ProjectStatus.APPROVED, ProjectStatus.IN_PROGRESS}
 
+# Keep the JSON form_data as the source of truth for all 16 constructor
+# answers, while mirroring only semantically equivalent answers into legacy
+# typed columns used by existing reports/search. Never overload one typed
+# column with a different question (e.g. success_metrics != expected_result).
 _COLUMN_BY_QUESTION_KEY: dict[str, str] = {
     "title": "title",
     "idea": "short_description",
+    "problem": "relevance",
     "target_audience": "target_audience",
+    "goal": "goal",
+    "scenario": "program",
     "format": "format",
     "team": "team",
+    "resources": "resources",
+    "tasks": "tasks",
+    "expected_result": "expected_result",
     "risks": "risks",
-    "success_metrics": "expected_result",
 }
 
 QUESTION_KEYS: tuple[str, ...] = tuple(question.key for question in PROJECT_QUESTIONS)
@@ -209,25 +218,10 @@ def _parse_project_time(value: str):
 
 
 def update_answers(project: Project, answers: dict[str, str]) -> None:
-    """Apply a true partial update from either Bot or Mini App.
-
-    Date/time are first-class project fields now too. The Mini App uses ISO
-    date + HH:MM inputs while the older Bot may still send DD.MM.YYYY; both
-    formats are accepted and normalized in the typed Project columns.
-    """
+    """Apply a true partial update from either Bot or Mini App."""
     form_data = dict(project.form_data or {})
     for key, value in answers.items():
         if key not in QUESTION_KEYS:
-            continue
-        if key == "proposed_date":
-            parsed = _parse_project_date(value)
-            project.proposed_date = parsed
-            form_data[key] = parsed.isoformat() if parsed else ""
-            continue
-        if key == "proposed_time":
-            parsed = _parse_project_time(value)
-            project.proposed_time = parsed
-            form_data[key] = parsed.strftime("%H:%M") if parsed else ""
             continue
         form_data[key] = value
         column = _COLUMN_BY_QUESTION_KEY.get(key)

@@ -40,20 +40,26 @@ class TelegramSafeDeepLinkTests(unittest.TestCase):
 class ProjectBuilderContractTests(unittest.TestCase):
     def test_builder_exposes_explanations_and_ai_prompts(self) -> None:
         questions = asyncio.run(read_project_builder_questions())
-        self.assertGreater(len(questions), 10)
+        self.assertEqual(len(questions), 16)
         self.assertTrue(all(question.prompt.strip() for question in questions))
-        self.assertTrue(any(question.ai_hint and question.ai_hint.strip() for question in questions))
+        self.assertTrue(all(question.ai_hint and question.ai_hint.strip() for question in questions))
         self.assertTrue(any(question.key == "scenario" and question.ai_hint for question in questions))
 
 
 class GeneralFaqContractTests(unittest.TestCase):
-    def test_pinned_card_and_private_answers_are_editorially_complete(self) -> None:
-        self.assertIn("лично вам", FAQ_PINNED_MESSAGE)
-        self.assertEqual(
-            set(FAQ_ANSWERS),
-            {"faq:what_is_era", "faq:what_it_gives", "faq:what_to_do", "faq:what_can_i_do"},
-        )
-        self.assertTrue(all(len(text) > 120 for text in FAQ_ANSWERS.values()))
+    def test_pinned_card_and_private_answers_cover_master_navigation(self) -> None:
+        self.assertIn("лично для вас", FAQ_PINNED_MESSAGE)
+        required = {
+            "faq:events",
+            "faq:projects",
+            "faq:tasks",
+            "faq:points",
+            "faq:registration",
+            "faq:active",
+            "faq:contact",
+        }
+        self.assertTrue(required.issubset(set(FAQ_ANSWERS)))
+        self.assertTrue(all(len(FAQ_ANSWERS[key]) > 80 for key in required))
 
     def test_scheduler_keeps_faq_pin_alive(self) -> None:
         settings = Settings(bot_token="0000000000:TESTTOKEN", timezone="Asia/Yerevan")
@@ -61,6 +67,8 @@ class GeneralFaqContractTests(unittest.TestCase):
         add_system_jobs(scheduler, SimpleNamespace(), settings, lambda: None)
         jobs = {job.id for job in scheduler.get_jobs()}
         self.assertIn("general-chat-faq-pin", jobs)
+        self.assertIn("configured-event-reminders", jobs)
+        self.assertIn("event-wizard-task-sync", jobs)
 
 
 if __name__ == "__main__":

@@ -114,9 +114,11 @@ export function AdminScreen() {
       <div style={{ flex: "1 1 auto", minWidth: 0, padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
         {group === "overview" && (
           <AdminOverviewScreen
+            onOpenPeople={() => openPeople("participants")}
             onOpenApplications={() => openPeople("applications")}
             onOpenProjects={() => openWork("projects")}
             onOpenEvents={() => openWork("events")}
+            onOpenTasks={() => openWork("tasks")}
             onOpenComms={openComms}
           />
         )}

@@ -1,37 +1,30 @@
-import { fetchAdminDashboard, fetchRecentActivity } from "../../api/client";
+import { fetchAdminDashboard, fetchEvents, fetchRecentActivity } from "../../api/client";
 import { ActionCell } from "../../components/ActionCell";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
-import { MetricCard, type MetricTone } from "../../components/MetricCard";
 import { useAsync } from "../../hooks/useAsync";
 
-const TONE_CYCLE: MetricTone[] = ["violet", "red", "gold", "magenta"];
-
 const ATTENTION_LABELS: Record<string, string> = {
-  users_pending: "Новые заявки",
-  projects_review: "Проекты на проверке",
-  events_pending: "События на согласовании",
-  task_results: "Итоги заданий",
-  activity_results: "Активности после мероприятий",
-  rewards: "Заявки на возможности",
-  portfolio: "Портфолио на проверке",
-  reports: "Отчёты",
-  questions: "Вопросы",
-  departments: "Заявки по направлениям",
+  users_pending: "Новые заявки ждут решения",
+  projects_review: "Проекты ждут проверки",
+  events_pending: "События ждут согласования",
+  task_results: "Задания ждут проверки",
+  activity_results: "Результаты активностей ждут проверки",
+  rewards: "Заявки на возможности ждут решения",
+  portfolio: "Портфолио ждёт проверки",
+  reports: "Отчёты требуют внимания",
+  questions: "Есть новые вопросы участников",
+  departments: "Есть заявки по направлениям",
 };
 
 const ATTENTION_ORDER = Object.keys(ATTENTION_LABELS);
-const KPI_LABELS: Record<string, string> = {
-  users_total: "Участников",
-  projects_active: "Активные проекты",
-  events_live: "Мероприятия в работе",
-  leaders: "Лидеры и совет",
-};
 
 interface AdminOverviewScreenProps {
+  onOpenPeople?: () => void;
   onOpenApplications?: () => void;
   onOpenProjects?: () => void;
   onOpenEvents?: () => void;
+  onOpenTasks?: () => void;
   onOpenComms?: () => void;
 }
 
@@ -45,94 +38,139 @@ function timeAgo(iso: string): string {
   return `${Math.round(hours / 24)} дн назад`;
 }
 
-export function AdminOverviewScreen({ onOpenApplications, onOpenProjects, onOpenEvents, onOpenComms }: AdminOverviewScreenProps) {
+function formatEventDate(value: string): string {
+  return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" }).format(new Date(`${value}T00:00:00`));
+}
+
+function KpiButton({ value, label, note, onClick }: { value: number; label: string; note?: string; onClick?: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      style={{
+        appearance: "none",
+        border: 0,
+        padding: 0,
+        background: "transparent",
+        textAlign: "left",
+        minWidth: 0,
+        cursor: onClick ? "pointer" : "default",
+      }}
+    >
+      <Card style={{ minHeight: 112, padding: "0.9rem", background: "linear-gradient(145deg, rgba(255,255,255,.06), rgba(255,255,255,.025))" }}>
+        <div style={{ fontSize: "1.9rem", fontWeight: 950, lineHeight: 1 }}>{value}</div>
+        <strong style={{ display: "block", marginTop: "0.45rem" }}>{label}</strong>
+        <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: "0.76rem" }}>{note ?? "Открыть список →"}</span>
+      </Card>
+    </button>
+  );
+}
+
+export function AdminOverviewScreen({ onOpenPeople, onOpenApplications, onOpenProjects, onOpenEvents, onOpenTasks, onOpenComms }: AdminOverviewScreenProps) {
   const dashboard = useAsync(() => fetchAdminDashboard(), []);
   const activity = useAsync(() => fetchRecentActivity(), []);
+  const upcoming = useAsync(() => fetchEvents("all"), []);
 
-  if (dashboard.status === "loading") return <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>;
-  if (dashboard.status === "error") return <EmptyState text="Не удалось загрузить обзор." />;
+  if (dashboard.status === "loading") return <p style={{ color: "var(--era-text-muted)" }}>Загружаем пульт…</p>;
+  if (dashboard.status === "error") return <EmptyState text="Не удалось загрузить пульт управления. Попробуйте ещё раз." />;
 
   const { metrics, attention_total } = dashboard.data;
   const attentionItems = ATTENTION_ORDER.map((key) => ({ key, label: ATTENTION_LABELS[key], value: metrics[key] ?? 0 })).filter((item) => item.value > 0);
+  const attentionAction = (key: string): (() => void) | undefined => {
+    if (key === "users_pending") return onOpenApplications;
+    if (key === "projects_review") return onOpenProjects;
+    if (key === "events_pending" || key === "activity_results") return onOpenEvents;
+    if (key === "task_results") return onOpenTasks;
+    if (["questions", "departments"].includes(key)) return onOpenComms;
+    return undefined;
+  };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-      <Card gradient style={{ position: "relative", overflow: "hidden", minHeight: 178 }}>
-        <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: "radial-gradient(70% 90% at 92% 4%, rgba(255,255,255,0.24), transparent 60%)" }} />
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.15rem" }}>
+      <Card gradient style={{ position: "relative", overflow: "hidden", minHeight: 172 }}>
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: "radial-gradient(70% 100% at 92% 0%, rgba(255,255,255,.2), transparent 62%)" }} />
         <div style={{ position: "relative" }}>
-          <p style={{ margin: "0 0 0.25rem", color: "rgba(255,255,255,0.72)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Управление ЭРА</p>
-          <h1 style={{ margin: 0, fontSize: "var(--era-text-3xl)", lineHeight: 1.04 }}>Пульт управления</h1>
-          <p style={{ margin: "0.55rem 0 0", color: "rgba(255,255,255,0.84)", maxWidth: 320, lineHeight: 1.45 }}>
-            Сначала — то, что требует решения. Ниже — быстрые действия, состояние сообщества и последняя активность.
-          </p>
-          <div style={{ marginTop: "0.9rem", display: "inline-flex", padding: "0.4rem 0.65rem", borderRadius: 999, background: "rgba(255,255,255,0.14)", fontWeight: 800 }}>
-            {attention_total > 0 ? `${attention_total} требуют внимания` : "Сейчас всё спокойно"}
+          <p style={{ margin: "0 0 .3rem", color: "rgba(255,255,255,.72)", fontSize: "var(--era-text-xs)", fontWeight: 850, textTransform: "uppercase" }}>Добрый день</p>
+          <h1 style={{ margin: 0, fontSize: "clamp(1.75rem,7vw,2.35rem)", lineHeight: 1.04 }}>Вот что происходит в ЭРА сегодня</h1>
+          <div style={{ marginTop: ".9rem", display: "inline-flex", padding: ".4rem .7rem", borderRadius: 999, background: "rgba(255,255,255,.14)", fontWeight: 850 }}>
+            {attention_total > 0 ? `${attention_total} требуют реакции` : "Очередь чистая ✓"}
           </div>
         </div>
       </Card>
 
       <section>
-        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 0.55rem" }}>Быстрые действия</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-          {onOpenApplications && <ActionCell title="Новые заявки" description="Полная анкета, фото и решение по участнику" leading="👤" meta={metrics.users_pending ? `${metrics.users_pending} ждут решения` : "очередь пуста"} onClick={onOpenApplications} />}
-          {onOpenProjects && <ActionCell title="Проекты" description="Создать проект или проверить предложения команды" leading="💡" meta={metrics.projects_review ? `${metrics.projects_review} на проверке` : undefined} onClick={onOpenProjects} />}
-          {onOpenEvents && <ActionCell title="Мероприятия" description="Создать событие, открыть регистрацию и вести участников" leading="📅" meta={metrics.events_pending ? `${metrics.events_pending} на согласовании` : undefined} onClick={onOpenEvents} />}
-          {onOpenComms && <ActionCell title="Центр связи" description="Чаты, рассылки, FAQ, приветствия и автоконтент" leading="↗" onClick={onOpenComms} />}
+        <h2 style={{ fontSize: ".86rem", color: "var(--era-text-muted)", margin: "0 0 .55rem" }}>ЖИВЫЕ ПОКАЗАТЕЛИ</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: ".55rem" }}>
+          <KpiButton value={metrics.users_total ?? 0} label="Участники" onClick={onOpenPeople} />
+          <KpiButton value={metrics.activists ?? 0} label="Активные" onClick={onOpenPeople} />
+          <KpiButton value={metrics.projects_active ?? 0} label="Проекты" onClick={onOpenProjects} />
+          <KpiButton value={metrics.events_live ?? 0} label="События" onClick={onOpenEvents} />
+          <KpiButton value={metrics.event_registrations ?? 0} label="Регистрации" onClick={onOpenEvents} />
+          <KpiButton value={metrics.task_results ?? 0} label="Задания на проверке" onClick={onOpenTasks} />
         </div>
       </section>
 
       <section>
-        <h2 style={{ fontSize: "0.875rem", color: "var(--era-text-muted)", margin: "0 0 0.5rem" }}>Требует внимания</h2>
-        {attention_total === 0 ? (
-          <Card style={{ background: "var(--era-tint-violet)", border: "none", textAlign: "center" }}>
-            <div style={{ fontSize: "1.75rem" }}>✨</div>
-            <strong style={{ color: "var(--era-violet)" }}>Всё спокойно</strong>
-            <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>Нет задач, требующих решения</p>
+        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .55rem" }}>Требует внимания</h2>
+        {attention_total === 0 && (metrics.event_waitlist ?? 0) === 0 ? (
+          <Card style={{ background: "rgba(255,255,255,.035)", textAlign: "center" }}>
+            <div style={{ fontSize: "1.7rem" }}>✓</div>
+            <strong>Очередь чистая</strong>
+            <p style={{ margin: ".3rem 0 0", color: "var(--era-text-muted)" }}>Сейчас нет решений, которые нельзя откладывать.</p>
           </Card>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            {attentionItems.map((item, index) => {
-              const tone = TONE_CYCLE[index % TONE_CYCLE.length];
-              return (
-                <Card key={item.key} style={{ borderLeft: `3px solid var(--era-${tone})`, borderRadius: "var(--era-radius-card)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span>{item.label}</span>
-                    <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1.125rem", color: `var(--era-${tone})` }}>{item.value}</strong>
-                  </div>
-                </Card>
-              );
+          <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
+            {(metrics.event_waitlist ?? 0) > 0 && <ActionCell title={`${metrics.event_waitlist} в листе ожидания`} description="Проверьте ближайшие события и свободные места" leading="◎" onClick={() => onOpenEvents?.()} />}
+            {attentionItems.map((item) => {
+              const action = attentionAction(item.key);
+              return <ActionCell key={item.key} title={`${item.value} · ${item.label}`} description={action ? "Открыть и решить →" : "Посмотреть в соответствующем разделе"} leading="!" onClick={() => action?.()} />;
             })}
           </div>
         )}
       </section>
 
       <section>
-        <h2 style={{ fontSize: "0.875rem", color: "var(--era-text-muted)", margin: "0 0 0.5rem" }}>Пульс сообщества</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.5rem" }}>
-          {Object.keys(KPI_LABELS).map((key, index) => (
-            <MetricCard key={key} label={KPI_LABELS[key]} value={metrics[key] ?? 0} tone={TONE_CYCLE[index % TONE_CYCLE.length]} />
-          ))}
+        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .55rem" }}>Быстрые действия</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: ".55rem" }}>
+          {onOpenEvents && <ActionCell title="Создать мероприятие" description="Афиша → регистрация → напоминания → публикация" leading="＋" onClick={onOpenEvents} />}
+          {onOpenProjects && <ActionCell title="Создать проект" description="Идея, команда, план и запуск" leading="＋" onClick={onOpenProjects} />}
+          {onOpenTasks && <ActionCell title="Создать задание" description="Назначить результат, срок и баллы" leading="＋" onClick={onOpenTasks} />}
+          {onOpenComms && <ActionCell title="Сделать рассылку" description="Личные сообщения, чаты и предпросмотр" leading="↗" onClick={onOpenComms} />}
         </div>
       </section>
 
       <section>
-        <h2 style={{ fontSize: "0.875rem", color: "var(--era-text-muted)", margin: "0 0 0.5rem" }}>Последняя активность</h2>
+        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .55rem" }}>Ближайшие мероприятия</h2>
+        {upcoming.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загружаем афишу…</p>}
+        {upcoming.status === "error" && <EmptyState text="Не удалось загрузить ближайшие события." />}
+        {upcoming.status === "ready" && upcoming.data.length === 0 && (
+          <Card><strong>Пока нет ближайших мероприятий</strong><p style={{ margin: ".3rem 0 0", color: "var(--era-text-muted)" }}>Создайте первое событие — регистрация и участники будут собраны автоматически.</p>{onOpenEvents && <button type="button" className="era-btn-primary" onClick={onOpenEvents} style={{ marginTop: ".75rem", width: "100%" }}>Создать мероприятие</button>}</Card>
+        )}
+        {upcoming.status === "ready" && upcoming.data.slice(0, 3).map((event) => (
+          <button key={event.id} type="button" onClick={onOpenEvents} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left", marginBottom: ".5rem" }}>
+            <Card style={{ padding: ".8rem .9rem" }}>
+              <div style={{ display: "flex", gap: ".8rem", alignItems: "center" }}>
+                <div style={{ minWidth: 52, textAlign: "center" }}><strong style={{ display: "block", fontSize: "1.25rem" }}>{formatEventDate(event.event_date).split(" ")[0]}</strong><span style={{ color: "var(--era-text-muted)", fontSize: ".74rem" }}>{formatEventDate(event.event_date).split(" ").slice(1).join(" ")}</span></div>
+                <div style={{ minWidth: 0, flex: 1 }}><strong style={{ display: "block", overflowWrap: "anywhere" }}>{event.title}</strong><span style={{ color: "var(--era-text-muted)", fontSize: ".8rem" }}>{event.participant_limit ? `${event.registered_count} / ${event.participant_limit} участников` : `${event.registered_count} участников`} · {event.event_time}</span></div>
+                <span>→</span>
+              </div>
+            </Card>
+          </button>
+        ))}
+      </section>
+
+      <section>
+        <h2 style={{ fontSize: ".86rem", color: "var(--era-text-muted)", margin: "0 0 .5rem" }}>ПОСЛЕДНЯЯ АКТИВНОСТЬ</h2>
         {activity.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>}
         {activity.status === "error" && <EmptyState text="Не удалось загрузить активность." />}
-        {activity.status === "ready" && activity.data.length === 0 && <EmptyState text="Пока ничего не происходило." />}
-        {activity.status === "ready" && activity.data.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
-            {activity.data.map((entry, index) => (
-              <div key={entry.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", padding: "0.5rem 0", borderBottom: "1px solid var(--era-border)", fontSize: "0.8125rem" }}>
-                <span style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
-                  <span aria-hidden="true" style={{ width: "0.4375rem", height: "0.4375rem", borderRadius: "50%", flexShrink: 0, background: `var(--era-${TONE_CYCLE[index % TONE_CYCLE.length]})` }} />
-                  <span style={{ overflowWrap: "anywhere" }}>{entry.actor_name ? <strong>{entry.actor_name}</strong> : "Кто-то"} {entry.summary}</span>
-                </span>
-                <span style={{ color: "var(--era-text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>{timeAgo(entry.created_at)}</span>
-              </div>
-            ))}
+        {activity.status === "ready" && activity.data.length === 0 && <EmptyState text="Пока нет новых действий. Они появятся здесь после первых изменений." />}
+        {activity.status === "ready" && activity.data.slice(0, 8).map((entry) => (
+          <div key={entry.id} style={{ display: "flex", justifyContent: "space-between", gap: ".6rem", padding: ".55rem 0", borderBottom: "1px solid var(--era-border)", fontSize: ".8rem" }}>
+            <span style={{ overflowWrap: "anywhere" }}>{entry.actor_name ? <strong>{entry.actor_name} </strong> : null}{entry.summary}</span>
+            <span style={{ color: "var(--era-text-muted)", whiteSpace: "nowrap" }}>{timeAgo(entry.created_at)}</span>
           </div>
-        )}
+        ))}
       </section>
     </div>
   );

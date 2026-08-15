@@ -1,6 +1,6 @@
-import type { ProjectQuestion } from "../types/project";
 import { ApiError, authenticate } from "./client";
 import { getInitData } from "../telegram/webApp";
+import type { TaskItem } from "../types/activity";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 let tokenPromise: Promise<string> | null = null;
@@ -24,36 +24,19 @@ async function token(): Promise<string> {
   return tokenPromise;
 }
 
-export async function fetchProjectBuilderQuestions(): Promise<ProjectQuestion[]> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/project-builder/questions`);
-  if (!response.ok) {
-    throw new Error("project_builder_questions_unavailable");
-  }
-  return (await response.json()) as ProjectQuestion[];
-}
-
-export async function assistProjectAnswer(
-  questionKey: string,
-  answer: string,
-  operation: "formulate" | "shorten" | "improve",
-): Promise<string> {
+export async function fetchTaskDetail(taskId: number): Promise<TaskItem> {
   const sessionToken = await token();
-  const response = await fetch(`${API_BASE_URL}/api/v1/project-builder/assist`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${sessionToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ question_key: questionKey, answer, operation }),
+  const response = await fetch(`${API_BASE_URL}/api/v1/tasks/${taskId}`, {
+    headers: { Authorization: `Bearer ${sessionToken}` },
   });
   if (!response.ok) {
     let detail = response.statusText;
     try {
       detail = ((await response.json()) as { detail?: string }).detail ?? detail;
     } catch {
-      // Never expose auth material or response bodies in console logs.
+      // Keep status text. No response-body logging.
     }
     throw new ApiError(response.status, detail);
   }
-  return ((await response.json()) as { text: string }).text;
+  return (await response.json()) as TaskItem;
 }
