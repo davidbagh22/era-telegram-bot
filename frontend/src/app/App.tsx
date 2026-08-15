@@ -15,6 +15,7 @@ import { LeaderScreen } from "../screens/LeaderScreen";
 import { ObjectUnavailableScreen } from "../screens/ObjectUnavailableScreen";
 import { PendingScreen } from "../screens/PendingScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
+import { ProgressScreen } from "../screens/ProgressScreen";
 import { ProjectsScreen } from "../screens/ProjectsScreen";
 import { UserPublicProfileScreen } from "../screens/UserPublicProfileScreen";
 import { AdminEventsScreen } from "../screens/admin/AdminEventsScreen";
@@ -22,6 +23,7 @@ import type { MiniAppUserSummary } from "../types/auth";
 
 type LegacyActivitySection = "tasks" | "calendar" | "history";
 type WorkspaceKind = "admin" | "leader";
+type SpecialScreen = "progress";
 
 interface DeepLink {
   tab: TabKey;
@@ -32,6 +34,7 @@ interface DeepLink {
   workspace: WorkspaceKind | null;
   adminEventId: number | null;
   userId: number | null;
+  specialScreen: SpecialScreen | null;
   invalid: boolean;
 }
 
@@ -77,8 +80,6 @@ function telegramQueryRoute(): string {
 }
 
 function routeValue(): string {
-  // A fresh Bot -> Mini App button is an explicit navigation command and must
-  // win over a hash left in Telegram's cached WebView from the previous visit.
   const queryRoute = telegramQueryRoute();
   if (queryRoute) return queryRoute;
   return normalizeRoute(window.location.hash.replace(/^#\/?/, ""));
@@ -87,7 +88,6 @@ function routeValue(): string {
 function canonicalizeTelegramQueryRoute(): void {
   const route = telegramQueryRoute();
   if (!route) return;
-
   const url = new URL(window.location.href);
   url.searchParams.delete("eraPath");
   url.searchParams.delete("tgWebAppStartParam");
@@ -105,6 +105,7 @@ function link(overrides: Partial<DeepLink> = {}): DeepLink {
     workspace: null,
     adminEventId: null,
     userId: null,
+    specialScreen: null,
     invalid: false,
     ...overrides,
   };
@@ -119,13 +120,11 @@ function parseDeepLink(): DeepLink | null {
     const adminEventId = parseOptionalId(adminEventMatch[1]);
     return adminEventId ? link({ tab: "events", workspace: "admin", adminEventId }) : link({ invalid: true });
   }
-
   const adminProjectMatch = route.match(/^admin\/projects\/(\d+)$/);
   if (adminProjectMatch) {
     const projectId = parseOptionalId(adminProjectMatch[1]);
     return projectId ? link({ tab: "projects", projectId, workspace: "admin" }) : link({ invalid: true });
   }
-
   const projectMatch = route.match(/^projects\/(\d+)$/);
   if (projectMatch) {
     const projectId = parseOptionalId(projectMatch[1]);
@@ -137,11 +136,7 @@ function parseDeepLink(): DeepLink | null {
   if (activityMatch) {
     const itemId = activityMatch[2] ? parseOptionalId(activityMatch[2]) : null;
     if (activityMatch[2] && itemId === null) return link({ invalid: true });
-    return link({
-      tab: "home",
-      activitySection: activityMatch[1] as LegacyActivitySection,
-      itemId,
-    });
+    return link({ tab: "home", activitySection: activityMatch[1] as LegacyActivitySection, itemId });
   }
 
   const eventMatch = route.match(/^events(?:\/(\d+))?$/);
@@ -161,29 +156,26 @@ function parseDeepLink(): DeepLink | null {
   if (communityMatch) {
     const itemId = communityMatch[2] ? parseOptionalId(communityMatch[2]) : null;
     if (communityMatch[2] && itemId === null) return link({ invalid: true });
-    return link({
-      tab: "community",
-      communitySection: communityMatch[1] as CommunitySection,
-      itemId,
-    });
+    return link({ tab: "community", communitySection: communityMatch[1] as CommunitySection, itemId });
   }
 
+  if (route === "progress") return link({ tab: "home", specialScreen: "progress" });
   if (route === "leaderboard") return link({ tab: "community", communitySection: "leaderboard" });
   if (route === "community") return link({ tab: "community" });
   if (route === "profile") return link({ tab: "profile" });
   if (route === "admin") return link({ tab: "profile", workspace: "admin" });
   if (route === "leader") return link({ tab: "profile", workspace: "leader" });
   if (route === "home") return link({ tab: "home" });
-
-  // Critical behavior: a malformed or stale object route is an explicit state.
-  // Never turn it into Home — that hides broken notification/deep-link bugs.
   return link({ invalid: true });
 }
 
 function navigateToTab(tab: TabKey): void {
-  if (window.location.hash !== TAB_HASH[tab]) {
-    window.location.hash = TAB_HASH[tab];
-  }
+  if (window.location.hash !== TAB_HASH[tab]) window.location.hash = TAB_HASH[tab];
+}
+
+function navigateToRoute(route: string): void {
+  const target = `#/${normalizeRoute(route)}`;
+  if (window.location.hash !== target) window.location.hash = target;
 }
 
 function renderTab(
@@ -197,28 +189,24 @@ function renderTab(
   onTabChange: (tab: TabKey) => void,
 ) {
   if (tab === "home") {
-    if (isDeepLinkedTab && initialActivitySection) {
-      return <ActivityScreen initialSection={initialActivitySection} initialItemId={initialItemId} />;
-    }
+    if (isDeepLinkedTab && initialActivitySection) return <ActivityScreen initialSection={initialActivitySection} initialItemId={initialItemId} />;
     return (
       <HomeScreen
         user={user}
+        onOpenProfile={() => navigateToRoute("profile")}
+        onOpenProgress={() => navigateToRoute("progress")}
         onOpenEvents={() => onTabChange("events")}
+        onOpenEvent={(id) => navigateToRoute(`events/${id}`)}
+        onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
+        onOpenTask={(id) => navigateToRoute(`tasks/${id}`)}
         onOpenCommunity={() => onTabChange("community")}
+        onOpenOpportunity={(id) => navigateToRoute(`opportunities/${id}`)}
       />
     );
   }
-
   if (tab === "projects") return <ProjectsScreen initialProjectId={initialProjectId} />;
   if (tab === "events") return <EventsScreen initialItemId={isDeepLinkedTab ? initialItemId : null} />;
-  if (tab === "community") {
-    return (
-      <CommunityScreen
-        initialSection={isDeepLinkedTab ? initialCommunitySection : null}
-        initialItemId={isDeepLinkedTab ? initialItemId : null}
-      />
-    );
-  }
+  if (tab === "community") return <CommunityScreen initialSection={isDeepLinkedTab ? initialCommunitySection : null} initialItemId={isDeepLinkedTab ? initialItemId : null} />;
   return <ProfileScreen />;
 }
 
@@ -230,7 +218,6 @@ export function App() {
 
   useEffect(() => {
     canonicalizeTelegramQueryRoute();
-
     const syncFromLocation = () => {
       const next = parseDeepLink();
       setDeepLink(next);
@@ -248,21 +235,17 @@ export function App() {
     setActiveTab(tab);
     navigateToTab(tab);
   };
-
   const exitWorkspace = () => {
     setInWorkspace(false);
     navigateToTab("profile");
   };
-
   const initialProjectId = deepLink?.projectId ?? null;
 
   if (auth.status === "loading") return null;
   if (auth.status === "error") return <AuthErrorScreen code={auth.code} detail={auth.detail} onRetry={auth.refresh} />;
 
   const { user } = auth;
-  if (user.application_status === "pending" || user.application_status === "needs_info") {
-    return <PendingScreen onRefresh={auth.refresh} />;
-  }
+  if (user.application_status === "pending" || user.application_status === "needs_info") return <PendingScreen onRefresh={auth.refresh} />;
   if (user.application_status === "rejected" || user.is_blocked) return <BlockedScreen />;
 
   const goHome = () => navigateToTab("home");
@@ -271,9 +254,18 @@ export function App() {
   if (deepLink?.workspace === "leader" && !user.is_leader) return <ObjectUnavailableScreen onHome={goHome} />;
 
   if (deepLink?.userId) {
+    return <UserLayout activeTab="community" onTabChange={handleTabChange}><UserPublicProfileScreen userId={deepLink.userId} onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("community")} /></UserLayout>;
+  }
+
+  if (deepLink?.specialScreen === "progress") {
     return (
-      <UserLayout activeTab="community" onTabChange={handleTabChange}>
-        <UserPublicProfileScreen userId={deepLink.userId} onBack={() => navigateToTab("community")} />
+      <UserLayout activeTab="home" onTabChange={handleTabChange}>
+        <ProgressScreen
+          onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("home")}
+          onOpenProjects={() => navigateToTab("projects")}
+          onOpenTasks={() => navigateToRoute("tasks")}
+          onOpenEvents={() => navigateToTab("events")}
+        />
       </UserLayout>
     );
   }
@@ -282,24 +274,10 @@ export function App() {
   const leaderWorkspaceRequested = user.is_leader && (inWorkspace || deepLink?.workspace === "leader");
 
   if (adminWorkspaceRequested) {
-    return (
-      <AdminLayout onExitWorkspace={exitWorkspace}>
-        {deepLink?.adminEventId ? (
-          <AdminEventsScreen initialEventId={deepLink.adminEventId} />
-        ) : initialProjectId ? (
-          <ProjectsScreen initialProjectId={initialProjectId} />
-        ) : (
-          <AdminScreen />
-        )}
-      </AdminLayout>
-    );
+    return <AdminLayout onExitWorkspace={exitWorkspace}>{deepLink?.adminEventId ? <AdminEventsScreen initialEventId={deepLink.adminEventId} /> : initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <AdminScreen />}</AdminLayout>;
   }
   if (leaderWorkspaceRequested) {
-    return (
-      <LeaderLayout onExitWorkspace={exitWorkspace}>
-        {initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <LeaderScreen />}
-      </LeaderLayout>
-    );
+    return <LeaderLayout onExitWorkspace={exitWorkspace}>{initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <LeaderScreen />}</LeaderLayout>;
   }
 
   return (
@@ -310,18 +288,7 @@ export function App() {
           isLeader={user.is_leader}
           onEnterWorkspace={user.is_admin || user.is_leader ? () => setInWorkspace(true) : undefined}
         />
-      ) : (
-        renderTab(
-          activeTab,
-          user,
-          initialProjectId,
-          deepLink?.activitySection ?? null,
-          deepLink?.communitySection ?? null,
-          deepLink?.itemId ?? null,
-          deepLink?.tab === activeTab,
-          handleTabChange,
-        )
-      )}
+      ) : renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.tab === activeTab, handleTabChange)}
     </UserLayout>
   );
 }
