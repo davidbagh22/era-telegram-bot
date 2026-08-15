@@ -1,44 +1,46 @@
-/* ERA Dark Living System — vivid red/magenta energy on a black base. */
+/* ERA Dark Living System — saturated red energy, black depth, soft white light. */
 :root,
 :root[data-theme="light"],
 :root[data-theme="dark"] {
-  --era-red: #ff3048;
-  --era-violet: #6b3cff;
-  --era-magenta: #ff2b8a;
-  --era-crimson: #d3153f;
+  --era-red: #ff2038;
+  --era-violet: #8b3dff;
+  --era-magenta: #ff256f;
+  --era-crimson: #c90d35;
   --era-gold: #e1b85d;
   --era-gold-ink: #f2d898;
-  --era-gradient: linear-gradient(135deg, #ff3048 0%, #ff2b8a 42%, #6b3cff 100%);
+  --era-gradient: linear-gradient(135deg, #ff2038 0%, #f2134f 43%, #df1b68 72%, #8b3dff 100%);
 
-  --era-black: #050407;
-  --era-plum: #0b080d;
-  --era-surface-dark: #151017;
-  --era-bg: #050407;
-  --era-bg-subtle: #0b080d;
-  --era-surface: rgba(20, 16, 23, 0.94);
-  --era-surface-2: rgba(30, 22, 32, 0.92);
-  --era-glass: rgba(22, 16, 25, 0.76);
+  --era-black: #040305;
+  --era-plum: #0b0609;
+  --era-surface-dark: #160c10;
+  --era-bg: #040305;
+  --era-bg-subtle: #0b0609;
+  --era-surface: rgba(21, 12, 16, 0.94);
+  --era-surface-2: rgba(34, 18, 24, 0.92);
+  --era-glass: rgba(27, 13, 19, 0.78);
+  --era-white-glow: rgba(255, 246, 248, 0.18);
   --era-hero-bg:
-    radial-gradient(70% 82% at 98% 2%, rgba(255, 255, 255, 0.20), transparent 47%),
-    radial-gradient(105% 95% at 104% 24%, rgba(255, 182, 67, 0.24), transparent 55%),
-    radial-gradient(105% 86% at 12% 0%, rgba(107, 60, 255, 0.62), transparent 52%),
-    radial-gradient(92% 88% at 82% 48%, rgba(255, 43, 138, 0.62), transparent 57%),
-    linear-gradient(140deg, #140712 0%, #6c163c 42%, #e62b62 70%, #4d2fd2 100%);
+    radial-gradient(62% 84% at 96% -2%, rgba(255, 255, 255, 0.28), transparent 48%),
+    radial-gradient(92% 88% at 5% 4%, rgba(255, 32, 56, 0.88), transparent 58%),
+    radial-gradient(88% 78% at 84% 58%, rgba(255, 37, 111, 0.56), transparent 60%),
+    radial-gradient(72% 70% at 102% 26%, rgba(139, 61, 255, 0.28), transparent 62%),
+    linear-gradient(142deg, #2b070e 0%, #9f102d 42%, #e31b50 70%, #52175f 100%);
 
-  --era-text: #fbf7fb;
-  --era-text-muted: #bdb1c1;
-  --era-border: rgba(255, 255, 255, 0.10);
+  --era-text: #fff9fb;
+  --era-text-muted: #c7b8be;
+  --era-border: rgba(255, 255, 255, 0.11);
   --era-success: #43d39a;
   --era-warning: #efb449;
   --era-error: #ff6b65;
 
-  --era-shadow-soft: 0 12px 34px rgba(0, 0, 0, 0.30);
-  --era-shadow-lift: 0 20px 48px rgba(0, 0, 0, 0.46);
-  --era-shadow-dock: 0 22px 58px rgba(0, 0, 0, 0.58);
-  --era-shadow-overlay: 0 -18px 52px rgba(0, 0, 0, 0.60);
+  --era-shadow-soft: 0 12px 34px rgba(0, 0, 0, 0.32);
+  --era-shadow-lift: 0 20px 48px rgba(0, 0, 0, 0.48);
+  --era-shadow-dock: 0 22px 58px rgba(0, 0, 0, 0.62);
+  --era-shadow-overlay: 0 -18px 52px rgba(0, 0, 0, 0.62);
+  --era-shadow-red: 0 18px 46px rgba(255, 32, 56, 0.22);
 
-  --era-tint-violet: rgba(107, 60, 255, 0.18);
-  --era-tint-red: rgba(255, 48, 72, 0.18);
+  --era-tint-violet: rgba(139, 61, 255, 0.16);
+  --era-tint-red: rgba(255, 32, 56, 0.19);
   --era-tint-gold: rgba(225, 184, 93, 0.16);
   --era-ring-track: rgba(255, 255, 255, 0.13);
 
@@ -78,18 +80,20 @@
 
 html {
   overscroll-behavior-y: none;
-  background: #050407;
+  background: #040305;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   background:
-    radial-gradient(68% 46% at 86% -4%, rgba(255, 255, 255, 0.10), transparent 60%),
-    radial-gradient(82% 58% at 110% 4%, rgba(255, 48, 72, 0.25), transparent 58%),
-    radial-gradient(82% 60% at -8% 8%, rgba(107, 60, 255, 0.28), transparent 62%),
-    radial-gradient(72% 58% at 88% 72%, rgba(255, 43, 138, 0.13), transparent 68%),
-    linear-gradient(180deg, #050407 0%, #0c070d 48%, #050407 100%);
+    radial-gradient(72% 44% at 70% -7%, rgba(255, 255, 255, 0.13), transparent 61%),
+    radial-gradient(86% 58% at 111% 5%, rgba(255, 32, 56, 0.34), transparent 59%),
+    radial-gradient(76% 58% at -10% 9%, rgba(199, 13, 53, 0.26), transparent 62%),
+    radial-gradient(70% 56% at 92% 74%, rgba(255, 37, 111, 0.16), transparent 68%),
+    radial-gradient(54% 46% at 18% 76%, rgba(139, 61, 255, 0.08), transparent 72%),
+    linear-gradient(180deg, #040305 0%, #100609 46%, #050305 100%);
+  background-attachment: fixed;
   color: var(--era-text);
   font-family: var(--era-font-body);
   font-size: var(--era-text-base);
@@ -97,19 +101,29 @@ body {
   overscroll-behavior-y: none;
 }
 
-/* Fine film grain from the visual references. It is deliberately subtle and
-   non-interactive: typography stays clean while large gradients stop looking
-   like flat generated blobs. */
+/* Fine film grain keeps large red gradients tactile instead of flat. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 9999;
   pointer-events: none;
-  opacity: 0.055;
+  opacity: 0.068;
   mix-blend-mode: soft-light;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.88' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.72'/%3E%3C/svg%3E");
   background-size: 180px 180px;
+}
+
+/* A very soft moving light layer: visible on black, never overpowers text. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(34% 24% at 84% 14%, rgba(255,255,255,0.055), transparent 72%),
+    radial-gradient(42% 30% at 10% 42%, rgba(255,32,56,0.07), transparent 76%);
 }
 
 button {
@@ -134,7 +148,7 @@ button {
   }
 
   .era-btn-primary:hover:not(:disabled) {
-    box-shadow: 0 14px 32px rgba(255, 48, 72, 0.34);
+    box-shadow: 0 14px 34px rgba(255, 32, 56, 0.40);
     border-color: transparent;
   }
 
@@ -146,7 +160,7 @@ button {
 
 button:active:not(:disabled) { transform: scale(0.97); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
-button:focus-visible { outline: 2px solid var(--era-magenta); outline-offset: 2px; }
+button:focus-visible { outline: 2px solid var(--era-red); outline-offset: 2px; }
 
 input:not([type="checkbox"]):not([type="radio"]),
 textarea,
@@ -170,8 +184,8 @@ input:not([type="checkbox"]):not([type="radio"]):focus,
 textarea:focus,
 select:focus {
   outline: none;
-  border-color: rgba(255, 43, 138, 0.76);
-  box-shadow: 0 0 0 3px rgba(255, 43, 138, 0.16);
+  border-color: rgba(255, 32, 56, 0.82);
+  box-shadow: 0 0 0 3px rgba(255, 32, 56, 0.17), 0 10px 28px rgba(255, 32, 56, 0.08);
 }
 
 input:disabled, textarea:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -180,10 +194,10 @@ input[type="checkbox"] { width: 1.125rem; height: 1.125rem; accent-color: var(--
 .era-btn-primary {
   border: none;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.015)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.012)),
     var(--era-gradient);
   color: #fff;
-  box-shadow: 0 14px 32px rgba(255, 48, 72, 0.28);
+  box-shadow: 0 14px 34px rgba(255, 32, 56, 0.31);
 }
 
 .era-card { transition: box-shadow var(--era-motion), transform var(--era-motion), border-color var(--era-motion); }
@@ -209,7 +223,7 @@ input[type="checkbox"] { width: 1.125rem; height: 1.125rem; accent-color: var(--
 }
 
 @keyframes era-overlay-in { from { opacity: 0; } to { opacity: 1; } }
-.era-overlay-backdrop { position: fixed; inset: 0; background: rgba(3, 3, 5, 0.68); animation: era-overlay-in var(--era-motion-fast); z-index: 40; }
+.era-overlay-backdrop { position: fixed; inset: 0; background: rgba(3, 3, 5, 0.72); animation: era-overlay-in var(--era-motion-fast); z-index: 40; }
 
 @keyframes era-sheet-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .era-bottom-sheet { animation: era-sheet-in var(--era-motion) cubic-bezier(0.22, 1, 0.36, 1); }
