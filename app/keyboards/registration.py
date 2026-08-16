@@ -103,6 +103,36 @@ def desired_path_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def referral_code_keyboard(prefill: str | None = None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if prefill:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"Использовать код {prefill}",
+                    callback_data="reg:ref:use",
+                )
+            ]
+        )
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="Ввести другой код",
+                    callback_data="reg:ref:change",
+                )
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="У меня нет кода",
+                callback_data="reg:ref:skip",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def consent_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
