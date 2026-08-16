@@ -12,6 +12,7 @@ from app.handlers.leader import router as leader_router
 from app.handlers.participant import router as participant_router
 from app.middlewares.auth import DatabaseAuthMiddleware
 from app.middlewares.legacy_keyboard_cleanup import LegacyKeyboardCleanupMiddleware
+from app.middlewares.referral_chat_reward import ReferralChatRewardMiddleware
 from app.middlewares.subscription_check import SubscriptionMiddleware
 from app.services.ai_service import AIService
 from app.utils import texts
@@ -41,6 +42,10 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     leader_event_photo.router.callback_query.outer_middleware(subscription)
     leader_router.message.outer_middleware(subscription)
     leader_router.callback_query.outer_middleware(subscription)
+
+    referral_chat_reward = ReferralChatRewardMiddleware()
+    chat.router.chat_join_request.outer_middleware(referral_chat_reward)
+    chat.router.message.outer_middleware(referral_chat_reward)
 
     # emergency.router must stay first: it owns global FSM recovery and now
     # also dispatches FAQ /start payloads through try_handle_faq_payload().
