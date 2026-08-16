@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import Event, User
 from app.services.event_qr_service import CHECKIN_EVENT_STATUSES, qr_png
+from app.services.notification_service import safe_answer_photo
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
 from app.utils.deep_links import attendance_deep_link
 
@@ -104,7 +105,8 @@ async def _generate(
         return
     link = attendance_deep_link(me.username, event.id, settings.bot_token)
     image = BufferedInputFile(qr_png(link), filename=f"era-event-{event.id}-qr.png")
-    await message.answer_photo(
+    await safe_answer_photo(
+        message,
         image,
         caption=(
             f"🎟 Вход · {event.title}\n\n"
