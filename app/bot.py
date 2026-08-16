@@ -10,6 +10,7 @@ from app.handlers import chat, chat_binding, chat_faq, emergency, leader_event_p
 from app.handlers.admin import router as admin_router
 from app.handlers.leader import router as leader_router
 from app.handlers.participant import router as participant_router
+from app.middlewares.admin_bot_access import AdminBotAccessMiddleware
 from app.middlewares.auth import DatabaseAuthMiddleware
 from app.middlewares.legacy_keyboard_cleanup import LegacyKeyboardCleanupMiddleware
 from app.middlewares.subscription_check import SubscriptionMiddleware
@@ -41,6 +42,13 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     leader_event_photo.router.callback_query.outer_middleware(subscription)
     leader_router.message.outer_middleware(subscription)
     leader_router.callback_query.outer_middleware(subscription)
+
+    # The remaining Telegram admin handlers are compatibility/operational
+    # fallbacks. Delegated capability permissions belong to the Mini App/API;
+    # they must never unlock the broad legacy Telegram admin router.
+    admin_access = AdminBotAccessMiddleware()
+    admin_router.message.outer_middleware(admin_access)
+    admin_router.callback_query.outer_middleware(admin_access)
 
     # emergency.router must stay first: it owns global FSM recovery and now
     # also dispatches FAQ /start payloads through try_handle_faq_payload().
