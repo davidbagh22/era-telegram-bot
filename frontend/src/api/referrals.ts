@@ -1,4 +1,5 @@
-import { apiRequest } from "./client";
+import { authenticate } from "./client";
+import { getInitData } from "../telegram/webApp";
 
 export interface ReferralSummary {
   code: string;
@@ -12,6 +13,29 @@ export interface ReferralSummary {
   earned_points: number;
 }
 
-export function fetchReferralSummary(): Promise<ReferralSummary> {
-  return apiRequest<ReferralSummary>("/api/v1/referrals/me");
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+let referralToken: string | null = null;
+
+async function token(): Promise<string> {
+  if (referralToken) return referralToken;
+  const parameter = new URLSearchParams(window.location.search).get("devTelegramId");
+  const id = parameter ? Number(parameter) : undefined;
+  const auth = await authenticate(getInitData(), id);
+  referralToken = auth.token;
+  return referralToken;
+}
+
+export async function fetchReferralSummary(retry = true): Promise<ReferralSummary> {
+  const bearer = await token();
+  const response = await fetch(`${API_BASE_URL}/api/v1/referrals/me`, {
+    headers: { Authorization: `Bearer ${bearer}` },
+  });
+  if (response.status === 401 && retry) {
+    referralToken = null;
+    return fetchReferralSummary(false);
+  }
+  if (!response.ok) {
+    throw new Error(`referral_summary_${response.status}`);
+  }
+  return (await response.json()) as ReferralSummary;
 }
