@@ -8,6 +8,7 @@ from app.api.v1 import (
     admin_analytics_details,
     admin_applications,
     admin_autocontent,
+    admin_career,
     admin_development,
     admin_event_attendance,
     admin_event_create,
@@ -16,6 +17,7 @@ from app.api.v1 import (
     admin_project_detail,
     auctions,
     auth,
+    career,
     community_users,
     development,
     event_attendance,
@@ -40,6 +42,7 @@ api_router.include_router(auth.router)
 api_router.include_router(me.router)
 api_router.include_router(home.router)
 api_router.include_router(development.router)
+api_router.include_router(career.router)
 api_router.include_router(leaderboard.router)
 api_router.include_router(community_users.router)
 api_router.include_router(event_posters.router)
@@ -59,6 +62,9 @@ api_router.include_router(surveys.router)
 # POST endpoints continue to live in admin.router.
 api_router.include_router(admin_applications.router)
 api_router.include_router(admin_autocontent.router)
+# Career evidence/recommendation review owns dedicated routes and enforces the
+# portfolio.review capability without widening the legacy admin surface.
+api_router.include_router(admin_career.router)
 # Development summaries and aggregate analytics have their own privacy gate
 # and audit trail; register them before the large legacy admin router.
 api_router.include_router(admin_development.router)

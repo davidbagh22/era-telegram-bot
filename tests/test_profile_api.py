@@ -84,21 +84,31 @@ class ProfileApiTests(unittest.TestCase):
         response = client.get("/api/v1/profile")
         self.assertEqual(response.status_code, 401)
 
-    def test_resume_pdf_returns_pdf_content_type(self) -> None:
+    def test_resume_pdf_returns_new_universal_career_cv(self) -> None:
         session = SimpleNamespace()
         app = _build_app(session)
         client = TestClient(app)
+        career_profile = SimpleNamespace(headline="", about="", languages=[])
         with (
             patch(
                 "app.api.v1.profile.build_portfolio_data", new=AsyncMock(return_value=_portfolio())
             ),
-            patch("app.api.v1.profile.build_era_resume", return_value=b"%PDF-fake"),
+            patch(
+                "app.api.v1.profile.career_service.get_or_create_profile",
+                new=AsyncMock(return_value=career_profile),
+            ),
+            patch(
+                "app.api.v1.profile.career_service.list_items",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch("app.api.v1.profile.build_career_resume", return_value=b"%PDF-career") as builder,
         ):
             response = client.get("/api/v1/profile/resume.pdf")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "application/pdf")
-        self.assertIn("attachment", response.headers["content-disposition"])
-        self.assertEqual(response.content, b"%PDF-fake")
+        self.assertIn("ERA_CV_1_universal.pdf", response.headers["content-disposition"])
+        self.assertEqual(response.content, b"%PDF-career")
+        self.assertEqual(builder.call_args.kwargs["purpose"], "universal")
 
 
 if __name__ == "__main__":

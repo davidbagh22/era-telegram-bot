@@ -4,12 +4,9 @@ Closes docs/FINAL_PRODUCTION_ACCEPTANCE.md items #118 (deletion process)
 and #119 (export process) — the two items docs/DATA_INVENTORY.md section 4
 had honestly disclosed as "not implemented" going into that audit.
 
-Deliberate design choice, consistent with the rest of this app's data
-model: deletion is request → admin-reviewed anonymization, not an
-instant self-service hard-delete. See DataDeletionRequest's own
-docstring in app/database/models.py for why (PointTransaction is a
-retained financial-record-like ledger; a real hard-delete would also
-break referential integrity for anything this user authored/reviewed).
+Deletion is request → admin-reviewed anonymization, not an instant hard-delete.
+Career-profile data is user-authored personal data, so it is exported with the
+rest of the account and removed when an approved deletion request is fulfilled.
 """
 
 from __future__ import annotations
@@ -18,9 +15,10 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database.career_models import CareerPortfolioItem, CareerProfile, RecommendationRequest
 from app.database.models import (
     ConsentLog,
     DataDeletionRequest,
@@ -35,12 +33,6 @@ PENDING = "pending"
 FULFILLED = "fulfilled"
 REJECTED = "rejected"
 
-# Fields cleared on fulfillment — everything DATA_INVENTORY.md §1 marks as
-# "Персональные" or "Чувствительные" and that isn't itself needed to keep
-# other rows (points, project authorship, audit trail) referentially
-# meaningful. role/participation_status/is_archived and the relationships
-# to departments/directions/points/projects are deliberately left alone —
-# anonymizing, not deleting the row, is the whole point.
 _ANONYMIZED_STRING_FIELDS = (
     "username",
     "phone",
@@ -66,13 +58,7 @@ def _row_to_dict(row: Any, fields: tuple[str, ...]) -> dict[str, Any]:
 
 
 async def export_user_data(session: AsyncSession, user: User) -> dict[str, Any]:
-    """Everything this app actually stores about the caller's own account,
-    as a JSON-serializable dict — the Mini App's `/profile/export` returns
-    this directly as a downloadable file. Deliberately scoped to what
-    docs/DATA_INVENTORY.md §1-2 lists, not a raw ORM dump of every table
-    this user_id happens to appear in as a foreign key (e.g. as someone
-    else's `approved_by`/`reviewed_by`) — that's this app's *decisions
-    about* other people's data, not this user's *own* data."""
+    """Return a JSON-serializable copy of the caller's own stored data."""
     profile_fields = (
         "id", "telegram_id", "username", "first_name", "last_name",
         "birth_date", "age", "phone", "email", "city", "education_work",
@@ -111,6 +97,21 @@ async def export_user_data(session: AsyncSession, user: User) -> dict[str, Any]:
             .order_by(PortfolioItem.created_at)
         )
     ).all()
+    career_profile = await session.get(CareerProfile, user.id)
+    career_items = (
+        await session.scalars(
+            select(CareerPortfolioItem)
+            .where(CareerPortfolioItem.user_id == user.id)
+            .order_by(CareerPortfolioItem.created_at)
+        )
+    ).all()
+    recommendation_rows = (
+        await session.scalars(
+            select(RecommendationRequest)
+            .where(RecommendationRequest.user_id == user.id)
+            .order_by(RecommendationRequest.created_at)
+        )
+    ).all()
 
     await audit(
         session,
@@ -138,6 +139,32 @@ async def export_user_data(session: AsyncSession, user: User) -> dict[str, Any]:
         "portfolio_items": [
             _row_to_dict(row, ("title", "item_type", "description", "status", "created_at"))
             for row in portfolio_rows
+        ],
+        "career_profile": (
+            _row_to_dict(career_profile, ("headline", "about", "languages", "created_at", "updated_at"))
+            if career_profile
+            else None
+        ),
+        "career_portfolio_items": [
+            _row_to_dict(
+                row,
+                (
+                    "item_type", "title", "organization", "description", "issued_at", "url",
+                    "file_name", "status", "include_in_resume", "admin_comment", "submitted_at",
+                    "verified_at", "created_at", "updated_at",
+                ),
+            )
+            for row in career_items
+        ],
+        "recommendation_requests": [
+            _row_to_dict(
+                row,
+                (
+                    "purpose", "status", "draft_text", "final_text", "document_number",
+                    "requested_at", "approved_at", "rejection_comment", "created_at", "updated_at",
+                ),
+            )
+            for row in recommendation_rows
         ],
     }
 
@@ -211,6 +238,12 @@ async def fulfill_deletion_request(
         target.is_archived = True
         target.archived_at = datetime.now().astimezone()
         target.archived_by = admin.id
+        # Career profile and uploaded evidence metadata are user-authored personal
+        # data. Remove their DB records when deletion is approved. Telegram file
+        # identifiers become unreachable from ERA after these rows are removed.
+        await session.execute(delete(RecommendationRequest).where(RecommendationRequest.user_id == target.id))
+        await session.execute(delete(CareerPortfolioItem).where(CareerPortfolioItem.user_id == target.id))
+        await session.execute(delete(CareerProfile).where(CareerProfile.user_id == target.id))
         request.status = FULFILLED
         action = "user.deletion_fulfilled"
     else:
