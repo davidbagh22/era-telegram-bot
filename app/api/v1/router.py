@@ -9,6 +9,7 @@ from app.api.v1 import (
     admin_applications,
     admin_autocontent,
     admin_development,
+    admin_event_attendance,
     admin_event_create,
     admin_event_operations,
     admin_people_detail,
@@ -17,6 +18,7 @@ from app.api.v1 import (
     auth,
     community_users,
     development,
+    event_attendance,
     event_posters,
     events,
     home,
@@ -41,6 +43,7 @@ api_router.include_router(development.router)
 api_router.include_router(leaderboard.router)
 api_router.include_router(community_users.router)
 api_router.include_router(event_posters.router)
+api_router.include_router(event_attendance.router)
 api_router.include_router(events.router)
 api_router.include_router(tasks.router)
 api_router.include_router(activity.router)
@@ -69,10 +72,11 @@ api_router.include_router(admin_people_detail.router)
 # so reviewers can inspect the complete submitted form before deciding.
 api_router.include_router(admin_project_detail.router)
 # Rich event creator/operations are registered before the legacy admin router.
-# This lets the new participant read-model and secure participant exports own
-# the exact paths while old moderation/attendance actions remain compatible.
+# Attendance lifecycle/code endpoints are kept before the large admin router
+# so start/completion and confirmation-code state cannot be shadowed.
 api_router.include_router(admin_event_create.router)
 api_router.include_router(admin_event_operations.router)
+api_router.include_router(admin_event_attendance.router)
 api_router.include_router(admin.router)
 api_router.include_router(system.router)
 api_router.include_router(profile.router)

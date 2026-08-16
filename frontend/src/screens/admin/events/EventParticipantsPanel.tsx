@@ -1,22 +1,21 @@
 import { useCallback, useMemo, useState } from "react";
 import {
-  awardEventAttendancePoints,
   describeActionError,
   fetchEventParticipants,
-  setEventAttendance,
 } from "../../../api/client";
 import { downloadEventParticipants } from "../../../api/adminEvents";
 import { Card } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { useAsync } from "../../../hooks/useAsync";
+import { EventLifecyclePanel } from "./EventLifecyclePanel";
 
 const STATUS_LABELS: Record<string, string> = {
-  registered: "Зарегистрирован",
-  will_come: "Подтвердил участие",
+  registered: "Ждёт подтверждения",
+  will_come: "Ждёт подтверждения",
   waitlist: "Лист ожидания",
   not_coming: "Отказался",
-  attended: "Пришёл",
+  attended: "Посещение подтверждено",
   no_show: "Не пришёл",
   cancelled: "Регистрация отменена",
 };
@@ -24,7 +23,7 @@ const STATUS_LABELS: Record<string, string> = {
 const FILTERS = [
   { value: "all", label: "Все статусы" },
   { value: "active", label: "Зарегистрированы" },
-  { value: "attended", label: "Пришли" },
+  { value: "attended", label: "Подтвердили" },
   { value: "cancelled", label: "Отказались" },
   { value: "no_show", label: "No-show" },
   { value: "waitlist", label: "Лист ожидания" },
@@ -47,43 +46,12 @@ function matchesFilter(status: string, filter: FilterValue): boolean {
 export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPanelProps) {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchEventParticipants(eventId), [eventId, refreshKey]);
-  const [busyId, setBusyId] = useState<number | null>(null);
-  const [awarding, setAwarding] = useState(false);
   const [exporting, setExporting] = useState<"xlsx" | "csv" | null>(null);
-  const [awardResult, setAwardResult] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterValue>("all");
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
-
-  const handleAttendance = useCallback(async (registrationId: number, attended: boolean) => {
-    setBusyId(registrationId);
-    setActionError(null);
-    try {
-      await setEventAttendance(eventId, registrationId, attended);
-      refresh();
-    } catch (error) {
-      setActionError(describeActionError(error));
-    } finally {
-      setBusyId(null);
-    }
-  }, [eventId, refresh]);
-
-  const handleAward = useCallback(async () => {
-    setAwarding(true);
-    setActionError(null);
-    setAwardResult(null);
-    try {
-      const result = await awardEventAttendancePoints(eventId);
-      setAwardResult(`Баллы начислены новым посетителям: ${result.awarded_count}`);
-      refresh();
-    } catch (error) {
-      setActionError(describeActionError(error));
-    } finally {
-      setAwarding(false);
-    }
-  }, [eventId, refresh]);
 
   const handleExport = async (format: "xlsx" | "csv") => {
     setExporting(format);
@@ -120,14 +88,18 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
 
       <Card gradient>
         <p style={{ margin: "0 0 .3rem", fontSize: ".75rem", fontWeight: 800, color: "rgba(255,255,255,.7)" }}>УЧАСТНИКИ СОБЫТИЯ</p>
-        <h2 style={{ margin: 0 }}>Регистрации под контролем</h2>
-        <p style={{ margin: ".4rem 0 0", color: "rgba(255,255,255,.8)" }}>Поиск, посещаемость, очередь и выгрузка — из одной реальной базы.</p>
+        <h2 style={{ margin: 0 }}>Присутствие подтверждает участник</h2>
+        <p style={{ margin: ".4rem 0 0", color: "rgba(255,255,255,.8)" }}>
+          Запустите событие, а в конце передайте присутствующим уникальный код. После ввода баллы начислятся автоматически.
+        </p>
       </Card>
+
+      <EventLifecyclePanel eventId={eventId} onChanged={refresh} />
 
       {state.status === "ready" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: ".5rem" }}>
           <Metric value={stats.registrations} label="Регистрации" />
-          <Metric value={stats.attended} label="Пришли" />
+          <Metric value={stats.attended} label="Подтвердили посещение" />
           <Metric value={stats.cancelled} label="Отказались" />
           <Metric value={stats.noShow} label="No-show" />
           {stats.waitlist > 0 && <Metric value={stats.waitlist} label="Лист ожидания" />}
@@ -151,11 +123,6 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
       </div>
 
       {actionError && <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>}
-      {awardResult && <Card style={{ borderColor: "rgba(67,211,154,.35)" }}><strong>{awardResult}</strong></Card>}
-
-      <button type="button" disabled={awarding || stats.attended === 0} onClick={handleAward}>
-        {awarding ? "Начисляем…" : "Начислить баллы посетившим"}
-      </button>
 
       {state.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка участников…</p>}
       {state.status === "error" && <EmptyState text="Не удалось загрузить участников." />}
@@ -168,11 +135,10 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
             <strong>{participant.participant_name}</strong>
             <StatusBadge label={STATUS_LABELS[participant.status] ?? "Статус обновлён"} tone={participant.status === "attended" ? "violet" : "neutral"} />
           </div>
-          {!["not_coming", "cancelled", "waitlist"].includes(participant.status) && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginTop: "0.65rem" }}>
-              <button type="button" disabled={busyId === participant.registration_id} onClick={() => void handleAttendance(participant.registration_id, true)}>Пришёл</button>
-              <button type="button" disabled={busyId === participant.registration_id} onClick={() => void handleAttendance(participant.registration_id, false)}>Не пришёл</button>
-            </div>
+          {participant.status === "attended" && (
+            <p style={{ margin: ".45rem 0 0", color: "var(--era-text-muted)", fontSize: ".78rem" }}>
+              Подтверждено через уникальный код мероприятия.
+            </p>
           )}
         </Card>
       ))}

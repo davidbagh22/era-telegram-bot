@@ -15,6 +15,7 @@ import { useToast } from "../../components/Toast";
 import { useAsync } from "../../hooks/useAsync";
 import { successHaptic } from "../../telegram/webApp";
 import type { EventActivity, EventItem, EventScope } from "../../types/activity";
+import { EventAttendancePanel } from "./EventAttendancePanel";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -260,6 +261,8 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
           {registered && <div style={{ marginTop: "0.75rem" }}><EventActivitiesPanel eventId={event.id} /></div>}
         </Card>
       )}
+
+      {registered && <EventAttendancePanel eventId={event.id} />}
 
       {event.project_id && <button type="button" onClick={() => { window.location.hash = `#/projects/${event.project_id}`; }}>Открыть связанный проект →</button>}
       <button type="button" onClick={() => addToCalendar(event)}>Добавить в календарь</button>
