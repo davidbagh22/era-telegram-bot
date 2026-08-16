@@ -30,6 +30,7 @@ from app.database.career_models import (  # noqa: F401
     CareerProfile,
     RecommendationRequest,
 )
+from app.database.referral_models import ReferralCode, ReferralRelationship  # noqa: F401
 import app.database.socials  # noqa: F401
 import app.database.partners  # noqa: F401
 import app.database.chat_moderation  # noqa: F401
@@ -65,4 +66,6 @@ __all__ = [
     "CareerPortfolioItem",
     "CareerProfile",
     "RecommendationRequest",
+    "ReferralCode",
+    "ReferralRelationship",
 ]
