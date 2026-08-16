@@ -56,8 +56,6 @@ def directions_keyboard(
             "international",
         ]
 
-    # Участник может выбрать путь без вступления в конкретное направление
-    # независимо от выбранного департамента.
     keys.append("participate")
 
     builder = InlineKeyboardBuilder()
@@ -130,6 +128,14 @@ def referral_code_keyboard(prefill: str | None = None) -> InlineKeyboardMarkup:
             )
         ]
     )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="← Вернуться к регистрации",
+                callback_data="reg:ref:back",
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -140,6 +146,12 @@ def consent_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text="✅ Согласен и продолжить",
                     callback_data="reg:consent:yes",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🎁 Ввести код друга",
+                    callback_data="reg:ref:start",
                 )
             ],
             [
