@@ -4,14 +4,13 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from sqlalchemy import select
 
 from app.config import Settings
 from app.database.event_experience import EventExperience, EventReminderDelivery
 from app.database.models import Event, EventRegistration, User
+from app.services.bot_notification_service import PrimaryAction, send_bot_notification
 from app.services.event_service import event_datetime
-from app.services.notification_service import safe_send
 from app.utils.constants import EventStatus, RegistrationStatus
 from app.utils.deep_links import miniapp_event_url
 
@@ -65,21 +64,22 @@ async def send_configured_event_reminders(bot: Bot, settings: Settings, session_
             else:
                 lead = f"До события около {threshold} мин"
             url = miniapp_event_url(settings.effective_miniapp_url, event.id)
-            markup = (
-                InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="Открыть мероприятие", web_app=WebAppInfo(url=url))]]
-                )
-                if url
-                else None
-            )
-            sent = await safe_send(
+            sent = await send_bot_notification(
                 bot,
                 user.telegram_id,
-                f"🔥 {lead}\n\n{event.title}\n\n"
-                f"📅 {event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n"
-                f"📍 {event.location}\n\n"
-                "Если планы изменились — отмените участие, чтобы место смог занять другой участник.",
-                reply_markup=markup,
+                emoji="🔥",
+                title=lead,
+                body=(
+                    f"{event.title}\n\n"
+                    f"📅 {event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n"
+                    f"📍 {event.location}"
+                ),
+                footer="Если планы изменились — отмените участие, чтобы место смог занять другой участник.",
+                action=(
+                    PrimaryAction(label="Открыть мероприятие", web_app_url=url)
+                    if url
+                    else None
+                ),
             )
             if not sent:
                 continue

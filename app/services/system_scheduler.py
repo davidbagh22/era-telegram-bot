@@ -57,9 +57,6 @@ def add_system_jobs(
         max_instances=1,
         coalesce=True,
     )
-    # Rich event drafts can define any set of reminder thresholds (24h, 3h,
-    # 1h or custom). Delivery has its own idempotency table, so restarts and
-    # overlapping scheduler ticks cannot duplicate messages.
     scheduler.add_job(
         send_configured_event_reminders,
         "interval",
@@ -70,9 +67,6 @@ def add_system_jobs(
         max_instances=1,
         coalesce=True,
     )
-    # Tasks configured in the event wizard are editor-friendly JSON until
-    # publish. This job materialises/updates them in the existing EventActivity
-    # workflow, where participants can submit work and receive real points.
     scheduler.add_job(
         sync_event_wizard_tasks_job,
         "interval",
@@ -84,9 +78,9 @@ def add_system_jobs(
         coalesce=True,
         next_run_time=now,
     )
-    # My Vector reminder delivery runs daily but is idempotent per participant
-    # and month. That avoids missing an entire month after a restart on the
-    # first day, while still sending at most one guilt-free reminder each month.
+    # This one idempotent daily pass now handles both the monthly Check-in
+    # reminder and the optional weekly pulse. Keeping one job avoids another
+    # moving part while still preventing duplicate sends after restarts.
     scheduler.add_job(
         send_monthly_development_reminders,
         "cron",
@@ -98,10 +92,6 @@ def add_system_jobs(
         max_instances=1,
         coalesce=True,
     )
-    # Infrastructure maintenance, not a health check: refresh and re-pin the
-    # same FAQ card immediately after deploy and then twice a day. The service
-    # is idempotent and never creates a second card while the recorded one is
-    # still editable.
     scheduler.add_job(
         ensure_general_faq_pinned,
         "interval",

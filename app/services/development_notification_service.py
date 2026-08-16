@@ -1,18 +1,47 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from sqlalchemy import desc, select
 
 from app.config import Settings
-from app.database.development_models import AssessmentConsent, DevelopmentAuditLog, MonthlyCheckin
+from app.database.development_models import (
+    AssessmentConsent,
+    DevelopmentAuditLog,
+    MonthlyCheckin,
+    WeeklyPulse,
+)
 from app.database.models import User
+from app.services.bot_notification_service import PrimaryAction, send_bot_notification
 from app.utils.constants import ApplicationStatus
-from app.utils.deep_links import miniapp_path_url
 
 REMINDER_ACTION = "development.monthly_checkin_reminder.sent"
+WEEKLY_PULSE_ACTION = "development.weekly_pulse_reminder.sent"
+
+
+async def _eligible_users(session) -> list[User]:
+    return list(
+        (
+            await session.scalars(
+                select(User).where(
+                    User.application_status == ApplicationStatus.APPROVED,
+                    User.is_archived.is_(False),
+                    User.is_blocked.is_(False),
+                )
+            )
+        ).all()
+    )
+
+
+async def _has_active_consent(session, user_id: int) -> bool:
+    consent = await session.scalar(
+        select(AssessmentConsent)
+        .where(AssessmentConsent.user_id == user_id)
+        .order_by(desc(AssessmentConsent.created_at), desc(AssessmentConsent.id))
+        .limit(1)
+    )
+    return bool(consent and consent.accepted)
 
 
 async def send_monthly_development_reminders(
@@ -20,50 +49,15 @@ async def send_monthly_development_reminders(
     settings: Settings,
     session_factory,
 ) -> None:
-    """Send at most one guilt-free My Vector reminder per user per month.
-
-    The scheduler calls this daily so a service restart cannot make the whole
-    month miss its reminder. Delivery is idempotent through the development
-    audit table. Only the latest consent record is honored; a later withdrawal
-    stops future reminders even if an older accepted consent exists.
-    """
-    miniapp_url = settings.effective_miniapp_url
-    if not miniapp_url:
-        return
-
+    """Send monthly Check-in reminders, then run the idempotent weekly pulse pass."""
     now = datetime.now(timezone.utc)
     month = now.strftime("%Y-%m")
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    checkin_url = miniapp_path_url(miniapp_url, "development/checkin/current")
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Проверить себя", web_app=WebAppInfo(url=checkin_url))]
-        ]
-    )
 
     async with session_factory() as session:
-        users = list(
-            (
-                await session.scalars(
-                    select(User).where(
-                        User.application_status == ApplicationStatus.APPROVED,
-                        User.is_archived.is_(False),
-                        User.is_blocked.is_(False),
-                    )
-                )
-            ).all()
-        )
-
-        for user in users:
-            consent = await session.scalar(
-                select(AssessmentConsent)
-                .where(AssessmentConsent.user_id == user.id)
-                .order_by(desc(AssessmentConsent.created_at), desc(AssessmentConsent.id))
-                .limit(1)
-            )
-            if consent is None or not consent.accepted:
+        for user in await _eligible_users(session):
+            if not await _has_active_consent(session, user.id):
                 continue
-
             completed = await session.scalar(
                 select(MonthlyCheckin.id).where(
                     MonthlyCheckin.user_id == user.id,
@@ -73,7 +67,6 @@ async def send_monthly_development_reminders(
             )
             if completed is not None:
                 continue
-
             already_sent = await session.scalar(
                 select(DevelopmentAuditLog.id).where(
                     DevelopmentAuditLog.target_user_id == user.id,
@@ -84,22 +77,20 @@ async def send_monthly_development_reminders(
             if already_sent is not None:
                 continue
 
-            try:
-                await bot.send_message(
-                    chat_id=user.telegram_id,
-                    text=(
-                        "Твой новый Check-in готов\n\n"
-                        "Прошёл ещё один месяц. За 5 минут можно увидеть, что у тебя изменилось.\n\n"
-                        "Без оценок и обязательных серий — только твоя собственная динамика."
-                    ),
-                    reply_markup=keyboard,
-                )
-            except Exception:
-                # One unreachable Telegram account must not block the reminder
-                # run for the rest of the community. We intentionally do not
-                # log message payloads or personal profile data here.
+            sent = await send_bot_notification(
+                bot,
+                user.telegram_id,
+                emoji="🧭",
+                title="Твой новый Check-in готов",
+                body=(
+                    "Прошёл ещё один месяц. За несколько минут можно увидеть, "
+                    "что изменилось, и выбрать один фокус на следующий шаг."
+                ),
+                footer="Без оценок, штрафов и обязательных серий — только твоя собственная динамика.",
+                action=PrimaryAction(label="Проверить себя", callback_data="vector:start"),
+            )
+            if not sent:
                 continue
-
             session.add(
                 DevelopmentAuditLog(
                     actor_user_id=None,
@@ -108,5 +99,65 @@ async def send_monthly_development_reminders(
                     metadata_json={"month": month},
                 )
             )
+        await session.commit()
 
+    # The scheduler already runs this function daily. A separate job is not
+    # needed: the weekly pass is idempotent and therefore sends at most once in
+    # each calendar week even after restarts.
+    await send_weekly_development_pulses(bot, settings, session_factory)
+
+
+async def send_weekly_development_pulses(
+    bot: Bot,
+    settings: Settings,
+    session_factory,
+) -> None:
+    """Offer one optional energy pulse each week to consenting participants."""
+    del settings
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    week_start = today - timedelta(days=today.weekday())
+    week_start_dt = datetime.combine(week_start, time.min, tzinfo=timezone.utc)
+
+    async with session_factory() as session:
+        for user in await _eligible_users(session):
+            if not await _has_active_consent(session, user.id):
+                continue
+            existing_pulse = await session.scalar(
+                select(WeeklyPulse.id).where(
+                    WeeklyPulse.user_id == user.id,
+                    WeeklyPulse.week_start == week_start,
+                )
+            )
+            if existing_pulse is not None:
+                continue
+            already_sent = await session.scalar(
+                select(DevelopmentAuditLog.id).where(
+                    DevelopmentAuditLog.target_user_id == user.id,
+                    DevelopmentAuditLog.action == WEEKLY_PULSE_ACTION,
+                    DevelopmentAuditLog.created_at >= week_start_dt,
+                )
+            )
+            if already_sent is not None:
+                continue
+
+            sent = await send_bot_notification(
+                bot,
+                user.telegram_id,
+                emoji="⚡",
+                title="Короткая отметка недели",
+                body="Как у тебя с энергией прямо сейчас? Один ответ — и готово.",
+                footer="Это необязательно и ни на что не влияет. Пульс нужен только для твоей личной динамики.",
+                action=PrimaryAction(label="Отметить состояние", callback_data="vector:pulse:start"),
+            )
+            if not sent:
+                continue
+            session.add(
+                DevelopmentAuditLog(
+                    actor_user_id=None,
+                    target_user_id=user.id,
+                    action=WEEKLY_PULSE_ACTION,
+                    metadata_json={"week_start": week_start.isoformat()},
+                )
+            )
         await session.commit()

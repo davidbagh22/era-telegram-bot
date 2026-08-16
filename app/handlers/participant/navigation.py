@@ -7,15 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import User
-from app.keyboards.participant import (
+from app.keyboards.bot_shell import (
     contact_keyboard,
-    event_list_keyboard,
-    journey_keyboard,
     main_inline_keyboard,
     navigation_guide_keyboard,
-    open_app_button,
     team_keyboard,
 )
+from app.keyboards.participant import event_list_keyboard, journey_keyboard, open_app_button
 from app.repositories.users import rating, user_stats
 from app.services.event_service import published_events
 from app.services.points_service import total_points
@@ -35,6 +33,7 @@ NAVIGATION_PARTICIPANT = """🧭 <b>Навигация по ЭРА</b>
 
 Приложение — основная рабочая среда. Выберите не «меню», а то, что хотите сделать:
 
+🧭 <b>Мой вектор</b> — короткий личный Check-in прямо в Telegram
 💡 <b>Проекты</b> — придумать, собрать и вести свою идею
 📅 <b>События</b> — увидеть ближайшее и зарегистрироваться
 ✅ <b>Мои задачи</b> — включиться в реальную работу
@@ -46,11 +45,28 @@ NAVIGATION_PARTICIPANT = """🧭 <b>Навигация по ЭРА</b>
 
 NAVIGATION_LEADER = NAVIGATION_PARTICIPANT + """
 
-🧭 <b>Режим лидера</b> — отдельное рабочее пространство для команды, задач и решений по вашему направлению."""
+🧭 <b>Режим лидера</b> — отдельное рабочее пространство для команды, задач и решений по вашему направлению.
+🎟 <b>QR вход</b> — быстрый чек-ин участников на мероприятии через Telegram."""
 
 NAVIGATION_ADMIN = NAVIGATION_PARTICIPANT + """
 
-⚙️ <b>Режим администратора</b> — отдельный пульт управления ЭРА: заявки, проекты, мероприятия, задания, коммуникации, аналитика и состояние системы."""
+⚙️ <b>Режим администратора</b> — отдельный пульт управления ЭРА: заявки, проекты, мероприятия, задания, коммуникации, аналитика и состояние системы.
+🎟 <b>QR вход</b> — быстрый чек-ин участников на мероприятии через Telegram."""
+
+CONTACT_TEXT = """💬 <b>Связь с ЭРА</b>
+
+Здесь не нужно искать нужный раздел вручную.
+
+❓ вопрос — отправьте его команде
+👥 люди — посмотрите, кто за что отвечает
+🏛 структура — департаменты и направления
+💬 чаты — сразу в нужное сообщество
+
+Выберите, что нужно сейчас."""
+
+TEAM_TEXT = """👥 <b>Команда ЭРА</b>
+
+Найдите человека или направление по задаче. Если не уверены, кому писать — откройте «К кому обратиться»."""
 
 
 def _approved(user: User | None) -> bool:
@@ -156,7 +172,7 @@ async def contact_button(message: Message, user: User | None, state: FSMContext)
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
-    await message.answer(ux_texts.CONTACT_MENU, reply_markup=contact_keyboard())
+    await message.answer(CONTACT_TEXT, parse_mode=ParseMode.HTML, reply_markup=contact_keyboard())
 
 
 async def _send_navigation_guide(message: Message, user: User | None, settings: Settings) -> None:
@@ -200,7 +216,7 @@ async def contact_callback(call: CallbackQuery, user: User | None) -> None:
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    await call.message.answer(ux_texts.CONTACT_CALLBACK, reply_markup=contact_keyboard())
+    await call.message.answer(CONTACT_TEXT, parse_mode=ParseMode.HTML, reply_markup=contact_keyboard())
 
 
 @router.callback_query(F.data == "team:menu")
@@ -209,7 +225,11 @@ async def team_callback(call: CallbackQuery, user: User | None, settings: Settin
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    await call.message.answer(ux_texts.TEAM_MENU, reply_markup=team_keyboard(settings.general_chat_url))
+    await call.message.answer(
+        TEAM_TEXT,
+        parse_mode=ParseMode.HTML,
+        reply_markup=team_keyboard(settings.general_chat_url),
+    )
 
 
 @router.callback_query(F.data == "rules:open")
