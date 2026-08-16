@@ -26,11 +26,11 @@ async function copyText(value: string): Promise<void> {
 }
 
 export function ReferralScreen({ onBack }: ReferralScreenProps) {
-  const state = useAsync(fetchReferralSummary, []);
+  const state = useAsync(() => fetchReferralSummary(), []);
   const toast = useToast();
 
   const share = useCallback(async () => {
-    if (state.status !== "success") return;
+    if (state.status !== "ready") return;
     const data = state.data;
     try {
       if (navigator.share) {
