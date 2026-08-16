@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { downloadDataExport, downloadResumePdf, fetchProfile, requestAccountDeletion } from "../api/client";
+import { downloadDataExport, fetchProfile, requestAccountDeletion } from "../api/client";
 import { ActionCell } from "../components/ActionCell";
 import { Avatar } from "../components/Avatar";
 import { BottomSheet } from "../components/BottomSheet";
@@ -11,6 +11,7 @@ import { Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { useToast } from "../components/Toast";
 import { useAsync } from "../hooks/useAsync";
+import { CareerPortfolioScreen } from "./CareerPortfolioScreen";
 import { LeaderboardScreen } from "./LeaderboardScreen";
 import type { PortfolioEntry } from "../types/profile";
 
@@ -73,34 +74,14 @@ interface ProfileScreenProps {
 
 export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevelopment }: ProfileScreenProps = {}) {
   const state = useAsync(fetchProfile, []);
-  const [downloading, setDownloading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deletionOpen, setDeletionOpen] = useState(false);
   const [requestingDeletion, setRequestingDeletion] = useState(false);
   const [deletionRequested, setDeletionRequested] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showCareerPortfolio, setShowCareerPortfolio] = useState(false);
   const [resultSection, setResultSection] = useState<ResultSection | null>(null);
   const toast = useToast();
-
-  const handleDownloadResume = useCallback(async () => {
-    setDownloading(true);
-    try {
-      const blob = await downloadResumePdf();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "ERA_portfolio.pdf";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      toast.show("Резюме сохранено", "success");
-    } catch {
-      toast.show("Не удалось скачать резюме. Попробуйте ещё раз.", "error");
-    } finally {
-      setDownloading(false);
-    }
-  }, [toast]);
 
   const handleExportData = useCallback(async () => {
     setExporting(true);
@@ -136,6 +117,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
     }
   }, [toast]);
 
+  if (showCareerPortfolio) return <CareerPortfolioScreen onBack={() => setShowCareerPortfolio(false)} />;
   if (showLeaderboard) return <LeaderboardScreen onBack={() => setShowLeaderboard(false)} />;
 
   if (state.status === "loading") {
@@ -244,6 +226,16 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
         </Card>
       </section>
 
+      <section>
+        <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Профессиональный рост</h2>
+        <ActionCell
+          title="Моё портфолио"
+          description="Резюме, достижения, сертификаты, подтверждающие файлы и рекомендация ЭРА"
+          meta="Открыть"
+          onClick={() => setShowCareerPortfolio(true)}
+        />
+      </section>
+
       {onOpenDevelopment && (
         <section>
           <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Развитие</h2>
@@ -287,10 +279,6 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
           {data.directions.length > 0 && <p style={{ margin: data.departments.length > 0 ? "0.25rem 0 0" : 0 }}>Направления: {data.directions.join(", ")}</p>}
         </Card>
       )}
-
-      <button type="button" className="era-btn-primary" disabled={downloading} onClick={handleDownloadResume}>
-        {downloading ? "Формируем PDF…" : "Скачать резюме PDF"}
-      </button>
 
       <section>
         <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 0.75rem" }}>Данные и конфиденциальность</h2>
