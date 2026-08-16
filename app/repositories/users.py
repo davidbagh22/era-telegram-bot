@@ -18,6 +18,7 @@ from app.database.models import (
     UserDirection,
 )
 from app.services.consent_service import CURRENT_POLICY_VERSION, record_consent
+from app.services.referral_service import bind_referral_code
 from app.utils.validators import calculate_age
 
 
@@ -76,10 +77,6 @@ async def create_user_from_registration(
     )
     session.add(user)
     await session.flush()
-    # Persist the exact policy version that was shown in the registration
-    # FSM. The handler prevents accepting a stale version after a deploy;
-    # this explicit value keeps the audit record tied to what the person
-    # actually saw instead of whatever version happens to be current later.
     await record_consent(
         session,
         user_id=user.id,
@@ -94,6 +91,17 @@ async def create_user_from_registration(
         data.get("departments", []),
         data.get("directions", []),
     )
+    # A friend code is optional and must never make an otherwise valid
+    # registration fail. It is validated interactively before this point;
+    # re-validation protects against stale/archived inviter data.
+    try:
+        await bind_referral_code(
+            session,
+            invitee=user,
+            value=data.get("referral_code"),
+        )
+    except ValueError:
+        pass
     return user, True
 
 
