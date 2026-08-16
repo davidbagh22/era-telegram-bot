@@ -21,6 +21,8 @@ from app.utils.deep_links import attendance_deep_link
 
 router = Router(name="participant_event_qr")
 
+EVENTS_MANAGE_PERMISSION = "events.manage"
+
 
 def _approved(user: User | None) -> bool:
     return bool(
@@ -32,20 +34,39 @@ def _approved(user: User | None) -> bool:
 
 
 def _admin(user: User | None) -> bool:
+    return bool(user and user.role == Role.ADMIN)
+
+
+def _has_active_permission(user: User | None, permission: str) -> bool:
+    return bool(
+        user
+        and any(
+            grant.is_active and grant.permission == permission
+            for grant in (getattr(user, "permission_grants", None) or [])
+        )
+    )
+
+
+def _can_manage_all_qr(user: User | None) -> bool:
+    """Global QR access is explicit: admin role or events.manage only."""
     return bool(
         user
         and (
-            user.role == Role.ADMIN
-            or any(
-                grant.is_active
-                for grant in (getattr(user, "permission_grants", None) or [])
-            )
+            _admin(user)
+            or _has_active_permission(user, EVENTS_MANAGE_PERMISSION)
         )
     )
 
 
 def _can_manage_qr(user: User | None) -> bool:
-    return bool(user and (_admin(user) or user.role in PRIVILEGED_ROLES))
+    """Leaders may manage assigned events; global managers may manage all events."""
+    return bool(
+        user
+        and (
+            _can_manage_all_qr(user)
+            or user.role in PRIVILEGED_ROLES
+        )
+    )
 
 
 async def _available_events(session: AsyncSession, user: User) -> list[Event]:
@@ -55,10 +76,10 @@ async def _available_events(session: AsyncSession, user: User) -> list[Event]:
         .order_by(Event.event_date, Event.event_time)
         .limit(12)
     )
-    # Admins can operationally check in any event. Leaders only see events
-    # explicitly assigned to them; this prevents a role from silently gaining
-    # control over another team's attendance flow.
-    if not _admin(user):
+    # Global event managers can operationally check in any event. Leaders only
+    # see events explicitly assigned to them; unrelated grants must never widen
+    # attendance-management access.
+    if not _can_manage_all_qr(user):
         query = query.where(Event.responsible_id == user.id)
     return list((await session.scalars(query)).all())
 
@@ -68,7 +89,7 @@ async def _send_picker(message: Message, user: User, session: AsyncSession) -> N
     if not events:
         await message.answer(
             "🎟 QR вход\n\nНет доступных мероприятий, где вы назначены ответственным. "
-            "Администратор может открыть QR для любого активного события."
+            "Администратор или пользователь с правом управления мероприятиями может открыть QR для любого активного события."
         )
         return
     rows = [
@@ -96,7 +117,7 @@ async def _generate(
     bot: Bot,
     settings: Settings,
 ) -> None:
-    if not _admin(user) and event.responsible_id != user.id:
+    if not _can_manage_all_qr(user) and event.responsible_id != user.id:
         await message.answer("У вас нет доступа к QR этого мероприятия.")
         return
     me = await bot.get_me()
