@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import secrets
-from dataclasses import asdict
 from datetime import datetime
 from typing import Any
 
@@ -18,7 +17,6 @@ from app.database.models import (
     User,
     UserOffice,
 )
-from app.services.portfolio_service import build_portfolio_data
 from app.utils.constants import ProjectStatus, RegistrationStatus
 
 CAREER_ITEM_TYPES = {
@@ -362,9 +360,7 @@ def recommendation_text(user: User, facts: dict[str, Any], *, formal: bool) -> s
         activity = " Подтверждённой активности пока недостаточно для содержательной характеристики."
 
     if strengths:
-        conclusion = (
-            " На основании этих фактов можно отметить " + ", ".join(strengths) + "."
-        )
+        conclusion = " На основании этих фактов можно отметить " + ", ".join(strengths) + "."
     else:
         conclusion = " Рекомендация будет становиться содержательнее по мере появления подтверждённых результатов."
 
@@ -399,6 +395,19 @@ async def latest_recommendation_request(
         select(RecommendationRequest)
         .where(RecommendationRequest.user_id == user_id)
         .order_by(desc(RecommendationRequest.created_at), desc(RecommendationRequest.id))
+        .limit(1)
+    )
+
+
+async def recommendation_by_token(
+    session: AsyncSession, token: str
+) -> RecommendationRequest | None:
+    normalized = clean_text(token, max_length=96)
+    if not normalized:
+        return None
+    return await session.scalar(
+        select(RecommendationRequest)
+        .where(RecommendationRequest.verification_token == normalized)
         .limit(1)
     )
 
@@ -468,18 +477,29 @@ async def reject_recommendation(
 async def dashboard(session: AsyncSession, user: User) -> dict[str, Any]:
     profile = await get_or_create_profile(session, user.id)
     items = await list_items(session, user.id)
-    portfolio = await build_portfolio_data(session, user)
-    recommendation = await automatic_recommendation(session, user)
+    facts = await confirmed_activity_facts(session, user)
+    recommendation = {
+        "text": recommendation_text(user, facts, formal=False),
+        "facts": {
+            "attended_events": facts["attended_events"],
+            "completed_tasks": facts["completed_tasks"],
+            "authored_projects": facts["authored_projects"],
+            "confirmed_project_contributions": facts["confirmed_project_contributions"],
+            "leadership_roles": facts["leadership_roles"],
+            "verified_external_items": len(facts["verified_items"]),
+        },
+        "privacy_note": "Личные данные из «Моего вектора» и психологические ответы не используются.",
+    }
     latest_request = await latest_recommendation_request(session, user.id)
     verified_user_items = [item for item in items if item.status == "verified"]
     pending = [item for item in items if item.status == "pending"]
     self_reported = [item for item in items if item.status in {"self_reported", "rejected"}]
     era_confirmed = (
-        len(portfolio.projects)
-        + len([entry for entry in portfolio.events if entry.status == "Посетил"])
-        + len(portfolio.leadership)
-        + len(portfolio.badges)
-        + len(portfolio.certificates)
+        facts["attended_events"]
+        + facts["completed_tasks"]
+        + facts["authored_projects"]
+        + facts["confirmed_project_contributions"]
+        + len(facts["leadership_roles"])
     )
     return {
         "profile": {
