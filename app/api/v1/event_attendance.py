@@ -8,6 +8,7 @@ from app.api.deps import get_current_user, get_session
 from app.api.rate_limit import enforce_rate_limit
 from app.database.models import User
 from app.services import event_attendance_service
+from app.services.referral_service import award_first_event_referral
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -66,9 +67,6 @@ async def confirm_event_attendance(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> EventAttendanceConfirmationOut:
-    # Scope brute-force protection to this authenticated participant + event.
-    # The rate limiter also appends IP, so many attendees sharing venue Wi-Fi
-    # do not consume one another's attempt budget.
     await enforce_rate_limit(
         request,
         key_prefix=f"event_attendance:{event_id}:{user.id}",
@@ -86,6 +84,14 @@ async def confirm_event_attendance(
         code = str(exc)
         status = 404 if code == "event_not_found" else 422 if code == "invalid_attendance_code" else 409
         raise HTTPException(status_code=status, detail=code) from exc
+
+    # The attendance code is the authoritative proof. Referral points are
+    # derived only after that confirmation and can be granted only once.
+    await award_first_event_referral(
+        session,
+        invitee_user_id=user.id,
+        event_id=event_id,
+    )
 
     state = _state_out(result.state)
     return EventAttendanceConfirmationOut(

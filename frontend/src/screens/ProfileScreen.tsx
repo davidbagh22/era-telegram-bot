@@ -13,6 +13,7 @@ import { useToast } from "../components/Toast";
 import { useAsync } from "../hooks/useAsync";
 import { CareerPortfolioScreen } from "./CareerPortfolioScreen";
 import { LeaderboardScreen } from "./LeaderboardScreen";
+import { ReferralScreen } from "./ReferralScreen";
 import type { PortfolioEntry } from "../types/profile";
 
 const GROWTH_LABELS = ["Участник", "Активный", "Лидер"];
@@ -80,6 +81,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
   const [deletionRequested, setDeletionRequested] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showCareerPortfolio, setShowCareerPortfolio] = useState(false);
+  const [showReferral, setShowReferral] = useState(false);
   const [resultSection, setResultSection] = useState<ResultSection | null>(null);
   const toast = useToast();
 
@@ -117,6 +119,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
     }
   }, [toast]);
 
+  if (showReferral) return <ReferralScreen onBack={() => setShowReferral(false)} />;
   if (showCareerPortfolio) return <CareerPortfolioScreen onBack={() => setShowCareerPortfolio(false)} />;
   if (showLeaderboard) return <LeaderboardScreen onBack={() => setShowLeaderboard(false)} />;
 
@@ -247,6 +250,16 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
           />
         </section>
       )}
+
+      <section>
+        <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Сообщество</h2>
+        <ActionCell
+          title="Пригласить друга"
+          description="Ваш личный код и ссылка. +200 каждому после регистрации и общего чата, ещё +500 после первого подтверждённого мероприятия"
+          meta="Открыть"
+          onClick={() => setShowReferral(true)}
+        />
+      </section>
 
       {onEnterWorkspace && (
         <ActionCell

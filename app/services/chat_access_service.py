@@ -13,6 +13,7 @@ from app.config import Settings
 from app.database.chat_moderation import PendingChatJoinRequest
 from app.database.models import User
 from app.services.audit_service import audit
+from app.services.referral_service import award_registration_referral
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
 
 logger = logging.getLogger(__name__)
@@ -252,6 +253,8 @@ async def sync_user_chat_access(
             item.status = "approved"
             item.reason = "approved"
             fixed += 1
+            if item.chat_key == "general":
+                await award_registration_referral(session, invitee_user_id=user.id)
         else:
             failed += 1
 
@@ -265,13 +268,9 @@ async def sync_user_chat_access(
         )
         fixed += int(ok)
         failed += int(not ok)
+        if ok and decision.allowed and chat_key == "general":
+            await award_registration_referral(session, invitee_user_id=user.id)
 
-    # One summary row per sync, not one per chat — enough to answer "was
-    # this user's chat access actually synced, and did anything fail" from
-    # the audit log, without flooding it. `failed > 0` is the signal admins
-    # need to know a Telegram-API hiccup left chat permissions stale even
-    # though the approval itself (audited separately by the caller) went
-    # through.
     if fixed or failed:
         await audit(
             session,

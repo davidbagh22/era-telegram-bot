@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
+import { ContextHelp } from "../components/ContextHelp";
 
 interface LeaderLayoutProps {
   children: ReactNode;
-  /** See AdminLayout's identical prop for why this is optional. */
   onExitWorkspace?: () => void;
 }
 
@@ -41,6 +41,7 @@ export function LeaderLayout({ children, onExitWorkspace }: LeaderLayoutProps) {
         )}
       </div>
       {children}
+      <ContextHelp mode="leader" />
     </div>
   );
 }

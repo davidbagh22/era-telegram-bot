@@ -19,4 +19,5 @@ class RegistrationStates(StatesGroup):
     motivation = State()
     profile_photo = State()
     social_url = State()
+    referral_code = State()
     consent = State()
