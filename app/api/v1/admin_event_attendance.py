@@ -42,7 +42,13 @@ def _out(state: event_attendance_service.LifecycleState) -> AdminEventAttendance
         status=str(state.event.status),
         started_at=runtime.started_at.isoformat() if runtime and runtime.started_at else None,
         completed_at=runtime.completed_at.isoformat() if runtime and runtime.completed_at else None,
-        attendance_code=runtime.attendance_code if runtime else None,
+        # The code may be prepared when the event starts, but it is deliberately
+        # not exposed to any client until the event is explicitly completed.
+        attendance_code=(
+            runtime.attendance_code
+            if runtime and runtime.completed_at and runtime.attendance_code
+            else None
+        ),
         can_start=state.can_start,
         can_complete=state.can_complete,
         confirmation_open=state.confirmation_open,
