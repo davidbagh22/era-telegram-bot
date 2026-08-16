@@ -114,8 +114,20 @@ def test_my_vector_questions_and_goal_review_are_button_driven() -> None:
     question = _question_keyboard("energy")
     goal = _goal_review_keyboard(12)
 
-    assert len(question.inline_keyboard) == 8
-    assert question.inline_keyboard[0][0].callback_data.startswith("vector:answer:energy:")
+    # Five explicit response choices (0..4) plus the non-destructive exit row.
+    assert len(question.inline_keyboard) == 6
+    answer_buttons = [row[0] for row in question.inline_keyboard[:-1]]
+    assert [button.text.split(" · ", 1)[0] for button in answer_buttons] == [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+    ]
+    assert all(
+        button.callback_data.startswith("vector:answer:energy:")
+        for button in answer_buttons
+    )
     assert question.inline_keyboard[-1][0].text == "Сохранить и выйти"
     assert _labels(goal) == [
         "Сделал",
