@@ -31,6 +31,7 @@ from app.api.v1 import (
     profile,
     project_builder,
     projects,
+    referrals,
     rewards,
     surveys,
     system,
@@ -43,6 +44,7 @@ api_router.include_router(me.router)
 api_router.include_router(home.router)
 api_router.include_router(development.router)
 api_router.include_router(career.router)
+api_router.include_router(referrals.router)
 api_router.include_router(leaderboard.router)
 api_router.include_router(community_users.router)
 api_router.include_router(event_posters.router)
