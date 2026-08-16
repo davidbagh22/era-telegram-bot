@@ -33,6 +33,7 @@ from app.states.growth import TaskSubmissionStates
 from app.utils import texts
 from app.utils.constants import PRIVILEGED_ROLES
 from app.utils.deep_links import (
+    ATTENDANCE_PREFIX,
     parse_activity_submit_payload,
     parse_attendance_payload,
     parse_task_submit_payload,
@@ -86,6 +87,8 @@ async def _try_event_attendance_from_deep_link(
     command: CommandObject | None,
 ) -> bool:
     if command is None or not command.args:
+        return False
+    if not command.args.startswith(f"{ATTENDANCE_PREFIX}_"):
         return False
     event_id = parse_attendance_payload(command.args, settings.bot_token)
     if event_id is None:
