@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_session
+from app.api.rate_limit import enforce_rate_limit
 from app.database.models import User
 from app.services import event_attendance_service
 
@@ -61,9 +62,19 @@ async def read_event_attendance_state(
 async def confirm_event_attendance(
     event_id: int,
     payload: EventAttendanceCodeIn,
+    request: Request,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> EventAttendanceConfirmationOut:
+    # Scope brute-force protection to this authenticated participant + event.
+    # The rate limiter also appends IP, so many attendees sharing venue Wi-Fi
+    # do not consume one another's attempt budget.
+    await enforce_rate_limit(
+        request,
+        key_prefix=f"event_attendance:{event_id}:{user.id}",
+        limit=8,
+        window_seconds=60,
+    )
     try:
         result = await event_attendance_service.confirm_attendance(
             session,
