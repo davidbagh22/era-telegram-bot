@@ -25,6 +25,11 @@ from app.database.development_models import (  # noqa: F401
     UserVectorProfile,
     WeeklyPulse,
 )
+from app.database.career_models import (  # noqa: F401
+    CareerPortfolioItem,
+    CareerProfile,
+    RecommendationRequest,
+)
 import app.database.socials  # noqa: F401
 import app.database.partners  # noqa: F401
 import app.database.chat_moderation  # noqa: F401
@@ -57,4 +62,7 @@ __all__ = [
     "RecommendationHistory",
     "UserVectorProfile",
     "WeeklyPulse",
+    "CareerPortfolioItem",
+    "CareerProfile",
+    "RecommendationRequest",
 ]
