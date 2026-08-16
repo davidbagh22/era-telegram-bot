@@ -182,7 +182,12 @@ const TOPICS: Record<string, HelpTopic> = {
 function currentRoute(): string {
   const params = new URLSearchParams(window.location.search);
   const queryRoute = params.get("eraPath") || params.get("tgWebAppStartParam");
-  if (queryRoute) return queryRoute.replace(/^\/?/, "").replace(/\/$/, "");
+  if (queryRoute) {
+    if (queryRoute.startsWith("event_")) return `events/${queryRoute.slice(6)}`;
+    if (queryRoute.startsWith("project_")) return `projects/${queryRoute.slice(8)}`;
+    if (queryRoute.startsWith("task_")) return `tasks/${queryRoute.slice(5)}`;
+    return queryRoute.replace(/^\/?/, "").replace(/\/$/, "");
+  }
   return window.location.hash.replace(/^#\/?/, "").replace(/\/$/, "") || "home";
 }
 
@@ -259,9 +264,11 @@ export function ContextHelp({ mode }: { mode: ContextHelpMode }) {
     setOpen(true);
   };
 
-  const bottom = mode === "user"
-    ? "calc(5.5rem + env(safe-area-inset-bottom, 0px))"
-    : "calc(1rem + env(safe-area-inset-bottom, 0px))";
+  // Participant and admin workspaces both have a persistent bottom navigation.
+  // Keep the help affordance above it so it never intercepts navigation taps.
+  const bottom = mode === "leader"
+    ? "calc(1rem + env(safe-area-inset-bottom, 0px))"
+    : "calc(5.5rem + env(safe-area-inset-bottom, 0px))";
 
   return (
     <>
