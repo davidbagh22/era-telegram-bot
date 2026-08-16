@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date, time
 
 import pytest
@@ -66,8 +67,7 @@ async def _seed_event(session):
     return manager, participant, stranger, event, registration
 
 
-@pytest.mark.asyncio
-async def test_attendance_code_opens_only_after_completion_and_awards_once() -> None:
+async def _attendance_code_opens_only_after_completion_and_awards_once() -> None:
     engine, factory = await _session_factory()
     try:
         async with factory() as session:
@@ -157,8 +157,11 @@ async def test_attendance_code_opens_only_after_completion_and_awards_once() -> 
         await engine.dispose()
 
 
-@pytest.mark.asyncio
-async def test_attendance_code_rejects_unregistered_user() -> None:
+def test_attendance_code_opens_only_after_completion_and_awards_once() -> None:
+    asyncio.run(_attendance_code_opens_only_after_completion_and_awards_once())
+
+
+async def _attendance_code_rejects_unregistered_user() -> None:
     engine, factory = await _session_factory()
     try:
         async with factory() as session:
@@ -186,6 +189,10 @@ async def test_attendance_code_rejects_unregistered_user() -> None:
                 )
     finally:
         await engine.dispose()
+
+
+def test_attendance_code_rejects_unregistered_user() -> None:
+    asyncio.run(_attendance_code_rejects_unregistered_user())
 
 
 def test_generated_codes_are_human_friendly_and_do_not_use_ambiguous_symbols() -> None:
