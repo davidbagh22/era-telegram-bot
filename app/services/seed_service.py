@@ -12,6 +12,7 @@ from app.database.models import (
 )
 from app.services.chat_binding_recovery_service import recover_chat_bindings
 from app.services.community_mission_service import seed_community_missions
+from app.services.media_dashboard_service import seed_media_guide
 from app.services.media_service import seed_media_os
 from app.services.recognition_catalog import seed_recognition_catalog
 from app.utils.constants import BADGES, DEPARTMENTS
@@ -147,5 +148,6 @@ async def seed_reference_data(session: AsyncSession, settings: Settings) -> None
     await seed_recognition_catalog(session)
     await seed_community_missions(session)
     await seed_media_os(session, settings)
+    await seed_media_guide(session, settings)
     await recover_chat_bindings(session, settings)
     await session.commit()
