@@ -7,7 +7,7 @@ import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
 import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
 import { AdminDevelopmentScreen } from "./admin/AdminDevelopmentScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
-import { AdminMaintenanceScreen } from "./admin/AdminMaintenanceScreen";
+import { AdminMaintenanceScreen, type MaintenanceTarget } from "./admin/AdminMaintenanceScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
 import { AdminOffersScreen } from "./admin/AdminOffersScreen";
 import { AdminOverviewScreen } from "./admin/AdminOverviewScreen";
@@ -52,9 +52,9 @@ const COMMS_SECTIONS: SectionOption<CommsSection>[] = [
 ];
 
 const CONTROL_SECTIONS: SectionOption<ControlSection>[] = [
-  { value: "analytics", label: "Аналитика", description: "Показатели сообщества, динамика и Excel-выгрузка" },
-  { value: "system", label: "Состояние системы", description: "Диагностика, инциденты, резервные копии и здоровье ЭРА" },
-  { value: "maintenance", label: "Обслуживание", description: "Редкие технические операции с отдельной серверной защитой" },
+  { value: "analytics", label: "Аналитика", description: "Эффективность, Пульс организации, показатели здоровья и Excel" },
+  { value: "system", label: "Состояние системы", description: "Диагностика, инциденты, резервные копии и техническое здоровье" },
+  { value: "maintenance", label: "Обслуживание", description: "Операционная очередь и быстрые переходы ко всем рабочим процессам" },
 ];
 
 function initialAdminRoute(): InitialAdminRoute {
@@ -131,6 +131,25 @@ export function AdminScreen() {
     setWorkSection(null);
     setControlSection(null);
   };
+  const openMaintenanceTarget = (target: MaintenanceTarget) => {
+    if (target === "applications" || target === "participants" || target === "data-rights") {
+      openPeople(target);
+      return;
+    }
+    if (target === "projects" || target === "events" || target === "tasks" || target === "offers") {
+      openWork(target);
+      return;
+    }
+    if (target === "tools") {
+      openComms();
+      return;
+    }
+    setGroup("control");
+    setControlSection(target);
+    setPeopleSection(null);
+    setWorkSection(null);
+    setCommsSection(null);
+  };
 
   return (
     <div className="era-page" style={{ minHeight: "100vh", display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -179,13 +198,13 @@ export function AdminScreen() {
           </div>
         )}
 
-        {group === "control" && !controlSection && <SectionMenu title="Контроль" description="Аналитика, здоровье платформы и редкое техническое обслуживание." options={CONTROL_SECTIONS} onOpen={setControlSection} />}
+        {group === "control" && !controlSection && <SectionMenu title="Контроль" description="Аналитика, здоровье платформы и ежедневное операционное обслуживание." options={CONTROL_SECTIONS} onOpen={setControlSection} />}
         {group === "control" && controlSection && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={CONTROL_SECTIONS.find((item) => item.value === controlSection)?.label ?? "Контроль"} onBack={() => setControlSection(null)} />
             {controlSection === "analytics" && <AdminDashboardScreen />}
             {controlSection === "system" && <SystemPanel />}
-            {controlSection === "maintenance" && <AdminMaintenanceScreen />}
+            {controlSection === "maintenance" && <AdminMaintenanceScreen onOpen={openMaintenanceTarget} />}
           </div>
         )}
       </div>
