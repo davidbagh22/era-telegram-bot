@@ -29,6 +29,7 @@ from app.api.v1 import (
     leadership,
     me,
     media,
+    media_extras,
     opportunities,
     positions,
     profile,
@@ -59,6 +60,7 @@ api_router.include_router(project_builder.router)
 api_router.include_router(projects.router)
 api_router.include_router(opportunities.router)
 api_router.include_router(media.router)
+api_router.include_router(media_extras.router)
 api_router.include_router(auctions.router)
 api_router.include_router(rewards.router)
 api_router.include_router(surveys.router)
