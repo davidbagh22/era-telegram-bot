@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import PointTransaction, Task, TaskParticipant, TaskSubmission, User
-from app.services.points_service import add_points
+from app.services.activity_scoring_service import score_task_completion
 from app.utils.constants import TaskStatus
 
 TASK_REVIEW_ACTIONS = ("approve", "revision", "reject")
@@ -31,6 +31,7 @@ async def list_pending_submissions(session: AsyncSession) -> list[TaskSubmission
 
 
 async def _already_awarded(session: AsyncSession, user_id: int, task_id: int) -> bool:
+    """Compatibility guard for tasks paid by the pre-scoring implementation."""
     previous = await session.scalar(
         select(PointTransaction).where(
             PointTransaction.user_id == user_id,
@@ -73,17 +74,16 @@ async def decide_submission(
                 participant_notice=None,
                 points_awarded=0,
             )
-        await add_points(
+
+        transaction = await score_task_completion(
             session,
-            user_id=participant.id,
-            points=task.points,
-            reason=f"Выполнение задания: {task.title}",
-            approved_by=actor.id,
-            related_task_id=task.id,
-            source_type="task_submission",
-            source_id=submission.id,
-            idempotency_key=f"task_submission:{submission.id}:approval",
+            task,
+            participant,
+            submission_id=submission.id,
+            approved_by_id=actor.id,
         )
+        awarded_points = int(transaction.points)
+
         if task.task_type == "private":
             task.status = TaskStatus.COMPLETED
         else:
@@ -114,11 +114,12 @@ async def decide_submission(
             )
         return TaskReviewResult(
             submission=submission,
-            admin_notice="Результат одобрен. Баллы начислены один раз.",
+            admin_notice="Результат одобрен. Баллы и показатели обновлены один раз.",
             participant_notice=(
-                f"Ваш результат по заданию одобрен.\n\n{task.title}\n\nНачислено: {task.points} баллов"
+                f"Ваш результат по заданию одобрен.\n\n{task.title}\n\n"
+                f"Начислено: {awarded_points} баллов"
             ),
-            points_awarded=task.points,
+            points_awarded=awarded_points,
         )
 
     if action == "revision":

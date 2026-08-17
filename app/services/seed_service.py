@@ -11,6 +11,7 @@ from app.database.models import (
     Office,
 )
 from app.services.chat_binding_recovery_service import recover_chat_bindings
+from app.services.recognition_catalog import seed_recognition_catalog
 from app.utils.constants import BADGES, DEPARTMENTS
 
 
@@ -132,6 +133,11 @@ async def seed_reference_data(session: AsyncSession, settings: Settings) -> None
                 )
             )
     await session.flush()
+
+    # Recognition opportunities are seeded as authored catalog entries on top
+    # of the existing PartnerInitiative system. The seeder is idempotent and
+    # only creates missing partner/title pairs, so admin edits are preserved.
+    await seed_recognition_catalog(session)
 
     # Older installs can already contain a chat ID in greeting/delivery/join
     # history even when the AppSetting row was lost or never created. Recover
