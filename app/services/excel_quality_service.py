@@ -5,6 +5,7 @@ from typing import Any
 
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter, range_boundaries
+from openpyxl.utils.cell import coordinate_from_string
 
 
 def _values(ws, row: int) -> list[Any]:
@@ -21,6 +22,17 @@ def _find_header_row(ws, *, start: int = 1, stop: int = 15) -> int | None:
         if _looks_like_table_header(_values(ws, row)):
             return row
     return None
+
+
+def _freeze_row(value: object | None) -> int | None:
+    if value is None:
+        return None
+    coordinate = getattr(value, "coordinate", None) or str(value)
+    try:
+        _, row = coordinate_from_string(coordinate)
+    except (TypeError, ValueError):
+        return None
+    return row
 
 
 def finalize_business_workbook(content: bytes) -> bytes:
@@ -46,7 +58,8 @@ def finalize_business_workbook(content: bytes) -> bytes:
                         f"{get_column_letter(min_col)}{header_row}:"
                         f"{get_column_letter(max_col)}{max_row}"
                     )
-                    if ws.freeze_panes is None or getattr(ws.freeze_panes, "row", 1) <= header_row:
+                    frozen_row = _freeze_row(ws.freeze_panes)
+                    if frozen_row is None or frozen_row <= header_row:
                         ws.freeze_panes = f"A{header_row + 1}"
 
         for column in range(1, ws.max_column + 1):
