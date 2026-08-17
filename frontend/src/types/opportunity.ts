@@ -14,9 +14,11 @@ export interface Opportunity {
   partner_name: string;
   title: string;
   description: string;
+  /** Legacy external offers may still use this as a redeemable cost. For
+   * recognition opportunities use required_points and never subtract it. */
   point_cost: number;
   required_points: number;
-  opportunity_type: string;
+  opportunity_type: "external" | "certificate" | "letter" | string;
   min_rank: string | null;
   eligible: boolean;
   display_state: OpportunityDisplayState;
@@ -31,4 +33,38 @@ export interface Opportunity {
   application_status: string | null;
   is_saved: boolean;
   reasons: string[];
+}
+
+export interface Auction {
+  id: number;
+  title: string;
+  description: string;
+  top_bid: number | null;
+  top_bidder: string | null;
+  my_bid: number | null;
+  next_minimum_bid: number;
+  bid_step: number;
+  ends_at: string;
+  is_open: boolean;
+}
+
+export interface Survey {
+  id: number;
+  title: string;
+  description: string | null;
+  questions: string[];
+  completed: boolean;
+}
+
+export interface SurveyDetail extends Survey {
+  answers: string[] | null;
+}
+
+export interface Reward {
+  id: number;
+  name: string;
+  description: string;
+  point_cost: number;
+  quantity: number | null;
+  my_status: string | null;
 }
