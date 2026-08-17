@@ -12,7 +12,9 @@ class ChatBindingProductionContractTests(unittest.TestCase):
             '"internal": ("internal_department_chat_id", "internal"',
             '"external": ("external_department_chat_id", "external"',
             '"leaders": ("leaders_chat_id", "leaders"',
-            "AppSetting(key=setting_key, value=str(message.chat.id)",
+            "AppSetting(",
+            "key=setting_key",
+            "value=str(message.chat.id)",
             "await session.commit()",
             "setattr(settings, setting_key, message.chat.id)",
         ]:
