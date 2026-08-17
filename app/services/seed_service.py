@@ -11,6 +11,7 @@ from app.database.models import (
     Office,
 )
 from app.services.chat_binding_recovery_service import recover_chat_bindings
+from app.services.community_mission_service import seed_community_missions
 from app.services.recognition_catalog import seed_recognition_catalog
 from app.utils.constants import BADGES, DEPARTMENTS
 
@@ -143,5 +144,6 @@ async def seed_reference_data(session: AsyncSession, settings: Settings) -> None
     await session.flush()
 
     await seed_recognition_catalog(session)
+    await seed_community_missions(session)
     await recover_chat_bindings(session, settings)
     await session.commit()

@@ -115,12 +115,34 @@ async def joined_task_ids(
     return joined
 
 
+def _is_community_mission(task: Task) -> bool:
+    return bool(((task.reward_json or {}).get("community_mission") or {}).get("code"))
+
+
+async def _sync_mission_squad(
+    session: AsyncSession, task: Task, user: User
+) -> None:
+    if not _is_community_mission(task):
+        return
+    # Lazy import avoids turning TaskService <-> CommunityMissionService into
+    # a module import cycle. Both Bot and Mini App use this one claim path, so
+    # Task Squad formation cannot drift between interfaces.
+    from app.services.community_mission_service import sync_task_squad_after_claim
+
+    await sync_task_squad_after_claim(
+        session, task, participant_user_id=user.id
+    )
+
+
 async def claim(
     session: AsyncSession, task: Task | None, user: User
 ) -> tuple[TaskParticipant | None, str | None]:
-    """Join a published challenge task. Mirrors the Bot's task:join rule so
-    both the Bot handler and the Mini App API enforce the same logic —
-    see app/handlers/participant/task_block2.py."""
+    """Join a published challenge task.
+
+    Community Missions are intentionally self-serve: an approved participant
+    who takes a mission joins its one shared Task Squad immediately. Other
+    existing challenge tasks preserve the legacy pending-review behavior.
+    """
     if (
         task is None
         or task.task_type != "challenge"
@@ -136,15 +158,30 @@ async def claim(
     accepted = [item for item in current if item.status in ACCEPTED_MEMBERSHIP_STATUSES]
     if task.max_participants and len(accepted) >= task.max_participants:
         return None, "full"
+
+    mission = _is_community_mission(task)
     existing = next((item for item in current if item.user_id == user.id), None)
     if existing:
         if existing.status == "rejected":
-            existing.status = "pending"
+            existing.status = "joined" if mission else "pending"
+            await session.flush()
+            await _sync_mission_squad(session, task, user)
+            return existing, None
+        if mission and existing.status == "pending":
+            existing.status = "joined"
+            await session.flush()
+            await _sync_mission_squad(session, task, user)
             return existing, None
         if existing.status == "pending":
             return existing, "already_pending"
         return existing, "already_joined"
-    participant = TaskParticipant(task_id=task.id, user_id=user.id, status="pending")
+
+    participant = TaskParticipant(
+        task_id=task.id,
+        user_id=user.id,
+        status="joined" if mission else "pending",
+    )
     session.add(participant)
     await session.flush()
+    await _sync_mission_squad(session, task, user)
     return participant, None
