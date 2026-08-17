@@ -1,0 +1,35 @@
+name: Production commit probe
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Verify production serves merged main
+        env:
+          EXPECTED_COMMIT: ac7a02aa44015351588c28fd1b85eb6eecf71c59
+          PRODUCTION_HEALTH: https://era-telegram-bot.onrender.com/health
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for attempt in $(seq 1 60); do
+            HEALTH="$(curl --silent --show-error --max-time 10 "${PRODUCTION_HEALTH}" || true)"
+            LIVE="$(python3 -c 'import json,sys; data=sys.stdin.read(); print(json.loads(data).get("commit", "") if data else "")' <<<"${HEALTH}" 2>/dev/null || true)"
+            if [ "${LIVE}" = "${EXPECTED_COMMIT}" ] || [ "${LIVE}" = "${EXPECTED_COMMIT:0:7}" ]; then
+              echo "Production is serving expected commit ${EXPECTED_COMMIT:0:7}."
+              exit 0
+            fi
+            if [ $((attempt % 6)) -eq 0 ]; then
+              echo "Production not on expected commit yet (attempt ${attempt}/60, live=${LIVE:-unavailable})."
+            fi
+            sleep 10
+          done
+          echo "Production did not reach expected commit ${EXPECTED_COMMIT:0:7}." >&2
+          exit 1
