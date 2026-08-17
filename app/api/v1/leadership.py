@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_bot, get_current_user, get_session, get_settings
+from app.api.deps import get_bot, get_session, get_settings
 from app.api.v1.leader import require_leader
 from app.config import Settings
 from app.database.models import LeadershipAttentionItem, LeadershipGoal, Task, User

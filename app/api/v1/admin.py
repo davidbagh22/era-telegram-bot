@@ -115,7 +115,6 @@ from app.utils.constants import (
     PRIVILEGED_ROLES,
     ROLE_LABELS,
     ApplicationStatus,
-    PositionApplicationStatus,
 )
 from app.utils.constants import Role as RoleEnum
 from app.utils.deep_links import miniapp_event_url, miniapp_opportunity_url, miniapp_task_url
