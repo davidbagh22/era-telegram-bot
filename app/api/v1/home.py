@@ -74,10 +74,28 @@ class OpportunitySummaryOut(BaseModel):
     expires_at: str | None
 
 
+class RankProgressOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    rank: str
+    rank_label: str
+    next_rank_label: str | None
+
+
+class OpportunityProgressOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    issuer: str
+    points_needed: int
+
+
 class HomeSnapshotOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     growth: GrowthProgressOut
+    rank: RankProgressOut
     points_balance: int
     activity: ActivityStatsOut
     next_step: NextStepOut | None
@@ -85,6 +103,8 @@ class HomeSnapshotOut(BaseModel):
     active_task: TaskSummaryOut | None
     active_project: ProjectSummaryOut | None
     opportunities: list[OpportunitySummaryOut]
+    new_opportunity: OpportunityProgressOut | None
+    nearest_locked_opportunity: OpportunityProgressOut | None
 
 
 @router.get("/home", response_model=HomeSnapshotOut)

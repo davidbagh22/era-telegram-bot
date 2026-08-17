@@ -11,7 +11,7 @@ from app.api.deps import get_session, get_settings
 from app.api.security import create_session_token
 from app.api.v1.router import api_router
 from app.config import Settings
-from app.services.home_service import ActivityStats, GrowthProgress, HomeSnapshot
+from app.services.home_service import ActivityStats, GrowthProgress, HomeSnapshot, RankProgress
 from app.utils.constants import ParticipationStatus
 
 SECRET = "test-secret"
@@ -39,6 +39,11 @@ def _user() -> SimpleNamespace:
 def _snapshot() -> HomeSnapshot:
     return HomeSnapshot(
         growth=GrowthProgress(level="participant", label="Участник", level_index=0, level_count=3),
+        rank=RankProgress(
+            rank=ParticipationStatus.NEW_MEMBER,
+            rank_label="Новый участник",
+            next_rank_label="Вовлечённый участник",
+        ),
         points_balance=15,
         activity=ActivityStats(points=15, projects=2, completed_tasks=3, portfolio_items=4),
         next_step=None,
@@ -46,6 +51,8 @@ def _snapshot() -> HomeSnapshot:
         active_task=None,
         active_project=None,
         opportunities=[],
+        new_opportunity=None,
+        nearest_locked_opportunity=None,
     )
 
 

@@ -7,10 +7,22 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Event, EventRegistration, Project, Task, User
-from app.database.partners import PartnerInitiative, PartnerOfferApplication
+from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
 from app.repositories.users import user_stats
 from app.services.growth_service import GrowthProgress, growth_progress_for
-from app.utils.constants import ProjectStatus, RegistrationStatus, TaskStatus
+from app.services.opportunity_service import (
+    ACTIVE_APPLICATION_STATUSES,
+    RECOGNITION_TYPES,
+    evaluate_eligibility,
+)
+from app.services.progression_service import RANK_ORDER
+from app.utils.constants import (
+    STATUS_LABELS,
+    ParticipationStatus,
+    ProjectStatus,
+    RegistrationStatus,
+    TaskStatus,
+)
 
 # Home only covers what can be computed from data that actually exists
 # today. "Attention items" for participants would just restate next_step,
@@ -83,8 +95,30 @@ class ActivityStats:
 
 
 @dataclass(frozen=True)
+class RankProgress:
+    """Points/Ranks ToR section 39/49's Home card: current rank + the name
+    of the next one. Deliberately no "N points until next rank" number --
+    rank is metrics-based, not points-linear (ToR section 24), so a points
+    countdown here would be fabricated. The honestly computable countdown
+    is to the nearest Opportunity, in `nearest_opportunity` below."""
+
+    rank: str
+    rank_label: str
+    next_rank_label: str | None
+
+
+@dataclass(frozen=True)
+class OpportunityProgress:
+    id: int
+    title: str
+    issuer: str
+    points_needed: int
+
+
+@dataclass(frozen=True)
 class HomeSnapshot:
     growth: GrowthProgress
+    rank: RankProgress
     points_balance: int
     activity: ActivityStats
     next_step: NextStep | None
@@ -92,6 +126,8 @@ class HomeSnapshot:
     active_task: TaskSummary | None
     active_project: ProjectSummary | None
     opportunities: list[OpportunitySummary]
+    new_opportunity: OpportunityProgress | None
+    nearest_locked_opportunity: OpportunityProgress | None
 
 
 async def _active_task(session: AsyncSession, user_id: int) -> Task | None:
@@ -154,6 +190,68 @@ async def _top_opportunities(
         .limit(limit)
     )
     return list(result.all())
+
+
+def _rank_progress(user: User) -> RankProgress:
+    rank = user.participation_status or ParticipationStatus.NEW_MEMBER
+    try:
+        index = RANK_ORDER.index(rank)
+    except ValueError:
+        index = 0
+    next_rank_label = (
+        STATUS_LABELS[RANK_ORDER[index + 1]] if index + 1 < len(RANK_ORDER) else None
+    )
+    return RankProgress(
+        rank=rank,
+        rank_label=STATUS_LABELS.get(rank, str(rank)),
+        next_rank_label=next_rank_label,
+    )
+
+
+async def _recognition_progress(
+    session: AsyncSession, user: User, points: int
+) -> tuple[OpportunityProgress | None, OpportunityProgress | None]:
+    """The Home card's "Новая возможность" (already eligible, not yet
+    applied) and "До следующей возможности X: N баллов" (closest by points
+    gap among the ones still locked). Only recognition-type opportunities
+    (certificates/letters) count here -- the old spend-based partner offers
+    aren't "возможности" in the ToR's sense."""
+    applied_subquery = select(PartnerOfferApplication.initiative_id).where(
+        PartnerOfferApplication.user_id == user.id,
+        PartnerOfferApplication.status.in_(ACTIVE_APPLICATION_STATUSES),
+    )
+    rows = (
+        await session.execute(
+            select(PartnerInitiative, Partner)
+            .join(Partner, Partner.id == PartnerInitiative.partner_id)
+            .where(
+                PartnerInitiative.opportunity_type.in_(RECOGNITION_TYPES),
+                PartnerInitiative.is_active.is_(True),
+                PartnerInitiative.is_archived.is_(False),
+                PartnerInitiative.id.not_in(applied_subquery),
+            )
+            .order_by(PartnerInitiative.point_cost.asc())
+        )
+    ).all()
+
+    new_opportunity: OpportunityProgress | None = None
+    nearest_locked: OpportunityProgress | None = None
+    nearest_gap: int | None = None
+    for offer, partner in rows:
+        eligibility = await evaluate_eligibility(session, offer, user)
+        if eligibility.eligible:
+            if new_opportunity is None:
+                new_opportunity = OpportunityProgress(
+                    id=offer.id, title=offer.title, issuer=partner.name, points_needed=0
+                )
+            continue
+        gap = max(0, int(offer.point_cost or 0) - points)
+        if nearest_gap is None or gap < nearest_gap:
+            nearest_gap = gap
+            nearest_locked = OpportunityProgress(
+                id=offer.id, title=offer.title, issuer=partner.name, points_needed=gap
+            )
+    return new_opportunity, nearest_locked
 
 
 def _build_next_step(
@@ -219,6 +317,10 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
         completed_tasks=stats["tasks"],
         portfolio_items=stats["portfolio"],
     )
+    rank = _rank_progress(user)
+    new_opportunity, nearest_locked_opportunity = await _recognition_progress(
+        session, user, activity.points
+    )
 
     next_step = _build_next_step(
         active_task=active_task,
@@ -259,12 +361,15 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
 
     return HomeSnapshot(
         growth=growth,
+        rank=rank,
         points_balance=activity.points,
         activity=activity,
         next_step=next_step,
         nearest_event=nearest_event_summary,
         active_task=active_task_summary,
         active_project=active_project_summary,
+        new_opportunity=new_opportunity,
+        nearest_locked_opportunity=nearest_locked_opportunity,
         opportunities=[
             OpportunitySummary(
                 id=o.id,

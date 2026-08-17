@@ -204,6 +204,60 @@ export function HomeScreen({
         </SignalOrb>
       </button>
 
+      {/* Points/Ranks ToR §39/49: rank + the nearest real Opportunity,
+          honestly computed -- no fabricated "points until next rank" (rank
+          is metrics-based, not points-linear, see progression_service.py). */}
+      <Card style={{ padding: "1.1rem" }}>
+        <MonoLabel>{data.rank.rank_label.toUpperCase()}</MonoLabel>
+        <strong style={{ display: "block", marginTop: "0.35rem", fontSize: "1.05rem" }}>
+          {data.rank.next_rank_label ? `Следующий ранг: ${data.rank.next_rank_label}` : "Вы на вершине пути ЭРА"}
+        </strong>
+        {data.new_opportunity && (
+          <button
+            type="button"
+            onClick={onOpenOpportunity ? () => onOpenOpportunity(data.new_opportunity!.id) : onOpenCommunity}
+            style={{
+              all: "unset",
+              display: "block",
+              width: "100%",
+              boxSizing: "border-box",
+              cursor: onOpenOpportunity || onOpenCommunity ? "pointer" : "default",
+              marginTop: "0.85rem",
+              padding: "0.75rem 0.85rem",
+              borderRadius: "var(--era-radius-md)",
+              background: "var(--era-tint-violet)",
+            }}
+          >
+            <MonoLabel tone="violet">Новая возможность</MonoLabel>
+            <div style={{ marginTop: "0.25rem", fontWeight: 800 }}>«{data.new_opportunity.title}»</div>
+          </button>
+        )}
+        {!data.new_opportunity && data.nearest_locked_opportunity && (
+          <button
+            type="button"
+            onClick={onOpenOpportunity ? () => onOpenOpportunity(data.nearest_locked_opportunity!.id) : onOpenCommunity}
+            style={{
+              all: "unset",
+              display: "block",
+              width: "100%",
+              boxSizing: "border-box",
+              cursor: onOpenOpportunity || onOpenCommunity ? "pointer" : "default",
+              marginTop: "0.85rem",
+              padding: "0.75rem 0.85rem",
+              borderRadius: "var(--era-radius-md)",
+              background: "var(--era-surface-2)",
+            }}
+          >
+            <div style={{ color: "var(--era-text-secondary)", fontSize: "0.85rem" }}>
+              До «{data.nearest_locked_opportunity.title}» ({data.nearest_locked_opportunity.issuer})
+            </div>
+            <div style={{ marginTop: "0.2rem", fontWeight: 800 }}>
+              осталось {data.nearest_locked_opportunity.points_needed} баллов
+            </div>
+          </button>
+        )}
+      </Card>
+
       {focus && (
         <FocusCard
           eyebrow="ТВОЙ ФОКУС"

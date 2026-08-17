@@ -40,6 +40,19 @@ export interface OpportunitySummary {
   expires_at: string | null;
 }
 
+export interface RankProgress {
+  rank: string;
+  rank_label: string;
+  next_rank_label: string | null;
+}
+
+export interface OpportunityProgress {
+  id: number;
+  title: string;
+  issuer: string;
+  points_needed: number;
+}
+
 export interface ActivityStats {
   points: number;
   projects: number;
@@ -49,6 +62,7 @@ export interface ActivityStats {
 
 export interface HomeSnapshot {
   growth: GrowthProgress;
+  rank: RankProgress;
   points_balance: number;
   activity: ActivityStats;
   next_step: NextStep | null;
@@ -56,4 +70,6 @@ export interface HomeSnapshot {
   active_task: TaskSummary | null;
   active_project: ProjectSummary | null;
   opportunities: OpportunitySummary[];
+  new_opportunity: OpportunityProgress | null;
+  nearest_locked_opportunity: OpportunityProgress | null;
 }
