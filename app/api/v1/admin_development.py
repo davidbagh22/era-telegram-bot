@@ -21,6 +21,7 @@ from app.database.models import User
 from app.services import development_analytics as dev_analytics
 from app.services import development_service as dev
 from app.services.authorization_service import is_full_admin
+from app.services.excel_report_service import build_development_workbook
 
 router = APIRouter(prefix="/admin/development", tags=["admin-development"])
 
@@ -168,6 +169,46 @@ async def development_analytics(
     return result
 
 
+async def _audit_export(
+    session: AsyncSession,
+    user: User,
+    period_days: int,
+    result: dict[str, Any],
+    format_name: str,
+) -> None:
+    await dev.audit(
+        session,
+        user.id,
+        "development.admin.analytics.export",
+        metadata={
+            "period_days": max(1, min(period_days, 365)),
+            "suppressed": result["suppressed"],
+            "sample_size": result["sample_size"],
+            "permission": "development.admin.export",
+            "format": format_name,
+        },
+    )
+
+
+@router.get("/analytics/export.xlsx")
+async def export_development_analytics_xlsx(
+    period_days: int = 30,
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    _require_permission(user, "development.admin.export", settings)
+    result = await dev_analytics.community_analytics(session, period_days=period_days)
+    content = build_development_workbook(result)
+    await _audit_export(session, user, period_days, result, "xlsx")
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=ERA_My_Vector.xlsx"},
+    )
+
+
+# Compatibility for older clients; the current Mini App uses the polished XLSX.
 @router.get("/analytics/export")
 async def export_development_analytics(
     period_days: int = 30,
@@ -200,17 +241,7 @@ async def export_development_analytics(
             writer.writerow(["development_wants", item["key"], item["percent"], item["count"], result["coverage_percent"]])
         for item in result.get("interests", []):
             writer.writerow(["interests", item["key"], item["percent"], item["count"], result["coverage_percent"]])
-    await dev.audit(
-        session,
-        user.id,
-        "development.admin.analytics.export",
-        metadata={
-            "period_days": max(1, min(period_days, 365)),
-            "suppressed": result["suppressed"],
-            "sample_size": result["sample_size"],
-            "permission": "development.admin.export",
-        },
-    )
+    await _audit_export(session, user, period_days, result, "csv")
     return Response(
         content=output.getvalue().encode("utf-8-sig"),
         media_type="text/csv; charset=utf-8",
