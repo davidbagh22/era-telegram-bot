@@ -38,9 +38,9 @@ export function AdminEventsScreen({ initialEventId = null }: AdminEventsScreenPr
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         <Card gradient>
-          <p style={{ margin: "0 0 0.25rem", color: "rgba(255,255,255,0.72)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Мероприятия</p>
+          <p style={{ margin: "0 0 0.25rem", color: "var(--era-text-secondary)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Мероприятия</p>
           <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>Полный цикл в одном месте</h2>
-          <p style={{ margin: "0.5rem 0 0", color: "rgba(255,255,255,0.82)" }}>
+          <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-secondary)" }}>
             Сначала создайте или согласуйте событие. После публикации здесь же ведите регистрации, посещаемость и активности.
           </p>
         </Card>

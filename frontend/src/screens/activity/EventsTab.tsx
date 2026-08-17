@@ -101,7 +101,7 @@ function EventActivitiesPanel({ eventId }: { eventId: number }) {
           key={activity.id}
           style={{
             border: "1px solid var(--era-border)",
-            background: "rgba(255,255,255,.025)",
+            background: "var(--era-surface-2)",
             borderRadius: "0.9rem",
             padding: "0.8rem",
             display: "flex",
@@ -150,16 +150,16 @@ function EventPoster({ event, compact = false }: { event: EventItem; compact?: b
       style={{
         height,
         borderRadius: compact ? "1rem" : "1.25rem",
-        background: "radial-gradient(circle at 80% 20%, rgba(255,255,255,.13), transparent 28%), linear-gradient(135deg, #4f0d16 0%, #b6192b 56%, #3a141a 100%)",
+        background: "radial-gradient(circle at 80% 20%, rgba(255,255,255,.16), transparent 32%), var(--era-gradient-signal)",
         display: "flex",
         alignItems: "flex-end",
         padding: compact ? "1rem" : "1.25rem",
         boxSizing: "border-box",
         overflow: "hidden",
-        border: "1px solid rgba(255,255,255,.06)",
+        border: "1px solid rgba(255,255,255,.14)",
       }}
     >
-      <span style={{ fontSize: compact ? "2rem" : "3rem", fontWeight: 900, opacity: 0.9 }}>ЭРА</span>
+      <span style={{ fontSize: compact ? "2rem" : "3rem", fontWeight: 900, opacity: 0.95, color: "#fff" }}>ЭРА</span>
     </div>
   );
 }
@@ -202,7 +202,7 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
       </Card>
 
       {event.participant_value && (
-        <Card style={{ background: "linear-gradient(145deg, rgba(227,38,54,.13), rgba(197,162,100,.055))" }}>
+        <Card style={{ background: "linear-gradient(145deg, rgba(99,44,255,.12), rgba(255,100,0,.06))" }}>
           <strong>Что вы получите</strong>
           <p style={{ whiteSpace: "pre-wrap", margin: "0.45rem 0 0", lineHeight: 1.5 }}>{event.participant_value}</p>
         </Card>
@@ -278,12 +278,12 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
           bottom: "calc(5.4rem + env(safe-area-inset-bottom))",
           zIndex: 20,
           padding: "0.55rem",
-          border: "1px solid var(--era-border)",
+          border: "1px solid var(--era-nav-border, var(--era-border))",
           borderRadius: "1.25rem",
-          background: "rgba(15,16,19,.9)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          boxShadow: "0 16px 50px rgba(0,0,0,.42)",
+          background: "var(--era-nav-glass, var(--era-glass))",
+          backdropFilter: "blur(20px) saturate(140%)",
+          WebkitBackdropFilter: "blur(20px) saturate(140%)",
+          boxShadow: "var(--era-shadow-dock)",
         }}
       >
         {registered ? (

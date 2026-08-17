@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { TabKey } from "../components/BottomNavigation";
+import type { TabKey } from "../components/FloatingNav";
 import { useAuth } from "../hooks/useAuth";
 import { AdminLayout } from "../layouts/AdminLayout";
 import { LeaderLayout } from "../layouts/LeaderLayout";

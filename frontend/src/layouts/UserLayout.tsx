@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BottomNavigation, type TabKey } from "../components/BottomNavigation";
+import { FloatingNav, type TabKey } from "../components/FloatingNav";
 import { ContextHelp } from "../components/ContextHelp";
 
 interface UserLayoutProps {
@@ -21,7 +21,7 @@ export function UserLayout({ children, activeTab, onTabChange }: UserLayoutProps
     >
       <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
       <ContextHelp mode="user" />
-      <BottomNavigation active={activeTab} onChange={onTabChange} />
+      <FloatingNav active={activeTab} onChange={onTabChange} />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { claimTask, describeActionError, fetchTasks } from "../../api/client";
 import { fetchTaskDetail } from "../../api/taskDetails";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
+import { EditorialHero } from "../../components/EditorialHero";
 import { EmptyState } from "../../components/EmptyState";
 import { SkeletonList } from "../../components/Skeleton";
 import { StatusBadge } from "../../components/StatusBadge";
@@ -35,14 +36,12 @@ function TaskDetail({ task, onClaim, pending, error }: { task: TaskItem; onClaim
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: ".75rem", paddingBottom: "1rem" }}>
       <button type="button" onClick={() => { window.location.hash = "#/tasks"; }} style={{ alignSelf: "flex-start" }}>← К заданиям</button>
-      <Card gradient>
-        <p style={{ margin: "0 0 .3rem", color: "rgba(255,255,255,.7)", fontSize: ".72rem", fontWeight: 850, textTransform: "uppercase" }}>Задание ЭРА</p>
-        <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{task.title}</h2>
-        <div style={{ display: "flex", gap: ".45rem", flexWrap: "wrap", marginTop: ".7rem" }}>
+      <EditorialHero eyebrow="Задание ЭРА" title={task.title} glow="hot">
+        <div style={{ display: "flex", gap: ".45rem", flexWrap: "wrap" }}>
           <StatusBadge label={STATUS_LABELS[task.status] ?? "Статус обновлён"} tone="violet" />
-          <span style={{ padding: ".3rem .55rem", borderRadius: 999, background: "rgba(255,255,255,.14)", fontSize: ".78rem", fontWeight: 850 }}>+{task.points} баллов</span>
+          <span style={{ padding: ".3rem .55rem", borderRadius: 999, background: "var(--era-tint-gold)", color: "var(--era-gold-ink)", fontSize: ".78rem", fontWeight: 850 }}>+{task.points} баллов</span>
         </div>
-      </Card>
+      </EditorialHero>
       <Card>
         <strong>Что нужно сделать</strong>
         <p style={{ margin: ".45rem 0 0", whiteSpace: "pre-wrap", lineHeight: 1.55, color: "var(--era-text-muted)" }}>{task.description}</p>

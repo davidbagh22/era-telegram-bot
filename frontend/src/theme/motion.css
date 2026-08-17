@@ -1,7 +1,5 @@
 /* ERA motion primitives: fast for actions, more expressive only for progress/achievement. */
 :root {
-  /* Compatibility aliases for existing components while the UI is migrated. */
-  --era-violet: var(--era-red);
   --era-motion: var(--era-motion-screen);
 }
 
@@ -31,7 +29,7 @@
   margin: 0;
   padding: .18rem .48rem;
   border-radius: var(--era-radius-pill);
-  background: rgba(255,255,255,.045);
+  background: var(--era-surface-2);
   color: var(--era-text-muted);
   font-size: .75rem;
   font-weight: 750;
@@ -43,9 +41,30 @@
   color: var(--era-success);
 }
 
+/* SignalOrb's ambient glow (ToR §4, §27 "orb breathing") — a slow, subtle
+   scale/opacity pulse behind the ring. Never applied to the number itself. */
+@keyframes era-orb-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.42; }
+  50% { transform: scale(1.055); opacity: 0.55; }
+}
+.era-orb-breathe {
+  animation: era-orb-breathe 4.2s ease-in-out infinite;
+}
+
+@keyframes era-gradient-drift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.era-gradient-drift {
+  background-size: 220% 220% !important;
+  animation: era-gradient-drift 10s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .era-question-step,
-  .era-save-indicator {
+  .era-save-indicator,
+  .era-orb-breathe,
+  .era-gradient-drift {
     animation: none !important;
   }
 }

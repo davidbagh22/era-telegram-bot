@@ -329,7 +329,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
           </div>
 
           <div key={currentQuestion.key} className="era-question-step" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            <Card style={{ borderColor: "rgba(227,38,54,0.22)" }}>
+            <Card style={{ borderColor: "rgba(99,44,255,0.22)" }}>
               <p style={{ margin: "0 0 0.25rem", color: "var(--era-red-bright)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>{currentQuestion.block}</p>
               <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{currentQuestion.title}</h2>
               <p style={{ margin: "0.6rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{currentQuestion.prompt}</p>
@@ -358,7 +358,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
               />
             </Card>
 
-            <Card style={{ background: "linear-gradient(135deg, rgba(227,38,54,.08), rgba(197,162,100,.045)), var(--era-surface)" }}>
+            <Card style={{ background: "linear-gradient(135deg, rgba(99,44,255,.08), rgba(255,100,0,.045)), var(--era-surface)" }}>
               <strong>AI-подсказка</strong>
               <p style={{ margin: ".35rem 0 .7rem", color: "var(--era-text-muted)", fontSize: ".82rem", lineHeight: 1.4 }}>
                 Работает только с текущим ответом. Не придумывает партнёров, бюджет, показатели, участников или результаты.
@@ -374,7 +374,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
             </Card>
 
             {aiSuggestion && (
-              <Card style={{ borderColor: "rgba(197,162,100,.32)", background: "rgba(197,162,100,.055)" }}>
+              <Card style={{ borderColor: "rgba(255,100,0,.32)", background: "rgba(255,100,0,.055)" }}>
                 <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: ".76rem", fontWeight: 800, textTransform: "uppercase" }}>Вариант ИИ — решаете вы</p>
                 <p style={{ margin: ".5rem 0", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{aiSuggestion}</p>
                 <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: ".45rem" }}>
@@ -411,7 +411,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
         </div>
       ) : (
         <>
-          <Card style={constructorComplete ? { borderColor: "rgba(197,162,100,.28)" } : undefined}>
+          <Card style={constructorComplete ? { borderColor: "rgba(255,100,0,.28)" } : undefined}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
               <div>
                 <p style={{ margin: "0 0 .2rem", color: constructorComplete ? "var(--era-gold-ink)" : "var(--era-text-muted)", fontSize: ".72rem", fontWeight: 850, textTransform: "uppercase" }}>

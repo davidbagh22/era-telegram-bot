@@ -12,7 +12,7 @@ interface ProjectsSectionProps {
 // so it can be reused both as its own standalone screen (ProjectsScreen,
 // still used for admin/leader deep links straight into a project) and as
 // one of Activity's sub-sections (ActivityScreen no longer has a
-// top-level "Проекты" tab of its own -- see BottomNavigation.tsx).
+// top-level "Проекты" tab of its own -- see FloatingNav.tsx).
 export function ProjectsSection({ initialProjectId = null }: ProjectsSectionProps) {
   const [selectedId, setSelectedId] = useState<number | null>(initialProjectId);
 

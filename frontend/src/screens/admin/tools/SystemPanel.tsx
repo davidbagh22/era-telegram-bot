@@ -72,17 +72,17 @@ export function SystemPanel() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", minWidth: 0 }}>
       <Card gradient>
-        <p style={{ margin: 0, color: "rgba(255,255,255,0.72)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
+        <p style={{ margin: 0, color: "var(--era-text-secondary)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
           Здоровье ЭРА
         </p>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "flex-end", marginTop: "0.5rem" }}>
           <div>
             <strong style={{ fontSize: "var(--era-text-4xl)" }}>{latest?.score ?? "—"}</strong>
-            <span style={{ color: "rgba(255,255,255,0.72)" }}>/100</span>
+            <span style={{ color: "var(--era-text-secondary)" }}>/100</span>
           </div>
           <strong>{latest ? statusLabel(latest.status) : "нет данных"}</strong>
         </div>
-        <p style={{ margin: "0.6rem 0 0", color: "rgba(255,255,255,0.72)", fontSize: "var(--era-text-sm)" }}>
+        <p style={{ margin: "0.6rem 0 0", color: "var(--era-text-secondary)", fontSize: "var(--era-text-sm)" }}>
           Heartbeat: {formatDate(latest?.created_at)} · Full: {formatDate(latestFull?.created_at)}
         </p>
       </Card>

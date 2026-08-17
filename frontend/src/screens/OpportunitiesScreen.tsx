@@ -9,6 +9,7 @@ import {
 import { BottomSheet } from "../components/BottomSheet";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
+import { MonoLabel } from "../components/MonoLabel";
 import { StatusBadge } from "../components/StatusBadge";
 import { useAsync } from "../hooks/useAsync";
 import type { OpportunityScope } from "../types/opportunity";
@@ -157,9 +158,17 @@ function OffersList({ initialItemId }: OffersListProps) {
       {state.status === "ready" && state.data.map((offer) => {
         const recognition = offer.opportunity_type === "certificate" || offer.opportunity_type === "letter";
         const applied = ["pending", "requested", "under_review", "needs_info", "partner_review", "approved", "issued"].includes(offer.application_status ?? "");
+        // "Available" gets a stronger visual pull than a locked/plain card
+        // (ToR §18: Locked = plain, Available = violet/pink/orange light).
+        const isAvailable = !applied && (!recognition || offer.eligible);
+        const cardStyle = offer.id === highlightId
+          ? { boxShadow: "0 0 0 2px var(--era-violet)" }
+          : isAvailable
+            ? { background: "var(--era-hero-bg)", border: "1px solid rgba(99,44,255,0.18)", boxShadow: "var(--era-glow-violet)" }
+            : undefined;
         return (
           <div id={`opportunity-${offer.id}`} key={offer.id}>
-            <Card style={offer.id === highlightId ? { boxShadow: "0 0 0 2px var(--era-violet)" } : undefined}>
+            <Card style={cardStyle}>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "flex-start" }}>
                   <div>
@@ -176,7 +185,7 @@ function OffersList({ initialItemId }: OffersListProps) {
                 <p style={{ margin: 0, color: "var(--era-text-muted)" }}>{offer.description}</p>
 
                 {recognition ? (
-                  <div style={{ padding: "0.75rem", borderRadius: "var(--era-radius-control)", background: "var(--era-surface-soft)" }}>
+                  <div style={{ padding: "0.75rem", borderRadius: "var(--era-radius-control)", background: "var(--era-surface-2)" }}>
                     <strong>Требуется: {offer.required_points} баллов</strong>
                     <p style={{ margin: "0.2rem 0 0", fontSize: "0.8125rem", color: "var(--era-text-muted)" }}>
                       Баллы — накопленная репутация. При получении документа они не списываются.
@@ -259,8 +268,8 @@ export function OpportunitiesScreen({ initialSection = "offers", initialItemId, 
     <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
       {onBack && <button type="button" onClick={onBack}>← Сообщество</button>}
       <div>
-        <p style={{ margin: "0 0 0.25rem", color: "var(--era-violet)", fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase" }}>Следующий уровень</p>
-        <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.5rem", margin: 0 }}>Возможности</h1>
+        <MonoLabel tone="violet">Следующий уровень</MonoLabel>
+        <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.75rem", fontWeight: 800, margin: "0.35rem 0 0" }}>Возможности</h1>
       </div>
       {section === "offers" && <OffersList initialItemId={initialItemId ?? null} />}
       {section === "auctions" && <AuctionsPanel />}

@@ -7,8 +7,8 @@ import "./theme/tokens.css";
 import "./theme/motion.css";
 import "./theme/layout-safety.css";
 
-// ERA uses one intentional dark product identity inside Telegram.
-// Apply it before first paint to avoid a light-theme flash.
+// ERA uses one intentional light/signal product identity inside Telegram.
+// Apply it before first paint to avoid a flash of the wrong chrome color.
 applyTelegramTheme();
 
 const container = document.getElementById("root");

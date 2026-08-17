@@ -43,7 +43,7 @@ const SECTION_META: Record<
     label: "Организации",
     description: "Партнёрская база",
     value: "contacts",
-    accent: "var(--era-cream, #f3e8d5)",
+    accent: "var(--era-blue)",
   },
   goals: {
     label: "Цели",
@@ -120,12 +120,12 @@ function ScoreRing({ score, label, muted = false }: { score: number | null; labe
         borderRadius: "50%",
         padding: 7,
         background: score === null
-          ? "rgba(255,255,255,0.08)"
-          : `conic-gradient(${muted ? "var(--era-gold-ink)" : "var(--era-red-bright)"} 0 ${safeScore}%, rgba(255,255,255,0.09) ${safeScore}% 100%)`,
-        boxShadow: score === null ? "none" : "0 0 28px rgba(227,38,54,0.14)",
+          ? "var(--era-ring-track)"
+          : `conic-gradient(${muted ? "var(--era-gold-ink)" : "var(--era-red-bright)"} 0 ${safeScore}%, var(--era-ring-track) ${safeScore}% 100%)`,
+        boxShadow: score === null ? "none" : "0 0 28px rgba(99,44,255,0.14)",
       }}
     >
-      <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "var(--era-bg)", display: "grid", placeItems: "center", textAlign: "center" }}>
+      <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "var(--era-surface)", display: "grid", placeItems: "center", textAlign: "center" }}>
         <div>
           <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.75rem", lineHeight: 1 }}>{score ?? "—"}</strong>
           <span style={{ color: "var(--era-text-muted)", fontSize: "0.64rem", fontWeight: 800 }}>{score === null ? "НЕТ ДАННЫХ" : "/ 100"}</span>
@@ -282,18 +282,18 @@ export function AdminDashboardScreen() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <Card style={{ padding: "1rem", background: "radial-gradient(circle at 92% 0%, rgba(227,38,54,.16), transparent 42%), var(--era-surface)" }}>
+      <Card style={{ padding: "1rem", background: "radial-gradient(circle at 92% 0%, rgba(99,44,255,.16), transparent 42%), var(--era-surface)" }}>
         <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Здоровье ЭРА</p>
         <h2 style={{ margin: "0.2rem 0 0", fontSize: "var(--era-text-2xl)" }}>Два сигнала. Одна картина.</h2>
         <p style={{ margin: "0.45rem 0 0", color: "var(--era-text-muted)", fontSize: "0.78rem", lineHeight: 1.45 }}>
           Эффективность показывает, как работает система. Пульс — как в среднем чувствует себя сообщество по пяти текущим областям «Моего вектора».
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.65rem", marginTop: "0.9rem" }}>
-          <div style={{ display: "grid", justifyItems: "center", textAlign: "center", gap: "0.45rem", padding: "0.8rem 0.45rem", border: "1px solid var(--era-border)", borderRadius: "var(--era-radius-card)", background: "rgba(255,255,255,.018)" }}>
+          <div style={{ display: "grid", justifyItems: "center", textAlign: "center", gap: "0.45rem", padding: "0.8rem 0.45rem", border: "1px solid var(--era-border)", borderRadius: "var(--era-radius-card)", background: "var(--era-surface-2)" }}>
             <ScoreRing score={efficiency.data.score} label="Эффективность ЭРА" />
             <div><strong>Эффективность</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "0.68rem", marginTop: 3 }}>{efficiency.data.label}</span></div>
           </div>
-          <div style={{ display: "grid", justifyItems: "center", textAlign: "center", gap: "0.45rem", padding: "0.8rem 0.45rem", border: "1px solid var(--era-border)", borderRadius: "var(--era-radius-card)", background: "rgba(255,255,255,.018)" }}>
+          <div style={{ display: "grid", justifyItems: "center", textAlign: "center", gap: "0.45rem", padding: "0.8rem 0.45rem", border: "1px solid var(--era-border)", borderRadius: "var(--era-radius-card)", background: "var(--era-surface-2)" }}>
             <ScoreRing score={health.data.pulse_suppressed ? null : health.data.pulse} label="Пульс организации" muted />
             <div><strong>Пульс</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "0.68rem", marginTop: 3 }}>{health.data.pulse_label}</span></div>
           </div>

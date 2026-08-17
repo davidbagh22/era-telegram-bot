@@ -33,7 +33,10 @@ import { AssessmentExperience } from "./AssessmentExperience";
 export type DevelopmentRoute = "home" | "checkin" | "assessments" | "history" | "goals" | "privacy";
 
 const DIMENSIONS: VectorDimension[] = ["energy", "agency", "autonomy", "connection", "direction"];
-const RING_COLORS = ["var(--era-red)", "#8f1e2e", "var(--era-gold-ink)", "#4b4a50", "#c9c5bf"];
+// Soft, non-hierarchical palette (ToR §21): lavender / blue / warm orange /
+// pale pink / soft mauve. None of these read as "good" or "bad" — My Vector
+// deliberately avoids using a harsh red to flag a dimension as a problem.
+const RING_COLORS = ["#ffb37a", "#b9a6ff", "#ffb8d9", "#8fa6ff", "#c9a6e0"];
 const GOAL_OBSTACLES = [
   "не хватило времени",
   "не было подходящей ситуации",
@@ -118,7 +121,7 @@ export function DevelopmentScreen({
       <p style={{ margin: 0, color: "var(--era-text-muted)" }}>{home.subtitle}</p>
       <Card gradient>
         <SegmentedRing index={home.profile?.index ?? null} state={home.profile?.state ?? {}} labels={home.state_labels} />
-        <p style={{ textAlign: "center", color: "rgba(255,255,255,.72)" }}>
+        <p style={{ textAlign: "center", color: "var(--era-text-secondary)" }}>
           {home.profile?.notice ?? "Пройди короткий Check-in, чтобы получить первый снимок состояния."}
         </p>
       </Card>
@@ -275,7 +278,7 @@ function CheckinScreen({
     return (
       <div className="era-page" style={{ padding: "1.2rem", display: "grid", gap: 12 }}>
         <Header title="Вот что изменилось" onBack={onBack} />
-        <SegmentedRing index={checkin.index} state={checkin.state} labels={home.state_labels} dark={false} />
+        <SegmentedRing index={checkin.index} state={checkin.state} labels={home.state_labels} />
         <Card>
           <small>ГЛАВНОЕ СЕЙЧАС</small>
           {insight.support ? <p><strong>Опора.</strong> {insight.support}</p> : null}
@@ -624,12 +627,10 @@ function SegmentedRing({
   index,
   state,
   labels,
-  dark = true,
 }: {
   index: number | null;
   state: Partial<Record<VectorDimension, number>>;
   labels: Record<VectorDimension, string>;
-  dark?: boolean;
 }) {
   const [selected, setSelected] = useState<VectorDimension | null>(null);
   const size = 176;
@@ -642,7 +643,7 @@ function SegmentedRing({
     <div style={{ display: "grid", placeItems: "center" }}>
       <div style={{ position: "relative", width: size, height: size }}>
         <svg width={size} height={size} role="img" aria-label={`Мой вектор сейчас: ${index ?? "нет данных"}`}>
-          <circle cx={88} cy={88} r={radius} fill="none" stroke={dark ? "rgba(255,255,255,.14)" : "var(--era-ring-track)"} strokeWidth="13" />
+          <circle cx={88} cy={88} r={radius} fill="none" stroke="var(--era-ring-track)" strokeWidth="13" />
           {DIMENSIONS.map((code, indexOfDimension) => (
             <circle
               key={code}
