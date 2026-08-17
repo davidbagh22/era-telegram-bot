@@ -15,9 +15,10 @@ from app.database.models import User
 from app.services.admin_analytics_service import build_analytics_payload
 from app.services.admin_dashboard_service import has_dashboard_access
 from app.services.era_efficiency_service import build_efficiency_snapshot
+from app.services.excel_quality_service import finalize_business_workbook
 from app.services.excel_report_service import add_health_sheets, polish_workbook
 from app.services.excel_service import build_analytics_workbook
-from app.services.organization_health_service import build_organization_health
+from app.services.organization_health_extended_service import build_extended_organization_health
 
 router = APIRouter(prefix="/admin/analytics", tags=["admin-analytics-details"])
 
@@ -247,7 +248,7 @@ async def read_organization_health(
     _admin: User = Depends(require_dashboard_access),
     session: AsyncSession = Depends(get_session),
 ) -> OrganizationHealthOut:
-    health = await build_organization_health(session)
+    health = await build_extended_organization_health(session)
     return OrganizationHealthOut(
         pulse=health.pulse,
         pulse_label=health.pulse_label,
@@ -269,7 +270,7 @@ async def export_organization_health_report(
 ) -> Response:
     data = await build_analytics_payload(session)
     efficiency = await build_efficiency_snapshot(session)
-    health = await build_organization_health(session)
+    health = await build_extended_organization_health(session)
     base = build_analytics_workbook(
         data.users,
         data.events,
@@ -281,7 +282,7 @@ async def export_organization_health_report(
         contacts=data.contacts,
         sections={"summary"},
     )
-    content = add_health_sheets(base, health, efficiency)
+    content = finalize_business_workbook(add_health_sheets(base, health, efficiency))
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -296,7 +297,7 @@ async def export_full_analytics_report(
 ) -> Response:
     data = await build_analytics_payload(session)
     efficiency = await build_efficiency_snapshot(session)
-    health = await build_organization_health(session)
+    health = await build_extended_organization_health(session)
     base = build_analytics_workbook(
         data.users,
         data.events,
@@ -308,7 +309,7 @@ async def export_full_analytics_report(
         contacts=data.contacts,
     )
     content = _with_efficiency_sheet(base, efficiency)
-    content = add_health_sheets(content, health, efficiency)
+    content = finalize_business_workbook(add_health_sheets(content, health, efficiency))
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -341,17 +342,19 @@ async def export_analytics_details_xlsx(
         "contacts": {"summary", "contacts"},
         "goals": {"summary", "goals"},
     }[section]
-    content = polish_workbook(
-        build_analytics_workbook(
-            data.users,
-            data.events,
-            data.projects,
-            data.totals,
-            department_stats=data.department_stats,
-            direction_stats=data.direction_stats,
-            goals=data.goals,
-            contacts=data.contacts,
-            sections=sections,
+    content = finalize_business_workbook(
+        polish_workbook(
+            build_analytics_workbook(
+                data.users,
+                data.events,
+                data.projects,
+                data.totals,
+                department_stats=data.department_stats,
+                direction_stats=data.direction_stats,
+                goals=data.goals,
+                contacts=data.contacts,
+                sections=sections,
+            )
         )
     )
     return Response(
