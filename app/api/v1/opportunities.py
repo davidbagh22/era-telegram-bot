@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from typing import Literal
+
 from aiogram import Bot
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -14,6 +17,9 @@ from app.services.notification_service import notify_admins
 from app.services.opportunity_service import OpportunityScope
 
 router = APIRouter(prefix="/opportunities", tags=["opportunities"])
+
+OpportunityDisplayState = Literal["locked", "almost", "available", "new"]
+NEW_OPPORTUNITY_WINDOW = timedelta(days=7)
 
 
 class EligibilityCheckOut(BaseModel):
@@ -36,6 +42,7 @@ class OpportunityOut(BaseModel):
     opportunity_type: str
     min_rank: str | None
     eligible: bool
+    display_state: OpportunityDisplayState
     eligibility_checks: list[EligibilityCheckOut] = Field(default_factory=list)
     missing_requirements: list[str] = Field(default_factory=list)
     default_award_wording: str | None
@@ -59,6 +66,33 @@ def _is_recognition_offer(offer: PartnerInitiative) -> bool:
     # Existing partner opportunities predate opportunity_type. Treat absent
     # metadata as the legacy external kind; recognition remains opt-in only.
     return getattr(offer, "opportunity_type", "external") in {"certificate", "letter"}
+
+
+def _is_recent_offer(offer: PartnerInitiative) -> bool:
+    created_at = getattr(offer, "created_at", None)
+    if created_at is None:
+        return False
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - created_at <= NEW_OPPORTUNITY_WINDOW
+
+
+def _display_state(
+    offer: PartnerInitiative,
+    *,
+    eligible: bool,
+    missing_requirements: list[str],
+) -> OpportunityDisplayState:
+    if not eligible:
+        # "Almost" is intentionally strict: the user is one concrete
+        # requirement away. Everything else stays locked, so the UI never
+        # promises that a distant opportunity is nearly available.
+        if _is_recognition_offer(offer) and len(missing_requirements) == 1:
+            return "almost"
+        return "locked"
+    if _is_recent_offer(offer):
+        return "new"
+    return "available"
 
 
 async def _to_opportunity_out(
@@ -98,6 +132,11 @@ async def _to_opportunity_out(
         opportunity_type=getattr(offer, "opportunity_type", "external"),
         min_rank=getattr(offer, "min_rank", None),
         eligible=eligible,
+        display_state=_display_state(
+            offer,
+            eligible=eligible,
+            missing_requirements=missing_requirements,
+        ),
         eligibility_checks=eligibility_checks,
         missing_requirements=missing_requirements,
         default_award_wording=getattr(offer, "default_award_wording", None),
