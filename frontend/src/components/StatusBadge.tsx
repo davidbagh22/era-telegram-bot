@@ -1,12 +1,13 @@
 interface StatusBadgeProps {
   label: string;
-  tone?: "neutral" | "violet" | "red";
+  tone?: "neutral" | "violet" | "red" | "gold";
 }
 
 const TONE_COLORS: Record<NonNullable<StatusBadgeProps["tone"]>, string> = {
   neutral: "var(--era-text-muted)",
   violet: "var(--era-violet)",
   red: "var(--era-red)",
+  gold: "var(--era-gold, #f4c15d)",
 };
 
 export function StatusBadge({ label, tone = "neutral" }: StatusBadgeProps) {

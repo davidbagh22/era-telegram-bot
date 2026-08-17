@@ -1,11 +1,9 @@
-"""Permanent regression guard: no persistent ReplyKeyboardMarkup main menu
-anywhere in production code, ever again.
+"""Regression guard for ReplyKeyboardMarkup usage.
 
-main_menu() (app/keyboards/participant.py) used to build one and has been
-removed entirely — see app/middlewares/legacy_keyboard_cleanup.py for the
-one-time ReplyKeyboardRemove() migration for users who already have it
-cached. This test source-scans app/ so a future PR can't quietly reintroduce
-a persistent reply keyboard without this test failing first.
+Persistent Telegram reply keyboards are retired everywhere. Participant
+navigation lives in Mini App/contextual inline buttons; the general group chat
+uses one pinned FAQ whose buttons open private bot deep links. faq.py may only
+construct ReplyKeyboardRemove to clear clients that cached the historical dock.
 """
 
 from __future__ import annotations
@@ -22,34 +20,35 @@ def _matching_files(needle: str) -> list[str]:
         text = path.read_text(encoding="utf-8")
         if needle in text:
             hits.append(str(path.relative_to(APP_ROOT.parent)))
-    return hits
+    return sorted(hits)
 
 
 class NoLegacyReplyKeyboardTests(unittest.TestCase):
-    def test_no_reply_keyboard_markup_construction(self) -> None:
+    def test_reply_keyboard_markup_is_gone(self) -> None:
         hits = _matching_files("ReplyKeyboardMarkup(")
-        self.assertEqual(hits, [], f"Found ReplyKeyboardMarkup( construction in: {hits}")
+        self.assertEqual(hits, [], f"Unexpected ReplyKeyboardMarkup construction in: {hits}")
 
-    def test_no_resize_keyboard_flag(self) -> None:
-        # resize_keyboard is a ReplyKeyboardMarkup-only field; its presence
-        # would mean a persistent keyboard came back somewhere.
+    def test_resize_keyboard_is_gone(self) -> None:
         hits = _matching_files("resize_keyboard")
-        self.assertEqual(hits, [], f"Found resize_keyboard usage in: {hits}")
+        self.assertEqual(hits, [], f"Unexpected resize_keyboard usage in: {hits}")
 
-    def test_no_is_persistent_flag(self) -> None:
+    def test_is_persistent_is_gone(self) -> None:
         hits = _matching_files("is_persistent")
-        self.assertEqual(hits, [], f"Found is_persistent usage in: {hits}")
+        self.assertEqual(hits, [], f"Unexpected is_persistent usage in: {hits}")
 
     def test_no_one_time_keyboard_flag(self) -> None:
         hits = _matching_files("one_time_keyboard")
         self.assertEqual(hits, [], f"Found one_time_keyboard usage in: {hits}")
 
     def test_no_main_menu_function_left_behind(self) -> None:
-        # The old function name itself — guards against someone quietly
-        # re-adding a `def main_menu(...)` that returns a ReplyKeyboardMarkup
-        # again under the same recognizable name.
         hits = _matching_files("def main_menu(")
         self.assertEqual(hits, [], f"Found def main_menu( in: {hits}")
+
+    def test_participant_keyboard_never_constructs_reply_markup(self) -> None:
+        participant = (APP_ROOT / "keyboards" / "participant.py").read_text(encoding="utf-8")
+        self.assertNotIn("ReplyKeyboardMarkup(", participant)
+        self.assertNotIn("is_persistent=", participant)
+        self.assertNotIn("resize_keyboard=", participant)
 
 
 if __name__ == "__main__":

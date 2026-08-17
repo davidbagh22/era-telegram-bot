@@ -9,10 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_session
 from app.database.models import User
-from app.services import data_rights_service
+from app.services import career_service, data_rights_service
+from app.services.career_pdf_service import build_career_resume
 from app.services.growth_service import GrowthProgress, growth_progress_for
 from app.services.portfolio_service import build_portfolio_data
-from app.services.resume_service import build_era_resume
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -116,12 +116,21 @@ async def read_profile_resume(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
+    """Backward-compatible resume URL serving the new universal career CV."""
     portfolio = await build_portfolio_data(session, user)
-    pdf_bytes = build_era_resume(portfolio)
+    career_profile = await career_service.get_or_create_profile(session, user.id)
+    career_items = await career_service.list_items(session, user.id)
+    pdf_bytes = build_career_resume(
+        user,
+        career_profile,
+        portfolio,
+        career_items,
+        purpose="universal",
+    )
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="ERA_portfolio_{user.id}.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="ERA_CV_{user.id}_universal.pdf"'},
     )
 
 

@@ -2,30 +2,35 @@ import { expect, test } from "@playwright/test";
 
 const ADMIN_TELEGRAM_ID = 900003;
 
-test("admin searches the people directory, opens a participant, and awards points", async ({
-  page,
-}) => {
+async function enterAdminWorkspace(page: import("@playwright/test").Page) {
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
-  await expect(page.getByText("Управление")).toBeVisible();
+  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: /Управление ЭРА/ }).click();
+  await expect(page.getByText("Управление", { exact: true })).toBeVisible();
+}
 
-  // Участники now lives under the Люди group — see AdminScreen.tsx's
-  // 2026-08 regrouping.
+test("admin opens a rich participant profile and awards points", async ({ page }) => {
+  await enterAdminWorkspace(page);
   await page.getByRole("button", { name: "Люди" }).click();
   await page.getByRole("button", { name: "Участники" }).click();
   await page.getByPlaceholder("Имя, username или Telegram ID").fill("E2E Participant");
-
   await page.getByText("E2E Participant").click();
-  await expect(page.getByText("Роль и доступ")).toBeVisible();
-  await expect(page.getByText("Начислить или списать баллы")).toBeVisible();
 
-  await page.getByPlaceholder("±баллы").fill("15");
-  await page.getByPlaceholder("Причина").fill("E2E проверка начисления баллов");
-  await page.getByRole("button", { name: "Применить" }).click();
+  await expect(page.getByText("Карточка участника")).toBeVisible();
+  await expect(page.getByText("Анкета при регистрации")).toBeVisible();
+  await expect(page.getByText("Показатели участника")).toBeVisible();
 
-  // A real award through the full stack (API → user_management_service →
-  // DB), not a UI-only counter bump — verified by the balance <dd>
-  // reflecting the freshly refetched detail after the award. The label
-  // ("Баланс") and value ("15 баллов") are separate <dt>/<dd> elements, so
-  // this checks the value directly rather than the label's own text.
-  await expect(page.getByText("15 баллов")).toBeVisible();
+  await page.getByRole("button", { name: "Управление", exact: true }).click();
+  await expect(page.getByText("Роль и статус доступа")).toBeVisible();
+  await expect(page.getByText("Баллы", { exact: true })).toBeVisible();
+
+  await page.getByPlaceholder("± баллы").fill("15");
+  await page.getByPlaceholder("Причина ручной корректировки").fill("E2E проверка начисления баллов");
+  await page.getByRole("button", { name: "Применить вручную" }).click();
+
+  // The Admin workspace itself also has an "Обзор" destination in its bottom
+  // navigation. The first exact match is the local participant-profile tab.
+  await page.getByRole("button", { name: "Обзор", exact: true }).first().click();
+  const balanceCard = page.getByText("Баллов сейчас").locator("..");
+  await expect(balanceCard).toContainText("15");
 });

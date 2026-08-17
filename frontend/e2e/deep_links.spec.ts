@@ -1,41 +1,72 @@
 import { expect, test } from "@playwright/test";
 
-// PR 36 (Bot/Mini App role split): the bot's "📅 Ближайшее"/"✅ Мои
-// задачи"/"⭐ Возможности" quick-access buttons deep-link straight into
-// `${miniapp_url}/#/<path>` (app/utils/deep_links.py's miniapp_events_url /
-// miniapp_tasks_url / miniapp_opportunities_url) instead of opening the
-// Mini App at Home and making the user navigate themselves. These specs
-// verify frontend/src/app/App.tsx's parseDeepLink() actually lands on the
-// right screen for each of those three targets.
-
 const PARTICIPANT_TELEGRAM_ID = 900001;
+const ADMIN_TELEGRAM_ID = 900003;
 
-test("#/tasks deep link opens Activity on the Tasks section", async ({ page }) => {
-  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/tasks`);
+test("eraPath query opens Projects when Telegram provides no fragment", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}&eraPath=projects`);
 
-  // 2026-08 redesign brief section 16: ActivityScreen's landing menu
-  // (generic "Активность" heading) is skipped entirely when a section is
-  // named up front — the heading itself is now the section's own name
-  // ("Задачи"), which is stronger proof of landing on the right section
-  // than the old generic heading + empty-state-text combination was.
-  await expect(page.getByRole("heading", { name: "Задачи" })).toBeVisible();
-  await expect(page.getByText("Задач в этом разделе пока нет.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Проекты" })).toBeVisible();
+  await expect(page.getByText("Начните с одной мысли")).toBeVisible();
 });
 
-test("#/events deep link opens Activity on the Events section", async ({ page }) => {
+test("fresh Telegram eraPath overrides a stale cached hash", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}&eraPath=projects#/events`);
+
+  await expect(page.getByRole("heading", { name: "Проекты" })).toBeVisible();
+  await expect(page).toHaveURL(/#\/projects$/);
+  await expect(page).not.toHaveURL(/eraPath=/);
+});
+
+test("eraPath admin opens the separate Admin workspace directly", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}&eraPath=admin`);
+
+  await expect(page.getByText("Управление", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Вот что происходит в ЭРА сегодня" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Разделы управления ЭРА" })).toBeVisible();
+  await expect(page).toHaveURL(/#\/admin$/);
+});
+
+test("#/tasks deep link opens the task surface directly", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/tasks`);
+
+  await expect(page.getByRole("heading", { name: "Задачи" })).toBeVisible();
+  await expect(page.getByText(/Пока нет задач в этом разделе/)).toBeVisible();
+  await expect(page).toHaveURL(/#\/tasks$/);
+});
+
+test("#/events deep link opens the Events tab", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/events`);
 
-  await expect(page.getByRole("heading", { name: "Мероприятия" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "События" })).toBeVisible();
   await expect(page.getByText("E2E тестовое мероприятие")).toBeVisible();
 });
 
-test("#/opportunities deep link opens the Opportunities screen on Предложения", async ({ page }) => {
+test("#/opportunities deep link opens Community on offers", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/opportunities`);
 
-  // 2026-08 redesign brief section 20: OpportunitiesScreen now has its own
-  // landing menu (Предложения/Аукционы/Каталог/Опросы) instead of a
-  // PillTabs row -- a deep link skips straight to "Предложения", proven
-  // here by its section heading and "Фильтр" scope-picker button.
   await expect(page.getByRole("heading", { name: "Предложения" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Фильтр" })).toBeVisible();
+});
+
+for (const [hash, heading] of [
+  ["auctions", "Аукционы"],
+  ["rewards", "Каталог"],
+  ["surveys", "Опросы"],
+] as const) {
+  test(`#/${hash} deep link opens its Community feature`, async ({ page }) => {
+    await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/${hash}`);
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+  });
+}
+
+test("community navigation stays synchronized with browser history", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/community`);
+  await page.getByText("Аукционы", { exact: true }).first().click();
+  await expect(page).toHaveURL(/#\/auctions$/);
+  await expect(page.getByRole("heading", { name: "Аукционы" })).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/community$/);
+  await expect(page.getByRole("heading", { name: "Сообщество" })).toBeVisible();
 });

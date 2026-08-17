@@ -1,24 +1,53 @@
+import type { ReactNode } from "react";
+import { AnimatedScore } from "../components/AnimatedScore";
 import { Avatar } from "../components/Avatar";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
-import { MetricCard } from "../components/MetricCard";
 import { ProgressRing } from "../components/ProgressRing";
 import { Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
-import { EventIcon, OpportunitiesIcon, TaskIcon } from "../components/icons";
+import { EventIcon, OpportunitiesIcon, ProjectsIcon, TaskIcon } from "../components/icons";
 import { useHome } from "../hooks/useHome";
 import type { MiniAppUserSummary } from "../types/auth";
 
 interface HomeScreenProps {
   user: MiniAppUserSummary;
-  /** PR 38: Home's "Посмотреть, что происходит в ЭРА" quick action —
-   * Home is the "где я / что происходит" view, Activity is the fuller
-   * "everything that's happening" view, so this just switches tabs
-   * rather than duplicating Activity's own list here. */
-  onOpenActivity?: () => void;
+  onOpenProfile?: () => void;
+  onOpenProgress?: () => void;
+  onOpenDevelopment?: () => void;
+  onOpenEvents?: () => void;
+  onOpenEvent?: (id: number) => void;
+  onOpenProject?: (id: number) => void;
+  onOpenTask?: (id: number) => void;
+  onOpenCommunity?: () => void;
+  onOpenOpportunity?: (id: number) => void;
 }
 
-export function HomeScreen({ user, onOpenActivity }: HomeScreenProps) {
+function formatDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" });
+}
+
+function isToday(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const today = new Date();
+  return date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth() && date.getDate() === today.getDate();
+}
+
+export function HomeScreen({
+  user,
+  onOpenProfile,
+  onOpenProgress,
+  onOpenDevelopment,
+  onOpenEvents,
+  onOpenEvent,
+  onOpenProject,
+  onOpenTask,
+  onOpenCommunity,
+  onOpenOpportunity,
+}: HomeScreenProps) {
   const home = useHome();
 
   if (home.status === "loading") {
@@ -31,8 +60,7 @@ export function HomeScreen({ user, onOpenActivity }: HomeScreenProps) {
             <Skeleton height="0.75rem" width="40%" />
           </div>
         </div>
-        <Skeleton height="2.5rem" radius="var(--era-radius-control)" />
-        <Skeleton height="4.5rem" radius="var(--era-radius-card)" />
+        <Skeleton height="12rem" radius="var(--era-radius-card)" />
         <SkeletonCard />
         <SkeletonCard />
       </div>
@@ -40,226 +68,180 @@ export function HomeScreen({ user, onOpenActivity }: HomeScreenProps) {
   }
 
   if (home.status === "error") {
-    return (
-      <StatusBanner
-        title="Не удалось загрузить данные"
-        description="Потяните вниз, чтобы обновить страницу, или откройте ЭРА заново."
-      />
-    );
+    return <StatusBanner title="Не получилось загрузить главную" description="Проверьте соединение и откройте экран ещё раз." />;
   }
 
   const { data } = home;
-  const hasToday = Boolean(data.next_step || data.nearest_event || data.active_task);
   const growthPercent = data.growth.level_count <= 1 ? 1 : data.growth.level_index / (data.growth.level_count - 1);
+  const orbitPercent = Math.max(0, Math.min(1, growthPercent));
+  const todayEventCount = data.nearest_event && isToday(data.nearest_event.event_date) ? 1 : 0;
 
   return (
-    <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-      {/* Hero — "где я" в одном взгляде: аватар в кольце прогресса вместо
-          отдельной плоской полоски, на фирменном градиенте вместо белого
-          фона. См. docs/UI_DESIGN_SYSTEM.md "Home hero". */}
-      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
-        <clipPath id="era-hero-wave" clipPathUnits="objectBoundingBox">
-          <path d="M0,0 L1,0 L1,0.86 C0.78,0.98 0.4,0.82 0,0.95 Z" />
-        </clipPath>
-      </svg>
-      <div
-        style={{
-          position: "relative",
-          padding: "1.75rem 1.25rem 2.5rem",
-          // A fixed dark "spotlight" moment, not a themed surface — see
-          // tokens.css's --era-hero-bg comment. Deliberately the same in
-          // light and dark theme.
-          background: "var(--era-hero-bg)",
-          color: "#fff",
-          overflow: "hidden",
-          clipPath: "url(#era-hero-wave)",
-        }}
-      >
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: "-20%",
-            background:
-              "radial-gradient(38% 42% at 18% 18%, rgba(116,44,196,0.85), transparent 70%)," +
-              "radial-gradient(46% 50% at 88% 8%, rgba(190,38,143,0.75), transparent 70%)," +
-              "radial-gradient(55% 60% at 70% 78%, rgba(229,43,36,0.55), transparent 70%)",
-            filter: "blur(26px)",
-          }}
-        />
-        <div style={{ position: "relative", zIndex: 1 }}>
-          <p
-            style={{
-              margin: "0 0 1rem",
-              fontSize: "0.6875rem",
-              fontWeight: 700,
-              letterSpacing: "0.14em",
-              textTransform: "uppercase",
-              color: "rgba(255,255,255,0.62)",
-            }}
-          >
-            Сегодня в ЭРА
-          </p>
-          <div style={{ position: "relative", width: 92, height: 92, marginBottom: "0.75rem" }}>
-            <ProgressRing percent={growthPercent} size={92} />
-            <div style={{ position: "absolute", inset: 12 }}>
-              <Avatar firstName={user.first_name} lastName={user.last_name} size="lg" />
+    <div className="era-page era-stagger" style={{ padding: "1.15rem 1.15rem 1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+      <header style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <button
+          type="button"
+          onClick={onOpenProfile}
+          aria-label="Открыть профиль"
+          style={{ minWidth: 44, width: 44, height: 44, minHeight: 44, padding: 0, border: 0, borderRadius: "50%", background: "transparent", boxShadow: "none" }}
+        >
+          <Avatar firstName={user.first_name} lastName={user.last_name} />
+        </button>
+        <button
+          type="button"
+          onClick={onOpenProfile}
+          style={{ flex: 1, minHeight: 44, padding: 0, border: 0, background: "transparent", boxShadow: "none", textAlign: "left" }}
+        >
+          <strong style={{ display: "block", fontSize: "1.05rem" }}>{user.first_name} {user.last_name ?? ""}</strong>
+          <span style={{ display: "block", marginTop: 2, color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>
+            {data.growth.label} · уровень {data.growth.level_index + 1}
+          </span>
+        </button>
+      </header>
+
+      <Card gradient onClick={onOpenProgress} style={{ padding: "1.25rem" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, letterSpacing: ".08em" }}>ERA SCORE</p>
+            <div style={{ marginTop: ".15rem" }}>
+              <AnimatedScore value={data.points_balance} />
+            </div>
+            <p style={{ margin: ".65rem 0 0", color: "var(--era-text-muted)" }}>
+              Нажмите, чтобы увидеть, из чего складывается ваш рост.
+            </p>
+          </div>
+          <div style={{ position: "relative", width: 104, height: 104, flexShrink: 0 }}>
+            <ProgressRing percent={orbitPercent} size={104} animationKey="home-status-orbit" />
+            <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", textAlign: "center" }}>
+              <div>
+                <strong style={{ display: "block", fontSize: "1.2rem" }}>{Math.round(orbitPercent * 100)}%</strong>
+                <span style={{ color: "var(--era-text-muted)", fontSize: ".68rem" }}>до уровня</span>
+              </div>
             </div>
           </div>
-          <h1
-            style={{
-              fontFamily: "var(--era-font-display)",
-              fontWeight: 800,
-              fontSize: "1.85rem",
-              lineHeight: 1.1,
-              letterSpacing: "-0.01em",
-              margin: "0 0 0.5rem",
-            }}
-          >
-            Привет, {user.first_name}
-          </h1>
-          <p style={{ margin: 0, fontSize: "0.8125rem", color: "rgba(255,255,255,0.72)" }}>
-            Уровень <strong style={{ color: "#fff" }}>{data.growth.label}</strong> · {data.growth.level_index + 1} из{" "}
-            {data.growth.level_count}
-          </p>
         </div>
-      </div>
+      </Card>
 
-      <div style={{ padding: "0 1.25rem 1.25rem", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-        {/* Сегодня / ближайшее: что требует внимания прямо сейчас. */}
-        <section style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <h2 style={{ fontSize: "var(--era-text-base)", color: "var(--era-text-muted)", margin: 0 }}>
-            Сегодня
-          </h2>
-          {hasToday ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {data.next_step && (
-                <Card gradient>
-                  <strong>{data.next_step.title}</strong>
-                  <p style={{ margin: "0.25rem 0 0" }}>{data.next_step.description}</p>
-                </Card>
-              )}
-              {data.nearest_event && (
-                <Card>
-                  <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-                    <span
-                      style={{
-                        flexShrink: 0,
-                        width: 38,
-                        height: 38,
-                        borderRadius: "50%",
-                        background: "var(--era-tint-violet)",
-                        color: "var(--era-violet)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <EventIcon width={18} height={18} />
-                    </span>
-                    <div>
-                      <strong>{data.nearest_event.title}</strong>
-                      <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>
-                        {data.nearest_event.event_date} · {data.nearest_event.event_time} ·{" "}
-                        {data.nearest_event.location}
-                      </p>
-                    </div>
-                  </div>
-                </Card>
-              )}
-              {data.active_task && (
-                <Card>
-                  <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-                    <span
-                      style={{
-                        flexShrink: 0,
-                        width: 38,
-                        height: 38,
-                        borderRadius: "50%",
-                        background: "var(--era-tint-red)",
-                        color: "var(--era-red)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <TaskIcon width={18} height={18} />
-                    </span>
-                    <div>
-                      <strong>{data.active_task.title}</strong>
-                      <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>
-                        Дедлайн: {new Date(data.active_task.deadline).toLocaleDateString("ru-RU")} ·{" "}
-                        {data.active_task.points} баллов
-                      </p>
-                    </div>
-                  </div>
-                </Card>
-              )}
+      {onOpenDevelopment && (
+        <Card
+          onClick={onOpenDevelopment}
+          style={{
+            padding: "1.15rem",
+            overflow: "hidden",
+            border: "1px solid color-mix(in srgb, var(--era-red) 38%, var(--era-border))",
+            background: "radial-gradient(circle at 86% 10%, rgba(174,33,49,.25), transparent 40%), linear-gradient(145deg, rgba(43,14,20,.96), rgba(17,17,20,.98) 58%, rgba(31,28,25,.96))",
+          }}
+        >
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "1rem", alignItems: "center" }}>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, color: "var(--era-gold-ink)", fontSize: "var(--era-text-xs)", fontWeight: 850, letterSpacing: ".09em" }}>МОЙ ВЕКТОР</p>
+              <strong style={{ display: "block", marginTop: ".35rem", fontSize: "1.12rem", lineHeight: 1.2 }}>Как ты изменился за последний месяц?</strong>
+              <p style={{ margin: ".45rem 0 0", color: "var(--era-text-muted)" }}>Проверить себя · 6 мин</p>
             </div>
-          ) : (
-            <EmptyState text="Сейчас нет срочных действий — загляните в «Возможности»." />
-          )}
-        </section>
-
-        {/* Моя активность: баллы/проекты/задачи/портфолио одним взглядом. */}
-        <section style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <h2 style={{ fontSize: "var(--era-text-base)", color: "var(--era-text-muted)", margin: 0 }}>
-            Моя активность
-          </h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0.5rem" }}>
-            <MetricCard label="Баллы" value={data.activity.points} tone="violet" />
-            <MetricCard label="Проекты" value={data.activity.projects} tone="red" />
-            <MetricCard label="Выполнено задач" value={data.activity.completed_tasks} tone="gold" />
-            <MetricCard label="В портфолио" value={data.activity.portfolio_items} tone="magenta" />
+            <div aria-hidden="true" style={{ width: 58, height: 58, borderRadius: "50%", display: "grid", placeItems: "center", border: "7px solid rgba(213,50,65,.82)", boxShadow: "inset 0 0 0 5px rgba(183,151,95,.16), 0 0 24px rgba(174,33,49,.18)" }}>
+              <span style={{ fontSize: "1.2rem", fontWeight: 900 }}>↗</span>
+            </div>
           </div>
-        </section>
+        </Card>
+      )}
 
-        {/* Возможности: 1-3 актуальные карточки. */}
-        <section style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <h2 style={{ fontSize: "var(--era-text-base)", color: "var(--era-text-muted)", margin: 0 }}>
-            Возможности для вас
-          </h2>
-          {data.opportunities.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {data.opportunities.map((opportunity) => (
-                <Card key={opportunity.id}>
-                  <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-                    <span
-                      style={{
-                        flexShrink: 0,
-                        width: 38,
-                        height: 38,
-                        borderRadius: "50%",
-                        background: "var(--era-tint-gold)",
-                        color: "var(--era-gold-ink)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <OpportunitiesIcon width={18} height={18} />
-                    </span>
-                    <div>
-                      <strong>{opportunity.title}</strong>
-                      <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>
-                        {opportunity.point_cost} баллов
-                      </p>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <EmptyState text="Подходящих возможностей пока нет." />
-          )}
-        </section>
-
-        {onOpenActivity && (
-          <button type="button" className="era-btn-primary" onClick={onOpenActivity}>
-            Посмотреть, что происходит в ЭРА
-          </button>
+      <section style={{ display: "flex", flexDirection: "column", gap: ".75rem" }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: "var(--era-text-xl)" }}>Сегодня</h2>
+          <p style={{ margin: ".25rem 0 0", color: "var(--era-text-muted)" }}>Только то, что требует вашего внимания.</p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: ".6rem" }}>
+          <TodayMetric label="События" value={todayEventCount} onClick={todayEventCount ? onOpenEvents : undefined} />
+          <TodayMetric label="Задания" value={data.active_task ? 1 : 0} onClick={data.active_task && onOpenTask ? () => onOpenTask(data.active_task!.id) : undefined} />
+          <TodayMetric label="Возможности" value={data.opportunities.length} onClick={data.opportunities.length ? onOpenCommunity : undefined} />
+        </div>
+        {todayEventCount === 0 && onOpenEvents && (
+          <button type="button" onClick={onOpenEvents} style={{ width: "100%" }}>Сегодня событий нет · посмотреть ближайшие</button>
         )}
-      </div>
+      </section>
+
+      {data.nearest_event && (
+        <section style={{ display: "flex", flexDirection: "column", gap: ".75rem" }}>
+          <h2 style={{ margin: 0, fontSize: "var(--era-text-xl)" }}>Ближайшее событие</h2>
+          <Card onClick={onOpenEvent ? () => onOpenEvent(data.nearest_event!.id) : onOpenEvents} style={{ padding: "1.1rem" }}>
+            <div style={{ display: "flex", gap: ".85rem", alignItems: "flex-start" }}>
+              <IconBubble tone="red"><EventIcon width={19} height={19} /></IconBubble>
+              <div style={{ minWidth: 0 }}>
+                <strong style={{ display: "block", fontSize: "1.08rem" }}>{data.nearest_event.title}</strong>
+                <p style={{ margin: ".35rem 0 0", color: "var(--era-text-muted)" }}>
+                  {formatDate(data.nearest_event.event_date)} · {data.nearest_event.event_time}
+                </p>
+                <p style={{ margin: ".2rem 0 0", color: "var(--era-text-muted)" }}>{data.nearest_event.location}</p>
+              </div>
+            </div>
+          </Card>
+        </section>
+      )}
+
+      <section style={{ display: "flex", flexDirection: "column", gap: ".75rem" }}>
+        <h2 style={{ margin: 0, fontSize: "var(--era-text-xl)" }}>Следующий шаг</h2>
+        {data.next_step || data.active_task || data.active_project ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: ".75rem" }}>
+            {data.next_step && (
+              <Card style={{ borderLeft: "3px solid var(--era-red)" }}>
+                <strong>{data.next_step.title}</strong>
+                <p style={{ margin: ".35rem 0 0", color: "var(--era-text-muted)" }}>{data.next_step.description}</p>
+              </Card>
+            )}
+            {data.active_task && onOpenTask && (
+              <Card onClick={() => onOpenTask(data.active_task!.id)}>
+                <div style={{ display: "flex", gap: ".75rem" }}>
+                  <IconBubble tone="red"><TaskIcon width={18} height={18} /></IconBubble>
+                  <div><strong>{data.active_task.title}</strong><p style={{ margin: ".25rem 0 0", color: "var(--era-text-muted)" }}>До {formatDate(data.active_task.deadline)} · {data.active_task.points} баллов</p></div>
+                </div>
+              </Card>
+            )}
+            {data.active_project && onOpenProject && (
+              <Card onClick={() => onOpenProject(data.active_project!.id)}>
+                <div style={{ display: "flex", gap: ".75rem" }}>
+                  <IconBubble tone="gold"><ProjectsIcon width={18} height={18} /></IconBubble>
+                  <div><strong>{data.active_project.title}</strong><p style={{ margin: ".25rem 0 0", color: "var(--era-text-muted)" }}>{data.active_project.status}</p></div>
+                </div>
+              </Card>
+            )}
+          </div>
+        ) : (
+          <EmptyState text="Срочных действий нет. Можно выбрать новый проект или событие." />
+        )}
+      </section>
+
+      <section style={{ display: "flex", flexDirection: "column", gap: ".75rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
+          <h2 style={{ margin: 0, fontSize: "var(--era-text-xl)" }}>Для тебя</h2>
+          {onOpenCommunity && <button type="button" onClick={onOpenCommunity} style={{ minHeight: 44, padding: ".5rem .8rem" }}>Все</button>}
+        </div>
+        {data.opportunities.length ? data.opportunities.slice(0, 3).map((item) => (
+          <Card key={item.id} onClick={onOpenOpportunity ? () => onOpenOpportunity(item.id) : onOpenCommunity}>
+            <div style={{ display: "flex", gap: ".75rem" }}>
+              <IconBubble tone="gold"><OpportunitiesIcon width={18} height={18} /></IconBubble>
+              <div style={{ minWidth: 0 }}>
+                <strong>{item.title}</strong>
+                <p style={{ margin: ".25rem 0 0", color: "var(--era-text-muted)" }}>
+                  {item.point_cost ? `${item.point_cost} баллов` : "Доступно участникам"}{item.expires_at ? ` · до ${formatDate(item.expires_at)}` : ""}
+                </p>
+              </div>
+            </div>
+          </Card>
+        )) : <EmptyState text="Новых персональных возможностей пока нет." />}
+      </section>
     </div>
   );
+}
+
+function TodayMetric({ label, value, onClick }: { label: string; value: number; onClick?: () => void }) {
+  const content = <><strong style={{ display: "block", fontSize: "1.45rem", color: value ? "var(--era-red-bright)" : "var(--era-text)" }}>{value}</strong><span style={{ display: "block", marginTop: 2, color: "var(--era-text-muted)", fontSize: ".72rem" }}>{label}</span></>;
+  if (!onClick) return <Card style={{ padding: ".8rem", textAlign: "center", boxShadow: "none" }}>{content}</Card>;
+  return <Card onClick={onClick} style={{ padding: ".8rem", textAlign: "center", boxShadow: "none" }}>{content}</Card>;
+}
+
+function IconBubble({ children, tone }: { children: ReactNode; tone: "red" | "gold" }) {
+  const styleByTone = tone === "gold"
+    ? { background: "var(--era-tint-gold)", color: "var(--era-gold-ink)" }
+    : { background: "var(--era-tint-red)", color: "var(--era-red-bright)" };
+  return <span style={{ flexShrink: 0, width: 40, height: 40, borderRadius: "50%", display: "grid", placeItems: "center", ...styleByTone }}>{children}</span>;
 }

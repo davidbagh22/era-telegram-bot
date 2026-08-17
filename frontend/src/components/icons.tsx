@@ -36,6 +36,17 @@ export function ActivityIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function CommunityIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...baseProps(props)}>
+      <circle cx="8" cy="8.5" r="2.75" />
+      <circle cx="16.25" cy="7.75" r="2.25" />
+      <path d="M3.75 19c.85-3.15 2.95-4.85 5.25-4.85S13.4 15.85 14.25 19" />
+      <path d="M14.25 13.4c2.25.15 4.2 1.8 5.1 4.6" />
+    </svg>
+  );
+}
+
 export function ProjectsIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...baseProps(props)}>

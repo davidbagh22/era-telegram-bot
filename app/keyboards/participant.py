@@ -7,9 +7,13 @@ from aiogram.types import (
 )
 
 from app.utils.deep_links import (
+    miniapp_admin_url,
+    miniapp_community_url,
     miniapp_events_url,
+    miniapp_leader_url,
     miniapp_opportunities_url,
     miniapp_profile_url,
+    miniapp_projects_url,
     miniapp_tasks_url,
 )
 
@@ -83,37 +87,55 @@ def navigation_guide_keyboard(
     miniapp_url: str, admin: bool = False, privileged: bool = False
 ) -> InlineKeyboardMarkup:
     """Buttons under the "🧭 Навигация" bot message (2026-08 redesign
-    brief section 36) — direct WebApp deep links into the four screens the
-    message text describes, plus one extra row into the admin/leader
-    workspace when the user actually has one. Every button here just
-    opens the Mini App at a specific screen; none of them re-implement
-    that screen's content in the bot."""
+    brief section 36) — direct WebApp deep links into the five participant
+    areas plus quick task/opportunity shortcuts, and one extra row into
+    the admin/leader workspace when the user actually has one. Every
+    button here just opens the Mini App at a specific screen; none of
+    them re-implement that screen's content in the bot."""
     rows = [
         [
             InlineKeyboardButton(
-                text="📅 Мероприятия", web_app=WebAppInfo(url=miniapp_events_url(miniapp_url))
+                text="Проекты", web_app=WebAppInfo(url=miniapp_projects_url(miniapp_url))
             ),
             InlineKeyboardButton(
-                text="✅ Задачи", web_app=WebAppInfo(url=miniapp_tasks_url(miniapp_url))
+                text="События", web_app=WebAppInfo(url=miniapp_events_url(miniapp_url))
             ),
         ],
         [
             InlineKeyboardButton(
-                text="⭐ Возможности",
-                web_app=WebAppInfo(url=miniapp_opportunities_url(miniapp_url)),
+                text="Сообщество",
+                web_app=WebAppInfo(url=miniapp_community_url(miniapp_url)),
             ),
             InlineKeyboardButton(
-                text="👤 Профиль", web_app=WebAppInfo(url=miniapp_profile_url(miniapp_url))
+                text="Профиль", web_app=WebAppInfo(url=miniapp_profile_url(miniapp_url))
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="Мои задачи", web_app=WebAppInfo(url=miniapp_tasks_url(miniapp_url))
+            ),
+            InlineKeyboardButton(
+                text="Возможности", web_app=WebAppInfo(url=miniapp_opportunities_url(miniapp_url))
             ),
         ],
     ]
     if admin:
         rows.append(
-            [InlineKeyboardButton(text="⚙️ Режим администратора", web_app=WebAppInfo(url=miniapp_url))]
+            [
+                InlineKeyboardButton(
+                    text="⚙️ Режим администратора",
+                    web_app=WebAppInfo(url=miniapp_admin_url(miniapp_url)),
+                )
+            ]
         )
     elif privileged:
         rows.append(
-            [InlineKeyboardButton(text="🧭 Режим лидера", web_app=WebAppInfo(url=miniapp_url))]
+            [
+                InlineKeyboardButton(
+                    text="🧭 Режим лидера",
+                    web_app=WebAppInfo(url=miniapp_leader_url(miniapp_url)),
+                )
+            ]
         )
     rows.append([InlineKeyboardButton(text="💬 Связь", callback_data="contact:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -233,7 +255,10 @@ def cabinet_keyboard() -> InlineKeyboardMarkup:
 
 
 def event_list_keyboard(events: Iterable) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text=event.title[:50], callback_data=f"event:view:{event.id}")] for event in events]
+    rows = [
+        [InlineKeyboardButton(text=event.title[:50], callback_data=f"event:view:{event.id}")]
+        for event in events
+    ]
     rows.append([InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -241,7 +266,13 @@ def event_list_keyboard(events: Iterable) -> InlineKeyboardMarkup:
 def event_card_keyboard(event_id: int, can_register: bool = True) -> InlineKeyboardMarkup:
     rows = []
     if can_register:
-        rows.append([InlineKeyboardButton(text="Зарегистрироваться", callback_data=f"event:join:{event_id}")])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="Зарегистрироваться", callback_data=f"event:join:{event_id}"
+                )
+            ]
+        )
     rows.append([InlineKeyboardButton(text="← Афиша", callback_data="events:list")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -260,9 +291,23 @@ def project_menu_keyboard() -> InlineKeyboardMarkup:
 def project_result_keyboard(project_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Отправить на рассмотрение", callback_data=f"project:submit:{project_id}")],
-            [InlineKeyboardButton(text="Изменить ответы", callback_data=f"project:resume:{project_id}")],
-            [InlineKeyboardButton(text="Сохранить как черновик", callback_data=f"project:pause:{project_id}")],
+            [
+                InlineKeyboardButton(
+                    text="Отправить на рассмотрение",
+                    callback_data=f"project:submit:{project_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Изменить ответы", callback_data=f"project:resume:{project_id}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Сохранить как черновик",
+                    callback_data=f"project:pause:{project_id}",
+                )
+            ],
             [InlineKeyboardButton(text="← К проектам", callback_data="projects:menu")],
         ]
     )
@@ -271,15 +316,31 @@ def project_result_keyboard(project_id: int) -> InlineKeyboardMarkup:
 def project_question_keyboard(index: int, has_hint: bool) -> InlineKeyboardMarkup:
     rows = []
     if has_hint:
-        rows.append([InlineKeyboardButton(text="✨ Получить подсказку", callback_data=f"project:hint:{index}")])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="✨ Получить подсказку", callback_data=f"project:hint:{index}"
+                )
+            ]
+        )
     rows.append([InlineKeyboardButton(text="Сохранить и выйти", callback_data="project:pause")])
     if index > 0:
-        rows.append([InlineKeyboardButton(text="← Предыдущий вопрос", callback_data="project:previous")])
+        rows.append(
+            [InlineKeyboardButton(text="← Предыдущий вопрос", callback_data="project:previous")]
+        )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def project_drafts_keyboard(projects: Iterable) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text=f"Продолжить: {project.title[:35]}", callback_data=f"project:resume:{project.id}")] for project in projects]
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=f"Продолжить: {project.title[:35]}",
+                callback_data=f"project:resume:{project.id}",
+            )
+        ]
+        for project in projects
+    ]
     rows.append([InlineKeyboardButton(text="← К проектам", callback_data="projects:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

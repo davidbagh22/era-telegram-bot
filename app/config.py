@@ -1,6 +1,7 @@
 import hashlib
 from functools import lru_cache
 from typing import Annotated
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import BeforeValidator, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -12,6 +13,24 @@ def _parse_ids(value: object) -> list[int]:
     if isinstance(value, list):
         return [int(item) for item in value]
     return [int(item.strip()) for item in str(value).split(",") if item.strip()]
+
+
+def _with_release_cache_buster(url: str, release: str) -> str:
+    """Give Telegram a new WebApp URL for every deployed release.
+
+    Telegram may reuse an already-cached WebView when the bot keeps publishing
+    exactly the same WebAppInfo URL. Render exposes RENDER_GIT_COMMIT at
+    runtime, so adding its short SHA as a normal query parameter makes each
+    deploy a distinct launch URL while preserving existing query parameters.
+    Local/dev environments without a release SHA keep the historical URL.
+    """
+    normalized_release = release.strip()
+    if not url or not normalized_release:
+        return url
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["v"] = normalized_release[:12]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
 IdList = Annotated[list[int], BeforeValidator(_parse_ids)]
@@ -26,10 +45,8 @@ class Settings(BaseSettings):
     public_base_url: str = ""
     webhook_secret: str = ""
     render_external_hostname: str = ""
+    render_git_commit: str = ""
     dev_auth_enabled: bool = False
-    # Telegram regenerates initData fresh every time the Mini App is opened,
-    # so this only needs to cover slow clients/networks — not multi-hour
-    # reuse. Kept in line with the session token TTL (see auth.py).
     init_data_max_age_seconds: int = 3600
     miniapp_url: str = ""
     miniapp_auth_secret: str = ""
@@ -64,16 +81,6 @@ class Settings(BaseSettings):
     @field_validator("bot_token", "miniapp_auth_secret", "webhook_secret", mode="before")
     @classmethod
     def strip_secret_whitespace(cls, value: object) -> object:
-        # A trailing newline/space pasted into a Render env var is an easy,
-        # silent mistake — aiogram's own HTTP calls to the Bot API tend to
-        # tolerate it (it ends up in a URL/header that gets normalized
-        # somewhere along the way), but our own HMAC checks
-        # (app/api/security.py's verify_init_data/create_session_token)
-        # hash this value byte-for-byte, so unstripped whitespace here would
-        # make every genuine Telegram-signed initData look like a forgery
-        # while every other bot API call kept working fine — the specific,
-        # confusing failure mode that made this worth guarding against
-        # rather than trusting the env var to already be clean.
         return value.strip() if isinstance(value, str) else value
 
     @property
@@ -99,24 +106,15 @@ class Settings(BaseSettings):
 
     @property
     def effective_miniapp_url(self) -> str:
-        """URL for the bot's "Open ERA" WebApp button.
-
-        Defaults to the Mini App bundled and served by this same service
-        (see app/webapp.py::_mount_frontend) at "<base url>/app/". Set
-        MINIAPP_URL explicitly only when the frontend is hosted elsewhere.
-
-        Stays empty (button hidden) until MINIAPP_AUTH_SECRET is set, even
-        if a base/miniapp URL is configured — without the secret, opening
-        the Mini App would only show an auth error, so it is safer to keep
-        the button hidden than to ship a visibly broken one.
-        """
         if not self.miniapp_auth_secret:
             return ""
         if self.miniapp_url:
-            return self.miniapp_url.rstrip("/")
-        if self.effective_base_url:
-            return f"{self.effective_base_url}/app/"
-        return ""
+            base_url = self.miniapp_url.rstrip("/")
+        elif self.effective_base_url:
+            base_url = f"{self.effective_base_url}/app/"
+        else:
+            return ""
+        return _with_release_cache_buster(base_url, self.render_git_commit)
 
     @property
     def effective_webhook_secret(self) -> str:
@@ -126,15 +124,9 @@ class Settings(BaseSettings):
 
     @property
     def is_render_deployment(self) -> bool:
-        """True when running on Render, which sets RENDER_EXTERNAL_HOSTNAME
-        for every deployed service. Used only to guard against accidentally
-        leaving a developer-only bypass enabled in production — never to
-        gate real authorization decisions."""
         return bool(self.render_external_hostname)
 
     def assert_safe_for_deployment(self) -> None:
-        """Fail loudly at startup instead of silently accepting a dangerous
-        configuration. Called once from app/webapp.py's lifespan."""
         if self.dev_auth_enabled and self.is_render_deployment:
             raise RuntimeError(
                 "DEV_AUTH_ENABLED=true on a Render deployment would let anyone "

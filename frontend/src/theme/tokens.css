@@ -1,93 +1,80 @@
-/* ERA brand tokens. Unbounded/Golos Text load from Google Fonts via a
-   <link> in index.html — the stack below falls back to system fonts only
-   while that request is in flight or blocked. See
-   docs/ERA_PLATFORM_PROGRESS.md. */
-:root {
-  --era-red: #e52b24;
-  --era-violet: #742cc4;
-  --era-magenta: #be268f;
-  /* Middle stop is --era-magenta itself, not an intermediate hue — the
-     2026-08 UX/UI redesign brief specifies the gradient as exactly
-     violet(#742CC4) -> magenta(#BE268F) -> red(#E52B24), no blended
-     in-between color. */
-  --era-gradient: linear-gradient(135deg, #742cc4 0%, #be268f 48%, #e52b24 100%);
+/* ERA DARK / RED — premium, high-contrast, motion-aware product system. */
+:root,
+:root[data-theme="light"],
+:root[data-theme="dark"] {
+  color-scheme: dark;
 
-  /* Dark-first palette (2026-08 UX/UI redesign brief, section 3) --
-     defined here as brand constants so components can reach for them by
-     name ahead of the full dark-first rollout (see docs/UI_DESIGN_SYSTEM.md
-     "Redesign in progress" note for why :root itself isn't flipped to dark
-     yet). --era-bg/--era-surface under :root[data-theme="dark"] below will
-     migrate to exactly these three once the rollout reaches that phase. */
-  --era-black: #0b0910;
-  --era-plum: #15101c;
-  --era-surface-dark: #1d1625;
+  --era-red: #e32636;
+  --era-red-bright: #ff4050;
+  --era-deep-red: #981b28;
+  --era-magenta: #c81f32;
+  --era-crimson: #76151f;
+  --era-gold: #c5a264;
+  --era-gold-ink: #e0c58e;
+  --era-gradient: linear-gradient(135deg, #e32636 0%, #ad1c2a 100%);
 
-  /* Gold — the one net-new brand hue, added for the 2026-08 visual
-     refresh (see docs/UI_DESIGN_SYSTEM.md's "Home hero" section).
-     Reserved for achievement/streak moments only — it does not appear
-     in navigation, forms, or ordinary status colors, so it stays
-     legible as a deliberate accent rather than another everyday hue. */
-  --era-gold: #f5b942;
-  --era-gold-ink: #b9791c; /* text-safe shade of gold, for on-tint labels */
+  --era-black: #0b0c0e;
+  --era-plum: #111216;
+  --era-surface-dark: #141519;
+  --era-bg: #0b0c0e;
+  --era-bg-subtle: #101115;
+  --era-surface: #15161a;
+  --era-surface-2: #1b1c21;
+  --era-surface-3: #22232a;
+  --era-glass: rgba(17, 18, 22, 0.88);
+  --era-hero-bg:
+    radial-gradient(85% 105% at 96% 0%, rgba(227, 38, 54, 0.20), transparent 54%),
+    radial-gradient(55% 75% at 8% 100%, rgba(197, 162, 100, 0.07), transparent 70%),
+    linear-gradient(145deg, #18191e 0%, #121317 58%, #0f1013 100%);
 
-  /* Deliberately theme-constant, like the brand colors above — HomeScreen's
-     hero is a fixed dark "spotlight" moment in both light and dark theme,
-     not a surface that adapts. Only declared here in the bare :root block
-     on purpose; redeclaring it under :root[data-theme="dark"] would just
-     repeat the same value. */
-  --era-hero-bg: #150e1c;
+  --era-text: #f6f4f2;
+  --era-text-muted: #a8a9b0;
+  --era-text-faint: #777983;
+  --era-border: rgba(255, 255, 255, 0.08);
+  --era-border-strong: rgba(255, 255, 255, 0.13);
+  --era-success: #55bd82;
+  --era-success-bg: rgba(85, 189, 130, 0.13);
+  --era-warning: #d7a34b;
+  --era-error: #ff6675;
 
-  --era-bg: #f8f6f9;
-  --era-bg-subtle: #ffffff;
-  --era-surface: #ffffff;
-  --era-surface-2: #f4eefa;
-  --era-text: #1b1720;
-  --era-text-muted: #756e7a;
-  --era-border: #eae5ed;
-  --era-success: #16845b;
-  --era-warning: #c77a00;
-  --era-error: #d92d20;
-  --era-shadow-soft: 0 8px 28px rgba(43, 22, 54, 0.06);
-  --era-shadow-lift: 0 12px 32px rgba(43, 22, 54, 0.12);
-  --era-shadow-overlay: 0 -8px 32px rgba(43, 22, 54, 0.18);
+  --era-shadow-soft: 0 12px 34px rgba(0, 0, 0, 0.22);
+  --era-shadow-lift: 0 18px 46px rgba(0, 0, 0, 0.30);
+  --era-shadow-dock: 0 18px 54px rgba(0, 0, 0, 0.42);
+  --era-shadow-overlay: 0 -18px 50px rgba(0, 0, 0, 0.48);
+  --era-shadow-red: 0 12px 30px rgba(227, 38, 54, 0.18);
 
-  /* Tint surfaces — a category's hue at low saturation as a card/chip
-     background, instead of a plain white card + a colored rail. Used
-     first by HomeScreen's hero cards and MetricCard's `tone` prop. */
-  --era-tint-violet: #f1e7fb;
-  --era-tint-red: #fdecea;
-  --era-tint-gold: #fff3dc;
-  --era-ring-track: #ecdff8;
-  --era-radius-sm: 0.625rem;
-  --era-radius-card: 20px;
-  --era-radius-control: 0.875rem;
+  --era-tint-violet: rgba(227, 38, 54, 0.10);
+  --era-tint-red: rgba(227, 38, 54, 0.13);
+  --era-tint-gold: rgba(197, 162, 100, 0.12);
+  --era-ring-track: rgba(255, 255, 255, 0.10);
+
+  --era-radius-sm: 0.75rem;
+  --era-radius-card: 22px;
+  --era-radius-control: 14px;
   --era-radius-pill: 999px;
   --era-radius-sheet: 1.5rem;
-  --era-motion-fast: 0.15s ease;
-  --era-motion: 0.25s ease;
 
-  --era-font-display: "Unbounded", "Segoe UI", system-ui, sans-serif;
-  --era-font-body: "Golos Text", "Segoe UI", system-ui, sans-serif;
+  /* Motion standard from the final ERA design brief. */
+  --era-motion-tap: 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --era-motion-fast: 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --era-motion-screen: 230ms cubic-bezier(0.22, 1, 0.36, 1);
+  --era-motion-card: 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  --era-motion-score: 520ms cubic-bezier(0.22, 1, 0.36, 1);
+  --era-motion-orbit: 820ms cubic-bezier(0.22, 1, 0.36, 1);
+  --era-motion-achievement: 1.05s cubic-bezier(0.22, 1, 0.36, 1);
 
-  /* Typography scale — see docs/UI_DESIGN_SYSTEM.md. Screens still set
-     font-size inline per element (React inline styles, not utility
-     classes, is this codebase's established pattern — see PR 14's design
-     audit), but every one of those inline values should be drawn from
-     this scale rather than an arbitrary number, so the scale is the
-     single source of truth even though it isn't auto-applied by the
-     cascade. era-text-base doubles as the body default (see `body` rule
-     below). */
-  --era-text-xs: 0.75rem; /* micro labels, timestamps */
-  --era-text-sm: 0.8125rem; /* secondary text, captions */
-  --era-text-base: 0.875rem; /* body copy, buttons, inputs */
-  --era-text-lg: 1rem; /* card titles, list item titles */
-  --era-text-xl: 1.125rem; /* section headings */
-  --era-text-2xl: 1.375rem; /* screen titles */
-  --era-text-3xl: 1.75rem; /* hero numbers (points, level) */
-  --era-text-4xl: 2rem; /* hero H1 (Home greeting), 2026-08 redesign brief section 6 */
+  --era-font-display: "Manrope", "Segoe UI", system-ui, sans-serif;
+  --era-font-body: "Manrope", "Segoe UI", system-ui, sans-serif;
 
-  /* Spacing scale — 4px base unit, matches the rem values already used
-     ad hoc across every screen (0.25/0.5/0.75/1/1.25/1.5/2rem). */
+  --era-text-xs: 0.75rem;
+  --era-text-sm: 0.8125rem;
+  --era-text-base: 0.9375rem;
+  --era-text-lg: 1.0625rem;
+  --era-text-xl: 1.25rem;
+  --era-text-2xl: 1.5rem;
+  --era-text-3xl: 2rem;
+  --era-text-4xl: 3rem;
+
   --era-space-1: 0.25rem;
   --era-space-2: 0.5rem;
   --era-space-3: 0.75rem;
@@ -97,324 +84,232 @@
   --era-space-8: 2rem;
 }
 
-/* Applied to <html> by telegram/webApp.ts's applyTelegramTheme(), mirroring
-   Telegram's own colorScheme ("themeChanged" event keeps it live). Brand
-   colors (red/violet/magenta/gradient) stay the same in both themes —
-   they're already saturated enough to read on a dark surface; only
-   surface/text/border/shadow tokens need a dark variant. */
-:root[data-theme="dark"] {
-  /* 2026-08 UX/UI redesign brief section 3's exact dark palette --
-     Deep Black / Deep Plum / Surface, replacing the previous ad hoc dark
-     hexes. --era-bg-subtle stays one step darker than --era-black itself
-     (recessed surfaces read as "sunk into" the page, same relationship
-     the old palette already had). */
-  --era-bg: var(--era-black);
-  --era-bg-subtle: #08060c;
-  --era-surface: var(--era-plum);
-  --era-surface-2: var(--era-surface-dark);
-  --era-text: #f3eff6;
-  --era-text-muted: #a99fb0;
-  --era-border: #362c40;
-  --era-success: #3ecf96;
-  --era-warning: #e8a23d;
-  --era-error: #f0655c;
-  --era-shadow-soft: 0 8px 28px rgba(0, 0, 0, 0.35);
-  --era-shadow-lift: 0 12px 32px rgba(0, 0, 0, 0.5);
-
-  --era-gold-ink: #f5b942;
-  --era-tint-violet: #2c1e3a;
-  --era-tint-red: #34191d;
-  --era-tint-gold: #332615;
-  --era-ring-track: #2f2138;
-}
-
 * {
   box-sizing: border-box;
-  /* Kills the default gray flash Telegram's Android WebView and mobile
-     Chrome paint on every tap — this is a touch-only app (see
-     frontend/e2e/*.spec.ts's fixed 390x844 viewport). Buttons keep their
-     own explicit tap feedback (button:active below); hover styles are
-     scoped to real hover-capable pointers further down, so they can't
-     "stick" after a tap either. */
   -webkit-tap-highlight-color: transparent;
 }
 
 html {
-  /* Telegram's WebView occasionally rubber-bands the whole page on a
-     vertical swipe that starts past the content edge, which reads as the
-     app "slipping" out from under a tap. Chained to body below too since
-     some WebKit builds only honor it on one or the other. */
   overscroll-behavior-y: none;
+  background: var(--era-bg);
 }
 
 body {
   margin: 0;
-  background: var(--era-bg);
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(70% 42% at 104% -4%, rgba(227, 38, 54, 0.12), transparent 66%),
+    radial-gradient(52% 34% at -8% 32%, rgba(197, 162, 100, 0.035), transparent 72%),
+    linear-gradient(180deg, #0d0e11 0%, #0b0c0e 58%, #090a0c 100%);
   color: var(--era-text);
   font-family: var(--era-font-body);
+  font-size: var(--era-text-base);
+  line-height: 1.45;
+  letter-spacing: -0.005em;
   overscroll-behavior-y: none;
 }
 
-/* Default look for every plain <button> in the app. Components that set
-   their own inline `style` (ProjectWorkspace, LeaderScreen's publish
-   button, etc.) override this via normal CSS-vs-inline precedence, so
-   this only upgrades buttons that were previously unstyled browser
-   defaults. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
+  z-index: -1;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
 button {
   font-family: var(--era-font-body);
-  font-size: 0.875rem;
-  font-weight: 600;
-  min-height: 2.75rem;
+  font-size: var(--era-text-base);
+  font-weight: 750;
+  min-height: 44px;
   padding: 0.625rem 1rem;
   border-radius: var(--era-radius-control);
   border: 1px solid var(--era-border);
-  background: var(--era-surface);
+  background: var(--era-surface-2);
   color: var(--era-text);
   cursor: pointer;
   transition:
-    transform var(--era-motion-fast),
+    transform var(--era-motion-tap),
     box-shadow var(--era-motion-fast),
     background var(--era-motion-fast),
     border-color var(--era-motion-fast),
+    color var(--era-motion-fast),
     opacity var(--era-motion-fast);
 }
 
-/* hover-capable pointer only: on tap, mobile WebKit/Chrome otherwise
-   "stick" a :hover style until the next unrelated tap, which reads as a
-   button or card staying highlighted after you've already moved on —
-   this is a touch-only app (no mouse), so real :hover only ever applies
-   on a device that actually has one. */
+button:active:not(:disabled) { transform: scale(0.98); }
+button:disabled { opacity: 0.48; cursor: not-allowed; }
+button:focus-visible { outline: 2px solid rgba(227, 38, 54, 0.72); outline-offset: 2px; }
+
 @media (hover: hover) and (pointer: fine) {
   button:hover:not(:disabled) {
-    border-color: var(--era-violet);
-    box-shadow: var(--era-shadow-soft);
+    border-color: var(--era-border-strong);
+    background: var(--era-surface-3);
   }
-
   .era-btn-primary:hover:not(:disabled) {
-    box-shadow: 0 8px 24px rgba(116, 44, 196, 0.35);
+    box-shadow: 0 14px 34px rgba(227, 38, 54, 0.24);
     border-color: transparent;
   }
-
-  .era-card:hover {
+  .era-card[role="button"]:hover,
+  button.era-card:hover {
     box-shadow: var(--era-shadow-lift);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
   }
 }
 
-button:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-button:focus-visible {
-  outline: 2px solid var(--era-violet);
-  outline-offset: 2px;
-}
-
-/* Default look for every plain <input>/<textarea>/<select>. Screens set
-   layout-only inline styles (width, flex, margin) on top of this — see
-   e.g. PeopleList.tsx — so this is the one place font-size lives for form
-   controls. That matters beyond looks: iOS Safari and Telegram's in-app
-   WebView both zoom the whole page in when a focused input's font-size is
-   under 16px, which is exactly what was happening — form controls had no
-   font-size of their own and fell back to the browser's UA stylesheet
-   (often ~13px), not this file's 16px body-adjacent size. */
 input:not([type="checkbox"]):not([type="radio"]),
 textarea,
 select {
   font-family: var(--era-font-body);
   font-size: 1rem;
   color: var(--era-text);
-  background: var(--era-bg-subtle);
+  background: var(--era-surface-2);
   border: 1px solid var(--era-border);
   border-radius: var(--era-radius-control);
   padding: 0.75rem 0.875rem;
-  min-height: 2.75rem;
+  min-height: 44px;
   width: 100%;
-  transition: border-color var(--era-motion-fast), box-shadow var(--era-motion-fast);
+  transition: border-color var(--era-motion-fast), box-shadow var(--era-motion-fast), background var(--era-motion-fast);
 }
-
-textarea {
-  min-height: 4.5rem;
-  line-height: 1.5;
-  resize: vertical;
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: var(--era-text-muted);
-  opacity: 1;
-}
-
+textarea { min-height: 5rem; line-height: 1.5; resize: vertical; }
+input::placeholder, textarea::placeholder { color: var(--era-text-faint); opacity: 1; }
 input:not([type="checkbox"]):not([type="radio"]):focus,
 textarea:focus,
 select:focus {
   outline: none;
-  border-color: var(--era-violet);
-  box-shadow: 0 0 0 3px rgba(116, 44, 196, 0.15);
+  background: #202126;
+  border-color: rgba(227, 38, 54, 0.56);
+  box-shadow: 0 0 0 3px rgba(227, 38, 54, 0.10);
 }
+input:disabled, textarea:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
+input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--era-red); cursor: pointer; flex-shrink: 0; }
 
-input:disabled,
-textarea:disabled,
-select:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-input[type="checkbox"] {
-  width: 1.125rem;
-  height: 1.125rem;
-  accent-color: var(--era-violet);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-/* Applied to the highest-emphasis call-to-action per screen (submit,
-   approve, register, download) so visual weight matches how often and
-   how important the action actually is — not every button should shout. */
 .era-btn-primary {
-  border: none;
-  background: var(--era-gradient);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid transparent;
+  background: linear-gradient(135deg, #e32636 0%, #b71f2d 100%);
   color: #fff;
-  box-shadow: 0 6px 18px rgba(116, 44, 196, 0.25);
+  box-shadow: var(--era-shadow-red);
+}
+.era-btn-primary::after {
+  content: "";
+  position: absolute;
+  top: -70%;
+  bottom: -70%;
+  left: -35%;
+  width: 28%;
+  opacity: 0;
+  transform: skewX(-16deg);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
+  transition: left 420ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease;
+  pointer-events: none;
+}
+.era-btn-primary:active:not(:disabled) { background: linear-gradient(135deg, #c91f2e 0%, #8f1823 100%); }
+.era-btn-primary:active:not(:disabled)::after { left: 112%; opacity: .8; }
+
+.era-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: .625rem 1rem;
+  border-radius: var(--era-radius-control);
+  border: 1px solid var(--era-border);
+  background: var(--era-surface-2);
+  color: var(--era-text);
 }
 
 .era-card {
-  transition: box-shadow var(--era-motion), transform var(--era-motion);
+  transition:
+    box-shadow var(--era-motion-card),
+    transform var(--era-motion-tap),
+    border-color var(--era-motion-fast),
+    background var(--era-motion-fast);
 }
+.era-card[role="button"], button.era-card { cursor: pointer; }
+.era-card[role="button"]:active, button.era-card:active { transform: scale(0.98); }
 
-/* PillTabs' horizontal scroller (docs/UI_DESIGN_SYSTEM.md) — the native
-   scrollbar Chrome/Android paint under an overflow-x:auto row read as a
-   stray gray slider bolted under an otherwise polished pill row. Scrolling
-   itself stays fully functional (touch drag / trackpad), only the visible
-   track is removed. */
-.era-pilltabs-scroller {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* old Edge */
+.era-pilltabs-scroller { scrollbar-width: none; -ms-overflow-style: none; }
+.era-pilltabs-scroller::-webkit-scrollbar { display: none; }
+.era-pilltabs-fade { mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent 100%); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent 100%); }
+
+@keyframes era-page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-
-.era-pilltabs-scroller::-webkit-scrollbar {
-  display: none; /* Chrome/Android WebView/Safari */
-}
-
-/* Right-edge fade on the same scroller, only where the option list can
-   genuinely run past the viewport (PillTabs, not the fixed-width
-   SegmentedTabs) — a soft hint that there's more to scroll to, now that
-   the native scrollbar itself is hidden. Fades to transparent since the
-   track background (era-surface-2) already shows through underneath. */
-.era-pilltabs-fade {
-  mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent 100%);
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent 100%);
-}
-
-@keyframes era-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .era-page {
-  animation: era-fade-in var(--era-motion);
-  /* Every screen root is a flex item inside UserLayout's column (or a
-     flex column itself, per its own inline styles) — without this, a
-     flex item's default min-width is its content's width, not 0, and a
-     wide-enough descendant (a PillTabs row, an unwrapped table) forces
-     this wider instead of shrinking to the viewport. Found by
-     frontend/e2e/responsive.spec.ts at 320/360px. */
+  animation: era-page-in var(--era-motion-screen) both;
   min-width: 0;
 }
 
-/* Skeleton / Toast / Modal / BottomSheet — see components/Skeleton.tsx,
-   components/Toast.tsx, components/Modal.tsx, components/BottomSheet.tsx
-   and docs/UI_DESIGN_SYSTEM.md. Kept here rather than inline styles
-   because keyframes and backdrop-filter can't be expressed as React
-   inline style objects. */
-@keyframes era-shimmer {
-  0% {
-    background-position: -120% 0;
-  }
-  100% {
-    background-position: 120% 0;
-  }
+@keyframes era-card-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.era-stagger > * {
+  opacity: 0;
+  animation: era-card-in var(--era-motion-card) both;
+}
+.era-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.era-stagger > *:nth-child(2) { animation-delay: 30ms; }
+.era-stagger > *:nth-child(3) { animation-delay: 60ms; }
+.era-stagger > *:nth-child(4) { animation-delay: 90ms; }
+.era-stagger > *:nth-child(n+5) { opacity: 1; animation: none; }
+
+@keyframes era-ambient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.era-premium-ambient {
+  background-size: 180% 180% !important;
+  animation: era-ambient 12s ease-in-out infinite;
 }
 
+@keyframes era-shimmer {
+  0% { background-position: -120% 0; }
+  100% { background-position: 120% 0; }
+}
 .era-skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--era-border) 25%,
-    var(--era-bg-subtle) 50%,
-    var(--era-border) 75%
-  );
+  background: linear-gradient(90deg, #17181c 25%, #24252b 50%, #17181c 75%);
   background-size: 200% 100%;
-  animation: era-shimmer 1.4s ease-in-out infinite;
+  animation: era-shimmer 1.35s ease-in-out infinite;
   border-radius: var(--era-radius-sm);
 }
 
-@keyframes era-overlay-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
+@keyframes era-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+.era-overlay-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.64); animation: era-overlay-in var(--era-motion-fast); z-index: 40; }
+@keyframes era-sheet-in { from { opacity: .6; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
+.era-bottom-sheet { animation: era-sheet-in var(--era-motion-fast) cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes era-modal-in { from { opacity: 0; transform: translateY(8px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.era-modal { animation: era-modal-in var(--era-motion-fast); }
+@keyframes era-toast-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+.era-toast { animation: era-toast-in var(--era-motion-fast); }
 
-.era-overlay-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(20, 12, 26, 0.5);
-  animation: era-overlay-in var(--era-motion-fast);
-  z-index: 40;
+@keyframes era-success-pop {
+  0% { transform: scale(.96); opacity: .75; }
+  55% { transform: scale(1.015); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
+.era-success-state { animation: era-success-pop 420ms cubic-bezier(0.22, 1, 0.36, 1); }
 
-@keyframes era-sheet-in {
-  from {
-    transform: translateY(100%);
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
   }
-  to {
-    transform: translateY(0);
-  }
-}
-
-.era-bottom-sheet {
-  animation: era-sheet-in var(--era-motion) cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@keyframes era-modal-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.era-modal {
-  animation: era-modal-in var(--era-motion-fast);
-}
-
-@keyframes era-toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(-12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.era-toast {
-  animation: era-toast-in var(--era-motion-fast);
 }

@@ -1,17 +1,8 @@
-"""Consent audit trail — technical foundation, not a policy decision.
+"""Consent audit trail for the approved ERA registration policy.
 
-`CURRENT_POLICY_VERSION` is a placeholder string, not real policy text.
-Nothing in this module writes, validates, or enforces policy content —
-that requires real text from the platform owner (see
-docs/DATA_INVENTORY.md section 5, docs/PRODUCTION_READINESS_AUDIT.md
-finding #16). This only makes sure that whenever a real policy exists,
-switching this one constant is enough to start recording consent against
-it, with every past record still showing which version it was actually
-given under.
-
-`User.personal_data_consent` (bare bool) remains the field the app
-actually checks anywhere — `record_consent()` is purely additive
-logging, called alongside it, not a replacement.
+`User.personal_data_consent` remains the fast boolean used by existing
+application logic. `ConsentLog` is the audit trail that records which
+version of the actual user-visible policy was accepted and when.
 """
 
 from __future__ import annotations
@@ -20,8 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import ConsentLog
+from app.services.consent_policy import CONSENT_POLICY_VERSION
 
-CURRENT_POLICY_VERSION = "unset-v1"
+CURRENT_POLICY_VERSION = CONSENT_POLICY_VERSION
 
 
 async def record_consent(

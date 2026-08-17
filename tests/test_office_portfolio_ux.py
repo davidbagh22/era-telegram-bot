@@ -20,11 +20,12 @@ def test_profile_sections_exposes_direct_portfolio_pdf() -> None:
     assert "cabinet:portfolio" in callbacks
 
 
-def test_office_management_router_precedes_legacy_panel() -> None:
+def test_office_management_router_is_wired_and_legacy_panel_is_not() -> None:
     source = (ROOT / "app/handlers/admin/__init__.py").read_text(encoding="utf-8")
 
     assert "offices_management.router" in source
-    assert source.index("offices_management.router") < source.index("panel.router")
+    assert "panel.router" not in source
+    assert "panel," not in source
 
 
 def test_office_list_is_owned_by_modern_router_and_exposes_delete() -> None:

@@ -77,9 +77,21 @@ async def _database_admin_ids(settings: Settings) -> set[int]:
         return set()
 
 
-async def safe_send(bot: Bot, chat_id: int, text: str, reply_markup=None) -> bool:
+async def safe_send(
+    bot: Bot,
+    chat_id: int,
+    text: str,
+    reply_markup=None,
+    *,
+    parse_mode: str | None = None,
+) -> bool:
     try:
-        await bot.send_message(chat_id, text, reply_markup=reply_markup)
+        kwargs = {"reply_markup": reply_markup}
+        # Preserve the historical send_message call shape for every existing
+        # plain-text caller; only FAQ/rich-text callers opt into parse_mode.
+        if parse_mode is not None:
+            kwargs["parse_mode"] = parse_mode
+        await bot.send_message(chat_id, text, **kwargs)
         return True
     except TelegramAPIError:
         logger.exception("Could not deliver notification to chat %s", chat_id)
@@ -169,10 +181,15 @@ async def safe_answer_media(
 
 
 async def admin_notification_recipients(settings: Settings) -> set[int]:
+    """Return actual administrators for automatic administrative notifications.
+
+    The leaders chat is intentionally not included here. Automatic events such as
+    new registration applications must stay private to admins. Messages explicitly
+    sent to the leaders chat from Admin Mode continue to use the dedicated chat
+    broadcast path and are unaffected by this recipient list.
+    """
     recipients = set(settings.admin_ids)
     recipients.update(await _database_admin_ids(settings))
-    if settings.leaders_chat_id:
-        recipients.add(settings.leaders_chat_id)
     return recipients
 
 

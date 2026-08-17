@@ -56,8 +56,6 @@ def directions_keyboard(
             "international",
         ]
 
-    # Участник может выбрать путь без вступления в конкретное направление
-    # независимо от выбранного департамента.
     keys.append("participate")
 
     builder = InlineKeyboardBuilder()
@@ -103,10 +101,65 @@ def desired_path_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def referral_code_keyboard(prefill: str | None = None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if prefill:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"Использовать код {prefill}",
+                    callback_data="reg:ref:use",
+                )
+            ]
+        )
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="Ввести другой код",
+                    callback_data="reg:ref:change",
+                )
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="У меня нет кода",
+                callback_data="reg:ref:skip",
+            )
+        ]
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="← Вернуться к регистрации",
+                callback_data="reg:ref:back",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def consent_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Согласен", callback_data="reg:consent:yes")],
+            [
+                InlineKeyboardButton(
+                    text="✅ Согласен и продолжить",
+                    callback_data="reg:consent:yes",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🎁 Ввести код друга",
+                    callback_data="reg:ref:start",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📄 Полные условия",
+                    callback_data="reg:consent:full",
+                )
+            ],
             [InlineKeyboardButton(text="Не согласен", callback_data="reg:consent:no")],
         ]
     )

@@ -17,7 +17,8 @@ from app.database.models import (
     UserDepartment,
     UserDirection,
 )
-from app.services.consent_service import record_consent
+from app.services.consent_service import CURRENT_POLICY_VERSION, record_consent
+from app.services.referral_service import bind_referral_code
 from app.utils.validators import calculate_age
 
 
@@ -76,15 +77,13 @@ async def create_user_from_registration(
     )
     session.add(user)
     await session.flush()
-    # Additive audit trail alongside personal_data_consent above — see
-    # app/services/consent_service.py. Does not change registration
-    # behavior or what the user sees.
     await record_consent(
         session,
         user_id=user.id,
         consent_type="registration",
         granted=True,
         source="bot",
+        policy_version=str(data.get("consent_policy_version") or CURRENT_POLICY_VERSION),
     )
     await assign_interests(
         session,
@@ -92,6 +91,17 @@ async def create_user_from_registration(
         data.get("departments", []),
         data.get("directions", []),
     )
+    # A friend code is optional and must never make an otherwise valid
+    # registration fail. It is validated interactively before this point;
+    # re-validation protects against stale/archived inviter data.
+    try:
+        await bind_referral_code(
+            session,
+            invitee=user,
+            value=data.get("referral_code"),
+        )
+    except ValueError:
+        pass
     return user, True
 
 

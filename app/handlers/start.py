@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import User
+from app.keyboards.bot_shell import main_inline_keyboard
 from app.keyboards.common import registration_keyboard, subscription_keyboard
-from app.keyboards.participant import main_inline_keyboard
 from app.keyboards.registration import pending_registration_keyboard
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.utils import texts, ux_texts

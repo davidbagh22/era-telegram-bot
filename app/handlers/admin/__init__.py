@@ -1,4 +1,5 @@
 from aiogram import F, Router
+
 from app.handlers.admin import (
     analytics_filters,
     surveys_analytics,
@@ -24,12 +25,23 @@ from app.handlers.admin import (
     approval_bonus_fix,
     chat_binding_stability,
     offices_management,
-    panel,
 )
+from app.middlewares.admin_bot_access import AdminBotAccessFilter
 
 router = Router(name="admin_root")
-router.message.filter(F.chat.type == "private")
-router.callback_query.filter(F.message.chat.type == "private")
+
+# Root filters are intentionally used here instead of an outer middleware.
+# A middleware on admin_root runs before child-handler matching and would
+# intercept every private participant callback because this router is ordered
+# before participant_router. A false root filter safely skips this router and
+# lets the update continue to its real owner while keeping all legacy admin
+# handlers inaccessible to non-admin users.
+router.message.filter(F.chat.type == "private", AdminBotAccessFilter())
+router.callback_query.filter(
+    F.message.chat.type == "private",
+    AdminBotAccessFilter(),
+)
+
 router.include_router(analytics_filters.router)
 router.include_router(surveys_analytics.router)
 router.include_router(management_ready.router)
@@ -54,6 +66,5 @@ router.include_router(partners_admin.router)
 router.include_router(approval_bonus_fix.router)
 router.include_router(chat_binding_stability.router)
 router.include_router(offices_management.router)
-router.include_router(panel.router)
 
 __all__ = ["router"]

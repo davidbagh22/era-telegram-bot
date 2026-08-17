@@ -6,10 +6,11 @@ the files touched by the current block. Do not re-audit the whole repo.
 
 ## Baseline
 
-- Current `main` commit: `2066103f48eceed70837586ebcdc48d73194be7f`
-  (PR #126 merge: Admin Opportunity Application Review — the 12th and
-  final PR in the original 12-PR plan).
-- Prior merges, newest first: `e05d1e2ad` (PR #125, Admin Task
+- Current `main` commit: `12439944440a7faa9d7d0594109ceac986e27676`
+  (PR #198 merge: ERA Dark Living System foundation).
+- Prior merges, newest first: `2066103f` (PR #126, Admin Opportunity
+  Application Review — the 12th and final PR in the original 12-PR plan),
+  `e05d1e2ad` (PR #125, Admin Task
   Submission Review), `3211d21a5` (PR #124, Admin Event
   Moderation), `908896e80` (PR #122, frontend design
   polish pass), `c417f3aa` (PR #121, Leader Mode —
@@ -2726,6 +2727,45 @@ feature-parity work. No changes were made here to avoid restructuring
 already-working screens without a concrete gap driving the change; any
 gap found later becomes its own narrow follow-up rather than a
 speculative rewrite now.
+
+## 2026-08-14 — ERA Dark Living System foundation (PR #198 merged)
+
+Started the new owner brief's Mini App redesign from the surfaces users
+see first, while keeping live backend contracts intact.
+
+PR: https://github.com/davidbagh22/era-telegram-bot/pull/198
+Merge commit: `12439944440a7faa9d7d0594109ceac986e27676`.
+
+**Participant IA**: bottom navigation is now exactly five participant
+areas: `Главная`, `Проекты`, `События`, `Сообщество`, `Профиль`.
+Leader/Admin workspaces remain outside the participant dock. Projects
+and Events are no longer hidden inside the old Activity container.
+
+**Frontend**: `tokens.css` flipped to a dark-first ERA system, Onest
+loads from Google Fonts, cards use controlled dark glass surfaces, the
+bottom dock is a five-tab glass navigation, Home was rebuilt around
+identity/progress/attention/next actions, and new top-level
+`ProjectsScreen`, `EventsScreen`, and `CommunityScreen` routes were
+added. `OpportunitiesScreen` now works as a nested Community surface
+with a real back path.
+
+**Bot entry points**: `navigation_guide_keyboard()` now exposes direct
+Mini App routes for Projects, Events, Community, Profile, plus quick
+legacy-compatible Tasks and Opportunities links. New helpers:
+`miniapp_projects_url()` and `miniapp_community_url()`.
+
+**Tests/checks**: `npm run build` is green. Targeted backend tests are
+green: `tests/test_main_inline_keyboard_miniapp_button.py`,
+`tests/test_task_submit_deep_link.py`,
+`tests/test_bot_command_menu_cleanup.py` (`32 passed`). Full
+`python -m pytest -q` was started twice and did not fail, but exceeded
+the local time limits (180s, then 600s) before completing. GitHub Actions
+for PR #198 passed: frontend, backend tests, e2e, and secret scan.
+
+**Next**: run browser QA against a local backend/Mini App session and
+continue the visual pass screen-by-screen: Project Workspace internals,
+Profile, Leader Mode, Admin Mode, and empty/error states under the new
+dark system.
 
 ## Progress vs. the 12-PR plan
 

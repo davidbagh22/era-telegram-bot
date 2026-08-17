@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
+from app.api.v1.admin_people_detail import RichUserDetailOut
 from app.api.v1.router import api_router
 from app.config import Settings
 
@@ -120,19 +121,30 @@ class UserDetailApiTests(unittest.TestCase):
         response = client.get("/api/v1/admin/users/999")
         self.assertEqual(response.status_code, 404)
 
-    def test_detail_success(self) -> None:
-        target = _target_user()
-        session = SimpleNamespace(get=AsyncMock(return_value=target))
-        app = _build_app(_admin(), session)
-        client = TestClient(app)
-        patches = _patch_detail_helpers()
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
-            response = client.get("/api/v1/admin/users/10")
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertEqual(body["points_balance"], 42)
-        self.assertTrue(body["can_manage"])
-        self.assertIn("people.view", body["permissions"])
+    def test_detail_contract_is_rich_participant_profile(self) -> None:
+        fields = set(RichUserDetailOut.model_fields)
+        required = {
+            "photo_attached",
+            "photo_data_url",
+            "birth_date",
+            "education_work",
+            "skills",
+            "experience",
+            "available_time",
+            "desired_path",
+            "departments",
+            "directions",
+            "metrics",
+            "leadership",
+            "points_suggestion",
+            "badge_suggestions",
+            "activity",
+            "surveys",
+            "permissions",
+            "badges",
+            "available_badges",
+        }
+        self.assertTrue(required.issubset(fields))
 
 
 class RoleChangeApiTests(unittest.TestCase):

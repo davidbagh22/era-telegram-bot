@@ -26,7 +26,7 @@ class FakeBot:
         self.member_status = member_status
         self.raise_on_get_member = raise_on_get_member
 
-    async def send_message(self, chat_id: int, text: str, reply_markup=None):
+    async def send_message(self, chat_id: int, text: str, reply_markup=None, parse_mode=None):
         self.sent.append((chat_id, text))
         return SimpleNamespace(message_id=1)
 

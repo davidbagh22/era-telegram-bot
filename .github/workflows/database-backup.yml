@@ -1,12 +1,24 @@
 name: Database backup
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/database-backup.yml"
   schedule:
     - cron: "17 1 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
+  id-token: write
+
+env:
+  BACKUP_DIR: backups
+  PRODUCTION_BASE: https://era-telegram-bot.onrender.com
+  BACKUP_API_BASE: https://era-telegram-bot.onrender.com/api/v1/internal/backup
+  PG_MAJOR: "18"
+  PG_BIN: /usr/lib/postgresql/18/bin
 
 concurrency:
   group: database-backup
@@ -18,7 +30,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_USER: restore
           POSTGRES_PASSWORD: restore
@@ -32,57 +44,367 @@ jobs:
           --health-retries 10
 
     env:
-      DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
       RESTORE_DATABASE_URL: postgresql://restore:restore@localhost:5432/era_restore_check
-      BACKUP_DIR: backups
-      RETENTION_DAYS: "30"
+      BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+      BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX }}
+      BACKUP_S3_REGION: ${{ secrets.BACKUP_S3_REGION }}
+      BACKUP_S3_ENDPOINT_URL: ${{ secrets.BACKUP_S3_ENDPOINT_URL }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Install PostgreSQL client
+      - name: Install exact PostgreSQL 18 restore clients
+        shell: bash
         run: |
+          set -Eeuo pipefail
           sudo apt-get update
-          sudo apt-get install -y postgresql-client
+          sudo apt-get install -y ca-certificates curl gnupg jq
+          sudo install -d -m 0755 /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | gpg --dearmor \
+            | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg >/dev/null
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y "postgresql-client-${PG_MAJOR}"
 
-      - name: Validate backup secret
+          test -x "${PG_BIN}/pg_dump"
+          test -x "${PG_BIN}/pg_restore"
+          test -x "${PG_BIN}/psql"
+          "${PG_BIN}/pg_dump" --version | grep -q "PostgreSQL) ${PG_MAJOR}\."
+          "${PG_BIN}/pg_restore" --version | grep -q "PostgreSQL) ${PG_MAJOR}\."
+          "${PG_BIN}/psql" --version | grep -q "PostgreSQL) ${PG_MAJOR}\."
+          "${PG_BIN}/pg_restore" --version
+
+      - name: Install migration verifier
+        shell: bash
         run: |
-          if [ -z "${DATABASE_URL}" ]; then
-            echo "Repository secret BACKUP_DATABASE_URL is not configured" >&2
+          set -Eeuo pipefail
+          python3 -m venv /tmp/era-backup-tools
+          /tmp/era-backup-tools/bin/python -m pip install --disable-pip-version-check --no-input "alembic>=1.14,<2"
+          /tmp/era-backup-tools/bin/alembic heads >/dev/null
+
+      - name: Validate optional external storage
+        id: config
+        shell: bash
+        run: |
+          S3_SET=0
+          for name in BACKUP_S3_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            if [ -n "${!name:-}" ]; then S3_SET=$((S3_SET + 1)); fi
+          done
+          if [ "${S3_SET}" -eq 0 ]; then
+            echo "external_storage=false" >> "${GITHUB_OUTPUT}"
+          elif [ "${S3_SET}" -eq 3 ]; then
+            echo "external_storage=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "S3 backup configuration is partial; bucket/access key/secret must be set together" >&2
             exit 1
           fi
 
-      - name: Create backup
-        id: backup
+      - name: Install AWS CLI for external storage only
+        if: steps.config.outputs.external_storage == 'true'
+        shell: bash
         run: |
-          chmod +x scripts/backup_database.sh scripts/verify_database_restore.sh
-          BACKUP_FILE="$(scripts/backup_database.sh)"
+          set -Eeuo pipefail
+          python3 -m venv /tmp/era-awscli
+          /tmp/era-awscli/bin/python -m pip install --disable-pip-version-check --no-input awscli
+          echo "/tmp/era-awscli/bin" >> "${GITHUB_PATH}"
+
+      - name: Select retention tier
+        id: tier
+        shell: bash
+        run: |
+          DAY="$(date -u +%d)"
+          DOW="$(date -u +%u)"
+          if [ "${DAY}" = "01" ]; then
+            TYPE="monthly"
+            GH_RETENTION="90"
+          elif [ "${DOW}" = "7" ]; then
+            TYPE="weekly"
+            GH_RETENTION="28"
+          else
+            TYPE="daily"
+            GH_RETENTION="7"
+          fi
+          echo "backup_type=${TYPE}" >> "${GITHUB_OUTPUT}"
+          echo "github_retention_days=${GH_RETENTION}" >> "${GITHUB_OUTPUT}"
+          echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
+
+      - name: Wait for matching production commit
+        id: deploy_gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          EXPECTED="${GITHUB_SHA}"
+          for attempt in $(seq 1 60); do
+            HEALTH="$(curl --silent --show-error --max-time 10 "${PRODUCTION_BASE}/health" || true)"
+            LIVE="$(printf '%s' "${HEALTH}" | jq -r '.commit // empty' 2>/dev/null || true)"
+            if [ "${LIVE}" = "${EXPECTED}" ] || [ "${LIVE}" = "${EXPECTED:0:7}" ]; then
+              echo "Production is serving expected commit ${EXPECTED:0:7}."
+              exit 0
+            fi
+            if [ $((attempt % 6)) -eq 0 ]; then
+              echo "Production deploy not ready yet (attempt ${attempt}/60)."
+            fi
+            sleep 10
+          done
+          echo "Production did not reach the expected commit before backup timeout." >&2
+          exit 1
+
+      - name: Download transient production snapshot using GitHub OIDC
+        id: backup
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "${BACKUP_DIR}"
+          OIDC_RESPONSE="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=era-platform-backup")"
+          OIDC_TOKEN="$(printf '%s' "${OIDC_RESPONSE}" | jq -er '.value')"
+          echo "::add-mask::${OIDC_TOKEN}"
+
+          BACKUP_FILE="${BACKUP_DIR}/era-$(date -u +%Y%m%dT%H%M%SZ).dump"
+          HEADERS_FILE="$(mktemp)"
+          RESPONSE_FILE="$(mktemp)"
+          chmod 600 "${HEADERS_FILE}" "${RESPONSE_FILE}"
+          HTTP_STATUS="$(curl --silent --show-error --max-time 120 \
+            -H "Authorization: Bearer ${OIDC_TOKEN}" \
+            -D "${HEADERS_FILE}" \
+            -o "${RESPONSE_FILE}" \
+            -w '%{http_code}' \
+            "${BACKUP_API_BASE}/snapshot" || true)"
+
+          if [ "${HTTP_STATUS}" != "200" ]; then
+            SAFE_CODE="$(jq -r '.detail // empty' "${RESPONSE_FILE}" 2>/dev/null || true)"
+            case "${SAFE_CODE}" in
+              pg_dump_version_mismatch|pg_dump_auth_failed|pg_dump_connection_failed|pg_dump_unavailable|pg_dump_empty|pg_dump_failed|database_url_incomplete|snapshot_failed)
+                ;;
+              *) SAFE_CODE="snapshot_http_error" ;;
+            esac
+            echo "error_code=${SAFE_CODE}" >> "${GITHUB_OUTPUT}"
+            echo "Production snapshot endpoint failed: ${SAFE_CODE} (HTTP ${HTTP_STATUS:-000})." >&2
+            rm -f "${HEADERS_FILE}" "${RESPONSE_FILE}"
+            exit 1
+          fi
+
+          mv "${RESPONSE_FILE}" "${BACKUP_FILE}"
+          chmod 600 "${BACKUP_FILE}"
+
+          LOCAL_SHA="$(sha256sum "${BACKUP_FILE}" | awk '{print $1}')"
+          SERVER_SHA="$(awk 'tolower($1)=="x-era-backup-sha256:" {gsub("\r", "", $2); print $2}' "${HEADERS_FILE}" | tail -n1)"
+          rm -f "${HEADERS_FILE}"
+          if [ -z "${SERVER_SHA}" ] || [ "${LOCAL_SHA}" != "${SERVER_SHA}" ]; then
+            echo "error_code=snapshot_checksum_mismatch" >> "${GITHUB_OUTPUT}"
+            echo "Production snapshot checksum mismatch" >&2
+            rm -f "${BACKUP_FILE}"
+            exit 1
+          fi
+
           echo "backup_file=${BACKUP_FILE}" >> "${GITHUB_OUTPUT}"
-          echo "sha256=$(sha256sum "${BACKUP_FILE}" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+          echo "sha256=${LOCAL_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "size_bytes=$(stat -c '%s' "${BACKUP_FILE}")" >> "${GITHUB_OUTPUT}"
+          echo "backup_key=$(basename "${BACKUP_FILE}" .dump)" >> "${GITHUB_OUTPUT}"
 
       - name: Verify restore on isolated PostgreSQL
+        id: restore
         env:
           BACKUP_FILE: ${{ steps.backup.outputs.backup_file }}
           BACKUP_SHA256: ${{ steps.backup.outputs.sha256 }}
-        run: scripts/verify_database_restore.sh
+          ALEMBIC_BIN: /tmp/era-backup-tools/bin/alembic
+        shell: bash
+        run: |
+          set +e
+          chmod +x scripts/verify_database_restore.sh
+          scripts/verify_database_restore.sh
+          RESULT=$?
+          set -e
+          if [ "${RESULT}" -ne 0 ]; then
+            echo "error_code=restore_verification_failed" >> "${GITHUB_OUTPUT}"
+            exit "${RESULT}"
+          fi
+          echo "verified=true" >> "${GITHUB_OUTPUT}"
 
-      - name: Upload verified encrypted-at-rest artifact
-        uses: actions/upload-artifact@v4
+      - name: Fetch one-purpose encryption material using fresh OIDC token
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          OIDC_RESPONSE="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=era-platform-backup")"
+          OIDC_TOKEN="$(printf '%s' "${OIDC_RESPONSE}" | jq -er '.value')"
+          echo "::add-mask::${OIDC_TOKEN}"
+          MATERIAL="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${OIDC_TOKEN}" \
+            "${BACKUP_API_BASE}/material")"
+          KEY="$(printf '%s' "${MATERIAL}" | jq -er '.encryption_key')"
+          echo "::add-mask::${KEY}"
+          echo "BACKUP_ENCRYPTION_KEY=${KEY}" >> "${GITHUB_ENV}"
+
+      - name: Encrypt and verify backup package
+        id: package
+        shell: bash
+        env:
+          BACKUP_FILE: ${{ steps.backup.outputs.backup_file }}
+          SOURCE_SHA256: ${{ steps.backup.outputs.sha256 }}
+        run: |
+          set -Eeuo pipefail
+          ARCHIVE_FILE="${BACKUP_FILE%.dump}.dump.enc"
+          VERIFY_FILE="$(mktemp)"
+          chmod 600 "${VERIFY_FILE}"
+
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
+            -in "${BACKUP_FILE}" \
+            -out "${ARCHIVE_FILE}" \
+            -pass env:BACKUP_ENCRYPTION_KEY
+          test -s "${ARCHIVE_FILE}"
+
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+            -in "${ARCHIVE_FILE}" \
+            -out "${VERIFY_FILE}" \
+            -pass env:BACKUP_ENCRYPTION_KEY
+          DECRYPTED_SHA="$(sha256sum "${VERIFY_FILE}" | awk '{print $1}')"
+          rm -f "${VERIFY_FILE}"
+          if [ "${DECRYPTED_SHA}" != "${SOURCE_SHA256}" ]; then
+            echo "Encrypted backup round-trip checksum mismatch" >&2
+            rm -f "${ARCHIVE_FILE}"
+            exit 1
+          fi
+
+          rm -f "${BACKUP_FILE}"
+          echo "archive_file=${ARCHIVE_FILE}" >> "${GITHUB_OUTPUT}"
+          echo "archive_sha256=$(sha256sum "${ARCHIVE_FILE}" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+          echo "archive_size_bytes=$(stat -c '%s' "${ARCHIVE_FILE}")" >> "${GITHUB_OUTPUT}"
+          echo "verified=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload encrypted verified GitHub artifact
+        id: artifact
+        uses: actions/upload-artifact@v7
         with:
-          name: era-postgres-backup-${{ github.run_id }}
-          path: backups/
+          name: era-${{ steps.tier.outputs.backup_type }}-backup-${{ github.run_id }}
+          path: ${{ steps.package.outputs.archive_file }}
           if-no-files-found: error
-          retention-days: 30
+          retention-days: ${{ steps.tier.outputs.github_retention_days }}
           compression-level: 0
 
+      - name: Store encrypted copy in external object storage
+        id: external
+        if: steps.config.outputs.external_storage == 'true'
+        shell: bash
+        env:
+          BACKUP_FILE: ${{ steps.package.outputs.archive_file }}
+          BACKUP_TYPE: ${{ steps.tier.outputs.backup_type }}
+        run: |
+          chmod +x scripts/store_encrypted_backup_s3.sh
+          REFERENCE="$(scripts/store_encrypted_backup_s3.sh)"
+          echo "storage_reference=${REFERENCE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Report successful verified backup using GitHub OIDC
+        id: success_report
+        env:
+          BACKUP_TYPE: ${{ steps.tier.outputs.backup_type }}
+          BACKUP_KEY: ${{ steps.backup.outputs.backup_key }}
+          ARCHIVE_SHA256: ${{ steps.package.outputs.archive_sha256 }}
+          ARCHIVE_SIZE_BYTES: ${{ steps.package.outputs.archive_size_bytes }}
+          STARTED_AT: ${{ steps.tier.outputs.started_at }}
+          HAS_EXTERNAL: ${{ steps.config.outputs.external_storage }}
+          EXTERNAL_REFERENCE: ${{ steps.external.outputs.storage_reference }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          OIDC_RESPONSE="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=era-platform-backup")"
+          OIDC_TOKEN="$(printf '%s' "${OIDC_RESPONSE}" | jq -er '.value')"
+          echo "::add-mask::${OIDC_TOKEN}"
+          COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          if [ "${HAS_EXTERNAL}" = "true" ]; then
+            PROVIDER="s3-compatible-encrypted"
+            REFERENCE="${EXTERNAL_REFERENCE}"
+          else
+            PROVIDER="github-actions-encrypted"
+            REFERENCE="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          fi
+          PAYLOAD="$(jq -n \
+            --arg backup_key "${BACKUP_KEY}" \
+            --arg backup_type "${BACKUP_TYPE}" \
+            --arg status "success" \
+            --arg storage_provider "${PROVIDER}" \
+            --arg storage_reference "${REFERENCE}" \
+            --arg checksum_sha256 "${ARCHIVE_SHA256}" \
+            --argjson size_bytes "${ARCHIVE_SIZE_BYTES}" \
+            --arg started_at "${STARTED_AT}" \
+            --arg completed_at "${COMPLETED_AT}" \
+            --arg restore_verified_at "${COMPLETED_AT}" \
+            '{backup_key:$backup_key,backup_type:$backup_type,status:$status,storage_provider:$storage_provider,storage_reference:$storage_reference,checksum_sha256:$checksum_sha256,size_bytes:$size_bytes,started_at:$started_at,completed_at:$completed_at,restore_verified_at:$restore_verified_at}')"
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${OIDC_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "${PAYLOAD}" \
+            "${BACKUP_API_BASE}/report"
+
+      - name: Report backup failure using GitHub OIDC
+        if: failure()
+        env:
+          BACKUP_TYPE: ${{ steps.tier.outputs.backup_type }}
+          BACKUP_KEY: ${{ steps.backup.outputs.backup_key }}
+          STARTED_AT: ${{ steps.tier.outputs.started_at }}
+          SNAPSHOT_ERROR_CODE: ${{ steps.backup.outputs.error_code }}
+          RESTORE_ERROR_CODE: ${{ steps.restore.outputs.error_code }}
+        shell: bash
+        run: |
+          set +e
+          OIDC_RESPONSE="$(curl --silent --show-error \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=era-platform-backup")"
+          OIDC_TOKEN="$(printf '%s' "${OIDC_RESPONSE}" | jq -r '.value // empty')"
+          [ -n "${OIDC_TOKEN}" ] || exit 0
+          echo "::add-mask::${OIDC_TOKEN}"
+          KEY="${BACKUP_KEY:-era-backup-run-${GITHUB_RUN_ID}}"
+          TYPE="${BACKUP_TYPE:-manual}"
+          START="${STARTED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+          ERROR_CODE="${SNAPSHOT_ERROR_CODE:-${RESTORE_ERROR_CODE:-workflow_failed}}"
+          COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          PAYLOAD="$(jq -n \
+            --arg backup_key "${KEY}" \
+            --arg backup_type "${TYPE}" \
+            --arg status "failed" \
+            --arg storage_provider "backup-workflow" \
+            --arg started_at "${START}" \
+            --arg completed_at "${COMPLETED_AT}" \
+            --arg error_code "${ERROR_CODE}" \
+            --arg error_detail "Database backup workflow failed; inspect the protected workflow run logs." \
+            '{backup_key:$backup_key,backup_type:$backup_type,status:$status,storage_provider:$storage_provider,started_at:$started_at,completed_at:$completed_at,error_code:$error_code,error_detail:$error_detail}')"
+          curl --silent --show-error \
+            -H "Authorization: Bearer ${OIDC_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "${PAYLOAD}" \
+            "${BACKUP_API_BASE}/report" || true
+
+      - name: Remove transient key material
+        if: always()
+        shell: bash
+        run: |
+          unset BACKUP_ENCRYPTION_KEY || true
+          rm -f "${BACKUP_DIR}"/*.dump "${BACKUP_DIR}"/*.dump.enc || true
+
       - name: Write job summary
+        if: always()
         run: |
           {
             echo "## PostgreSQL backup"
-            echo "- Backup created: yes"
-            echo "- Checksum verified: yes"
-            echo "- Restore test: passed"
-            echo "- Retention: 30 days"
-            echo "- Source credentials were not written to logs"
+            echo "- Production DB credentials exported to GitHub: no"
+            echo "- GitHub authentication: short-lived OIDC with exact repo/main/workflow claims"
+            echo "- PostgreSQL restore client: explicit ${PG_BIN}"
+            echo "- Production commit gate: ${{ steps.deploy_gate.outcome }}"
+            echo "- Production snapshot + checksum: ${{ steps.backup.outcome }}"
+            echo "- Real isolated restore + Alembic head verification: ${{ steps.restore.outcome }}"
+            echo "- Encryption round-trip checksum: ${{ steps.package.outcome }}"
+            echo "- Encrypted GitHub artifact upload: ${{ steps.artifact.outcome }}"
+            echo "- GitHub artifact retention: ${{ steps.tier.outputs.github_retention_days || 'unknown' }} days"
+            echo "- External S3-compatible copy active: ${{ steps.config.outputs.external_storage || 'false' }}"
+            echo "- Backup History success callback: ${{ steps.success_report.outcome }}"
           } >> "${GITHUB_STEP_SUMMARY}"

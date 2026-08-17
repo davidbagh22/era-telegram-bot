@@ -1,4 +1,5 @@
 from aiogram import F, Router
+from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -6,20 +7,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import User
-from app.keyboards.participant import (
+from app.keyboards.bot_shell import (
     contact_keyboard,
-    event_list_keyboard,
-    journey_keyboard,
     main_inline_keyboard,
     navigation_guide_keyboard,
-    open_app_button,
     team_keyboard,
 )
+from app.keyboards.participant import event_list_keyboard, journey_keyboard, open_app_button
 from app.repositories.users import rating, user_stats
 from app.services.event_service import published_events
 from app.services.points_service import total_points
 from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role, STATUS_LABELS
+from app.utils.deep_links import miniapp_admin_url, miniapp_leader_url
 
 router = Router(name="participant_navigation")
 
@@ -29,14 +29,48 @@ LEADER_PANEL_TEXT = """Панель лидера
 
 Лидер в ЭРА — это ответственность за людей, движение и результат."""
 
+NAVIGATION_PARTICIPANT = """🧭 <b>Навигация по ЭРА</b>
+
+Приложение — основная рабочая среда. Выберите не «меню», а то, что хотите сделать:
+
+🧭 <b>Мой вектор</b> — короткий личный Check-in прямо в Telegram
+💡 <b>Проекты</b> — придумать, собрать и вести свою идею
+📅 <b>События</b> — увидеть ближайшее и зарегистрироваться
+✅ <b>Мои задачи</b> — включиться в реальную работу
+⭐ <b>Возможности</b> — предложения, награды и специальные форматы
+👥 <b>Сообщество</b> — рейтинг, активность и жизнь ЭРА
+👤 <b>Профиль</b> — ваш путь, баллы, достижения и портфолио
+
+Если нужен не раздел, а человек — нажмите «💬 Связь»."""
+
+NAVIGATION_LEADER = NAVIGATION_PARTICIPANT + """
+
+🧭 <b>Режим лидера</b> — отдельное рабочее пространство для команды, задач и решений по вашему направлению.
+🎟 <b>QR вход</b> — быстрый чек-ин участников на мероприятии через Telegram."""
+
+NAVIGATION_ADMIN = NAVIGATION_PARTICIPANT + """
+
+⚙️ <b>Режим администратора</b> — отдельный пульт управления ЭРА: заявки, проекты, мероприятия, задания, коммуникации, аналитика и состояние системы.
+🎟 <b>QR вход</b> — быстрый чек-ин участников на мероприятии через Telegram."""
+
+CONTACT_TEXT = """💬 <b>Связь с ЭРА</b>
+
+Здесь не нужно искать нужный раздел вручную.
+
+❓ вопрос — отправьте его команде
+👥 люди — посмотрите, кто за что отвечает
+🏛 структура — департаменты и направления
+💬 чаты — сразу в нужное сообщество
+
+Выберите, что нужно сейчас."""
+
+TEAM_TEXT = """👥 <b>Команда ЭРА</b>
+
+Найдите человека или направление по задаче. Если не уверены, кому писать — откройте «К кому обратиться»."""
+
 
 def _approved(user: User | None) -> bool:
-    return bool(
-        user
-        and user.application_status == ApplicationStatus.APPROVED
-        and not user.is_blocked
-        and not user.is_archived
-    )
+    return bool(user and user.application_status == ApplicationStatus.APPROVED and not user.is_blocked and not user.is_archived)
 
 
 def _has_admin_access(user: User | None) -> bool:
@@ -44,27 +78,23 @@ def _has_admin_access(user: User | None) -> bool:
         return False
     if user.role == Role.ADMIN:
         return True
-    return any(
-        grant.is_active for grant in (getattr(user, "permission_grants", None) or [])
-    )
+    return any(grant.is_active for grant in (getattr(user, "permission_grants", None) or []))
 
 
 def _cabinet_text(user: User, stats: dict[str, int], place: int | str) -> str:
     status = STATUS_LABELS.get(user.participation_status, user.participation_status)
-    return f"""👤 Личный кабинет
+    return f"""👤 <b>Ваш путь в ЭРА</b>
 
-{user.first_name}, здесь собраны самые нужные разделы Вашего участия в ЭРА
+{user.first_name}, здесь собирается то, что вы уже сделали и что можно открыть дальше.
 
-Статус: {status}
-Баланс: {stats['points']} баллов
-Место в рейтинге: {place}
+Статус: <b>{status}</b>
+Баланс: <b>{stats['points']} баллов</b>
+Место в рейтинге: <b>{place}</b>
 
-Выберите, что открыть"""
+Выберите следующий шаг."""
 
 
-async def _send_main_menu(
-    message: Message, user: User | None, settings: Settings | None = None
-) -> None:
+async def _send_main_menu(message: Message, user: User | None, settings: Settings | None = None) -> None:
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
@@ -78,29 +108,17 @@ async def _send_main_menu(
     )
 
 
-async def _send_personal_cabinet(
-    message: Message,
-    user: User,
-    session: AsyncSession,
-    settings: Settings,
-) -> None:
+async def _send_personal_cabinet(message: Message, user: User, session: AsyncSession, settings: Settings) -> None:
     stats = await user_stats(session, user.id)
     rows = await rating(session, limit=1000)
-    place = next(
-        (index for index, (item, _) in enumerate(rows, 1) if item.id == user.id), "—"
-    )
+    place = next((index for index, (item, _) in enumerate(rows, 1) if item.id == user.id), "—")
     await message.answer(
         _cabinet_text(user, stats, place),
-        reply_markup=journey_keyboard(
-            settings.internal_department_chat_url,
-            settings.external_department_chat_url,
-        ),
+        reply_markup=journey_keyboard(settings.internal_department_chat_url, settings.external_department_chat_url),
     )
 
 
-async def _send_event_list(
-    message: Message, user: User | None, session: AsyncSession
-) -> None:
+async def _send_event_list(message: Message, user: User | None, session: AsyncSession) -> None:
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
@@ -108,20 +126,11 @@ async def _send_event_list(
     if not events:
         await message.answer(ux_texts.EVENTS_EMPTY)
         return
-    await message.answer(
-        ux_texts.EVENTS_LIST_HEADER,
-        reply_markup=event_list_keyboard(events),
-    )
+    await message.answer(ux_texts.EVENTS_LIST_HEADER, reply_markup=event_list_keyboard(events))
 
 
 @router.message(F.text == "👤 Личный кабинет")
-async def personal_cabinet_button(
-    message: Message,
-    user: User | None,
-    session: AsyncSession,
-    settings: Settings,
-    state: FSMContext,
-) -> None:
+async def personal_cabinet_button(message: Message, user: User | None, session: AsyncSession, settings: Settings, state: FSMContext) -> None:
     await state.clear()
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
@@ -130,25 +139,21 @@ async def personal_cabinet_button(
 
 
 @router.message(F.text == "📅 Афиша")
-async def schedule_button(
-    message: Message, user: User | None, session: AsyncSession, state: FSMContext
-) -> None:
+async def schedule_button(message: Message, user: User | None, session: AsyncSession, state: FSMContext) -> None:
     await state.clear()
     await _send_event_list(message, user, session)
 
 
 @router.message(F.text == "⭐ Возможности")
-async def opportunities_button(
-    message: Message, user: User | None, session: AsyncSession, state: FSMContext
-) -> None:
+async def opportunities_button(message: Message, user: User | None, session: AsyncSession, state: FSMContext) -> None:
     await state.clear()
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
     balance = await total_points(session, user.id)
     await message.answer(
-        "⭐ Возможности\n\nЗдесь собраны предложения, доступы и бонусы, которые открываются через активность в ЭРА.\n\n"
-        f"Ваш баланс: {balance} баллов",
+        "⭐ <b>Возможности</b>\n\nАктивность в ЭРА превращается в доступы, предложения и новые форматы.\n\n"
+        f"Ваш баланс: <b>{balance} баллов</b>",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="🤝 Партнёрские предложения", callback_data="offers:list")],
@@ -162,59 +167,45 @@ async def opportunities_button(
 
 
 @router.message(F.text == "💬 Связь")
-async def contact_button(
-    message: Message, user: User | None, state: FSMContext
-) -> None:
+async def contact_button(message: Message, user: User | None, state: FSMContext) -> None:
     await state.clear()
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
-    await message.answer(
-        ux_texts.CONTACT_MENU,
-        reply_markup=contact_keyboard(),
-    )
+    await message.answer(CONTACT_TEXT, parse_mode=ParseMode.HTML, reply_markup=contact_keyboard())
 
 
-async def _send_navigation_guide(
-    message: Message, user: User | None, settings: Settings
-) -> None:
-    """"🧭 Навигация" — replaces the old 📅 Ближайшее/✅ Мои задачи/
-    ⭐ Возможности quick-access buttons with one explainer message plus
-    deep links (2026-08 redesign brief section 36). Role-aware text, same
-    _has_admin_access()/PRIVILEGED_ROLES checks already used for the
-    "⚙️ Панель" redirect above. Shared by both the callback (button in
-    main_inline_keyboard()) and the /navigation command."""
+async def _send_navigation_guide(message: Message, user: User | None, settings: Settings) -> None:
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
     is_admin = _has_admin_access(user)
     is_privileged = user.role in PRIVILEGED_ROLES
     if is_admin:
-        text = texts.NAVIGATION_GUIDE_ADMIN
+        text = NAVIGATION_ADMIN
     elif is_privileged:
-        text = texts.NAVIGATION_GUIDE_LEADER
+        text = NAVIGATION_LEADER
     else:
-        text = texts.NAVIGATION_GUIDE_PARTICIPANT
+        text = NAVIGATION_PARTICIPANT
     await message.answer(
         text,
+        parse_mode=ParseMode.HTML,
         reply_markup=navigation_guide_keyboard(
-            settings.effective_miniapp_url, admin=is_admin, privileged=is_privileged
+            settings.effective_miniapp_url,
+            admin=is_admin,
+            privileged=is_privileged,
         ),
     )
 
 
 @router.callback_query(F.data == "nav:guide")
-async def nav_guide_callback(
-    call: CallbackQuery, user: User | None, settings: Settings
-) -> None:
+async def nav_guide_callback(call: CallbackQuery, user: User | None, settings: Settings) -> None:
     await call.answer()
     await _send_navigation_guide(call.message, user, settings)
 
 
 @router.message(Command("navigation"), F.chat.type == "private")
-async def navigation_command(
-    message: Message, user: User | None, settings: Settings, state: FSMContext
-) -> None:
+async def navigation_command(message: Message, user: User | None, settings: Settings, state: FSMContext) -> None:
     await state.clear()
     await _send_navigation_guide(message, user, settings)
 
@@ -225,7 +216,7 @@ async def contact_callback(call: CallbackQuery, user: User | None) -> None:
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    await call.message.answer(ux_texts.CONTACT_CALLBACK, reply_markup=contact_keyboard())
+    await call.message.answer(CONTACT_TEXT, parse_mode=ParseMode.HTML, reply_markup=contact_keyboard())
 
 
 @router.callback_query(F.data == "team:menu")
@@ -235,7 +226,8 @@ async def team_callback(call: CallbackQuery, user: User | None, settings: Settin
         await call.message.answer(texts.APPLICATION_PENDING)
         return
     await call.message.answer(
-        ux_texts.TEAM_MENU,
+        TEAM_TEXT,
+        parse_mode=ParseMode.HTML,
         reply_markup=team_keyboard(settings.general_chat_url),
     )
 
@@ -252,21 +244,11 @@ async def panel_button(message: Message, user: User | None, state: FSMContext, s
     if not _approved(user):
         await message.answer(texts.NO_ACCESS)
         return
-    # The bot-native admin and leader panel trees (admin_panel_keyboard(),
-    # leader_panel_keyboard()) were removed from live routing — Admin Mode
-    # and LeaderScreen in the Mini App are the only surfaces now (2026-08
-    # System Flow Audit / master spec section 23, P5). This reply-keyboard
-    # trigger is already dormant in production (main_inline_keyboard()
-    # stopped emitting "⚙️ Панель" once a Mini App URL is configured, and
-    # app/handlers/emergency.py's StateFilter("*") rescue handler for the
-    # same text is registered before this router and wins in practice) --
-    # kept live and fixed anyway so source behavior matches everywhere the
-    # button could theoretically still reach a user.
     if _has_admin_access(user):
-        await message.answer(texts.ADMIN_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
+        await message.answer(texts.ADMIN_PANEL_MOVED, reply_markup=open_app_button(miniapp_admin_url(settings.effective_miniapp_url)))
         return
     if user.role in PRIVILEGED_ROLES:
-        await message.answer(texts.LEADER_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
+        await message.answer(texts.LEADER_PANEL_MOVED, reply_markup=open_app_button(miniapp_leader_url(settings.effective_miniapp_url)))
         return
     await message.answer(texts.NO_ACCESS)
 
@@ -278,17 +260,15 @@ async def panel_callback(call: CallbackQuery, user: User | None, settings: Setti
         await call.message.answer(texts.NO_ACCESS)
         return
     if _has_admin_access(user):
-        await call.message.answer(texts.ADMIN_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
+        await call.message.answer(texts.ADMIN_PANEL_MOVED, reply_markup=open_app_button(miniapp_admin_url(settings.effective_miniapp_url)))
         return
     if user.role in PRIVILEGED_ROLES:
-        await call.message.answer(texts.LEADER_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
+        await call.message.answer(texts.LEADER_PANEL_MOVED, reply_markup=open_app_button(miniapp_leader_url(settings.effective_miniapp_url)))
         return
     await call.message.answer(texts.NO_ACCESS)
 
 
 @router.message(F.text == "🧭 Главное меню")
-async def main_menu_message(
-    message: Message, user: User | None, state: FSMContext, settings: Settings
-) -> None:
+async def main_menu_message(message: Message, user: User | None, state: FSMContext, settings: Settings) -> None:
     await state.clear()
     await _send_main_menu(message, user, settings)

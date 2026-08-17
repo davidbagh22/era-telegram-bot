@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+from urllib.parse import parse_qs, urlsplit
 
 from app.database.models import User
 from app.database.socials import SocialLink, SocialProfile
-from app.services.admin_user_card import build_admin_user_card
+from app.services.admin_user_card import _application_miniapp_markup, build_admin_user_card
 from app.services.application_review_service import approve_application, reject_application
 from app.utils.constants import ApplicationStatus, ParticipationStatus, Role
 
@@ -70,8 +71,34 @@ def test_application_card_includes_photo_and_socials() -> None:
     assert "Анна Тестова" in card.text
     assert "Instagram: https://instagram.com/era" in card.text
     assert "Мотивация" in card.text
+    assert "Согласие на обработку данных" in card.text
     assert "admin:approve_user:7" in str(card.reply_markup)
     assert "admin:reject_user:7" in str(card.reply_markup)
+
+
+def test_application_notification_opens_exact_admin_application() -> None:
+    base_card = asyncio.run(_build_application_card_for_markup())
+    markup = _application_miniapp_markup(
+        base_card.reply_markup,
+        "https://era.example/app/",
+        7,
+    )
+
+    button = markup.inline_keyboard[0][0]
+    assert button.text == "📲 Открыть заявку в приложении"
+    assert button.web_app is not None
+    parsed = urlsplit(button.web_app.url)
+    query = parse_qs(parsed.query)
+    assert query["eraPath"] == ["admin"]
+    assert query["adminSection"] == ["applications"]
+    assert query["applicationId"] == ["7"]
+
+
+async def _build_application_card_for_markup():
+    session = AsyncMock()
+    session.scalar.side_effect = [None, 0, 0]
+    session.scalars.side_effect = [_ScalarResult([]), _ScalarResult([])]
+    return await build_admin_user_card(session, _user(), mode="application")
 
 
 def test_admin_user_card_marks_missing_photo_and_socials() -> None:

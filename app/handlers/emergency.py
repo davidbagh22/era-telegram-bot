@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Event, EventActivity, EventRegistration, Task, User
+from app.handlers.faq_start import try_handle_faq_payload
 from app.handlers.participant.event_activities_block15 import (
     ACTIVE_REGISTRATION_STATUSES,
     ALLOWED_PROOF_TYPES,
@@ -22,15 +23,21 @@ from app.handlers.participant.navigation import (
     _send_main_menu,
     _send_personal_cabinet,
 )
+from app.keyboards.bot_shell import contact_keyboard
 from app.keyboards.common import registration_keyboard, subscription_keyboard
-from app.keyboards.participant import contact_keyboard, open_app_button, project_menu_keyboard
-from app.services import event_activity_service, task_service
+from app.keyboards.participant import open_app_button, project_menu_keyboard
+from app.services import event_activity_service, event_qr_service, task_service
 from app.services.points_service import total_points
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.states.growth import TaskSubmissionStates
 from app.utils import texts
 from app.utils.constants import PRIVILEGED_ROLES
-from app.utils.deep_links import parse_activity_submit_payload, parse_task_submit_payload
+from app.utils.deep_links import (
+    ATTENDANCE_PREFIX,
+    parse_activity_submit_payload,
+    parse_attendance_payload,
+    parse_task_submit_payload,
+)
 
 router = Router(name="emergency")
 
@@ -72,6 +79,94 @@ async def group_start(message: Message, bot: Bot, state: FSMContext) -> None:
     )
 
 
+async def _try_event_attendance_from_deep_link(
+    message: Message,
+    user: User,
+    session: AsyncSession,
+    settings: Settings,
+    command: CommandObject | None,
+) -> bool:
+    if command is None or not command.args:
+        return False
+    if not command.args.startswith(f"{ATTENDANCE_PREFIX}_"):
+        return False
+    event_id = parse_attendance_payload(command.args, settings.bot_token)
+    if event_id is None:
+        return False
+    if not _approved(user):
+        await message.answer("Отметка посещения доступна после одобрения заявки в ЭРА.")
+        return True
+    try:
+        result = await event_qr_service.check_in(
+            session,
+            event_id=event_id,
+            user_id=user.id,
+            settings=settings,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        messages = {
+            "event_not_found": "Это мероприятие больше недоступно.",
+            "event_not_open": "QR вход для этого мероприятия сейчас закрыт.",
+            "not_registered": "Вы не зарегистрированы на это мероприятие. Сначала займите место в разделе «События».",
+            "registration_not_active": "Ваша регистрация на это мероприятие не активна.",
+            "too_early": "QR вход ещё не открыт. Он станет доступен ближе к началу мероприятия.",
+            "too_late": "Время QR входа уже завершилось.",
+        }
+        await message.answer(
+            messages.get(
+                code,
+                "Не удалось подтвердить посещение. Обратитесь к организатору.",
+            )
+        )
+        return True
+
+    if result.already_attended:
+        if result.requires_selfie:
+            await message.answer(
+                f"✅ Вход на «{result.event.title}» уже отмечен.\n\n"
+                "Для подтверждения участия и начисления баллов осталось отправить фото с мероприятия.",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text="📸 Подтвердить участие",
+                            callback_data=f"selfie:start:{result.event.id}",
+                        )
+                    ]]
+                ),
+            )
+        else:
+            await message.answer(
+                f"✅ Вы уже отмечены на мероприятии «{result.event.title}». Повторно ничего делать не нужно."
+            )
+        return True
+
+    if result.requires_selfie:
+        await message.answer(
+            f"✅ Вы на месте\n\nВход на «{result.event.title}» отмечен.\n\n"
+            "Для подтверждения участия и начисления баллов отправьте фото с мероприятия.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="📸 Подтвердить участие",
+                        callback_data=f"selfie:start:{result.event.id}",
+                    )
+                ]]
+            ),
+        )
+        return True
+
+    points_line = (
+        f"\n\n+{result.points_awarded} баллов уже добавлено в ваш путь."
+        if result.points_awarded
+        else ""
+    )
+    await message.answer(
+        f"✅ Вы на месте\n\nПосещение «{result.event.title}» подтверждено.{points_line}"
+    )
+    return True
+
+
 async def _try_start_task_submission_from_deep_link(
     message: Message,
     user: User,
@@ -79,15 +174,7 @@ async def _try_start_task_submission_from_deep_link(
     session: AsyncSession,
     command: CommandObject | None,
 ) -> bool:
-    """Mini App "Отправить результат" hands off here (section 15 of the
-    platform brief) — uploads stay a Bot-only FSM. Returns True if the
-    deep link was valid and the submission prompt was sent.
-
-    Lives here (not app/handlers/start.py) because emergency.router is
-    included first in the dispatcher (app/bot.py) and rescue_start's
-    StateFilter("*") matches any FSM state, so it — not start.py's start()
-    — is what a real "/start task_submit_<id>" deep link actually reaches.
-    See app/handlers/start.py's now-dead duplicate for the history."""
+    """Mini App "Отправить результат" hands off here — uploads stay bot-only."""
     if command is None or not command.args:
         return False
     task_id = parse_task_submit_payload(command.args)
@@ -117,14 +204,7 @@ async def _try_start_activity_submission_from_deep_link(
     settings: Settings,
     command: CommandObject | None,
 ) -> bool:
-    """Mini App's Event Activities screen hands off here the same way
-    task submission does above — uploads stay a Bot-only FSM. Returns
-    True if the deep link was valid and handled (either the submission
-    prompt was sent, or a "manual" proof-type activity was submitted
-    immediately, mirroring proof_start()'s own short-circuit for that
-    type in app/handlers/participant/event_activities_block15.py).
-
-    Lives here for the same reason as the task-submission helper above."""
+    """Mini App Event Activities hands off here; uploads stay a Bot FSM."""
     if command is None or not command.args:
         return False
     activity_id = parse_activity_submit_payload(command.args)
@@ -203,7 +283,21 @@ async def rescue_start(
     if user is None:
         await message.answer(texts.WELCOME, reply_markup=registration_keyboard())
         return
-    if await _try_start_task_submission_from_deep_link(message, user, state, session, command):
+    if await try_handle_faq_payload(
+        message,
+        user,
+        settings,
+        state,
+        command.args if command else None,
+    ):
+        return
+    if await _try_event_attendance_from_deep_link(
+        message, user, session, settings, command
+    ):
+        return
+    if await _try_start_task_submission_from_deep_link(
+        message, user, state, session, command
+    ):
         return
     if await _try_start_activity_submission_from_deep_link(
         message, user, state, session, bot, settings, command
@@ -275,25 +369,22 @@ async def rescue_menu_button(
         return
     if text == "💬 Связь":
         await message.answer(
-            "💬 Связь\n\nВыберите, что Вам нужно.",
+            "💬 Связь с ЭРА\n\nВыберите, что нужно сейчас.",
             reply_markup=contact_keyboard(),
         )
         return
     if text == "⚙️ Панель":
-        # This is the router that actually owns "⚙️ Панель" in production --
-        # emergency.router is included first in the dispatcher (app/bot.py)
-        # and this handler's StateFilter("*") matches any FSM state, so it
-        # wins over app/handlers/participant/navigation.py's panel_button/
-        # panel_callback regardless of what those do. Both admin and leader
-        # branches redirect to the Mini App instead of the old bot-native
-        # menu trees, matching ADMIN_PANEL_MOVED/LEADER_PANEL_MOVED
-        # everywhere else those trees used to be reachable. 2026-08 master
-        # spec, P5.
         if _has_admin_access(user):
-            await message.answer(texts.ADMIN_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
+            await message.answer(
+                texts.ADMIN_PANEL_MOVED,
+                reply_markup=open_app_button(settings.effective_miniapp_url),
+            )
             return
         if user.role in PRIVILEGED_ROLES:
-            await message.answer(texts.LEADER_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
+            await message.answer(
+                texts.LEADER_PANEL_MOVED,
+                reply_markup=open_app_button(settings.effective_miniapp_url),
+            )
             return
         await message.answer(texts.NO_ACCESS)
         return

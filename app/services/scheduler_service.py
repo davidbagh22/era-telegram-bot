@@ -8,6 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 
 from app.config import Settings
+from app.database.event_experience import EventExperience
 from app.database.management_models import AdminSurvey
 from app.database.models import (
     Event,
@@ -19,7 +20,9 @@ from app.database.models import (
 )
 from app.keyboards.admin import project_review_actions
 from app.services.birthday_service import send_birthday_greetings
+from app.services.bot_notification_service import PrimaryAction, send_bot_notification
 from app.services.event_service import event_datetime
+from app.services.general_chat_content_service import run_scheduled_slot
 from app.services.notification_service import (
     BroadcastResult,
     admin_notification_recipients,
@@ -33,6 +36,7 @@ from app.services.survey_service import (
     questions_payload,
 )
 from app.utils.constants import ApplicationStatus, EventStatus, ProjectStatus, RegistrationStatus
+from app.utils.deep_links import miniapp_event_url, miniapp_task_url
 
 logger = logging.getLogger(__name__)
 
@@ -56,20 +60,21 @@ def _delivery_finished(result: BroadcastResult) -> bool:
     return result.sent > 0 or (result.failed > 0 and result.temporary_failed == 0)
 
 
-def _reminder_text(event: Event, stage: int) -> str:
+def _reminder_lead(stage: int) -> str:
     if stage == 1:
-        lead = "Напоминание. Завтра состоится мероприятие:"
-    elif stage == 2:
-        lead = "До мероприятия осталось около 3 часов:"
-    else:
-        lead = "Мероприятие скоро начнётся:"
-    return (
-        f"{lead}\n\n{event.title}\n\nДата: {event.event_date:%d.%m.%Y}\n"
-        f"Время: {event.event_time:%H:%M}\nМесто: {event.location}\n\nВы сможете прийти?"
-    )
+        return "Завтра встречаемся"
+    if stage == 2:
+        return "До события около 3 часов"
+    return "Событие скоро начнётся"
 
 
 async def send_event_reminders(bot: Bot, settings: Settings, session_factory) -> None:
+    """Compatibility reminder for events without configured wizard reminders.
+
+    Rich events use event_custom_reminder_service. Keeping this fallback avoids
+    losing reminders for historical events while preventing duplicate Telegram
+    messages for new events. Each reminder has one clear next action.
+    """
     now = datetime.now(ZoneInfo(settings.timezone))
     async with session_factory() as session:
         rows = (
@@ -78,7 +83,11 @@ async def send_event_reminders(bot: Bot, settings: Settings, session_factory) ->
                 .join(Event, Event.id == EventRegistration.event_id)
                 .join(User, User.id == EventRegistration.user_id)
                 .where(
-                    Event.status.in_([EventStatus.APPROVED, EventStatus.PUBLISHED]),
+                    Event.status.in_([
+                        EventStatus.APPROVED,
+                        EventStatus.PUBLISHED,
+                        EventStatus.REGISTRATION_OPEN,
+                    ]),
                     EventRegistration.status.in_(
                         [RegistrationStatus.REGISTERED, RegistrationStatus.WILL_COME]
                     ),
@@ -86,6 +95,10 @@ async def send_event_reminders(bot: Bot, settings: Settings, session_factory) ->
             )
         ).all()
         for registration, event, user in rows:
+            experience = await session.get(EventExperience, event.id)
+            if experience is not None and list(experience.reminders or []):
+                continue
+
             delta = event_datetime(event, settings.timezone) - now
             if timedelta(hours=3) < delta <= timedelta(hours=24):
                 target_stage = 1
@@ -99,28 +112,33 @@ async def send_event_reminders(bot: Bot, settings: Settings, session_factory) ->
                 continue
             if registration.reminder_stage >= target_stage:
                 continue
+
             if target_stage <= 3:
-                keyboard = InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(
-                                text="Да, приду",
-                                callback_data=f"attendance:{event.id}:yes",
-                            ),
-                            InlineKeyboardButton(
-                                text="Нет, не смогу",
-                                callback_data=f"attendance:{event.id}:no",
-                            ),
-                        ]
-                    ]
+                url = miniapp_event_url(settings.effective_miniapp_url, event.id)
+                action = (
+                    PrimaryAction(label="Открыть мероприятие", web_app_url=url)
+                    if url
+                    else PrimaryAction(
+                        label="Открыть мероприятие",
+                        callback_data=f"event:view:{event.id}",
+                    )
                 )
-                result = await broadcast_detailed(
+                sent = await send_bot_notification(
                     bot,
-                    [user.telegram_id],
-                    _reminder_text(event, target_stage),
-                    reply_markup=keyboard,
+                    user.telegram_id,
+                    emoji="🔥",
+                    title=_reminder_lead(target_stage),
+                    body=(
+                        f"{event.title}\n\n"
+                        f"📅 {event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n"
+                        f"📍 {event.location}"
+                    ),
+                    footer=(
+                        "Если планы изменились — отмените участие заранее, чтобы место мог занять другой участник."
+                    ),
+                    action=action,
                 )
-                if not _delivery_finished(result):
+                if not sent:
                     continue
             registration.reminder_stage = target_stage
             registration.last_reminder_at = now
@@ -173,7 +191,12 @@ async def send_monthly_surveys(bot: Bot, settings: Settings, session_factory) ->
             await session.commit()
             return
         keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="Ответить на опрос", callback_data=f"survey:start:{survey.id}")]]
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="Ответить на опрос",
+                    callback_data=f"survey:start:{survey.id}",
+                )
+            ]]
         )
         result = await broadcast_detailed(
             bot,
@@ -242,6 +265,7 @@ async def send_project_venue_reminders(
 
 
 async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> None:
+    """Send task deadline reminders with one direct action for each recipient."""
     now = datetime.now(ZoneInfo(settings.timezone))
     async with session_factory() as session:
         tasks = (
@@ -267,38 +291,80 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
             )
             if task.assignee_id:
                 participant_ids.add(task.assignee_id)
-            telegram_ids: list[int] = []
+
+            url = miniapp_task_url(settings.effective_miniapp_url, task.id)
+            action = (
+                PrimaryAction(label="Открыть задачу", web_app_url=url)
+                if url
+                else None
+            )
+            delivered = False
             for user_id in participant_ids:
                 target = await session.get(User, user_id)
-                if target:
-                    telegram_ids.append(target.telegram_id)
-            participant_result = await broadcast_detailed(
-                bot,
-                telegram_ids,
-                f"⏳ Напоминание о задании\n\n{task.title}\n\n"
-                f"Дедлайн: {task.deadline:%d.%m.%Y %H:%M}\n"
-                "Откройте «Мой путь» → «Мои задания», чтобы продолжить",
-            )
-            creator = await session.get(User, task.creator_id)
-            creator_result = BroadcastResult()
-            if creator:
-                creator_result = await broadcast_detailed(
-                    bot,
-                    [creator.telegram_id],
-                    f"⏳ По заданию «{task.title}» приближается дедлайн: "
-                    f"{task.deadline:%d.%m.%Y %H:%M}",
+                if target is None or target.is_blocked or target.is_archived:
+                    continue
+                delivered = (
+                    await send_bot_notification(
+                        bot,
+                        target.telegram_id,
+                        emoji="⏳",
+                        title="Дедлайн приближается",
+                        body=(
+                            f"{task.title}\n\n"
+                            f"До: {task.deadline:%d.%m.%Y %H:%M}"
+                        ),
+                        footer="Если задача уже готова — отправьте результат из карточки задачи.",
+                        action=action,
+                    )
+                    or delivered
                 )
-            if not (
-                _delivery_finished(participant_result)
-                or _delivery_finished(creator_result)
-                or (not telegram_ids and creator is None)
-            ):
+
+            creator = await session.get(User, task.creator_id)
+            if creator is not None and creator.id not in participant_ids:
+                delivered = (
+                    await send_bot_notification(
+                        bot,
+                        creator.telegram_id,
+                        emoji="⏳",
+                        title="По задаче приближается дедлайн",
+                        body=(
+                            f"{task.title}\n\n"
+                            f"До: {task.deadline:%d.%m.%Y %H:%M}"
+                        ),
+                        footer="Откройте карточку, чтобы проверить состояние работы.",
+                        action=action,
+                    )
+                    or delivered
+                )
+
+            if not delivered and (participant_ids or creator is not None):
                 continue
             task.reminder_count += 1
             task.remind_at = (
                 now + timedelta(days=1) if task.reminder_count < 5 else None
             )
         await session.commit()
+
+
+async def send_general_content_morning(
+    bot: Bot, settings: Settings, session_factory
+) -> None:
+    await run_scheduled_slot(bot, settings, session_factory, "morning")
+
+
+async def send_general_content_evening(
+    bot: Bot, settings: Settings, session_factory
+) -> None:
+    await run_scheduled_slot(bot, settings, session_factory, "evening")
+
+
+async def recover_general_content(bot: Bot, settings: Settings, session_factory) -> None:
+    """Recover only today's due slots; idempotency prevents any restart flood."""
+    now = datetime.now(ZoneInfo(settings.timezone))
+    if (now.hour, now.minute) >= (9, 0):
+        await run_scheduled_slot(bot, settings, session_factory, "morning", now=now)
+    if (now.hour, now.minute) >= (18, 0):
+        await run_scheduled_slot(bot, settings, session_factory, "evening", now=now)
 
 
 def create_scheduler(bot: Bot, settings: Settings, session_factory) -> AsyncIOScheduler:
@@ -356,8 +422,42 @@ def create_scheduler(bot: Bot, settings: Settings, session_factory) -> AsyncIOSc
         max_instances=1,
         coalesce=True,
     )
+    scheduler.add_job(
+        send_general_content_morning,
+        "cron",
+        hour=9,
+        minute=0,
+        args=(bot, settings, session_factory),
+        id="general-content-morning",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        send_general_content_evening,
+        "cron",
+        hour=18,
+        minute=0,
+        args=(bot, settings, session_factory),
+        id="general-content-evening",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        recover_general_content,
+        "interval",
+        minutes=30,
+        args=(bot, settings, session_factory),
+        id="general-content-recovery",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    # The old Monday post to the general chat is intentionally gone: the new
+    # editorial system guarantees at most two automatic ritual messages there.
+    # Department and leaders chat nudges remain separate operational comms.
     weekly_targets = (
-        (settings.general_chat_id, WEEKLY_MESSAGES["general"], "weekly-general"),
         (
             settings.internal_department_chat_id,
             WEEKLY_MESSAGES["internal"],

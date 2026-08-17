@@ -1,20 +1,11 @@
 import type { ReactNode } from "react";
+import { ContextHelp } from "../components/ContextHelp";
 
 interface AdminLayoutProps {
   children: ReactNode;
-  /** Present only for a user who actually has a personal Mini App
-   * experience to return to (i.e. every admin/leader — see App.tsx's
-   * workspace-mode switch). Omitted, not just hidden, in the one caller
-   * (App.tsx's initialProjectId deep-link branch) that isn't inside the
-   * switcher flow at all. */
   onExitWorkspace?: () => void;
 }
 
-// Compact by design — this used to be a full-width gradient strip reading
-// "ЭРА / ADMIN" (see git history), which read as a permanent, inescapable
-// "you are now in the serious admin system" banner rather than one mode
-// among several. It's still a workspace, so it still gets a name — the
-// name just isn't shouting at you the whole time you're using it.
 export function AdminLayout({ children, onExitWorkspace }: AdminLayoutProps) {
   return (
     <div style={{ minHeight: "100vh", paddingTop: "env(safe-area-inset-top, 0px)" }}>
@@ -50,6 +41,7 @@ export function AdminLayout({ children, onExitWorkspace }: AdminLayoutProps) {
         )}
       </div>
       {children}
+      <ContextHelp mode="admin" />
     </div>
   );
 }

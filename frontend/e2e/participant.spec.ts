@@ -2,26 +2,26 @@ import { expect, test } from "@playwright/test";
 
 const PARTICIPANT_TELEGRAM_ID = 900001;
 
-test("participant logs in, sees Home, and registers for the seeded event", async ({ page }) => {
+test("participant gets dark ERA UI, opens event details, and registers", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
 
-  await expect(page.getByRole("heading", { name: "Привет, E2E Participant" })).toBeVisible();
+  await expect(page.getByText("ERA SCORE")).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  const bodyBackground = await page.locator("body").evaluate((node) => getComputedStyle(node).backgroundColor);
+  expect(bodyBackground).not.toBe("rgb(255, 255, 255)");
 
-  await page.getByRole("button", { name: "Активность" }).click();
-  await expect(page.getByRole("heading", { name: "Активность" })).toBeVisible();
-
-  // 2026-08 redesign brief section 16: "Активность" is a landing menu of
-  // action cards now, not the Events tab by default -- one extra tap.
-  await page.getByRole("button", { name: /Мероприятия/ }).click();
+  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "События" }).click();
+  await expect(page.getByRole("heading", { name: "События" })).toBeVisible();
 
   const eventCard = page.getByText("E2E тестовое мероприятие");
   await expect(eventCard).toBeVisible();
+  await page.getByRole("button", { name: "Открыть событие" }).first().click();
 
-  await page.getByRole("button", { name: "Зарегистрироваться" }).click();
+  await expect(page.getByRole("heading", { name: "E2E тестовое мероприятие" })).toBeVisible();
+  await page.getByRole("button", { name: "Участвовать" }).click();
 
-  // A real registration through the full stack (API → event_service →
-  // DB), not a UI-only toggle — verified by the button switching to the
-  // cancel-registration label, which only renders when the freshly
-  // refetched event's registration_status is an active one.
-  await expect(page.getByRole("button", { name: "Планы изменились" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Место за вами" })).toBeVisible();
+  await expect(page.getByText("✓ Вы участвуете").first()).toBeVisible();
+  await page.getByRole("button", { name: "Готово" }).click();
+  await expect(page.getByRole("button", { name: "Отказаться" })).toBeVisible();
 });

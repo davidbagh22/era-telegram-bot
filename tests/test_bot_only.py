@@ -42,10 +42,11 @@ class BotOnlyTests(unittest.TestCase):
 
         self.assertIn("registration:status", callbacks)
 
-    def test_removed_skills_question_is_not_in_registration_flow(self) -> None:
-        self.assertFalse(hasattr(RegistrationStates, "skills"))
-        self.assertFalse(hasattr(RegistrationStates, "experience"))
-        self.assertFalse(hasattr(texts, "REG_SKILLS"))
+    def test_skills_and_experience_are_in_registration_flow(self) -> None:
+        self.assertTrue(hasattr(RegistrationStates, "skills"))
+        self.assertTrue(hasattr(RegistrationStates, "experience"))
+        self.assertTrue(hasattr(texts, "REG_SKILLS"))
+        self.assertTrue(hasattr(texts, "REG_EXPERIENCE"))
 
     def test_admin_panel_is_compact(self) -> None:
         keyboard = admin_panel_keyboard()

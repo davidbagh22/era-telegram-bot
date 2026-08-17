@@ -4,59 +4,72 @@ const ADMIN_TELEGRAM_ID = 900003;
 const LEADER_TELEGRAM_ID = 900002;
 const PARTICIPANT_TELEGRAM_ID = 900001;
 
+function profileTab(page: import("@playwright/test").Page) {
+  return page
+    .getByRole("navigation", { name: "Основная навигация" })
+    .getByRole("button", { name: "Профиль", exact: true });
+}
+
+async function openProfile(page: import("@playwright/test").Page) {
+  await expect(profileTab(page)).toBeVisible();
+  await profileTab(page).click();
+}
+
 // Regression coverage for the Personal <-> Admin/Leader workspace-mode
-// switcher (App.tsx's `inWorkspace` state): before this existed, an admin
-// or leader had no route at all to their own personal Mini App — they
-// landed in Admin/Leader Mode and stayed there. "<- Личное" in
-// AdminLayout/LeaderLayout and the "Управление ЭРА" card in ProfileScreen
-// are the only ways in/out, so this exercises the full round trip through
-// the real UI rather than just asserting the pieces exist in isolation.
+// switcher: elevated roles must start in the same personal ERA product as
+// everyone else, explicitly enter management, leave it, and enter again.
 
-test("admin can leave Admin Mode for their personal space and return", async ({ page }) => {
+test("admin starts personal, enters Admin Mode, leaves it, and returns", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
-  await expect(page.getByText("Управление")).toBeVisible();
 
-  await page.getByRole("button", { name: "← Личное" }).click();
+  // Elevated permissions must not replace the person's own Mini App on load.
+  await expect(profileTab(page)).toBeVisible();
+  await expect(page.getByText("Управление", { exact: true })).toHaveCount(0);
 
-  // Personal Home, with the standard participant bottom navigation — not a
-  // dead end or a blank screen.
-  await expect(page.getByRole("button", { name: "Профиль" })).toBeVisible();
-  await expect(page.getByText("Управление")).not.toBeVisible();
+  await openProfile(page);
+  const workspaceButton = page.getByRole("button", {
+    name: /Управление ЭРА.*Открыть режим администратора/,
+  });
+  await expect(workspaceButton).toBeVisible();
+  await workspaceButton.click();
 
-  await page.getByRole("button", { name: "Профиль" }).click();
-  const workspaceCard = page.locator(".era-card", { hasText: "Управление ЭРА" });
-  await expect(workspaceCard).toBeVisible();
-  await expect(workspaceCard.getByText("Режим администратора")).toBeVisible();
-
-  await workspaceCard.getByRole("button", { name: "Перейти" }).click();
-
-  // Back in Admin Mode, landing on the same Overview it always has.
-  await expect(page.getByText("Управление")).toBeVisible();
+  await expect(page.getByText("Управление", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "← Личное" })).toBeVisible();
-});
-
-test("leader can leave Leader Mode for their personal space and return", async ({ page }) => {
-  await page.goto(`/app/?devTelegramId=${LEADER_TELEGRAM_ID}`);
-  await expect(page.getByRole("heading", { name: "Панель лидера" })).toBeVisible();
 
   await page.getByRole("button", { name: "← Личное" }).click();
-  await expect(page.getByRole("button", { name: "Профиль" })).toBeVisible();
+  await expect(profileTab(page)).toBeVisible();
+  await expect(page.getByText("Управление", { exact: true })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Профиль" }).click();
-  const workspaceCard = page.locator(".era-card", { hasText: "Управление ЭРА" });
-  await expect(workspaceCard).toBeVisible();
-  await expect(workspaceCard.getByText("Режим лидера")).toBeVisible();
-
-  await workspaceCard.getByRole("button", { name: "Перейти" }).click();
-  await expect(page.getByRole("heading", { name: "Панель лидера" })).toBeVisible();
+  await openProfile(page);
+  await page.getByRole("button", { name: /Управление ЭРА.*Открыть режим администратора/ }).click();
+  await expect(page.getByText("Управление", { exact: true })).toBeVisible();
 });
 
-test("a plain participant's profile has no workspace switcher card", async ({ page }) => {
-  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
-  await page.getByRole("button", { name: "Профиль" }).click();
+test("leader starts personal, enters Leader Mode, leaves it, and returns", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${LEADER_TELEGRAM_ID}`);
 
-  // Its absence — not a hidden/disabled button — is what keeps a
-  // participant off a workspace they don't have (see ProfileScreen.tsx's
-  // onEnterWorkspace prop).
-  await expect(page.locator(".era-card", { hasText: "Управление ЭРА" })).toHaveCount(0);
+  await expect(profileTab(page)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Пространство лидера" })).toHaveCount(0);
+
+  await openProfile(page);
+  const workspaceButton = page.getByRole("button", {
+    name: /Управление ЭРА.*Открыть пространство лидера/,
+  });
+  await expect(workspaceButton).toBeVisible();
+  await workspaceButton.click();
+  await expect(page.getByRole("heading", { name: "Пространство лидера" })).toBeVisible();
+
+  await page.getByRole("button", { name: "← Личное" }).click();
+  await expect(profileTab(page)).toBeVisible();
+
+  await openProfile(page);
+  await page.getByRole("button", { name: /Управление ЭРА.*Открыть пространство лидера/ }).click();
+  await expect(page.getByRole("heading", { name: "Пространство лидера" })).toBeVisible();
+});
+
+test("a plain participant's profile has no workspace switcher action", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
+  await openProfile(page);
+
+  await expect(page.getByRole("button", { name: /Управление ЭРА/ })).toHaveCount(0);
 });

@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_current_user, get_session, get_settings
 from app.api.v1.router import api_router
 from app.config import Settings
+from app.database.event_experience import EventExperience
+from app.database.models import Event, User
 
 
 def _user(**overrides) -> SimpleNamespace:
@@ -31,6 +33,8 @@ def _event(**overrides) -> SimpleNamespace:
         points_for_visit=5,
         project_id=None,
         participant_limit=None,
+        status="registration_open",
+        created_by=1,
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -53,6 +57,17 @@ def _task(**overrides) -> SimpleNamespace:
     return SimpleNamespace(**defaults)
 
 
+def _event_session(event: SimpleNamespace | None) -> SimpleNamespace:
+    async def _get(model, _entity_id):
+        if model is Event:
+            return event
+        if model in {EventExperience, User}:
+            return None
+        return None
+
+    return SimpleNamespace(get=AsyncMock(side_effect=_get))
+
+
 def _build_app(session: SimpleNamespace) -> FastAPI:
     app = FastAPI()
     app.include_router(api_router)
@@ -70,7 +85,7 @@ def _build_app(session: SimpleNamespace) -> FastAPI:
 
 class EventsApiTests(unittest.TestCase):
     def test_list_events_returns_scoped_rows(self) -> None:
-        session = SimpleNamespace()
+        session = _event_session(None)
         app = _build_app(session)
         client = TestClient(app)
         with (
@@ -79,6 +94,7 @@ class EventsApiTests(unittest.TestCase):
                 new=AsyncMock(return_value=[(_event(), None)]),
             ),
             patch("app.api.v1.events.available_places", new=AsyncMock(return_value="5")),
+            patch("app.api.v1.events.registered_count", new=AsyncMock(return_value=0)),
         ):
             response = client.get("/api/v1/events", params={"scope": "all"})
         self.assertEqual(response.status_code, 200)
@@ -88,7 +104,7 @@ class EventsApiTests(unittest.TestCase):
         self.assertIsNone(body[0]["registration_status"])
 
     def test_read_event_404_when_missing(self) -> None:
-        session = SimpleNamespace(get=AsyncMock(return_value=None))
+        session = _event_session(None)
         app = _build_app(session)
         client = TestClient(app)
         response = client.get("/api/v1/events/999")
@@ -96,7 +112,7 @@ class EventsApiTests(unittest.TestCase):
 
     def test_register_event_success(self) -> None:
         event = _event()
-        session = SimpleNamespace(get=AsyncMock(return_value=event))
+        session = _event_session(event)
         app = _build_app(session)
         client = TestClient(app)
         registration = SimpleNamespace(status="registered")
@@ -106,6 +122,7 @@ class EventsApiTests(unittest.TestCase):
                 new=AsyncMock(return_value=(registration, None)),
             ),
             patch("app.api.v1.events.available_places", new=AsyncMock(return_value="4")),
+            patch("app.api.v1.events.registered_count", new=AsyncMock(return_value=1)),
         ):
             response = client.post("/api/v1/events/10/register")
         self.assertEqual(response.status_code, 200)
@@ -113,7 +130,7 @@ class EventsApiTests(unittest.TestCase):
 
     def test_register_event_conflict(self) -> None:
         event = _event()
-        session = SimpleNamespace(get=AsyncMock(return_value=event))
+        session = _event_session(event)
         app = _build_app(session)
         client = TestClient(app)
         with patch(
@@ -125,7 +142,7 @@ class EventsApiTests(unittest.TestCase):
 
     def test_cancel_registration_not_found(self) -> None:
         event = _event()
-        session = SimpleNamespace(get=AsyncMock(return_value=event))
+        session = _event_session(event)
         app = _build_app(session)
         client = TestClient(app)
         with patch(
@@ -136,7 +153,7 @@ class EventsApiTests(unittest.TestCase):
 
     def test_cancel_registration_blocked_by_rules(self) -> None:
         event = _event()
-        session = SimpleNamespace(get=AsyncMock(return_value=event))
+        session = _event_session(event)
         app = _build_app(session)
         client = TestClient(app)
         registration = SimpleNamespace(status="attended")

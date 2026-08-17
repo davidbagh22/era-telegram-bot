@@ -1,53 +1,67 @@
 import { useCallback, useState } from "react";
-import { downloadDataExport, downloadResumePdf, fetchProfile, requestAccountDeletion } from "../api/client";
+import { downloadDataExport, fetchProfile, requestAccountDeletion } from "../api/client";
+import { ActionCell } from "../components/ActionCell";
 import { Avatar } from "../components/Avatar";
 import { BottomSheet } from "../components/BottomSheet";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
-import { MetricCard } from "../components/MetricCard";
 import { ProgressBar } from "../components/ProgressBar";
+import { ProgressRing } from "../components/ProgressRing";
 import { Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { useToast } from "../components/Toast";
 import { useAsync } from "../hooks/useAsync";
+import { CareerPortfolioScreen } from "./CareerPortfolioScreen";
 import { LeaderboardScreen } from "./LeaderboardScreen";
+import { ReferralScreen } from "./ReferralScreen";
 import type { PortfolioEntry } from "../types/profile";
 
 const GROWTH_LABELS = ["Участник", "Активный", "Лидер"];
 
-const STAT_LABELS: Record<string, string> = {
-  points: "Баллы",
-  events: "Мероприятия",
-  projects: "Проекты",
-  completed_projects: "Завершено проектов",
-  tasks: "Задачи",
-  portfolio: "В портфолио",
-};
+type ResultSection =
+  | "projects"
+  | "events"
+  | "tasks"
+  | "volunteer"
+  | "leadership"
+  | "badges"
+  | "certificates"
+  | "recommendations";
+
+const RESULT_SECTIONS: { key: ResultSection; title: string; description: string }[] = [
+  { key: "projects", title: "Проекты", description: "Проекты и роли, которые вы прошли в ЭРА" },
+  { key: "events", title: "Мероприятия", description: "События, в которых вы участвовали" },
+  { key: "tasks", title: "Задачи", description: "Практическая работа и выполненные результаты" },
+  { key: "volunteer", title: "Волонтёрство", description: "Социальный вклад и инициативы" },
+  { key: "leadership", title: "Лидерство", description: "Управленческий опыт и ответственность" },
+  { key: "badges", title: "Достижения", description: "Знаки, уровни и признание вашего вклада" },
+  { key: "certificates", title: "Сертификаты", description: "Подтверждения участия и обучения" },
+  { key: "recommendations", title: "Рекомендации", description: "Рекомендательные материалы и признание" },
+];
 
 function PortfolioSection({ title, entries }: { title: string; entries: PortfolioEntry[] }) {
-  if (entries.length === 0) {
-    return null;
-  }
   return (
     <section>
-      <h2 style={{ fontSize: "0.875rem", color: "var(--era-text-muted)", margin: "0 0 0.5rem" }}>
-        {title}
-      </h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-        {entries.map((entry, index) => (
-          <Card key={`${entry.title}-${index}`}>
-            <strong>{entry.title}</strong>
-            {entry.description && (
-              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>{entry.description}</p>
-            )}
-            {(entry.status || entry.date_label) && (
-              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-                {[entry.status, entry.date_label].filter(Boolean).join(" · ")}
-              </p>
-            )}
-          </Card>
-        ))}
-      </div>
+      <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 0.75rem" }}>{title}</h2>
+      {entries.length === 0 ? (
+        <EmptyState text="Здесь пока нет записей." />
+      ) : (
+        <div className="era-stagger" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          {entries.map((entry, index) => (
+            <Card key={`${entry.title}-${index}`}>
+              <strong>{entry.title}</strong>
+              {entry.description && (
+                <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>{entry.description}</p>
+              )}
+              {(entry.status || entry.date_label) && (
+                <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>
+                  {[entry.status, entry.date_label].filter(Boolean).join(" · ")}
+                </p>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -55,42 +69,21 @@ function PortfolioSection({ title, entries }: { title: string; entries: Portfoli
 interface ProfileScreenProps {
   isAdmin?: boolean;
   isLeader?: boolean;
-  /** Present only when the current user actually has a workspace to
-   * switch into (App.tsx passes it for admin/leader only). Its absence,
-   * not a hidden button, is what keeps this off a plain participant's
-   * profile — see App.tsx's workspace-mode switch. */
   onEnterWorkspace?: () => void;
+  onOpenDevelopment?: () => void;
 }
 
-export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileScreenProps = {}) {
+export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevelopment }: ProfileScreenProps = {}) {
   const state = useAsync(fetchProfile, []);
-  const [downloading, setDownloading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deletionOpen, setDeletionOpen] = useState(false);
   const [requestingDeletion, setRequestingDeletion] = useState(false);
   const [deletionRequested, setDeletionRequested] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showCareerPortfolio, setShowCareerPortfolio] = useState(false);
+  const [showReferral, setShowReferral] = useState(false);
+  const [resultSection, setResultSection] = useState<ResultSection | null>(null);
   const toast = useToast();
-
-  const handleDownloadResume = useCallback(async () => {
-    setDownloading(true);
-    try {
-      const blob = await downloadResumePdf();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "ERA_portfolio.pdf";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      toast.show("Резюме сохранено", "success");
-    } catch {
-      toast.show("Не удалось скачать резюме. Попробуйте ещё раз.", "error");
-    } finally {
-      setDownloading(false);
-    }
-  }, [toast]);
 
   const handleExportData = useCallback(async () => {
     setExporting(true);
@@ -126,9 +119,9 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileSc
     }
   }, [toast]);
 
-  if (showLeaderboard) {
-    return <LeaderboardScreen onBack={() => setShowLeaderboard(false)} />;
-  }
+  if (showReferral) return <ReferralScreen onBack={() => setShowReferral(false)} />;
+  if (showCareerPortfolio) return <CareerPortfolioScreen onBack={() => setShowCareerPortfolio(false)} />;
+  if (showLeaderboard) return <LeaderboardScreen onBack={() => setShowLeaderboard(false)} />;
 
   if (state.status === "loading") {
     return (
@@ -141,11 +134,6 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileSc
           </div>
         </div>
         <Skeleton height="2.5rem" radius="var(--era-radius-control)" />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.5rem" }}>
-          <Skeleton height="4rem" radius="var(--era-radius-card)" />
-          <Skeleton height="4rem" radius="var(--era-radius-card)" />
-          <Skeleton height="4rem" radius="var(--era-radius-card)" />
-        </div>
         <SkeletonCard />
         <SkeletonCard />
       </div>
@@ -153,163 +141,180 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace }: ProfileSc
   }
 
   if (state.status === "error") {
-    return (
-      <StatusBanner
-        title="Не удалось загрузить профиль"
-        description="Потяните вниз, чтобы обновить страницу, или откройте ЭРА заново."
-      />
-    );
+    return <StatusBanner title="Не удалось загрузить профиль" description="Потяните вниз, чтобы обновить страницу, или откройте ЭРА заново." />;
   }
 
   const { data } = state;
+  const resultEntries: Record<ResultSection, PortfolioEntry[]> = {
+    projects: data.projects,
+    events: data.events,
+    tasks: data.tasks,
+    volunteer: data.volunteer,
+    leadership: data.leadership,
+    badges: data.badges,
+    certificates: data.certificates,
+    recommendations: data.recommendations,
+  };
+
+  if (resultSection) {
+    const config = RESULT_SECTIONS.find((item) => item.key === resultSection);
+    return (
+      <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <button type="button" onClick={() => setResultSection(null)} style={{ alignSelf: "flex-start" }}>← Назад</button>
+        <PortfolioSection title={config?.title ?? "Результаты"} entries={resultEntries[resultSection]} />
+      </div>
+    );
+  }
+
+  const points = data.stats.points ?? 0;
+  const totalResults = Object.values(resultEntries).reduce((total, entries) => total + entries.length, 0);
+  const orbitPercent = data.growth.level_count <= 1
+    ? 1
+    : Math.max(0, Math.min(1, data.growth.level_index / (data.growth.level_count - 1)));
 
   return (
-    <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-        <Avatar firstName={data.first_name} lastName={data.last_name} />
-        <div>
-          <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)", margin: 0 }}>
-            {data.full_name || data.first_name}
-          </h1>
-          <p style={{ color: "var(--era-text-muted)", margin: "0.25rem 0 0" }}>
-            Ваш уровень: {data.growth.label}
-            {data.city ? ` · ${data.city}` : ""}
-          </p>
-        </div>
-      </div>
-
-      <ProgressBar
-        currentIndex={data.growth.level_index}
-        totalSteps={data.growth.level_count}
-        labels={GROWTH_LABELS}
-      />
-
-      {onEnterWorkspace && (
-        <Card>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
-            <div>
-              <strong>Управление ЭРА</strong>
-              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-                {isAdmin ? "Режим администратора" : isLeader ? "Режим лидера" : "Рабочее пространство"}
+    <div className="era-page era-stagger" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
+      <Card gradient style={{ position: "relative", overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: "0.875rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.875rem", minWidth: 0 }}>
+            <Avatar firstName={data.first_name} lastName={data.last_name} />
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: "0 0 0.2rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
+                Мой путь в ЭРА
+              </p>
+              <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)", margin: 0, overflowWrap: "anywhere" }}>
+                {data.full_name || data.first_name}
+              </h1>
+              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>
+                {data.growth.label}{data.city ? ` · ${data.city}` : ""}
               </p>
             </div>
-            <button type="button" className="era-btn-primary" onClick={onEnterWorkspace}>
-              Перейти
-            </button>
+          </div>
+
+          <div style={{ position: "relative", width: 82, height: 82 }} aria-label={`Статус роста ${Math.round(orbitPercent * 100)} процентов`}>
+            <ProgressRing percent={orbitPercent} size={82} animationKey="profile-status-orbit" />
+            <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", textAlign: "center" }}>
+              <div>
+                <strong style={{ display: "block", fontSize: ".98rem", lineHeight: 1 }}>{Math.round(orbitPercent * 100)}%</strong>
+                <span style={{ display: "block", marginTop: 2, color: "var(--era-text-muted)", fontSize: ".58rem" }}>STATUS</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem", marginTop: "1rem" }}>
+          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{points}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>баллов</span></div>
+          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{totalResults}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>результатов</span></div>
+        </div>
+      </Card>
+
+      <section>
+        <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Рост</h2>
+        <ProgressBar currentIndex={data.growth.level_index} totalSteps={data.growth.level_count} labels={GROWTH_LABELS} />
+        <Card style={{ marginTop: "0.75rem" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            {GROWTH_LABELS.map((label, index) => {
+              const reached = index <= data.growth.level_index;
+              const current = index === data.growth.level_index;
+              return (
+                <div key={label} style={{ display: "grid", gridTemplateColumns: "1.25rem 1fr", gap: "0.75rem", alignItems: "start" }}>
+                  <span aria-hidden="true" style={{ width: 12, height: 12, marginTop: 3, borderRadius: "50%", background: reached ? "var(--era-red)" : "var(--era-ring-track)", boxShadow: current ? "0 0 0 5px var(--era-tint-red)" : "none" }} />
+                  <div>
+                    <strong style={{ color: reached ? "var(--era-text)" : "var(--era-text-muted)" }}>{label}</strong>
+                    {current && <span style={{ display: "block", marginTop: "0.15rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>Вы здесь сейчас</span>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Card>
+      </section>
+
+      <section>
+        <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Профессиональный рост</h2>
+        <ActionCell
+          title="Моё портфолио"
+          description="Резюме, достижения, сертификаты, подтверждающие файлы и рекомендация ЭРА"
+          meta="Открыть"
+          onClick={() => setShowCareerPortfolio(true)}
+        />
+      </section>
+
+      {onOpenDevelopment && (
+        <section>
+          <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Развитие</h2>
+          <ActionCell
+            title="Мой вектор"
+            description="Моё состояние, личная история, исследования и цели"
+            meta="Ты ↔ ты"
+            onClick={onOpenDevelopment}
+          />
+        </section>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.5rem" }}>
-        {Object.entries(data.stats).map(([key, value]) => (
-          <MetricCard key={key} label={STAT_LABELS[key] ?? key} value={value} />
-        ))}
-      </div>
+      <section>
+        <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Сообщество</h2>
+        <ActionCell
+          title="Пригласить друга"
+          description="Ваш личный код и ссылка. +200 каждому после регистрации и общего чата, ещё +500 после первого подтверждённого мероприятия"
+          meta="Открыть"
+          onClick={() => setShowReferral(true)}
+        />
+      </section>
 
-      <Card>
-        <button
-          type="button"
-          onClick={() => setShowLeaderboard(true)}
-          style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
-            <div>
-              <strong>Рейтинг участников</strong>
-              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-                Баллы и уровни всех участников ЭРА
-              </p>
-            </div>
-            <span style={{ color: "var(--era-text-muted)" }}>→</span>
-          </div>
-        </button>
-      </Card>
+      {onEnterWorkspace && (
+        <ActionCell
+          title="Управление ЭРА"
+          description={isAdmin ? "Открыть режим администратора" : isLeader ? "Открыть пространство лидера" : "Открыть рабочее пространство"}
+          onClick={onEnterWorkspace}
+        />
+      )}
+
+      <ActionCell title="Рейтинг участников" description="Ваше место, баллы и активные участники" onClick={() => setShowLeaderboard(true)} />
+
+      <section>
+        <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Мои результаты</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", minWidth: 0 }}>
+          {RESULT_SECTIONS.map((item) => (
+            <ActionCell
+              key={item.key}
+              title={item.title}
+              description={item.description}
+              meta={`${resultEntries[item.key].length} записей`}
+              onClick={() => setResultSection(item.key)}
+            />
+          ))}
+        </div>
+      </section>
 
       {(data.departments.length > 0 || data.directions.length > 0) && (
         <Card>
           {data.departments.length > 0 && <p style={{ margin: 0 }}>Отделы: {data.departments.join(", ")}</p>}
-          {data.directions.length > 0 && (
-            <p style={{ margin: data.departments.length > 0 ? "0.25rem 0 0" : 0 }}>
-              Направления: {data.directions.join(", ")}
-            </p>
-          )}
+          {data.directions.length > 0 && <p style={{ margin: data.departments.length > 0 ? "0.25rem 0 0" : 0 }}>Направления: {data.directions.join(", ")}</p>}
         </Card>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-        <button
-          type="button"
-          className="era-btn-primary"
-          disabled={downloading}
-          onClick={handleDownloadResume}
-        >
-          {downloading ? "Формируем PDF…" : "Скачать резюме PDF"}
-        </button>
-      </div>
-
-      <PortfolioSection title="Проекты" entries={data.projects} />
-      <PortfolioSection title="Мероприятия" entries={data.events} />
-      <PortfolioSection title="Задачи" entries={data.tasks} />
-      <PortfolioSection title="Волонтёрство" entries={data.volunteer} />
-      <PortfolioSection title="Лидерство" entries={data.leadership} />
-      <PortfolioSection title="Достижения" entries={data.badges} />
-      <PortfolioSection title="Сертификаты" entries={data.certificates} />
-      <PortfolioSection title="Рекомендации" entries={data.recommendations} />
-
-      {data.projects.length === 0 &&
-        data.events.length === 0 &&
-        data.tasks.length === 0 &&
-        data.volunteer.length === 0 &&
-        data.leadership.length === 0 &&
-        data.badges.length === 0 &&
-        data.certificates.length === 0 &&
-        data.recommendations.length === 0 && (
-          <EmptyState text="Портфолио пока пусто — начните с мероприятия, задачи или проекта." />
-        )}
-
       <section>
-        <h2 style={{ fontSize: "0.875rem", color: "var(--era-text-muted)", margin: "0 0 0.5rem" }}>
-          Данные и конфиденциальность
-        </h2>
+        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 0.75rem" }}>Данные и конфиденциальность</h2>
         <Card>
           <p style={{ margin: "0 0 0.75rem", color: "var(--era-text-muted)" }}>
-            Скачайте копию всех данных, которые ЭРА хранит о вас, или запросите удаление аккаунта.
+            Скачайте копию данных, которые ЭРА хранит о вас, или запросите удаление аккаунта.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <button type="button" disabled={exporting} onClick={handleExportData}>
-              {exporting ? "Готовим файл…" : "Скачать мои данные (JSON)"}
-            </button>
-            <button
-              type="button"
-              disabled={deletionRequested}
-              onClick={() => setDeletionOpen(true)}
-              style={{ color: "var(--era-error)" }}
-            >
+            <button type="button" disabled={exporting} onClick={handleExportData}>{exporting ? "Готовим файл…" : "Скачать мои данные (JSON)"}</button>
+            <button type="button" disabled={deletionRequested} onClick={() => setDeletionOpen(true)} style={{ color: "var(--era-error)" }}>
               {deletionRequested ? "Заявка на удаление отправлена" : "Запросить удаление аккаунта"}
             </button>
           </div>
         </Card>
       </section>
 
-      <BottomSheet
-        open={deletionOpen}
-        onClose={() => setDeletionOpen(false)}
-        title="Запросить удаление аккаунта?"
-      >
+      <BottomSheet open={deletionOpen} onClose={() => setDeletionOpen(false)} title="Запросить удаление аккаунта?">
         <p style={{ color: "var(--era-text-muted)", margin: "0 0 1rem" }}>
-          Заявку рассмотрит администратор. После подтверждения ваши личные данные будут обезличены,
-          а аккаунт — архивирован. Это действие нельзя отменить самостоятельно.
+          Заявку рассмотрит администратор. После подтверждения ваши личные данные будут обезличены, а аккаунт — архивирован. Это действие нельзя отменить самостоятельно.
         </p>
         <div style={{ display: "flex", gap: "0.5rem" }}>
-          <button type="button" onClick={() => setDeletionOpen(false)} style={{ flex: 1 }}>
-            Отмена
-          </button>
-          <button
-            type="button"
-            className="era-btn-primary"
-            disabled={requestingDeletion}
-            onClick={handleRequestDeletion}
-            style={{ flex: 1 }}
-          >
+          <button type="button" onClick={() => setDeletionOpen(false)} style={{ flex: 1 }}>Отмена</button>
+          <button type="button" className="era-btn-primary" disabled={requestingDeletion} onClick={handleRequestDeletion} style={{ flex: 1 }}>
             {requestingDeletion ? "Отправляем…" : "Отправить заявку"}
           </button>
         </div>

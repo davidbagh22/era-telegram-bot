@@ -1,0 +1,51 @@
+/* ERA motion primitives: fast for actions, more expressive only for progress/achievement. */
+:root {
+  /* Compatibility aliases for existing components while the UI is migrated. */
+  --era-violet: var(--era-red);
+  --era-motion: var(--era-motion-screen);
+}
+
+/* A staggered entrance owns the transform/opacity animation. Do not let the
+   optional ambient material animation override it and leave a card invisible. */
+.era-stagger > .era-premium-ambient {
+  animation-name: era-card-in !important;
+  animation-duration: var(--era-motion-card) !important;
+  animation-iteration-count: 1 !important;
+  animation-fill-mode: both !important;
+}
+
+@keyframes era-question-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.era-question-step {
+  animation: era-question-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.era-save-indicator {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  width: fit-content;
+  margin: 0;
+  padding: .18rem .48rem;
+  border-radius: var(--era-radius-pill);
+  background: rgba(255,255,255,.045);
+  color: var(--era-text-muted);
+  font-size: .75rem;
+  font-weight: 750;
+  animation: era-page-in 180ms ease both;
+}
+
+.era-save-indicator[data-state="saved"] {
+  background: var(--era-success-bg);
+  color: var(--era-success);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .era-question-step,
+  .era-save-indicator {
+    animation: none !important;
+  }
+}

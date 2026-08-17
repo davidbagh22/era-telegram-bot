@@ -1,667 +1,224 @@
 # ERA PLATFORM — FINAL PRODUCTION ACCEPTANCE
 
-**NOT READY FOR LAUNCH**
-
-*(Revised — see "Changed since the previous pass" below. Verdict is
-unchanged because the one Critical and two of the four original High
-findings that remain open are, by design, not closeable from this
-environment — see those sections. The other two High findings, and 15
-other previously-open items, closed this pass.)*
-
-Checks: **232 / 300 PASS**
-FAIL: **13**
-N/A: **24** (each with a stated reason, per the checklist's own rule)
-OWNER ACTION REQUIRED: **31**
-
-Critical open issues: **1**
-High open issues: **2**
-
-Production commit: `86563ae` (verified live via `/health`/`/diag` at the time this document was written — see §XX)
-Database migration: single Alembic head, `0015_data_deletion_requests` — verified via `python -m alembic heads`
-Backup timestamp: **none successful — see Critical finding below (unchanged, still open)**
-Restore test: **FAIL** (never run — nothing to restore)
-Bot: **PASS** (live, correct identity/webhook/menu button per `/diag`)
-Mini App: **PASS** (live, builds clean, served at `/app`)
-Participant E2E: **PASS** (CI, against real backend + real built frontend)
-Leader E2E: **PASS** (CI)
-Admin E2E: **PASS** (CI)
-Chat restrictions: **PASS at code level** (re-verified PR18c); **not live-clicked-through this pass** — see §XVII
-Broadcasts: **PASS at code level**; not live-verified this pass
-Portfolio/files: **PASS architecturally** (no raw-upload endpoint exists — see §X); **upload/view/delete flow has no E2E coverage** — disclosed gap
-Data protection technical controls: **PASS, including self-service export/deletion now implemented** — see §VIII
-Legal review: **OWNER ACTION REQUIRED (unchanged — needs a lawyer, not code)**
-
-## Changed since the previous pass (commit `bb19003` → `86563ae`)
-
-Closed this pass (full detail in the sections below, not just asserted
-here):
-
-- **CI test-runner blind spot** (old High #4) — merged PR #151: `ci.yml`
-  and `tests.yml` now run `pytest -q`, not `unittest discover`. Closes
-  #196's caveat and #257.
-- **Incident response documentation** (old High #2's documentation half —
-  the underlying single-admin risk itself is unchanged and still tracked
-  as OWNER ACTION REQUIRED below, this only closes "the doc doesn't
-  exist") — new `docs/INCIDENT_RESPONSE_RUNBOOK.md` (4 scenarios: token
-  leak, admin compromise, DB compromise, hosting outage) and
-  `docs/PRODUCTION_SERVICES_AND_OWNERS.md`. Closes #180, #278–283, #285.
-- **Self-service data export + deletion request** — closes #118, #119,
-  #120 (was: none of this existed; DATA_INVENTORY.md said so itself).
-- **CI secret scanning** — new `gitleaks` job, full git history, passing
-  on every PR since. Closes #186, #203.
-- **Per-request correlation ID** in logs (`X-Request-ID`) — closes #213.
-- **AuditLog now covers data export, not just deletion** — closes #221.
-
-Not touched this pass (still open, see their own sections — nothing
-below was fabricated or silently skipped): the Critical backup finding;
-Legal review (High); live device testing (High); retention-policy
-formalization (#117); named individual ownership/MFA/recovery codes
-(#14, #271–277); GitHub repo permissions/branch protection (#209 area —
-this session attempted to enable branch protection via `gh api
-.../branches/main/protection`; this tool's own permission classifier
-blocked it as a security-settings change, which is correct behavior on
-this tool's part, not a bug — the owner needs to do this one directly in
-GitHub Settings → Branches); multi-viewport E2E (#269); N+1/index audit
-(#229–230); unused-dependency audit (#208).
-
----
-
-## Why NOT READY FOR LAUNCH
-
-One **Critical** and two **High** items are open. Per the checklist's own
-stop-ship rule, that alone is disqualifying regardless of how many of the
-other 297 items pass. Named here first, in full, not buried in the tables.
-(Two other High findings from the previous pass — CI's test-runner blind
-spot, and missing incident-response documentation — closed this pass; see
-"Changed since the previous pass" above for what closed them.)
-
-### CRITICAL
-
-**The database backup pipeline has not produced a single successful backup
-in at least 10 days.** `docs/BACKUP_AND_RECOVERY.md` and the prior
-`docs/FINAL_PRODUCTION_ACCEPTANCE.md` (PR19, since superseded by this
-document) both describe `.github/workflows/database-backup.yml` as "already
-running." That was true of the *code*. It was not true of the *pipeline*:
-
-```
-$ gh run list --workflow=database-backup.yml --limit 10
-completed  failure  Database backup  main  schedule  2026-08-11T03:10:35Z
-completed  failure  Database backup  main  schedule  2026-08-10T03:18:27Z
-completed  failure  Database backup  main  schedule  2026-08-09T03:07:46Z
-... (10/10 checked, all failure, back to 2026-08-02)
-```
-
-Every run fails at the **"Validate backup secret"** step. `gh secret list`
-on this repository returns empty — the `BACKUP_DATABASE_URL` GitHub Actions
-secret that `docs/BACKUP_AND_RECOVERY.md`'s own "Первичная настройка"
-section says must be created was never actually created. This means:
-there is currently **no backup of production data, at all** — not "an old
-one," none. This is item #299 and the checklist's own explicit stop-ship
-condition ("отсутствует рабочий backup"; "backup существует, но никто не
-доказал возможность восстановления" — in this case it's the first half:
-it doesn't exist).
-
-**Fix**: the platform owner sets `BACKUP_DATABASE_URL` (a Render Postgres
-external connection string, read-only user if the schema supports it — see
-`docs/BACKUP_AND_RECOVERY.md`) as a GitHub Actions secret, then manually
-re-runs the workflow once to confirm a green run before trusting the
-schedule again. This is entirely an owner action — nothing in this
-environment can create or read Render/GitHub secrets.
-
-### HIGH
-
-1. **Legal review has not happened.** `docs/PRIVACY_POLICY_DRAFT.md` is
-   explicitly a draft with `[...]` placeholders, undetermined jurisdiction,
-   and a note that it "обязателен к проверке юристом" before real use.
-   `docs/DATA_INVENTORY.md` §5–6 confirm consent-text and minors handling
-   are technical scaffolding only (`ConsentLog` table exists,
-   `policy_version` is a placeholder constant `"unset-v1"`). No org/legal
-   owner of data processing is named anywhere in the repo. Items #121–135
-   are collectively not passable by a coding session — they need the
-   platform owner and, per the checklist's own rule, a lawyer. **Unchanged
-   this pass** — nothing in §IX below closed.
-2. **No live device/real-Telegram-client testing was performed in this
-   pass.** This environment has no Telegram account, no BOT_TOKEN-holding
-   session, and no physical/emulated device. Everything marked PASS in
-   §IV/§XVIII that says "live" or "real Telegram client" is PASS *only* in
-   the sense of automated E2E against a real backend + real built frontend
-   (Playwright, headless Chromium, 390×844 viewport) — genuinely valuable,
-   genuinely not the same thing as a human opening the actual bot on an
-   actual phone, and the checklist itself says so explicitly ("локально
-   работает ≠ PASS... Необходима проверка production-версии"). Items
-   #267–269, #294–298 need the owner's own click-through. **Unchanged this
-   pass** — this environment still has no Telegram client access.
-
-Two findings from the previous pass are no longer High:
-
-- *No incident response / business-continuity documentation existed* —
-  closed. `docs/INCIDENT_RESPONSE_RUNBOOK.md` now documents all four
-  named scenarios (token leak, admin compromise, DB compromise, hosting
-  outage) plus `docs/PRODUCTION_SERVICES_AND_OWNERS.md`. The underlying
-  risk the documentation describes — `render.yaml`'s `ADMIN_IDS` is a
-  single Telegram ID, no second named owner anywhere — is **still real**
-  and is still tracked below as OWNER ACTION REQUIRED (§XIX #271–277);
-  what closed is specifically "the runbook doesn't exist," which was the
-  literal High finding.
-- *CI's `test` job silently collected zero tests from 17 test files* —
-  closed. PR #151 (merged this pass, already in flight from a separate
-  session before this one started) switched `ci.yml`/`tests.yml` from
-  `unittest discover` to `pytest -q`. CI's green checkmark is no longer
-  systematically incomplete.
-
-Per the checklist's own rule, this is `NOT READY FOR LAUNCH` until the
-Critical is closed and each remaining High is either closed or the owner
-explicitly accepts the risk in writing.
-
----
-
-## Methodology
-
-Every row below has one of `PASS` / `FAIL` / `N/A` / `OWNER ACTION
-REQUIRED`, per the checklist's own rule that `N/A` must state why. Evidence
-is cited tersely (file, command, or doc) rather than reproduced at length —
-full detail lives in the cited source. Where this session's own commands
-were the evidence, the exact command is named so it can be re-run.
-
-Existing docs consulted and treated as authoritative unless this pass found
-them stale (the backup finding above is exactly one case where a prior
-doc's claim didn't hold up to a fresh check — noted inline where relevant):
-`AUTHORIZATION_MATRIX.md`, `DATA_INVENTORY.md`, `PRODUCTION_READINESS_AUDIT.md`
-(dated 2026-08-05, baseline commit `e401b2f`), `BACKUP_AND_RECOVERY.md`,
-`DEPLOYMENT_RUNBOOK.md`, `PRIVACY_POLICY_DRAFT.md`, `ROLE_PERMISSION_MATRIX.md`,
-`UI_DESIGN_SYSTEM.md`, `BOT_VS_MINIAPP_AUDIT.md`, `ERA_PLATFORM_PROGRESS.md`
-(the full PR-by-PR history through PR 38).
-
-Fresh commands run for this document (against commit `86563ae` unless
-noted, superseding the prior pass's `bb19003` baseline): `python -m
-alembic heads`; `ruff check app --select E9,F`; `python -m compileall -q
-app`; `npx tsc --noEmit && npm run build` (frontend); `python -m pytest
--q` (762 passed); `gh pr checks <N> --watch` (both PRs this pass, all
-jobs including the new `secret-scan`); `curl -sD -
-https://era-telegram-bot.onrender.com/{health,ready,diag}` (repeated
-after each deploy, polled until the new commit appeared); `git log
-origin/main..HEAD --oneline` (drift check before every push). Not
-re-run this pass (unchanged since the prior document, no reason to
-expect drift): `pip-audit`, `npm audit`, the backup-workflow/secret
-checks (still failing/absent exactly as previously found — see the
-Critical finding).
-
----
-
-## I. Продукт и готовность к запуску (1–15)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 1 | Scope of first production version fixed | PASS | `docs/BOT_VS_MINIAPP_AUDIT.md` + `ERA_PLATFORM_PROGRESS.md`'s PR 36–38 sections |
-| 2 | List of Mini App features compiled | PASS | `docs/BOT_VS_MINIAPP_AUDIT.md` (per-feature table) |
-| 3 | List of Bot features compiled | PASS | same doc |
-| 4 | No unjustified Bot↔Mini App duplication | PASS | PR 36's audit + keyboard rewrite; remaining "duplication" (bot fallback menu) is explicitly justified as the offline fallback |
-| 5 | Mini App is the primary user interface | PASS | `App.tsx` routes every role into the Mini App; PR 36 keyboard no longer advertises the bot's own menu tree when Mini App is configured |
-| 6 | Bot used as gateway/notifications/quick actions/fallback | PASS | PR 36 `main_menu()`; `docs/BOT_VS_MINIAPP_AUDIT.md`'s "What Bot keeps" list |
-| 7 | Known limitations of v1 recorded | PASS | Each PR section in `ERA_PLATFORM_PROGRESS.md` has a "Deliberately not touched" subsection; Excel-export gap explicitly named since PR 29 |
-| 8 | Unfinished features are hidden, not fake | PASS | No stub buttons found (`git grep` for disabled-but-visible actions); Excel export is disclosed as Bot-only, not hidden |
-| 9 | No mock data in production | PASS | `git grep -n "console.log\|mock" frontend/src` clean; `scripts/e2e_seed.py` only ever runs against `DATABASE_URL=sqlite+aiosqlite:///./e2e.db` in CI/local, never invoked against the production `DATABASE_URL` |
-| 10 | No test users in production interface | OWNER ACTION REQUIRED | Can't query the live production Postgres from this environment to confirm no leftover `9000xx`-range test users exist there — the seed script has only ever been run against throwaway SQLite in this session, but the owner should confirm the production DB itself is clean |
-| 11 | No buttons without a working backend action | PASS | PR 15 (prior session block) fixed all found instances; PR 36–38 didn't add new ones (each new button traced to a real handler/route in this session) |
-| 12 | No placeholder screens | PASS | No screen in `frontend/src/screens/` renders static "coming soon" content |
-| 13 | No production-critical `TODO`/`FIXME` | PASS | `grep -rn "TODO\|FIXME" app --include=*.py` (excluding tests) → empty |
-| 14 | Owner assigned per functional block | OWNER ACTION REQUIRED | No named individuals anywhere in the repo beyond a single `ADMIN_IDS` Telegram ID in `render.yaml` — this is an organizational decision only the platform owner can make |
-| 15 | Final READY/NOT READY criteria fixed | PASS | This document |
-
-## II. Bot ↔ Mini App архитектура (16–30)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 16 | Full bot handler list checked for duplication | PASS | `docs/BOT_VS_MINIAPP_AUDIT.md` — every participant/leader/admin handler area tabled |
-| 17 | Legacy bot screens removed from user-facing UX | PASS | PR 36: old `👤 Личный кабинет`/`⚙️ Панель` tree no longer on the default keyboard |
-| 18 | Bot fallback not removed before Mini App confirmed stable | PASS | PR 36 explicitly kept the old menu as the `else` (no-Mini-App-URL) branch |
-| 19 | `/start` gives a clear path into ERA Platform | PASS | `app/handlers/start.py::start()` |
-| 20 | Bot's main button opens Mini App | PASS | PR 36 `main_menu()`, first row |
-| 21 | `🔥 Открыть ЭРА` button verified | PASS | `tests/test_participant_menu_miniapp_button.py` (button is a real `WebAppInfo`, not a callback) |
-| 22 | Telegram Menu Button verified | PASS | `/diag` → `"menu_button_type":"web_app","menu_button_verified":true` (checked live against Telegram at process boot) |
-| 23 | Main Mini App in bot profile verified | PASS | `/diag` → `"miniapp_configured":true` |
-| 24 | Deep links from Bot to specific Mini App screens | PASS (partial) | Tab-level deep links shipped in PR 36 (`#/tasks`, `#/events`, `#/opportunities`) and verified by `frontend/e2e/deep_links.spec.ts`; **per-notification item-level deep linking (a specific task/event/opportunity) is prepared (`miniapp_task_url`/`miniapp_event_url`/`miniapp_opportunity_url` helpers exist) but not yet wired into notification call sites** — that was planned as PR 40, not reached this session |
-| 25 | Return from Mini App to Telegram | PASS | Native Telegram WebView back button; no custom code needed or found missing |
-| 26 | Bot works when frontend temporarily unavailable | PASS | `_mount_frontend()` in `app/webapp.py` doesn't raise if `frontend/dist` is absent — bot/API continue |
-| 27 | Bot works when backend temporarily unavailable | N/A | Bot and backend are the same process (`docs/DEPLOYMENT_RUNBOOK.md`, "Топология") — the question doesn't apply architecturally |
-| 28 | No Bot→Mini App→Bot cycles | PASS | Reviewed deep-link flows; each hop terminates in a screen, not a redirect loop |
-| 29 | Single source of truth for business logic | PASS | Bot handlers and Mini App API routes both call the same `app/services/*.py` functions throughout this session's work (e.g. `home_service.py` reused by both surfaces) |
-| 30 | No separate Mini App user table | PASS | One `users` table, one Postgres, shared by both surfaces (`app/database/models.py`) |
-
-## III. UI / UX / Design System (31–45)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 31 | All screens use one design system | PASS | `docs/UI_DESIGN_SYSTEM.md` (PR 37); tokens/components used throughout `frontend/src/screens` |
-| 32 | Colors fixed | PASS | `frontend/src/theme/tokens.css` |
-| 33 | Typography scale fixed | PASS | PR 37, `--era-text-xs`…`--era-text-3xl` |
-| 34 | Spacing system fixed | PASS | PR 37, `--era-space-1`…`--era-space-8` |
-| 35 | Border radius fixed | PASS | `--era-radius-sm/control/card/pill/sheet` |
-| 36 | Buttons unified | PASS | `.era-btn-primary` + global `button` rule in `tokens.css` |
-| 37 | Inputs/forms unified | PASS | Global `input`/`textarea`/`select` rules in `tokens.css` |
-| 38 | Cards unified | PASS | `components/Card.tsx` |
-| 39 | Status badges unified | PASS | `components/StatusBadge.tsx` |
-| 40 | Modal/bottom-sheet UX unified | PASS | PR 37 `Modal.tsx`/`BottomSheet.tsx`, one real usage (event-registration cancel confirm) |
-| 41 | Loading/skeleton states | PASS (partial rollout) | PR 37 `Skeleton*` components exist and are wired into Home/Profile/Events/Tasks; the remaining ~40 screens still show the older plain-text loading state pending PR 38/39-style content passes |
-| 42 | Empty states | PASS | `components/EmptyState.tsx`, used across the app |
-| 43 | Error states | PASS | `components/StatusBanner.tsx` (full-screen) + inline error text (panel-level) |
-| 44 | Success/confirmation states | PASS | PR 37 `Toast`/`useToast()`, used for register/cancel/résumé-download |
-| 45 | Visual review of every production screen before release | OWNER ACTION REQUIRED | This environment has no working local backend+Redis+real-device pipeline to render and screenshot all ~45 screens against live data — a genuine click-through by the owner (or a future session with that infra) is needed before claiming this |
-
-## IV. Telegram Mini App (46–60)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 46 | Production Mini App URL uses HTTPS | PASS | `https://era-telegram-bot.onrender.com` (Render terminates TLS) |
-| 47 | Mini App URL matches deployed frontend | PASS | `curl https://era-telegram-bot.onrender.com/health` → `"commit":"86563ae"`, matching `git log -1` on `main` |
-| 48 | Correct production bot token in use | PASS | `/diag` → `bot_id: 8481922061`, `bot_username: "ERA_1bot"` — matches the expected production bot |
-| 49 | `getMe()` confirms correct production bot | PASS | Same `/diag` fields, computed from a real `getMe()` call at process boot (`app/webapp.py::lifespan`) |
-| 50 | Telegram Menu Button returns correct `web_app` | PASS | `/diag` → `menu_button_type: "web_app"`, `menu_button_verified: true` |
-| 51 | Main Mini App configured on the correct bot | PASS | `/diag` → `miniapp_configured: true` |
-| 52 | `initData` passed to backend without unsafe transforms | PASS | `frontend/src/hooks/useAuth.ts` forwards the raw `initData` string; `app/api/security.py` parses it server-side |
-| 53 | `initData` validated exclusively on backend | PASS | `app/api/security.py::verify_init_data` — HMAC-SHA256 over the WebAppData secret |
-| 54 | `initDataUnsafe` not used as a trust source | PASS | Confirmed in `PRODUCTION_READINESS_AUDIT.md`'s pre-existing-good list; not reintroduced this session |
-| 55 | `auth_date` checked | PASS | `app/api/security.py`, `init_data_max_age_seconds` (default 3600s per `PRODUCTION_READINESS_AUDIT.md` finding #5) |
-| 56 | Expired Telegram auth rejected | PASS | Same check, covered by `tests/test_miniapp_security.py` |
-| 57 | Forged hash/signature rejected | PASS | `hmac.compare_digest`-based check; covered by tests |
-| 58 | Telegram ID stored as a safe integer type | PASS | `User.telegram_id: Mapped[int]` (`app/database/models.py`) |
-| 59 | Telegram theme light/dark compatibility | PASS | `tokens.css`'s `:root[data-theme="dark"]`, driven by `telegram/webApp.ts::applyTelegramTheme()` (PR 14, re-documented in PR 37) |
-| 60 | Safe-area/viewport on real Telegram clients | PASS at code level; OWNER ACTION REQUIRED for live confirmation | `env(safe-area-inset-*)` used throughout (PR 14 audit); no real device available in this environment to confirm visually |
-
-## V. Authentication & Session Security (61–75)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 61 | User cannot supply an arbitrary Telegram ID | PASS | Telegram ID comes only from verified `initData`, never a request field, except `devTelegramId` which is gated by `DEV_AUTH_ENABLED` (see #73) |
-| 62 | User cannot self-assign an arbitrary role | PASS | `app/api/v1/schemas.py`'s `MiniAppUserOut` derives role from the DB row, never from client input; role-change endpoints are admin-only (`AUTHORIZATION_MATRIX.md`) |
-| 63 | Frontend is not the source of truth for authentication | PASS | All auth decisions happen in `app/api/deps.py`/`security.py`, server-side |
-| 64 | Frontend is not the source of truth for authorization | PASS | `AUTHORIZATION_MATRIX.md` — every check is a backend `can_*`/`is_full_admin` call |
-| 65 | Session lifetime checked | PASS | `create_session_token(..., ttl_seconds=...)` in `app/api/security.py` |
-| 66 | Session expiry behaves correctly | PASS | Covered by `tests/test_miniapp_security.py` |
-| 67 | Re-authentication checked | PASS | `useAuth.ts` re-runs `/miniapp/auth` on visibility/focus (this is also the mechanism PR16's `pending_sync.spec.ts` proves) |
-| 68 | Session revocation | N/A | Sessions are stateless signed tokens with a short TTL, not server-side session records — there is nothing to "revoke" by design; the practical equivalent (rotating `MINIAPP_AUTH_SECRET`) invalidates all sessions at once, documented in `PRODUCTION_READINESS_AUDIT.md` finding #12 |
-| 69 | Logout, if applicable | N/A | No logout concept exists (or is needed) for a Telegram WebApp identity — closing the Mini App is the equivalent |
-| 70 | Secret tokens not in URLs | PASS | Session token travels as an `Authorization: Bearer` header (`app/api/deps.py`), not a query string |
-| 71 | Long-lived server secrets not in `localStorage` | PASS | Nothing in `frontend/src` writes to `localStorage` for secrets (`git grep -n "localStorage" frontend/src` — only used, if at all, for non-secret UI state) |
-| 72 | Cookie flags secure, if cookies used | N/A | No cookies are used anywhere in this stack (Bearer-token auth only) |
-| 73 | `DEV_AUTH_ENABLED` fully off in production | PASS | `Settings.assert_safe_for_deployment()` — refuses to start if `DEV_AUTH_ENABLED=true` and Render env detected (`app/config.py`) |
-| 74 | Test auth-bypass mechanisms unavailable in production | PASS | Same guard; `devTelegramId` is a no-op unless `DEV_AUTH_ENABLED=true`, which production startup refuses |
-| 75 | Auth failure events logged without secrets | PASS | `app/api/security.py`'s error paths don't log the raw `initData` or session token (spot-checked; no `logger` call includes `init_data` or `token` variables) |
-
-## VI. RBAC / Rights / IDOR (76–90)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 76 | Current Authorization Matrix exists | PASS | `docs/AUTHORIZATION_MATRIX.md` |
-| 77 | Participant has only participant permissions | PASS | Matrix table, row-by-row |
-| 78 | Leader access limited to permitted projects | PASS | `project_workspace_service.py::can_manage_project`/`can_view_workspace` |
-| 79 | Admin endpoints unreachable by Participant | PASS | `require_dashboard_access`-style dependencies on every `admin.py` route |
-| 80 | Leader endpoints unreachable by plain Participant | PASS | `leader.py` routes gated by `PRIVILEGED_ROLES` check |
-| 81 | Rights checked per-object, not just per-endpoint | PASS | "Object-level authorization" pattern in `AUTHORIZATION_MATRIX.md` — load-by-ID then check, applied consistently |
-| 82 | Cannot open another user's private profile via ID swap | PASS | `app/api/v1/profile.py` derives the target from `get_current_user()`, never a path/query ID |
-| 83 | Cannot open another user's portfolio via ID swap | PASS | Same mechanism |
-| 84 | Leader cannot alter another leader's project via ID swap | PASS | `can_manage_project()` checks the specific `project_id` against the caller's assignment |
-| 85 | Cannot alter another user's application | PASS | Admin decide-endpoints require reviewer role; the applicant identity comes from the loaded object, not the caller |
-| 86 | Cannot alter another user's task | PASS | `decide_task_application` checks `task.creator_id == actor.id` (leader) or admin role |
-| 87 | Cannot self-assign an admin role via API | PASS | Role-change endpoints are `is_full_admin`-only, and `can_change_role` explicitly forbids changing one's own role (`AUTHORIZATION_MATRIX.md`) |
-| 88 | No mass-assignment of forbidden fields | PASS | Every mutating endpoint uses a narrow Pydantic request model, not a generic "patch the ORM object" pattern (spot-checked `app/api/v1/*.py`) |
-| 89 | Sensitive operations deny-by-default | PASS | `AUTHORIZATION_MATRIX.md`'s stated principle, consistent with every endpoint reviewed |
-| 90 | Negative security tests exist for every role | PASS (not exhaustive) | `tests/test_authorization_service.py`, `tests/test_rate_limit.py`, `tests/test_admin_leader_rate_limiting.py` plus per-endpoint 403/404 assertions scattered through `tests/test_*_api.py`; **not a single consolidated "every role × every endpoint" matrix test** — real coverage exists, but auditing it as literally exhaustive would overstate it |
-
-## VII. API Security (91–105)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 91 | Inventory of all production endpoints | PASS | `app/api/v1/router.py` aggregates every route; enumerable via `python -c "from app.webapp import app; [print(r.path) for r in app.routes]"` |
-| 92 | Deprecated endpoints removed/closed | PASS | No endpoint found returning a deprecation stub; API surface reviewed each PR this session |
-| 93 | Debug endpoints removed | PASS | `docs_url=None, openapi_url=None` (`app/webapp.py`); `/diag` is intentionally non-sensitive (see its own docstring) |
-| 94 | Validation on every user input | PASS | Pydantic request models throughout; `clean_text()` helper for free-text fields |
-| 95 | Max string length limited | PASS | `clean_text(..., N)` calls with explicit caps (e.g. 255/1500 chars, per `PRODUCTION_READINESS_AUDIT.md` finding #20) |
-| 96 | Max request body size limited | N/A | No file-upload endpoint exists to make this a meaningful concern (see §X); JSON bodies are small, structured Pydantic models |
-| 97 | Pagination for potentially large lists | PASS (bounded limits, not full cursor pagination) | `home_service.py`, `leader_service.py`, `task_review_service.py` etc. cap queries at 30–50 rows; `user_management_service.py` has real `limit`/`offset` pagination |
-| 98 | Rate limiting on authentication | PASS | `/api/v1/miniapp/auth` (PR13), `tests/test_rate_limit.py` |
-| 99 | Rate limiting on admin-critical actions | PASS | All `admin.py`/`leader.py` decide/create endpoints (PR17), `tests/test_admin_leader_rate_limiting.py` |
-| 100 | Rate limiting on expensive endpoints | PASS (partial, documented exception) | Covers auth + all admin/leader mutations; participant-facing mutations (register for event, apply to opportunity, etc.) are explicitly **not** rate-limited — a known, documented exception (`PRODUCTION_READINESS_AUDIT.md` finding #11's own scope note: "lower blast radius") |
-| 101 | SQL injection protection | PASS | SQLAlchemy ORM/Core with bound parameters throughout; `git grep -n "f\".*SELECT\|execute(f\"" app` found no raw string-interpolated SQL |
-| 102 | XSS protection | PASS | React escapes all rendered content by default; no `dangerouslySetInnerHTML` found in `frontend/src` |
-| 103 | Command/template injection protection | PASS | No `subprocess`/`os.system`/`eval`/template-string execution of user input found in `app/` |
-| 104 | API doesn't return excess model fields | PASS | Every response uses a narrow `*Out` Pydantic schema (`PRODUCTION_READINESS_AUDIT.md` finding #9) |
-| 105 | API errors don't leak stack traces/SQL/secrets/paths | PASS | FastAPI's default production error handling (no `debug=True` found in `app/webapp.py`); errors return structured `HTTPException` details, not tracebacks |
-
-## VIII. Personal Data (106–120)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 106 | Full Data Inventory exists | PASS | `docs/DATA_INVENTORY.md` |
-| 107 | Processing purpose defined per field | PASS | Same doc, §1–2 |
-| 108 | Unnecessary collected data removed | PASS | Doc explicitly notes no unused-field bloat found |
-| 109 | Required vs. optional fields defined | PASS | Doc §1 table, "Обязательное" column |
-| 110 | Personal data identified | PASS | Doc §1, "Категория" column |
-| 111 | Sensitive data separately identified | PASS | `birth_date`/`age` flagged "Чувствительные" |
-| 112 | Access per data type defined | PASS | Doc §1–2 |
-| 113 | Admin doesn't see data they don't need | PASS (mostly) | `*Out` schemas scope admin views; `is_minor()` (PR18) is the one deliberate exception, and it's disclosed, not hidden |
-| 114 | API minimizes returned PII | PASS | Same schema discipline as §VII #104 |
-| 115 | PII not in technical logs unnecessarily | PASS | `initData`, session tokens confirmed not logged (§V #75); general app logs don't include user free-text fields |
-| 116 | PII not in analytics/monitoring automatically | N/A | No analytics/monitoring tool is integrated at all yet (§XVI) — there's nothing for PII to leak into |
-| 117 | Retention periods defined per data category | FAIL (unchanged) | `docs/DATA_INVENTORY.md` §7 is still explicitly a *proposal*, not an implemented policy — "Ниже — рабочее предложение... не внедрённая политика". Formalizing it (e.g. an actual scheduled purge) is a real feature, deliberately not built speculatively this pass without the retention *periods themselves* being legally ratified first (§IX) — building enforcement around numbers nobody has approved would be backwards |
-| 118 | Data deletion process implemented | PASS | `app/services/data_rights_service.py::request_deletion()`/`fulfill_deletion_request()`; `POST /api/v1/profile/delete-request` (self-service) + `GET/POST /api/v1/admin/data-deletion-requests[...]` (admin review, full-admin-gated). Anonymizes + archives, doesn't hard-delete — see the model's own docstring for why (referential integrity for `PointTransaction` and authored content) |
-| 119 | Data export/access process implemented | PASS | `app/services/data_rights_service.py::export_user_data()`; `GET /api/v1/profile/export` returns a downloadable JSON file of everything `DATA_INVENTORY.md` §1–2 lists for the caller's own account; `ProfileScreen.tsx` has the download button |
-| 120 | Post-account-deletion data fate defined | PASS | Defined and implemented identically: `_ANONYMIZED_STRING_FIELDS` cleared, `first_name` set to a placeholder, `is_archived`/`archived_at`/`archived_by` set — see `DataDeletionRequest`'s docstring in `app/database/models.py` and `data_rights_service.py`'s module docstring for the reasoning |
-
-## IX. Legal Readiness (121–135)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 121 | Operating legal entity/organization defined | OWNER ACTION REQUIRED | `PRIVACY_POLICY_DRAFT.md` line 16–18: literal placeholder `[указать точное юридическое название организации...]` |
-| 122 | Applicable jurisdiction confirmed with a lawyer | OWNER ACTION REQUIRED | Same doc, explicitly unresolved: "юрисдикция ЭРА не определена" |
-| 123 | Compliance with Armenian PDPA checked | OWNER ACTION REQUIRED | No compliance review exists in the repo; jurisdiction itself isn't even confirmed yet |
-| 124 | Final Privacy Policy prepared | FAIL | Draft only, with placeholders |
-| 125 | Privacy Policy reviewed by a lawyer | OWNER ACTION REQUIRED | Not done — the draft says so itself |
-| 126 | User consent to data processing prepared | FAIL | `ConsentLog` table technically ready (PR18); no real consent *text* exists to consent to |
-| 127 | Consent version tracked | PASS (mechanism only) | `consent_service.py::record_consent()` stores `policy_version`; currently a placeholder value `"unset-v1"`, not real content |
-| 128 | Consent date/time tracked | PASS | `ConsentLog.created_at` |
-| 129 | Consenting user tracked | PASS | `ConsentLog.user_id` |
-| 130 | Consent withdrawal rules defined | FAIL | Not defined anywhere |
-| 131 | Legal model for minors checked separately | OWNER ACTION REQUIRED | `DATA_INVENTORY.md` §6: explicitly not resolved, "не может быть закрыто одним техническим PR" |
-| 132 | Minimum self-registration age defined | FAIL | No age gate exists anywhere in registration flow |
-| 133 | Guardian consent flow implemented if needed | FAIL | Not implemented; `is_minor()` is informational-only, admin-visible, non-blocking (PR18) |
-| 134 | Legal basis for publishing participant photos/video checked | OWNER ACTION REQUIRED | Not addressed anywhere in the repo |
-| 135 | Written legal `APPROVED / RISKS ACCEPTED` obtained | OWNER ACTION REQUIRED | Does not exist |
-
-## X. Files / Photos / Portfolio (136–150)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 136 | Allowlist of permitted file types | N/A | No raw file-upload endpoint exists in the Mini App API at all — confirmed by `git grep -rn "UploadFile\|multipart"  app/api` returning nothing. All media flows through Telegram's own `file_id` mechanism (`PRODUCTION_READINESS_AUDIT.md` finding #10, re-confirmed in PR17b finding #20) |
-| 137 | MIME type checked, not just extension | N/A | Same — no upload path to check |
-| 138 | Max file size limited | N/A | Telegram itself enforces this for any bot-received file; nothing server-side to bound |
-| 139 | Image dimensions limited | N/A | Same |
-| 140 | User filename not used as a filesystem path | N/A | No filenames are ever used as paths — files aren't written to this app's filesystem at all |
-| 141 | Storage protected from path traversal | N/A | No server-side file storage exists to traverse |
-| 142 | Executable file upload forbidden | N/A | Same — no upload path |
-| 143 | HTML/SVG upload risk checked | N/A | Same |
-| 144 | Private files don't have an uncontrolled public URL | PASS | `PortfolioItem.url` field exists but is never populated by any of the ~10 creation call sites (`PRODUCTION_READINESS_AUDIT.md` finding #20) — effectively dead, not a live exposure |
-| 145 | Authorization checked on file download | N/A | Files are served by Telegram directly via `file_id`, not by this app |
-| 146 | Cannot download another user's private file via ID swap | N/A | Same — this app never serves file bytes |
-| 147 | Portfolio item deletion handles the physical file correctly | N/A | No physical file to handle — only a DB row and a Telegram `file_id` reference |
-| 148 | Unneeded metadata/EXIF stripped | N/A | This app never touches file bytes to strip anything from |
-| 149 | A corrupted file doesn't crash the app | N/A | Same — no file parsing happens server-side |
-| 150 | Dedicated file upload/download security tests | N/A | Nothing to test at this layer; the actual security property (no raw upload surface exists) is what PR17b's finding #20 verified with `grep` evidence, and that's the real control here |
-
-## XI. Database / Data Integrity (151–165)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 151 | Production uses the expected PostgreSQL database | PASS | `render.yaml`'s `era-postgres` service, wired via `DATABASE_URL` |
-| 152 | No accidental prod→dev/test DB connection | PASS | `DATABASE_URL` comes from Render's own `fromDatabase` binding in `render.yaml`, not a hardcoded value that could point elsewhere |
-| 153 | All production tables managed by migrations | PASS | Single Alembic chain, no manually-created tables found |
-| 154 | Alembic has a single head | PASS | `python -m alembic heads` → `0015_data_deletion_requests (head)` |
-| 155 | A clean DB comes up via all migrations | PASS | `pytest`'s test DB setup runs the full migration chain on every CI/local run (743 passing tests this session all depend on this) |
-| 156 | Existing production DB upgrades without data loss | OWNER ACTION REQUIRED | Every migration this session added is additive (per `ERA_PLATFORM_PROGRESS.md`'s stated rule) and upgrade/downgrade-smoke-tested on a throwaway DB — but confirming it against the *actual* production DB's current state needs the owner's own deploy-and-verify, which this session did do for every merged PR via `/health`/`/diag` polling (see §XX) |
-| 157 | Foreign keys correctly configured | PASS | `app/database/models.py` — every relationship has an explicit `ForeignKey` |
-| 158 | Unique constraints match business rules | PASS | e.g. `PointTransaction.idempotency_key` unique constraint (prevents double-award — see #162) |
-| 159 | Nullable fields reviewed | PASS | Reviewed as part of this session's schema changes (e.g. `HomeSnapshot`/`ActivityStats` fields are all required, not accidentally optional) |
-| 160 | Critical operations run transactionally | PASS | `get_session()` commits/rolls back the whole request's session as one transaction (`PRODUCTION_READINESS_AUDIT.md` finding #19's fix) |
-| 161 | An application cannot be approved twice | PASS | `application_review_service.py::approve_application` — idempotent, returns `already_approved` on a second call, covered by `tests/test_admin_user_card.py::test_approve_application_is_idempotent_and_blocks_rejected` |
-| 162 | Points cannot be deducted twice | PASS | `PointTransaction.idempotency_key` unique constraint + `add_points()` requiring a caller-supplied key built from stable identifiers, used consistently across this session's new features (rewards, event activities) |
-| 163 | A race between two admins doesn't corrupt data | PASS (via idempotency, not row-locking) | The idempotency-key pattern makes a duplicate concurrent action a no-op rather than a double-effect; **true concurrent-decision race testing was explicitly out of scope** per `frontend/e2e/README.md`'s own "Not covered here" note |
-| 164 | Cascade delete/archive behavior defined | PASS | Archive (not hard-delete) is the consistent pattern (`is_archived`, `archived_at`, `archived_by` on `User`; soft-status fields elsewhere) |
-| 165 | Integrity audit of existing production data performed | OWNER ACTION REQUIRED | Requires direct production DB access this environment doesn't have |
-
-## XII. Backup / Restore / Disaster Recovery (166–180)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 166 | Automated production DB backup configured | PASS (code) / **FAIL (operational)** | `.github/workflows/database-backup.yml` exists and is well-designed, but see the Critical finding above — it has never succeeded because `BACKUP_DATABASE_URL` was never set |
-| 167 | Backup runs on a schedule | PASS (schedule fires) | Runs daily at 01:17 UTC per the workflow's cron — it just fails every time, at the same step |
-| 168 | Backup retention defined | PASS (defined, moot until backups exist) | 30 days, GitHub Actions artifacts (`docs/BACKUP_AND_RECOVERY.md`) |
-| 169 | Backup stored separately from the primary DB | PASS (by design, moot until backups exist) | GitHub Actions artifact storage, separate from Render Postgres |
-| 170 | Backup protected from unauthorized access | PASS (by design) | GitHub Actions artifacts are private-repo-scoped |
-| 171 | Backup encrypted if required | N/A | Not currently encrypted at rest beyond GitHub's own artifact storage; not flagged as required by any policy in the repo |
-| 172 | User file backup configured | N/A | No user files are stored server-side to back up (§X) — Telegram is the file store, outside this app's control |
-| 173 | DB restore capability verified | **FAIL** | Cannot verify — there is no successful backup to restore from right now |
-| 174 | A real restore test run in an isolated environment | **FAIL** | Same — the workflow's own restore-verification step has never run past the secret-validation step |
-| 175 | Data integrity checked after restore | FAIL | Never reached |
-| 176 | RPO defined | PASS | ≤24h stated in `docs/BACKUP_AND_RECOVERY.md` — **currently not being met in practice**, since no backup has ever completed |
-| 177 | RTO defined | PASS | ≤2h target stated in the same doc |
-| 178 | Disaster Recovery Runbook created | PASS | `docs/BACKUP_AND_RECOVERY.md`'s "Восстановление"/"Откат" sections |
-| 179 | Scenario for full production DB deletion | PASS (documented) / **currently unusable** | Runbook describes it; it depends on a backup existing, which none currently does |
-| 180 | Scenario for production compromise | PASS | `docs/INCIDENT_RESPONSE_RUNBOOK.md`'s Scenario 3 (production database leak/compromise: contain, assess scope, legal-notification flag, restore-from-backup step, evidence preservation) |
-
-## XIII. Secrets / Infrastructure / Config (181–195)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 181 | Telegram Bot Token absent from Git | PASS | `git grep -InE "BOT_TOKEN\s*=\s*['\"][0-9]{6,}"` finds only obviously-fake test tokens (`tests/test_*.py`) |
-| 182 | Database credentials absent from Git | PASS | `.env` gitignored and confirmed not tracked (`git ls-files \| grep '^\.env$'` empty); `render.yaml` uses `fromDatabase`, not a literal string |
-| 183 | API secrets absent from frontend bundle | PASS | Frontend only ever holds the Bearer session token issued after auth, never `MINIAPP_AUTH_SECRET`/`BOT_TOKEN` |
-| 184 | `.env` excluded from Git | PASS | `.gitignore` line 1: `.env` |
-| 185 | `.env.example` has no real secrets | PASS | All secret fields blank; only public-ish invite-link URLs are pre-filled, which is their intended public purpose |
-| 186 | Repository history secret-scanned | PASS | New `secret-scan` job in `.github/workflows/ci.yml` (pinned `gitleaks` v8.21.2 binary, `fetch-depth: 0` for full history), passing on every PR since it landed; this session also ran a manual `git log --all -p` sweep for private-key/AWS/OpenAI-style key patterns as a pre-check — clean |
-| 187 | Previously-compromised secrets rotated | OWNER ACTION REQUIRED | No record of a known compromise in the repo; can't confirm a negative from here |
-| 188 | Dev and production use different credentials | PASS | CI/E2E use hardcoded fake `BOT_TOKEN`/`MINIAPP_AUTH_SECRET` (`ci.yml`'s `e2e` job env); production values are Render-generated (`render.yaml`'s `generateValue: true`) |
-| 189 | Telegram token rotation procedure defined | PASS | `docs/DEPLOYMENT_RUNBOOK.md`'s "Настройка Telegram" + general secret-rotation note in `PRODUCTION_READINESS_AUDIT.md` finding #12 |
-| 190 | DB password rotation procedure defined | PASS | Render-managed Postgres; rotation is a Render Dashboard action, documented as such |
-| 191 | Production env vars documented | PASS | `docs/DEPLOYMENT_RUNBOOK.md`'s full table |
-| 192 | Critical env vars validated at startup | PASS | `Settings.assert_safe_for_deployment()`; `BOT_TOKEN` length-validated by Pydantic settings |
-| 193 | Misconfiguration stops startup safely | PASS | Same guard — refuses to boot rather than run insecurely |
-| 194 | HTTPS enabled for production | PASS | Render's default `*.onrender.com` TLS |
-| 195 | CORS/trusted hosts restricted to necessary origins | PASS | No `CORSMiddleware` is mounted at all (closed by default, `app/webapp.py` line ~229's comment) — same-origin only, since frontend and API are served by the same process |
-
-## XIV. CI/CD / Supply Chain (196–210)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 196 | Every PR runs backend tests | PASS | `.github/workflows/ci.yml`'s `test` job runs `pytest -q` on every PR (switched from `unittest discover` via PR #151, merged this pass) — no more silent 17-file blind spot; CI's own green checkmark is now complete evidence, not just this session's local runs |
-| 197 | Every PR runs frontend tests | PASS | `frontend` job in `ci.yml` (build+typecheck; there is no separate frontend unit-test suite — see #258) |
-| 198 | Every PR runs a frontend production build | PASS | `npm run build` in the `frontend` CI job |
-| 199 | Every PR runs lint | PASS | `ruff check app --select E9,F` (correctness rules; not a full style lint, by design — `ci.yml`'s own comment) |
-| 200 | Every PR runs type checking | PASS (frontend only) | `tsc --noEmit` is part of `npm run build`; **no backend type-checker (mypy/pyright) exists in CI** — this repo doesn't use one at all, so there's nothing to check here for Python |
-| 201 | Python dependency audit in CI | PASS | `pip-audit -r requirements.txt --strict`, blocking |
-| 202 | npm dependency audit in CI | PASS | `npm audit --audit-level=high`, blocking (PR18b closed the last advisory) |
-| 203 | Secret scanning in CI | PASS | New `secret-scan` job, first job in `ci.yml`, `gitleaks` v8.21.2 against full history — see #186 |
-| 204 | Dependency lock files in the repo | PASS | `frontend/package-lock.json` tracked; `requirements.txt` pins versions |
-| 205 | Production build is reproducible | PASS | Docker multi-stage build + lock files (`Dockerfile`) |
-| 206 | No Critical dependency vulnerabilities | PASS | `pip-audit --strict` and `npm audit --audit-level=high` both clean, run fresh for this document |
-| 207 | High vulnerabilities closed or owner-accepted | PASS | None currently open (same audits) |
-| 208 | Unused dependencies removed | OWNER ACTION REQUIRED | Not audited this session — would need a dedicated pass (`pip list`/`npm ls` vs. actual imports), not done |
-| 209 | GitHub permissions minimized | OWNER ACTION REQUIRED | Org/repo permission settings aren't visible from this session's tooling |
-| 210 | Production deploy can't happen from an arbitrary branch | PASS | `render.yaml`'s `autoDeployTrigger: commit` deploys whatever Render's connected branch is (standard Render behavior is the branch selected in the dashboard, normally `main`) — confirming the dashboard setting itself is an owner check, but the repo-side config only ever pushes to `main` via this session's merge flow |
-
-## XV. Logging / Audit / Monitoring (211–225)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 211 | Backend errors centrally logged | PASS | Uvicorn's error logger captures unhandled exceptions with full tracebacks, visible in Render's log viewer (per prior `FINAL_PRODUCTION_ACCEPTANCE.md`'s own baseline, still true) |
-| 212 | Frontend errors diagnosable | PASS (basic) | Browser console + `AuthErrorScreen`'s error code/detail display; no dedicated frontend error-reporting pipeline beyond that |
-| 213 | Logs carry a request/correlation ID | PASS | `app/request_context.py`: `X-Request-ID` trusted if the caller sent one, else a fresh `uuid4`; threaded through every log line via a `logging.Filter` on the root logger's handlers, echoed back in the response header. Confirmed live: `curl -sD - .../health` shows `x-request-id` on the deployed commit |
-| 214 | Tokens not logged | PASS | Spot-checked `app/api/security.py`/`deps.py` — no `logger` call includes the session token |
-| 215 | Cookies/session secrets not logged | N/A | No cookies exist (§V #72); session tokens confirmed not logged |
-| 216 | Full Telegram `initData` not logged | PASS | Confirmed not logged in `app/api/security.py` |
-| 217 | AuditLog records admin actions | PASS | `action="user.approved"`, `"user.rejected"`, `"project.*"`, etc. — `git grep 'action="' app` shows 30 distinct audited action types |
-| 218 | AuditLog records role changes | PASS | `action="user.role_changed"` (`rights_block6.py`) |
-| 219 | AuditLog records application approve/reject | PASS | `action="user.approved"`/`"user.rejected"` (`application_review_service.py`) |
-| 220 | AuditLog records manual points changes | PASS | `action="points.added"` |
-| 221 | AuditLog records data deletion/export | PASS | `action="user.deletion_requested"`/`"user.deletion_fulfilled"`/`"user.deletion_rejected"` (`data_rights_service.py::request_deletion()`/`fulfill_deletion_request()`) and `action="user.data_exported"` (`export_user_data()`, closing a same-pass gap where deletion was audited but export initially wasn't) |
-| 222 | HTTP 5xx monitoring | OWNER ACTION REQUIRED | No external monitoring tool integrated (`PRODUCTION_READINESS_AUDIT.md` finding #14, still open) |
-| 223 | DB unavailability monitoring | OWNER ACTION REQUIRED | Same — `/ready` exposes it on-demand, but nothing polls and alerts on it automatically |
-| 224 | `/health` and `/ready` monitored | PASS (endpoints exist) / OWNER ACTION REQUIRED (active monitoring) | Both endpoints work and were just confirmed live (`curl` this session); whether Render's own health-check or an external uptime monitor is watching them is an owner-side configuration this session can't see |
-| 225 | Owner notified on critical production failure | OWNER ACTION REQUIRED | No alerting integration exists |
-
-## XVI. Performance / Reliability / Autonomy (226–240)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 226 | Mini App opens at acceptable speed on mobile internet | PASS (bundle size proxy) | Production JS bundle ≈285KB / 73KB gzipped (`npm run build` output, this session) — small by modern standards; no real network-throttled test performed |
-| 227 | No critically heavy frontend bundles | PASS | Same evidence |
-| 228 | Large lists aren't loaded whole unnecessarily | PASS | Bounded query limits throughout (§VII #97) |
-| 229 | DB queries checked for obvious N+1 | OWNER ACTION REQUIRED | No systematic N+1 audit was performed this session; spot-checks of this session's own new code (`home_service.py`) show single-query aggregation, but a full-codebase pass wasn't done |
-| 230 | Necessary DB indexes added | OWNER ACTION REQUIRED | Not audited this session against real query patterns/`EXPLAIN` output |
-| 231 | Slow Telegram API doesn't block the whole system | PASS | `notification_service.py::broadcast_detailed` already handles bounded concurrency + retry (`PRODUCTION_READINESS_AUDIT.md`'s pre-existing-good list) |
-| 232 | An external service can't hold a request forever | PASS (reasonably) | aiogram/httpx client defaults apply timeouts; no evidence of an unbounded external call found |
-| 233 | Timeouts configured | PASS | Same |
-| 234 | Safe retries configured | PASS | `broadcast_detailed`'s exponential-backoff retry, transient-vs-permanent error split |
-| 235 | Retries don't create duplicate operations | PASS | Idempotency-key pattern (§XI #162) makes retried mutations safe |
-| 236 | Scheduler survives an app restart | PASS | No in-memory-only scheduled state found; FSM state lives in Redis, not process memory |
-| 237 | Pending delivery isn't counted as delivered | PASS | `notification_service.py` distinguishes delivered vs. failed explicitly |
-| 238 | Bot automatically returns to a working state after restart | PASS | Webhook re-registered at startup (`app/webapp.py::lifespan`), no manual step |
-| 239 | No manual developer intervention needed after a normal deploy/restart | PASS | Same — migrations run automatically (`Dockerfile`'s `CMD`), webhook re-set automatically |
-| 240 | 24–48h unattended autonomous operation scenario tested | **FAIL** | Not tested this session — this environment's session length doesn't span that, and no owner-run soak test is on record |
-
-## XVII. Bot / Chat / Notifications / Broadcast (241–255)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 241 | Unregistered user cannot write in the general chat | PASS (code-level) | `chat_access_service.py`'s `moderation_gate`; re-verified PR18c |
-| 242 | Incomplete registration doesn't grant write access | PASS (code-level) | Same |
-| 243 | Pending registration doesn't grant write access | PASS (code-level) | Same |
-| 244 | Admin approval automatically opens access | PASS (code-level) | `sync_user_chat_access`, called from the approval path |
-| 245 | Rejected registration keeps the restriction | PASS (code-level) | Same service |
-| 246 | Re-joining doesn't bypass restrictions | PASS (code-level) | `handle_chat_join_request` re-checks status every time, not just on first join |
-| 247 | Manual ban takes priority over approval | PASS (code-level) | `is_blocked` checked ahead of `application_status` in `chat_access_service.py`'s access logic |
-| 248 | Greetings don't duplicate | PASS (code-level) | `welcome_members` logic reviewed in `PRODUCTION_READINESS_AUDIT.md`'s baseline, unchanged since |
-| 249 | Bot doesn't send greetings to unrelated chats | PASS (code-level) | Chat IDs are config-scoped (`chat_key_for_id`), not wildcard |
-| 250 | General broadcast actually reaches the general chat | PASS (code-level) | `broadcast_detailed` targets configured chat IDs |
-| 251 | Personal broadcast doesn't leak publicly | PASS (code-level) | Personal vs. chat broadcasts are distinct code paths, not a shared "audience" flag that could be misconfigured |
-| 252 | Combined broadcast doesn't create duplicates | PASS (code-level) | Recipient deduplication is an explicit, named feature of `broadcast_detailed` |
-| 253 | Notification deep link opens the right Mini App object | PASS (tab-level) / Backlog (item-level) | Same caveat as §II #24 — tab-level works and is tested, per-notification item-level linking wasn't reached this session |
-| 254 | Failed delivery retried safely after a Telegram API failure | PASS (code-level) | `broadcast_detailed`'s retry logic |
-| 255 | Delivery success/failure statistics tracked | PASS (code-level) | Same function returns detailed stats |
-
-*Every item in this section is marked PASS at the code level, re-verified by reading the code in PR18c (no code change needed) — none of it was clicked through live in this pass, consistent with High finding #3 above.*
-
-## XVIII. QA / E2E / Device Testing (256–270)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 256 | Full backend pytest green | PASS | `pytest -q` → 762 passed, run repeatedly this pass, most recently immediately before this document; CI's own `test` job now runs this exact command (see #196), no longer just a local-only claim |
-| 257 | Existing unittest suite green | PASS (superseded) | CI no longer uses `unittest discover` at all (switched to `pytest -q` via PR #151) — the item as originally framed ("does the narrower runner pass") no longer describes what CI does; `pytest -q` collecting and passing every test file, including the 17 `unittest discover` used to miss, is the current and stronger evidence |
-| 258 | Frontend test suite green | N/A | No dedicated frontend unit-test framework (Jest/Vitest) exists in this repo — type-checking (`tsc`) + build + E2E are the frontend's actual test layers, both green |
-| 259 | Production frontend build green | PASS | `npm run build` this session, clean |
-| 260 | E2E Participant flow green | PASS | `participant.spec.ts` + `deep_links.spec.ts` + `event_cancel_confirmation.spec.ts`, CI `e2e` job green on every PR this session |
-| 261 | E2E Leader flow green | PASS | `leader.spec.ts`, `event_activities.spec.ts` |
-| 262 | E2E Admin flow green | PASS | `admin.spec.ts`, `admin_people.spec.ts`, `admin_catalog.spec.ts`, `admin_offices.spec.ts`, `pending_sync.spec.ts`, `rewards.spec.ts`, `auctions.spec.ts`, `surveys.spec.ts` |
-| 263 | New user `/start` → approved account verified | PASS (E2E) | `pending_sync.spec.ts` + `admin.spec.ts` cover the approval half; registration-form submission itself isn't E2E-covered (Bot-only FSM, outside Playwright's reach) |
-| 264 | Full project/task flow verified | PASS (E2E) | `participant.spec.ts` (event registration), `leader.spec.ts` (open task creation) — full project-workspace lifecycle isn't one single E2E spec, though `ProjectWorkspace.tsx` itself is the most-built screen in the app |
-| 265 | Full opportunity/points flow verified | PASS (E2E) | `rewards.spec.ts`, `auctions.spec.ts` |
-| 266 | Portfolio upload/view/delete flow verified | **FAIL** | Explicitly disclosed as not covered by `frontend/e2e/README.md`'s own "Not covered here" note — uploads are Bot-only FSM (§X), can't be exercised by Playwright |
-| 267 | Telegram Desktop checked | OWNER ACTION REQUIRED | No Telegram client access in this environment |
-| 268 | At least one real mobile Telegram client checked | OWNER ACTION REQUIRED | Same |
-| 269 | Widths 320/360/390/430/768px checked | FAIL | E2E fixed at a single 390×844 viewport (`playwright.config.ts`); no multi-width pass performed |
-| 270 | Final regression after the last production merge | PASS | `pytest -q` (762 passed) run immediately before this document, most recently before merging PR #159 |
-
-## XIX. Incident Response / Ownership / Business Continuity (271–285)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 271 | Technical production owner assigned | OWNER ACTION REQUIRED (unchanged) | `docs/PRODUCTION_SERVICES_AND_OWNERS.md` now has a row and an `[OWNER: name]` placeholder for this — filling it in is the owner's action, not this session's |
-| 272 | BotFather owner assigned | OWNER ACTION REQUIRED (unchanged) | Same doc, same placeholder pattern |
-| 273 | Hosting/Render owner assigned | OWNER ACTION REQUIRED (unchanged) | Same |
-| 274 | Production DB owner assigned | OWNER ACTION REQUIRED (unchanged) | Same |
-| 275 | Critical accounts not single-owner without recovery | OWNER ACTION REQUIRED (unchanged) | `render.yaml`'s `ADMIN_IDS` is still one Telegram ID; `docs/PRODUCTION_SERVICES_AND_OWNERS.md`'s own "Single-point-of-failure check" section names this explicitly as a real risk, not a hidden one |
-| 276 | MFA enabled where supported | OWNER ACTION REQUIRED (unchanged) | Can't be verified or configured from this environment; the new services doc has a dedicated MFA column ready for the owner to fill in |
-| 277 | Recovery codes safely stored | OWNER ACTION REQUIRED (unchanged) | Same — dedicated column exists, values don't |
-| 278 | Document listing all production services + owners exists | PASS | `docs/PRODUCTION_SERVICES_AND_OWNERS.md` — table of every real dependency (Render, GitHub, BotFather, Postgres, GitHub Actions secrets, `ADMIN_IDS`). The `[OWNER: ...]`/MFA/recovery-code *cells* are still placeholders — filling them in is §XIX #271–277's OWNER ACTION REQUIRED, unchanged; the *document existing* is what this item asks and it now does |
-| 279 | Incident Response Runbook exists | PASS | `docs/INCIDENT_RESPONSE_RUNBOOK.md` |
-| 280 | Scenario for Telegram Bot Token leak | PASS | Same doc, Scenario 1 |
-| 281 | Scenario for admin account compromise | PASS | Same doc, Scenario 2 |
-| 282 | Scenario for production DB leak | PASS | Same doc, Scenario 3 |
-| 283 | Scenario for hosting provider unavailability | PASS | Same doc, Scenario 4 |
-| 284 | Participant-notification procedure for serious incidents | OWNER ACTION REQUIRED (unchanged) | Runbook's Scenario 3 explicitly flags this as an owner+legal decision it can't make unilaterally (`docs/DATA_INVENTORY.md`/`docs/PRIVACY_POLICY_DRAFT.md` cross-reference) rather than silently deciding it — still depends on §IX being resolved first |
-| 285 | Post-incident root-cause review process defined | PASS | Same doc's "Post-incident review" section + an "Incident log" ready to receive entries |
-
-## XX. Final Production Release (286–300)
-
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 286 | Exact release commit SHA recorded | PASS | `86563ae` |
-| 287 | GitHub `main` clean and synced | PASS | `git status --short --branch` → clean, up to date with `origin/main`, at this document's writing |
-| 288 | All production migrations applied | PASS | Single Alembic head `0015_data_deletion_requests`; migrations run automatically at container start (`Dockerfile` `CMD`) |
-| 289 | `/health` shows the current release | PASS | `curl https://era-telegram-bot.onrender.com/health` → `{"status":"ok","version":"2.1.0","commit":"86563ae"}` |
-| 290 | `/ready` confirms backend+DB readiness | PASS | `curl .../ready` → `{"status":"ready"}` |
-| 291 | Telegram `getMe` confirms the correct bot | PASS | Via `/diag` (computed from a real `getMe()` at boot) |
-| 292 | `getWebhookInfo` confirms the correct production webhook | PASS | Via `/diag`'s `webhook_host` |
-| 293 | `getChatMenuButton` confirms the current Mini App | PASS | Via `/diag`'s `menu_button_type`/`menu_button_verified` |
-| 294 | The real Mini App opens from the production bot | OWNER ACTION REQUIRED | Needs a live Telegram client click-through (High finding #3) |
-| 295 | Real registration → admin approval → chat access chain verified | PASS (E2E) / OWNER ACTION REQUIRED (live) | `pending_sync.spec.ts`/`admin.spec.ts` prove it against a real backend; not clicked through live in real Telegram |
-| 296 | Real Participant → Project → Task → Portfolio chain verified | PASS (E2E, partial) / FAIL (portfolio leg) | Project/task covered by E2E; portfolio upload isn't (§XVIII #266) |
-| 297 | Real Opportunity → Approval → Points chain verified | PASS (E2E) | `rewards.spec.ts` |
-| 298 | Real Leader Mode and Admin Mode verified after deploy | PASS (E2E, post-merge CI) / OWNER ACTION REQUIRED (live) | E2E green on the exact commits deployed; not live-clicked in production Telegram |
-| 299 | Backup created before final release, restore verified | **FAIL** | Directly follows from the Critical finding — no backup has ever succeeded |
-| 300 | This document issued with a stated verdict | PASS | This document; verdict: **NOT READY FOR LAUNCH** |
-
----
-
-## What would need to change to reach READY FOR LAUNCH
-
-Two of the previous pass's five priority items are now closed (#3 CI
-test-runner switch, and the documentation half of #3's incident-response
-item — see "Changed since the previous pass"). What's left, in priority
-order:
-
-1. **Owner sets `BACKUP_DATABASE_URL`, manually triggers
-   `database-backup.yml` once, confirms a green run.** Closes the one
-   Critical item. Everything in §XII downstream of it (restore
-   verification, RPO/RTO actually being met) becomes checkable
-   immediately after. **Nothing in this environment can do this — it
-   requires a real Render Postgres connection string and a GitHub Actions
-   secret, both credentials this tooling is not permitted to handle.**
-2. **Owner (with a lawyer where the checklist itself says one is needed)
-   resolves §IX**: legal entity, jurisdiction, final Privacy Policy text,
-   consent-version content, minors policy, photo/video publication basis,
-   written sign-off. Closes the remaining High #1. The *technical* side
-   this used to block (§VIII's export/deletion FAILs) is already closed
-   this pass — retention-period *enforcement* (§VIII #117) still waits on
-   this legal step, deliberately, since building enforcement around
-   unratified numbers would be backwards.
-3. **The owner (or a future session with real Telegram access) clicks
-   through the bot and Mini App on an actual device once**, confirming
-   §XVIII #267–269 and §XX #294–298's live half. Closes the remaining
-   High #2.
-4. **A named second owner + MFA/recovery codes for Render/GitHub/
-   BotFather.** The runbook and services-and-owners document now exist
-   (§XIX #278–285 all closed) — this step is purely filling in the
-   `[OWNER: ...]` placeholders those documents already have, plus
-   actually setting up the second account. §XIX #271–277.
-5. **Enable GitHub branch protection** on `main` (required status checks,
-   no force-push/deletion) — §XIV #209 area. This session attempted it
-   directly and was correctly blocked by its own tooling's
-   security-settings restriction; it needs the owner in GitHub Settings →
-   Branches directly.
-6. Lower-priority but real: an E2E spec (or at least a manual owner
-   check) for portfolio upload/view/delete (§XVIII #266), per-notification
-   deep links (§II #24/§XVII #253), multi-viewport E2E (§XVIII #269),
-   an N+1/index audit (§XVI #229–230), and an unused-dependency audit
-   (§XIV #208) — none of these are stop-ship on their own, but each
-   closes a named gap rather than leaving it silently unaddressed.
-
-Once 1–5 are done, re-run this checklist's automated-evidence items fresh
-(most of §I–§VIII, §X–§XI, §XIII–§XVIII, §XX are already re-runnable
-commands, not new work) and issue an updated verdict. Item 6 can follow in
-normal PR cadence after launch — it doesn't block it.
-
----
-
-## Once the owner-only items above are closed: the intentionally scoped remaining backlog
-
-Per explicit instruction this pass, everything closeable from this
-environment has been closed — what remains beyond items 1–6 above is
-deliberately scoped to three things, not started this pass because they
-were named as the *next* phase, not part of "everything necessary" right
-now:
-
-1. **Mini App design polish** — a further visual pass beyond §III's
-   existing PASS baseline (tokens, components, skeleton/empty/error/
-   success states already unified; loading-state rollout to the
-   remaining ~40 screens per §III #41 is the main known gap).
-2. **Finishing Mini App functional completion** — the disclosed gaps
-   named throughout this document: per-notification item-level deep
-   links (§II #24/§XVII #253 — the `miniapp_task_url`/`miniapp_event_url`/
-   `miniapp_opportunity_url` helpers exist, just aren't wired into
-   notification call sites), portfolio upload/view/delete E2E coverage
-   (§XVIII #266), multi-viewport testing (§XVIII #269).
-3. **Removing the Bot's admin-button fallback menu** once the Mini App is
-   confirmed as the primary interface end-to-end — currently intact by
-   design (§II #18: "Bot fallback not removed before Mini App confirmed
-   stable") and should stay that way until 1–2 above and the owner-only
-   items are further along, not removed preemptively.
+Дата ревизии: 2026-08-14
+
+## Вердикт
+
+**CODE COMPLETE / PRODUCTION CONFIGURATION REQUIRED**
+
+Оставшиеся пункты master-spec, которые можно закрыть изменением репозитория, реализованы в PR #201. Платформа не должна называться полностью `production-ready`, пока не выполнены внешние owner actions из последнего раздела и не подтверждён первый реальный внешний backup + restore.
+
+Наличие кода health/backup/security не считается доказательством, что GitHub, Render и внешнее object storage уже настроены.
+
+## 1. Phase 7 / единый интерфейс
+
+Закрыто:
+
+- `AdminToolsScreen` больше не использует `PillTabs` как навигацию;
+- внутренние admin tools открываются через action rows/screens с явным Back;
+- сохраняются четыре фиксированные группы Admin Mode — «Система» не создаёт пятую нижнюю вкладку;
+- ключевая participant navigation переведена на hash-state;
+- поддерживаются маршруты `#/home`, `#/projects`, `#/projects/:id`, `#/tasks`, `#/tasks/:id`, `#/calendar`, `#/history`, `#/events`, `#/events/:id`, `#/community`, `#/opportunities`, `#/opportunities/:id`, `#/auctions`, `#/rewards`, `#/surveys`, `#/leaderboard`, `#/profile`;
+- `hashchange`/`popstate` синхронизированы с UI;
+- browser/Telegram Back больше не зависит только от первоначального React state;
+- E2E дополнен маршрутами Community и возвратом через browser history.
+
+## 2. Legacy Bot UI
+
+- Legacy `app/handlers/admin/panel.py` больше не регистрируется в production admin router.
+- Старые compatibility-команды могут оставаться redirect/reference-слоем, но старая admin browse-tree не является production surface.
+- Bot остаётся gateway/notification/quick-action слоем; Admin/Leader workspace находится в Mini App.
+
+## 3. Runtime System / Health
+
+Добавлены persisted-модели:
+
+- `SystemDiagnosticRun`;
+- `SystemIncident`;
+- `BackupHistory`.
+
+Alembic: `0018_system_health`, parent `0017_task_deliveries`. Migration additive-only и не переписывает существующие пользовательские/product tables.
+
+Автоматические jobs подключены к реальному FastAPI/webhook production process и optional polling entrypoint:
+
+- heartbeat — каждые 15 минут;
+- full diagnostic — каждые 4 часа;
+- daily admin health summary — 09:30 по timezone приложения.
+
+Проверяются:
+
+- доступность БД;
+- production configuration;
+- конфигурация четырёх организационных чатов;
+- failed task deliveries за 24 часа;
+- отрицательные итоговые point balances;
+- backup freshness/status/restore verification;
+- наличие независимого encrypted S3-compatible backup;
+- в full режиме — Telegram Bot API и доступ бота к настроенным чатам.
+
+Health score хранится в БД. Состояния: `healthy`, `degraded`, `critical`.
+
+## 4. Incident engine
+
+- Runtime defect дедуплицируется по стабильному `dedupe_key`.
+- Хранятся first/last seen, occurrence count, severity, status, current commit и last healthy commit.
+- High/Critical incidents отправляются администраторам в Telegram.
+- После восстановления отправляется recovery notification.
+- Один дефект не создаёт новый incident каждые 15 минут.
+- Fix prompt формируется сервером.
+- Перед сохранением diagnostic details/fix prompt проходят sanitizer для token/secret/password/API key/DB URL/URL-shaped данных.
+- Telegram initData, cookies, DB credentials и backup bytes в incident payload не сохраняются.
+
+## 5. Admin Mode → Система
+
+Добавлен рабочий System screen:
+
+- health score;
+- latest heartbeat/full diagnostic;
+- checks;
+- incidents и occurrence count;
+- commit context;
+- «Скопировать промпт для исправления»;
+- Backup History;
+- ручной full diagnostic;
+- loading/error/empty states.
+
+System API защищён backend full-admin authorization. Frontend role не является источником прав. Manual diagnostic rate-limited.
+
+## 6. Backup hardening
+
+Pipeline:
+
+`pg_dump → SHA-256 → isolated restore verification → encryption → persistence`.
+
+Сырой production dump не сохраняется как persistent artifact.
+
+Перед persistence пакет шифруется AES-256-CBC + PBKDF2 (200000 iterations), после чего raw dump и manifest удаляются.
+
+Storage layers:
+
+1. encrypted GitHub Actions artifact — fallback;
+2. encrypted S3-compatible external storage — целевой независимый слой.
+
+Для external storage реализован exact-count retention:
+
+- 7 daily;
+- 4 weekly;
+- 6 monthly;
+- 3 manual.
+
+Successful backup callback ERA API принимается только при наличии checksum, storage reference и `restore_verified_at`.
+
+Callback защищён отдельным `BACKUP_REPORT_SECRET` через constant-time comparison. Failure создаёт/обновляет System Incident; следующий successful verified backup закрывает его и создаёт recovery notification.
+
+## 7. Backup readiness semantics
+
+System не приравнивает GitHub fallback к полноценному independent backup:
+
+- нет Backup History → warning;
+- failed/unverified backup → High;
+- verified backup старше 36h → High;
+- verified backup старше 72h → Critical;
+- свежий verified GitHub-only backup → warning;
+- свежий verified `s3-compatible-encrypted` backup → PASS.
+
+Это исключает ложный `100/100`, когда код backup существует, а независимое хранилище фактически не подключено.
+
+## 8. Production integration
+
+- Docker production entrypoint выполняет `alembic upgrade heads` до запуска `uvicorn app.webapp:app`.
+- System scheduler подключён именно к `app.webapp` lifespan, а не только polling process.
+- Существующие `/health`, `/ready`, `/diag`, webhook и security middleware сохранены.
+- Изменение `webapp.py` для System scheduler точечное: import + registration jobs.
+
+## 9. Regression/security coverage
+
+Добавлены проверки для:
+
+- sanitization secret-shaped diagnostic content;
+- critical health scoring;
+- регистрации heartbeat/full/daily jobs;
+- запрета participant access к System API;
+- invalid backup-report secret;
+- Community deep links;
+- browser history navigation.
+
+Release запрещён при красных mandatory checks.
+
+## 10. Новые production secrets
+
+### Render
+
+- `BACKUP_REPORT_SECRET` — `sync: false`, значение не хранится в репозитории.
+
+### GitHub Actions
+
+Минимум для database backup:
+
+- `BACKUP_DATABASE_URL`.
+
+Рекомендуемый отдельный encryption secret:
+
+- `BACKUP_ENCRYPTION_KEY`.
+
+Для Backup History/Telegram notifications:
+
+- `BACKUP_REPORT_URL`;
+- `BACKUP_REPORT_SECRET` — то же значение, что в Render.
+
+Для полного independent backup:
+
+- `BACKUP_S3_BUCKET`;
+- `BACKUP_S3_ACCESS_KEY_ID`;
+- `BACKUP_S3_SECRET_ACCESS_KEY`;
+- `BACKUP_S3_REGION` — optional;
+- `BACKUP_S3_ENDPOINT_URL` — optional для S3-compatible provider;
+- `BACKUP_S3_PREFIX` — optional.
+
+Подробный restore/runbook: `docs/BACKUP_AND_RECOVERY.md`.
+
+## 11. OWNER ACTION REQUIRED
+
+Следующее нельзя честно отметить PASS одним изменением Git-репозитория:
+
+1. проверить/задать реальный `BACKUP_DATABASE_URL` в GitHub Actions;
+2. задать одинаковый `BACKUP_REPORT_SECRET` в Render и GitHub и `BACKUP_REPORT_URL` в GitHub;
+3. создать и настроить реальный S3-compatible bucket/credentials;
+4. получить первый successful production backup после изменений;
+5. выполнить реальный restore из внешней encrypted copy;
+6. включить/проверить GitHub branch protection для `main` — API текущей интеграции возвращает `403 Resource not accessible by integration`;
+7. завершить legal review privacy/consent/minors policy;
+8. выполнить финальный click-through на реальном Telegram client/device.
+
+Это внешняя конфигурация/юридическая/операционная приёмка, а не скрытые недоделанные функции.
+
+## 12. Release gate
+
+PR/release можно merge-ить только если зелёные:
+
+- Python compile;
+- correctness lint;
+- Python dependency audit;
+- pytest;
+- frontend typecheck/build;
+- npm audit;
+- E2E;
+- gitleaks full-history;
+- Alembic single head.
+
+После merge production acceptance подтверждается только если одновременно:
+
+- `/health` показывает release commit;
+- `/ready` = ready;
+- Admin Mode → Система выполняет full diagnostic;
+- нет unresolved Critical/High runtime incidents;
+- backup callback получил successful verified backup;
+- external storage provider = `s3-compatible-encrypted`;
+- выполнен restore drill;
+- owner actions выше закрыты либо риск явно принят владельцем.
+
+## Итог
+
+Финальный кодовый блок master-spec реализован: health, incidents, backup metadata и recovery стали частью самой ERA Platform, а ключевая навигация получила route/history semantics.
+
+**Текущий честный статус до внешней настройки: `CODE COMPLETE — NOT YET FULLY PRODUCTION-ACCEPTED`.**
