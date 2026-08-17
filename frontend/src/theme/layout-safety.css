@@ -24,3 +24,67 @@ canvas,
 svg {
   max-width: 100%;
 }
+
+/*
+ * ERA visual refinement: dark remains the identity, while warm cream is used
+ * only as a material accent. Imported after tokens.css so these values safely
+ * refine the product without touching component semantics.
+ */
+:root {
+  --era-cream: #f3e8d5;
+  --era-cream-soft: #d9c8ae;
+  --era-cream-faint: rgba(243, 232, 213, 0.08);
+  --era-text: #f8f3eb;
+  --era-text-muted: #b4ada5;
+  --era-border: rgba(243, 232, 213, 0.095);
+  --era-border-strong: rgba(243, 232, 213, 0.16);
+  --era-nav-border: rgba(243, 232, 213, 0.18);
+  --era-nav-muted: #bdb2a4;
+  --era-nav-glass: rgba(18, 18, 20, 0.93);
+  --era-bottom-nav-clearance: calc(6.15rem + env(safe-area-inset-bottom, 0px));
+}
+
+body {
+  background:
+    radial-gradient(74% 44% at 104% -4%, rgba(227, 38, 54, 0.12), transparent 66%),
+    radial-gradient(58% 36% at -10% 34%, rgba(243, 232, 213, 0.055), transparent 72%),
+    radial-gradient(46% 30% at 92% 82%, rgba(197, 162, 100, 0.035), transparent 70%),
+    linear-gradient(180deg, #0e0f11 0%, #0b0c0e 58%, #090a0c 100%);
+}
+
+/* The previous grain sat behind the opaque body background. Keep a very fine
+ * texture above the app instead: it is visual-only and never intercepts taps. */
+body::before {
+  z-index: 9999;
+  opacity: 0.12;
+  mix-blend-mode: soft-light;
+}
+
+.era-card {
+  border-color: var(--era-border);
+}
+
+.era-bottom-nav {
+  box-shadow:
+    0 20px 58px rgba(0, 0, 0, 0.56),
+    0 0 0 1px rgba(243, 232, 213, 0.018) inset,
+    0 -8px 28px rgba(243, 232, 213, 0.025) !important;
+}
+
+.era-bottom-nav::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  inset: 0.35rem 12% auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(243, 232, 213, 0.18), transparent);
+  z-index: 2;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .era-bottom-nav {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: #121316 !important;
+  }
+}

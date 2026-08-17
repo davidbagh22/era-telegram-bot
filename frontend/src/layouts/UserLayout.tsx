@@ -12,10 +12,11 @@ export function UserLayout({ children, activeTab, onTabChange }: UserLayoutProps
   return (
     <div
       style={{
-        minHeight: "100vh",
+        minHeight: "100dvh",
         display: "flex",
         flexDirection: "column",
         paddingTop: "env(safe-area-inset-top, 0px)",
+        paddingBottom: "var(--era-bottom-nav-clearance, calc(6rem + env(safe-area-inset-bottom, 0px)))",
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
