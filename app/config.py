@@ -16,14 +16,6 @@ def _parse_ids(value: object) -> list[int]:
 
 
 def _with_release_cache_buster(url: str, release: str) -> str:
-    """Give Telegram a new WebApp URL for every deployed release.
-
-    Telegram may reuse an already-cached WebView when the bot keeps publishing
-    exactly the same WebAppInfo URL. Render exposes RENDER_GIT_COMMIT at
-    runtime, so adding its short SHA as a normal query parameter makes each
-    deploy a distinct launch URL while preserving existing query parameters.
-    Local/dev environments without a release SHA keep the historical URL.
-    """
     normalized_release = release.strip()
     if not url or not normalized_release:
         return url
@@ -57,8 +49,8 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5.5"
 
     era_channel_id: int | str = ""
-    era_channel_url: str = "https://t.me/+kFak7gRKoA8xYTc6"
-    era_pro_channel_url: str = "https://t.me/+WSagiElAvEsxMTI6"
+    era_channel_url: str = "https://t.me/era_leaders1"
+    era_channel_username: str = "era_leaders1"
     general_chat_id: int | None = None
     general_chat_url: str = "https://t.me/+Q6MzTrnR21dmZjgy"
     internal_department_chat_id: int | None = None
@@ -67,6 +59,8 @@ class Settings(BaseSettings):
     external_department_chat_url: str = "https://t.me/+PsEYN685g1w5ZmEy"
     leaders_chat_id: int | None = None
     leaders_chat_url: str = "https://t.me/+V3OkO1PNwmhiY2Ni"
+    media_chat_id: int | None = None
+    media_chat_url: str = "https://t.me/+f03ksvhCMKc5NDBi"
     admin_ids: IdList = Field(default_factory=list)
     timezone: str = "Asia/Yerevan"
     log_level: str = "INFO"
@@ -92,6 +86,7 @@ class Settings(BaseSettings):
                 self.internal_department_chat_id,
                 self.external_department_chat_id,
                 self.leaders_chat_id,
+                self.media_chat_id,
             )
             if chat_id is not None
         }

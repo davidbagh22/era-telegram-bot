@@ -63,6 +63,13 @@ GREETING_DEFAULTS = {
         "Добро пожаловать в рабочее пространство лидеров ЭРА\n\n"
         "Здесь принимают решения, поддерживают команды и доводят идеи до результата",
     ),
+    "media": (
+        "Медиа ЭРА",
+        "Добро пожаловать в рабочий Media Hub ЭРА 🎬\n\n"
+        "Здесь можно взять реальную медиа-задачу, работать с командой, "
+        "прикреплять результат и видеть контент-план. Чат открыт всем "
+        "одобренным участникам — опыт в Медиа можно начать с первой задачи.",
+    ),
 }
 
 
@@ -118,6 +125,7 @@ async def seed_reference_data(session: AsyncSession, settings: Settings) -> None
         "internal": settings.internal_department_chat_id,
         "external": settings.external_department_chat_id,
         "leaders": settings.leaders_chat_id,
+        "media": settings.media_chat_id,
     }
     for chat_key, (title, text) in GREETING_DEFAULTS.items():
         exists = await session.scalar(
@@ -134,13 +142,6 @@ async def seed_reference_data(session: AsyncSession, settings: Settings) -> None
             )
     await session.flush()
 
-    # Recognition opportunities are seeded as authored catalog entries on top
-    # of the existing PartnerInitiative system. The seeder is idempotent and
-    # only creates missing partner/title pairs, so admin edits are preserved.
     await seed_recognition_catalog(session)
-
-    # Older installs can already contain a chat ID in greeting/delivery/join
-    # history even when the AppSetting row was lost or never created. Recover
-    # only a single unambiguous historical ID; never infer IDs from invite URLs.
     await recover_chat_bindings(session, settings)
     await session.commit()
