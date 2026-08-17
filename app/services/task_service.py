@@ -115,9 +115,22 @@ async def joined_task_ids(
     return joined
 
 
+def _reward(task: Task) -> dict:
+    return getattr(task, "reward_json", None) or {}
+
+
 def _is_community_mission(task: Task) -> bool:
-    reward = getattr(task, "reward_json", None) or {}
-    return bool((reward.get("community_mission") or {}).get("code"))
+    return bool((_reward(task).get("community_mission") or {}).get("code"))
+
+
+def _is_media_task(task: Task) -> bool:
+    return bool(_reward(task).get("media_task"))
+
+
+def _is_self_service_task(task: Task) -> bool:
+    # Only explicitly tagged system task types bypass the legacy application
+    # review. All pre-existing public challenge tasks keep the old pending flow.
+    return _is_community_mission(task) or _is_media_task(task)
 
 
 async def _sync_mission_squad(
@@ -140,13 +153,11 @@ async def claim(
 ) -> tuple[TaskParticipant | None, str | None]:
     """Join a published challenge task.
 
-    Community Missions are intentionally self-serve: an approved participant
-    who takes a mission joins its one shared Task Squad immediately. Other
+    Community Missions and Media Hub tasks are explicitly self-serve. Other
     existing challenge tasks preserve the legacy pending-review behavior.
 
-    Existing membership is resolved before capacity. This makes retries and
-    reopening a SOLO/max=1 mission idempotent for the same participant while
-    preserving the capacity limit for genuinely new participants.
+    Existing membership is resolved before capacity so repeated opens/claims
+    remain idempotent even for SOLO/max=1 work.
     """
     if (
         task is None
@@ -161,13 +172,11 @@ async def claim(
             select(TaskParticipant).where(TaskParticipant.task_id == task.id)
         )
     ).all()
-    mission = _is_community_mission(task)
+    self_service = _is_self_service_task(task)
     existing = next((item for item in current if item.user_id == user.id), None)
 
     if existing:
         if existing.status == "rejected":
-            # A rejected participant is attempting a real re-entry, so capacity
-            # must still be enforced before restoring membership.
             accepted = [
                 item
                 for item in current
@@ -176,11 +185,11 @@ async def claim(
             ]
             if task.max_participants and len(accepted) >= task.max_participants:
                 return None, "full"
-            existing.status = "joined" if mission else "pending"
+            existing.status = "joined" if self_service else "pending"
             await session.flush()
             await _sync_mission_squad(session, task, user)
             return existing, None
-        if mission and existing.status == "pending":
+        if self_service and existing.status == "pending":
             existing.status = "joined"
             await session.flush()
             await _sync_mission_squad(session, task, user)
@@ -196,7 +205,7 @@ async def claim(
     participant = TaskParticipant(
         task_id=task.id,
         user_id=user.id,
-        status="joined" if mission else "pending",
+        status="joined" if self_service else "pending",
     )
     session.add(participant)
     await session.flush()
