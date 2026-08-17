@@ -99,8 +99,11 @@ class RateLimitDependencyWiringTests(unittest.TestCase):
         # rate-limiting same as everything else here even though it's
         # read-only, see app/services/chat_registry_service.py) + 1 chat FAQ
         # publish route (2026-08 master spec, P5 — see
-        # app/services/chat_faq_service.py).
-        self.assertEqual(len(post_routes), 57, "expected 57 admin mutation routes")
+        # app/services/chat_faq_service.py) + 6 Leadership OS routes (office
+        # update; position-application decision + appoint; appointment end +
+        # extend; cadre-reserve suggest — see
+        # app/services/position_management_service.py).
+        self.assertEqual(len(post_routes), 63, "expected 63 admin mutation routes")
         for route in post_routes:
             deps = [d.call for d in route.dependant.dependencies]
             self.assertIn(

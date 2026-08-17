@@ -15,7 +15,18 @@ branch_labels = None
 depends_on = None
 
 
+def _table_exists(table_name: str) -> bool:
+    return table_name in sa.inspect(op.get_bind()).get_table_names()
+
+
 def upgrade() -> None:
+    # event_attendance_sessions is also a declarative model on Base.metadata,
+    # so 0001's Base.metadata.create_all() (reflecting whatever models.py
+    # currently defines, not a historical snapshot) already creates it on a
+    # from-scratch upgrade -- guard so this migration stays a no-op for it
+    # instead of erroring "already exists" (see 0023, 0024 for the same fix).
+    if _table_exists("event_attendance_sessions"):
+        return
     op.create_table(
         "event_attendance_sessions",
         sa.Column("event_id", sa.Integer(), nullable=False),
@@ -39,6 +50,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if not _table_exists("event_attendance_sessions"):
+        return
     op.drop_index(
         "ix_event_attendance_sessions_attendance_code",
         table_name="event_attendance_sessions",

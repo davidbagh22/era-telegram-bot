@@ -29,7 +29,19 @@ def _participant(**overrides) -> SimpleNamespace:
 
 
 def _office(**overrides) -> SimpleNamespace:
-    defaults = dict(id=1, title="Куратор", description="d", is_active=True)
+    defaults = dict(
+        id=1,
+        title="Куратор",
+        description="d",
+        is_active=True,
+        is_public=True,
+        permission_template=[],
+        application_enabled=False,
+        application_deadline=None,
+        requirements=None,
+        default_term_days=None,
+        probation_days=None,
+    )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 

@@ -302,3 +302,91 @@ def build_analytics_workbook(
     stream = BytesIO()
     wb.save(stream)
     return stream.getvalue()
+
+
+def build_leadership_workbook(
+    analytics,
+    applications: Iterable[Any] = (),
+    attention_items: Iterable[Any] = (),
+) -> bytes:
+    """Leadership OS export (ToR section 80) -- same openpyxl approach as
+    build_analytics_workbook above, kept as its own simple function since
+    the source data (LeadershipAnalytics dataclass + application/attention
+    rows) doesn't fit that function's user/event/project-shaped signature.
+    Callers are responsible for scope/permission filtering before calling
+    this (ToR section 80: "Лидер не может экспортировать данные вне своего
+    scope") -- this function only formats what it's given."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    applications = list(applications)
+    attention_items = list(attention_items)
+
+    wb = Workbook()
+    wb.remove(wb.active)
+    bold = Font(bold=True)
+
+    def append_sheet(title: str, headers: list[str], rows: list[list[Any]]) -> None:
+        ws = wb.create_sheet(title[:31])
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = bold
+        for row in rows:
+            ws.append([_plain(v) for v in row])
+
+    append_sheet(
+        "Сводка",
+        ["Показатель", "Значение"],
+        [
+            ["Открытых вакансий", analytics.vacancies_open],
+            ["Активных лидеров", analytics.active_leaders],
+            ["Открытых блокеров", analytics.open_blockers],
+            ["Среднее время решения блокера, ч", analytics.avg_blocker_resolution_hours or "—"],
+            ["Целей в работе", analytics.goals_active],
+            ["Целей выполнено", analytics.goals_completed],
+            ["Целей просрочено", analytics.goals_overdue],
+            ["Выполнение целей, %", analytics.goal_completion_rate or "—"],
+            ["Отчётов ожидалось", analytics.reports_expected],
+            ["Отчётов подано", analytics.reports_submitted],
+            ["Дисциплина отчётности, %", analytics.reporting_discipline_rate or "—"],
+            ["Leadership Health", analytics.leadership_health_score or "—"],
+        ],
+    )
+    append_sheet(
+        "Заявки по статусам",
+        ["Статус", "Количество"],
+        [[status, count] for status, count in analytics.applications_by_status.items()],
+    )
+    append_sheet(
+        "Заявки",
+        ["ID", "Должность", "Кандидат", "Статус", "Подана"],
+        [
+            [
+                _value(a, "id"),
+                _value(a, "office_title"),
+                _value(a, "user_name"),
+                _value(a, "status"),
+                _value(a, "submitted_at"),
+            ]
+            for a in applications
+        ],
+    )
+    append_sheet(
+        "Attention items",
+        ["ID", "Тип", "Важность", "Владелец ID", "Ответственный ID", "Статус"],
+        [
+            [
+                _value(i, "id"),
+                _value(i, "type"),
+                _value(i, "severity"),
+                _value(i, "owner_id"),
+                _value(i, "responsible_id"),
+                _value(i, "status"),
+            ]
+            for i in attention_items
+        ],
+    )
+
+    stream = BytesIO()
+    wb.save(stream)
+    return stream.getvalue()
