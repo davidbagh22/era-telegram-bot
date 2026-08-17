@@ -118,6 +118,8 @@ class SystemSchedulerTests(unittest.TestCase):
                 "system-daily-summary",
                 "configured-event-reminders",
                 "event-wizard-task-sync",
+                "project-scoring-reconciliation",
+                "task-squad-notifications",
                 "my-vector-monthly-reminders",
                 "general-chat-faq-pin",
             ],
