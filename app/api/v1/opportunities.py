@@ -55,6 +55,12 @@ class ApplicationOut(BaseModel):
     status: str
 
 
+def _is_recognition_offer(offer: PartnerInitiative) -> bool:
+    # Existing partner opportunities predate opportunity_type. Treat absent
+    # metadata as the legacy external kind; recognition remains opt-in only.
+    return getattr(offer, "opportunity_type", "external") in {"certificate", "letter"}
+
+
 async def _to_opportunity_out(
     session: AsyncSession,
     offer: PartnerInitiative,
@@ -65,7 +71,23 @@ async def _to_opportunity_out(
 ) -> OpportunityOut:
     application = await opportunity_service.get_application(session, offer.id, user.id)
     slots = await opportunity_service.remaining_slots(session, offer)
-    eligibility = await opportunity_service.evaluate_eligibility(session, offer, user)
+    recognition = _is_recognition_offer(offer)
+
+    eligibility_checks: list[EligibilityCheckOut] = []
+    missing_requirements: list[str] = []
+    # Strict rank/metric/document eligibility belongs only to recognition
+    # documents. Legacy external offers keep their old redemption contract;
+    # apply_to_offer remains the authority for their points/availability.
+    if recognition:
+        eligibility = await opportunity_service.evaluate_eligibility(session, offer, user)
+        eligible = eligibility.eligible and (slots is None or slots > 0)
+        eligibility_checks = [
+            EligibilityCheckOut(**check.as_dict()) for check in eligibility.checks
+        ]
+        missing_requirements = eligibility.missing
+    else:
+        eligible = slots is None or slots > 0
+
     return OpportunityOut(
         id=offer.id,
         partner_name=partner.name,
@@ -73,15 +95,13 @@ async def _to_opportunity_out(
         description=offer.description,
         point_cost=offer.point_cost,
         required_points=offer.point_cost,
-        opportunity_type=offer.opportunity_type,
-        min_rank=offer.min_rank,
-        eligible=eligibility.eligible and (slots is None or slots > 0),
-        eligibility_checks=[
-            EligibilityCheckOut(**check.as_dict()) for check in eligibility.checks
-        ],
-        missing_requirements=eligibility.missing,
-        default_award_wording=offer.default_award_wording,
-        partner_review_required=offer.partner_review_required,
+        opportunity_type=getattr(offer, "opportunity_type", "external"),
+        min_rank=getattr(offer, "min_rank", None),
+        eligible=eligible,
+        eligibility_checks=eligibility_checks,
+        missing_requirements=missing_requirements,
+        default_award_wording=getattr(offer, "default_award_wording", None),
+        partner_review_required=bool(getattr(offer, "partner_review_required", False)),
         remaining_slots="unlimited" if slots is None else str(slots),
         expires_at=offer.expires_at.isoformat() if offer.expires_at else None,
         instruction=offer.instruction,
@@ -176,7 +196,7 @@ async def apply_opportunity(
         raise HTTPException(status_code=409, detail="no_slots")
 
     if bot is not None and application is not None:
-        if opportunity_service.is_recognition(offer):
+        if _is_recognition_offer(offer):
             eligibility = await opportunity_service.evaluate_eligibility(
                 session, offer, user
             )
@@ -188,7 +208,7 @@ async def apply_opportunity(
                 f"Организация: {partner.name}\n"
                 f"Документ: «{offer.title}»\n\n"
                 f"Основание: {application.basis_text or eligibility.basis}\n\n"
-                f"Текст для документа: {application.award_wording or offer.default_award_wording or '—'}"
+                f"Текст для документа: {application.award_wording or getattr(offer, 'default_award_wording', None) or '—'}"
             )
         else:
             notice = (
