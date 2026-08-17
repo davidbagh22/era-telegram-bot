@@ -3,6 +3,7 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -27,6 +28,7 @@ REFERRAL_SOURCE_TYPES = (
 CODE_LENGTH = 6
 OFFICIAL_BOT_HANDLE = "@ERA_1bot"
 OFFICIAL_BOT_URL = "https://t.me/ERA_1bot"
+ERA_TIMEZONE = ZoneInfo("Asia/Yerevan")
 
 _ACTIVE_OR_HIGHER = {
     ParticipationStatus.ACTIVE_MEMBER,
@@ -142,12 +144,13 @@ async def bind_referral_code(
 
 
 def _month_bounds(now: datetime) -> tuple[datetime, datetime]:
-    start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
-    if now.month == 12:
-        end = datetime(now.year + 1, 1, 1, tzinfo=timezone.utc)
+    local_now = now.astimezone(ERA_TIMEZONE)
+    start_local = datetime(local_now.year, local_now.month, 1, tzinfo=ERA_TIMEZONE)
+    if local_now.month == 12:
+        end_local = datetime(local_now.year + 1, 1, 1, tzinfo=ERA_TIMEZONE)
     else:
-        end = datetime(now.year, now.month + 1, 1, tzinfo=timezone.utc)
-    return start, end
+        end_local = datetime(local_now.year, local_now.month + 1, 1, tzinfo=ERA_TIMEZONE)
+    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
 
 
 async def _inviter_referral_points(
