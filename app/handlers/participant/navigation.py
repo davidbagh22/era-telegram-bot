@@ -100,6 +100,7 @@ async def _send_main_menu(message: Message, user: User | None, settings: Setting
         return
     await message.answer(
         ux_texts.MAIN_INLINE_MENU,
+        parse_mode=ParseMode.HTML,
         reply_markup=main_inline_keyboard(
             miniapp_url=settings.effective_miniapp_url if settings else "",
             privileged=user.role in PRIVILEGED_ROLES,
