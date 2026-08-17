@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     leaders_chat_url: str = "https://t.me/+V3OkO1PNwmhiY2Ni"
     media_chat_id: int | None = None
     media_chat_url: str = "https://t.me/+f03ksvhCMKc5NDBi"
+    # Telegram user IDs with explicit Media Desk management access. Admins
+    # and the active Media direction lead are authorized separately by the
+    # authorization service; this list is only an explicit operational grant.
+    media_manager_ids: IdList = Field(default_factory=list)
     admin_ids: IdList = Field(default_factory=list)
     timezone: str = "Asia/Yerevan"
     log_level: str = "INFO"
