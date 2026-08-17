@@ -69,17 +69,27 @@ def test_role_shell_adds_only_relevant_workspace() -> None:
 
 
 def test_navigation_exposes_qr_only_to_operational_roles() -> None:
+    import sys
+
+    import aiogram
+    import pydantic
+
     participant = _labels(navigation_guide_keyboard("https://example.com/app"))
-    leader = _labels(
-        navigation_guide_keyboard(
-            "https://example.com/app",
-            privileged=True,
-        )
+    leader_markup = navigation_guide_keyboard(
+        "https://example.com/app",
+        privileged=True,
+    )
+    leader = _labels(leader_markup)
+
+    diag = (
+        f"python={sys.version!r} aiogram={aiogram.__version__} "
+        f"pydantic={pydantic.VERSION} rows={len(leader_markup.inline_keyboard)} "
+        f"leader_full={leader!r}"
     )
 
     assert "🧭 Мой вектор" in participant
     assert "🎟 QR вход на событие" not in participant
-    assert "🎟 QR вход на событие" in leader
+    assert "🎟 QR вход на событие" in leader, diag
 
 
 def test_contact_is_a_compact_service_centre() -> None:
