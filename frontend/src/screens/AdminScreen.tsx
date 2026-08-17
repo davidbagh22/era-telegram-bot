@@ -124,15 +124,23 @@ export function AdminScreen() {
     setCommsSection(null);
     setControlSection(null);
   };
-  const openComms = () => {
+  const openCommsSection = (section: CommsSection) => {
     setGroup("comms");
-    setCommsSection("tools");
+    setCommsSection(section);
     setPeopleSection(null);
     setWorkSection(null);
     setControlSection(null);
   };
+  const openComms = () => openCommsSection("tools");
   const openMaintenanceTarget = (target: MaintenanceTarget) => {
-    if (target === "applications" || target === "participants" || target === "data-rights") {
+    if (
+      target === "applications"
+      || target === "participants"
+      || target === "development"
+      || target === "career"
+      || target === "offices"
+      || target === "data-rights"
+    ) {
       openPeople(target);
       return;
     }
@@ -140,8 +148,8 @@ export function AdminScreen() {
       openWork(target);
       return;
     }
-    if (target === "tools") {
-      openComms();
+    if (target === "tools" || target === "surveys") {
+      openCommsSection(target);
       return;
     }
     setGroup("control");
