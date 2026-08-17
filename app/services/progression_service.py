@@ -130,4 +130,16 @@ async def promote_participation_status(session: AsyncSession, *, user_id: int) -
         new_value={"participation_status": str(target), "source": "verified_activity"},
     )
     await session.flush()
+
+    # The third referral milestone is tied to the real progression engine,
+    # not to points. Award it exactly when the participant first crosses the
+    # Active threshold, including promotions that jump directly above it.
+    if (
+        _rank_index(current) < _rank_index(ParticipationStatus.ACTIVE_MEMBER)
+        <= _rank_index(target)
+    ):
+        from app.services.referral_service import award_active_referral
+
+        await award_active_referral(session, invitee_user_id=user.id)
+
     return str(target)

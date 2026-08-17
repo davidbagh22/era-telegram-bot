@@ -27,12 +27,28 @@ from app.utils.constants import ApplicationStatus, Role
 from app.utils.deep_links import miniapp_task_url
 
 OPEN_TASK_TYPE = "challenge"
+TASK_POINT_PRESETS = (40, 80, 150, 200)
+LEGACY_TASK_POINTS_DEFAULT = 10
 
 # The 4 org chats a task announcement can be dispatched to (2026-08 master
 # spec section 31) -- same 4 keys as chat_access_service.CHAT_SETTING_KEYS,
 # duplicated here as a plain tuple rather than importing that dict to avoid
 # a service->service import for 4 literal strings.
 CHAT_DESTINATION_KEYS = ("general", "internal", "external", "leaders")
+
+
+def normalize_task_points(points: int) -> int:
+    """Enforce the approved task economy at the service boundary.
+
+    10 is kept only as a compatibility alias for older callers that relied
+    on the historical API default. It is normalized to the standard 80-point
+    preset, so no newly-created task can persist an arbitrary reward value.
+    """
+    if points == LEGACY_TASK_POINTS_DEFAULT:
+        return 80
+    if points not in TASK_POINT_PRESETS:
+        raise ValueError("invalid_points_preset")
+    return points
 
 
 def _destination_chat_id(settings: Settings, chat_key: str) -> int | None:
@@ -194,8 +210,7 @@ async def create_assigned_task(
     bot: Bot | None,
     miniapp_url: str = "",
 ) -> Task:
-    if not 0 <= points <= 1000:
-        raise ValueError("invalid_points")
+    points = normalize_task_points(points)
     task = Task(
         title=title,
         description=description,
@@ -244,8 +259,7 @@ async def create_open_task(
     # just Task rather than breaking every existing caller's unpacking.
     # Deliveries are read back afterwards via list_task_deliveries(),
     # not returned here.
-    if not 0 <= points <= 1000:
-        raise ValueError("invalid_points")
+    points = normalize_task_points(points)
     if not 1 <= max_participants <= 50:
         raise ValueError("invalid_max_participants")
     unknown = set(destinations or []) - set(CHAT_DESTINATION_KEYS)

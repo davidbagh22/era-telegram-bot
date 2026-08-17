@@ -10,15 +10,19 @@ from app.database.base import Base
 from app.database.models import Event, PointTransaction, User
 from app.database.referral_models import ReferralRelationship
 from app.services.referral_service import (
+    ACTIVE_REFERRAL_POINTS,
     FIRST_EVENT_REFERRAL_POINTS,
+    REFERRAL_MONTHLY_CAP,
+    REFERRAL_PER_INVITEE_CAP,
     REGISTRATION_REFERRAL_POINTS,
+    award_active_referral,
     award_first_event_referral,
     award_registration_referral,
     bind_referral_code,
     get_or_create_referral_code,
     normalize_referral_code,
 )
-from app.utils.constants import ApplicationStatus, EventStatus
+from app.utils.constants import ApplicationStatus, EventStatus, ParticipationStatus
 
 
 class ReferralServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -53,6 +57,21 @@ class ReferralServiceTests(unittest.IsolatedAsyncioTestCase):
         await session.flush()
         return user
 
+    async def _event(self, session, creator_id: int) -> Event:
+        event = Event(
+            title="ERA Meetup",
+            description="Test",
+            event_date=date.today(),
+            event_time=time(18, 0),
+            location="Yerevan",
+            format="offline",
+            status=EventStatus.COMPLETED,
+            created_by=creator_id,
+        )
+        session.add(event)
+        await session.flush()
+        return event
+
     async def test_code_is_six_digits_and_cannot_self_refer(self) -> None:
         async with self.session_factory() as session:
             inviter = await self._user(session, 100001)
@@ -65,7 +84,7 @@ class ReferralServiceTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(ValueError, "self_referral_not_allowed"):
                 await bind_referral_code(session, invitee=inviter, value=code.code)
 
-    async def test_rewards_are_ordered_and_idempotent(self) -> None:
+    async def test_rewards_are_ordered_idempotent_and_total_250(self) -> None:
         async with self.session_factory() as session:
             inviter = await self._user(session, 100001)
             invitee = await self._user(session, 100002, approved=False)
@@ -81,19 +100,8 @@ class ReferralServiceTests(unittest.IsolatedAsyncioTestCase):
             before = await session.scalar(select(func.count(PointTransaction.id)))
             self.assertEqual(int(before or 0), 0)
 
-            # Even an event cannot skip the approved registration + chat stage.
-            event = Event(
-                title="ERA Meetup",
-                description="Test",
-                event_date=date.today(),
-                event_time=time(18, 0),
-                location="Yerevan",
-                format="offline",
-                status=EventStatus.COMPLETED,
-                created_by=inviter.id,
-            )
-            session.add(event)
-            await session.flush()
+            # Even an event cannot skip the approved registration stage.
+            event = await self._event(session, inviter.id)
             await award_first_event_referral(
                 session,
                 invitee_user_id=invitee.id,
@@ -148,6 +156,76 @@ class ReferralServiceTests(unittest.IsolatedAsyncioTestCase):
                 ],
             )
 
+            # The third stage is driven by the real participation status.
+            await award_active_referral(session, invitee_user_id=invitee.id)
+            no_active_points = int(
+                await session.scalar(
+                    select(func.count(PointTransaction.id)).where(
+                        PointTransaction.source_type == "referral_active"
+                    )
+                )
+                or 0
+            )
+            self.assertEqual(no_active_points, 0)
+
+            invitee.participation_status = ParticipationStatus.ACTIVE_MEMBER
+            await award_active_referral(session, invitee_user_id=invitee.id)
+            await award_active_referral(session, invitee_user_id=invitee.id)
+
+            active_points = (
+                await session.execute(
+                    select(PointTransaction.user_id, PointTransaction.points).where(
+                        PointTransaction.source_type == "referral_active"
+                    )
+                )
+            ).all()
+            self.assertCountEqual(
+                active_points,
+                [
+                    (inviter.id, ACTIVE_REFERRAL_POINTS),
+                    (invitee.id, ACTIVE_REFERRAL_POINTS),
+                ],
+            )
+
+            inviter_total = int(
+                await session.scalar(
+                    select(func.coalesce(func.sum(PointTransaction.points), 0)).where(
+                        PointTransaction.user_id == inviter.id,
+                        PointTransaction.source_type.in_(
+                            (
+                                "referral_registration",
+                                "referral_first_event",
+                                "referral_active",
+                            )
+                        ),
+                    )
+                )
+                or 0
+            )
+            invitee_total = int(
+                await session.scalar(
+                    select(func.coalesce(func.sum(PointTransaction.points), 0)).where(
+                        PointTransaction.user_id == invitee.id,
+                        PointTransaction.source_type.in_(
+                            (
+                                "referral_registration",
+                                "referral_first_event",
+                                "referral_active",
+                            )
+                        ),
+                    )
+                )
+                or 0
+            )
+            self.assertEqual(
+                REGISTRATION_REFERRAL_POINTS
+                + FIRST_EVENT_REFERRAL_POINTS
+                + ACTIVE_REFERRAL_POINTS,
+                REFERRAL_PER_INVITEE_CAP,
+            )
+            self.assertEqual(inviter_total, REFERRAL_PER_INVITEE_CAP)
+            self.assertEqual(invitee_total, REFERRAL_PER_INVITEE_CAP)
+
             stored = await session.scalar(
                 select(ReferralRelationship).where(
                     ReferralRelationship.invitee_id == invitee.id
@@ -156,3 +234,84 @@ class ReferralServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(stored.registration_rewarded_at)
             self.assertIsNotNone(stored.first_event_rewarded_at)
             self.assertEqual(stored.first_event_id, event.id)
+
+    async def test_inviter_referral_points_are_capped_at_750_per_month(self) -> None:
+        async with self.session_factory() as session:
+            inviter = await self._user(session, 200001)
+            code = await get_or_create_referral_code(session, inviter.id)
+            event = await self._event(session, inviter.id)
+            invitees: list[User] = []
+
+            for offset in range(4):
+                invitee = await self._user(session, 200010 + offset)
+                invitees.append(invitee)
+                await bind_referral_code(session, invitee=invitee, value=code.code)
+                await award_registration_referral(session, invitee_user_id=invitee.id)
+                await award_first_event_referral(
+                    session,
+                    invitee_user_id=invitee.id,
+                    event_id=event.id,
+                )
+                invitee.participation_status = ParticipationStatus.ACTIVE_MEMBER
+                await award_active_referral(session, invitee_user_id=invitee.id)
+
+            inviter_total = int(
+                await session.scalar(
+                    select(func.coalesce(func.sum(PointTransaction.points), 0)).where(
+                        PointTransaction.user_id == inviter.id,
+                        PointTransaction.source_type.in_(
+                            (
+                                "referral_registration",
+                                "referral_first_event",
+                                "referral_active",
+                            )
+                        ),
+                    )
+                )
+                or 0
+            )
+            self.assertEqual(inviter_total, REFERRAL_MONTHLY_CAP)
+
+            # Cap applies to the inviter's referral earnings. Existing product
+            # semantics keep each invited participant's own stage bonuses full.
+            fourth_invitee_total = int(
+                await session.scalar(
+                    select(func.coalesce(func.sum(PointTransaction.points), 0)).where(
+                        PointTransaction.user_id == invitees[-1].id,
+                        PointTransaction.source_type.in_(
+                            (
+                                "referral_registration",
+                                "referral_first_event",
+                                "referral_active",
+                            )
+                        ),
+                    )
+                )
+                or 0
+            )
+            self.assertEqual(fourth_invitee_total, REFERRAL_PER_INVITEE_CAP)
+
+            # Repeating any stage after the cap is exhausted stays idempotent.
+            await award_registration_referral(session, invitee_user_id=invitees[-1].id)
+            await award_first_event_referral(
+                session,
+                invitee_user_id=invitees[-1].id,
+                event_id=event.id,
+            )
+            await award_active_referral(session, invitee_user_id=invitees[-1].id)
+            inviter_total_after_repeat = int(
+                await session.scalar(
+                    select(func.coalesce(func.sum(PointTransaction.points), 0)).where(
+                        PointTransaction.user_id == inviter.id,
+                        PointTransaction.source_type.in_(
+                            (
+                                "referral_registration",
+                                "referral_first_event",
+                                "referral_active",
+                            )
+                        ),
+                    )
+                )
+                or 0
+            )
+            self.assertEqual(inviter_total_after_repeat, REFERRAL_MONTHLY_CAP)

@@ -46,6 +46,11 @@ def _build_app(session: SimpleNamespace, bot=None) -> FastAPI:
     app = FastAPI()
     app.include_router(api_router)
 
+    # AsyncSession exposes scalar(); opportunity display-state calculation now
+    # reads the user's real point balance, so API test doubles must model it.
+    if not hasattr(session, "scalar"):
+        session.scalar = AsyncMock(return_value=1000)
+
     async def _session_override():
         yield session
 

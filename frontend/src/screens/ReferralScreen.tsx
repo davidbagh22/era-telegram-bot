@@ -45,7 +45,7 @@ export function ReferralScreen({ onBack }: ReferralScreenProps) {
       toast.show("Приглашение скопировано", "success");
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      toast.show("Не удалось поделиться. Скопируйте код вручную.", "error");
+      toast.show("Не удалось поделиться. Скопируйте код вручную.", "attention");
     }
   }, [state, toast]);
 
@@ -69,6 +69,10 @@ export function ReferralScreen({ onBack }: ReferralScreenProps) {
   }
 
   const data = state.data;
+  const monthlyPercent = Math.min(
+    100,
+    Math.round((data.monthly_earned_points / Math.max(1, data.monthly_cap)) * 100),
+  );
   const copyCode = async () => {
     await copyText(data.code);
     toast.show("Код скопирован", "success");
@@ -127,26 +131,56 @@ export function ReferralScreen({ onBack }: ReferralScreenProps) {
               <div aria-hidden="true" style={{ width: "2.25rem", height: "2.25rem", borderRadius: "50%", display: "grid", placeItems: "center", background: "var(--era-tint-red)", fontWeight: 900 }}>2</div>
               <div>
                 <strong>Первое мероприятие</strong>
-                <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>После первого реально посещённого мероприятия друг подтверждает присутствие кодом события.</p>
+                <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>После первого реально посещённого мероприятия система подтверждает следующий этап.</p>
               </div>
               <strong style={{ whiteSpace: "nowrap" }}>+{data.first_event_points_each} каждому</strong>
+            </div>
+          </Card>
+          <Card>
+            <div style={{ display: "grid", gridTemplateColumns: "2.25rem minmax(0, 1fr) auto", gap: "0.75rem", alignItems: "center" }}>
+              <div aria-hidden="true" style={{ width: "2.25rem", height: "2.25rem", borderRadius: "50%", display: "grid", placeItems: "center", background: "var(--era-tint-red)", fontWeight: 900 }}>3</div>
+              <div>
+                <strong>Активный участник</strong>
+                <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>Когда приглашённый дорастает до статуса «Активный участник», система начисляет третий бонус автоматически.</p>
+              </div>
+              <strong style={{ whiteSpace: "nowrap" }}>+{data.active_points_each} каждому</strong>
             </div>
           </Card>
         </div>
       </section>
 
       <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "baseline" }}>
+          <div>
+            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Лимит месяца</p>
+            <strong style={{ display: "block", marginTop: "0.35rem", fontSize: "var(--era-text-xl)" }}>
+              {data.monthly_earned_points} / {data.monthly_cap}
+            </strong>
+          </div>
+          <span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", textAlign: "right" }}>
+            до {data.per_invitee_cap} за полный путь одного друга
+          </span>
+        </div>
+        <div
+          aria-label={`Реферальный лимит использован на ${monthlyPercent}%`}
+          style={{ height: "0.45rem", marginTop: "0.85rem", borderRadius: "999px", background: "var(--era-border)", overflow: "hidden" }}
+        >
+          <div style={{ width: `${monthlyPercent}%`, height: "100%", borderRadius: "inherit", background: "var(--era-red)", transition: "width 180ms ease" }} />
+        </div>
+      </Card>
+
+      <Card>
         <p style={{ margin: "0 0 0.75rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Ваш результат</p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.9rem" }}>
-          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{data.registered_count}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>дошли до чата</span></div>
-          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{data.first_event_count}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>пришли на событие</span></div>
           <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{data.invited_count}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>ввели ваш код</span></div>
+          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{data.first_event_count}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>пришли на событие</span></div>
+          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{data.active_count}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>стали активными</span></div>
           <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{data.earned_points}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>заработано баллов</span></div>
         </div>
       </Card>
 
       <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", lineHeight: 1.5 }}>
-        Код привязывается к новичку один раз. Самоприглашение и повторное начисление за одно и то же действие не работают.
+        Код привязывается к новичку один раз. Самоприглашение и повторное начисление за одно и то же действие не работают. Лимит {data.monthly_cap} применяется к реферальному заработку приглашающего за календарный месяц.
       </p>
     </div>
   );

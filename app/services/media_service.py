@@ -33,7 +33,14 @@ from app.services.chat_registry_service import check_chats_health
 from app.utils.constants import ApplicationStatus, TaskStatus
 
 MEDIA_SETTINGS_KEY = "media_os_settings"
-MEDIA_TASK_POINTS = 40
+MEDIA_TASK_POINTS = {
+    "text": 50,
+    "stories": 50,
+    "design": 100,
+    "photo": 100,
+    "video": 150,
+    "editing": 200,
+}
 MEDIA_TASK_KINDS = {
     "text": "Текст",
     "design": "Дизайн",
@@ -416,7 +423,7 @@ async def create_content_tasks(
             ),
             creator_id=creator_id,
             deadline=deadline,
-            points=MEDIA_TASK_POINTS,
+            points=MEDIA_TASK_POINTS[task_kind],
             status=TaskStatus.PUBLISHED,
             task_type="challenge",
             audience_filter_json={},

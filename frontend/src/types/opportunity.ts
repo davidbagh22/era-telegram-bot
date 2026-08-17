@@ -1,4 +1,5 @@
 export type OpportunityScope = "for_me" | "all" | "saved" | "mine";
+export type OpportunityDisplayState = "locked" | "almost" | "available" | "new";
 
 export interface EligibilityCheck {
   key: string;
@@ -20,6 +21,7 @@ export interface Opportunity {
   opportunity_type: "external" | "certificate" | "letter" | string;
   min_rank: string | null;
   eligible: boolean;
+  display_state: OpportunityDisplayState;
   eligibility_checks: EligibilityCheck[];
   missing_requirements: string[];
   default_award_wording: string | null;

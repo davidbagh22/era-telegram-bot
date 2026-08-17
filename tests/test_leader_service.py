@@ -151,6 +151,13 @@ class LeaderServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(in_scope.id, ids)
             self.assertNotIn(out_of_scope.id, ids)
 
+    def test_task_point_presets_accept_only_approved_values(self) -> None:
+        for points in leader_service.TASK_POINT_PRESETS:
+            self.assertEqual(leader_service.normalize_task_points(points), points)
+        self.assertEqual(leader_service.normalize_task_points(10), 80)
+        with self.assertRaisesRegex(ValueError, "invalid_points_preset"):
+            leader_service.normalize_task_points(20)
+
     async def test_create_assigned_task_rejects_invalid_points(self) -> None:
         async with self.session_factory() as session:
             leader, _, _ = await self._scope_leader(session)
@@ -178,12 +185,12 @@ class LeaderServiceTests(unittest.IsolatedAsyncioTestCase):
                 title="Помочь на мероприятии",
                 description="d",
                 deadline=datetime.now(timezone.utc),
-                points=20,
+                points=150,
                 bot=None,
             )
             self.assertEqual(task.creator_id, leader.id)
             self.assertEqual(task.assignee_id, assignee.id)
-            self.assertEqual(task.points, 20)
+            self.assertEqual(task.points, 150)
 
     async def test_create_open_task_rejects_invalid_max_participants(self) -> None:
         async with self.session_factory() as session:
@@ -195,7 +202,7 @@ class LeaderServiceTests(unittest.IsolatedAsyncioTestCase):
                     title="t",
                     description="d",
                     deadline=datetime.now(timezone.utc),
-                    points=10,
+                    points=80,
                     max_participants=0,
                 )
 
@@ -208,7 +215,7 @@ class LeaderServiceTests(unittest.IsolatedAsyncioTestCase):
                 title="Открытая задача",
                 description="d",
                 deadline=datetime.now(timezone.utc),
-                points=15,
+                points=80,
                 max_participants=3,
             )
             self.assertEqual(task.task_type, "challenge")
@@ -225,7 +232,7 @@ class LeaderServiceTests(unittest.IsolatedAsyncioTestCase):
                 title="Открытая задача",
                 description="d",
                 deadline=datetime.now(timezone.utc),
-                points=15,
+                points=80,
                 max_participants=3,
             )
             session.add(TaskParticipant(task_id=task.id, user_id=applicant.id, status="pending"))
@@ -247,7 +254,7 @@ class LeaderServiceTests(unittest.IsolatedAsyncioTestCase):
                 title="Открытая задача",
                 description="d",
                 deadline=datetime.now(timezone.utc),
-                points=15,
+                points=80,
                 max_participants=1,
             )
             session.add(TaskParticipant(task_id=task.id, user_id=applicant_a.id, status="pending"))
@@ -273,7 +280,7 @@ class LeaderServiceTests(unittest.IsolatedAsyncioTestCase):
                 title="Открытая задача",
                 description="d",
                 deadline=datetime.now(timezone.utc),
-                points=15,
+                points=80,
                 max_participants=3,
             )
             session.add(TaskParticipant(task_id=task.id, user_id=applicant.id, status="pending"))
@@ -294,7 +301,7 @@ class LeaderServiceTests(unittest.IsolatedAsyncioTestCase):
                 title="Открытая задача",
                 description="d",
                 deadline=datetime.now(timezone.utc),
-                points=15,
+                points=80,
                 max_participants=3,
             )
             session.add(TaskParticipant(task_id=task.id, user_id=applicant.id, status="pending"))
@@ -361,7 +368,7 @@ class TaskChatDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 title="Задача",
                 description="d",
                 deadline=datetime.now(timezone.utc),
-                points=10,
+                points=80,
                 max_participants=3,
                 destinations=["general", "leaders"],
                 bot=bot,
@@ -388,7 +395,7 @@ class TaskChatDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 title="Задача",
                 description="d",
                 deadline=datetime.now(timezone.utc),
-                points=10,
+                points=80,
                 max_participants=3,
                 destinations=["general"],
                 bot=bot,
@@ -414,7 +421,7 @@ class TaskChatDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 title="Задача",
                 description="d",
                 deadline=datetime.now(timezone.utc),
-                points=10,
+                points=80,
                 max_participants=3,
                 destinations=["internal"],
                 bot=FakeBot(),
@@ -436,7 +443,7 @@ class TaskChatDeliveryTests(unittest.IsolatedAsyncioTestCase):
                     title="Задача",
                     description="d",
                     deadline=datetime.now(timezone.utc),
-                    points=10,
+                    points=80,
                     max_participants=3,
                     destinations=["not_a_real_chat"],
                     settings=Settings(bot_token="1234567890:test-token"),
@@ -453,7 +460,7 @@ class TaskChatDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 title="Задача",
                 description="d",
                 deadline=datetime.now(timezone.utc),
-                points=10,
+                points=80,
                 max_participants=3,
                 destinations=["general", "leaders"],
                 bot=bot,

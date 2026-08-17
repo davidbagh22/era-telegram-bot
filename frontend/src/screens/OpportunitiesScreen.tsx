@@ -6,13 +6,14 @@ import {
   saveOpportunity,
   unsaveOpportunity,
 } from "../api/client";
+import { AchievementOverlay } from "../components/AchievementOverlay";
 import { BottomSheet } from "../components/BottomSheet";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { MonoLabel } from "../components/MonoLabel";
 import { StatusBadge } from "../components/StatusBadge";
 import { useAsync } from "../hooks/useAsync";
-import type { OpportunityScope } from "../types/opportunity";
+import type { Opportunity, OpportunityDisplayState, OpportunityScope } from "../types/opportunity";
 import { AuctionsPanel } from "./opportunities/AuctionsPanel";
 import { RewardsPanel } from "./opportunities/RewardsPanel";
 import { SurveysPanel } from "./opportunities/SurveysPanel";
@@ -37,6 +38,13 @@ const APPLICATION_STATUS_LABELS: Record<string, string> = {
   rejected: "отклонено",
 };
 
+const DISPLAY_STATE_META: Record<OpportunityDisplayState, { label: string; tone: "neutral" | "violet" | "gold" | "success" }> = {
+  locked: { label: "Закрыто", tone: "neutral" },
+  almost: { label: "Почти доступно", tone: "gold" },
+  available: { label: "Доступно", tone: "success" },
+  new: { label: "Новое", tone: "violet" },
+};
+
 const COMING_SOON = [
   ["Форумы и поездки", "Отбор на молодёжные форумы и внешние программы."],
   ["Стажировки и практика", "Реальный профессиональный опыт у партнёров."],
@@ -48,6 +56,75 @@ const COMING_SOON = [
 ] as const;
 
 const HIGHLIGHT_MS = 2500;
+const ACHIEVEMENT_SNAPSHOT_KEY = "era.opportunities.achievementSnapshot";
+
+type OpportunityAchievement = {
+  kicker: string;
+  title: string;
+  description: string;
+} | null;
+
+function useOpportunityAchievement(offers: Opportunity[] | null, enabled: boolean) {
+  const [achievement, setAchievement] = useState<OpportunityAchievement>(null);
+
+  useEffect(() => {
+    // Only the personalised "Для тебя" feed is allowed to mutate the
+    // achievement baseline. Saved/mine/all are different projections of the
+    // same data and switching filters must never look like a fresh unlock.
+    if (!offers || !enabled) return;
+    const availableIds = offers
+      .filter((offer) => offer.display_state === "available" || offer.display_state === "new")
+      .map((offer) => offer.id);
+    const issuedIds = offers
+      .filter((offer) => offer.application_status === "issued")
+      .map((offer) => offer.id);
+
+    let previous: { availableIds: number[]; issuedIds: number[] } | null = null;
+    try {
+      const raw = window.localStorage.getItem(ACHIEVEMENT_SNAPSHOT_KEY);
+      previous = raw ? JSON.parse(raw) : null;
+    } catch {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(ACHIEVEMENT_SNAPSHOT_KEY, JSON.stringify({ availableIds, issuedIds }));
+    } catch {
+      return;
+    }
+
+    // First visit only establishes a baseline. Signal mode is reserved for
+    // a real transition, never for every already-existing opportunity.
+    if (!previous) return;
+
+    const newlyIssuedId = issuedIds.find((id) => !previous!.issuedIds.includes(id));
+    if (newlyIssuedId !== undefined) {
+      const offer = offers.find((item) => item.id === newlyIssuedId);
+      if (offer) {
+        setAchievement({
+          kicker: "Достижение",
+          title: "ДОКУМЕНТ ВЫДАН",
+          description: `«${offer.title}» теперь подтверждает твой результат в ЭРА.`,
+        });
+        return;
+      }
+    }
+
+    const unlockedId = availableIds.find((id) => !previous!.availableIds.includes(id));
+    if (unlockedId !== undefined) {
+      const offer = offers.find((item) => item.id === unlockedId);
+      if (offer) {
+        setAchievement({
+          kicker: "Новая возможность",
+          title: "ТЕПЕРЬ ДОСТУПНО",
+          description: `Ты открыл «${offer.title}». Это результат твоей активности.`,
+        });
+      }
+    }
+  }, [offers, enabled]);
+
+  return { achievement, dismiss: () => setAchievement(null) };
+}
 
 interface OffersListProps {
   initialItemId?: number | null;
@@ -62,6 +139,10 @@ function OffersList({ initialItemId }: OffersListProps) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(initialItemId ?? null);
   const scopeLabel = OFFER_SCOPES.find((option) => option.value === scope)?.label ?? scope;
+  const achievement = useOpportunityAchievement(
+    state.status === "ready" ? state.data : null,
+    scope === "for_me",
+  );
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
@@ -158,14 +239,16 @@ function OffersList({ initialItemId }: OffersListProps) {
       {state.status === "ready" && state.data.map((offer) => {
         const recognition = offer.opportunity_type === "certificate" || offer.opportunity_type === "letter";
         const applied = ["pending", "requested", "under_review", "needs_info", "partner_review", "approved", "issued"].includes(offer.application_status ?? "");
-        // "Available" gets a stronger visual pull than a locked/plain card
-        // (ToR §18: Locked = plain, Available = violet/pink/orange light).
-        const isAvailable = !applied && (!recognition || offer.eligible);
+        const stateMeta = DISPLAY_STATE_META[offer.display_state];
+        const stateStyle = {
+          locked: { background: "var(--era-surface)", opacity: 0.88 },
+          almost: { background: "var(--era-tint-gold, var(--era-surface-2))", border: "1px solid rgba(244,193,93,0.42)" },
+          available: { background: "var(--era-hero-bg)", border: "1px solid rgba(99,44,255,0.18)", boxShadow: "var(--era-glow-violet)" },
+          new: { background: "var(--era-gradient-signal-soft, var(--era-hero-bg))", border: "1px solid rgba(215,25,120,0.24)", boxShadow: "var(--era-glow-hot)" },
+        }[offer.display_state];
         const cardStyle = offer.id === highlightId
-          ? { boxShadow: "0 0 0 2px var(--era-violet)" }
-          : isAvailable
-            ? { background: "var(--era-hero-bg)", border: "1px solid rgba(99,44,255,0.18)", boxShadow: "var(--era-glow-violet)" }
-            : undefined;
+          ? { ...stateStyle, boxShadow: "0 0 0 2px var(--era-violet)" }
+          : stateStyle;
         return (
           <div id={`opportunity-${offer.id}`} key={offer.id}>
             <Card style={cardStyle}>
@@ -177,9 +260,9 @@ function OffersList({ initialItemId }: OffersListProps) {
                   </div>
                   {offer.application_status ? (
                     <StatusBadge label={APPLICATION_STATUS_LABELS[offer.application_status] ?? offer.application_status} tone="violet" />
-                  ) : recognition ? (
-                    <StatusBadge label={offer.eligible ? "доступно" : "в процессе"} tone={offer.eligible ? "success" : "neutral"} />
-                  ) : null}
+                  ) : (
+                    <StatusBadge label={stateMeta.label} tone={stateMeta.tone} />
+                  )}
                 </div>
 
                 <p style={{ margin: 0, color: "var(--era-text-muted)" }}>{offer.description}</p>
@@ -219,10 +302,14 @@ function OffersList({ initialItemId }: OffersListProps) {
                     <button
                       type="button"
                       className="era-btn-primary"
-                      disabled={pendingId === offer.id || (recognition && !offer.eligible)}
+                      disabled={pendingId === offer.id || !offer.eligible}
                       onClick={() => handleApply(offer.id)}
                     >
-                      {recognition && !offer.eligible ? "Условия ещё не выполнены" : "Подать заявку"}
+                      {offer.display_state === "almost"
+                        ? "Остался один шаг"
+                        : !offer.eligible
+                          ? "Условия ещё не выполнены"
+                          : "Подать заявку"}
                     </button>
                   )}
                   <button type="button" disabled={pendingId === offer.id} onClick={() => handleToggleSave(offer.id, offer.is_saved)}>
@@ -252,6 +339,14 @@ function OffersList({ initialItemId }: OffersListProps) {
           ))}
         </div>
       )}
+
+      <AchievementOverlay
+        open={achievement.achievement !== null}
+        onClose={achievement.dismiss}
+        kicker={achievement.achievement?.kicker}
+        title={achievement.achievement?.title ?? ""}
+        description={achievement.achievement?.description}
+      />
     </div>
   );
 }

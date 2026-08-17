@@ -3,22 +3,39 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import User
+from app.database.models import PointTransaction, User
 from app.database.referral_models import ReferralCode, ReferralRelationship
 from app.services.points_service import add_points, make_idempotency_key
-from app.utils.constants import ApplicationStatus
+from app.utils.constants import ApplicationStatus, ParticipationStatus, PointCategory
 
-REGISTRATION_REFERRAL_POINTS = 200
-FIRST_EVENT_REFERRAL_POINTS = 500
+REGISTRATION_REFERRAL_POINTS = 50
+FIRST_EVENT_REFERRAL_POINTS = 75
+ACTIVE_REFERRAL_POINTS = 125
+REFERRAL_PER_INVITEE_CAP = 250
+REFERRAL_MONTHLY_CAP = 750
+REFERRAL_SOURCE_TYPES = (
+    "referral_registration",
+    "referral_first_event",
+    "referral_active",
+)
 CODE_LENGTH = 6
 OFFICIAL_BOT_HANDLE = "@ERA_1bot"
 OFFICIAL_BOT_URL = "https://t.me/ERA_1bot"
+ERA_TIMEZONE = ZoneInfo("Asia/Yerevan")
+
+_ACTIVE_OR_HIGHER = {
+    ParticipationStatus.ACTIVE_MEMBER,
+    ParticipationStatus.TEAM_MEMBER,
+    ParticipationStatus.PROJECT_CURATOR,
+    ParticipationStatus.COMMUNITY_LEADER,
+}
 
 
 @dataclass(frozen=True)
@@ -29,7 +46,10 @@ class ReferralSummary:
     invited_count: int
     registered_count: int
     first_event_count: int
+    active_count: int
     earned_points: int
+    monthly_earned_points: int
+    monthly_cap: int
 
 
 def normalize_referral_code(value: str | None) -> str | None:
@@ -123,15 +143,112 @@ async def bind_referral_code(
     return relationship
 
 
+def _month_bounds(now: datetime) -> tuple[datetime, datetime]:
+    local_now = now.astimezone(ERA_TIMEZONE)
+    start_local = datetime(local_now.year, local_now.month, 1, tzinfo=ERA_TIMEZONE)
+    if local_now.month == 12:
+        end_local = datetime(local_now.year + 1, 1, 1, tzinfo=ERA_TIMEZONE)
+    else:
+        end_local = datetime(local_now.year, local_now.month + 1, 1, tzinfo=ERA_TIMEZONE)
+    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
+
+
+async def _inviter_referral_points(
+    session: AsyncSession,
+    *,
+    inviter_id: int,
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> int:
+    stmt = (
+        select(func.coalesce(func.sum(PointTransaction.points), 0))
+        .select_from(PointTransaction)
+        .join(
+            ReferralRelationship,
+            ReferralRelationship.id == PointTransaction.source_id,
+        )
+        .where(
+            PointTransaction.user_id == inviter_id,
+            ReferralRelationship.inviter_id == inviter_id,
+            PointTransaction.source_type.in_(REFERRAL_SOURCE_TYPES),
+        )
+    )
+    if start is not None:
+        stmt = stmt.where(PointTransaction.created_at >= start)
+    if end is not None:
+        stmt = stmt.where(PointTransaction.created_at < end)
+    return int(await session.scalar(stmt) or 0)
+
+
+async def _capped_inviter_reward(
+    session: AsyncSession,
+    *,
+    inviter_id: int,
+    requested_points: int,
+    now: datetime,
+) -> int:
+    # Serialize all referral reward calculations for one inviter. Without
+    # this row lock two simultaneous referrals could both observe spare room
+    # under the monthly cap and push the balance over 750.
+    await session.scalar(select(User.id).where(User.id == inviter_id).with_for_update())
+    start, end = _month_bounds(now)
+    earned = await _inviter_referral_points(
+        session,
+        inviter_id=inviter_id,
+        start=start,
+        end=end,
+    )
+    remaining = max(0, REFERRAL_MONTHLY_CAP - earned)
+    return min(requested_points, remaining)
+
+
+async def _add_inviter_referral_points(
+    session: AsyncSession,
+    *,
+    relationship: ReferralRelationship,
+    requested_points: int,
+    reason: str,
+    source_type: str,
+    stage: str,
+    now: datetime,
+    related_event_id: int | None = None,
+) -> int:
+    points = await _capped_inviter_reward(
+        session,
+        inviter_id=relationship.inviter_id,
+        requested_points=requested_points,
+        now=now,
+    )
+    if points <= 0:
+        return 0
+    await add_points(
+        session,
+        user_id=relationship.inviter_id,
+        points=points,
+        reason=reason,
+        approved_by=None,
+        related_event_id=related_event_id,
+        source_type=source_type,
+        source_id=relationship.id,
+        category=PointCategory.REFERRAL,
+        idempotency_key=make_idempotency_key(
+            "referral", stage, relationship.id, "inviter"
+        ),
+    )
+    return points
+
+
 async def award_registration_referral(
     session: AsyncSession,
     *,
     invitee_user_id: int,
 ) -> ReferralRelationship | None:
-    """Award +200/+200 after the newcomer is approved and actually enters the general chat.
+    """Award the registration referral stage once.
 
-    This function intentionally does not try to infer Telegram membership itself. Callers
-    invoke it only from authoritative chat-join/unrestrict paths.
+    The authoritative callers invoke this only after the newcomer is approved
+    and has actually entered the general chat. The inviter's referral earnings
+    are capped at 750 points per calendar month; the invitee keeps the full
+    stage bonus.
     """
 
     relationship = await session.scalar(
@@ -146,17 +263,15 @@ async def award_registration_referral(
     if invitee is None or invitee.application_status != ApplicationStatus.APPROVED:
         return relationship
 
-    await add_points(
+    now = datetime.now(timezone.utc)
+    await _add_inviter_referral_points(
         session,
-        user_id=relationship.inviter_id,
-        points=REGISTRATION_REFERRAL_POINTS,
+        relationship=relationship,
+        requested_points=REGISTRATION_REFERRAL_POINTS,
         reason="Друг вступил в ЭРА и завершил регистрацию",
-        approved_by=None,
         source_type="referral_registration",
-        source_id=relationship.id,
-        idempotency_key=make_idempotency_key(
-            "referral", "registration", relationship.id, "inviter"
-        ),
+        stage="registration",
+        now=now,
     )
     await add_points(
         session,
@@ -166,11 +281,12 @@ async def award_registration_referral(
         approved_by=None,
         source_type="referral_registration",
         source_id=relationship.id,
+        category=PointCategory.REFERRAL,
         idempotency_key=make_idempotency_key(
             "referral", "registration", relationship.id, "invitee"
         ),
     )
-    relationship.registration_rewarded_at = datetime.now(timezone.utc)
+    relationship.registration_rewarded_at = now
     await session.flush()
     return relationship
 
@@ -181,7 +297,7 @@ async def award_first_event_referral(
     invitee_user_id: int,
     event_id: int,
 ) -> ReferralRelationship | None:
-    """Award +500/+500 once, after the newcomer's first confirmed attendance."""
+    """Award the first-event referral stage once after confirmed attendance."""
 
     relationship = await session.scalar(
         select(ReferralRelationship)
@@ -195,18 +311,16 @@ async def award_first_event_referral(
     if relationship.registration_rewarded_at is None:
         return relationship
 
-    await add_points(
+    now = datetime.now(timezone.utc)
+    await _add_inviter_referral_points(
         session,
-        user_id=relationship.inviter_id,
-        points=FIRST_EVENT_REFERRAL_POINTS,
+        relationship=relationship,
+        requested_points=FIRST_EVENT_REFERRAL_POINTS,
         reason="Приглашённый друг пришёл на первое мероприятие",
-        approved_by=None,
-        related_event_id=event_id,
         source_type="referral_first_event",
-        source_id=relationship.id,
-        idempotency_key=make_idempotency_key(
-            "referral", "first_event", relationship.id, "inviter"
-        ),
+        stage="first_event",
+        now=now,
+        related_event_id=event_id,
     )
     await add_points(
         session,
@@ -217,12 +331,77 @@ async def award_first_event_referral(
         related_event_id=event_id,
         source_type="referral_first_event",
         source_id=relationship.id,
+        category=PointCategory.REFERRAL,
         idempotency_key=make_idempotency_key(
             "referral", "first_event", relationship.id, "invitee"
         ),
     )
-    relationship.first_event_rewarded_at = datetime.now(timezone.utc)
+    relationship.first_event_rewarded_at = now
     relationship.first_event_id = event_id
+    await session.flush()
+    return relationship
+
+
+async def award_active_referral(
+    session: AsyncSession,
+    *,
+    invitee_user_id: int,
+) -> ReferralRelationship | None:
+    """Award +125 when a referred participant first reaches Active or higher."""
+
+    relationship = await session.scalar(
+        select(ReferralRelationship)
+        .where(ReferralRelationship.invitee_id == invitee_user_id)
+        .with_for_update()
+    )
+    if relationship is None or relationship.registration_rewarded_at is None:
+        return relationship
+
+    invitee = await session.get(User, invitee_user_id)
+    if invitee is None:
+        return relationship
+    try:
+        status = ParticipationStatus(invitee.participation_status)
+    except (TypeError, ValueError):
+        return relationship
+    if status not in _ACTIVE_OR_HIGHER:
+        return relationship
+
+    invitee_key = make_idempotency_key(
+        "referral", "active", relationship.id, "invitee"
+    )
+    existing = await session.scalar(
+        select(PointTransaction.id).where(
+            PointTransaction.idempotency_key == invitee_key
+        )
+    )
+    if existing is not None:
+        return relationship
+
+    now = datetime.now(timezone.utc)
+    await _add_inviter_referral_points(
+        session,
+        relationship=relationship,
+        requested_points=ACTIVE_REFERRAL_POINTS,
+        reason="Приглашённый друг стал активным участником ЭРА",
+        source_type="referral_active",
+        stage="active",
+        now=now,
+    )
+    # The invitee transaction is also the durable idempotency marker for the
+    # third stage. This keeps the schema unchanged even when the inviter has
+    # already exhausted the monthly cap and receives no points for this stage.
+    await add_points(
+        session,
+        user_id=relationship.invitee_id,
+        points=ACTIVE_REFERRAL_POINTS,
+        reason="Статус «Активный участник» после приглашения в ЭРА",
+        approved_by=None,
+        source_type="referral_active",
+        source_id=relationship.id,
+        category=PointCategory.REFERRAL,
+        idempotency_key=invitee_key,
+    )
     await session.flush()
     return relationship
 
@@ -253,10 +432,12 @@ def _share_text(
         f"🤖 Бот ЭРА: {OFFICIAL_BOT_HANDLE}\n{bot_url}\n\n"
         f"💬 Общий чат:\n{chat_url}\n\n"
         f"При регистрации введи мой код: {code}\n\n"
-        f"После регистрации и вступления в общий чат мы оба получим по "
-        f"{REGISTRATION_REFERRAL_POINTS} баллов.\n"
-        "А когда ты впервые придёшь на мероприятие и подтвердишь участие — ещё по "
-        f"{FIRST_EVENT_REFERRAL_POINTS} баллов каждому.\n\n"
+        "За подтверждённые этапы мы оба получаем баллы:\n"
+        f"• регистрация и вступление в общий чат — по {REGISTRATION_REFERRAL_POINTS};\n"
+        f"• первое посещённое мероприятие — по {FIRST_EVENT_REFERRAL_POINTS};\n"
+        f"• статус «Активный участник» — по {ACTIVE_REFERRAL_POINTS}.\n\n"
+        f"Это до {REFERRAL_PER_INVITEE_CAP} баллов за полный путь одного приглашённого. "
+        f"Для приглашающего действует лимит {REFERRAL_MONTHLY_CAP} реферальных баллов в месяц.\n\n"
         "Не обязательно сразу знать, чего ты хочешь. ЭРА как раз помогает это понять — "
         "через людей, опыт и реальные действия."
     )
@@ -295,6 +476,34 @@ async def get_referral_summary(
         )
         or 0
     )
+    active_count = int(
+        await session.scalar(
+            select(func.count(func.distinct(PointTransaction.source_id)))
+            .select_from(PointTransaction)
+            .join(
+                ReferralRelationship,
+                ReferralRelationship.id == PointTransaction.source_id,
+            )
+            .where(
+                ReferralRelationship.inviter_id == user.id,
+                PointTransaction.user_id == ReferralRelationship.invitee_id,
+                PointTransaction.source_type == "referral_active",
+            )
+        )
+        or 0
+    )
+    now = datetime.now(timezone.utc)
+    month_start, month_end = _month_bounds(now)
+    earned_points = await _inviter_referral_points(
+        session,
+        inviter_id=user.id,
+    )
+    monthly_earned_points = await _inviter_referral_points(
+        session,
+        inviter_id=user.id,
+        start=month_start,
+        end=month_end,
+    )
     invite_url = _invite_url(settings, code_row.code)
     return ReferralSummary(
         code=code_row.code,
@@ -307,8 +516,8 @@ async def get_referral_summary(
         invited_count=invited_count,
         registered_count=registered_count,
         first_event_count=first_event_count,
-        earned_points=(
-            registered_count * REGISTRATION_REFERRAL_POINTS
-            + first_event_count * FIRST_EVENT_REFERRAL_POINTS
-        ),
+        active_count=active_count,
+        earned_points=earned_points,
+        monthly_earned_points=monthly_earned_points,
+        monthly_cap=REFERRAL_MONTHLY_CAP,
     )

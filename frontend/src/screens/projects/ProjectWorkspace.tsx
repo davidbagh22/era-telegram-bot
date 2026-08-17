@@ -17,6 +17,7 @@ import {
   setProjectMilestoneStatus,
   setProjectRoleStatus,
 } from "../../api/client";
+import { AchievementOverlay } from "../../components/AchievementOverlay";
 import { ActionCell } from "../../components/ActionCell";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
@@ -38,6 +39,12 @@ const SECTIONS: { value: WorkspaceSection; label: string; description: string }[
 ];
 
 const MEMBER_ACTIVE_STATUSES = new Set(["accepted", "active", "completed"]);
+const TASK_POINT_PRESETS = [
+  { points: 40, label: "Лёгкая" },
+  { points: 80, label: "Стандартная" },
+  { points: 150, label: "Сложная" },
+  { points: 200, label: "Высокая ответственность" },
+] as const;
 
 const inputStyle = {
   fontFamily: "var(--era-font-body)",
@@ -102,6 +109,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
   const [activeSection, setActiveSection] = useState<WorkspaceSection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [achievement, setAchievement] = useState<{ title: string; description: string } | null>(null);
   const [roleTitle, setRoleTitle] = useState("");
   const [roleCapacity, setRoleCapacity] = useState("");
   const [applicationText, setApplicationText] = useState("");
@@ -114,7 +122,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
   const [taskDescription, setTaskDescription] = useState("");
   const [taskDeadline, setTaskDeadline] = useState("");
   const [taskAssigneeId, setTaskAssigneeId] = useState("");
-  const [taskPoints, setTaskPoints] = useState("10");
+  const [taskPoints, setTaskPoints] = useState(80);
   const [eventId, setEventId] = useState("");
   const [contributionMemberId, setContributionMemberId] = useState("");
   const [contributionSummary, setContributionSummary] = useState("");
@@ -143,12 +151,13 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
     [workspace],
   );
 
-  async function run(action: () => Promise<unknown>) {
+  async function run(action: () => Promise<unknown>, onSuccess?: () => void) {
     setBusy(true);
     setError(null);
     try {
       await action();
       await loadWorkspace();
+      onSuccess?.();
     } catch {
       setError("Действие не выполнено. Проверьте данные и попробуйте ещё раз.");
     } finally {
@@ -274,7 +283,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
       {activeSection === "tasks" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           {workspace.can_manage && (
-            <Card><SectionTitle title="Новая задача" /><FormStack><input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="Название" style={inputStyle} /><textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} rows={2} style={inputStyle} /><input type="datetime-local" value={taskDeadline} onChange={(event) => setTaskDeadline(event.target.value)} style={inputStyle} /><MemberSelect value={taskAssigneeId} members={activeMembers} onChange={setTaskAssigneeId} /><input value={taskPoints} onChange={(event) => setTaskPoints(event.target.value)} inputMode="numeric" placeholder="Баллы" style={inputStyle} /><button type="button" disabled={busy || !taskTitle.trim() || !taskDescription.trim() || !taskDeadline} onClick={() => run(async () => { await createProjectTask(projectId, { title: taskTitle, description: taskDescription, deadline: dateTimeLocalToIso(taskDeadline) ?? "", assignee_id: optionalNumber(taskAssigneeId), points: optionalNumber(taskPoints) ?? 10 }); setTaskTitle(""); setTaskDescription(""); setTaskDeadline(""); })} style={buttonStyle}>Создать задачу</button></FormStack></Card>
+            <Card><SectionTitle title="Новая задача" /><FormStack><input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="Название" style={inputStyle} /><textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} rows={2} style={inputStyle} /><input type="datetime-local" value={taskDeadline} onChange={(event) => setTaskDeadline(event.target.value)} style={inputStyle} /><MemberSelect value={taskAssigneeId} members={activeMembers} onChange={setTaskAssigneeId} /><div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.5rem" }}>{TASK_POINT_PRESETS.map((preset) => <button key={preset.points} type="button" aria-pressed={taskPoints === preset.points} onClick={() => setTaskPoints(preset.points)} style={{ ...secondaryButtonStyle, minHeight: "3.5rem", textAlign: "left", borderColor: taskPoints === preset.points ? "var(--era-violet)" : "var(--era-border)", background: taskPoints === preset.points ? "var(--era-tint-violet)" : "var(--era-surface)" }}><strong>{preset.label}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "0.75rem", marginTop: "0.15rem" }}>{preset.points} баллов</span></button>)}</div><button type="button" disabled={busy || !taskTitle.trim() || !taskDescription.trim() || !taskDeadline} onClick={() => run(async () => { await createProjectTask(projectId, { title: taskTitle, description: taskDescription, deadline: dateTimeLocalToIso(taskDeadline) ?? "", assignee_id: optionalNumber(taskAssigneeId), points: taskPoints }); setTaskTitle(""); setTaskDescription(""); setTaskDeadline(""); setTaskPoints(80); })} style={buttonStyle}>Создать задачу</button></FormStack></Card>
           )}
           {workspace.tasks.length === 0 ? <EmptyState text="Задач пока нет." /> : workspace.tasks.map((task) => (
             <Card key={task.id}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><div><strong>{task.title}</strong><p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{formatDate(task.deadline)} · {task.points} баллов</p></div><StatusBadge label={task.status} tone="violet" /></div>{workspace.can_manage && <MemberSelect value={task.assignee_id?.toString() ?? ""} members={activeMembers} onChange={(value) => run(() => assignProjectTask(projectId, task.id, optionalNumber(value)))} />}</Card>
@@ -286,7 +295,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           {workspace.can_manage && <Card><SectionTitle title="Новый этап" /><FormStack><input value={milestoneTitle} onChange={(event) => setMilestoneTitle(event.target.value)} placeholder="Название" style={inputStyle} /><input type="datetime-local" value={milestoneDeadline} onChange={(event) => setMilestoneDeadline(event.target.value)} style={inputStyle} /><MemberSelect value={milestoneResponsibleId} members={activeMembers} onChange={setMilestoneResponsibleId} /><button type="button" disabled={busy || !milestoneTitle.trim()} onClick={() => run(async () => { await createProjectMilestone(projectId, { title: milestoneTitle, deadline: dateTimeLocalToIso(milestoneDeadline), responsible_id: optionalNumber(milestoneResponsibleId) }); setMilestoneTitle(""); setMilestoneDeadline(""); })} style={buttonStyle}>Создать этап</button></FormStack></Card>}
           {workspace.milestones.length === 0 ? <EmptyState text="Этапов пока нет." /> : <div style={{ borderLeft: "2px solid var(--era-border)", paddingLeft: "0.75rem" }}>{workspace.milestones.map((milestone) => (
-            <Card key={milestone.id} style={{ marginBottom: "0.75rem" }}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><div><strong>{milestone.title}</strong><p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{formatDate(milestone.deadline)}</p></div><StatusBadge label={milestone.status} tone={milestone.status === "completed" ? "neutral" : "violet"} /></div>{workspace.can_manage && milestone.status !== "completed" && <button type="button" disabled={busy} onClick={() => run(() => setProjectMilestoneStatus(projectId, milestone.id, "completed"))} style={secondaryButtonStyle}>Завершить этап</button>}</Card>
+            <Card key={milestone.id} style={{ marginBottom: "0.75rem" }}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><div><strong>{milestone.title}</strong><p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{formatDate(milestone.deadline)}</p></div><StatusBadge label={milestone.status} tone={milestone.status === "completed" ? "neutral" : "violet"} /></div>{workspace.can_manage && milestone.status !== "completed" && <button type="button" disabled={busy} onClick={() => run(() => setProjectMilestoneStatus(projectId, milestone.id, "completed"), () => setAchievement({ title: "ЭТАП ЗАВЕРШЁН", description: `«${milestone.title}» — ещё одна ключевая точка проекта закрыта.` }))} style={secondaryButtonStyle}>Завершить этап</button>}</Card>
           ))}</div>}
         </div>
       )}
@@ -302,6 +311,14 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
 
       {activeSection === "materials" && <EmptyState text="Материалов пока нет." />}
       {activeSection === "analytics" && <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem" }}><MetricCard label="Прогресс" value={`${workspace.progress_percent}%`} /><MetricCard label="Подтверждён вклад" value={`${confirmedMembers}/${activeMembers.length}`} /><MetricCard label="Задачи выполнены" value={`${completedTasks}/${workspace.tasks.length}`} /><MetricCard label="Роли открыты" value={workspace.roles.filter((role) => role.status === "open").length} /></div>}
+
+      <AchievementOverlay
+        open={achievement !== null}
+        onClose={() => setAchievement(null)}
+        kicker="Проект"
+        title={achievement?.title ?? ""}
+        description={achievement?.description}
+      />
     </div>
   );
 }

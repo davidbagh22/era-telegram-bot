@@ -7,10 +7,15 @@ export interface ReferralSummary {
   share_text: string;
   registration_points_each: number;
   first_event_points_each: number;
+  active_points_each: number;
+  per_invitee_cap: number;
+  monthly_cap: number;
   invited_count: number;
   registered_count: number;
   first_event_count: number;
+  active_count: number;
   earned_points: number;
+  monthly_earned_points: number;
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
