@@ -88,7 +88,8 @@ class SubtaskAssignIn(BaseModel):
 
 
 def _mission_meta(task: Task) -> dict:
-    return (task.reward_json or {}).get("community_mission") or {}
+    """Return Community Mission metadata without changing legacy Task behavior."""
+    return (getattr(task, "reward_json", None) or {}).get("community_mission") or {}
 
 
 async def _to_task_out(
@@ -97,19 +98,25 @@ async def _to_task_out(
     joined_ids = await task_service.joined_task_ids(session, user, [task])
     can_submit = await task_service.can_submit(session, task, user)
     meta = _mission_meta(task)
-    squad = await session.scalar(select(TaskSquad).where(TaskSquad.task_id == task.id))
-    squad_size = int(
-        len(
-            (
-                await session.scalars(
-                    select(TaskParticipant.id).where(
-                        TaskParticipant.task_id == task.id,
-                        TaskParticipant.status.in_(["accepted", "joined"]),
+    squad = (
+        await session.scalar(select(TaskSquad).where(TaskSquad.task_id == task.id))
+        if meta
+        else None
+    )
+    squad_size = 0
+    if meta:
+        squad_size = int(
+            len(
+                (
+                    await session.scalars(
+                        select(TaskParticipant.id).where(
+                            TaskParticipant.task_id == task.id,
+                            TaskParticipant.status.in_(["accepted", "joined"]),
+                        )
                     )
-                )
-            ).all()
+                ).all()
+            )
         )
-    ) if meta else 0
     return TaskOut(
         id=task.id,
         title=task.title,
