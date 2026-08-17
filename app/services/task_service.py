@@ -116,7 +116,8 @@ async def joined_task_ids(
 
 
 def _is_community_mission(task: Task) -> bool:
-    return bool(((task.reward_json or {}).get("community_mission") or {}).get("code"))
+    reward = getattr(task, "reward_json", None) or {}
+    return bool((reward.get("community_mission") or {}).get("code"))
 
 
 async def _sync_mission_squad(
@@ -142,6 +143,10 @@ async def claim(
     Community Missions are intentionally self-serve: an approved participant
     who takes a mission joins its one shared Task Squad immediately. Other
     existing challenge tasks preserve the legacy pending-review behavior.
+
+    Existing membership is resolved before capacity. This makes retries and
+    reopening a SOLO/max=1 mission idempotent for the same participant while
+    preserving the capacity limit for genuinely new participants.
     """
     if (
         task is None
@@ -150,19 +155,27 @@ async def claim(
         or not matches_task_audience(task, user)
     ):
         return None, "closed"
+
     current = (
         await session.scalars(
             select(TaskParticipant).where(TaskParticipant.task_id == task.id)
         )
     ).all()
-    accepted = [item for item in current if item.status in ACCEPTED_MEMBERSHIP_STATUSES]
-    if task.max_participants and len(accepted) >= task.max_participants:
-        return None, "full"
-
     mission = _is_community_mission(task)
     existing = next((item for item in current if item.user_id == user.id), None)
+
     if existing:
         if existing.status == "rejected":
+            # A rejected participant is attempting a real re-entry, so capacity
+            # must still be enforced before restoring membership.
+            accepted = [
+                item
+                for item in current
+                if item.status in ACCEPTED_MEMBERSHIP_STATUSES
+                and item.user_id != user.id
+            ]
+            if task.max_participants and len(accepted) >= task.max_participants:
+                return None, "full"
             existing.status = "joined" if mission else "pending"
             await session.flush()
             await _sync_mission_squad(session, task, user)
@@ -175,6 +188,10 @@ async def claim(
         if existing.status == "pending":
             return existing, "already_pending"
         return existing, "already_joined"
+
+    accepted = [item for item in current if item.status in ACCEPTED_MEMBERSHIP_STATUSES]
+    if task.max_participants and len(accepted) >= task.max_participants:
+        return None, "full"
 
     participant = TaskParticipant(
         task_id=task.id,
