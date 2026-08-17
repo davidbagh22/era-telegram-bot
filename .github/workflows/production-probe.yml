@@ -14,7 +14,7 @@ jobs:
     steps:
       - name: Verify production serves merged main
         env:
-          EXPECTED_COMMIT: ac7a02aa44015351588c28fd1b85eb6eecf71c59
+          EXPECTED_COMMIT: 9fe83eaec09b58259abf7eb48b468e830fcb7dfb
           PRODUCTION_HEALTH: https://era-telegram-bot.onrender.com/health
         shell: bash
         run: |
