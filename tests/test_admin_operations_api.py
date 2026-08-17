@@ -229,7 +229,9 @@ class EventOperationsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_set_attendance_success(self) -> None:
-        registration = SimpleNamespace(id=8, event_id=1, user_id=4, status="registered")
+        registration = SimpleNamespace(
+            id=8, event_id=1, user_id=4, status="registered", role="participant", volunteer_hours=None
+        )
         participant = SimpleNamespace(id=4, first_name="Анна", last_name=None)
         session = SimpleNamespace(get=AsyncMock(side_effect=[registration, participant]))
         app = _build_app(_admin(), session)
