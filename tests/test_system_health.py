@@ -121,6 +121,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "project-scoring-reconciliation",
                 "task-squad-notifications",
                 "media-channel-publication",
+                "media-task-cards",
                 "media-chat-automation",
                 "my-vector-monthly-reminders",
                 "general-chat-faq-pin",
