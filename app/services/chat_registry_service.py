@@ -1,15 +1,4 @@
-"""Chat Infrastructure Registry — one screen answering "what state are our
-4 org chats actually in" (2026-08 master spec, section 30). Read-only:
-reuses chat_access_service.py (binding + the real access rules) and
-admin_greetings_service.py (greeting state) rather than re-deriving either,
-and reads "last send"/"last error" from the existing AuditLog trail
-(chat.broadcast_sent / chat.broadcast_failed — the latter added alongside
-this file so the registry has something real to show, not a placeholder).
-
-check_chats_health() is the one thing here that talks to Telegram, and
-only when explicitly called (the API endpoint is a POST an admin has to
-press) -- it never runs on a schedule or on page load.
-"""
+"""Read-only registry for ERA Telegram workspaces and the public channel."""
 
 from __future__ import annotations
 
@@ -24,26 +13,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import AuditLog, ChatGreeting
 
-CHAT_KEYS = ("general", "internal", "external", "leaders")
+CHAT_KEYS = ("general", "internal", "external", "leaders", "media", "era_channel")
 
 CHAT_TITLES = {
     "general": "Общий чат",
     "internal": "Внутренние связи",
     "external": "Внешние связи",
     "leaders": "Чат лидеров",
+    "media": "Медиа",
+    "era_channel": "Канал ЭРА",
 }
 
-# Mirrors the real rules in chat_access_service.py::check_chat_access() --
-# kept as description text only (not re-implementing the logic), so this
-# has to be read alongside that function if the rules ever change.
 CHAT_PERMISSION_DESCRIPTIONS = {
     "general": "Все одобренные участники",
     "internal": "Участники направления «Внутренние связи» и админы",
     "external": "Участники направления «Внешние связи» и админы",
     "leaders": "Лидеры, руководители, совет и админы",
+    "media": "Все одобренные участники — открытая рабочая точка входа в Медиа",
+    "era_channel": "Бот-администратор с правом публикации",
 }
 
-AUDIT_LOOKBACK = 200
+AUDIT_LOOKBACK = 300
 
 
 @dataclass(frozen=True)
@@ -65,24 +55,38 @@ class ChatHealthResult:
     detail: str
 
 
+def _coerce_chat_id(value: int | str | None) -> int | None:
+    if isinstance(value, int):
+        return value
+    text = str(value or "").strip()
+    return int(text) if text.lstrip("-").isdigit() else None
+
+
 def _chat_id_for_key(settings: Settings, chat_key: str) -> int | None:
-    return {
+    values: dict[str, int | str | None] = {
         "general": settings.general_chat_id,
         "internal": settings.internal_department_chat_id,
         "external": settings.external_department_chat_id,
         "leaders": settings.leaders_chat_id,
-    }.get(chat_key)
+        "media": settings.media_chat_id,
+        "era_channel": settings.era_channel_id,
+    }
+    return _coerce_chat_id(values.get(chat_key))
 
 
-async def list_chat_registry(session: AsyncSession, settings: Settings) -> list[ChatRegistryEntry]:
+async def list_chat_registry(
+    session: AsyncSession, settings: Settings
+) -> list[ChatRegistryEntry]:
     greetings = {
-        g.chat_key: g
-        for g in (await session.scalars(select(ChatGreeting))).all()
+        greeting.chat_key: greeting
+        for greeting in (await session.scalars(select(ChatGreeting))).all()
     }
     recent_audit = (
         await session.scalars(
             select(AuditLog)
-            .where(AuditLog.action.in_(("chat.broadcast_sent", "chat.broadcast_failed")))
+            .where(
+                AuditLog.action.in_(("chat.broadcast_sent", "chat.broadcast_failed"))
+            )
             .order_by(AuditLog.created_at.desc())
             .limit(AUDIT_LOOKBACK)
         )
@@ -98,7 +102,7 @@ async def list_chat_registry(session: AsyncSession, settings: Settings) -> list[
         elif entry.action == "chat.broadcast_failed" and chat_key not in last_error:
             last_error[chat_key] = entry.created_at
 
-    entries = []
+    entries: list[ChatRegistryEntry] = []
     for chat_key in CHAT_KEYS:
         chat_id = _chat_id_for_key(settings, chat_key)
         greeting = greetings.get(chat_key)
@@ -109,7 +113,11 @@ async def list_chat_registry(session: AsyncSession, settings: Settings) -> list[
                 chat_id=chat_id,
                 is_bound=chat_id is not None,
                 permission_description=CHAT_PERMISSION_DESCRIPTIONS[chat_key],
-                greeting_enabled=greeting.is_enabled if greeting else None,
+                greeting_enabled=(
+                    greeting.is_enabled
+                    if greeting is not None and chat_key != "era_channel"
+                    else None
+                ),
                 last_sent_at=last_sent.get(chat_key),
                 last_error_at=last_error.get(chat_key),
             )
@@ -118,22 +126,43 @@ async def list_chat_registry(session: AsyncSession, settings: Settings) -> list[
 
 
 async def check_chats_health(bot: Bot, settings: Settings) -> list[ChatHealthResult]:
-    """Read-only Telegram check: can the bot still see each bound chat and
-    is it still an administrator there (needed for greetings/moderation/
-    broadcasts to keep working). Never writes anything -- purely reports."""
+    """Explicit read-only Telegram permission check; never sends a test post."""
     results: list[ChatHealthResult] = []
     for chat_key in CHAT_KEYS:
         chat_id = _chat_id_for_key(settings, chat_key)
         if chat_id is None:
-            results.append(ChatHealthResult(chat_key=chat_key, ok=False, detail="not_bound"))
+            results.append(
+                ChatHealthResult(chat_key=chat_key, ok=False, detail="not_bound")
+            )
             continue
         try:
             member = await bot.get_chat_member(chat_id, bot.id)
         except TelegramAPIError as exc:
-            results.append(ChatHealthResult(chat_key=chat_key, ok=False, detail=str(exc)[:200]))
+            results.append(
+                ChatHealthResult(chat_key=chat_key, ok=False, detail=str(exc)[:200])
+            )
             continue
         if member.status not in ("administrator", "creator"):
-            results.append(ChatHealthResult(chat_key=chat_key, ok=False, detail="not_admin"))
+            results.append(
+                ChatHealthResult(chat_key=chat_key, ok=False, detail="not_admin")
+            )
+            continue
+        if chat_key == "era_channel" and member.status == "administrator":
+            if not bool(getattr(member, "can_post_messages", False)):
+                results.append(
+                    ChatHealthResult(
+                        chat_key=chat_key, ok=False, detail="cannot_post_messages"
+                    )
+                )
+                continue
+            can_edit = bool(getattr(member, "can_edit_messages", False))
+            results.append(
+                ChatHealthResult(
+                    chat_key=chat_key,
+                    ok=True,
+                    detail="ok:post+edit" if can_edit else "ok:post",
+                )
+            )
             continue
         results.append(ChatHealthResult(chat_key=chat_key, ok=True, detail="ok"))
     return results

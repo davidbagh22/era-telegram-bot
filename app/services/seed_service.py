@@ -11,6 +11,10 @@ from app.database.models import (
     Office,
 )
 from app.services.chat_binding_recovery_service import recover_chat_bindings
+from app.services.community_mission_service import seed_community_missions
+from app.services.media_dashboard_service import seed_media_guide
+from app.services.media_service import seed_media_os
+from app.services.recognition_catalog import seed_recognition_catalog
 from app.utils.constants import BADGES, DEPARTMENTS
 
 
@@ -61,6 +65,13 @@ GREETING_DEFAULTS = {
         "Команда лидеров",
         "Добро пожаловать в рабочее пространство лидеров ЭРА\n\n"
         "Здесь принимают решения, поддерживают команды и доводят идеи до результата",
+    ),
+    "media": (
+        "Медиа ЭРА",
+        "Добро пожаловать в рабочий Media Hub ЭРА 🎬\n\n"
+        "Здесь можно взять реальную медиа-задачу, работать с командой, "
+        "прикреплять результат и видеть контент-план. Чат открыт всем "
+        "одобренным участникам — опыт в Медиа можно начать с первой задачи.",
     ),
 }
 
@@ -117,6 +128,7 @@ async def seed_reference_data(session: AsyncSession, settings: Settings) -> None
         "internal": settings.internal_department_chat_id,
         "external": settings.external_department_chat_id,
         "leaders": settings.leaders_chat_id,
+        "media": settings.media_chat_id,
     }
     for chat_key, (title, text) in GREETING_DEFAULTS.items():
         exists = await session.scalar(
@@ -133,8 +145,9 @@ async def seed_reference_data(session: AsyncSession, settings: Settings) -> None
             )
     await session.flush()
 
-    # Older installs can already contain a chat ID in greeting/delivery/join
-    # history even when the AppSetting row was lost or never created. Recover
-    # only a single unambiguous historical ID; never infer IDs from invite URLs.
+    await seed_recognition_catalog(session)
+    await seed_community_missions(session)
+    await seed_media_os(session, settings)
+    await seed_media_guide(session, settings)
     await recover_chat_bindings(session, settings)
     await session.commit()

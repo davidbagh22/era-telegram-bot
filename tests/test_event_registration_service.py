@@ -103,6 +103,40 @@ class EventRegistrationServiceOperationsTests(unittest.IsolatedAsyncioTestCase):
             again = await svc.award_attendance_points(session, event, approved_by_id=admin.id)
             self.assertEqual(again, [])
 
+    async def test_award_attendance_points_applies_event_scoring_role_bonus(self) -> None:
+        """award_attendance_points (the Mini App admin bulk-award path) now
+        routes through activity_scoring_service, so a registration's role
+        picks up its bonus automatically alongside the base attendance
+        points -- Points/Ranks ToR phase 2."""
+        from app.services.activity_metrics_service import get_metric
+        from app.services.points_service import total_points
+        from app.utils.constants import EventParticipantRole
+
+        async with self.session_factory() as session:
+            admin = await self._make_user(session, 1)
+            organizer = await self._make_user(session, 2)
+            event = self._event(created_by=admin.id, points=100)
+            session.add(event)
+            await session.flush()
+            registration = EventRegistration(
+                event_id=event.id,
+                user_id=organizer.id,
+                status=RegistrationStatus.ATTENDED,
+                role=EventParticipantRole.ORGANIZER,
+            )
+            session.add(registration)
+            await session.flush()
+
+            await svc.award_attendance_points(session, event, approved_by_id=admin.id)
+
+            self.assertEqual(await total_points(session, organizer.id), 100 + 250)
+            self.assertEqual(
+                await get_metric(session, user_id=organizer.id, metric_key="events_attended"), 1
+            )
+            self.assertEqual(
+                await get_metric(session, user_id=organizer.id, metric_key="events_organized"), 1
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.event_attendance import EventAttendanceSession
 from app.database.models import Event, EventRegistration, PortfolioItem, User
+from app.services.activity_metrics_service import increment_metric
+from app.services.activity_scoring_service import score_event_role_bonus
 from app.services.audit_service import audit
 from app.services.event_registration_service import event_points_already_awarded
 from app.services.notification_service import safe_send
@@ -405,6 +407,7 @@ async def confirm_attendance(
 
     points = max(0, int(event.points_for_visit or 0))
     points_awarded = 0
+    approved_by_id = runtime.completed_by or event.responsible_id
     if points and not await event_points_already_awarded(
         session,
         event_id=event.id,
@@ -415,13 +418,24 @@ async def confirm_attendance(
             user_id=user_id,
             points=points,
             reason=f"Посещение мероприятия: {event.title}",
-            approved_by=runtime.completed_by or event.responsible_id,
+            approved_by=approved_by_id,
             related_event_id=event.id,
             source_type="event_attendance",
             source_id=registration.id,
             idempotency_key=f"event_attendance:{event.id}:{user_id}",
         )
         points_awarded = points
+
+    # Event Scoring Profile (Points/Ranks ToR sections 16-20): bumps
+    # events_attended and, if this participant took on a role beyond plain
+    # attendance, their role bonus + the event's preset activity metrics.
+    # Independently idempotent from the block above -- runs even when
+    # points_for_visit is 0, and never re-fires on a repeat confirmation.
+    if not already_confirmed:
+        await increment_metric(session, user_id=user_id, metric_key="events_attended", delta=1)
+    participant = await session.get(User, user_id)
+    if participant is not None:
+        await score_event_role_bonus(session, event, registration, participant, approved_by_id=approved_by_id)
 
     portfolio_exists = await session.scalar(
         select(PortfolioItem.id).where(

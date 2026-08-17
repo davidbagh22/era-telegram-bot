@@ -21,6 +21,22 @@ import {
   ROLE_OPTIONS,
 } from "./roleLabels";
 
+// Points/Ranks ToR section 44: a large manual award needs an explicit
+// second confirmation, not just a single tap/typo -- matches the backend
+// gate at app/api/v1/admin.py::LARGE_MANUAL_AWARD_THRESHOLD.
+const LARGE_MANUAL_AWARD_THRESHOLD = 300;
+
+function isLargeManualAward(amount: number): boolean {
+  return Math.abs(amount) > LARGE_MANUAL_AWARD_THRESHOLD;
+}
+
+function confirmLargeManualAward(amount: number): boolean {
+  if (!isLargeManualAward(amount)) return true;
+  return window.confirm(
+    `Начислить ${amount > 0 ? "+" : ""}${amount} баллов? Это крупная ручная корректировка — подтвердите, что это осознанное решение.`,
+  );
+}
+
 const inputStyle = {
   fontFamily: "var(--era-font-body)",
   padding: "0.7rem",
@@ -546,7 +562,17 @@ export function PersonDetail({ userId, onBack }: PersonDetailProps) {
                     type="button"
                     className="era-btn-primary"
                     disabled={busy}
-                    onClick={() => runAction(() => awardUserPoints(userId, person.points_suggestion!.amount, person.points_suggestion!.reason))}
+                    onClick={() => {
+                      if (!confirmLargeManualAward(person.points_suggestion!.amount)) return;
+                      runAction(() =>
+                        awardUserPoints(
+                          userId,
+                          person.points_suggestion!.amount,
+                          person.points_suggestion!.reason,
+                          isLargeManualAward(person.points_suggestion!.amount),
+                        ),
+                      );
+                    }}
                     style={{ marginTop: "0.6rem" }}
                   >
                     Начислить предложенные баллы
@@ -561,11 +587,15 @@ export function PersonDetail({ userId, onBack }: PersonDetailProps) {
                 type="button"
                 className="era-btn-primary"
                 disabled={busy || !pointsAmount || !pointsReason.trim()}
-                onClick={() => runAction(async () => {
-                  await awardUserPoints(userId, Number(pointsAmount), pointsReason.trim());
-                  setPointsAmount("");
-                  setPointsReason("");
-                })}
+                onClick={() => {
+                  const amount = Number(pointsAmount);
+                  if (!confirmLargeManualAward(amount)) return;
+                  runAction(async () => {
+                    await awardUserPoints(userId, amount, pointsReason.trim(), isLargeManualAward(amount));
+                    setPointsAmount("");
+                    setPointsReason("");
+                  });
+                }}
                 style={{ marginTop: "0.55rem" }}
               >
                 Применить вручную

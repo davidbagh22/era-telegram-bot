@@ -4,7 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Event, EventRegistration, PointTransaction, User
-from app.services.points_service import add_points
+from app.services.activity_scoring_service import score_event_attendance_and_role
 from app.utils.constants import EventStatus, RegistrationStatus
 
 # Events an admin can still run operations on after moderation — mirrors
@@ -135,16 +135,8 @@ async def award_attendance_points(
             continue
         if await event_points_already_awarded(session, event_id=event.id, user_id=participant.id):
             continue
-        await add_points(
-            session,
-            user_id=participant.id,
-            points=event.points_for_visit,
-            reason=f"Посещение мероприятия: {event.title}",
-            approved_by=approved_by_id,
-            related_event_id=event.id,
-            source_type="event_attendance",
-            source_id=registration.id,
-            idempotency_key=f"event_attendance:{event.id}:{participant.id}",
+        await score_event_attendance_and_role(
+            session, event, registration, participant, approved_by_id=approved_by_id
         )
         newly_awarded.append(participant)
     return newly_awarded

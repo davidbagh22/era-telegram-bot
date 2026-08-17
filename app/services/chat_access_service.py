@@ -23,6 +23,7 @@ CHAT_SETTING_KEYS = {
     "internal": "internal_department_chat_id",
     "external": "external_department_chat_id",
     "leaders": "leaders_chat_id",
+    "media": "media_chat_id",
 }
 
 PENDING_REASONS = {"not_registered", "not_approved"}
@@ -93,17 +94,25 @@ def check_chat_access(user: User | None, chat_key: str | None) -> ChatAccessDeci
         return ChatAccessDecision(False, chat_key, "not_approved", pending=True)
     if user.role == Role.ADMIN:
         return ChatAccessDecision(True, chat_key, "approved")
-    if chat_key == "general":
+    # General and Media are open working entry points for every approved ERA
+    # participant. Media is intentionally not department-gated.
+    if chat_key in {"general", "media"}:
         return ChatAccessDecision(True, chat_key, "approved")
     if chat_key == "internal":
         allowed = _has_department(user, "внутрен")
-        return ChatAccessDecision(allowed, chat_key, "approved" if allowed else "wrong_department")
+        return ChatAccessDecision(
+            allowed, chat_key, "approved" if allowed else "wrong_department"
+        )
     if chat_key == "external":
         allowed = _has_department(user, "внешн")
-        return ChatAccessDecision(allowed, chat_key, "approved" if allowed else "wrong_department")
+        return ChatAccessDecision(
+            allowed, chat_key, "approved" if allowed else "wrong_department"
+        )
     if chat_key == "leaders":
         allowed = user.role in PRIVILEGED_ROLES
-        return ChatAccessDecision(allowed, chat_key, "approved" if allowed else "wrong_role")
+        return ChatAccessDecision(
+            allowed, chat_key, "approved" if allowed else "wrong_role"
+        )
     return ChatAccessDecision(False, chat_key, "unknown_chat")
 
 

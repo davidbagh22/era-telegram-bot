@@ -23,6 +23,12 @@ from app.database.development_models import (
     WeeklyPulse,
 )
 from app.database.models import User
+from app.services.digital_engagement_service import (
+    award_goal_completed,
+    award_goal_set,
+    award_vector_monthly_checkin,
+    award_vector_weekly_pulse,
+)
 from app.utils.constants import ApplicationStatus
 
 CONSENT_VERSION = "MY_VECTOR_V1"
@@ -653,6 +659,10 @@ async def complete_checkin(session: AsyncSession, checkin: MonthlyCheckin) -> Mo
     )
     await session.flush()
     profile.baseline_json = await _baseline(session, checkin.user_id)
+    # Digital-engagement points (ToR section 6): only that a checkin was
+    # completed, never its answers/state/insight -- see
+    # digital_engagement_service.award_vector_monthly_checkin.
+    await award_vector_monthly_checkin(session, user_id=checkin.user_id, month=checkin.month)
     return checkin
 
 
@@ -686,6 +696,7 @@ async def create_goal(
     )
     session.add(goal)
     await session.flush()
+    await award_goal_set(session, user_id=user_id, goal_id=goal.id, month=goal.month)
     return goal
 
 
@@ -709,6 +720,8 @@ async def review_goal(
     goal.status = "reviewed"
     session.add(row)
     await session.flush()
+    if result == "done":
+        await award_goal_completed(session, user_id=user_id, goal_id=goal_id, month=goal.month)
     return row
 
 
@@ -772,6 +785,7 @@ async def save_weekly_pulse(session: AsyncSession, user_id: int, energy: int) ->
     else:
         row.energy = energy
     await session.flush()
+    await award_vector_weekly_pulse(session, user_id=user_id, week_start=week_start)
     return row
 
 

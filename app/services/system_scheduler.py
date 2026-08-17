@@ -8,9 +8,13 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import Settings
 from app.services.chat_faq_service import ensure_general_faq_pinned
+from app.services.community_mission_service import process_task_squad_notifications
 from app.services.development_notification_service import send_monthly_development_reminders
 from app.services.event_custom_reminder_service import send_configured_event_reminders
 from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
+from app.services.media_attachment_service import post_missing_media_task_cards
+from app.services.media_service import process_media_chat_automation, publish_due_channel_content
+from app.services.project_scoring_reconciliation_service import reconcile_project_scoring_job
 from app.services.system_health_service import run_system_diagnostics, send_daily_system_summary
 
 
@@ -78,9 +82,61 @@ def add_system_jobs(
         coalesce=True,
         next_run_time=now,
     )
-    # This one idempotent daily pass now handles both the monthly Check-in
-    # reminder and the optional weekly pulse. Keeping one job avoids another
-    # moving part while still preventing duplicate sends after restarts.
+    scheduler.add_job(
+        reconcile_project_scoring_job,
+        "interval",
+        minutes=1,
+        args=(session_factory,),
+        id="project-scoring-reconciliation",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
+    )
+    scheduler.add_job(
+        process_task_squad_notifications,
+        "interval",
+        minutes=1,
+        args=(bot, settings, session_factory),
+        id="task-squad-notifications",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
+    )
+    scheduler.add_job(
+        publish_due_channel_content,
+        "interval",
+        minutes=1,
+        args=(bot, settings, session_factory),
+        id="media-channel-publication",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
+    )
+    scheduler.add_job(
+        post_missing_media_task_cards,
+        "interval",
+        minutes=1,
+        args=(bot, settings, session_factory),
+        id="media-task-cards",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
+    )
+    scheduler.add_job(
+        process_media_chat_automation,
+        "interval",
+        minutes=1,
+        args=(bot, settings, session_factory),
+        id="media-chat-automation",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
+    )
     scheduler.add_job(
         send_monthly_development_reminders,
         "cron",

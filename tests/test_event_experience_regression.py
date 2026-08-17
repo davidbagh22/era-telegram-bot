@@ -13,6 +13,7 @@ from app.database.models import Event, User
 from app.keyboards.faq import faq_keyboard
 from app.services.ai_service import AIService, PROJECT_ANSWER_INSTRUCTIONS
 from app.services.event_service import promote_waitlist, register_for_event
+from app.services.points_service import total_points
 from app.services.project_builder import PROJECT_QUESTIONS
 from app.utils.constants import EventStatus, RegistrationStatus
 
@@ -86,6 +87,21 @@ class EventExperienceRegressionTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(promoted)
             self.assertEqual(promoted.user_id, second.id)
             self.assertEqual(promoted.status, RegistrationStatus.REGISTERED)
+
+    async def test_registration_awards_digital_engagement_bonus_once_per_event(self) -> None:
+        async with self.sessions() as session:
+            organizer = await self._user(session, 301)
+            participant = await self._user(session, 302)
+            event = await self._event(session, organizer.id, limit=10)
+
+            registration, _ = await register_for_event(session, event, participant.id)
+            self.assertEqual(await total_points(session, participant.id), 10)
+
+            # Cancel and re-register: still just the one +10, ever, for this event.
+            registration.status = RegistrationStatus.CANCELLED
+            await session.flush()
+            await register_for_event(session, event, participant.id)
+            self.assertEqual(await total_points(session, participant.id), 10)
 
     async def test_rich_event_draft_fields_survive_reload(self) -> None:
         async with self.sessions() as session:

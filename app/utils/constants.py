@@ -222,6 +222,191 @@ DEPARTMENTS = {
     ),
 }
 
+
+class PointCategory(StrEnum):
+    """Points/Ranks/Opportunities ToR ("ERA Platform — ранги, баллы...")
+    section 47 phase 1: a single category taxonomy every PointTransaction
+    is bucketed into, so caps/reporting/eligibility checks never have to
+    pattern-match source_type strings directly. Existing source_type
+    values keep their names -- they're mapped onto these categories via
+    SOURCE_TYPE_TO_CATEGORY below rather than renamed, so nothing that
+    already reads source_type breaks."""
+
+    REGISTRATION = "registration"
+    DIGITAL_ENGAGEMENT = "digital_engagement"
+    EVENT = "event"
+    TASK = "task"
+    PROJECT = "project"
+    VOLUNTEERING = "volunteering"
+    MEDIA = "media"
+    REPRESENTATION = "representation"
+    MENTORSHIP = "mentorship"
+    REFERRAL = "referral"
+    REDEMPTION = "redemption"
+    MANUAL = "manual"
+    OTHER = "other"
+
+
+# add_points() derives PointTransaction.category from source_type via this
+# map when no explicit category is passed (see app/services/points_service.py).
+# Unknown/unmapped source_types fall back to PointCategory.OTHER.
+SOURCE_TYPE_TO_CATEGORY: dict[str, PointCategory] = {
+    "registration": PointCategory.REGISTRATION,
+    "registration_approval": PointCategory.REGISTRATION,
+    "event_attendance": PointCategory.EVENT,
+    "event_activity": PointCategory.EVENT,
+    "attendance_proof": PointCategory.EVENT,
+    "task_submission": PointCategory.TASK,
+    "task_completion": PointCategory.TASK,
+    "project_approval": PointCategory.PROJECT,
+    "proposal_points": PointCategory.PROJECT,
+    "manual_points": PointCategory.MANUAL,
+    "manual_points_command": PointCategory.MANUAL,
+    "badge_award": PointCategory.MANUAL,
+    "partner_offer": PointCategory.REDEMPTION,
+    "reward_redemption": PointCategory.REDEMPTION,
+    "auction_win": PointCategory.REDEMPTION,
+    "referral_registration": PointCategory.REFERRAL,
+    "referral_first_event": PointCategory.REFERRAL,
+    "point_transfer": PointCategory.OTHER,
+    "digital_daily_open": PointCategory.DIGITAL_ENGAGEMENT,
+    "digital_streak_7day": PointCategory.DIGITAL_ENGAGEMENT,
+    "digital_event_registration": PointCategory.DIGITAL_ENGAGEMENT,
+    "digital_vector_checkin": PointCategory.DIGITAL_ENGAGEMENT,
+    "digital_vector_pulse": PointCategory.DIGITAL_ENGAGEMENT,
+    "digital_goal_set": PointCategory.DIGITAL_ENGAGEMENT,
+    "digital_goal_completed": PointCategory.DIGITAL_ENGAGEMENT,
+}
+
+
+# Digital engagement point values + caps (Points/Ranks ToR section 5). Small,
+# capped-by-design points for using the app itself -- enforcement lives in
+# app/services/digital_engagement_service.py. Caps the ToR lists but that
+# have no existing UI trigger yet (full profile completion, material
+# acknowledgement) are intentionally left out until that feature exists;
+# wiring them in later is additive, not a rework of this table.
+DIGITAL_ENGAGEMENT_POINTS = {
+    "daily_open": 5,
+    "streak_7day": 20,
+    "event_registration": 10,
+    "vector_monthly_checkin": 30,
+    "vector_weekly_pulse": 10,
+    "goal_set": 15,
+    "goal_completed": 25,
+}
+
+
+# --- Event Scoring Profile (Points/Ranks ToR sections 16-20, phase 2) ------
+# "What does this event count toward, and who did what" -- set once at event
+# creation, then app/services/activity_scoring_service.py applies it
+# automatically every time attendance is confirmed. Existing
+# Event.points_for_visit (admin-set per event) is untouched -- these are
+# *additional*, role-scoped bonuses on top of it, not a replacement.
+
+
+class EventScoringPreset(StrEnum):
+    """Section 17's ready-made presets. STANDARD is the default for every
+    existing event (server_default), so nothing changes for events an admin
+    hasn't opted into a preset for."""
+
+    STANDARD = "standard"
+    VOLUNTEERING = "volunteering"
+    CULTURE = "culture"
+    PROJECT = "project"
+    MEDIA = "media"
+    PARTNER = "partner"
+    LEADERSHIP = "leadership"
+
+
+EVENT_SCORING_PRESET_LABELS = {
+    EventScoringPreset.STANDARD: "Обычное событие",
+    EventScoringPreset.VOLUNTEERING: "Волонтёрская акция",
+    EventScoringPreset.CULTURE: "Культурное мероприятие",
+    EventScoringPreset.PROJECT: "Проектное мероприятие",
+    EventScoringPreset.MEDIA: "Медиа-активность",
+    EventScoringPreset.PARTNER: "Партнёрское / внешнее",
+    EventScoringPreset.LEADERSHIP: "Лидерское / образовательное",
+}
+
+# The activity metric(s) a preset's *contributors* (any role beyond plain
+# participant) add to, beyond the always-on events_attended count every
+# attendee gets. Mirrors the section 20 worked example: a plain participant
+# at a volunteering event only gets attendance + events_attended, while the
+# volunteer/organizer roles additionally pick up these preset metrics.
+EVENT_SCORING_PRESET_METRICS: dict[str, list[str]] = {
+    EventScoringPreset.STANDARD: [],
+    EventScoringPreset.VOLUNTEERING: ["volunteer_activities", "social_activities"],
+    EventScoringPreset.CULTURE: ["culture_activities"],
+    EventScoringPreset.PROJECT: ["project_activities"],
+    EventScoringPreset.MEDIA: ["media_activities"],
+    EventScoringPreset.PARTNER: ["partner_activities"],
+    EventScoringPreset.LEADERSHIP: ["leadership_activities"],
+}
+
+
+class EventParticipantRole(StrEnum):
+    """Section 19's per-event roles. PARTICIPANT (the default) carries no
+    bonus -- it's just Event.points_for_visit, unchanged."""
+
+    PARTICIPANT = "participant"
+    VOLUNTEER = "volunteer"
+    ORGANIZER_HELPER = "organizer_helper"
+    ORGANIZER = "organizer"
+    COORDINATOR = "coordinator"
+    SPEAKER = "speaker"
+    MODERATOR = "moderator"
+    MEDIA = "media"
+    PHOTOGRAPHER = "photographer"
+    VIDEOGRAPHER = "videographer"
+    OTHER = "other"
+
+
+EVENT_ROLE_LABELS = {
+    EventParticipantRole.PARTICIPANT: "Участник",
+    EventParticipantRole.VOLUNTEER: "Волонтёр",
+    EventParticipantRole.ORGANIZER_HELPER: "Помощь в организации",
+    EventParticipantRole.ORGANIZER: "Организатор",
+    EventParticipantRole.COORDINATOR: "Координатор",
+    EventParticipantRole.SPEAKER: "Спикер",
+    EventParticipantRole.MODERATOR: "Модератор",
+    EventParticipantRole.MEDIA: "Медиа",
+    EventParticipantRole.PHOTOGRAPHER: "Фотограф",
+    EventParticipantRole.VIDEOGRAPHER: "Видеограф",
+    EventParticipantRole.OTHER: "Другое",
+}
+
+# Flat role bonus (ToR section 7). VOLUNTEER isn't here -- it's computed as
+# hours * VOLUNTEER_HOURLY_POINTS, capped at VOLUNTEER_HOURS_POINTS_CAP.
+# OTHER carries no automatic bonus (admin can still award manually).
+EVENT_ROLE_POINTS: dict[str, int] = {
+    EventParticipantRole.PARTICIPANT: 0,
+    EventParticipantRole.ORGANIZER_HELPER: 150,
+    EventParticipantRole.ORGANIZER: 250,
+    EventParticipantRole.COORDINATOR: 300,
+    EventParticipantRole.SPEAKER: 150,
+    EventParticipantRole.MODERATOR: 150,
+    EventParticipantRole.MEDIA: 150,
+    EventParticipantRole.PHOTOGRAPHER: 150,
+    EventParticipantRole.VIDEOGRAPHER: 150,
+    EventParticipantRole.OTHER: 0,
+}
+
+VOLUNTEER_HOURLY_POINTS = 25
+VOLUNTEER_HOURS_POINTS_CAP = 200
+
+# Which "how many times has this person done X" counter a role's bonus adds
+# to, on top of the preset's own metrics (see EVENT_SCORING_PRESET_METRICS).
+EVENT_ROLE_METRIC: dict[str, str] = {
+    EventParticipantRole.ORGANIZER_HELPER: "events_organized",
+    EventParticipantRole.ORGANIZER: "events_organized",
+    EventParticipantRole.COORDINATOR: "events_organized",
+    EventParticipantRole.SPEAKER: "leadership_activities",
+    EventParticipantRole.MODERATOR: "leadership_activities",
+    EventParticipantRole.MEDIA: "media_activities",
+    EventParticipantRole.PHOTOGRAPHER: "media_activities",
+    EventParticipantRole.VIDEOGRAPHER: "media_activities",
+}
+
 DEFAULT_POINTS = {
     "Регистрация в боте": 5,
     "Посещение мероприятия": 5,

@@ -995,8 +995,9 @@ export function awardUserPoints(
   userId: number,
   amount: number,
   reason: string,
+  confirm = false,
 ): Promise<{ balance: number }> {
-  return authorizedPost(`/api/v1/admin/users/${userId}/points`, { amount, reason });
+  return authorizedPost(`/api/v1/admin/users/${userId}/points`, { amount, reason, confirm });
 }
 
 export function awardUserBadge(userId: number, badgeId: number, reason: string): Promise<BadgeItem> {

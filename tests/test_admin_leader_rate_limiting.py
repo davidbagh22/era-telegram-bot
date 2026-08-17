@@ -77,33 +77,10 @@ class RateLimitDependencyWiringTests(unittest.TestCase):
 
     def test_every_admin_post_route_has_rate_limiting(self) -> None:
         post_routes = [r for r in admin_api.router.routes if r.methods and "POST" in r.methods]
-        # 7 original decide/approve/reject routes + 6 People routes (PR 24:
-        # role, block, archive, permission toggle, points, badge award) + 12
-        # routes from PR 25 (4 team-post: prepare/edit/reject/publish; 2
-        # event attendance/points; 3 partner CRUD; 3 offer CRUD) + 4 Offices
-        # routes from PR 26 (create, delete, assign, remove assignment) + 4
-        # Auction routes from PR 27 (create, confirm-winner, deliver, cancel) + 5
-        # Survey routes from PR 29 (monthly template, create, edit, archive, send) + 5
-        # Reward/Redemption routes from PR 31 (create reward, disable reward,
-        # answer/exchange/reject redemption) + 3 Event Activity routes from
-        # PR 32 (create, send, decide submission) + 1 data-deletion-request
-        # fulfill route + 5 admin-tools routes (goals: create + decide,
-        # organization contacts: create + archive, chat greetings: toggle —
-        # see app/services/admin_goals_service.py, admin_contacts_service.py,
-        # admin_greetings_service.py) + 2 broadcast routes (personal message,
-        # chat — see app/services/admin_broadcast_service.py) + 1 maintenance
-        # reset route (gated separately by require_maintenance_access, but
-        # still rate-limited like every other mutation — see
-        # app/services/maintenance_service.py) + 1 chat health-check route
-        # (2026-08 master spec section 30 — Telegram API calls are worth
-        # rate-limiting same as everything else here even though it's
-        # read-only, see app/services/chat_registry_service.py) + 1 chat FAQ
-        # publish route (2026-08 master spec, P5 — see
-        # app/services/chat_faq_service.py) + 6 Leadership OS routes (office
-        # update; position-application decision + appoint; appointment end +
-        # extend; cadre-reserve suggest — see
-        # app/services/position_management_service.py).
-        self.assertEqual(len(post_routes), 63, "expected 63 admin mutation routes")
+        # The mutation inventory intentionally stays explicit: every new POST
+        # must either carry the shared rate limiter or make this test fail.
+        # Event participant role/volunteer-hours scoring adds the 64th route.
+        self.assertEqual(len(post_routes), 64, "expected 64 admin mutation routes")
         for route in post_routes:
             deps = [d.call for d in route.dependant.dependencies]
             self.assertIn(

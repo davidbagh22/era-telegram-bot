@@ -1,6 +1,6 @@
 interface StatusBadgeProps {
   label: string;
-  tone?: "neutral" | "violet" | "red" | "gold";
+  tone?: "neutral" | "violet" | "red" | "gold" | "success";
 }
 
 const TONE_COLORS: Record<NonNullable<StatusBadgeProps["tone"]>, string> = {
@@ -8,6 +8,7 @@ const TONE_COLORS: Record<NonNullable<StatusBadgeProps["tone"]>, string> = {
   violet: "var(--era-violet)",
   red: "var(--era-red)",
   gold: "var(--era-gold, #f4c15d)",
+  success: "var(--era-success, #55c89a)",
 };
 
 export function StatusBadge({ label, tone = "neutral" }: StatusBadgeProps) {

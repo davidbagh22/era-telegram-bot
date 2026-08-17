@@ -1,11 +1,16 @@
 import { useState } from "react";
 import { ActionCell } from "../components/ActionCell";
 import { Card } from "../components/Card";
-import { AuctionIcon, CommunityIcon, OpportunitiesIcon, RewardIcon, SurveyIcon } from "../components/icons";
+import { CommunityIcon, OpportunitiesIcon, SurveyIcon } from "../components/icons";
 import { LeaderboardScreen } from "./LeaderboardScreen";
+import { MediaScreen } from "./MediaScreen";
 import { OpportunitiesScreen, type OpportunitiesSection } from "./OpportunitiesScreen";
 
-export type CommunitySection = "opportunities" | "leaderboard" | "surveys" | "rewards" | "auctions";
+// Legacy rewards/auctions remain routable so old notifications/links do not
+// break, but they are intentionally no longer advertised as primary community
+// navigation: the new Opportunities model treats recognition points as
+// reputation, not a spendable store currency.
+export type CommunitySection = "opportunities" | "leaderboard" | "surveys" | "media" | "rewards" | "auctions";
 
 interface CommunityScreenProps {
   initialSection?: CommunitySection | null;
@@ -21,13 +26,19 @@ const SECTION_CARDS: {
   {
     value: "opportunities",
     label: "Возможности",
-    description: "Предложения, заявки и новые точки роста",
+    description: "Документы, заявки и следующие точки роста",
     Icon: OpportunitiesIcon,
+  },
+  {
+    value: "media",
+    label: "Медиа",
+    description: "Возьми реальную задачу, войди в команду и собери портфолио",
+    Icon: CommunityIcon,
   },
   {
     value: "leaderboard",
     label: "Рейтинг",
-    description: "Ваше место и активные участники ЭРА",
+    description: "Ваш прогресс и активные участники ЭРА",
     Icon: CommunityIcon,
   },
   {
@@ -35,18 +46,6 @@ const SECTION_CARDS: {
     label: "Опросы",
     description: "Быстро влиять на решения команды",
     Icon: SurveyIcon,
-  },
-  {
-    value: "rewards",
-    label: "Награды",
-    description: "Каталог, где баллы превращаются в статус",
-    Icon: RewardIcon,
-  },
-  {
-    value: "auctions",
-    label: "Аукционы",
-    description: "Редкие возможности за баллы",
-    Icon: AuctionIcon,
   },
 ];
 
@@ -61,9 +60,6 @@ function sectionHash(section: CommunitySection): string {
 }
 
 export function CommunityScreen({ initialSection = null, initialItemId = null }: CommunityScreenProps) {
-  // Local state only exists for isolated previews/tests without a hash. In
-  // the real Mini App App.tsx owns hash routing, so URL + browser/Telegram
-  // history are the single source of truth and cannot drift from this view.
   const [fallbackSection, setFallbackSection] = useState<CommunitySection | null>(initialSection);
   const hasRouteHash = window.location.hash.startsWith("#/");
   const section = hasRouteHash ? initialSection : initialSection ?? fallbackSection;
@@ -79,9 +75,8 @@ export function CommunityScreen({ initialSection = null, initialItemId = null }:
     if (window.location.hash !== "#/community") window.location.hash = "#/community";
   };
 
-  if (section === "leaderboard") {
-    return <LeaderboardScreen onBack={backToCommunity} />;
-  }
+  if (section === "leaderboard") return <LeaderboardScreen onBack={backToCommunity} />;
+  if (section === "media") return <MediaScreen onBack={backToCommunity} />;
 
   if (section) {
     return (
@@ -129,8 +124,8 @@ export function CommunityScreen({ initialSection = null, initialItemId = null }:
               Среда роста
             </p>
             <h1 style={{ margin: 0, fontSize: "var(--era-text-3xl)", lineHeight: 1.08 }}>Сообщество</h1>
-            <p style={{ margin: "0.5rem 0 0", color: "rgba(255,255,255,0.78)", maxWidth: 280 }}>
-              Возможности, рейтинг и решения, которые двигают участников дальше.
+            <p style={{ margin: "0.5rem 0 0", color: "rgba(255,255,255,0.78)", maxWidth: 300 }}>
+              Здесь активность превращается в опыт, статус и следующие возможности.
             </p>
           </div>
         </div>

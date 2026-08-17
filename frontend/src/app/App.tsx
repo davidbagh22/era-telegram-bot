@@ -168,7 +168,7 @@ function parseDeepLink(): DeepLink | null {
     return userId ? link({ tab: "community", userId }) : link({ invalid: true });
   }
 
-  const communityMatch = route.match(/^(opportunities|auctions|rewards|surveys)(?:\/(\d+))?$/);
+  const communityMatch = route.match(/^(opportunities|auctions|rewards|surveys|media)(?:\/(\d+))?$/);
   if (communityMatch) {
     const itemId = communityMatch[2] ? parseOptionalId(communityMatch[2]) : null;
     if (communityMatch[2] && itemId === null) return link({ invalid: true });

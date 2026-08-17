@@ -115,12 +115,50 @@ async def joined_task_ids(
     return joined
 
 
+def _reward(task: Task) -> dict:
+    return getattr(task, "reward_json", None) or {}
+
+
+def _is_community_mission(task: Task) -> bool:
+    return bool((_reward(task).get("community_mission") or {}).get("code"))
+
+
+def _is_media_task(task: Task) -> bool:
+    return bool(_reward(task).get("media_task"))
+
+
+def _is_self_service_task(task: Task) -> bool:
+    # Only explicitly tagged system task types bypass the legacy application
+    # review. All pre-existing public challenge tasks keep the old pending flow.
+    return _is_community_mission(task) or _is_media_task(task)
+
+
+async def _sync_mission_squad(
+    session: AsyncSession, task: Task, user: User
+) -> None:
+    if not _is_community_mission(task):
+        return
+    # Lazy import avoids turning TaskService <-> CommunityMissionService into
+    # a module import cycle. Both Bot and Mini App use this one claim path, so
+    # Task Squad formation cannot drift between interfaces.
+    from app.services.community_mission_service import sync_task_squad_after_claim
+
+    await sync_task_squad_after_claim(
+        session, task, participant_user_id=user.id
+    )
+
+
 async def claim(
     session: AsyncSession, task: Task | None, user: User
 ) -> tuple[TaskParticipant | None, str | None]:
-    """Join a published challenge task. Mirrors the Bot's task:join rule so
-    both the Bot handler and the Mini App API enforce the same logic —
-    see app/handlers/participant/task_block2.py."""
+    """Join a published challenge task.
+
+    Community Missions and Media Hub tasks are explicitly self-serve. Other
+    existing challenge tasks preserve the legacy pending-review behavior.
+
+    Existing membership is resolved before capacity so repeated opens/claims
+    remain idempotent even for SOLO/max=1 work.
+    """
     if (
         task is None
         or task.task_type != "challenge"
@@ -128,23 +166,48 @@ async def claim(
         or not matches_task_audience(task, user)
     ):
         return None, "closed"
+
     current = (
         await session.scalars(
             select(TaskParticipant).where(TaskParticipant.task_id == task.id)
         )
     ).all()
-    accepted = [item for item in current if item.status in ACCEPTED_MEMBERSHIP_STATUSES]
-    if task.max_participants and len(accepted) >= task.max_participants:
-        return None, "full"
+    self_service = _is_self_service_task(task)
     existing = next((item for item in current if item.user_id == user.id), None)
+
     if existing:
         if existing.status == "rejected":
-            existing.status = "pending"
+            accepted = [
+                item
+                for item in current
+                if item.status in ACCEPTED_MEMBERSHIP_STATUSES
+                and item.user_id != user.id
+            ]
+            if task.max_participants and len(accepted) >= task.max_participants:
+                return None, "full"
+            existing.status = "joined" if self_service else "pending"
+            await session.flush()
+            await _sync_mission_squad(session, task, user)
+            return existing, None
+        if self_service and existing.status == "pending":
+            existing.status = "joined"
+            await session.flush()
+            await _sync_mission_squad(session, task, user)
             return existing, None
         if existing.status == "pending":
             return existing, "already_pending"
         return existing, "already_joined"
-    participant = TaskParticipant(task_id=task.id, user_id=user.id, status="pending")
+
+    accepted = [item for item in current if item.status in ACCEPTED_MEMBERSHIP_STATUSES]
+    if task.max_participants and len(accepted) >= task.max_participants:
+        return None, "full"
+
+    participant = TaskParticipant(
+        task_id=task.id,
+        user_id=user.id,
+        status="joined" if self_service else "pending",
+    )
     session.add(participant)
     await session.flush()
+    await _sync_mission_squad(session, task, user)
     return participant, None

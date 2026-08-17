@@ -1,11 +1,29 @@
 export type OpportunityScope = "for_me" | "all" | "saved" | "mine";
 
+export interface EligibilityCheck {
+  key: string;
+  label: string;
+  required: string;
+  current: string;
+  ok: boolean;
+}
+
 export interface Opportunity {
   id: number;
   partner_name: string;
   title: string;
   description: string;
+  /** Legacy external offers may still use this as a redeemable cost. For
+   * recognition opportunities use required_points and never subtract it. */
   point_cost: number;
+  required_points: number;
+  opportunity_type: "external" | "certificate" | "letter" | string;
+  min_rank: string | null;
+  eligible: boolean;
+  eligibility_checks: EligibilityCheck[];
+  missing_requirements: string[];
+  default_award_wording: string | null;
+  partner_review_required: boolean;
   remaining_slots: string;
   expires_at: string | null;
   instruction: string | null;

@@ -132,6 +132,77 @@ class AdminEventsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         safe_send_mock.assert_awaited_once()
 
+    def test_scoring_presets_requires_manage_permission(self) -> None:
+        session = SimpleNamespace()
+        app = _build_app(_participant(), session)
+        client = TestClient(app)
+        response = client.get("/api/v1/admin/events/scoring-presets")
+        self.assertEqual(response.status_code, 403)
+
+    def test_scoring_presets_lists_every_preset(self) -> None:
+        session = SimpleNamespace()
+        app = _build_app(_admin(), session)
+        client = TestClient(app)
+        response = client.get("/api/v1/admin/events/scoring-presets")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        values = {item["value"] for item in body}
+        self.assertIn("standard", values)
+        self.assertIn("volunteering", values)
+        volunteering = next(item for item in body if item["value"] == "volunteering")
+        self.assertEqual(volunteering["metrics"], ["volunteer_activities", "social_activities"])
+
+    def test_set_participant_role_requires_manage_permission(self) -> None:
+        session = SimpleNamespace()
+        app = _build_app(_participant(), session)
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/admin/events/5/registrations/9/role", json={"role": "organizer"}
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_set_participant_role_updates_registration(self) -> None:
+        registration = SimpleNamespace(id=9, event_id=5, user_id=2, status="attended", role="participant", volunteer_hours=None)
+        participant = SimpleNamespace(id=2, first_name="Анна", last_name=None)
+
+        async def _get(model, pk):
+            if pk == 9:
+                return registration
+            return participant
+
+        session = SimpleNamespace(get=AsyncMock(side_effect=_get))
+        app = _build_app(_admin(), session)
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/admin/events/5/registrations/9/role",
+            json={"role": "volunteer", "volunteer_hours": 4},
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["role"], "volunteer")
+        self.assertEqual(body["volunteer_hours"], 4)
+        self.assertEqual(registration.role, "volunteer")
+        self.assertEqual(registration.volunteer_hours, 4)
+
+    def test_set_participant_role_clears_hours_for_non_volunteer_role(self) -> None:
+        registration = SimpleNamespace(id=9, event_id=5, user_id=2, status="attended", role="volunteer", volunteer_hours=6)
+        participant = SimpleNamespace(id=2, first_name="Анна", last_name=None)
+
+        async def _get(model, pk):
+            if pk == 9:
+                return registration
+            return participant
+
+        session = SimpleNamespace(get=AsyncMock(side_effect=_get))
+        app = _build_app(_admin(), session)
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/admin/events/5/registrations/9/role", json={"role": "organizer"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["volunteer_hours"])
+        self.assertIsNone(registration.volunteer_hours)
+
 
 if __name__ == "__main__":
     unittest.main()

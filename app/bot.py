@@ -6,7 +6,17 @@ from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import ErrorEvent, Message
 
 from app.config import Settings
-from app.handlers import chat, chat_binding, chat_faq, emergency, leader_event_photo, referrals, registration, start
+from app.handlers import (
+    chat,
+    chat_binding,
+    chat_faq,
+    emergency,
+    leader_event_photo,
+    media_chat_files,
+    referrals,
+    registration,
+    start,
+)
 from app.handlers.admin import router as admin_router
 from app.handlers.leader import router as leader_router
 from app.handlers.participant import router as participant_router
@@ -49,6 +59,9 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
 
     # emergency.router must stay first: it owns global FSM recovery and now
     # also dispatches FAQ /start payloads through try_handle_faq_payload().
+    # Media file replies stay before the generic chat router so a reply to a
+    # Media task card can be staged for explicit confirmation without being
+    # swallowed by unrelated group-chat handlers.
     dispatcher.include_routers(
         emergency.router,
         start.router,
@@ -59,6 +72,7 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
         leader_router,
         participant_router,
         chat_binding.router,
+        media_chat_files.router,
         chat.router,
         chat_faq.router,
     )
