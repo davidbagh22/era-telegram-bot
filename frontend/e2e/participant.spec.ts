@@ -8,7 +8,7 @@ test("participant gets light ERA UI, opens event details, and registers", async 
   // "УРОВЕНЬ" (the level tag next to the greeting) is the stable Home
   // landmark for the light/signal redesign -- present for every
   // authenticated participant, unlike screen-specific copy.
-  await expect(page.getByText("УРОВЕНЬ")).toBeVisible();
+  await expect(page.getByText("УРОВЕНЬ", { exact: true })).toBeVisible();
   const bodyBackground = await page.locator("body").evaluate((node) => getComputedStyle(node).backgroundColor);
   // The redesign is light-first by design (tokens.css §0/§2) -- the old
   // near-black surface must never come back as the default body color.

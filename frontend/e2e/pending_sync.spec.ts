@@ -64,7 +64,7 @@ test("a pending applicant's Mini App updates itself after admin approval, withou
     // The approved user now lands in the redesigned light Home. "УРОВЕНЬ"
     // is the stable product landmark; the old "держим темп" heading was
     // removed by the final design system and must not be used as a test hook.
-    await expect(applicantPage.getByText("УРОВЕНЬ")).toBeVisible();
+    await expect(applicantPage.getByText("УРОВЕНЬ", { exact: true })).toBeVisible();
     await expect(
       applicantPage.getByRole("heading", { name: "Заявка на рассмотрении" }),
     ).not.toBeVisible();
