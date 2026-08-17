@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from aiogram import Bot
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
