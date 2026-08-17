@@ -21,6 +21,7 @@ from app.database.models import User
 from app.services import development_analytics as dev_analytics
 from app.services import development_service as dev
 from app.services.authorization_service import is_full_admin
+from app.services.excel_quality_service import finalize_business_workbook
 from app.services.excel_report_service import build_development_workbook
 
 router = APIRouter(prefix="/admin/development", tags=["admin-development"])
@@ -199,7 +200,7 @@ async def export_development_analytics_xlsx(
 ) -> Response:
     _require_permission(user, "development.admin.export", settings)
     result = await dev_analytics.community_analytics(session, period_days=period_days)
-    content = build_development_workbook(result)
+    content = finalize_business_workbook(build_development_workbook(result))
     await _audit_export(session, user, period_days, result, "xlsx")
     return Response(
         content=content,
