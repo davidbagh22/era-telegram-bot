@@ -15,6 +15,7 @@ from app.database.partners import Partner, PartnerInitiative
 from app.services import opportunity_service
 from app.services.notification_service import notify_admins
 from app.services.opportunity_service import OpportunityScope
+from app.services.points_service import total_points
 
 router = APIRouter(prefix="/opportunities", tags=["opportunities"])
 
@@ -74,7 +75,8 @@ def _is_recent_offer(offer: PartnerInitiative) -> bool:
         return False
     if created_at.tzinfo is None:
         created_at = created_at.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) - created_at <= NEW_OPPORTUNITY_WINDOW
+    age = datetime.now(timezone.utc) - created_at
+    return timedelta(0) <= age <= NEW_OPPORTUNITY_WINDOW
 
 
 def _display_state(
@@ -85,8 +87,9 @@ def _display_state(
 ) -> OpportunityDisplayState:
     if not eligible:
         # "Almost" is intentionally strict: the user is one concrete
-        # requirement away. Everything else stays locked, so the UI never
-        # promises that a distant opportunity is nearly available.
+        # recognition requirement away. External offers can be arbitrarily
+        # far from their points threshold, so they remain locked until the
+        # existing redemption contract says they are actually available.
         if _is_recognition_offer(offer) and len(missing_requirements) == 1:
             return "almost"
         return "locked"
@@ -111,7 +114,9 @@ async def _to_opportunity_out(
     missing_requirements: list[str] = []
     # Strict rank/metric/document eligibility belongs only to recognition
     # documents. Legacy external offers keep their old redemption contract;
-    # apply_to_offer remains the authority for their points/availability.
+    # the display state mirrors the same points + slots checks used by
+    # apply_to_offer so the UI never says "available" and then rejects for
+    # insufficient points.
     if recognition:
         eligibility = await opportunity_service.evaluate_eligibility(session, offer, user)
         eligible = eligibility.eligible and (slots is None or slots > 0)
@@ -119,8 +124,17 @@ async def _to_opportunity_out(
             EligibilityCheckOut(**check.as_dict()) for check in eligibility.checks
         ]
         missing_requirements = eligibility.missing
+        if slots is not None and slots <= 0:
+            missing_requirements = [*missing_requirements, "Свободные места"]
     else:
-        eligible = slots is None or slots > 0
+        balance = await total_points(session, user.id)
+        has_points = balance >= max(0, int(offer.point_cost or 0))
+        has_slots = slots is None or slots > 0
+        eligible = has_points and has_slots
+        if not has_points:
+            missing_requirements.append("Баллы")
+        if not has_slots:
+            missing_requirements.append("Свободные места")
 
     return OpportunityOut(
         id=offer.id,
