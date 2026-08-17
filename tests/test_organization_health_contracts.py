@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from openpyxl import Workbook, load_workbook
 
+from app.services.excel_quality_service import finalize_business_workbook
 from app.services.excel_report_service import add_health_sheets, build_development_workbook, polish_workbook
 
 
@@ -24,6 +25,7 @@ def _workbook_bytes(workbook: Workbook) -> bytes:
 
 def test_pulse_is_privacy_safe_aggregate_not_person_score() -> None:
     source = _read("app/services/organization_health_service.py")
+    extended = _read("app/services/organization_health_extended_service.py")
     analytics = _read("app/services/development_analytics.py")
 
     assert "community_analytics(session, period_days=30)" in source
@@ -33,6 +35,10 @@ def test_pulse_is_privacy_safe_aggregate_not_person_score() -> None:
     assert "strengths_json" not in source
     assert "personal_notes" not in source
     assert "MINIMUM_COHORT = 5" in analytics
+    assert "build_organization_health(session)" in extended
+    assert "do not affect Pulse" in extended
+    assert "traits_json" not in extended
+    assert "personal_notes" not in extended
 
 
 def test_admin_health_endpoints_and_ui_are_exposed() -> None:
@@ -43,6 +49,7 @@ def test_admin_health_endpoints_and_ui_are_exposed() -> None:
     assert '@router.get("/health"' in api
     assert '@router.get("/health-report.xlsx")' in api
     assert '@router.get("/full-report.xlsx")' in api
+    assert "build_extended_organization_health" in api
     assert "Пульс организации" in frontend
     assert "Здоровье организации · XLSX" in frontend
     assert "Показать все" in frontend
@@ -50,6 +57,56 @@ def test_admin_health_endpoints_and_ui_are_exposed() -> None:
     assert "без возврата в бот" in maintenance
     assert "Опасная зона" in maintenance
     assert "runMaintenanceReset" in maintenance
+
+
+def test_extended_health_uses_real_growth_opportunity_and_career_models() -> None:
+    source = _read("app/services/organization_health_extended_service.py")
+
+    for marker in [
+        "ReferralRelationship",
+        "registration_rewarded_at",
+        "first_event_rewarded_at",
+        "PartnerInitiative",
+        "SavedOpportunity",
+        "PartnerOfferApplication",
+        "CareerProfile",
+        "CareerPortfolioItem",
+        "RecommendationRequest",
+        '"referral_event_conversion"',
+        '"active_opportunities"',
+        '"career_profile_adoption"',
+        '"portfolio_pending"',
+    ]:
+        assert marker in source
+
+
+def test_maintenance_hub_routes_daily_admin_processes_inside_mini_app() -> None:
+    maintenance = _read("frontend/src/screens/admin/AdminMaintenanceScreen.tsx")
+    admin = _read("frontend/src/screens/AdminScreen.tsx")
+
+    for target in [
+        '"applications"',
+        '"participants"',
+        '"development"',
+        '"career"',
+        '"offices"',
+        '"projects"',
+        '"events"',
+        '"tasks"',
+        '"offers"',
+        '"data-rights"',
+        '"surveys"',
+        '"analytics"',
+        '"system"',
+        '"tools"',
+    ]:
+        assert target in maintenance
+    assert 'target === "development"' in admin
+    assert 'target === "career"' in admin
+    assert 'target === "offices"' in admin
+    assert 'target === "surveys"' in admin
+    assert "Портфолио и рекомендации" in maintenance
+    assert "Опросы и обратная связь" in maintenance
 
 
 def test_polish_workbook_removes_internal_ids_and_keeps_business_columns() -> None:
@@ -66,6 +123,25 @@ def test_polish_workbook_removes_internal_ids_and_keeps_business_columns() -> No
     assert headers == ["Название", "Статус"]
     assert result.sheet_view.showGridLines is False
     assert result.freeze_panes == "A2"
+
+
+def test_excel_quality_moves_filter_off_title_row() -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Отчёт"
+    ws.merge_cells("A1:D1")
+    ws["A1"] = "ЗДОРОВЬЕ ЭРА"
+    ws.append(["Подзаголовок"])
+    ws.append([])
+    ws.append(["Показатель", "Значение", "Пояснение", "Оценка"])
+    ws.append(["Удержание", "70%", "30 дней", 70])
+    ws.auto_filter.ref = "A1:D5"
+
+    result = load_workbook(BytesIO(finalize_business_workbook(_workbook_bytes(wb))))["Отчёт"]
+
+    assert result.auto_filter.ref == "A4:D5"
+    assert result.freeze_panes == "A5"
+    assert result.sheet_view.showGridLines is False
 
 
 def test_health_report_starts_with_executive_pulse_sheets() -> None:
@@ -106,6 +182,15 @@ def test_health_report_starts_with_executive_pulse_sheets() -> None:
                 note="срок прошёл, задача не закрыта",
                 score=None,
             ),
+            SimpleNamespace(
+                key="referral_event_conversion",
+                category="Рост",
+                label="Приглашённый → первое мероприятие",
+                value=60.0,
+                display="60.0%",
+                note="реферальная конверсия",
+                score=60,
+            ),
         ],
         risks=["Просрочено заданий: 3."],
         period_label="операционные показатели: последние 7/30/90 дней",
@@ -113,24 +198,28 @@ def test_health_report_starts_with_executive_pulse_sheets() -> None:
     )
     efficiency = SimpleNamespace(score=74, label="Система работает устойчиво")
 
-    result = load_workbook(BytesIO(add_health_sheets(_workbook_bytes(wb), health, efficiency)))
+    content = finalize_business_workbook(add_health_sheets(_workbook_bytes(wb), health, efficiency))
+    result = load_workbook(BytesIO(content))
 
     assert result.sheetnames[:3] == ["Здоровье организации", "Пульс Мой вектор", "Все показатели"]
     assert result["Здоровье организации"]["B4"].value == 74
     assert result["Здоровье организации"]["B5"].value == 67
     assert result["Пульс Мой вектор"]["B4"].value == 67
-    assert result["Все показатели"].max_row >= 6
+    assert result["Все показатели"].max_row >= 7
+    assert result["Все показатели"].auto_filter.ref.startswith("A4:E")
 
 
 def test_suppressed_vector_export_contains_no_individual_data() -> None:
-    content = build_development_workbook(
-        {
-            "coverage_percent": 20,
-            "sample_size": 2,
-            "eligible_profiles": 10,
-            "minimum_cohort": 5,
-            "suppressed": True,
-        }
+    content = finalize_business_workbook(
+        build_development_workbook(
+            {
+                "coverage_percent": 20,
+                "sample_size": 2,
+                "eligible_profiles": 10,
+                "minimum_cohort": 5,
+                "suppressed": True,
+            }
+        )
     )
     wb = load_workbook(BytesIO(content))
     values = " ".join(
