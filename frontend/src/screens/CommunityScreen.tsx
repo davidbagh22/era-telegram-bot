@@ -3,13 +3,14 @@ import { ActionCell } from "../components/ActionCell";
 import { Card } from "../components/Card";
 import { CommunityIcon, OpportunitiesIcon, SurveyIcon } from "../components/icons";
 import { LeaderboardScreen } from "./LeaderboardScreen";
+import { MediaScreen } from "./MediaScreen";
 import { OpportunitiesScreen, type OpportunitiesSection } from "./OpportunitiesScreen";
 
 // Legacy rewards/auctions remain routable so old notifications/links do not
 // break, but they are intentionally no longer advertised as primary community
 // navigation: the new Opportunities model treats recognition points as
 // reputation, not a spendable store currency.
-export type CommunitySection = "opportunities" | "leaderboard" | "surveys" | "rewards" | "auctions";
+export type CommunitySection = "opportunities" | "leaderboard" | "surveys" | "media" | "rewards" | "auctions";
 
 interface CommunityScreenProps {
   initialSection?: CommunitySection | null;
@@ -27,6 +28,12 @@ const SECTION_CARDS: {
     label: "Возможности",
     description: "Документы, заявки и следующие точки роста",
     Icon: OpportunitiesIcon,
+  },
+  {
+    value: "media",
+    label: "Медиа",
+    description: "Возьми реальную задачу, войди в команду и собери портфолио",
+    Icon: CommunityIcon,
   },
   {
     value: "leaderboard",
@@ -69,6 +76,7 @@ export function CommunityScreen({ initialSection = null, initialItemId = null }:
   };
 
   if (section === "leaderboard") return <LeaderboardScreen onBack={backToCommunity} />;
+  if (section === "media") return <MediaScreen onBack={backToCommunity} />;
 
   if (section) {
     return (
