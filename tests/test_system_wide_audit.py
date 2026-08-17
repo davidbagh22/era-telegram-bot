@@ -249,7 +249,9 @@ class SystemWideAuditTests(unittest.TestCase):
 
     def test_points_sensitive_flows_have_idempotency_markers(self) -> None:
         targets = {
-            "app/services/task_review_service.py": ["add_points", "approved"],
+            # Task review deliberately no longer calls add_points directly:
+            # it enters the canonical verified-activity scoring pipeline.
+            "app/services/task_review_service.py": ["score_task_completion", "approved"],
             "app/handlers/admin/event_registration_block14.py": ["add_points", "ATTENDED"],
             "app/handlers/admin/event_activities_block15.py": ["add_points", "approved"],
             "app/services/opportunity_service.py": ["add_points", "approved"],
