@@ -45,26 +45,32 @@ test("#/events deep link opens the Events tab", async ({ page }) => {
 test("#/opportunities deep link opens Community on offers", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/opportunities`);
 
-  await expect(page.getByRole("heading", { name: "Предложения" })).toBeVisible();
+  // The Opportunities redesign (recognition points as reputation, not a
+  // spendable store -- see CommunityScreen.tsx) collapsed every section
+  // under one shared "Возможности" heading; there is no longer a
+  // per-section "Предложения" title.
+  await expect(page.getByRole("heading", { name: "Возможности" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Фильтр" })).toBeVisible();
 });
 
-for (const [hash, heading] of [
-  ["auctions", "Аукционы"],
-  ["rewards", "Каталог"],
-  ["surveys", "Опросы"],
-] as const) {
+// auctions/rewards/surveys are legacy-routable (old notifications/deep
+// links must keep working) but no longer have their own per-section
+// heading -- they render under the same shared "Возможности" title as
+// every other Opportunities section.
+for (const hash of ["auctions", "rewards", "surveys"] as const) {
   test(`#/${hash} deep link opens its Community feature`, async ({ page }) => {
     await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/${hash}`);
-    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Возможности" })).toBeVisible();
   });
 }
 
 test("community navigation stays synchronized with browser history", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/community`);
-  await page.getByText("Аукционы", { exact: true }).first().click();
-  await expect(page).toHaveURL(/#\/auctions$/);
-  await expect(page.getByRole("heading", { name: "Аукционы" })).toBeVisible();
+  // Auctions/rewards are intentionally no longer primary community
+  // navigation (see CommunityScreen.tsx) -- use a card that still is.
+  await page.getByText("Опросы", { exact: true }).first().click();
+  await expect(page).toHaveURL(/#\/surveys$/);
+  await expect(page.getByRole("heading", { name: "Возможности" })).toBeVisible();
 
   await page.goBack();
   await expect(page).toHaveURL(/#\/community$/);

@@ -32,9 +32,10 @@ test("admin creates a lot and the seeded bidder places a real bid on it", async 
     await adminPage.getByRole("button", { name: "Опубликовать лот" }).click();
     await expect(adminPage.getByText(lotTitle)).toBeVisible();
 
-    await participantPage.goto(`/app/?devTelegramId=${AUCTION_BIDDER_TELEGRAM_ID}`);
-    await participantPage.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Сообщество" }).click();
-    await participantPage.getByRole("button", { name: "Аукционы" }).click();
+    // Auctions are legacy-routable but intentionally no longer a primary
+    // Community nav item (see CommunityScreen.tsx) -- reach it the way a
+    // real notification/deep link would.
+    await participantPage.goto(`/app/?devTelegramId=${AUCTION_BIDDER_TELEGRAM_ID}#/auctions`);
     const lotCard = participantPage.locator(".era-card", { hasText: lotTitle });
     await expect(lotCard).toBeVisible();
     await lotCard.getByRole("button", { name: "Сделать ставку" }).click();
