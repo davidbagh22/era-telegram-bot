@@ -28,27 +28,34 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
   return (
     <nav
       aria-label="Основная навигация"
+      className="era-bottom-nav"
+      data-active-tab={active}
       style={{
-        position: "sticky",
-        bottom: 0,
+        position: "fixed",
+        left: "50%",
+        bottom: "calc(0.55rem + env(safe-area-inset-bottom, 0px))",
+        transform: "translateX(-50%)",
+        width: "calc(100% - 1.25rem)",
+        maxWidth: "32rem",
         display: "grid",
         gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
         minWidth: 0,
-        margin: "0 0.625rem calc(0.55rem + env(safe-area-inset-bottom, 0px))",
+        margin: 0,
         padding: "0.3rem",
-        background: "var(--era-glass)",
-        border: "1px solid var(--era-border)",
+        background: "var(--era-nav-glass, var(--era-glass))",
+        border: "1px solid var(--era-nav-border, var(--era-border))",
         borderRadius: "var(--era-radius-pill)",
         boxShadow: "var(--era-shadow-dock)",
-        backdropFilter: "blur(24px)",
-        WebkitBackdropFilter: "blur(24px)",
+        backdropFilter: "blur(26px) saturate(118%)",
+        WebkitBackdropFilter: "blur(26px) saturate(118%)",
         overflow: "hidden",
         isolation: "isolate",
-        zIndex: 20,
+        zIndex: 32,
       }}
     >
       <span
         aria-hidden="true"
+        className="era-bottom-nav__selection"
         style={{
           position: "absolute",
           left: "0.3rem",
@@ -56,9 +63,9 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
           bottom: "0.3rem",
           width: "calc((100% - 0.6rem) / 5)",
           borderRadius: "1.35rem",
-          background: "linear-gradient(180deg, rgba(227,38,54,.14), rgba(227,38,54,.075))",
-          border: "1px solid rgba(227,38,54,.13)",
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,.035)",
+          background: "linear-gradient(180deg, rgba(227,38,54,.16), rgba(227,38,54,.075))",
+          border: "1px solid rgba(227,38,54,.16)",
+          boxShadow: "inset 0 1px 0 rgba(248,239,223,.055), 0 0 22px rgba(227,38,54,.045)",
           transform: `translateX(${activeIndex * 100}%)`,
           transition: "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
           zIndex: 0,
@@ -90,10 +97,10 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
               background: "transparent",
               border: "none",
               boxShadow: "none",
-              color: isActive ? "var(--era-red-bright)" : "var(--era-text-muted)",
+              color: isActive ? "var(--era-red-bright)" : "var(--era-nav-muted, var(--era-text-muted))",
               fontSize: "0.625rem",
               fontWeight: isActive ? 800 : 650,
-              padding: "0.4rem 0.125rem",
+              padding: "0.4rem 0.125rem 0.48rem",
               borderRadius: "1.25rem",
               transition: "color var(--era-motion-fast), transform var(--era-motion-fast)",
             }}
@@ -112,18 +119,6 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
               }}
             >
               <Icon width={21} height={21} />
-              <span
-                style={{
-                  position: "absolute",
-                  bottom: -3,
-                  width: isActive ? 12 : 4,
-                  height: 2,
-                  borderRadius: 999,
-                  background: isActive ? "var(--era-red)" : "transparent",
-                  opacity: isActive ? 1 : 0,
-                  transition: "width 220ms cubic-bezier(0.22,1,0.36,1), opacity var(--era-motion-fast)",
-                }}
-              />
             </span>
             <span
               style={{
@@ -135,6 +130,23 @@ export function BottomNavigation({ active, onChange }: BottomNavigationProps) {
             >
               {label}
             </span>
+            <span
+              aria-hidden="true"
+              className="era-bottom-nav__active-mark"
+              style={{
+                position: "absolute",
+                left: "50%",
+                bottom: 2,
+                width: isActive ? 24 : 6,
+                height: 3,
+                borderRadius: 999,
+                background: isActive ? "var(--era-red-bright)" : "transparent",
+                opacity: isActive ? 1 : 0,
+                transform: "translateX(-50%)",
+                boxShadow: isActive ? "0 0 10px rgba(255,64,80,.72), 0 0 2px rgba(248,239,223,.48)" : "none",
+                transition: "width 220ms cubic-bezier(0.22,1,0.36,1), opacity var(--era-motion-fast)",
+              }}
+            />
           </button>
         );
       })}
