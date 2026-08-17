@@ -42,12 +42,14 @@ test("admin control has analytics system and maintenance as separate destination
   await expect(page.getByRole("button", { name: /Обслуживание/ })).toBeVisible();
 });
 
-test("analytics shows ERA efficiency and opens the real records behind each metric", async ({ page }) => {
+test("analytics shows ERA efficiency, Pulse and opens real records behind metrics", async ({ page }) => {
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: "Контроль" }).click();
   await page.getByRole("button", { name: /Аналитика/ }).click();
 
-  await expect(page.getByText("Эффективность ЭРА", { exact: true })).toBeVisible();
+  await expect(page.getByText("Эффективность", { exact: true })).toBeVisible();
+  await expect(page.getByText("Пульс", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Здоровье организации/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Что делать дальше" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Открыть или выгрузить" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Полный отчёт ЭРА/ })).toBeVisible();
@@ -58,7 +60,7 @@ test("analytics shows ERA efficiency and opens the real records behind each metr
 
   await expect(page.getByRole("heading", { name: "Участники" })).toBeVisible();
   await expect(page.getByText("Записей в системе", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Таблица CSV/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "↓ XLSX", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Полный XLSX/ })).toBeVisible();
   await expect(page.locator(".era-card").filter({ hasText: /participant|admin|leader|activist/i }).first()).toBeVisible();
 });
