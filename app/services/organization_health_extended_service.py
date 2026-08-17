@@ -128,6 +128,8 @@ async def build_extended_organization_health(
         or 0
     )
     opportunity_approval_rate = _pct(opportunity_approved_30d, opportunity_applications_30d)
+    opportunity_reach_rate = _pct(opportunity_applicants_30d, approved_total)
+    opportunities_per_partner = round(active_opportunities / active_partners, 1) if active_partners else 0.0
 
     # Career value created by the ecosystem.
     career_profiles = await _count(session, CareerProfile)
@@ -136,6 +138,11 @@ async def build_extended_organization_health(
         session,
         CareerPortfolioItem,
         CareerPortfolioItem.status == "verified",
+    )
+    portfolio_rejected = await _count(
+        session,
+        CareerPortfolioItem,
+        CareerPortfolioItem.status == "rejected",
     )
     portfolio_verified_30d = await _count(
         session,
@@ -159,6 +166,8 @@ async def build_extended_organization_health(
         RecommendationRequest.status == "approved",
         RecommendationRequest.approved_at >= month_ago,
     )
+    portfolio_verification_rate = _pct(portfolio_verified, portfolio_verified + portfolio_rejected)
+    portfolio_per_profile = round(portfolio_total / career_profiles, 1) if career_profiles else 0.0
 
     added = [
         HealthMetric(
@@ -176,6 +185,22 @@ async def build_extended_organization_health(
             active_inviters_30d,
             str(active_inviters_30d),
             "уникальные участники, чей код использовали за 30 дней",
+        ),
+        HealthMetric(
+            "referral_registered_30d",
+            "Рост",
+            "Дошли до регистрации и чата",
+            referral_registered_30d,
+            str(referral_registered_30d),
+            "приглашённые, у которых за 30 дней подтверждён первый реферальный этап",
+        ),
+        HealthMetric(
+            "referral_first_event_30d",
+            "Рост",
+            "Дошли до первого мероприятия",
+            referral_first_event_30d,
+            str(referral_first_event_30d),
+            "приглашённые, подтвердившие первое мероприятие за 30 дней",
         ),
         HealthMetric(
             "referral_registration_conversion",
@@ -220,6 +245,14 @@ async def build_extended_organization_health(
             "активные и не истёкшие предложения партнёров",
         ),
         HealthMetric(
+            "opportunities_per_partner",
+            "Возможности",
+            "Возможностей на партнёра",
+            opportunities_per_partner,
+            f"{opportunities_per_partner:.1f}",
+            "среднее число доступных предложений на одного активного партнёра",
+        ),
+        HealthMetric(
             "opportunity_saves_30d",
             "Возможности",
             "Сохранений возможностей",
@@ -228,12 +261,37 @@ async def build_extended_organization_health(
             "сколько раз участники сохранили возможности за 30 дней",
         ),
         HealthMetric(
+            "opportunity_applicants_30d",
+            "Возможности",
+            "Участников подали заявки",
+            opportunity_applicants_30d,
+            str(opportunity_applicants_30d),
+            "уникальные участники с заявкой на партнёрскую возможность за 30 дней",
+        ),
+        HealthMetric(
+            "opportunity_reach_rate",
+            "Возможности",
+            "Охват возможностями",
+            opportunity_reach_rate,
+            f"{opportunity_reach_rate:.1f}%",
+            "доля одобренного сообщества, подавшая хотя бы одну заявку за 30 дней",
+            _cap(opportunity_reach_rate) if approved_total else None,
+        ),
+        HealthMetric(
             "opportunity_applications_30d",
             "Возможности",
             "Заявок на возможности",
             opportunity_applications_30d,
             str(opportunity_applications_30d),
             f"{opportunity_applicants_30d} уникальных участников за 30 дней",
+        ),
+        HealthMetric(
+            "opportunity_approved_30d",
+            "Возможности",
+            "Одобрено заявок",
+            opportunity_approved_30d,
+            str(opportunity_approved_30d),
+            "одобренные заявки на партнёрские возможности за 30 дней",
         ),
         HealthMetric(
             "opportunity_approval_rate",
@@ -262,12 +320,37 @@ async def build_extended_organization_health(
             "внешние и личные результаты, добавленные участниками",
         ),
         HealthMetric(
+            "portfolio_per_profile",
+            "Портфолио",
+            "Достижений на профиль",
+            portfolio_per_profile,
+            f"{portfolio_per_profile:.1f}",
+            "средняя глубина заполнения карьерного профиля",
+        ),
+        HealthMetric(
             "portfolio_verified",
             "Портфолио",
             "Подтверждено ЭРА",
             portfolio_verified,
             str(portfolio_verified),
             f"за последние 30 дней подтверждено {portfolio_verified_30d}",
+        ),
+        HealthMetric(
+            "portfolio_verified_30d",
+            "Портфолио",
+            "Подтверждено за 30 дней",
+            portfolio_verified_30d,
+            str(portfolio_verified_30d),
+            "достижения, получившие официальный статус ЭРА за 30 дней",
+        ),
+        HealthMetric(
+            "portfolio_verification_rate",
+            "Портфолио",
+            "Доля подтверждений ЭРА",
+            portfolio_verification_rate,
+            f"{portfolio_verification_rate:.1f}%" if portfolio_verified + portfolio_rejected else "Нет решений",
+            f"подтверждено {portfolio_verified} · отклонено {portfolio_rejected}",
+            _cap(portfolio_verification_rate) if portfolio_verified + portfolio_rejected else None,
         ),
         HealthMetric(
             "portfolio_pending",
@@ -283,7 +366,15 @@ async def build_extended_organization_health(
             "Рекомендаций ждут решения",
             recommendation_pending,
             str(recommendation_pending),
-            f"официальных рекомендаций утверждено за 30 дней: {recommendation_approved_30d}",
+            "запрошенные официальные рекомендательные письма",
+        ),
+        HealthMetric(
+            "recommendation_approved_30d",
+            "Портфолио",
+            "Рекомендаций утверждено за 30 дней",
+            recommendation_approved_30d,
+            str(recommendation_approved_30d),
+            "официальные рекомендательные письма, утверждённые за 30 дней",
         ),
     ]
 
@@ -309,6 +400,6 @@ async def build_extended_organization_health(
         risks=risks[:10],
         data_note=(
             base.data_note
-            + " Рост, возможности и портфолио считаются отдельно по фактическим действиям платформы и не влияют на Пульс."
+            + " Рост, возможности и портфолио считаются отдельно по фактическим действиям платформы и do not affect Pulse."
         ),
     )
