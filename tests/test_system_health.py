@@ -120,6 +120,8 @@ class SystemSchedulerTests(unittest.TestCase):
                 "event-wizard-task-sync",
                 "project-scoring-reconciliation",
                 "task-squad-notifications",
+                "media-channel-publication",
+                "media-chat-automation",
                 "my-vector-monthly-reminders",
                 "general-chat-faq-pin",
             ],
