@@ -17,6 +17,8 @@ from app.utils.constants import ApplicationStatus
 REGISTRATION_REFERRAL_POINTS = 200
 FIRST_EVENT_REFERRAL_POINTS = 500
 CODE_LENGTH = 6
+OFFICIAL_BOT_HANDLE = "@ERA_1bot"
+OFFICIAL_BOT_URL = "https://t.me/ERA_1bot"
 
 
 @dataclass(frozen=True)
@@ -232,15 +234,32 @@ def _invite_url(settings: Settings, code: str) -> str:
     return f"https://t.me/{username}?start=ref_{code}"
 
 
-def _share_text(code: str, invite_url: str) -> str:
-    text = (
-        "Присоединяйся к ЭРА. Зарегистрируйся и введи мой код: "
-        f"{code}. После регистрации и вступления в общий чат нам обоим "
-        f"начислятся по {REGISTRATION_REFERRAL_POINTS} баллов, а после твоего "
-        "первого подтверждённого мероприятия — ещё по "
-        f"{FIRST_EVENT_REFERRAL_POINTS}."
+def _share_text(
+    code: str,
+    invite_url: str,
+    general_chat_url: str,
+) -> str:
+    bot_url = invite_url or OFFICIAL_BOT_URL
+    chat_url = general_chat_url.strip() or "https://t.me/+Q6MzTrnR21dmZjgy"
+    return (
+        "Присоединяйся к ЭРА 🔥\n\n"
+        "ЭРА — это сообщество, где можно не просто знакомиться с новыми людьми, а "
+        "пробовать себя в реальных проектах, находить возможности, развивать навыки "
+        "и постепенно понимать, куда двигаться дальше.\n\n"
+        "Внутри тебя ждут мероприятия, проекты, задачи, новые знакомства и «Мой вектор» — "
+        "инструмент, который помогает лучше понять себя, своё состояние, сильные стороны "
+        "и выбрать следующий шаг.\n\n"
+        "Я уже внутри и приглашаю тебя присоединиться.\n\n"
+        f"🤖 Бот ЭРА: {OFFICIAL_BOT_HANDLE}\n{bot_url}\n\n"
+        f"💬 Общий чат:\n{chat_url}\n\n"
+        f"При регистрации введи мой код: {code}\n\n"
+        f"После регистрации и вступления в общий чат мы оба получим по "
+        f"{REGISTRATION_REFERRAL_POINTS} баллов.\n"
+        "А когда ты впервые придёшь на мероприятие и подтвердишь участие — ещё по "
+        f"{FIRST_EVENT_REFERRAL_POINTS} баллов каждому.\n\n"
+        "Не обязательно сразу знать, чего ты хочешь. ЭРА как раз помогает это понять — "
+        "через людей, опыт и реальные действия."
     )
-    return f"{text}\n\n{invite_url}" if invite_url else text
 
 
 async def get_referral_summary(
@@ -280,7 +299,11 @@ async def get_referral_summary(
     return ReferralSummary(
         code=code_row.code,
         invite_url=invite_url,
-        share_text=_share_text(code_row.code, invite_url),
+        share_text=_share_text(
+            code_row.code,
+            invite_url,
+            settings.general_chat_url,
+        ),
         invited_count=invited_count,
         registered_count=registered_count,
         first_event_count=first_event_count,
