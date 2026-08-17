@@ -13,11 +13,15 @@ import { useAsync } from "../../hooks/useAsync";
 export type MaintenanceTarget =
   | "applications"
   | "participants"
+  | "development"
+  | "career"
+  | "offices"
   | "projects"
   | "events"
   | "tasks"
   | "offers"
   | "data-rights"
+  | "surveys"
   | "analytics"
   | "system"
   | "tools";
@@ -114,7 +118,7 @@ export function AdminMaintenanceScreen({ onOpen }: AdminMaintenanceScreenProps) 
         </p>
         <h2 style={{ margin: "0.2rem 0 0", fontSize: "var(--era-text-2xl)" }}>Обслуживание ЭРА</h2>
         <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>
-          Всё, что обычно требует админского внимания, собрано здесь. Переходы ведут сразу в рабочий экран Mini App — без возврата в бот.
+          Ежедневная работа администратора собрана здесь. Нажатие ведёт прямо в нужный рабочий экран Mini App — без возврата в бот и без поиска раздела по меню.
         </p>
         {dashboard.status === "ready" && (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: "0.8rem" }}>
@@ -129,27 +133,43 @@ export function AdminMaintenanceScreen({ onOpen }: AdminMaintenanceScreenProps) 
         <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
           <QueueAction title="Новые заявки" description="Одобрить, запросить данные или отклонить" count={metrics.users_pending} onClick={() => onOpen("applications")} />
           <QueueAction title="Проекты на проверке" description="Решения по проектной воронке" count={metrics.projects_review} onClick={() => onOpen("projects")} />
-          <QueueAction title="Мероприятия на согласовании" description="Проверить, опубликовать и управлять событием" count={metrics.events_pending} onClick={() => onOpen("events")} />
+          <QueueAction title="Мероприятия на согласовании" description="Проверить, опубликовать, начать и завершить событие" count={metrics.events_pending} onClick={() => onOpen("events")} />
           <QueueAction title="Результаты заданий и активностей" description="Принять, вернуть на доработку или отклонить" count={taskQueue} onClick={() => onOpen("tasks")} />
-          <QueueAction title="Возможности и награды" description="Заявки, выдача и партнёрские предложения" count={metrics.rewards} onClick={() => onOpen("offers")} />
+          <QueueAction title="Возможности и награды" description="Партнёрские предложения, заявки и выдача" count={metrics.rewards} onClick={() => onOpen("offers")} />
+          <QueueAction title="Портфолио и рекомендации" description="Подтвердить достижения и официальные рекомендательные письма" onClick={() => onOpen("career")} />
           <QueueAction title="Данные и права" description="Запросы на экспорт, удаление и анонимизацию" onClick={() => onOpen("data-rights")} />
         </div>
       </section>
 
       <section>
-        <h3 style={{ margin: "0 0 0.55rem" }}>Управлять системой</h3>
+        <h3 style={{ margin: "0 0 0.55rem" }}>Люди и развитие</h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
           <QueueAction title="Участники" description={`База, роли и статусы${metrics.users_total !== undefined ? ` · ${metrics.users_total}` : ""}`} onClick={() => onOpen("participants")} />
-          <QueueAction title="Аналитика и здоровье организации" description="Эффективность, Пульс, все показатели и Excel" onClick={() => onOpen("analytics")} />
-          <QueueAction title="Состояние платформы" description="Диагностика, инциденты и backup" onClick={() => onOpen("system")} />
+          <QueueAction title="Состояние и развитие" description="Безопасные сводки «Моего вектора», охват Check-in и потребности" onClick={() => onOpen("development")} />
+          <QueueAction title="Должности и структура" description="Роли, руководители и организационная структура" onClick={() => onOpen("offices")} />
+        </div>
+      </section>
+
+      <section>
+        <h3 style={{ margin: "0 0 0.55rem" }}>Коммуникация</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+          <QueueAction title="Опросы и обратная связь" description="Создать опрос, посмотреть ответы и понять реакцию сообщества" onClick={() => onOpen("surveys")} />
           <QueueAction title="Центр связи" description="Чаты, FAQ, приветствия, рассылки и автоконтент" onClick={() => onOpen("tools")} />
+        </div>
+      </section>
+
+      <section>
+        <h3 style={{ margin: "0 0 0.55rem" }}>Контроль</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+          <QueueAction title="Аналитика и здоровье организации" description="Эффективность, Пульс, рост, удержание, события, проекты, возможности и Excel" onClick={() => onOpen("analytics")} />
+          <QueueAction title="Состояние платформы" description="Диагностика, инциденты, резервные копии и техническое здоровье" onClick={() => onOpen("system")} />
         </div>
       </section>
 
       <Card style={{ padding: "0.85rem 0.9rem", borderLeft: "3px solid var(--era-gold-ink)" }}>
         <strong>Что остаётся в Telegram</strong>
         <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)", lineHeight: 1.45 }}>
-          Только действия, которым нужен сам Telegram-контекст: первичная привязка чата через сообщение и аварийный резервный сценарий. Обычная ежедневная работа остаётся в приложении.
+          Только действия, которым нужен сам Telegram-контекст: первичная привязка чатов и аварийный резервный сценарий. Проекты, события, заявки, люди, аналитика, портфолио, опросы и коммуникации управляются в приложении.
         </p>
       </Card>
 
