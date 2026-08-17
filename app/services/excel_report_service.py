@@ -49,13 +49,10 @@ def polish_workbook(content: bytes) -> bytes:
         ws.page_setup.fitToHeight = 0
         ws.sheet_view.zoomScale = 90
 
-        # Remove internal implementation identifiers from management exports.
         removable = {"Проект ID", "Ответственный ID", "Автор ID", "scope_id", "user_id"}
-        header_row = None
         for row_idx in range(1, min(ws.max_row, 8) + 1):
             values = [ws.cell(row_idx, col).value for col in range(1, ws.max_column + 1)]
             if _is_header_row(values) and any(str(value) in removable for value in values if value is not None):
-                header_row = row_idx
                 for col in range(ws.max_column, 0, -1):
                     if str(ws.cell(row_idx, col).value or "") in removable:
                         ws.delete_cols(col, 1)
@@ -68,7 +65,6 @@ def polish_workbook(content: bytes) -> bytes:
                 if cell.row % 2 == 0 and cell.fill.fill_type is None:
                     cell.fill = PatternFill("solid", fgColor="FCFAF7")
 
-        # Style likely table headers, while preserving dedicated title rows.
         for row_idx in range(1, min(ws.max_row, 12) + 1):
             values = [ws.cell(row_idx, col).value for col in range(1, ws.max_column + 1)]
             if not _is_header_row(values):
