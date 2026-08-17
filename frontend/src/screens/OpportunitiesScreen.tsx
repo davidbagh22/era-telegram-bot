@@ -64,11 +64,14 @@ type OpportunityAchievement = {
   description: string;
 } | null;
 
-function useOpportunityAchievement(offers: Opportunity[] | null) {
+function useOpportunityAchievement(offers: Opportunity[] | null, enabled: boolean) {
   const [achievement, setAchievement] = useState<OpportunityAchievement>(null);
 
   useEffect(() => {
-    if (!offers) return;
+    // Only the personalised "Для тебя" feed is allowed to mutate the
+    // achievement baseline. Saved/mine/all are different projections of the
+    // same data and switching filters must never look like a fresh unlock.
+    if (!offers || !enabled) return;
     const availableIds = offers
       .filter((offer) => offer.display_state === "available" || offer.display_state === "new")
       .map((offer) => offer.id);
@@ -118,7 +121,7 @@ function useOpportunityAchievement(offers: Opportunity[] | null) {
         });
       }
     }
-  }, [offers]);
+  }, [offers, enabled]);
 
   return { achievement, dismiss: () => setAchievement(null) };
 }
@@ -136,7 +139,10 @@ function OffersList({ initialItemId }: OffersListProps) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(initialItemId ?? null);
   const scopeLabel = OFFER_SCOPES.find((option) => option.value === scope)?.label ?? scope;
-  const achievement = useOpportunityAchievement(state.status === "ready" ? state.data : null);
+  const achievement = useOpportunityAchievement(
+    state.status === "ready" ? state.data : null,
+    scope === "for_me",
+  );
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
@@ -236,7 +242,7 @@ function OffersList({ initialItemId }: OffersListProps) {
         const stateMeta = DISPLAY_STATE_META[offer.display_state];
         const stateStyle = {
           locked: { background: "var(--era-surface)", opacity: 0.88 },
-          almost: { background: "var(--era-tint-gold)", border: "1px solid rgba(244,193,93,0.42)" },
+          almost: { background: "var(--era-tint-gold, var(--era-surface-2))", border: "1px solid rgba(244,193,93,0.42)" },
           available: { background: "var(--era-hero-bg)", border: "1px solid rgba(99,44,255,0.18)", boxShadow: "var(--era-glow-violet)" },
           new: { background: "var(--era-gradient-signal-soft, var(--era-hero-bg))", border: "1px solid rgba(215,25,120,0.24)", boxShadow: "var(--era-glow-hot)" },
         }[offer.display_state];
