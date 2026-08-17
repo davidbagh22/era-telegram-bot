@@ -77,6 +77,18 @@ class AdminOfferApplicationsApiTests(unittest.TestCase):
         self.assertEqual(body[0]["participant_name"], "Иван")
         self.assertEqual(body[0]["participant_balance"], 100)
 
+    def test_decide_requires_manage_permission(self) -> None:
+        """Points/Ranks ToR section 48: an unauthorized user cannot decide
+        (approve/reject/issue) an opportunity application -- not just list
+        the pending queue."""
+        session = _fake_session({})
+        app = _build_app(_participant(), session)
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/admin/offer-applications/3/decide", json={"action": "approve"}
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_decide_not_found(self) -> None:
         session = _fake_session({})
         app = _build_app(_admin(), session)

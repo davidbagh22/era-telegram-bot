@@ -337,6 +337,126 @@ class ProgressionAndRecognitionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(items), 1)
             self.assertEqual(items[0].id, first_item_id)
 
+    async def _offer_requiring_points_rank_and_activity(self, session) -> PartnerInitiative:
+        partner = Partner(name="ERA", description="d")
+        session.add(partner)
+        await session.flush()
+        offer = PartnerInitiative(
+            partner_id=partner.id,
+            title="За проектную деятельность",
+            description="d",
+            point_cost=3000,
+            opportunity_type="certificate",
+            min_rank=ParticipationStatus.TEAM_MEMBER,
+            eligibility_json={"required_metrics": {"project_activities": 2}},
+        )
+        session.add(offer)
+        await session.flush()
+        return offer
+
+    async def test_eligibility_requires_points_rank_and_activity_together(self) -> None:
+        """Points/Ranks ToR sections 25-26, 48: an Opportunity gate must
+        require points AND rank AND verified activity together -- missing
+        any single one of the three keeps it locked, no matter how far over
+        the other two the person is."""
+        async with self.session_factory() as session:
+            offer = await self._offer_requiring_points_rank_and_activity(session)
+
+            missing_points = await self._user(
+                session, 1, participation_status=ParticipationStatus.TEAM_MEMBER
+            )
+            await increment_metric(
+                session, user_id=missing_points.id, metric_key="project_activities", delta=5
+            )
+            # No points transaction at all -- 0 points, well under 3000.
+
+            missing_rank = await self._user(
+                session, 2, participation_status=ParticipationStatus.ACTIVE_MEMBER
+            )
+            session.add(
+                PointTransaction(
+                    user_id=missing_rank.id,
+                    points=5000,
+                    reason="test",
+                    source_type="test",
+                    idempotency_key="rank-gap",
+                )
+            )
+            await increment_metric(
+                session, user_id=missing_rank.id, metric_key="project_activities", delta=5
+            )
+
+            missing_activity = await self._user(
+                session, 3, participation_status=ParticipationStatus.TEAM_MEMBER
+            )
+            session.add(
+                PointTransaction(
+                    user_id=missing_activity.id,
+                    points=5000,
+                    reason="test",
+                    source_type="test",
+                    idempotency_key="activity-gap",
+                )
+            )
+
+            meets_all = await self._user(
+                session, 4, participation_status=ParticipationStatus.TEAM_MEMBER
+            )
+            session.add(
+                PointTransaction(
+                    user_id=meets_all.id,
+                    points=5000,
+                    reason="test",
+                    source_type="test",
+                    idempotency_key="meets-all",
+                )
+            )
+            await increment_metric(
+                session, user_id=meets_all.id, metric_key="project_activities", delta=2
+            )
+            await session.flush()
+
+            for user, label in (
+                (missing_points, "points"),
+                (missing_rank, "rank"),
+                (missing_activity, "activity"),
+            ):
+                result = await evaluate_eligibility(session, offer, user)
+                self.assertFalse(result.eligible, f"expected locked for missing {label}")
+                self.assertTrue(result.missing, f"expected a missing-reason list for {label}")
+
+            result = await evaluate_eligibility(session, offer, meets_all)
+            self.assertTrue(result.eligible)
+            self.assertEqual(result.missing, [])
+
+    async def test_eligibility_basis_lists_only_satisfied_facts(self) -> None:
+        """Points/Ranks ToR sections 35-36: the auto-generated "Основание"
+        must be built only from verified, satisfied facts -- and must
+        include each of points/rank/activity once they're actually met."""
+        async with self.session_factory() as session:
+            offer = await self._offer_requiring_points_rank_and_activity(session)
+            user = await self._user(
+                session, 1, participation_status=ParticipationStatus.TEAM_MEMBER
+            )
+            session.add(
+                PointTransaction(
+                    user_id=user.id,
+                    points=5000,
+                    reason="test",
+                    source_type="test",
+                    idempotency_key="basis-check",
+                )
+            )
+            await increment_metric(session, user_id=user.id, metric_key="project_activities", delta=3)
+            await session.flush()
+
+            result = await evaluate_eligibility(session, offer, user)
+            self.assertTrue(result.eligible)
+            self.assertTrue(result.basis.startswith("Подтверждено системой:"))
+            self.assertIn("Баллы", result.basis)
+            self.assertIn("Ранг", result.basis)
+            self.assertIn("5000", result.basis)
+
 
 if __name__ == "__main__":
     unittest.main()

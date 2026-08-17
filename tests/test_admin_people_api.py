@@ -329,6 +329,54 @@ class PointsAwardApiTests(unittest.TestCase):
         self.assertEqual(response.json()["balance"], 52)
         safe_send_mock.assert_awaited_once()
 
+    def test_large_award_without_confirm_is_rejected(self) -> None:
+        """Points/Ranks ToR section 44: a manual award over 300 points needs
+        an explicit second confirmation -- the first attempt must not award
+        anything."""
+        target = _target_user()
+        session = SimpleNamespace(get=AsyncMock(return_value=target))
+        app = _build_app(_admin(), session)
+        client = TestClient(app)
+        with patch(
+            "app.api.v1.admin.user_management_service.award_points", new=AsyncMock()
+        ) as award_mock:
+            response = client.post(
+                "/api/v1/admin/users/10/points", json={"amount": 500, "reason": "big one"}
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "confirmation_required")
+        award_mock.assert_not_awaited()
+
+    def test_large_award_with_confirm_succeeds(self) -> None:
+        target = _target_user()
+        session = SimpleNamespace(get=AsyncMock(return_value=target))
+        app = _build_app(_admin(), session)
+        client = TestClient(app)
+        with patch(
+            "app.api.v1.admin.user_management_service.award_points", new=AsyncMock(return_value=500)
+        ) as award_mock:
+            response = client.post(
+                "/api/v1/admin/users/10/points",
+                json={"amount": 500, "reason": "big one", "confirm": True},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["balance"], 500)
+        award_mock.assert_awaited_once()
+
+    def test_award_at_threshold_does_not_require_confirmation(self) -> None:
+        """Exactly 300 is still a small award (ToR: "> 300" triggers it)."""
+        target = _target_user()
+        session = SimpleNamespace(get=AsyncMock(return_value=target))
+        app = _build_app(_admin(), session)
+        client = TestClient(app)
+        with patch(
+            "app.api.v1.admin.user_management_service.award_points", new=AsyncMock(return_value=300)
+        ):
+            response = client.post(
+                "/api/v1/admin/users/10/points", json={"amount": 300, "reason": "ok"}
+            )
+        self.assertEqual(response.status_code, 200)
+
 
 class BadgeAwardApiTests(unittest.TestCase):
     def test_missing_reason_rejected(self) -> None:

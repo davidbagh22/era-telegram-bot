@@ -2253,10 +2253,17 @@ async def fulfill_deletion_request_endpoint(
 class PointsAwardIn(BaseModel):
     amount: int
     reason: str
+    confirm: bool = False
 
 
 class PointsAwardOut(BaseModel):
     balance: int
+
+
+# Points/Ranks ToR section 44: manual awards are the exception, not the
+# workflow -- a large one needs an explicit second confirmation rather than
+# a single accidental tap/typo moving hundreds of points.
+LARGE_MANUAL_AWARD_THRESHOLD = 300
 
 
 @router.post("/users/{user_id}/points", response_model=PointsAwardOut)
@@ -2273,6 +2280,8 @@ async def award_user_points(
         raise HTTPException(status_code=422, detail="invalid_amount")
     if not reason:
         raise HTTPException(status_code=422, detail="comment_required")
+    if abs(payload.amount) > LARGE_MANUAL_AWARD_THRESHOLD and not payload.confirm:
+        raise HTTPException(status_code=409, detail="confirmation_required")
     target = await session.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="user_not_found")
