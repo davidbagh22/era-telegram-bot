@@ -42,6 +42,36 @@ export interface EfficiencySnapshot {
   data_note: string;
 }
 
+export interface HealthMetric {
+  key: string;
+  category: string;
+  label: string;
+  value: number;
+  display: string;
+  note: string;
+  score: number | null;
+}
+
+export interface OrganizationVectorDimension {
+  key: string;
+  label: string;
+  value: number;
+  delta: number | null;
+}
+
+export interface OrganizationHealthSnapshot {
+  pulse: number | null;
+  pulse_label: string;
+  pulse_coverage: number;
+  pulse_sample_size: number;
+  pulse_suppressed: boolean;
+  vector_dimensions: OrganizationVectorDimension[];
+  metrics: HealthMetric[];
+  risks: string[];
+  period_label: string;
+  data_note: string;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 let tokenPromise: Promise<string> | null = null;
 
@@ -104,8 +134,16 @@ export function fetchEraEfficiency(): Promise<EfficiencySnapshot> {
   return adminGet<EfficiencySnapshot>("/api/v1/admin/analytics/weekly");
 }
 
+export function fetchOrganizationHealth(): Promise<OrganizationHealthSnapshot> {
+  return adminGet<OrganizationHealthSnapshot>("/api/v1/admin/analytics/health");
+}
+
 export function downloadAnalyticsSectionTable(section: AnalyticsDetailSection): Promise<Blob> {
-  return adminBlob(`/api/v1/admin/analytics/details/${section}/export.csv`);
+  return adminBlob(`/api/v1/admin/analytics/details/${section}/export.xlsx`);
+}
+
+export function downloadOrganizationHealthReport(): Promise<Blob> {
+  return adminBlob("/api/v1/admin/analytics/health-report.xlsx");
 }
 
 export function downloadFullAnalyticsReport(): Promise<Blob> {
