@@ -51,6 +51,8 @@ export interface OpportunityProgress {
   title: string;
   issuer: string;
   points_needed: number;
+  display_state: "available" | "almost" | "locked";
+  progress_text: string;
 }
 
 export interface ActivityStats {
@@ -64,6 +66,8 @@ export interface HomeSnapshot {
   growth: GrowthProgress;
   rank: RankProgress;
   points_balance: number;
+  points_today: number;
+  points_month: number;
   activity: ActivityStats;
   next_step: NextStep | null;
   nearest_event: EventSummary | null;
@@ -71,5 +75,7 @@ export interface HomeSnapshot {
   active_project: ProjectSummary | null;
   opportunities: OpportunitySummary[];
   new_opportunity: OpportunityProgress | null;
+  almost_opportunity: OpportunityProgress | null;
+  locked_opportunity: OpportunityProgress | null;
   nearest_locked_opportunity: OpportunityProgress | null;
 }
