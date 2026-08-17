@@ -109,33 +109,76 @@ function priorityTone(priority: string): "red" | "violet" | "gold" {
   return "gold";
 }
 
-function ScoreRing({ score, label, muted = false }: { score: number | null; label: string; muted?: boolean }) {
+// Score tone: red (needs attention) -> gold (getting there) -> gold-ink
+// (healthy). Same three-stop read used for every ring on this screen so the
+// color always means the same thing at a glance, no legend required.
+function scoreTone(score: number): string {
+  if (score >= 70) return "var(--era-gold-ink)";
+  if (score >= 40) return "var(--era-gold)";
+  return "var(--era-red-bright)";
+}
+
+function MiniRing({
+  score,
+  size,
+  accent,
+  glow = false,
+}: {
+  score: number | null;
+  size: number;
+  accent: string;
+  glow?: boolean;
+}) {
   const safeScore = Math.max(0, Math.min(100, score ?? 0));
   return (
     <div
-      aria-label={`${label}: ${score ?? "нет данных"}${score === null ? "" : " из 100"}`}
       style={{
-        width: 104,
-        height: 104,
+        width: size,
+        height: size,
+        flexShrink: 0,
         borderRadius: "50%",
-        padding: 7,
+        padding: Math.max(3, Math.round(size * 0.065)),
         background: score === null
           ? "rgba(255,255,255,0.08)"
-          : `conic-gradient(${muted ? "var(--era-gold-ink)" : "var(--era-red-bright)"} 0 ${safeScore}%, rgba(255,255,255,0.09) ${safeScore}% 100%)`,
-        boxShadow: score === null ? "none" : "0 0 28px rgba(227,38,54,0.14)",
+          : `conic-gradient(${accent} 0 ${safeScore}%, rgba(255,255,255,0.09) ${safeScore}% 100%)`,
+        boxShadow: glow && score !== null ? `0 0 ${Math.round(size * 0.27)}px rgba(227,38,54,0.14)` : "none",
       }}
     >
-      <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "var(--era-bg)", display: "grid", placeItems: "center", textAlign: "center" }}>
-        <div>
-          <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.75rem", lineHeight: 1 }}>{score ?? "—"}</strong>
-          <span style={{ color: "var(--era-text-muted)", fontSize: "0.64rem", fontWeight: 800 }}>{score === null ? "НЕТ ДАННЫХ" : "/ 100"}</span>
-        </div>
+      <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "var(--era-bg)", display: "grid", placeItems: "center" }}>
+        <strong style={{ fontFamily: "var(--era-font-display)", fontSize: size * 0.32, lineHeight: 1 }}>{score ?? "—"}</strong>
       </div>
     </div>
   );
 }
 
+function ScoreRing({ score, label, muted = false }: { score: number | null; label: string; muted?: boolean }) {
+  return (
+    <div aria-label={`${label}: ${score ?? "нет данных"}${score === null ? "" : " из 100"}`}>
+      <MiniRing score={score} size={104} accent={muted ? "var(--era-gold-ink)" : "var(--era-red-bright)"} glow />
+      {score === null && (
+        <span style={{ display: "block", textAlign: "center", marginTop: 4, color: "var(--era-text-muted)", fontSize: "0.6rem", fontWeight: 800 }}>НЕТ ДАННЫХ</span>
+      )}
+    </div>
+  );
+}
+
+// A metric with a score (0-100) is a rate/percentage-style KPI (retention,
+// attendance, conversion...) -- a ring reads those at a glance. A metric
+// without one is a plain count (totals, queues) where a ring would just be
+// a circle with an arbitrary number in it, so it keeps the plain stat card.
 function MetricCard({ metric }: { metric: HealthMetric }) {
+  if (metric.score !== null) {
+    return (
+      <Card style={{ padding: "0.65rem 0.7rem", display: "flex", gap: "0.6rem", alignItems: "center" }}>
+        <MiniRing score={metric.score} size={46} accent={scoreTone(metric.score)} />
+        <div style={{ minWidth: 0 }}>
+          <strong style={{ display: "block", fontSize: "0.85rem" }}>{metric.display}</strong>
+          <span style={{ display: "block", marginTop: 1, fontWeight: 800, fontSize: "0.74rem" }}>{metric.label}</span>
+          <span style={{ display: "block", marginTop: "0.15rem", color: "var(--era-text-muted)", fontSize: "0.64rem", lineHeight: 1.3 }}>{metric.note}</span>
+        </div>
+      </Card>
+    );
+  }
   return (
     <Card style={{ padding: "0.75rem 0.8rem" }}>
       <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.25rem" }}>{metric.display}</strong>
@@ -264,11 +307,15 @@ export function AdminDashboardScreen() {
   }, [toast]);
 
   const groupedMetrics = useMemo(() => {
-    if (health.status !== "ready") return [] as [string, HealthMetric[]][];
+    if (health.status !== "ready") return [] as { category: string; metrics: HealthMetric[]; avgScore: number | null }[];
     const visible = showAllMetrics ? health.data.metrics : health.data.metrics.filter((metric) => EXECUTIVE_KEYS.has(metric.key));
     const groups = new Map<string, HealthMetric[]>();
     visible.forEach((metric) => groups.set(metric.category, [...(groups.get(metric.category) ?? []), metric]));
-    return Array.from(groups.entries());
+    return Array.from(groups.entries()).map(([category, metrics]) => {
+      const scored = metrics.map((m) => m.score).filter((s): s is number => s !== null);
+      const avgScore = scored.length ? Math.round(scored.reduce((sum, s) => sum + s, 0) / scored.length) : null;
+      return { category, metrics, avgScore };
+    });
   }, [health, showAllMetrics]);
 
   if (selectedSection) return <DetailView section={selectedSection} onBack={() => setSelectedSection(null)} />;
@@ -329,9 +376,14 @@ export function AdminDashboardScreen() {
           <div><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Реальные данные платформы</p><h3 style={{ margin: "0.15rem 0 0" }}>Показатели здоровья</h3></div>
           <StatusBadge label={`${health.data.metrics.length} метрик`} tone="gold" />
         </div>
-        {groupedMetrics.map(([category, metrics]) => (
-          <div key={category} style={{ marginBottom: "0.8rem" }}>
-            <strong style={{ display: "block", marginBottom: "0.45rem", color: "var(--era-text-muted)", fontSize: "0.72rem", textTransform: "uppercase" }}>{category}</strong>
+        {groupedMetrics.map(({ category, metrics, avgScore }) => (
+          <div key={category} style={{ marginBottom: "0.9rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+              {avgScore !== null && <MiniRing score={avgScore} size={28} accent={scoreTone(avgScore)} />}
+              <strong style={{ color: "var(--era-text-muted)", fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.02em" }}>{category}</strong>
+              <span style={{ flex: 1, height: 1, background: "var(--era-border)" }} />
+              <span style={{ color: "var(--era-text-muted)", fontSize: "0.68rem" }}>{metrics.length}</span>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "0.5rem" }}>{metrics.map((metric) => <MetricCard key={metric.key} metric={metric} />)}</div>
           </div>
         ))}
