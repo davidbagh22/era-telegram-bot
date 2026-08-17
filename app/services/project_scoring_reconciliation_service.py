@@ -83,10 +83,14 @@ async def reconcile_project_scoring(session: AsyncSession, *, limit: int = 300) 
         ).all()
     )
     for project in completed_projects:
+        # Project has no generic ``approved_by`` field. The author is the
+        # durable accountable actor available on every project and is used
+        # only for audit attribution; scoring eligibility still comes from
+        # verified members/milestones and the completed project state.
         await score_project_completion(
             session,
             project,
-            approved_by_id=project.approved_by or project.author_id,
+            approved_by_id=project.author_id,
         )
         processed += 1
 
