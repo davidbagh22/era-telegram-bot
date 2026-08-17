@@ -22,12 +22,14 @@ def test_participant_navigation_is_viewport_fixed_and_safe_area_aware() -> None:
     assert "--era-bottom-nav-clearance" in layout
 
 
-def test_dark_theme_has_restrained_cream_and_visible_grain_layer() -> None:
+def test_dark_theme_has_restrained_cream_and_visible_noninteractive_grain() -> None:
     css = _read("frontend/src/theme/layout-safety.css")
+    base_tokens = _read("frontend/src/theme/tokens.css")
 
     assert "--era-cream: #f3e8d5" in css
     assert "--era-nav-border: rgba(243, 232, 213, 0.18)" in css
     assert "--era-bottom-nav-clearance:" in css
     assert "body::before" in css
     assert "z-index: 9999" in css
-    assert "pointer-events" not in css.split("body::before", 1)[1].split("}", 1)[0] or True
+    assert "body::before" in base_tokens
+    assert "pointer-events: none" in base_tokens.split("body::before", 1)[1].split("}", 1)[0]
