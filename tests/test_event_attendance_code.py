@@ -161,6 +161,48 @@ def test_attendance_code_opens_only_after_completion_and_awards_once() -> None:
     asyncio.run(_attendance_code_opens_only_after_completion_and_awards_once())
 
 
+async def _attendance_code_confirmation_applies_event_scoring_role_bonus() -> None:
+    """confirm_attendance (the self-service code flow, the primary
+    attendance path) now also applies the Event Scoring Profile role bonus
+    -- Points/Ranks ToR phase 2."""
+    from app.services.activity_metrics_service import get_metric
+    from app.services.points_service import total_points
+    from app.utils.constants import EventParticipantRole
+
+    engine, factory = await _session_factory()
+    try:
+        async with factory() as session:
+            manager, participant, _stranger, event, registration = await _seed_event(session)
+            registration.role = EventParticipantRole.ORGANIZER
+            await session.flush()
+
+            await event_attendance_service.start_event(
+                session, event.id, actor_user_id=manager.id, bot=None, miniapp_url=""
+            )
+            completed = await event_attendance_service.complete_event(
+                session, event.id, actor_user_id=manager.id, bot=None, miniapp_url=""
+            )
+            code = completed.session.attendance_code
+            assert code is not None
+
+            await event_attendance_service.confirm_attendance(session, event.id, participant.id, code)
+
+            # base attendance (25, from _seed_event's points_for_visit) + organizer bonus (250)
+            assert await total_points(session, participant.id) == 25 + 250
+            assert await get_metric(session, user_id=participant.id, metric_key="events_attended") == 1
+            assert await get_metric(session, user_id=participant.id, metric_key="events_organized") == 1
+
+            # Repeat confirmation must not double-pay the role bonus either.
+            await event_attendance_service.confirm_attendance(session, event.id, participant.id, code)
+            assert await total_points(session, participant.id) == 25 + 250
+    finally:
+        await engine.dispose()
+
+
+def test_attendance_code_confirmation_applies_event_scoring_role_bonus() -> None:
+    asyncio.run(_attendance_code_confirmation_applies_event_scoring_role_bonus())
+
+
 async def _attendance_code_rejects_unregistered_user() -> None:
     engine, factory = await _session_factory()
     try:

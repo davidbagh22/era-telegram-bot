@@ -17,7 +17,14 @@ from app.database.models import Event, EventRegistration, User
 from app.services.audit_service import audit
 from app.services.authorization_service import can_manage_events
 from app.services.notification_service import broadcast_detailed, safe_send
-from app.utils.constants import ApplicationStatus, EventStatus, RegistrationStatus
+from app.utils.constants import (
+    EVENT_SCORING_PRESET_LABELS,
+    EVENT_SCORING_PRESET_METRICS,
+    ApplicationStatus,
+    EventScoringPreset,
+    EventStatus,
+    RegistrationStatus,
+)
 from app.utils.deep_links import miniapp_event_url
 
 router = APIRouter(prefix="/admin/events", tags=["admin-event-create"])
@@ -30,6 +37,29 @@ async def require_event_manager(
     if not can_manage_events(user, settings, user.telegram_id):
         raise HTTPException(status_code=403, detail="event_reviewer_access_required")
     return user
+
+
+class EventScoringPresetOut(BaseModel):
+    value: str
+    label: str
+    metrics: list[str]
+
+
+@router.get("/scoring-presets", response_model=list[EventScoringPresetOut])
+async def list_scoring_presets(
+    _admin: User = Depends(require_event_manager),
+) -> list[EventScoringPresetOut]:
+    """Points/Ranks ToR section 17: the ready-made presets an admin picks
+    from when creating an event, and what each one counts toward by
+    default (editable per event via scoring_metrics on the draft)."""
+    return [
+        EventScoringPresetOut(
+            value=preset.value,
+            label=EVENT_SCORING_PRESET_LABELS[preset],
+            metrics=list(EVENT_SCORING_PRESET_METRICS.get(preset, [])),
+        )
+        for preset in EventScoringPreset
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -49,6 +79,7 @@ class AdminEventCreateIn(BaseModel):
     points_for_visit: int = Field(default=5, ge=0, le=200)
     needs_volunteers: bool = False
     additional_info: str | None = Field(default=None, max_length=5000)
+    scoring_preset: EventScoringPreset = EventScoringPreset.STANDARD
     publish: bool = False
 
 
@@ -82,6 +113,8 @@ async def create_event_from_admin(
         status=status,
         created_by=admin.id,
         approved_by=admin.id if payload.publish else None,
+        scoring_preset=payload.scoring_preset,
+        scoring_metrics=EVENT_SCORING_PRESET_METRICS.get(payload.scoring_preset, []),
     )
     session.add(event)
     await session.flush()
@@ -149,6 +182,8 @@ class EventDraftPatch(BaseModel):
     reminders: list[int] | None = None
     broadcast_enabled: bool | None = None
     broadcast_targets: list[str] | None = None
+    scoring_preset: EventScoringPreset | None = None
+    scoring_metrics: list[str] | None = None
 
 
 class EventDraftOut(BaseModel):
@@ -184,6 +219,8 @@ class EventDraftOut(BaseModel):
     broadcast_enabled: bool
     broadcast_targets: list[str]
     broadcast_estimate: int
+    scoring_preset: str
+    scoring_metrics: list[str]
 
 
 async def _experience(session: AsyncSession, event: Event) -> EventExperience:
@@ -247,6 +284,8 @@ async def _draft_out(session: AsyncSession, event: Event, experience: EventExper
         broadcast_enabled=experience.broadcast_enabled,
         broadcast_targets=list(experience.broadcast_targets or []),
         broadcast_estimate=await _broadcast_estimate(session, experience),
+        scoring_preset=event.scoring_preset,
+        scoring_metrics=list(event.scoring_metrics or []),
     )
 
 
@@ -424,6 +463,15 @@ async def save_event_draft_step(
         experience.participant_tasks = payload.participant_tasks
     if payload.points_for_visit is not None:
         event.points_for_visit = payload.points_for_visit
+    if payload.scoring_preset is not None:
+        event.scoring_preset = payload.scoring_preset
+        # Refill scoring_metrics from the new preset's default -- unless
+        # this same request also explicitly sets scoring_metrics, in which
+        # case that explicit value (the admin's own edit) wins.
+        if payload.scoring_metrics is None:
+            event.scoring_metrics = list(EVENT_SCORING_PRESET_METRICS.get(payload.scoring_preset, []))
+    if payload.scoring_metrics is not None:
+        event.scoring_metrics = payload.scoring_metrics
     if payload.reminders is not None:
         experience.reminders = sorted({max(5, int(value)) for value in payload.reminders})
     if payload.broadcast_enabled is not None:

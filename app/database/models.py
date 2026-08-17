@@ -26,6 +26,8 @@ from app.utils.constants import (
     AppointmentType,
     AttentionItemSeverity,
     AttentionItemStatus,
+    EventParticipantRole,
+    EventScoringPreset,
     EventStatus,
     LeadershipGoalStatus,
     LeadershipReportStatus,
@@ -243,6 +245,13 @@ class Event(TimestampMixin, Base):
     )
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    # Event Scoring Profile (Points/Ranks ToR sections 16-18, phase 2).
+    # scoring_metrics defaults to [] (== STANDARD preset's own mapping) so
+    # every pre-existing event keeps awarding exactly what it always did.
+    scoring_preset: Mapped[str] = mapped_column(
+        String(32), default=EventScoringPreset.STANDARD
+    )
+    scoring_metrics: Mapped[list[str]] = mapped_column(JSON, default=list)
 
 
 class EventRegistration(TimestampMixin, Base):
@@ -260,6 +269,13 @@ class EventRegistration(TimestampMixin, Base):
     )
     reminder_stage: Mapped[int] = mapped_column(Integer, default=0)
     last_reminder_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Event Scoring Profile (ToR section 19): what this participant actually
+    # did at the event. Defaults to PARTICIPANT -- no bonus beyond
+    # Event.points_for_visit, exactly like before this field existed.
+    role: Mapped[str] = mapped_column(
+        String(32), default=EventParticipantRole.PARTICIPANT
+    )
+    volunteer_hours: Mapped[int | None] = mapped_column(Integer)
 
 
 class AttendanceProof(TimestampMixin, Base):
@@ -307,6 +323,25 @@ class PointTransaction(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now().astimezone()
     )
+
+
+class ActivityMetric(TimestampMixin, Base):
+    """Per-user counters (events_attended, volunteer_hours,
+    project_activities, ...) driven entirely by
+    app.services.activity_scoring_service -- the ToR's single "verified
+    activity -> points + metrics" domain event (Points/Ranks ToR sections
+    18, 22). Never edited directly; always via increment_metric so updates
+    stay auditable and additive. A flexible key/value row per metric rather
+    than one fixed-column table, so a new metric key is just a new row, not
+    a migration."""
+
+    __tablename__ = "activity_metrics"
+    __table_args__ = (UniqueConstraint("user_id", "metric_key", name="uq_activity_metric_user_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    metric_key: Mapped[str] = mapped_column(String(64), index=True)
+    value: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Badge(TimestampMixin, Base):

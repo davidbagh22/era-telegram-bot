@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -115,6 +115,7 @@ from app.utils.constants import (
     PRIVILEGED_ROLES,
     ROLE_LABELS,
     ApplicationStatus,
+    EventParticipantRole,
 )
 from app.utils.constants import Role as RoleEnum
 from app.utils.deep_links import miniapp_event_url, miniapp_opportunity_url, miniapp_task_url
@@ -1257,6 +1258,8 @@ class EventParticipantOut(BaseModel):
     participant_id: int
     participant_name: str
     status: str
+    role: str
+    volunteer_hours: int | None
 
 
 def _to_participant_out(registration: EventRegistration, participant: User) -> EventParticipantOut:
@@ -1265,6 +1268,8 @@ def _to_participant_out(registration: EventRegistration, participant: User) -> E
         participant_id=participant.id,
         participant_name=f"{participant.first_name} {participant.last_name or ''}".strip(),
         status=registration.status,
+        role=registration.role,
+        volunteer_hours=registration.volunteer_hours,
     )
 
 
@@ -1304,6 +1309,40 @@ async def set_event_attendance_endpoint(
     if participant is None:
         raise HTTPException(status_code=404, detail="user_not_found")
     event_registration_service.set_attendance(registration, payload.attended)
+    return _to_participant_out(registration, participant)
+
+
+class ParticipantRoleIn(BaseModel):
+    role: EventParticipantRole
+    volunteer_hours: int | None = Field(default=None, ge=0, le=200)
+
+
+@router.post(
+    "/events/{event_id}/registrations/{registration_id}/role",
+    response_model=EventParticipantOut,
+)
+async def set_event_participant_role_endpoint(
+    event_id: int,
+    registration_id: int,
+    payload: ParticipantRoleIn,
+    _reviewer: User = Depends(require_event_reviewer),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> EventParticipantOut:
+    """Points/Ranks ToR section 19: what this participant actually did at
+    the event. Only sets the role -- it does not itself award points; the
+    role bonus is applied automatically the next time attendance is
+    confirmed/awarded (app.services.activity_scoring_service)."""
+    registration = await session.get(EventRegistration, registration_id)
+    if registration is None or registration.event_id != event_id:
+        raise HTTPException(status_code=404, detail="registration_not_found")
+    participant = await session.get(User, registration.user_id)
+    if participant is None:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    registration.role = payload.role
+    registration.volunteer_hours = (
+        payload.volunteer_hours if payload.role == EventParticipantRole.VOLUNTEER else None
+    )
     return _to_participant_out(registration, participant)
 
 

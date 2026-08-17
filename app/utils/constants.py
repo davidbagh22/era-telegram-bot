@@ -295,6 +295,118 @@ DIGITAL_ENGAGEMENT_POINTS = {
     "goal_completed": 25,
 }
 
+
+# --- Event Scoring Profile (Points/Ranks ToR sections 16-20, phase 2) ------
+# "What does this event count toward, and who did what" -- set once at event
+# creation, then app/services/activity_scoring_service.py applies it
+# automatically every time attendance is confirmed. Existing
+# Event.points_for_visit (admin-set per event) is untouched -- these are
+# *additional*, role-scoped bonuses on top of it, not a replacement.
+
+
+class EventScoringPreset(StrEnum):
+    """Section 17's ready-made presets. STANDARD is the default for every
+    existing event (server_default), so nothing changes for events an admin
+    hasn't opted into a preset for."""
+
+    STANDARD = "standard"
+    VOLUNTEERING = "volunteering"
+    CULTURE = "culture"
+    PROJECT = "project"
+    MEDIA = "media"
+    PARTNER = "partner"
+    LEADERSHIP = "leadership"
+
+
+EVENT_SCORING_PRESET_LABELS = {
+    EventScoringPreset.STANDARD: "Обычное событие",
+    EventScoringPreset.VOLUNTEERING: "Волонтёрская акция",
+    EventScoringPreset.CULTURE: "Культурное мероприятие",
+    EventScoringPreset.PROJECT: "Проектное мероприятие",
+    EventScoringPreset.MEDIA: "Медиа-активность",
+    EventScoringPreset.PARTNER: "Партнёрское / внешнее",
+    EventScoringPreset.LEADERSHIP: "Лидерское / образовательное",
+}
+
+# The activity metric(s) a preset's *contributors* (any role beyond plain
+# participant) add to, beyond the always-on events_attended count every
+# attendee gets. Mirrors the section 20 worked example: a plain participant
+# at a volunteering event only gets attendance + events_attended, while the
+# volunteer/organizer roles additionally pick up these preset metrics.
+EVENT_SCORING_PRESET_METRICS: dict[str, list[str]] = {
+    EventScoringPreset.STANDARD: [],
+    EventScoringPreset.VOLUNTEERING: ["volunteer_activities", "social_activities"],
+    EventScoringPreset.CULTURE: ["culture_activities"],
+    EventScoringPreset.PROJECT: ["project_activities"],
+    EventScoringPreset.MEDIA: ["media_activities"],
+    EventScoringPreset.PARTNER: ["partner_activities"],
+    EventScoringPreset.LEADERSHIP: ["leadership_activities"],
+}
+
+
+class EventParticipantRole(StrEnum):
+    """Section 19's per-event roles. PARTICIPANT (the default) carries no
+    bonus -- it's just Event.points_for_visit, unchanged."""
+
+    PARTICIPANT = "participant"
+    VOLUNTEER = "volunteer"
+    ORGANIZER_HELPER = "organizer_helper"
+    ORGANIZER = "organizer"
+    COORDINATOR = "coordinator"
+    SPEAKER = "speaker"
+    MODERATOR = "moderator"
+    MEDIA = "media"
+    PHOTOGRAPHER = "photographer"
+    VIDEOGRAPHER = "videographer"
+    OTHER = "other"
+
+
+EVENT_ROLE_LABELS = {
+    EventParticipantRole.PARTICIPANT: "Участник",
+    EventParticipantRole.VOLUNTEER: "Волонтёр",
+    EventParticipantRole.ORGANIZER_HELPER: "Помощь в организации",
+    EventParticipantRole.ORGANIZER: "Организатор",
+    EventParticipantRole.COORDINATOR: "Координатор",
+    EventParticipantRole.SPEAKER: "Спикер",
+    EventParticipantRole.MODERATOR: "Модератор",
+    EventParticipantRole.MEDIA: "Медиа",
+    EventParticipantRole.PHOTOGRAPHER: "Фотограф",
+    EventParticipantRole.VIDEOGRAPHER: "Видеограф",
+    EventParticipantRole.OTHER: "Другое",
+}
+
+# Flat role bonus (ToR section 7). VOLUNTEER isn't here -- it's computed as
+# hours * VOLUNTEER_HOURLY_POINTS, capped at VOLUNTEER_HOURS_POINTS_CAP.
+# OTHER carries no automatic bonus (admin can still award manually).
+EVENT_ROLE_POINTS: dict[str, int] = {
+    EventParticipantRole.PARTICIPANT: 0,
+    EventParticipantRole.ORGANIZER_HELPER: 150,
+    EventParticipantRole.ORGANIZER: 250,
+    EventParticipantRole.COORDINATOR: 300,
+    EventParticipantRole.SPEAKER: 150,
+    EventParticipantRole.MODERATOR: 150,
+    EventParticipantRole.MEDIA: 150,
+    EventParticipantRole.PHOTOGRAPHER: 150,
+    EventParticipantRole.VIDEOGRAPHER: 150,
+    EventParticipantRole.OTHER: 0,
+}
+
+VOLUNTEER_HOURLY_POINTS = 25
+VOLUNTEER_HOURS_POINTS_CAP = 200
+
+# Which "how many times has this person done X" counter a role's bonus adds
+# to, on top of the preset's own metrics (see EVENT_SCORING_PRESET_METRICS).
+EVENT_ROLE_METRIC: dict[str, str] = {
+    EventParticipantRole.ORGANIZER_HELPER: "events_organized",
+    EventParticipantRole.ORGANIZER: "events_organized",
+    EventParticipantRole.COORDINATOR: "events_organized",
+    EventParticipantRole.SPEAKER: "leadership_activities",
+    EventParticipantRole.MODERATOR: "leadership_activities",
+    EventParticipantRole.MEDIA: "media_activities",
+    EventParticipantRole.PHOTOGRAPHER: "media_activities",
+    EventParticipantRole.VIDEOGRAPHER: "media_activities",
+}
+
 DEFAULT_POINTS = {
     "Регистрация в боте": 5,
     "Посещение мероприятия": 5,
