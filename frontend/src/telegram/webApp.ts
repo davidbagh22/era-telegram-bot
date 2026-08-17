@@ -1,6 +1,6 @@
 // Minimal typed bridge to the Telegram WebApp JS SDK loaded via the
-// <script> tag in index.html. ERA intentionally keeps its own dark visual
-// system instead of inheriting Telegram's light palette.
+// <script> tag in index.html. ERA intentionally keeps its own light,
+// signal-gradient visual system instead of inheriting Telegram's palette.
 interface TelegramHapticFeedback {
   impactOccurred?: (style: "light" | "medium" | "heavy" | "rigid" | "soft") => void;
   notificationOccurred?: (type: "error" | "success" | "warning") => void;
@@ -48,19 +48,19 @@ export function initTelegramWebApp(): void {
 }
 
 export function getColorScheme(): "light" | "dark" {
-  return "dark";
+  return "light";
 }
 
 export function applyTelegramTheme(): void {
-  document.documentElement.dataset.theme = "dark";
-  document.documentElement.style.backgroundColor = "#0b0c0e";
-  document.body?.style.setProperty("background-color", "#0b0c0e");
+  document.documentElement.dataset.theme = "light";
+  document.documentElement.style.backgroundColor = "#F7F7FA";
+  document.body?.style.setProperty("background-color", "#F7F7FA");
 
   const webApp = getTelegramWebApp();
   // Keep Telegram's surrounding Mini App chrome visually continuous with ERA.
-  try { webApp?.setHeaderColor?.("#0b0c0e"); } catch { /* older clients */ }
-  try { webApp?.setBackgroundColor?.("#0b0c0e"); } catch { /* older clients */ }
-  try { webApp?.setBottomBarColor?.("#0b0c0e"); } catch { /* older clients */ }
+  try { webApp?.setHeaderColor?.("#F7F7FA"); } catch { /* older clients */ }
+  try { webApp?.setBackgroundColor?.("#F7F7FA"); } catch { /* older clients */ }
+  try { webApp?.setBottomBarColor?.("#F7F7FA"); } catch { /* older clients */ }
 }
 
 export function selectionHaptic(): void {

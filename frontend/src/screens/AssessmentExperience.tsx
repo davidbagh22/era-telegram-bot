@@ -286,7 +286,7 @@ function AssessmentRunner({
         <Card gradient>
           <small>ГОТОВО К РЕЗУЛЬТАТУ</small>
           <h2 style={{ marginBottom: 6 }}>Все ответы сохранены</h2>
-          <p style={{ margin: 0, color: "rgba(255,255,255,.78)" }}>
+          <p style={{ margin: 0, color: "var(--era-text-secondary)" }}>
             До отправки можно вернуться и изменить любой ответ. После завершения эта сессия останется отдельной записью в истории.
           </p>
         </Card>

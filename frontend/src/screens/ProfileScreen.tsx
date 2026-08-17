@@ -5,9 +5,10 @@ import { Avatar } from "../components/Avatar";
 import { BottomSheet } from "../components/BottomSheet";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
+import { MonoLabel } from "../components/MonoLabel";
 import { ProgressBar } from "../components/ProgressBar";
-import { ProgressRing } from "../components/ProgressRing";
 import { Skeleton, SkeletonCard } from "../components/Skeleton";
+import { SignalOrb } from "../components/SignalOrb";
 import { StatusBanner } from "../components/StatusBanner";
 import { useToast } from "../components/Toast";
 import { useAsync } from "../hooks/useAsync";
@@ -175,35 +176,41 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
   return (
     <div className="era-page era-stagger" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
       <Card gradient style={{ position: "relative", overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: "0.875rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.875rem", minWidth: 0 }}>
-            <Avatar firstName={data.first_name} lastName={data.last_name} />
-            <div style={{ minWidth: 0 }}>
-              <p style={{ margin: "0 0 0.2rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
-                Мой путь в ЭРА
-              </p>
-              <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)", margin: 0, overflowWrap: "anywhere" }}>
-                {data.full_name || data.first_name}
-              </h1>
-              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>
-                {data.growth.label}{data.city ? ` · ${data.city}` : ""}
-              </p>
-            </div>
-          </div>
-
-          <div style={{ position: "relative", width: 82, height: 82 }} aria-label={`Статус роста ${Math.round(orbitPercent * 100)} процентов`}>
-            <ProgressRing percent={orbitPercent} size={82} animationKey="profile-status-orbit" />
-            <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", textAlign: "center" }}>
-              <div>
-                <strong style={{ display: "block", fontSize: ".98rem", lineHeight: 1 }}>{Math.round(orbitPercent * 100)}%</strong>
-                <span style={{ display: "block", marginTop: 2, color: "var(--era-text-muted)", fontSize: ".58rem" }}>STATUS</span>
-              </div>
-            </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem", minWidth: 0 }}>
+          <Avatar firstName={data.first_name} lastName={data.last_name} size="lg" />
+          <div style={{ minWidth: 0 }}>
+            <MonoLabel tone="violet">Мой путь в ЭРА</MonoLabel>
+            <h1
+              style={{
+                fontFamily: "var(--era-font-display)",
+                fontSize: "var(--era-text-3xl)",
+                fontWeight: 800,
+                margin: "0.25rem 0 0",
+                letterSpacing: "-0.02em",
+                textTransform: "uppercase",
+                overflowWrap: "anywhere",
+              }}
+            >
+              {data.full_name || data.first_name}
+            </h1>
+            <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-secondary)" }}>
+              {data.growth.label}{data.city ? ` · ${data.city}` : ""}
+            </p>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem", marginTop: "1rem" }}>
-          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{points}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>баллов</span></div>
-          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{totalResults}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>результатов</span></div>
+
+        <div style={{ display: "flex", justifyContent: "center", padding: "1.5rem 0 0.5rem" }}>
+          <SignalOrb percent={orbitPercent} size={168} animationKey="profile-signal-orb">
+            <div>
+              <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "2.1rem", fontWeight: 900, lineHeight: 1 }}>{points}</strong>
+              <MonoLabel>баллов</MonoLabel>
+            </div>
+          </SignalOrb>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem", marginTop: "0.5rem" }}>
+          <div style={{ textAlign: "center" }}><strong style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)", fontWeight: 800 }}>{Math.round(orbitPercent * 100)}%</strong><span style={{ display: "block", color: "var(--era-text-secondary)", fontSize: "var(--era-text-xs)" }}>до следующего ранга</span></div>
+          <div style={{ textAlign: "center" }}><strong style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)", fontWeight: 800 }}>{totalResults}</strong><span style={{ display: "block", color: "var(--era-text-secondary)", fontSize: "var(--era-text-xs)" }}>результатов</span></div>
         </div>
       </Card>
 

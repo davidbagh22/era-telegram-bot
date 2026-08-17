@@ -36,11 +36,11 @@ export function AdminDevelopmentScreen() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
       <Card gradient>
-        <p style={{ margin: 0, color: "rgba(255,255,255,.68)", fontSize: "var(--era-text-xs)", fontWeight: 850, letterSpacing: ".08em" }}>
+        <p style={{ margin: 0, color: "var(--era-text-secondary)", fontSize: "var(--era-text-xs)", fontWeight: 850, letterSpacing: ".08em" }}>
           ЛЮДИ / СОСТОЯНИЕ
         </p>
         <h2 style={{ margin: ".35rem 0 0", fontSize: "var(--era-text-2xl)" }}>Мой вектор · сообщество</h2>
-        <p style={{ margin: ".5rem 0 0", color: "rgba(255,255,255,.76)" }}>
+        <p style={{ margin: ".5rem 0 0", color: "var(--era-text-secondary)" }}>
           Добровольные Check-in помогают видеть потребности сообщества. Это не рейтинг людей и не основание для автоматических решений.
         </p>
       </Card>

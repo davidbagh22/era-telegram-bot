@@ -110,7 +110,7 @@ export function AdminMaintenanceScreen({ onOpen }: AdminMaintenanceScreenProps) 
       <Card
         style={{
           overflow: "hidden",
-          background: "radial-gradient(circle at 90% 0%, rgba(227,38,54,.16), transparent 42%), var(--era-surface)",
+          background: "radial-gradient(circle at 90% 0%, rgba(99,44,255,.16), transparent 42%), var(--era-surface)",
         }}
       >
         <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>

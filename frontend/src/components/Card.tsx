@@ -2,23 +2,27 @@ import type { CSSProperties, ReactNode } from "react";
 
 interface CardProps {
   children: ReactNode;
+  /** Soft violet/orange light field instead of a flat white surface —
+   * for the one or two cards per screen that should read as "hero". */
   gradient?: boolean;
+  /** Rare near-black accent card (ToR §7). Use sparingly. */
+  dark?: boolean;
   style?: CSSProperties;
   onClick?: () => void;
 }
 
-export function Card({ children, gradient = false, style, onClick }: CardProps) {
+export function Card({ children, gradient = false, dark = false, style, onClick }: CardProps) {
   const interactive = Boolean(onClick);
   const sharedStyle: CSSProperties = {
     borderRadius: "var(--era-radius-card)",
     padding: "1rem",
-    border: gradient ? "1px solid rgba(227,38,54,0.14)" : "1px solid var(--era-border)",
-    background: gradient ? "var(--era-hero-bg)" : "var(--era-surface)",
-    boxShadow: gradient ? "0 16px 42px rgba(0,0,0,0.28)" : "var(--era-shadow-soft)",
-    color: "var(--era-text)",
+    border: dark ? undefined : gradient ? "1px solid rgba(99,44,255,0.16)" : "1px solid var(--era-border)",
+    background: dark ? undefined : gradient ? "var(--era-hero-bg)" : "var(--era-surface)",
+    boxShadow: dark ? "var(--era-shadow-lift)" : gradient ? "var(--era-shadow-lift)" : "var(--era-shadow-soft)",
+    color: dark ? "#f7f5ff" : "var(--era-text)",
     ...style,
   };
-  const className = gradient ? "era-card era-premium-ambient" : "era-card";
+  const className = dark ? "era-card era-card-dark" : gradient ? "era-card era-premium-ambient" : "era-card";
 
   if (interactive) {
     return (

@@ -1,58 +1,96 @@
-/* ERA DARK / RED — premium, high-contrast, motion-aware product system. */
+/* ERA LIGHT / SIGNAL — premium light base + living gradient light + editorial type.
+ *
+ * Formula: 60% light base / 25% soft color fields / 15% saturated signal accents.
+ * Never fully white/sterile, never fully dark. Dark surfaces are a rare accent
+ * (see --era-surface-dark, .era-card-dark), not the default.
+ *
+ * Legacy alias note: a handful of pre-redesign token names (--era-red,
+ * --era-red-bright, --era-gold, --era-gold-ink, --era-tint-red, --era-tint-gold …)
+ * are kept and repointed at the new palette below so every screen re-themes
+ * without a file-by-file rewrite. New code should prefer the canonical names
+ * (--era-violet, --era-blue, --era-magenta, --era-signal-red, --era-orange).
+ */
 :root,
 :root[data-theme="light"],
 :root[data-theme="dark"] {
-  color-scheme: dark;
+  color-scheme: light;
 
-  --era-red: #e32636;
-  --era-red-bright: #ff4050;
-  --era-deep-red: #981b28;
-  --era-magenta: #c81f32;
-  --era-crimson: #76151f;
-  --era-gold: #c5a264;
-  --era-gold-ink: #e0c58e;
-  --era-gradient: linear-gradient(135deg, #e32636 0%, #ad1c2a 100%);
+  /* --- Canonical signal palette (ToR §2/§29) --- */
+  --era-blue: #3c43ff;
+  --era-violet: #632cff;
+  --era-magenta: #d71978;
+  --era-signal-red: #f2294a;
+  --era-orange: #ff6400;
 
-  --era-black: #0b0c0e;
-  --era-plum: #111216;
-  --era-surface-dark: #141519;
-  --era-bg: #0b0c0e;
-  --era-bg-subtle: #101115;
-  --era-surface: #15161a;
-  --era-surface-2: #1b1c21;
-  --era-surface-3: #22232a;
-  --era-glass: rgba(17, 18, 22, 0.88);
+  --era-bg: #f7f7fa;
+  --era-bg-soft: #f2effa;
+  --era-surface: #ffffff;
+  --era-surface-dark: #111118;
+
+  --era-text: #111118;
+  --era-text-secondary: #6f7180;
+  --era-text-muted-token: #a1a3af;
+
+  /* --- Legacy aliases (repointed, not renamed — see file header) --- */
+  --era-red: var(--era-violet);
+  --era-red-bright: #7b3bff;
+  --era-deep-red: #4a1fb8;
+  --era-crimson: var(--era-signal-red);
+  --era-gold: var(--era-orange);
+  --era-gold-ink: #b34700;
+  --era-black: var(--era-surface-dark);
+  --era-plum: #1b1730;
+  --era-error: var(--era-signal-red);
+
+  --era-surface-2: #f3f3f8;
+  --era-surface-3: #ececf5;
+  --era-bg-subtle: var(--era-bg-soft);
+  --era-glass: rgba(255, 255, 255, 0.72);
   --era-hero-bg:
-    radial-gradient(85% 105% at 96% 0%, rgba(227, 38, 54, 0.20), transparent 54%),
-    radial-gradient(55% 75% at 8% 100%, rgba(197, 162, 100, 0.07), transparent 70%),
-    linear-gradient(145deg, #18191e 0%, #121317 58%, #0f1013 100%);
+    radial-gradient(85% 105% at 96% 0%, rgba(99, 44, 255, 0.16), transparent 54%),
+    radial-gradient(60% 80% at 6% 100%, rgba(255, 100, 0, 0.09), transparent 70%),
+    linear-gradient(145deg, #ffffff 0%, #f8f7fc 58%, #f3f0fb 100%);
 
-  --era-text: #f6f4f2;
-  --era-text-muted: #a8a9b0;
-  --era-text-faint: #777983;
-  --era-border: rgba(255, 255, 255, 0.08);
-  --era-border-strong: rgba(255, 255, 255, 0.13);
-  --era-success: #55bd82;
-  --era-success-bg: rgba(85, 189, 130, 0.13);
-  --era-warning: #d7a34b;
-  --era-error: #ff6675;
+  --era-text-muted: var(--era-text-secondary);
+  --era-text-faint: var(--era-text-muted-token);
+  --era-border: rgba(17, 17, 24, 0.08);
+  --era-border-strong: rgba(17, 17, 24, 0.14);
+  --era-success: #1f9d5c;
+  --era-success-bg: rgba(31, 157, 92, 0.12);
+  --era-warning: #c77700;
 
-  --era-shadow-soft: 0 12px 34px rgba(0, 0, 0, 0.22);
-  --era-shadow-lift: 0 18px 46px rgba(0, 0, 0, 0.30);
-  --era-shadow-dock: 0 18px 54px rgba(0, 0, 0, 0.42);
-  --era-shadow-overlay: 0 -18px 50px rgba(0, 0, 0, 0.48);
-  --era-shadow-red: 0 12px 30px rgba(227, 38, 54, 0.18);
+  --era-shadow-soft: 0 10px 28px rgba(17, 17, 24, 0.07);
+  --era-shadow-lift: 0 18px 44px rgba(17, 17, 24, 0.10);
+  --era-shadow-floating: 0 18px 44px rgba(17, 17, 24, 0.10);
+  --era-shadow-dock: 0 20px 48px rgba(17, 17, 24, 0.14);
+  --era-shadow-overlay: 0 -18px 44px rgba(17, 17, 24, 0.10);
+  --era-shadow-red: 0 14px 32px rgba(99, 44, 255, 0.22);
 
-  --era-tint-violet: rgba(227, 38, 54, 0.10);
-  --era-tint-red: rgba(227, 38, 54, 0.13);
-  --era-tint-gold: rgba(197, 162, 100, 0.12);
-  --era-ring-track: rgba(255, 255, 255, 0.10);
+  --era-glow-violet: 0 0 0 1px rgba(99, 44, 255, 0.14), 0 12px 34px rgba(99, 44, 255, 0.28);
+  --era-glow-hot: 0 12px 34px rgba(215, 25, 120, 0.24), 0 0 46px rgba(255, 100, 0, 0.16);
+
+  --era-tint-violet: rgba(99, 44, 255, 0.09);
+  --era-tint-red: var(--era-tint-violet);
+  --era-tint-gold: rgba(255, 100, 0, 0.10);
+  --era-ring-track: rgba(17, 17, 24, 0.07);
+
+  --era-gradient: linear-gradient(135deg, var(--era-violet) 0%, var(--era-magenta) 100%);
+  --era-gradient-cool: linear-gradient(135deg, var(--era-blue) 0%, var(--era-violet) 100%);
+  --era-gradient-hot: linear-gradient(135deg, var(--era-violet) 0%, var(--era-magenta) 55%, var(--era-orange) 100%);
+  --era-gradient-signal: linear-gradient(135deg, var(--era-violet) 0%, var(--era-magenta) 52%, var(--era-orange) 100%);
+
+  --era-grain-opacity: 0.025;
 
   --era-radius-sm: 0.75rem;
-  --era-radius-card: 22px;
-  --era-radius-control: 14px;
+  --era-radius-md: 1.125rem;
+  --era-radius-lg: 1.625rem;
+  --era-radius-xl: 1.875rem;
+  --era-radius-card: var(--era-radius-lg);
+  --era-radius-control: 0.875rem;
   --era-radius-pill: 999px;
-  --era-radius-sheet: 1.5rem;
+  --era-radius-sheet: 1.75rem;
+
+  --era-bottom-nav-clearance: calc(6.15rem + env(safe-area-inset-bottom, 0px));
 
   /* Motion standard from the final ERA design brief. */
   --era-motion-tap: 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -63,8 +101,8 @@
   --era-motion-orbit: 820ms cubic-bezier(0.22, 1, 0.36, 1);
   --era-motion-achievement: 1.05s cubic-bezier(0.22, 1, 0.36, 1);
 
-  --era-font-display: "Manrope", "Segoe UI", system-ui, sans-serif;
-  --era-font-body: "Manrope", "Segoe UI", system-ui, sans-serif;
+  --era-font-display: "Onest", "Segoe UI", system-ui, sans-serif;
+  --era-font-body: "Onest", "Segoe UI", system-ui, sans-serif;
 
   --era-text-xs: 0.75rem;
   --era-text-sm: 0.8125rem;
@@ -99,9 +137,11 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(70% 42% at 104% -4%, rgba(227, 38, 54, 0.12), transparent 66%),
-    radial-gradient(52% 34% at -8% 32%, rgba(197, 162, 100, 0.035), transparent 72%),
-    linear-gradient(180deg, #0d0e11 0%, #0b0c0e 58%, #090a0c 100%);
+    radial-gradient(62% 40% at 100% -6%, rgba(99, 44, 255, 0.12), transparent 62%),
+    radial-gradient(50% 34% at 6% 8%, rgba(60, 67, 255, 0.07), transparent 68%),
+    radial-gradient(56% 38% at -6% 78%, rgba(255, 100, 0, 0.055), transparent 68%),
+    radial-gradient(46% 30% at 96% 88%, rgba(215, 25, 120, 0.05), transparent 66%),
+    var(--era-bg);
   color: var(--era-text);
   font-family: var(--era-font-body);
   font-size: var(--era-text-base);
@@ -115,10 +155,10 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.22;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
-  mix-blend-mode: soft-light;
-  z-index: -1;
+  opacity: var(--era-grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+  z-index: 9999;
 }
 
 button,
@@ -131,12 +171,12 @@ select {
 button {
   font-family: var(--era-font-body);
   font-size: var(--era-text-base);
-  font-weight: 750;
+  font-weight: 700;
   min-height: 44px;
   padding: 0.625rem 1rem;
   border-radius: var(--era-radius-control);
   border: 1px solid var(--era-border);
-  background: var(--era-surface-2);
+  background: var(--era-surface);
   color: var(--era-text);
   cursor: pointer;
   transition:
@@ -150,16 +190,15 @@ button {
 
 button:active:not(:disabled) { transform: scale(0.98); }
 button:disabled { opacity: 0.48; cursor: not-allowed; }
-button:focus-visible { outline: 2px solid rgba(227, 38, 54, 0.72); outline-offset: 2px; }
+button:focus-visible { outline: 2px solid rgba(99, 44, 255, 0.6); outline-offset: 2px; }
 
 @media (hover: hover) and (pointer: fine) {
   button:hover:not(:disabled) {
     border-color: var(--era-border-strong);
-    background: var(--era-surface-3);
+    background: var(--era-surface-2);
   }
   .era-btn-primary:hover:not(:disabled) {
-    box-shadow: 0 14px 34px rgba(227, 38, 54, 0.24);
-    border-color: transparent;
+    box-shadow: 0 16px 36px rgba(99, 44, 255, 0.26);
   }
   .era-card[role="button"]:hover,
   button.era-card:hover {
@@ -188,18 +227,19 @@ input:not([type="checkbox"]):not([type="radio"]):focus,
 textarea:focus,
 select:focus {
   outline: none;
-  background: #202126;
-  border-color: rgba(227, 38, 54, 0.56);
-  box-shadow: 0 0 0 3px rgba(227, 38, 54, 0.10);
+  background: var(--era-surface);
+  border-color: rgba(99, 44, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(99, 44, 255, 0.10);
 }
 input:disabled, textarea:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
-input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--era-red); cursor: pointer; flex-shrink: 0; }
+input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--era-violet); cursor: pointer; flex-shrink: 0; }
 
+/* Primary CTA: solid violet, per ToR §26 ("gradient only for rare high-value CTA"). */
 .era-btn-primary {
   position: relative;
   overflow: hidden;
   border: 1px solid transparent;
-  background: linear-gradient(135deg, #e32636 0%, #b71f2d 100%);
+  background: var(--era-violet);
   color: #fff;
   box-shadow: var(--era-shadow-red);
 }
@@ -212,12 +252,21 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
   width: 28%;
   opacity: 0;
   transform: skewX(-16deg);
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent);
   transition: left 420ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease;
   pointer-events: none;
 }
-.era-btn-primary:active:not(:disabled) { background: linear-gradient(135deg, #c91f2e 0%, #8f1823 100%); }
+.era-btn-primary:active:not(:disabled) { background: #5322d9; }
 .era-btn-primary:active:not(:disabled)::after { left: 112%; opacity: .8; }
+
+/* Rare high-value CTA: the full signal gradient. Use sparingly. */
+.era-btn-signal {
+  border: 1px solid transparent;
+  background: var(--era-gradient-signal);
+  color: #fff;
+  box-shadow: var(--era-glow-hot);
+}
+.era-btn-signal:active:not(:disabled) { filter: brightness(0.94); }
 
 .era-btn-secondary {
   display: inline-flex;
@@ -227,8 +276,21 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
   padding: .625rem 1rem;
   border-radius: var(--era-radius-control);
   border: 1px solid var(--era-border);
-  background: var(--era-surface-2);
+  background: var(--era-surface);
   color: var(--era-text);
+}
+
+.era-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: .625rem 1rem;
+  border-radius: var(--era-radius-control);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--era-text-secondary);
+  box-shadow: none;
 }
 
 .era-card {
@@ -240,6 +302,16 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
 }
 .era-card[role="button"], button.era-card { cursor: pointer; }
 .era-card[role="button"]:active, button.era-card:active { transform: scale(0.98); }
+
+/* Rare dark accent card (ToR §7) — used for a handful of "statement" blocks. */
+.era-card-dark {
+  background: radial-gradient(120% 140% at 100% 0%, rgba(215, 25, 120, 0.38), transparent 55%),
+    radial-gradient(90% 100% at 0% 100%, rgba(255, 100, 0, 0.22), transparent 60%),
+    var(--era-surface-dark);
+  color: #f7f5ff;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.era-card-dark .era-muted-on-dark { color: rgba(247, 245, 255, 0.62); }
 
 .era-pilltabs-scroller { scrollbar-width: none; -ms-overflow-style: none; }
 .era-pilltabs-scroller::-webkit-scrollbar { display: none; }
@@ -282,14 +354,14 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
   100% { background-position: 120% 0; }
 }
 .era-skeleton {
-  background: linear-gradient(90deg, #17181c 25%, #24252b 50%, #17181c 75%);
+  background: linear-gradient(90deg, #edecf5 25%, #f7f6fb 50%, #edecf5 75%);
   background-size: 200% 100%;
   animation: era-shimmer 1.35s ease-in-out infinite;
   border-radius: var(--era-radius-sm);
 }
 
 @keyframes era-overlay-in { from { opacity: 0; } to { opacity: 1; } }
-.era-overlay-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.64); animation: era-overlay-in var(--era-motion-fast); z-index: 40; }
+.era-overlay-backdrop { position: fixed; inset: 0; background: rgba(17, 17, 24, 0.5); animation: era-overlay-in var(--era-motion-fast); z-index: 40; }
 @keyframes era-sheet-in { from { opacity: .6; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
 .era-bottom-sheet { animation: era-sheet-in var(--era-motion-fast) cubic-bezier(0.22, 1, 0.36, 1); }
 @keyframes era-modal-in { from { opacity: 0; transform: translateY(8px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -303,6 +375,18 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
   100% { transform: scale(1); opacity: 1; }
 }
 .era-success-state { animation: era-success-pop 420ms cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* Uppercase / mono-style technical label (ToR §8). */
+.era-mono-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 800;
+  font-size: var(--era-text-xs);
+  color: var(--era-text-secondary);
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

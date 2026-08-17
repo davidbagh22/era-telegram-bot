@@ -31,7 +31,7 @@ export function UserPublicProfileScreen({ userId, onBack }: UserPublicProfileScr
     <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: ".8rem" }}>
       {onBack && <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← Назад</button>}
       <Card gradient style={{ textAlign: "center", padding: "1.3rem" }}>
-        <div style={{ width: 72, height: 72, borderRadius: "50%", margin: "0 auto .8rem", display: "grid", placeItems: "center", background: "rgba(255,255,255,.15)", fontSize: "1.35rem", fontWeight: 900 }}>{initials || "Э"}</div>
+        <div style={{ width: 72, height: 72, borderRadius: "50%", margin: "0 auto .8rem", display: "grid", placeItems: "center", background: "var(--era-gradient-signal)", color: "#fff", fontSize: "1.35rem", fontWeight: 900, boxShadow: "var(--era-glow-violet)" }}>{initials || "Э"}</div>
         <h1 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{user.name}</h1>
         <div style={{ display: "flex", justifyContent: "center", gap: ".4rem", flexWrap: "wrap", marginTop: ".65rem" }}>
           <StatusBadge label={user.role_label} tone="violet" />
@@ -42,7 +42,7 @@ export function UserPublicProfileScreen({ userId, onBack }: UserPublicProfileScr
         <strong>В ЭРА</strong>
         {user.departments.length > 0 ? (
           <div style={{ display: "flex", flexDirection: "column", gap: ".45rem", marginTop: ".6rem" }}>
-            {user.departments.map((department) => <div key={department} style={{ padding: ".65rem .75rem", borderRadius: ".8rem", background: "rgba(255,255,255,.04)" }}>{department}</div>)}
+            {user.departments.map((department) => <div key={department} style={{ padding: ".65rem .75rem", borderRadius: ".8rem", background: "var(--era-surface-2)" }}>{department}</div>)}
           </div>
         ) : (
           <p style={{ margin: ".4rem 0 0", color: "var(--era-text-muted)" }}>Участник пока не закреплён за департаментом.</p>

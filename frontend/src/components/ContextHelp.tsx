@@ -328,7 +328,7 @@ export function ContextHelp({ mode }: { mode: ContextHelpMode }) {
             ["Что это даст", topic.value],
             ["Как пользоваться", topic.how],
           ].map(([label, text]) => (
-            <div key={label} style={{ padding: "0.8rem", borderRadius: "var(--era-radius-card)", background: "var(--era-surface-soft)", border: "1px solid var(--era-border)" }}>
+            <div key={label} style={{ padding: "0.8rem", borderRadius: "var(--era-radius-card)", background: "var(--era-surface-2)", border: "1px solid var(--era-border)" }}>
               <strong style={{ display: "block", marginBottom: "0.25rem", fontSize: "var(--era-text-sm)" }}>{label}</strong>
               <p style={{ margin: 0, color: "var(--era-text-muted)", lineHeight: 1.5, fontSize: "var(--era-text-sm)" }}>{text}</p>
             </div>

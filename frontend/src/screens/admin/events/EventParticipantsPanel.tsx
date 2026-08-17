@@ -87,9 +87,9 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
       <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← К мероприятиям</button>
 
       <Card gradient>
-        <p style={{ margin: "0 0 .3rem", fontSize: ".75rem", fontWeight: 800, color: "rgba(255,255,255,.7)" }}>УЧАСТНИКИ СОБЫТИЯ</p>
+        <p style={{ margin: "0 0 .3rem", fontSize: ".75rem", fontWeight: 800, color: "var(--era-text-secondary)" }}>УЧАСТНИКИ СОБЫТИЯ</p>
         <h2 style={{ margin: 0 }}>Присутствие подтверждает участник</h2>
-        <p style={{ margin: ".4rem 0 0", color: "rgba(255,255,255,.8)" }}>
+        <p style={{ margin: ".4rem 0 0", color: "var(--era-text-secondary)" }}>
           Запустите событие, а в конце передайте присутствующим уникальный код. После ввода баллы начислятся автоматически.
         </p>
       </Card>

@@ -36,9 +36,9 @@ export function AdminToolsScreen() {
         <Card gradient style={{ position: "relative", overflow: "hidden", minHeight: 166 }}>
           <div aria-hidden="true" style={{ position: "absolute", width: 190, height: 190, borderRadius: "50%", right: -72, top: -76, background: "radial-gradient(circle, rgba(255,255,255,0.28), rgba(255,255,255,0.02) 66%, transparent 70%)" }} />
           <div style={{ position: "relative" }}>
-            <p style={{ margin: "0 0 0.3rem", color: "rgba(255,255,255,0.72)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Центр связи</p>
+            <p style={{ margin: "0 0 0.3rem", color: "var(--era-text-secondary)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Центр связи</p>
             <h2 style={{ margin: 0, fontSize: "var(--era-text-3xl)", lineHeight: 1.05 }}>Управляйте голосом ЭРА</h2>
-            <p style={{ margin: "0.6rem 0 0", maxWidth: 310, color: "rgba(255,255,255,0.84)", lineHeight: 1.45 }}>
+            <p style={{ margin: "0.6rem 0 0", maxWidth: 310, color: "var(--era-text-secondary)", lineHeight: 1.45 }}>
               Чаты, рассылки, приветствия и ежедневный ритм — в одном месте. Здесь видно не список настроек, а то, как организация общается с людьми.
             </p>
           </div>

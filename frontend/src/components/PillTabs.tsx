@@ -32,10 +32,10 @@ export function PillTabs<T extends string>({ options, active, onChange }: PillTa
               width: "100%",
               minHeight: "2.75rem",
               padding: "0.625rem 0.75rem",
-              border: `1px solid ${isActive ? "rgba(120, 61, 255, 0.55)" : "var(--era-border)"}`,
+              border: `1px solid ${isActive ? "rgba(99, 44, 255, 0.45)" : "var(--era-border)"}`,
               borderRadius: "var(--era-radius-control)",
               background: isActive
-                ? "linear-gradient(135deg, rgba(120,61,255,0.2), rgba(227,59,73,0.1)), var(--era-surface)"
+                ? "linear-gradient(135deg, rgba(99,44,255,0.14), rgba(255,100,0,0.08)), var(--era-surface)"
                 : "var(--era-surface)",
               color: isActive ? "var(--era-text)" : "var(--era-text-muted)",
               fontSize: "var(--era-text-sm)",

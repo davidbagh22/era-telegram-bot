@@ -69,8 +69,8 @@ export function AdminBottomNav({ active, onChange }: AdminBottomNavProps) {
                   position: "absolute",
                   inset: 0,
                   borderRadius: "var(--era-radius-pill)",
-                  background: "linear-gradient(135deg, var(--era-violet), var(--era-red))",
-                  boxShadow: "0 8px 18px rgba(116, 44, 196, 0.4)",
+                  background: "var(--era-gradient-signal)",
+                  boxShadow: "var(--era-glow-violet)",
                   zIndex: -1,
                 }}
               />

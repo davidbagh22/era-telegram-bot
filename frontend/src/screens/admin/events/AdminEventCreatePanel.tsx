@@ -76,8 +76,8 @@ function StepHeader({ step }: { step: number }) {
         <span>ШАГ {step} ИЗ 10</span>
         <span>{STEP_TITLES[step - 1]}</span>
       </div>
-      <div style={{ height: 5, borderRadius: 99, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${step * 10}%`, background: "linear-gradient(90deg,#E51B36,#FF304D,#8A1FE0)", transition: "width .2s ease" }} />
+      <div style={{ height: 5, borderRadius: 99, background: "var(--era-ring-track)", overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${step * 10}%`, background: "var(--era-gradient-signal)", transition: "width .2s ease" }} />
       </div>
     </div>
   );
@@ -202,9 +202,9 @@ export function AdminEventCreatePanel() {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         <Card gradient>
-          <p style={{ margin: "0 0 .3rem", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase", color: "rgba(255,255,255,.7)" }}>Конструктор события</p>
+          <p style={{ margin: "0 0 .3rem", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase", color: "var(--era-text-secondary)" }}>Конструктор события</p>
           <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>Создайте событие без огромной формы</h2>
-          <p style={{ margin: ".5rem 0 0", color: "rgba(255,255,255,.82)" }}>Десять коротких шагов. Каждый шаг сохраняется автоматически — можно закрыть приложение и продолжить позже.</p>
+          <p style={{ margin: ".5rem 0 0", color: "var(--era-text-secondary)" }}>Десять коротких шагов. Каждый шаг сохраняется автоматически — можно закрыть приложение и продолжить позже.</p>
         </Card>
         <button type="button" className="era-btn-primary" disabled={busy} onClick={() => void begin()} style={{ width: "100%" }}>
           {busy ? "Создаём…" : "＋ Создать мероприятие"}
@@ -286,7 +286,7 @@ export function AdminEventCreatePanel() {
             <Question title="Добавим афишу?" hint="Фото сразу станет главным визуалом карточки и страницы события. До 5 МБ." />
             {draft.has_poster ? (
               <div style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
-                <div style={{ minHeight: 150, borderRadius: "1rem", background: "linear-gradient(135deg,#710016,#E51B36,#8A1FE0)", display: "grid", placeItems: "center", fontWeight: 900 }}>Афиша загружена ✓</div>
+                <div style={{ minHeight: 150, borderRadius: "1rem", background: "linear-gradient(135deg,#632CFF,#D71978,#FF6400)", display: "grid", placeItems: "center", fontWeight: 900 }}>Афиша загружена ✓</div>
                 <label className="era-btn-primary" style={{ textAlign: "center", cursor: "pointer" }}>Заменить афишу<input hidden type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadEventPoster(draft.id, file).then(setDraft).catch((reason) => setError(describeActionError(reason))); }} /></label>
                 <button type="button" onClick={() => void removeEventPoster(draft.id).then(setDraft).catch((reason) => setError(describeActionError(reason)))}>Удалить</button>
               </div>
@@ -375,8 +375,8 @@ export function AdminEventCreatePanel() {
                 <Radio checked={draft.broadcast_targets.includes("audience:active")} onClick={() => mutate((current) => ({ ...current, broadcast_targets: ["bot", "audience:active"] }))} title="Выбранной аудитории — активным" />
                 <Radio checked={draft.broadcast_targets.length === 1 && draft.broadcast_targets[0] === "general"} onClick={() => mutate((current) => ({ ...current, broadcast_targets: ["general"] }))} title="В общий чат" />
                 <Radio checked={draft.broadcast_targets.includes("bot_and_chat")} onClick={() => mutate((current) => ({ ...current, broadcast_targets: ["bot_and_chat"] }))} title="Общий чат + бот" />
-                <Card style={{ marginTop: ".6rem", background: "rgba(229,27,54,.08)" }}><strong>Примерный охват: {draft.broadcast_estimate}</strong><p style={{ margin: ".25rem 0 0", color: "var(--era-text-muted)", fontSize: ".82rem" }}>Точное число может измениться к моменту публикации.</p></Card>
-                <div style={{ marginTop: ".75rem" }}><strong>Предпросмотр</strong><div style={{ marginTop: ".4rem", padding: ".8rem", borderRadius: ".9rem", background: "rgba(255,255,255,.04)" }}>🔥 <strong>{draft.title}</strong><br /><br />{draft.short_description || "Короткое описание появится здесь"}<br /><br />📅 {draft.event_date} · {draft.event_time}<br />📍 {draft.location || "Место"}</div></div>
+                <Card style={{ marginTop: ".6rem", background: "var(--era-tint-violet)" }}><strong>Примерный охват: {draft.broadcast_estimate}</strong><p style={{ margin: ".25rem 0 0", color: "var(--era-text-muted)", fontSize: ".82rem" }}>Точное число может измениться к моменту публикации.</p></Card>
+                <div style={{ marginTop: ".75rem" }}><strong>Предпросмотр</strong><div style={{ marginTop: ".4rem", padding: ".8rem", borderRadius: ".9rem", background: "var(--era-surface-2)" }}>🔥 <strong>{draft.title}</strong><br /><br />{draft.short_description || "Короткое описание появится здесь"}<br /><br />📅 {draft.event_date} · {draft.event_time}<br />📍 {draft.location || "Место"}</div></div>
               </>
             )}
           </>
@@ -385,7 +385,7 @@ export function AdminEventCreatePanel() {
         {step === 10 && (
           <>
             <Question title="Так событие увидят участники" hint="Проверьте главное. Вернуться на любой шаг можно кнопкой «Назад». Рассылка отправится только после публикации." />
-            <div style={{ minHeight: 150, borderRadius: "1rem", background: draft.has_poster ? `url(/api/v1/event-posters/${draft.id}) center/cover` : "linear-gradient(135deg,#710016,#E51B36,#8A1FE0)", marginBottom: ".75rem" }} />
+            <div style={{ minHeight: 150, borderRadius: "1rem", background: draft.has_poster ? `url(/api/v1/event-posters/${draft.id}) center/cover` : "linear-gradient(135deg,#632CFF,#D71978,#FF6400)", marginBottom: ".75rem" }} />
             <h2 style={{ margin: "0 0 .35rem", fontSize: "1.55rem" }}>{draft.title}</h2>
             <p style={{ margin: "0 0 .8rem", color: "var(--era-text-muted)" }}>{draft.short_description}</p>
             <Card style={{ padding: ".8rem" }}><strong>📅 {draft.event_date} · {draft.event_time}{draft.end_time ? `–${draft.end_time}` : ""}</strong><p style={{ margin: ".25rem 0 0" }}>📍 {draft.location}</p><p style={{ margin: ".25rem 0 0" }}>{draft.participant_limit ? `${draft.participant_limit} мест` : "Без ограничения мест"} · {draft.points_for_visit} баллов</p></Card>

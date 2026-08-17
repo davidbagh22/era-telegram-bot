@@ -92,7 +92,7 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
   const completed = Boolean(item.completed_at);
 
   return (
-    <Card style={{ borderColor: item.confirmation_open ? "rgba(197,162,100,.32)" : "rgba(255,255,255,.09)" }}>
+    <Card style={{ borderColor: item.confirmation_open ? "rgba(255,100,0,.32)" : "var(--era-border)" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: ".8rem" }}>
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", gap: ".65rem", alignItems: "center" }}>
@@ -107,7 +107,7 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
         </div>
 
         {item.attendance_code && (
-          <div style={{ border: "1px solid rgba(197,162,100,.24)", borderRadius: "1rem", padding: ".9rem", background: "rgba(197,162,100,.055)" }}>
+          <div style={{ border: "1px solid rgba(255,100,0,.24)", borderRadius: "1rem", padding: ".9rem", background: "rgba(255,100,0,.055)" }}>
             <span style={{ display: "block", color: "var(--era-text-muted)", fontSize: ".72rem", fontWeight: 800, letterSpacing: ".06em" }}>КОД ДЛЯ ВЕДУЩИХ</span>
             <div style={{ marginTop: ".35rem", fontSize: "clamp(1.6rem,8vw,2.25rem)", fontWeight: 950, letterSpacing: ".12em", color: "var(--era-gold-ink)" }}>
               {formatCode(item.attendance_code)}

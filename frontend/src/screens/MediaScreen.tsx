@@ -41,9 +41,9 @@ type DeskView =
   | "settings";
 
 const buttonStyle = (primary = false): React.CSSProperties => ({
-  border: primary ? "1px solid rgba(255,255,255,0.14)" : "1px solid var(--era-border)",
-  background: primary ? "var(--era-accent, #7c3aed)" : "var(--era-surface-2, rgba(255,255,255,0.05))",
-  color: "var(--era-text, #fff)",
+  border: primary ? "1px solid transparent" : "1px solid var(--era-border)",
+  background: primary ? "var(--era-violet)" : "var(--era-surface-2)",
+  color: primary ? "#fff" : "var(--era-text)",
   borderRadius: 14,
   padding: "0.75rem 0.9rem",
   fontWeight: 800,
@@ -335,11 +335,11 @@ export function MediaScreen({ onBack }: MediaScreenProps) {
       <>
         <Card gradient style={{ position: "relative", overflow: "hidden", minHeight: 178 }}>
           <div style={{ position: "relative", display: "grid", gap: 12 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 16, display: "grid", placeItems: "center", background: "rgba(255,255,255,0.14)", fontSize: 24 }}>◉</div>
+            <div style={{ width: 48, height: 48, borderRadius: 16, display: "grid", placeItems: "center", background: "var(--era-tint-violet)", color: "var(--era-violet)", fontSize: 24 }}>◉</div>
             <div>
-              <div style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 900, color: "rgba(255,255,255,0.65)" }}>Не наблюдай — делай</div>
+              <div style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 900, color: "var(--era-text-secondary)" }}>Не наблюдай — делай</div>
               <h2 style={{ margin: "0.2rem 0 0", fontSize: "var(--era-text-3xl)" }}>Медиа — точка входа в реальный проект</h2>
-              <p style={{ margin: "0.55rem 0 0", color: "rgba(255,255,255,0.78)", lineHeight: 1.45 }}>Возьми задачу, сделай материал, попади в команду и собери портфолио внутри ЭРА.</p>
+              <p style={{ margin: "0.55rem 0 0", color: "var(--era-text-secondary)", lineHeight: 1.45 }}>Возьми задачу, сделай материал, попади в команду и собери портфолио внутри ЭРА.</p>
             </div>
           </div>
         </Card>
@@ -354,7 +354,7 @@ export function MediaScreen({ onBack }: MediaScreenProps) {
 
         <Card style={{ display: "grid", gap: 9 }}>
           <strong>Есть идея?</strong>
-          <textarea value={idea} onChange={(event) => setIdea(event.target.value)} placeholder="Что можно снять, рассказать или попробовать?" rows={4} style={{ width: "100%", resize: "vertical", boxSizing: "border-box", borderRadius: 14, border: "1px solid var(--era-border)", background: "var(--era-surface-2, rgba(255,255,255,0.04))", color: "var(--era-text)", padding: "0.8rem", font: "inherit" }} />
+          <textarea value={idea} onChange={(event) => setIdea(event.target.value)} placeholder="Что можно снять, рассказать или попробовать?" rows={4} style={{ width: "100%", resize: "vertical", boxSizing: "border-box", borderRadius: 14, border: "1px solid var(--era-border)", background: "var(--era-surface-2)", color: "var(--era-text)", padding: "0.8rem", font: "inherit" }} />
           <button disabled={busy} type="button" onClick={() => void submitIdea()} style={buttonStyle(true)}>Отправить в Media Desk</button>
           {ideaStatus ? <div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>{ideaStatus}</div> : null}
         </Card>

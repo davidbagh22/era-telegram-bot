@@ -61,11 +61,10 @@ test("a pending applicant's Mini App updates itself after admin approval, withou
     // approval — proving the sync is real, not dependent on a fresh load.
     await applicantPage.getByRole("button", { name: "Проверить сейчас" }).click();
 
-    // The approved user now lands in the redesigned dark Home. ERA SCORE
+    // The approved user now lands in the redesigned light Home. "УРОВЕНЬ"
     // is the stable product landmark; the old "держим темп" heading was
     // removed by the final design system and must not be used as a test hook.
-    await expect(applicantPage.getByText("ERA SCORE")).toBeVisible();
-    await expect(applicantPage.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(applicantPage.getByText("УРОВЕНЬ", { exact: true })).toBeVisible();
     await expect(
       applicantPage.getByRole("heading", { name: "Заявка на рассмотрении" }),
     ).not.toBeVisible();

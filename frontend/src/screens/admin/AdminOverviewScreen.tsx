@@ -58,7 +58,7 @@ function KpiButton({ value, label, note, onClick }: { value: number; label: stri
         cursor: onClick ? "pointer" : "default",
       }}
     >
-      <Card style={{ minHeight: 112, padding: "0.9rem", background: "linear-gradient(145deg, rgba(255,255,255,.06), rgba(255,255,255,.025))" }}>
+      <Card style={{ minHeight: 112, padding: "0.9rem" }}>
         <div style={{ fontSize: "1.9rem", fontWeight: 950, lineHeight: 1 }}>{value}</div>
         <strong style={{ display: "block", marginTop: "0.45rem" }}>{label}</strong>
         <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: "0.76rem" }}>{note ?? "Открыть список →"}</span>
@@ -91,9 +91,9 @@ export function AdminOverviewScreen({ onOpenPeople, onOpenApplications, onOpenPr
       <Card gradient style={{ position: "relative", overflow: "hidden", minHeight: 172 }}>
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: "radial-gradient(70% 100% at 92% 0%, rgba(255,255,255,.2), transparent 62%)" }} />
         <div style={{ position: "relative" }}>
-          <p style={{ margin: "0 0 .3rem", color: "rgba(255,255,255,.72)", fontSize: "var(--era-text-xs)", fontWeight: 850, textTransform: "uppercase" }}>Добрый день</p>
+          <p style={{ margin: "0 0 .3rem", color: "var(--era-text-secondary)", fontSize: "var(--era-text-xs)", fontWeight: 850, textTransform: "uppercase" }}>Добрый день</p>
           <h1 style={{ margin: 0, fontSize: "clamp(1.75rem,7vw,2.35rem)", lineHeight: 1.04 }}>Вот что происходит в ЭРА сегодня</h1>
-          <div style={{ marginTop: ".9rem", display: "inline-flex", padding: ".4rem .7rem", borderRadius: 999, background: "rgba(255,255,255,.14)", fontWeight: 850 }}>
+          <div style={{ marginTop: ".9rem", display: "inline-flex", padding: ".4rem .7rem", borderRadius: 999, background: "var(--era-tint-violet)", color: "var(--era-violet)", fontWeight: 850 }}>
             {attention_total > 0 ? `${attention_total} требуют реакции` : "Очередь чистая ✓"}
           </div>
         </div>
@@ -114,7 +114,7 @@ export function AdminOverviewScreen({ onOpenPeople, onOpenApplications, onOpenPr
       <section>
         <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .55rem" }}>Требует внимания</h2>
         {attention_total === 0 && (metrics.event_waitlist ?? 0) === 0 ? (
-          <Card style={{ background: "rgba(255,255,255,.035)", textAlign: "center" }}>
+          <Card style={{ background: "var(--era-surface-2)", textAlign: "center" }}>
             <div style={{ fontSize: "1.7rem" }}>✓</div>
             <strong>Очередь чистая</strong>
             <p style={{ margin: ".3rem 0 0", color: "var(--era-text-muted)" }}>Сейчас нет решений, которые нельзя откладывать.</p>
