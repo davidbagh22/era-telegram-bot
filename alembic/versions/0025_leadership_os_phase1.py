@@ -11,19 +11,25 @@
 Does not touch PermissionGrant, Department, Direction, or any existing
 authorization check.
 
+Originally built as 0018 off 0017_task_deliveries (the head at the time);
+renumbered to 0025 and rebased onto 0024_referrals after merging main,
+which had independently grown its own 0018-0024 chain (PR #235,
+organization health analytics) in the meantime -- keeps a single linear
+head instead of a two-way fork.
+
 Verified: upgrade from 0017 on a fresh DB, and downgrade back to 0017, both
 green on SQLite and structurally identical to Postgres' plain ALTER TABLE
-path. (A downgrade-then-immediate-reupgrade-of-0018-again cycle can hit a
-SQLite-only batch/FK-recreate quirk unrelated to this data model; Postgres,
-which never needs table recreation for ADD/DROP COLUMN, is unaffected --
-not a concern for the actual upgrade-forward deploy path.)
+path. (A downgrade-then-immediate-reupgrade cycle can hit a SQLite-only
+batch/FK-recreate quirk unrelated to this data model; Postgres, which never
+needs table recreation for ADD/DROP COLUMN, is unaffected -- not a concern
+for the actual upgrade-forward deploy path.)
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0018_leadership_os_phase1"
-down_revision = "0017_task_deliveries"
+revision = "0025_leadership_os_phase1"
+down_revision = "0024_referrals"
 branch_labels = None
 depends_on = None
 
@@ -36,11 +42,38 @@ def _columns(table_name: str) -> set[str]:
     return {c["name"] for c in sa.inspect(op.get_bind()).get_columns(table_name)}
 
 
-# Plain add_column/drop_column (no batch_alter_table): every column here is
-# either nullable or carries a server_default, so SQLite and Postgres both
-# apply these as direct ALTER TABLE statements -- no table recreate, so no
-# need to name offices/user_offices' pre-existing anonymous constraints
+def _is_sqlite() -> bool:
+    return op.get_bind().dialect.name == "sqlite"
+
+
+# Plain add_column/drop_column (no batch_alter_table) for every column that
+# is nullable/server-defaulted and carries no FK, since SQLite and Postgres
+# both apply those as direct ALTER TABLE statements -- no table recreate, so
+# no need to name offices/user_offices' pre-existing anonymous constraints
 # (e.g. the 0001-era UniqueConstraint on user_offices) just to touch them.
+#
+# The two FK columns (reports_to_office_id, ended_by) are dialect-branched:
+# Postgres (production) always applies a FK-carrying ADD COLUMN directly, no
+# recreate involved, so it gets the real constraint. SQLite's behavior here
+# depends on how offices/user_offices happened to be created (Base.metadata.
+# create_all() in 0001 vs. an explicit op.create_table elsewhere in this
+# table's history) -- sometimes it demands the batch/recreate ("copy the
+# whole table") path, which then needs a name for every reflected
+# constraint including anonymous ones from other migrations -- exactly the
+# kind of cross-migration coupling this migration shouldn't have to reach
+# into. SQLite doesn't enforce FKs by default anyway (the `foreign_keys`
+# pragma is off unless a connection opts in), so skipping the DB-level
+# constraint there and relying on the ORM-level relationship in models.py
+# loses nothing SQLite was actually checking.
+
+
+def _add_fk_column(table_name: str, column: sa.Column) -> None:
+    if _is_sqlite():
+        # Drop the inline FK entirely rather than fight SQLite's batch mode
+        # for a constraint no SQLite connection here enforces regardless.
+        op.add_column(table_name, sa.Column(column.name, column.type, nullable=column.nullable))
+        return
+    op.add_column(table_name, column)
 
 
 def upgrade() -> None:
@@ -48,11 +81,9 @@ def upgrade() -> None:
     if "scope_id" not in offices_cols:
         op.add_column("offices", sa.Column("scope_id", sa.Integer(), nullable=True))
     if "reports_to_office_id" not in offices_cols:
-        op.add_column(
+        _add_fk_column(
             "offices",
-            sa.Column(
-                "reports_to_office_id", sa.Integer(), sa.ForeignKey("offices.id"), nullable=True
-            ),
+            sa.Column("reports_to_office_id", sa.Integer(), sa.ForeignKey("offices.id"), nullable=True),
         )
     if "responsibilities" not in offices_cols:
         op.add_column(
@@ -107,7 +138,7 @@ def upgrade() -> None:
     if "probation_ends_at" not in user_offices_cols:
         op.add_column("user_offices", sa.Column("probation_ends_at", sa.Date(), nullable=True))
     if "ended_by" not in user_offices_cols:
-        op.add_column(
+        _add_fk_column(
             "user_offices", sa.Column("ended_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True)
         )
     if "end_reason" not in user_offices_cols:
@@ -245,31 +276,22 @@ def downgrade() -> None:
         if _table_exists(table):
             op.drop_table(table)
 
-    # SQLite's native ALTER TABLE DROP COLUMN (used above for upgrade())
-    # refuses to drop a column that carries a FOREIGN KEY constraint --
-    # ended_by/reports_to_office_id need the table-recreate ("batch") path.
-    # Recreating requires a name for every reflected constraint, including
-    # anonymous ones inherited from the original 0001 migration (e.g.
-    # user_offices' UniqueConstraint("user_id", "office_id", "starts_at")),
-    # hence naming_convention. Postgres (production) drops FK columns
-    # directly with no recreate/naming involved either way.
-    naming_convention = {
-        "uq": "uq_%(table_name)s_%(column_0_N_name)s",
-        "fk": "fk_%(table_name)s_%(column_0_N_name)s_%(referred_table_name)s",
-        "ck": "ck_%(table_name)s_%(column_0_name)s",
-        "pk": "pk_%(table_name)s",
-    }
-
+    # Plain drop_column throughout: on Postgres, DROP COLUMN works directly
+    # even for the two FK-carrying columns (no batch/recreate involved on
+    # that dialect at all); on SQLite, those two never got a DB-level FK in
+    # the first place (see _add_fk_column in upgrade()), so SQLite's
+    # FK-column drop restriction never applies here either.
     user_offices_cols = _columns("user_offices")
-    for col in ("scope_id", "scope_type", "probation_ends_at", "appointment_type"):
+    for col in (
+        "scope_id",
+        "scope_type",
+        "probation_ends_at",
+        "appointment_type",
+        "end_reason",
+        "ended_by",
+    ):
         if col in user_offices_cols:
             op.drop_column("user_offices", col)
-    if "end_reason" in user_offices_cols or "ended_by" in user_offices_cols:
-        with op.batch_alter_table("user_offices", naming_convention=naming_convention) as batch:
-            if "end_reason" in user_offices_cols:
-                batch.drop_column("end_reason")
-            if "ended_by" in user_offices_cols:
-                batch.drop_column("ended_by")
 
     offices_cols = _columns("offices")
     for col in (
@@ -286,9 +308,7 @@ def downgrade() -> None:
         "permission_template",
         "responsibilities",
         "scope_id",
+        "reports_to_office_id",
     ):
         if col in offices_cols:
             op.drop_column("offices", col)
-    if "reports_to_office_id" in offices_cols:
-        with op.batch_alter_table("offices", naming_convention=naming_convention) as batch:
-            batch.drop_column("reports_to_office_id")
