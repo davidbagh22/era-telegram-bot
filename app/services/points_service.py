@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import PointTransaction, PortfolioItem, User
 from app.services.audit_service import audit
+from app.utils.constants import SOURCE_TYPE_TO_CATEGORY, PointCategory
 
 REGISTRATION_POINTS = 100
 
@@ -30,6 +31,7 @@ async def add_points(
     related_project_id: int | None = None,
     source_type: str | None = None,
     source_id: int | None = None,
+    category: str | None = None,
     idempotency_key: str | None = None,
 ) -> PointTransaction:
     if idempotency_key:
@@ -62,6 +64,7 @@ async def add_points(
         approved_by=approved_by,
         source_type=source_type,
         source_id=source_id,
+        category=category or SOURCE_TYPE_TO_CATEGORY.get(source_type, PointCategory.OTHER),
         idempotency_key=idempotency_key,
         related_event_id=related_event_id,
         related_task_id=related_task_id,

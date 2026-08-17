@@ -296,6 +296,7 @@ class PointTransaction(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     points: Mapped[int] = mapped_column(Integer)
     reason: Mapped[str] = mapped_column(String(255))
+    category: Mapped[str | None] = mapped_column(String(32), index=True)
     source_type: Mapped[str | None] = mapped_column(String(64), index=True)
     source_id: Mapped[int | None] = mapped_column(Integer, index=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(255))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 
 from aiogram import Bot
@@ -11,6 +12,9 @@ from app.config import Settings
 from app.config import get_settings as get_app_settings
 from app.database.models import User
 from app.repositories.users import get_user_by_telegram_id
+from app.services.digital_engagement_service import award_daily_open
+
+logger = logging.getLogger(__name__)
 
 
 def get_settings(request: Request) -> Settings:
@@ -71,4 +75,12 @@ async def get_current_user(
         raise HTTPException(status_code=403, detail="user_blocked")
     if user.is_archived:
         raise HTTPException(status_code=403, detail="user_archived")
+    # Digital-engagement daily-open bonus (ToR section 5) -- the Mini App is
+    # the primary surface, so every authenticated request is a candidate
+    # "opened the app today" signal. Best effort: a bug here must never
+    # break the actual request.
+    try:
+        await award_daily_open(session, user)
+    except Exception:
+        logger.exception("digital engagement award_daily_open failed for user %s", user.id)
     return user

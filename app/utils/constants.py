@@ -222,6 +222,79 @@ DEPARTMENTS = {
     ),
 }
 
+
+class PointCategory(StrEnum):
+    """Points/Ranks/Opportunities ToR ("ERA Platform — ранги, баллы...")
+    section 47 phase 1: a single category taxonomy every PointTransaction
+    is bucketed into, so caps/reporting/eligibility checks never have to
+    pattern-match source_type strings directly. Existing source_type
+    values keep their names -- they're mapped onto these categories via
+    SOURCE_TYPE_TO_CATEGORY below rather than renamed, so nothing that
+    already reads source_type breaks."""
+
+    REGISTRATION = "registration"
+    DIGITAL_ENGAGEMENT = "digital_engagement"
+    EVENT = "event"
+    TASK = "task"
+    PROJECT = "project"
+    VOLUNTEERING = "volunteering"
+    MEDIA = "media"
+    REPRESENTATION = "representation"
+    MENTORSHIP = "mentorship"
+    REFERRAL = "referral"
+    REDEMPTION = "redemption"
+    MANUAL = "manual"
+    OTHER = "other"
+
+
+# add_points() derives PointTransaction.category from source_type via this
+# map when no explicit category is passed (see app/services/points_service.py).
+# Unknown/unmapped source_types fall back to PointCategory.OTHER.
+SOURCE_TYPE_TO_CATEGORY: dict[str, PointCategory] = {
+    "registration": PointCategory.REGISTRATION,
+    "registration_approval": PointCategory.REGISTRATION,
+    "event_attendance": PointCategory.EVENT,
+    "event_activity": PointCategory.EVENT,
+    "attendance_proof": PointCategory.EVENT,
+    "task_submission": PointCategory.TASK,
+    "task_completion": PointCategory.TASK,
+    "project_approval": PointCategory.PROJECT,
+    "proposal_points": PointCategory.PROJECT,
+    "manual_points": PointCategory.MANUAL,
+    "manual_points_command": PointCategory.MANUAL,
+    "badge_award": PointCategory.MANUAL,
+    "partner_offer": PointCategory.REDEMPTION,
+    "reward_redemption": PointCategory.REDEMPTION,
+    "auction_win": PointCategory.REDEMPTION,
+    "referral_registration": PointCategory.REFERRAL,
+    "referral_first_event": PointCategory.REFERRAL,
+    "point_transfer": PointCategory.OTHER,
+    "digital_daily_open": PointCategory.DIGITAL_ENGAGEMENT,
+    "digital_streak_7day": PointCategory.DIGITAL_ENGAGEMENT,
+    "digital_event_registration": PointCategory.DIGITAL_ENGAGEMENT,
+    "digital_vector_checkin": PointCategory.DIGITAL_ENGAGEMENT,
+    "digital_vector_pulse": PointCategory.DIGITAL_ENGAGEMENT,
+    "digital_goal_set": PointCategory.DIGITAL_ENGAGEMENT,
+    "digital_goal_completed": PointCategory.DIGITAL_ENGAGEMENT,
+}
+
+
+# Digital engagement point values + caps (Points/Ranks ToR section 5). Small,
+# capped-by-design points for using the app itself -- enforcement lives in
+# app/services/digital_engagement_service.py. Caps the ToR lists but that
+# have no existing UI trigger yet (full profile completion, material
+# acknowledgement) are intentionally left out until that feature exists;
+# wiring them in later is additive, not a rework of this table.
+DIGITAL_ENGAGEMENT_POINTS = {
+    "daily_open": 5,
+    "streak_7day": 20,
+    "event_registration": 10,
+    "vector_monthly_checkin": 30,
+    "vector_weekly_pulse": 10,
+    "goal_set": 15,
+    "goal_completed": 25,
+}
+
 DEFAULT_POINTS = {
     "Регистрация в боте": 5,
     "Посещение мероприятия": 5,

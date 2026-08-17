@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Event, EventRegistration
 from app.services.audit_service import audit
+from app.services.digital_engagement_service import award_event_registration
 from app.utils.constants import EventStatus, RegistrationStatus
 
 PUBLIC_EVENT_STATUSES = {
@@ -132,6 +133,11 @@ async def register_for_event(
         entity_type="event",
         entity_id=event.id,
     )
+    # Digital-engagement bonus (ToR section 5): once per unique event ever,
+    # regardless of how many times the person registers/cancels/re-registers
+    # -- award_event_registration's idempotency key is keyed on event+user,
+    # not on this call.
+    await award_event_registration(session, user_id=user_id, event_id=event.id)
     return registration, None
 
 
