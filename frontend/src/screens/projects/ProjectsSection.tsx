@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MediaRequestButton } from "../../components/MediaRequestButton";
 import { ProjectDetail } from "./ProjectDetail";
 import { ProjectsList } from "./ProjectsList";
 
@@ -25,10 +26,13 @@ export function ProjectsSection({ initialProjectId = null }: ProjectsSectionProp
     return <ProjectsList onSelect={setSelectedId} />;
   }
   return (
-    <ProjectDetail
-      projectId={selectedId}
-      initialShowWorkspace={Boolean(initialProjectId)}
-      onBack={() => setSelectedId(null)}
-    />
+    <div style={{ display: "grid", gap: "0.75rem" }}>
+      <MediaRequestButton sourceType="project" sourceId={selectedId} />
+      <ProjectDetail
+        projectId={selectedId}
+        initialShowWorkspace={Boolean(initialProjectId)}
+        onBack={() => setSelectedId(null)}
+      />
+    </div>
   );
 }
