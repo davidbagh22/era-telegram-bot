@@ -36,7 +36,7 @@ def test_pulse_is_privacy_safe_aggregate_not_person_score() -> None:
     assert "personal_notes" not in source
     assert "MINIMUM_COHORT = 5" in analytics
     assert "build_organization_health(session)" in extended
-    assert "do not affect Pulse" in extended
+    assert "не влияют на Пульс" in extended
     assert "traits_json" not in extended
     assert "personal_notes" not in extended
 
