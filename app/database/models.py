@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -22,8 +23,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base, TimestampMixin
 from app.utils.constants import (
     ApplicationStatus,
+    AppointmentType,
+    AttentionItemSeverity,
+    AttentionItemStatus,
     EventStatus,
+    LeadershipGoalStatus,
+    LeadershipReportStatus,
     ParticipationStatus,
+    PositionApplicationStatus,
     ProjectStatus,
     RegistrationStatus,
     Role,
@@ -84,6 +91,9 @@ class User(TimestampMixin, Base):
     )
     permission_grants: Mapped[list[PermissionGrant]] = relationship(
         foreign_keys="PermissionGrant.user_id", lazy="selectin"
+    )
+    office_assignments: Mapped[list[UserOffice]] = relationship(
+        foreign_keys="UserOffice.user_id", lazy="selectin"
     )
 
 
@@ -592,6 +602,12 @@ class AppSetting(TimestampMixin, Base):
 
 
 class Office(TimestampMixin, Base):
+    """A position/office in the org structure. Leadership OS ToR section 13:
+    the object itself is the source of truth for what an appointment to it
+    grants — see PermissionGrant vs. Office.permission_template below and
+    [[leadership_permission_service]] for how those get combined into a
+    user's effective permissions."""
+
     __tablename__ = "offices"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -600,9 +616,36 @@ class Office(TimestampMixin, Base):
     scope_type: Mapped[str] = mapped_column(String(32), default="community")
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
     direction_id: Mapped[int | None] = mapped_column(ForeignKey("directions.id"))
+    # Generic scope pointer for scope_types that have no dedicated FK column
+    # above (e.g. "project", "club"). department_id/direction_id take
+    # precedence when set — see effective_scope() in
+    # app/services/leadership_permission_service.py.
+    scope_id: Mapped[int | None] = mapped_column(Integer)
     public_contact: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+    # --- Leadership OS additive fields (ToR section 13) ---
+    reports_to_office_id: Mapped[int | None] = mapped_column(ForeignKey("offices.id"))
+    responsibilities: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # List of permission strings (see app/utils/constants.py::PERMISSIONS)
+    # granted, scoped, to whoever holds an active assignment to this office.
+    # Empty by default so backfilled/legacy offices stay non-elevated (ToR
+    # section 99: "safe / no elevated auto-permissions" until a template is
+    # explicitly set).
+    permission_template: Mapped[list[str]] = mapped_column(JSON, default=list)
+    analytics_scope: Mapped[str | None] = mapped_column(String(32))
+    default_term_days: Mapped[int | None] = mapped_column(Integer)
+    probation_days: Mapped[int | None] = mapped_column(Integer)
+    max_holders: Mapped[int | None] = mapped_column(Integer)
+    application_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    application_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    requirements: Mapped[str | None] = mapped_column(Text)
+    kpi_template: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    recurring_task_template: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # Public "Команда" listing visibility (ToR section 9) -- distinct from
+    # public_contact, which controls whether the holder's contact info shows.
+    is_public: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class UserOffice(TimestampMixin, Base):
@@ -616,6 +659,18 @@ class UserOffice(TimestampMixin, Base):
     starts_at: Mapped[date] = mapped_column(Date, default=date.today)
     ends_at: Mapped[date | None] = mapped_column(Date)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+    # --- Leadership OS additive fields (ToR section 83) ---
+    appointment_type: Mapped[str] = mapped_column(String(16), default=AppointmentType.REGULAR)
+    probation_ends_at: Mapped[date | None] = mapped_column(Date)
+    ended_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    end_reason: Mapped[str | None] = mapped_column(String(255))
+    # Per-assignment scope override (ToR section 15/81): lets one generic
+    # office (e.g. "Руководитель проекта") be appointed per-project/per-club
+    # without a separate Office row for each. Falls back to the Office's own
+    # scope when unset -- see effective_scope() in leadership_permission_service.
+    scope_type: Mapped[str | None] = mapped_column(String(32))
+    scope_id: Mapped[int | None] = mapped_column(Integer)
 
 
 class PermissionGrant(TimestampMixin, Base):
@@ -631,6 +686,105 @@ class PermissionGrant(TimestampMixin, Base):
     scope_id: Mapped[int] = mapped_column(Integer, default=0)
     granted_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class PositionApplication(TimestampMixin, Base):
+    """A user's self-submitted application to an Office (Leadership OS ToR
+    sections 19-22). Objective candidate-summary numbers are computed on the
+    fly from existing tables (tasks/events/projects) -- not stored here."""
+
+    __tablename__ = "position_applications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    office_id: Mapped[int] = mapped_column(ForeignKey("offices.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    status: Mapped[str] = mapped_column(
+        String(16), default=PositionApplicationStatus.DRAFT, index=True
+    )
+    motivation: Mapped[str | None] = mapped_column(Text)
+    plan: Mapped[str | None] = mapped_column(Text)
+    availability: Mapped[str | None] = mapped_column(String(100))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_note: Mapped[str | None] = mapped_column(Text)
+
+
+class LeadershipGoal(TimestampMixin, Base):
+    """Organization-level and leader-level goals share one table, told apart
+    by scope (ToR sections 32-33)."""
+
+    __tablename__ = "leadership_goals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    office_assignment_id: Mapped[int | None] = mapped_column(ForeignKey("user_offices.id"))
+    scope_type: Mapped[str] = mapped_column(String(32), default="global")
+    scope_id: Mapped[int | None] = mapped_column(Integer)
+    period_type: Mapped[str] = mapped_column(String(16), default="month")
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    title: Mapped[str] = mapped_column(String(255))
+    metric: Mapped[str | None] = mapped_column(String(150))
+    target: Mapped[float | None] = mapped_column(Float)
+    progress: Mapped[float] = mapped_column(Float, default=0)
+    status: Mapped[str] = mapped_column(String(16), default=LeadershipGoalStatus.ACTIVE, index=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+class LeadershipReport(TimestampMixin, Base):
+    """Weekly quick report (ToR section 40) -- derived metrics (tasks done,
+    events, etc.) are computed live from source tables, not duplicated here."""
+
+    __tablename__ = "leadership_reports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    office_assignment_id: Mapped[int | None] = mapped_column(ForeignKey("user_offices.id"))
+    scope_type: Mapped[str] = mapped_column(String(32), default="global")
+    scope_id: Mapped[int | None] = mapped_column(Integer)
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(16), default=LeadershipReportStatus.ON_TRACK)
+    main_result: Mapped[str | None] = mapped_column(Text)
+    blocker_type: Mapped[str | None] = mapped_column(String(32))
+    blocker_note: Mapped[str | None] = mapped_column(Text)
+    next_priorities: Mapped[list[str]] = mapped_column(JSON, default=list)
+    needs_help: Mapped[bool] = mapped_column(Boolean, default=False)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class LeadershipRecurringTemplate(TimestampMixin, Base):
+    """Role-level recurring-responsibility definitions (ToR sections 36-37).
+    Actual per-period instances are ordinary Task rows -- see ToR section 81
+    ("не создавать LeadershipTask, если Task способен покрыть функцию")."""
+
+    __tablename__ = "leadership_recurring_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    office_id: Mapped[int | None] = mapped_column(ForeignKey("offices.id"), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    frequency: Mapped[str] = mapped_column(String(16), default="monthly")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class LeadershipAttentionItem(TimestampMixin, Base):
+    """Escalation item raised by a 🔴 quick report or a rule-based problem
+    signal (ToR sections 41 and 61)."""
+
+    __tablename__ = "leadership_attention_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    type: Mapped[str] = mapped_column(String(50), index=True)
+    severity: Mapped[str] = mapped_column(String(16), default=AttentionItemSeverity.MEDIUM)
+    scope_type: Mapped[str] = mapped_column(String(32), default="global")
+    scope_id: Mapped[int | None] = mapped_column(Integer)
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    responsible_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String(16), default=AttentionItemStatus.OPEN, index=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution: Mapped[str | None] = mapped_column(Text)
 
 
 class ChatGreeting(TimestampMixin, Base):

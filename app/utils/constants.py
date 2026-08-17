@@ -26,6 +26,58 @@ class ApplicationStatus(StrEnum):
     NEEDS_INFO = "needs_info"
 
 
+# Leadership OS (2026-08 master ToR "Analytics + Leadership OS") ------------
+# Office/UserOffice stay the base directory objects (app/database/models.py);
+# these enums back the new leadership layer built on top of them.
+
+
+class PositionApplicationStatus(StrEnum):
+    """Section 20 of the Leadership OS ToR."""
+
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+    REVIEWING = "reviewing"
+    INTERVIEW = "interview"
+    RESERVE = "reserve"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+    APPOINTED = "appointed"
+
+
+class AppointmentType(StrEnum):
+    """Section 25: regular vs acting (и.о.) appointments."""
+
+    REGULAR = "regular"
+    ACTING = "acting"
+
+
+class LeadershipGoalStatus(StrEnum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    OVERDUE = "overdue"
+    CANCELLED = "cancelled"
+
+
+class LeadershipReportStatus(StrEnum):
+    """Section 40: the three quick-report traffic-light states."""
+
+    ON_TRACK = "green"
+    AT_RISK = "yellow"
+    NEEDS_HELP = "red"
+
+
+class AttentionItemStatus(StrEnum):
+    OPEN = "open"
+    RESOLVED = "resolved"
+
+
+class AttentionItemSeverity(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
 class EventStatus(StrEnum):
     DRAFT = "draft"
     PENDING_APPROVAL = "pending_approval"
