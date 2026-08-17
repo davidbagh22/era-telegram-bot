@@ -67,13 +67,6 @@ def navigation_guide_keyboard(
     )
     rows = [list(row) for row in base.inline_keyboard]
     rows.insert(0, [InlineKeyboardButton(text="🧭 Мой вектор", callback_data="vector:home")])
-    if admin or privileged:
-        # QR is generated in Telegram because leaders need a fast operational
-        # action at the venue; scanning remains a normal /start deep link.
-        rows.insert(
-            max(1, len(rows) - 1),
-            [InlineKeyboardButton(text="🎟 QR вход на событие", callback_data="event_qr:help")],
-        )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

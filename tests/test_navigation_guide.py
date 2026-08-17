@@ -85,9 +85,11 @@ class NavGuideCallbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["parse_mode"], ParseMode.HTML)
         self.assertIn("💡 <b>Проекты</b>", text)
         self.assertIn("💬 Связь", text)
+        self.assertNotIn("QR вход", text)
         buttons = {b.text for row in kwargs["reply_markup"].inline_keyboard for b in row}
         self.assertNotIn("⚙️ Режим администратора", buttons)
         self.assertNotIn("🧭 Режим лидера", buttons)
+        self.assertNotIn("🎟 QR вход на событие", buttons)
         self.assertEqual(
             _webapp_routes(kwargs["reply_markup"]),
             {
@@ -106,8 +108,10 @@ class NavGuideCallbackTests(unittest.IsolatedAsyncioTestCase):
         (text,), kwargs = call.message.answer.call_args
         self.assertEqual(text, navigation.NAVIGATION_LEADER)
         self.assertEqual(kwargs["parse_mode"], ParseMode.HTML)
+        self.assertNotIn("QR вход", text)
         buttons = {b.text: b for row in kwargs["reply_markup"].inline_keyboard for b in row}
         self.assertIn("🧭 Режим лидера", buttons)
+        self.assertNotIn("🎟 QR вход на событие", buttons)
         route = parse_qs(urlsplit(buttons["🧭 Режим лидера"].web_app.url).query)
         self.assertEqual(route.get("eraPath"), ["leader"])
 
@@ -117,8 +121,10 @@ class NavGuideCallbackTests(unittest.IsolatedAsyncioTestCase):
         (text,), kwargs = call.message.answer.call_args
         self.assertEqual(text, navigation.NAVIGATION_ADMIN)
         self.assertEqual(kwargs["parse_mode"], ParseMode.HTML)
+        self.assertNotIn("QR вход", text)
         buttons = {b.text: b for row in kwargs["reply_markup"].inline_keyboard for b in row}
         self.assertIn("⚙️ Режим администратора", buttons)
+        self.assertNotIn("🎟 QR вход на событие", buttons)
         route = parse_qs(urlsplit(buttons["⚙️ Режим администратора"].web_app.url).query)
         self.assertEqual(route.get("eraPath"), ["admin"])
 

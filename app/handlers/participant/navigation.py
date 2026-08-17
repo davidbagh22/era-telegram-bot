@@ -45,13 +45,11 @@ NAVIGATION_PARTICIPANT = """🧭 <b>Навигация по ЭРА</b>
 
 NAVIGATION_LEADER = NAVIGATION_PARTICIPANT + """
 
-🧭 <b>Режим лидера</b> — отдельное рабочее пространство для команды, задач и решений по вашему направлению.
-🎟 <b>QR вход</b> — быстрый чек-ин участников на мероприятии через Telegram."""
+🧭 <b>Режим лидера</b> — отдельное рабочее пространство для команды, задач и решений по вашему направлению."""
 
 NAVIGATION_ADMIN = NAVIGATION_PARTICIPANT + """
 
-⚙️ <b>Режим администратора</b> — отдельный пульт управления ЭРА: заявки, проекты, мероприятия, задания, коммуникации, аналитика и состояние системы.
-🎟 <b>QR вход</b> — быстрый чек-ин участников на мероприятии через Telegram."""
+⚙️ <b>Режим администратора</b> — отдельный пульт управления ЭРА: заявки, проекты, мероприятия, задания, коммуникации, аналитика и состояние системы."""
 
 CONTACT_TEXT = """💬 <b>Связь с ЭРА</b>
 
@@ -100,6 +98,7 @@ async def _send_main_menu(message: Message, user: User | None, settings: Setting
         return
     await message.answer(
         ux_texts.MAIN_INLINE_MENU,
+        parse_mode=ParseMode.HTML,
         reply_markup=main_inline_keyboard(
             miniapp_url=settings.effective_miniapp_url if settings else "",
             privileged=user.role in PRIVILEGED_ROLES,
