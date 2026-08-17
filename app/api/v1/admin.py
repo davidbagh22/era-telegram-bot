@@ -22,6 +22,7 @@ from app.database.models import (
     EventActivitySubmission,
     EventRegistration,
     Office,
+    PositionApplication,
     Project,
     RewardItem,
     RewardRedemption,
@@ -39,8 +40,10 @@ from app.services import (
     event_activity_service,
     event_moderation_service,
     event_registration_service,
+    leadership_report_service,
     office_management_service,
     opportunity_service,
+    position_management_service,
     project_workflow_service,
     redemption_service,
     survey_admin_service,
@@ -48,7 +51,13 @@ from app.services import (
     task_review_service,
     user_management_service,
 )
-from app.services.admin_analytics_service import EXCEL_SECTION_MAP, build_analytics_payload
+from app.services.admin_analytics_service import (
+    EXCEL_SECTION_MAP,
+    build_analytics_payload,
+    build_leader_effectiveness,
+    build_leader_workload,
+    build_leadership_analytics,
+)
 from app.services.admin_broadcast_service import (
     BroadcastError,
     department_options,
@@ -90,7 +99,7 @@ from app.services.audit_service import audit
 from app.services.chat_access_service import sync_user_chat_access
 from app.services.chat_faq_service import ChatFaqError, publish_faq_message
 from app.services.chat_registry_service import check_chats_health, list_chat_registry
-from app.services.excel_service import build_analytics_workbook
+from app.services.excel_service import build_analytics_workbook, build_leadership_workbook
 from app.services.maintenance_service import (
     CONFIRMATION_PHRASE,
     COUNT_LABELS,
@@ -101,7 +110,13 @@ from app.services.notification_service import broadcast_detailed, safe_send
 from app.services.points_service import total_points
 from app.services.project_workspace_service import can_review_projects
 from app.utils import texts
-from app.utils.constants import PERMISSIONS, PRIVILEGED_ROLES, ROLE_LABELS, ApplicationStatus
+from app.utils.constants import (
+    PERMISSIONS,
+    PRIVILEGED_ROLES,
+    ROLE_LABELS,
+    ApplicationStatus,
+    PositionApplicationStatus,
+)
 from app.utils.constants import Role as RoleEnum
 from app.utils.deep_links import miniapp_event_url, miniapp_opportunity_url, miniapp_task_url
 
@@ -197,6 +212,126 @@ async def read_analytics_summary(
 ) -> AnalyticsSummaryOut:
     data = await build_analytics_payload(session)
     return AnalyticsSummaryOut(**data.summary)
+
+
+class LeadershipAnalyticsOut(BaseModel):
+    vacancies_open: int
+    applications_by_status: dict[str, int]
+    active_leaders: int
+    open_blockers: int
+    avg_blocker_resolution_hours: float | None
+    goals_active: int
+    goals_completed: int
+    goals_overdue: int
+    goal_completion_rate: float | None
+    reports_expected: int
+    reports_submitted: int
+    reporting_discipline_rate: float | None
+    leadership_health_score: float | None
+
+
+@router.get("/leadership/analytics", response_model=LeadershipAnalyticsOut)
+async def read_leadership_analytics(
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> LeadershipAnalyticsOut:
+    data = await build_leadership_analytics(session)
+    return LeadershipAnalyticsOut(**data.__dict__)
+
+
+class LeaderWorkloadOut(BaseModel):
+    assignments: int
+    open_tasks: int
+    overdue_tasks: int
+    open_blockers: int
+
+
+class LeaderEffectivenessOut(BaseModel):
+    goals_completed: int
+    goals_total: int
+    goal_completion_rate: float | None
+    tasks_completed: int
+    tasks_total: int
+    task_completion_rate: float | None
+    overdue_rate: float | None
+
+
+@router.get("/leadership/leaders/{user_id}/workload", response_model=LeaderWorkloadOut)
+async def read_leader_workload(
+    user_id: int,
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> LeaderWorkloadOut:
+    data = await build_leader_workload(session, user_id)
+    return LeaderWorkloadOut(**data.__dict__)
+
+
+@router.get("/leadership/leaders/{user_id}/effectiveness", response_model=LeaderEffectivenessOut)
+async def read_leader_effectiveness(
+    user_id: int,
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> LeaderEffectivenessOut:
+    data = await build_leader_effectiveness(session, user_id)
+    return LeaderEffectivenessOut(**data.__dict__)
+
+
+class AdminAttentionItemOut(BaseModel):
+    id: int
+    type: str
+    severity: str
+    scope_type: str
+    scope_id: int | None
+    owner_id: int | None
+    responsible_id: int | None
+    status: str
+    resolution: str | None
+
+
+@router.get("/leadership/attention", response_model=list[AdminAttentionItemOut])
+async def read_leadership_attention(
+    status_filter: Literal["open", "resolved"] | None = "open",
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> list[AdminAttentionItemOut]:
+    items = await leadership_report_service.list_attention_items(session, status=status_filter)
+    return [
+        AdminAttentionItemOut(
+            id=i.id,
+            type=i.type,
+            severity=i.severity,
+            scope_type=i.scope_type,
+            scope_id=i.scope_id,
+            owner_id=i.owner_id,
+            responsible_id=i.responsible_id,
+            status=i.status,
+            resolution=i.resolution,
+        )
+        for i in items
+    ]
+
+
+@router.get("/leadership/analytics/export.xlsx")
+async def export_leadership_analytics_excel(
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """ToR section 80: export always reflects the caller's own permission
+    scope -- require_dashboard_access already gates this to admins/people
+    managers, so there's nothing narrower to filter by at this scope
+    (global). A leader-scoped export would filter these three queries by
+    the leader's own office/scope before building the workbook."""
+    analytics = await build_leadership_analytics(session)
+    applications = [
+        await _to_position_application_out(session, a) for a in await position_management_service.list_all_applications(session)
+    ]
+    attention_items = await leadership_report_service.list_attention_items(session)
+    content = build_leadership_workbook(analytics, applications, attention_items)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="ERA_leadership_analytics.xlsx"'},
+    )
 
 
 @router.get("/analytics/export.xlsx")
@@ -2161,6 +2296,10 @@ class OfficeAssignmentOut(BaseModel):
     assignment_id: int
     user_id: int
     user_name: str
+    appointment_type: str
+    starts_at: str
+    ends_at: str | None
+    probation_ends_at: str | None
 
 
 class OfficeOut(BaseModel):
@@ -2168,6 +2307,13 @@ class OfficeOut(BaseModel):
     title: str
     description: str | None
     is_active: bool
+    is_public: bool
+    permission_template: list[str]
+    application_enabled: bool
+    application_deadline: str | None
+    requirements: str | None
+    default_term_days: int | None
+    probation_days: int | None
     assignments: list[OfficeAssignmentOut]
 
 
@@ -2178,11 +2324,26 @@ async def _to_office_out(session: AsyncSession, office) -> OfficeOut:
         title=office.title,
         description=office.description,
         is_active=office.is_active,
+        is_public=office.is_public,
+        permission_template=list(office.permission_template or []),
+        application_enabled=office.application_enabled,
+        application_deadline=(
+            office.application_deadline.isoformat() if office.application_deadline else None
+        ),
+        requirements=office.requirements,
+        default_term_days=office.default_term_days,
+        probation_days=office.probation_days,
         assignments=[
             OfficeAssignmentOut(
                 assignment_id=assignment.id,
                 user_id=user.id,
                 user_name=f"{user.first_name} {user.last_name or ''}".strip(),
+                appointment_type=assignment.appointment_type,
+                starts_at=assignment.starts_at.isoformat(),
+                ends_at=assignment.ends_at.isoformat() if assignment.ends_at else None,
+                probation_ends_at=(
+                    assignment.probation_ends_at.isoformat() if assignment.probation_ends_at else None
+                ),
             )
             for assignment, user in rows
         ],
@@ -2201,6 +2362,12 @@ async def list_offices_endpoint(
 class OfficeCreateIn(BaseModel):
     title: str
     description: str = ""
+    permission_template: list[str] = []
+    application_enabled: bool = False
+    requirements: str = ""
+    default_term_days: int | None = None
+    probation_days: int | None = None
+    is_public: bool = True
 
 
 @router.post("/offices", response_model=OfficeOut)
@@ -2213,8 +2380,62 @@ async def create_office_endpoint(
     title = payload.title.strip()
     if not title:
         raise HTTPException(status_code=422, detail="title_required")
+    unknown_permissions = set(payload.permission_template) - set(PERMISSIONS)
+    if unknown_permissions:
+        raise HTTPException(status_code=422, detail="unknown_permission")
     office = await office_management_service.create_office(
-        session, title=title[:150], description=payload.description.strip()[:1000] or None
+        session,
+        title=title[:150],
+        description=payload.description.strip()[:1000] or None,
+        permission_template=payload.permission_template,
+        application_enabled=payload.application_enabled,
+        requirements=payload.requirements.strip()[:2000] or None,
+        default_term_days=payload.default_term_days,
+        probation_days=payload.probation_days,
+        is_public=payload.is_public,
+    )
+    return await _to_office_out(session, office)
+
+
+class OfficeUpdateIn(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    permission_template: list[str] | None = None
+    application_enabled: bool | None = None
+    requirements: str | None = None
+    default_term_days: int | None = None
+    probation_days: int | None = None
+    is_public: bool | None = None
+
+
+@router.post("/offices/{office_id}/update", response_model=OfficeOut)
+async def update_office_endpoint(
+    office_id: int,
+    payload: OfficeUpdateIn,
+    _manager: User = Depends(require_people_manager),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> OfficeOut:
+    office = await session.get(Office, office_id)
+    if office is None:
+        raise HTTPException(status_code=404, detail="office_not_found")
+    if payload.permission_template is not None:
+        unknown_permissions = set(payload.permission_template) - set(PERMISSIONS)
+        if unknown_permissions:
+            raise HTTPException(status_code=422, detail="unknown_permission")
+    await office_management_service.update_office(
+        session,
+        office,
+        title=(payload.title.strip()[:150] or None) if payload.title is not None else None,
+        description=payload.description.strip()[:1000] if payload.description is not None else None,
+        permission_template=payload.permission_template,
+        application_enabled=payload.application_enabled,
+        requirements=(payload.requirements.strip()[:2000] or None)
+        if payload.requirements is not None
+        else None,
+        default_term_days=payload.default_term_days,
+        probation_days=payload.probation_days,
+        is_public=payload.is_public,
     )
     return await _to_office_out(session, office)
 
@@ -2297,6 +2518,300 @@ async def remove_office_assignment_endpoint(
         raise HTTPException(status_code=404, detail="office_not_found")
     office_management_service.remove_assignment(assignment)
     return await _to_office_out(session, office)
+
+
+# ---------------------------------------------------------------------------
+# Position applications + appointments (Leadership OS ToR sections 20-28) --
+# the admin half of the vacancy/application/appointment workflow. The
+# participant half lives in app/api/v1/positions.py.
+# ---------------------------------------------------------------------------
+
+
+class CandidateSummaryOut(BaseModel):
+    completed_projects: int
+    tasks_completed_on_time: int
+    tasks_completed_total: int
+    on_time_rate: float | None
+    events_attended: int
+    past_offices: int
+
+
+class PositionApplicationOut(BaseModel):
+    id: int
+    office_id: int
+    office_title: str
+    user_id: int
+    user_name: str
+    status: str
+    motivation: str | None
+    plan: str | None
+    availability: str | None
+    submitted_at: str | None
+    reviewed_by: int | None
+    reviewed_at: str | None
+    review_note: str | None
+    candidate_summary: CandidateSummaryOut
+
+
+async def _to_position_application_out(session: AsyncSession, application: PositionApplication) -> PositionApplicationOut:
+    office = await session.get(Office, application.office_id)
+    applicant = await session.get(User, application.user_id)
+    summary = await position_management_service.candidate_summary(session, application.user_id)
+    return PositionApplicationOut(
+        id=application.id,
+        office_id=application.office_id,
+        office_title=office.title if office else "",
+        user_id=application.user_id,
+        user_name=(
+            f"{applicant.first_name} {applicant.last_name or ''}".strip() if applicant else ""
+        ),
+        status=application.status,
+        motivation=application.motivation,
+        plan=application.plan,
+        availability=application.availability,
+        submitted_at=application.submitted_at.isoformat() if application.submitted_at else None,
+        reviewed_by=application.reviewed_by,
+        reviewed_at=application.reviewed_at.isoformat() if application.reviewed_at else None,
+        review_note=application.review_note,
+        candidate_summary=CandidateSummaryOut(
+            completed_projects=summary.completed_projects,
+            tasks_completed_on_time=summary.tasks_completed_on_time,
+            tasks_completed_total=summary.tasks_completed_total,
+            on_time_rate=summary.on_time_rate,
+            events_attended=summary.events_attended,
+            past_offices=summary.past_offices,
+        ),
+    )
+
+
+@router.get("/offices/{office_id}/applications", response_model=list[PositionApplicationOut])
+async def list_office_applications_endpoint(
+    office_id: int,
+    _manager: User = Depends(require_people_manager),
+    session: AsyncSession = Depends(get_session),
+) -> list[PositionApplicationOut]:
+    applications = await position_management_service.list_applications_for_office(session, office_id)
+    return [await _to_position_application_out(session, a) for a in applications]
+
+
+class ApplicationDecisionIn(BaseModel):
+    status: Literal["reviewing", "interview", "reserve", "approved", "rejected"]
+    note: str = ""
+
+
+@router.post("/position-applications/{application_id}/decision", response_model=PositionApplicationOut)
+async def decide_position_application_endpoint(
+    application_id: int,
+    payload: ApplicationDecisionIn,
+    manager: User = Depends(require_people_manager),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> PositionApplicationOut:
+    application = await session.get(PositionApplication, application_id)
+    if application is None:
+        raise HTTPException(status_code=404, detail="application_not_found")
+    try:
+        await position_management_service.review_application(
+            session,
+            application,
+            status=payload.status,
+            reviewer_id=manager.id,
+            note=payload.note or None,
+        )
+    except position_management_service.PositionError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+    return await _to_position_application_out(session, application)
+
+
+class AppointFromApplicationIn(BaseModel):
+    appointment_type: Literal["regular", "acting"] = "regular"
+    ends_at: str | None = None
+    scope_type: str | None = None
+    scope_id: int | None = None
+
+
+class AppointmentOut(BaseModel):
+    assignment_id: int
+    office_id: int
+    user_id: int
+    appointment_type: str
+    starts_at: str
+    ends_at: str | None
+    probation_ends_at: str | None
+    conflict_warnings: list[str]
+
+
+@router.post("/position-applications/{application_id}/appoint", response_model=AppointmentOut)
+async def appoint_from_application_endpoint(
+    application_id: int,
+    payload: AppointFromApplicationIn,
+    manager: User = Depends(require_people_manager),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> AppointmentOut:
+    application = await session.get(PositionApplication, application_id)
+    if application is None:
+        raise HTTPException(status_code=404, detail="application_not_found")
+    office = await session.get(Office, application.office_id)
+    if office is None:
+        raise HTTPException(status_code=404, detail="office_not_found")
+    ends_at = datetime.fromisoformat(payload.ends_at).date() if payload.ends_at else None
+    try:
+        result = await position_management_service.appoint_from_application(
+            session,
+            application,
+            office,
+            appointed_by_id=manager.id,
+            appointment_type=payload.appointment_type,
+            ends_at=ends_at,
+            scope_type=payload.scope_type,
+            scope_id=payload.scope_id,
+        )
+    except position_management_service.PositionError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+    assignment = result.assignment
+    return AppointmentOut(
+        assignment_id=assignment.id,
+        office_id=assignment.office_id,
+        user_id=assignment.user_id,
+        appointment_type=assignment.appointment_type,
+        starts_at=assignment.starts_at.isoformat(),
+        ends_at=assignment.ends_at.isoformat() if assignment.ends_at else None,
+        probation_ends_at=(
+            assignment.probation_ends_at.isoformat() if assignment.probation_ends_at else None
+        ),
+        conflict_warnings=result.conflict_warnings,
+    )
+
+
+class EndAppointmentIn(BaseModel):
+    reason: str = ""
+
+
+@router.post("/appointments/{assignment_id}/end", response_model=OfficeOut)
+async def end_appointment_endpoint(
+    assignment_id: int,
+    payload: EndAppointmentIn,
+    manager: User = Depends(require_people_manager),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> OfficeOut:
+    assignment = await session.get(UserOffice, assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="assignment_not_found")
+    office = await session.get(Office, assignment.office_id)
+    if office is None:
+        raise HTTPException(status_code=404, detail="office_not_found")
+    await position_management_service.end_appointment(
+        session, assignment, ended_by_id=manager.id, reason=payload.reason or None
+    )
+    return await _to_office_out(session, office)
+
+
+class ExtendAppointmentIn(BaseModel):
+    ends_at: str
+
+
+@router.post("/appointments/{assignment_id}/extend", response_model=OfficeOut)
+async def extend_appointment_endpoint(
+    assignment_id: int,
+    payload: ExtendAppointmentIn,
+    manager: User = Depends(require_people_manager),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> OfficeOut:
+    assignment = await session.get(UserOffice, assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="assignment_not_found")
+    office = await session.get(Office, assignment.office_id)
+    if office is None:
+        raise HTTPException(status_code=404, detail="office_not_found")
+    try:
+        new_ends_at = datetime.fromisoformat(payload.ends_at).date()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid_date") from exc
+    await position_management_service.extend_appointment(
+        session, assignment, new_ends_at=new_ends_at, actor_id=manager.id
+    )
+    return await _to_office_out(session, office)
+
+
+# ---------------------------------------------------------------------------
+# Cadre reserve (ToR sections 76-77) -- people-level data (per-candidate
+# task/project counts), so gated behind require_people_manager like the
+# rest of the people-management surface, not the broader
+# require_dashboard_access used for aggregate analytics above.
+# ---------------------------------------------------------------------------
+
+
+class CadreReserveEntryOut(BaseModel):
+    user_id: int
+    first_name: str
+    last_name: str | None
+    candidate_summary: CandidateSummaryOut
+    suggested_roles: list[str]
+
+
+@router.get("/cadre-reserve", response_model=list[CadreReserveEntryOut])
+async def read_cadre_reserve(
+    _manager: User = Depends(require_people_manager),
+    session: AsyncSession = Depends(get_session),
+) -> list[CadreReserveEntryOut]:
+    entries = await position_management_service.list_cadre_reserve(session)
+    return [
+        CadreReserveEntryOut(
+            user_id=e.user_id,
+            first_name=e.first_name,
+            last_name=e.last_name,
+            candidate_summary=CandidateSummaryOut(
+                completed_projects=e.summary.completed_projects,
+                tasks_completed_on_time=e.summary.tasks_completed_on_time,
+                tasks_completed_total=e.summary.tasks_completed_total,
+                on_time_rate=e.summary.on_time_rate,
+                events_attended=e.summary.events_attended,
+                past_offices=e.summary.past_offices,
+            ),
+            suggested_roles=e.suggested_roles,
+        )
+        for e in entries
+    ]
+
+
+@router.post("/cadre-reserve/{user_id}/suggest/{office_id}")
+async def suggest_position_endpoint(
+    user_id: int,
+    office_id: int,
+    manager: User = Depends(require_people_manager),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    settings: Settings = Depends(get_settings),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> dict[str, bool]:
+    """ToR section 77: "Предложить подать заявку" -- a notification, not an
+    appointment. The person still has to apply themselves (section 19)."""
+    target = await session.get(User, user_id)
+    office = await session.get(Office, office_id)
+    if target is None or office is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    await audit(
+        session,
+        actor_id=manager.id,
+        action="cadre_reserve.suggested",
+        entity_type="office",
+        entity_id=office.id,
+        old_value=None,
+        new_value={"user_id": user_id},
+    )
+    sent = False
+    if bot is not None:
+        keyboard = open_app_button(settings.effective_miniapp_url) if settings.effective_miniapp_url else None
+        sent = await safe_send(
+            bot,
+            target.telegram_id,
+            f"Мы заметили твой рост. Открыта позиция «{office.title}» — посмотри детали и подай заявку, если интересно.",
+            keyboard,
+        )
+    return {"notified": sent}
 
 
 # ---------------------------------------------------------------------------

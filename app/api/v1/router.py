@@ -11,8 +11,10 @@ from app.api.v1 import (
     home,
     leader,
     leaderboard,
+    leadership,
     me,
     opportunities,
+    positions,
     profile,
     projects,
     rewards,
@@ -36,3 +38,5 @@ api_router.include_router(surveys.router)
 api_router.include_router(admin.router)
 api_router.include_router(profile.router)
 api_router.include_router(leader.router)
+api_router.include_router(leadership.router)
+api_router.include_router(positions.router)
