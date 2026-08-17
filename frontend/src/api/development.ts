@@ -170,6 +170,6 @@ export const updateDevelopmentPrivacy = (payload: {
 export const fetchAdminDevelopmentAnalytics = (periodDays = 30) =>
   request<DevelopmentAnalytics>(`/api/v1/admin/development/analytics?period_days=${periodDays}`);
 export const downloadAdminDevelopmentAnalytics = (periodDays = 30) =>
-  requestBlob(`/api/v1/admin/development/analytics/export?period_days=${periodDays}`);
+  requestBlob(`/api/v1/admin/development/analytics/export.xlsx?period_days=${periodDays}`);
 export const fetchAdminDevelopmentProfile = (userId: number) =>
   request<AdminDevelopmentProfile>(`/api/v1/admin/development/participants/${userId}`);

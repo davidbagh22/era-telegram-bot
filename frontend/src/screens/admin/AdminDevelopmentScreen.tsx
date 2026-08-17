@@ -61,7 +61,7 @@ export function AdminDevelopmentScreen() {
               const url = URL.createObjectURL(blob);
               const link = document.createElement("a");
               link.href = url;
-              link.download = `ERA_My_Vector_${period}d.csv`;
+              link.download = `ERA_My_Vector_${period}d.xlsx`;
               document.body.appendChild(link);
               link.click();
               link.remove();
@@ -74,7 +74,7 @@ export function AdminDevelopmentScreen() {
             }
           }}
         >
-          {exporting ? "Готовим…" : "Скачать CSV"}
+          {exporting ? "Готовим…" : "↓ Сводка XLSX"}
         </button>
       </div>
 

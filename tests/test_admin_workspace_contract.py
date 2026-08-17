@@ -17,7 +17,14 @@ class AdminWorkspaceContractTests(unittest.TestCase):
         nav = (FRONTEND / "components" / "AdminBottomNav.tsx").read_text(encoding="utf-8")
         screen = (FRONTEND / "screens" / "AdminScreen.tsx").read_text(encoding="utf-8")
         self.assertIn('label: "Контроль"', nav)
-        for marker in ['value: "analytics"', 'value: "system"', 'value: "maintenance"', "<AdminDashboardScreen />", "<SystemPanel />", "<AdminMaintenanceScreen />"]:
+        for marker in [
+            'value: "analytics"',
+            'value: "system"',
+            'value: "maintenance"',
+            "<AdminDashboardScreen />",
+            "<SystemPanel />",
+            "<AdminMaintenanceScreen onOpen={openMaintenanceTarget} />",
+        ]:
             self.assertIn(marker, screen)
 
     def test_overview_and_communications_do_not_duplicate_control_tools(self) -> None:
