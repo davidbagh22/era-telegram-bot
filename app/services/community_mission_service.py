@@ -100,6 +100,10 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
 def _mission_meta(task: Task) -> dict:
     return (task.reward_json or {}).get("community_mission") or {}
 
@@ -120,12 +124,12 @@ def workspace_chat_id(settings: Settings, chat_key: str) -> int | None:
 
 async def seed_community_missions(session: AsyncSession) -> None:
     for item in load_community_missions():
-        current = await session.scalar(
-            select(CommunityMissionTemplate).where(
+        exists = await session.scalar(
+            select(CommunityMissionTemplate.id).where(
                 CommunityMissionTemplate.code == item["code"]
             )
         )
-        if current is not None:
+        if exists:
             continue
         session.add(
             CommunityMissionTemplate(
@@ -157,13 +161,10 @@ async def list_mission_templates(
     )
     if month is not None:
         stmt = stmt.where(CommunityMissionTemplate.month == month)
-    return list(
-        (
-            await session.scalars(
-                stmt.order_by(CommunityMissionTemplate.month, CommunityMissionTemplate.code)
-            )
-        ).all()
+    rows = await session.scalars(
+        stmt.order_by(CommunityMissionTemplate.month, CommunityMissionTemplate.code)
     )
+    return list(rows.all())
 
 
 async def launch_mission(
@@ -173,8 +174,8 @@ async def launch_mission(
     creator_id: int,
     starts_at: datetime | None = None,
 ) -> Task:
-    now = starts_at or _now()
-    deadline = now + timedelta(days=max(1, int(template.deadline_days)))
+    start = _aware(starts_at) if starts_at else _now()
+    deadline = start + timedelta(days=max(1, int(template.deadline_days)))
     task = Task(
         title=template.title,
         description=template.description,
@@ -207,45 +208,41 @@ async def launch_mission(
 
 
 async def _joined_user_ids(session: AsyncSession, task_id: int) -> list[int]:
-    return list(
-        (
-            await session.scalars(
-                select(TaskParticipant.user_id)
-                .where(
-                    TaskParticipant.task_id == task_id,
-                    TaskParticipant.status.in_(["accepted", "joined"]),
-                )
-                .order_by(TaskParticipant.id)
-            )
-        ).all()
+    rows = await session.scalars(
+        select(TaskParticipant.user_id)
+        .where(
+            TaskParticipant.task_id == task_id,
+            TaskParticipant.status.in_(["accepted", "joined"]),
+        )
+        .order_by(TaskParticipant.id)
     )
+    return list(rows.all())
 
 
 async def _ensure_subtask_proposal(
     session: AsyncSession, task: Task, squad: TaskSquad, user_ids: list[int]
 ) -> None:
-    existing_count = int(
+    existing = int(
         await session.scalar(
             select(func.count(TaskSubtask.id)).where(TaskSubtask.squad_id == squad.id)
         )
         or 0
     )
-    if existing_count:
+    if existing:
         return
     meta = _mission_meta(task)
     category = str(meta.get("category") or "project")
-    min_people = max(1, int(meta.get("min_people") or 1))
     roles = CATEGORY_ROLES.get(category, CATEGORY_ROLES["project"])
-    target_count = min(len(roles), max(min_people, len(user_ids)))
-    for index, (role_key, title) in enumerate(roles[:target_count]):
-        assignee_id = user_ids[index % len(user_ids)] if user_ids else None
+    minimum = max(1, int(meta.get("min_people") or 1))
+    count = min(len(roles), max(minimum, len(user_ids)))
+    for index, (role_key, title) in enumerate(roles[:count]):
         session.add(
             TaskSubtask(
                 squad_id=squad.id,
                 role_key=role_key,
                 title=title,
-                description=f"Ответственность «{title}» внутри общей задачи «{task.title}».",
-                assignee_id=assignee_id,
+                description=f"Ответственность «{title}» внутри задачи «{task.title}».",
+                assignee_id=user_ids[index % len(user_ids)] if user_ids else None,
                 deadline=task.deadline,
                 status="proposed",
                 deliverable=str(meta.get("deliverable") or task.description)[:1000],
@@ -263,7 +260,8 @@ async def sync_task_squad_after_claim(
     meta = _mission_meta(task)
     squad = await session.scalar(select(TaskSquad).where(TaskSquad.task_id == task.id))
     if squad is None:
-        total_seconds = max(0.0, (task.deadline - _now()).total_seconds())
+        deadline = _aware(task.deadline)
+        total_seconds = max(0.0, (deadline - _now()).total_seconds())
         squad = TaskSquad(
             task_id=task.id,
             responsible_user_id=participant_user_id,
@@ -275,8 +273,7 @@ async def sync_task_squad_after_claim(
         await session.flush()
 
     user_ids = await _joined_user_ids(session, task.id)
-    min_people = max(1, int(meta.get("min_people") or 1))
-    if len(user_ids) >= min_people:
+    if len(user_ids) >= max(1, int(meta.get("min_people") or 1)):
         squad.status = "active"
         await _ensure_subtask_proposal(session, task, squad, user_ids)
     await session.flush()
@@ -311,35 +308,6 @@ async def assign_subtask(
     return subtask
 
 
-def _squad_card(task: Task, squad: TaskSquad, users: list[User]) -> str:
-    meta = _mission_meta(task)
-    names = ", ".join(
-        (f"{user.first_name} {user.last_name or ''}").strip() for user in users
-    ) or "команда формируется"
-    responsible = next(
-        (
-            (f"{user.first_name} {user.last_name or ''}").strip()
-            for user in users
-            if user.id == squad.responsible_user_id
-        ),
-        "будет назначен",
-    )
-    return (
-        "Новая задача · Команда сформирована\n\n"
-        f"Задача: {task.title}\n"
-        f"Работают: {names}\n"
-        f"Ответственный: {responsible}\n"
-        f"Дедлайн: {task.deadline.astimezone().strftime('%d.%m · %H:%M')}\n"
-        f"Результат: {meta.get('deliverable') or 'подтверждённый результат'}\n"
-        + (
-            f"Ближайший чекпоинт: {squad.checkpoint_at.astimezone().strftime('%d.%m · %H:%M')}\n"
-            if squad.checkpoint_at
-            else ""
-        )
-        + "\nРаботайте над задачей ответами под этой карточкой."
-    )
-
-
 def _open_task_markup(settings: Settings) -> InlineKeyboardMarkup | None:
     if not settings.effective_miniapp_url:
         return None
@@ -355,19 +323,17 @@ def _open_task_markup(settings: Settings) -> InlineKeyboardMarkup | None:
     )
 
 
-async def _ensure_topic(bot: Bot, chat_id: int, task: Task, squad: TaskSquad) -> int | None:
+async def _ensure_topic(bot: Bot, chat_id: int, task: Task, squad: TaskSquad) -> None:
     if squad.topic_id:
-        return squad.topic_id
+        return
     try:
         chat = await bot.get_chat(chat_id)
         if not bool(getattr(chat, "is_forum", False)):
-            return None
+            return
         topic = await bot.create_forum_topic(chat_id=chat_id, name=task.title[:128])
         squad.topic_id = topic.message_thread_id
-        return squad.topic_id
     except TelegramAPIError:
         logger.info("Task Squad topic unavailable; using anchor replies", exc_info=True)
-        return None
 
 
 async def _send_squad_message(
@@ -382,12 +348,7 @@ async def _send_squad_message(
     chat_id = workspace_chat_id(settings, squad.workspace_chat_key)
     if chat_id is None:
         return None
-    task = None
-    kwargs = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": parse_mode,
-    }
+    kwargs: dict = {"chat_id": chat_id, "text": text, "parse_mode": parse_mode}
     if squad.topic_id:
         kwargs["message_thread_id"] = squad.topic_id
     elif squad.anchor_message_id:
@@ -397,10 +358,48 @@ async def _send_squad_message(
     return await bot.send_message(**kwargs)
 
 
+def _squad_card(task: Task, squad: TaskSquad, users: list[User]) -> str:
+    meta = _mission_meta(task)
+    names = ", ".join(
+        (f"{user.first_name} {user.last_name or ''}").strip() for user in users
+    ) or "команда формируется"
+    responsible = next(
+        (
+            (f"{user.first_name} {user.last_name or ''}").strip()
+            for user in users
+            if user.id == squad.responsible_user_id
+        ),
+        "будет назначен",
+    )
+    checkpoint = (
+        f"Ближайший чекпоинт: {_aware(squad.checkpoint_at).strftime('%d.%m · %H:%M')}\n"
+        if squad.checkpoint_at
+        else ""
+    )
+    return (
+        "Новая задача · Команда сформирована\n\n"
+        f"Задача: {task.title}\n"
+        f"Работают: {names}\n"
+        f"Ответственный: {responsible}\n"
+        f"Дедлайн: {_aware(task.deadline).strftime('%d.%m · %H:%M')}\n"
+        f"Результат: {meta.get('deliverable') or 'подтверждённый результат'}\n"
+        f"{checkpoint}\n"
+        "Работайте над задачей ответами под этой карточкой."
+    )
+
+
+async def _has_submission(session: AsyncSession, task_id: int) -> bool:
+    return bool(
+        await session.scalar(
+            select(TaskSubmission.id).where(TaskSubmission.task_id == task_id)
+        )
+    )
+
+
 async def process_task_squad_notifications(
     bot: Bot, settings: Settings, session_factory
 ) -> None:
-    """Reason-based Task Squad chat automation; no daily spam."""
+    """Send only state-based Squad notices; never a daily generic reminder."""
     now = _now()
     try:
         async with session_factory() as session:
@@ -415,51 +414,51 @@ async def process_task_squad_notifications(
                 task = await session.get(Task, squad.task_id)
                 if task is None:
                     continue
+                meta = _mission_meta(task)
                 user_ids = await _joined_user_ids(session, task.id)
                 users = list(
-                    (
-                        await session.scalars(select(User).where(User.id.in_(user_ids)))
-                    ).all()
+                    (await session.scalars(select(User).where(User.id.in_(user_ids)))).all()
                 ) if user_ids else []
-                meta = _mission_meta(task)
-                min_people = max(1, int(meta.get("min_people") or 1))
+                minimum = max(1, int(meta.get("min_people") or 1))
 
-                if len(user_ids) >= min_people and squad.anchor_message_id is None:
+                if len(user_ids) >= minimum and squad.anchor_message_id is None:
                     chat_id = workspace_chat_id(settings, squad.workspace_chat_key)
                     if chat_id is not None:
                         await _ensure_topic(bot, chat_id, task, squad)
                         try:
-                            msg = await _send_squad_message(
+                            message = await _send_squad_message(
                                 bot,
                                 settings,
                                 squad,
                                 _squad_card(task, squad, users),
                                 with_button=True,
                             )
-                            if msg is not None:
-                                squad.anchor_message_id = msg.message_id
+                            if message is not None:
+                                squad.anchor_message_id = message.message_id
                                 squad.status = "active"
                         except TelegramAPIError:
                             logger.exception("Could not deliver Task Squad card task=%s", task.id)
 
-                submission_exists = bool(
-                    await session.scalar(
-                        select(TaskSubmission.id).where(TaskSubmission.task_id == task.id)
-                    )
+                submitted = await _has_submission(session, task.id)
+                responsible = (
+                    await session.get(User, squad.responsible_user_id)
+                    if squad.responsible_user_id
+                    else None
                 )
-                responsible = await session.get(User, squad.responsible_user_id) if squad.responsible_user_id else None
                 mention = (
-                    f'<a href="tg://user?id={responsible.telegram_id}">{html.escape(responsible.first_name)}</a>, '
+                    f'<a href="tg://user?id={responsible.telegram_id}">'
+                    f"{html.escape(responsible.first_name)}</a>, "
                     if responsible
                     else ""
                 )
+                checkpoint_at = _aware(squad.checkpoint_at) if squad.checkpoint_at else None
+                deadline = _aware(task.deadline)
 
                 if (
-                    squad.checkpoint_at
-                    and not submission_exists
+                    checkpoint_at
+                    and not submitted
                     and squad.checkpoint_notified_at is None
-                    and now >= squad.checkpoint_at - timedelta(hours=48)
-                    and now < squad.checkpoint_at
+                    and checkpoint_at - timedelta(hours=48) <= now < checkpoint_at
                 ):
                     try:
                         await _send_squad_message(
@@ -474,10 +473,9 @@ async def process_task_squad_notifications(
                         logger.exception("Could not send checkpoint reminder task=%s", task.id)
 
                 if (
-                    not submission_exists
+                    not submitted
                     and squad.deadline_notified_at is None
-                    and now >= task.deadline - timedelta(hours=24)
-                    and now < task.deadline
+                    and deadline - timedelta(hours=24) <= now < deadline
                     and task.status != "completed"
                 ):
                     try:
@@ -493,7 +491,7 @@ async def process_task_squad_notifications(
                         logger.exception("Could not send deadline reminder task=%s", task.id)
 
                 if (
-                    now >= task.deadline
+                    now >= deadline
                     and task.status != "completed"
                     and squad.overdue_notified_at is None
                 ):
@@ -509,7 +507,7 @@ async def process_task_squad_notifications(
                     except TelegramAPIError:
                         logger.exception("Could not send overdue reminder task=%s", task.id)
 
-                if submission_exists and squad.submission_notified_at is None:
+                if submitted and squad.submission_notified_at is None:
                     try:
                         await _send_squad_message(
                             bot, settings, squad, "Результат отправлен на проверку."
@@ -520,9 +518,7 @@ async def process_task_squad_notifications(
 
                 if task.status == "completed" and squad.completed_notified_at is None:
                     try:
-                        await _send_squad_message(
-                            bot, settings, squad, "Задача закрыта ✓"
-                        )
+                        await _send_squad_message(bot, settings, squad, "Задача закрыта ✓")
                         squad.completed_notified_at = now
                         squad.status = "completed"
                     except TelegramAPIError:
