@@ -1,0 +1,136 @@
+"""Community Verification ToR §7/§19: admin campaign control + dashboard.
+
+Reject/removal/reminder actions are added in later phases of the same ToR;
+this module ships the read-only dashboard plus start/complete campaign
+control first (Phase 2).
+"""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from aiogram import Bot
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_bot, get_session, get_settings
+from app.api.v1.admin import enforce_admin_action_rate_limit, require_full_admin
+from app.config import Settings
+from app.database.models import User
+from app.services import community_verification_service as cv_service
+
+router = APIRouter(prefix="/admin/community-verification", tags=["admin-community-verification"])
+
+
+class CampaignOut(BaseModel):
+    id: int
+    status: Literal["not_started", "active", "completed"]
+    window_hours: int
+    started_at: str | None
+    ends_at: str | None
+    completed_at: str | None
+
+
+class SegmentsOut(BaseModel):
+    chat_members_total: int | None
+    known_to_system: int
+    pending: int
+    approved: int
+    rejected: int
+    needs_info: int
+    notified: int
+    unreachable: int
+    not_registered_estimate: int | None
+
+
+class CampaignStatusOut(BaseModel):
+    campaign: CampaignOut | None
+    segments: SegmentsOut
+
+
+def _campaign_out(campaign) -> CampaignOut | None:
+    if campaign is None:
+        return None
+    return CampaignOut(
+        id=campaign.id,
+        status=campaign.status,
+        window_hours=campaign.window_hours,
+        started_at=campaign.started_at.isoformat() if campaign.started_at else None,
+        ends_at=campaign.ends_at.isoformat() if campaign.ends_at else None,
+        completed_at=campaign.completed_at.isoformat() if campaign.completed_at else None,
+    )
+
+
+@router.get("/status", response_model=CampaignStatusOut)
+async def read_campaign_status(
+    _admin: User = Depends(require_full_admin),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot = Depends(get_bot),
+    settings: Settings = Depends(get_settings),
+) -> CampaignStatusOut:
+    await cv_service.complete_expired_campaigns(session)
+    status = await cv_service.campaign_status(session, bot, settings)
+    return CampaignStatusOut(
+        campaign=_campaign_out(status.campaign),
+        segments=SegmentsOut(**status.segments.__dict__),
+    )
+
+
+class StartCampaignIn(BaseModel):
+    window_hours: int = cv_service.DEFAULT_WINDOW_HOURS
+
+
+@router.post("/start", response_model=CampaignOut)
+async def start_campaign_endpoint(
+    payload: StartCampaignIn,
+    admin: User = Depends(require_full_admin),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> CampaignOut:
+    try:
+        campaign = await cv_service.start_campaign(
+            session, window_hours=payload.window_hours, started_by=admin.id
+        )
+    except cv_service.CampaignError as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
+    return _campaign_out(campaign)
+
+
+@router.post("/complete", response_model=CampaignOut)
+async def complete_campaign_endpoint(
+    admin: User = Depends(require_full_admin),
+    session: AsyncSession = Depends(get_session),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> CampaignOut:
+    campaign = await cv_service.active_campaign(session)
+    if campaign is None:
+        raise HTTPException(status_code=409, detail="no_active_campaign")
+    campaign = await cv_service.complete_campaign(session, campaign, actor_id=admin.id)
+    return _campaign_out(campaign)
+
+
+class NotRegisteredEntryOut(BaseModel):
+    telegram_id: int
+    delivery_status: str
+    notified_at: str | None
+
+
+@router.get("/not-registered", response_model=list[NotRegisteredEntryOut])
+async def list_not_registered_endpoint(
+    _admin: User = Depends(require_full_admin),
+    session: AsyncSession = Depends(get_session),
+) -> list[NotRegisteredEntryOut]:
+    campaign = await cv_service.latest_campaign(session)
+    if campaign is None:
+        return []
+    entries = await cv_service.not_registered_recipients(session, campaign)
+    return [
+        NotRegisteredEntryOut(
+            telegram_id=entry.telegram_id,
+            delivery_status=entry.delivery_status,
+            notified_at=entry.notified_at.isoformat() if entry.notified_at else None,
+        )
+        for entry in entries
+    ]

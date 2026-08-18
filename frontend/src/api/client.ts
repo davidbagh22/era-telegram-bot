@@ -29,6 +29,9 @@ import type {
   EventDecisionAction,
   EventForModeration,
   AuctionAdmin,
+  CommunityVerificationCampaign,
+  CommunityVerificationNotRegisteredEntry,
+  CommunityVerificationStatus,
   EventParticipant,
   GoalCreatePayload,
   GoalDecisionAction,
@@ -723,6 +726,28 @@ export function requestApplicationInfo(
   return authorizedPost<PendingApplication>(
     `/api/v1/admin/applications/${userId}/request-info`,
     { comment },
+  );
+}
+
+export function fetchCommunityVerificationStatus(): Promise<CommunityVerificationStatus> {
+  return authorizedGet<CommunityVerificationStatus>("/api/v1/admin/community-verification/status");
+}
+
+export function startCommunityVerificationCampaign(
+  windowHours: number,
+): Promise<CommunityVerificationCampaign> {
+  return authorizedPost<CommunityVerificationCampaign>("/api/v1/admin/community-verification/start", {
+    window_hours: windowHours,
+  });
+}
+
+export function completeCommunityVerificationCampaign(): Promise<CommunityVerificationCampaign> {
+  return authorizedPost<CommunityVerificationCampaign>("/api/v1/admin/community-verification/complete");
+}
+
+export function fetchCommunityVerificationNotRegistered(): Promise<CommunityVerificationNotRegisteredEntry[]> {
+  return authorizedGet<CommunityVerificationNotRegisteredEntry[]>(
+    "/api/v1/admin/community-verification/not-registered",
   );
 }
 

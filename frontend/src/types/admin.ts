@@ -56,6 +56,41 @@ export interface PendingApplication {
   created_at: string;
 }
 
+// Community Verification ToR §19 — see app/api/v1/community_verification.py.
+export type CommunityVerificationCampaignStatus = "not_started" | "active" | "completed";
+
+export interface CommunityVerificationCampaign {
+  id: number;
+  status: CommunityVerificationCampaignStatus;
+  window_hours: number;
+  started_at: string | null;
+  ends_at: string | null;
+  completed_at: string | null;
+}
+
+export interface CommunityVerificationSegments {
+  chat_members_total: number | null;
+  known_to_system: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+  needs_info: number;
+  notified: number;
+  unreachable: number;
+  not_registered_estimate: number | null;
+}
+
+export interface CommunityVerificationStatus {
+  campaign: CommunityVerificationCampaign | null;
+  segments: CommunityVerificationSegments;
+}
+
+export interface CommunityVerificationNotRegisteredEntry {
+  telegram_id: number;
+  delivery_status: string;
+  notified_at: string | null;
+}
+
 export type ProjectDecisionAction =
   | "initial_accept"
   | "venue_approve"

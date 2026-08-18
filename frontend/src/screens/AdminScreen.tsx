@@ -3,6 +3,7 @@ import { ActionCell } from "../components/ActionCell";
 import { AdminBottomNav, type AdminGroup } from "../components/AdminBottomNav";
 import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminCareerScreen } from "./admin/AdminCareerScreen";
+import { AdminCommunityVerificationScreen } from "./admin/AdminCommunityVerificationScreen";
 import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
 import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
 import { AdminDevelopmentScreen } from "./admin/AdminDevelopmentScreen";
@@ -18,7 +19,7 @@ import { AdminToolsScreen } from "./admin/AdminToolsScreen";
 import { AdminUsersScreen } from "./admin/AdminUsersScreen";
 import { SystemPanel } from "./admin/tools/SystemPanel";
 
-type PeopleSection = "participants" | "development" | "career" | "applications" | "offices" | "data-rights";
+type PeopleSection = "participants" | "development" | "career" | "applications" | "offices" | "data-rights" | "community-verification";
 type WorkSection = "projects" | "events" | "tasks" | "offers";
 type CommsSection = "surveys" | "tools";
 type ControlSection = "analytics" | "system" | "maintenance";
@@ -35,6 +36,7 @@ const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
   { value: "development", label: "Состояние и развитие", description: "Добровольные Check-in, охват и потребности сообщества" },
   { value: "career", label: "Портфолио и рекомендации", description: "Проверка достижений и утверждение официальных рекомендательных писем" },
   { value: "applications", label: "Заявки", description: "Новые регистрации и решения по ним" },
+  { value: "community-verification", label: "Верификация сообщества", description: "Первая волна подтверждения состава общего чата" },
   { value: "offices", label: "Должности", description: "Организационные роли и структура" },
   { value: "data-rights", label: "Данные и права", description: "Запросы на экспорт и удаление персональных данных" },
 ];
@@ -181,6 +183,7 @@ export function AdminScreen() {
             {peopleSection === "development" && <AdminDevelopmentScreen />}
             {peopleSection === "career" && <AdminCareerScreen />}
             {peopleSection === "applications" && <AdminApplicationsScreen initialApplicationId={launchRoute.applicationId} />}
+            {peopleSection === "community-verification" && <AdminCommunityVerificationScreen />}
             {peopleSection === "offices" && <AdminOfficesScreen />}
             {peopleSection === "data-rights" && <AdminDataRightsScreen />}
           </div>
