@@ -16,7 +16,7 @@ import { VectorHalo } from "../components/VectorHalo";
 import { EventIcon, ProjectsIcon, TaskIcon } from "../components/icons";
 import { useAsync } from "../hooks/useAsync";
 import { useHome } from "../hooks/useHome";
-import type { GrowthProgress, VectorHomeSummary } from "../types/home";
+import type { GrowthProgress, OpportunityProgress, VectorHomeSummary } from "../types/home";
 import type { MiniAppUserSummary } from "../types/auth";
 
 const AREA_LABELS: Record<string, string> = {
@@ -29,12 +29,7 @@ const AREA_LABELS: Record<string, string> = {
 
 const LAST_SEEN_LEVEL_KEY = "era.home.lastSeenLevelIndex";
 
-/** Fullscreen "signal mode" (ToR §28) the moment a participant's rank
- * actually goes up — never on ordinary loads. Purely client-side and
- * presentational: compares the level index the browser last recorded
- * against the one the API just returned, and shows the celebratory
- * overlay only on a genuine increase (never on first-ever load, since
- * there is nothing to compare against yet). */
+/** Fullscreen "signal mode" the moment a participant's rank actually goes up. */
 function useRankUpAchievement(growth: GrowthProgress | null) {
   const [justRankedUp, setJustRankedUp] = useState(false);
 
@@ -44,8 +39,6 @@ function useRankUpAchievement(growth: GrowthProgress | null) {
     try {
       previous = window.localStorage.getItem(LAST_SEEN_LEVEL_KEY);
     } catch {
-      // Storage unavailable (private mode, etc.) — skip the celebration,
-      // never block rendering the real level.
       return;
     }
     if (previous !== null && Number(previous) < growth.level_index) {
@@ -54,7 +47,7 @@ function useRankUpAchievement(growth: GrowthProgress | null) {
     try {
       window.localStorage.setItem(LAST_SEEN_LEVEL_KEY, String(growth.level_index));
     } catch {
-      // Ignore — nothing else depends on this write succeeding.
+      // Storage must never block the real Home state.
     }
   }, [growth]);
 
@@ -267,54 +260,53 @@ export function HomeScreen({
       {/* Points/Ranks ToR §39/49: rank + the nearest real Opportunity,
           honestly computed -- no fabricated "points until next rank" (rank
           is metrics-based, not points-linear, see progression_service.py). */}
-      <Card style={{ padding: "1.1rem" }}>
-        <MonoLabel>{data.rank.rank_label.toUpperCase()}</MonoLabel>
-        <strong style={{ display: "block", marginTop: "0.35rem", fontSize: "1.05rem" }}>
-          {data.rank.next_rank_label ? `Следующий ранг: ${data.rank.next_rank_label}` : "Вы на вершине пути ЭРА"}
-        </strong>
+      <Card style={{ padding: "1.1rem", display: "flex", flexDirection: "column", gap: "0.9rem" }}>
+        <div>
+          <MonoLabel>ТВОЙ ПРОГРЕСС</MonoLabel>
+          <strong style={{ display: "block", marginTop: "0.35rem", fontSize: "1.12rem" }}>
+            {data.rank.rank_label} · {data.points_balance} баллов
+          </strong>
+          <div style={{ marginTop: "0.2rem", color: "var(--era-text-secondary)", fontSize: "0.86rem" }}>
+            {data.rank.next_rank_label ? `Следующий ранг: ${data.rank.next_rank_label}` : "Вы на вершине пути ЭРА"}
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.65rem" }}>
+          <div style={{ padding: "0.75rem", borderRadius: "var(--era-radius-md)", background: "var(--era-surface-2)" }}>
+            <MonoLabel>Сегодня</MonoLabel>
+            <strong style={{ display: "block", marginTop: "0.25rem", fontSize: "1.2rem" }}>+{data.points_today}</strong>
+            <span style={{ color: "var(--era-text-secondary)", fontSize: "0.75rem" }}>заработано</span>
+          </div>
+          <div style={{ padding: "0.75rem", borderRadius: "var(--era-radius-md)", background: "var(--era-surface-2)" }}>
+            <MonoLabel>За месяц</MonoLabel>
+            <strong style={{ display: "block", marginTop: "0.25rem", fontSize: "1.2rem" }}>+{data.points_month}</strong>
+            <span style={{ color: "var(--era-text-secondary)", fontSize: "0.75rem" }}>заработано</span>
+          </div>
+        </div>
+
         {data.new_opportunity && (
-          <button
-            type="button"
+          <ProgressOpportunityCard
+            label="ДОСТУПНО"
+            item={data.new_opportunity}
+            tone="available"
             onClick={onOpenOpportunity ? () => onOpenOpportunity(data.new_opportunity!.id) : onOpenCommunity}
-            style={{
-              all: "unset",
-              display: "block",
-              width: "100%",
-              boxSizing: "border-box",
-              cursor: onOpenOpportunity || onOpenCommunity ? "pointer" : "default",
-              marginTop: "0.85rem",
-              padding: "0.75rem 0.85rem",
-              borderRadius: "var(--era-radius-md)",
-              background: "var(--era-tint-violet)",
-            }}
-          >
-            <MonoLabel tone="violet">Новая возможность</MonoLabel>
-            <div style={{ marginTop: "0.25rem", fontWeight: 800 }}>«{data.new_opportunity.title}»</div>
-          </button>
+          />
         )}
-        {!data.new_opportunity && data.nearest_locked_opportunity && (
-          <button
-            type="button"
-            onClick={onOpenOpportunity ? () => onOpenOpportunity(data.nearest_locked_opportunity!.id) : onOpenCommunity}
-            style={{
-              all: "unset",
-              display: "block",
-              width: "100%",
-              boxSizing: "border-box",
-              cursor: onOpenOpportunity || onOpenCommunity ? "pointer" : "default",
-              marginTop: "0.85rem",
-              padding: "0.75rem 0.85rem",
-              borderRadius: "var(--era-radius-md)",
-              background: "var(--era-surface-2)",
-            }}
-          >
-            <div style={{ color: "var(--era-text-secondary)", fontSize: "0.85rem" }}>
-              До «{data.nearest_locked_opportunity.title}» ({data.nearest_locked_opportunity.issuer})
-            </div>
-            <div style={{ marginTop: "0.2rem", fontWeight: 800 }}>
-              осталось {data.nearest_locked_opportunity.points_needed} баллов
-            </div>
-          </button>
+        {data.almost_opportunity && (
+          <ProgressOpportunityCard
+            label="ПОЧТИ ДОСТУПНО"
+            item={data.almost_opportunity}
+            tone="almost"
+            onClick={onOpenOpportunity ? () => onOpenOpportunity(data.almost_opportunity!.id) : onOpenCommunity}
+          />
+        )}
+        {data.locked_opportunity && (
+          <ProgressOpportunityCard
+            label="ПОКА ЗАКРЫТО"
+            item={data.locked_opportunity}
+            tone="locked"
+            onClick={onOpenOpportunity ? () => onOpenOpportunity(data.locked_opportunity!.id) : onOpenCommunity}
+          />
         )}
       </Card>
 
@@ -347,11 +339,7 @@ export function HomeScreen({
       )}
 
       {onOpenDevelopment && (
-        <Card
-          gradient
-          onClick={onOpenDevelopment}
-          style={{ padding: "1.15rem" }}
-        >
+        <Card gradient onClick={onOpenDevelopment} style={{ padding: "1.15rem" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "1rem", alignItems: "center" }}>
             <div style={{ minWidth: 0 }}>
               <MonoLabel tone="orange">МОЙ ВЕКТОР</MonoLabel>
@@ -431,7 +419,7 @@ export function HomeScreen({
               <div style={{ minWidth: 0 }}>
                 <strong>{item.title}</strong>
                 <p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>
-                  {item.point_cost ? `${item.point_cost} баллов` : "Доступно участникам"}{item.expires_at ? ` · до ${formatDate(item.expires_at)}` : ""}
+                  {item.point_cost ? `Требуется: ${item.point_cost} баллов` : "Доступно участникам"}{item.expires_at ? ` · до ${formatDate(item.expires_at)}` : ""}
                 </p>
               </div>
             </div>
@@ -481,6 +469,45 @@ export function HomeScreen({
         description="Продолжай в том же духе — это заметно."
       />
     </div>
+  );
+}
+
+function ProgressOpportunityCard({
+  label,
+  item,
+  tone,
+  onClick,
+}: {
+  label: string;
+  item: OpportunityProgress;
+  tone: "available" | "almost" | "locked";
+  onClick?: () => void;
+}) {
+  const styleByTone = {
+    available: { background: "var(--era-tint-violet)", border: "1px solid rgba(99,44,255,0.18)" },
+    almost: { background: "var(--era-tint-gold, var(--era-surface-2))", border: "1px solid rgba(244,193,93,0.38)" },
+    locked: { background: "var(--era-surface-2)", border: "1px solid var(--era-border)" },
+  }[tone];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        all: "unset",
+        display: "block",
+        width: "100%",
+        boxSizing: "border-box",
+        cursor: onClick ? "pointer" : "default",
+        padding: "0.78rem 0.85rem",
+        borderRadius: "var(--era-radius-md)",
+        ...styleByTone,
+      }}
+    >
+      <MonoLabel tone={tone === "available" ? "violet" : undefined}>{label}</MonoLabel>
+      <div style={{ marginTop: "0.25rem", fontWeight: 800 }}>«{item.title}»</div>
+      <div style={{ marginTop: "0.18rem", color: "var(--era-text-secondary)", fontSize: "0.78rem" }}>{item.issuer}</div>
+      <div style={{ marginTop: "0.35rem", fontSize: "0.84rem" }}>{item.progress_text}</div>
+    </button>
   );
 }
 

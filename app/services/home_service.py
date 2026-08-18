@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Event, EventRegistration, Project, Task, User
+from app.database.models import Event, EventRegistration, PointTransaction, Project, Task, User
 from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
 from app.repositories.users import user_stats
 from app.services.activity_service import list_tasks
@@ -15,6 +16,7 @@ from app.services.growth_service import GrowthProgress, growth_progress_for
 from app.services.opportunity_service import (
     ACTIVE_APPLICATION_STATUSES,
     RECOGNITION_TYPES,
+    EligibilityCheck,
     evaluate_eligibility,
 )
 from app.services.progression_service import RANK_ORDER
@@ -26,10 +28,7 @@ from app.utils.constants import (
     TaskStatus,
 )
 
-# Home only covers what can be computed from data that actually exists
-# today. "Attention items" for participants would just restate next_step,
-# and "recent activity" needs the UserActivityEvent model planned for the
-# Analytics PR — both are deliberately left out rather than faked.
+ERA_TIMEZONE = ZoneInfo("Asia/Yerevan")
 ACTIVE_TASK_STATUSES = (TaskStatus.NEW, TaskStatus.IN_PROGRESS, TaskStatus.OVERDUE)
 ACTIVE_REGISTRATION_STATUSES = (RegistrationStatus.REGISTERED, RegistrationStatus.WILL_COME)
 ACTION_NEEDED_PROJECT_STATUSES = (ProjectStatus.DRAFT, ProjectStatus.NEEDS_REVISION)
@@ -88,18 +87,7 @@ class OpportunitySummary:
 
 @dataclass(frozen=True)
 class ActivityStats:
-    """Powers Home's "Моя активность" section (PR 38) — the exact same
-    numbers profile_service/portfolio_service already compute for the
-    Profile screen's stat grid (app/repositories/users.py::user_stats()),
-    reused rather than duplicated so the two screens can never disagree.
-
-    `portfolio_items` is a total count of everything recorded to the
-    portfolio (projects/events/tasks/badges/certificates/etc — see
-    ProfileScreen's PortfolioSection groupings), not just badges. There's
-    no separate "achievement count" query anywhere in the app; rather
-    than invent one just for this stat (and risk it disagreeing with what
-    Profile itself shows), this reuses the same "В портфолио" number
-    Profile already displays."""
+    """The same activity totals Profile already exposes through user_stats()."""
 
     points: int
     projects: int
@@ -109,12 +97,6 @@ class ActivityStats:
 
 @dataclass(frozen=True)
 class RankProgress:
-    """Points/Ranks ToR section 39/49's Home card: current rank + the name
-    of the next one. Deliberately no "N points until next rank" number --
-    rank is metrics-based, not points-linear (ToR section 24), so a points
-    countdown here would be fabricated. The honestly computable countdown
-    is to the nearest Opportunity, in `nearest_opportunity` below."""
-
     rank: str
     rank_label: str
     next_rank_label: str | None
@@ -126,6 +108,8 @@ class OpportunityProgress:
     title: str
     issuer: str
     points_needed: int
+    display_state: str
+    progress_text: str
 
 
 @dataclass(frozen=True)
@@ -133,6 +117,8 @@ class HomeSnapshot:
     growth: GrowthProgress
     rank: RankProgress
     points_balance: int
+    points_today: int
+    points_month: int
     activity: ActivityStats
     next_step: NextStep | None
     nearest_event: EventSummary | None
@@ -140,6 +126,8 @@ class HomeSnapshot:
     active_project: ProjectSummary | None
     opportunities: list[OpportunitySummary]
     new_opportunity: OpportunityProgress | None
+    almost_opportunity: OpportunityProgress | None
+    locked_opportunity: OpportunityProgress | None
     nearest_locked_opportunity: OpportunityProgress | None
     # DELTA ToR §15: the compact "Задания" entry card on Home --
     # "N доступны · M в работе" -- counts only, no row payload duplication.
@@ -147,6 +135,62 @@ class HomeSnapshot:
     tasks_in_progress_count: int
     # DELTA ToR §2-5: safe "Мой вектор" summary; None means never checked in.
     vector: VectorHomeSummary | None
+
+
+def _period_starts(now: datetime) -> tuple[datetime, datetime]:
+    """Return Yerevan-local day/month starts converted to UTC for DB queries."""
+
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    local_now = now.astimezone(ERA_TIMEZONE)
+    day_start_local = datetime(
+        local_now.year,
+        local_now.month,
+        local_now.day,
+        tzinfo=ERA_TIMEZONE,
+    )
+    month_start_local = datetime(
+        local_now.year,
+        local_now.month,
+        1,
+        tzinfo=ERA_TIMEZONE,
+    )
+    return (
+        day_start_local.astimezone(timezone.utc),
+        month_start_local.astimezone(timezone.utc),
+    )
+
+
+async def _earned_points_periods(
+    session: AsyncSession,
+    user_id: int,
+    *,
+    now: datetime | None = None,
+) -> tuple[int, int]:
+    """Positive points earned today and this month; spending never reduces earned progress."""
+
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    current = current.astimezone(timezone.utc)
+    day_start, month_start = _period_starts(current)
+
+    async def earned_since(start: datetime) -> int:
+        return int(
+            await session.scalar(
+                select(func.coalesce(func.sum(PointTransaction.points), 0)).where(
+                    PointTransaction.user_id == user_id,
+                    PointTransaction.points > 0,
+                    PointTransaction.created_at >= start,
+                    PointTransaction.created_at <= current,
+                )
+            )
+            or 0
+        )
+
+    today = await earned_since(day_start)
+    month = await earned_since(month_start)
+    return today, month
 
 
 async def _active_task(session: AsyncSession, user_id: int) -> Task | None:
@@ -161,7 +205,7 @@ async def _active_task(session: AsyncSession, user_id: int) -> Task | None:
 async def _nearest_event(
     session: AsyncSession, user_id: int
 ) -> tuple[Event, EventRegistration] | None:
-    today = date.today()
+    today = datetime.now(ERA_TIMEZONE).date()
     row = (
         await session.execute(
             select(Event, EventRegistration)
@@ -227,14 +271,73 @@ def _rank_progress(user: User) -> RankProgress:
     )
 
 
+def _numeric_gap(check: EligibilityCheck) -> int | None:
+    try:
+        return max(0, int(check.required) - int(check.current))
+    except (TypeError, ValueError):
+        return None
+
+
+def _check_progress_text(check: EligibilityCheck) -> str:
+    if check.key == "points":
+        gap = _numeric_gap(check)
+        return f"осталось {gap} баллов" if gap is not None else "нужны дополнительные баллы"
+    if check.key.startswith("metric:") and check.key != "metric:any":
+        gap = _numeric_gap(check)
+        return f"ещё {gap} {check.label}" if gap is not None else f"нужно: {check.label}"
+    if check.key == "rank":
+        return f"нужен ранг: {check.required}"
+    if check.key == "prerequisite_document":
+        return "нужен предыдущий документ"
+    if check.key == "metric:any":
+        return "нужен подтверждённый профиль деятельности"
+    return f"нужно выполнить: {check.label}"
+
+
+def _progress_text(failed: list[EligibilityCheck]) -> str:
+    if not failed:
+        return "все условия выполнены"
+    parts = [_check_progress_text(check) for check in failed[:2]]
+    if len(failed) == 1:
+        return parts[0]
+    suffix = "" if len(failed) <= 2 else f" · ещё условий: {len(failed) - 2}"
+    return "ещё нужно: " + " · ".join(parts) + suffix
+
+
+def _opportunity_progress(
+    offer: PartnerInitiative,
+    partner: Partner,
+    *,
+    failed: list[EligibilityCheck],
+) -> OpportunityProgress:
+    points_check = next((check for check in failed if check.key == "points"), None)
+    points_needed = _numeric_gap(points_check) if points_check is not None else 0
+    state = "available" if not failed else ("almost" if len(failed) == 1 else "locked")
+    return OpportunityProgress(
+        id=offer.id,
+        title=offer.title,
+        issuer=partner.name,
+        points_needed=points_needed or 0,
+        display_state=state,
+        progress_text=_progress_text(failed),
+    )
+
+
 async def _recognition_progress(
-    session: AsyncSession, user: User, points: int
-) -> tuple[OpportunityProgress | None, OpportunityProgress | None]:
-    """The Home card's "Новая возможность" (already eligible, not yet
-    applied) and "До следующей возможности X: N баллов" (closest by points
-    gap among the ones still locked). Only recognition-type opportunities
-    (certificates/letters) count here -- the old spend-based partner offers
-    aren't "возможности" in the ToR's sense."""
+    session: AsyncSession, user: User
+) -> tuple[
+    OpportunityProgress | None,
+    OpportunityProgress | None,
+    OpportunityProgress | None,
+]:
+    """Return one truthful available/almost/locked recognition opportunity.
+
+    Eligibility itself remains owned by opportunity_service. Home only projects
+    its existing checks into concise progress text, so rank/metrics/prerequisites
+    can never be replaced by a misleading points-only countdown.
+    """
+
+    now = datetime.now(timezone.utc)
     applied_subquery = select(PartnerOfferApplication.initiative_id).where(
         PartnerOfferApplication.user_id == user.id,
         PartnerOfferApplication.status.in_(ACTIVE_APPLICATION_STATUSES),
@@ -247,30 +350,37 @@ async def _recognition_progress(
                 PartnerInitiative.opportunity_type.in_(RECOGNITION_TYPES),
                 PartnerInitiative.is_active.is_(True),
                 PartnerInitiative.is_archived.is_(False),
+                Partner.is_active.is_(True),
+                Partner.is_archived.is_(False),
                 PartnerInitiative.id.not_in(applied_subquery),
+                (PartnerInitiative.expires_at.is_(None)) | (PartnerInitiative.expires_at >= now),
             )
-            .order_by(PartnerInitiative.point_cost.asc())
+            .order_by(PartnerInitiative.point_cost.asc(), PartnerInitiative.id.asc())
         )
     ).all()
 
-    new_opportunity: OpportunityProgress | None = None
-    nearest_locked: OpportunityProgress | None = None
-    nearest_gap: int | None = None
+    available: OpportunityProgress | None = None
+    almost: OpportunityProgress | None = None
+    locked: OpportunityProgress | None = None
+    locked_missing_count: int | None = None
+
     for offer, partner in rows:
         eligibility = await evaluate_eligibility(session, offer, user)
-        if eligibility.eligible:
-            if new_opportunity is None:
-                new_opportunity = OpportunityProgress(
-                    id=offer.id, title=offer.title, issuer=partner.name, points_needed=0
-                )
+        failed = [check for check in eligibility.checks if not check.ok]
+        progress = _opportunity_progress(offer, partner, failed=failed)
+        if not failed:
+            if available is None:
+                available = progress
             continue
-        gap = max(0, int(offer.point_cost or 0) - points)
-        if nearest_gap is None or gap < nearest_gap:
-            nearest_gap = gap
-            nearest_locked = OpportunityProgress(
-                id=offer.id, title=offer.title, issuer=partner.name, points_needed=gap
-            )
-    return new_opportunity, nearest_locked
+        if len(failed) == 1:
+            if almost is None:
+                almost = progress
+            continue
+        if locked is None or locked_missing_count is None or len(failed) < locked_missing_count:
+            locked = progress
+            locked_missing_count = len(failed)
+
+    return available, almost, locked
 
 
 def _build_next_step(
@@ -281,9 +391,6 @@ def _build_next_step(
     growth: GrowthProgress,
     opportunities: list[PartnerInitiative],
 ) -> NextStep | None:
-    # Priority order per the Home spec: active/overdue task, then nearest
-    # registered event, then a project needing action, then a generic
-    # growth nudge, then a matching opportunity.
     if active_task is not None:
         return NextStep(
             kind="task",
@@ -340,6 +447,7 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
     growth = growth_progress_for(user)
     opportunities = await _top_opportunities(session, user.id)
     stats = await user_stats(session, user.id)
+    points_today, points_month = await _earned_points_periods(session, user.id)
     activity = ActivityStats(
         points=stats["points"],
         projects=stats["projects"],
@@ -347,8 +455,8 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
         portfolio_items=stats["portfolio"],
     )
     rank = _rank_progress(user)
-    new_opportunity, nearest_locked_opportunity = await _recognition_progress(
-        session, user, activity.points
+    available_opportunity, almost_opportunity, locked_opportunity = await _recognition_progress(
+        session, user
     )
     tasks_available_count = len(await list_tasks(session, user, "available"))
     tasks_in_progress_count = len(await list_tasks(session, user, "mine"))
@@ -395,13 +503,17 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
         growth=growth,
         rank=rank,
         points_balance=activity.points,
+        points_today=points_today,
+        points_month=points_month,
         activity=activity,
         next_step=next_step,
         nearest_event=nearest_event_summary,
         active_task=active_task_summary,
         active_project=active_project_summary,
-        new_opportunity=new_opportunity,
-        nearest_locked_opportunity=nearest_locked_opportunity,
+        new_opportunity=available_opportunity,
+        almost_opportunity=almost_opportunity,
+        locked_opportunity=locked_opportunity,
+        nearest_locked_opportunity=almost_opportunity or locked_opportunity,
         opportunities=[
             OpportunitySummary(
                 id=o.id,

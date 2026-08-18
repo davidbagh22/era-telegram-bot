@@ -278,6 +278,7 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
             task = await session.get(Task, links[0].task_id)
             self.assertIsNotNone(task)
             self.assertTrue(task.reward_json["media_task"])
+            self.assertEqual(task.points, 50)
 
             membership, error = await task_service.claim(session, task, member)
             self.assertIsNone(error)
@@ -346,6 +347,18 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(request_count, 1)
             self.assertEqual(task_count, 6)
+
+            rows = (
+                await session.execute(
+                    select(Task, MediaContentTask)
+                    .join(MediaContentTask, MediaContentTask.task_id == Task.id)
+                    .where(MediaContentTask.content_id == first.content_id)
+                )
+            ).all()
+            self.assertEqual(
+                {link.task_kind: task.points for task, link in rows},
+                media_service.MEDIA_TASK_POINTS,
+            )
 
     async def test_authored_text_is_published_once(self) -> None:
         async with self.session_factory() as session:

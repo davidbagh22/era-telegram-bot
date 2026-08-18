@@ -45,6 +45,8 @@ def _snapshot() -> HomeSnapshot:
             next_rank_label="Вовлечённый участник",
         ),
         points_balance=15,
+        points_today=5,
+        points_month=12,
         activity=ActivityStats(points=15, projects=2, completed_tasks=3, portfolio_items=4),
         next_step=None,
         nearest_event=None,
@@ -52,6 +54,8 @@ def _snapshot() -> HomeSnapshot:
         active_project=None,
         opportunities=[],
         new_opportunity=None,
+        almost_opportunity=None,
+        locked_opportunity=None,
         nearest_locked_opportunity=None,
         tasks_available_count=4,
         tasks_in_progress_count=1,
@@ -63,6 +67,7 @@ class HomeApiTests(unittest.TestCase):
     def _build_app(self) -> FastAPI:
         app = FastAPI()
         app.include_router(api_router)
+
         async def _session_override():
             yield SimpleNamespace()
 
@@ -93,10 +98,15 @@ class HomeApiTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["growth"]["level"], "participant")
         self.assertEqual(body["points_balance"], 15)
+        self.assertEqual(body["points_today"], 5)
+        self.assertEqual(body["points_month"], 12)
         self.assertEqual(
             body["activity"],
             {"points": 15, "projects": 2, "completed_tasks": 3, "portfolio_items": 4},
         )
+        self.assertIsNone(body["new_opportunity"])
+        self.assertIsNone(body["almost_opportunity"])
+        self.assertIsNone(body["locked_opportunity"])
         self.assertIsNone(body["next_step"])
 
 

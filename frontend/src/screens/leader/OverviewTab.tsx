@@ -1,4 +1,5 @@
 import { fetchLeaderOverview } from "../../api/client";
+import { AvatarCluster } from "../../components/AvatarCluster";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { MetricCard } from "../../components/MetricCard";
@@ -51,7 +52,24 @@ export function OverviewTab() {
         {data.participants.length === 0 ? (
           <EmptyState text="Участников в вашем контуре пока нет." />
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
+              <div>
+                <strong>{data.participants.length} в команде</strong>
+                <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+                  Люди, которые сейчас входят в вашу зону ответственности.
+                </p>
+              </div>
+              <AvatarCluster
+                people={data.participants.map((participant) => ({
+                  id: participant.id,
+                  firstName: participant.first_name,
+                  lastName: participant.last_name,
+                }))}
+                max={6}
+                size="sm"
+              />
+            </Card>
             {data.participants.map((participant) => (
               <Card key={participant.id}>
                 <strong>

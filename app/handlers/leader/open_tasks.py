@@ -26,6 +26,15 @@ DEADLINE_PARSE_ERROR = """Не получилось распознать дед�
 сегодня 20:00
 18:00"""
 
+TASK_POINT_PRESETS = {40, 80, 150, 200}
+TASK_POINT_PROMPT = (
+    "Выберите баллы по сложности:\n\n"
+    "40 — лёгкая\n"
+    "80 — стандартная\n"
+    "150 — сложная\n"
+    "200 — высокая ответственность"
+)
+
 
 def _day_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -200,7 +209,7 @@ async def open_task_deadline_confirm(call: CallbackQuery, state: FSMContext) -> 
         return
     await state.update_data(open_task_deadline=datetime.fromisoformat(raw_deadline))
     await state.set_state(OpenTaskStates.points)
-    await call.message.answer("Сколько баллов получит участник после проверки результата?")
+    await call.message.answer(TASK_POINT_PROMPT)
 
 
 @router.message(OpenTaskStates.deadline)
@@ -238,10 +247,11 @@ async def open_task_deadline_manual_input(message: Message, state: FSMContext, s
 async def open_task_points(message: Message, state: FSMContext) -> None:
     try:
         points = int(message.text or "")
-        if not 0 <= points <= 1000:
-            raise ValueError
     except ValueError:
-        await message.answer("Укажите число от 0 до 1000.")
+        await message.answer(TASK_POINT_PROMPT)
+        return
+    if points not in TASK_POINT_PRESETS:
+        await message.answer("Можно выбрать только 40, 80, 150 или 200 баллов.\n\n" + TASK_POINT_PROMPT)
         return
     await state.update_data(open_task_points=points)
     await state.set_state(OpenTaskStates.max_participants)

@@ -8,6 +8,7 @@ import {
   unsaveOpportunity,
   type OpportunityFilters,
 } from "../api/client";
+import { AchievementOverlay } from "../components/AchievementOverlay";
 import { BottomSheet } from "../components/BottomSheet";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
@@ -94,6 +95,75 @@ const COMING_SOON = [
 ] as const;
 
 const HIGHLIGHT_MS = 2500;
+const ACHIEVEMENT_SNAPSHOT_KEY = "era.opportunities.achievementSnapshot";
+
+type OpportunityAchievement = {
+  kicker: string;
+  title: string;
+  description: string;
+} | null;
+
+function useOpportunityAchievement(offers: Opportunity[] | null, enabled: boolean) {
+  const [achievement, setAchievement] = useState<OpportunityAchievement>(null);
+
+  useEffect(() => {
+    // Only the personalised "Для тебя" feed is allowed to mutate the
+    // achievement baseline. Saved/mine/all are different projections of the
+    // same data and switching filters must never look like a fresh unlock.
+    if (!offers || !enabled) return;
+    const availableIds = offers
+      .filter((offer) => offer.display_state === "available" || offer.display_state === "new")
+      .map((offer) => offer.id);
+    const issuedIds = offers
+      .filter((offer) => offer.application_status === "issued")
+      .map((offer) => offer.id);
+
+    let previous: { availableIds: number[]; issuedIds: number[] } | null = null;
+    try {
+      const raw = window.localStorage.getItem(ACHIEVEMENT_SNAPSHOT_KEY);
+      previous = raw ? JSON.parse(raw) : null;
+    } catch {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(ACHIEVEMENT_SNAPSHOT_KEY, JSON.stringify({ availableIds, issuedIds }));
+    } catch {
+      return;
+    }
+
+    // First visit only establishes a baseline. Signal mode is reserved for
+    // a real transition, never for every already-existing opportunity.
+    if (!previous) return;
+
+    const newlyIssuedId = issuedIds.find((id) => !previous!.issuedIds.includes(id));
+    if (newlyIssuedId !== undefined) {
+      const offer = offers.find((item) => item.id === newlyIssuedId);
+      if (offer) {
+        setAchievement({
+          kicker: "Достижение",
+          title: "ДОКУМЕНТ ВЫДАН",
+          description: `«${offer.title}» теперь подтверждает твой результат в ЭРА.`,
+        });
+        return;
+      }
+    }
+
+    const unlockedId = availableIds.find((id) => !previous!.availableIds.includes(id));
+    if (unlockedId !== undefined) {
+      const offer = offers.find((item) => item.id === unlockedId);
+      if (offer) {
+        setAchievement({
+          kicker: "Новая возможность",
+          title: "ТЕПЕРЬ ДОСТУПНО",
+          description: `Ты открыл «${offer.title}». Это результат твоей активности.`,
+        });
+      }
+    }
+  }, [offers, enabled]);
+
+  return { achievement, dismiss: () => setAchievement(null) };
+}
 
 interface OffersListProps {
   initialItemId?: number | null;
@@ -123,6 +193,10 @@ function OffersList({ initialItemId }: OffersListProps) {
   const [highlightId, setHighlightId] = useState<number | null>(initialItemId ?? null);
   const activeQuick = QUICK_STATES.find((q) => q.scope === scope && q.state === filters.status);
   const hasExtraFilters = Boolean(filters.issuer || filters.type || filters.category) || sort !== "closing_soon";
+  const achievement = useOpportunityAchievement(
+    listState.status === "ready" ? listState.data : null,
+    scope === "for_me",
+  );
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
@@ -310,6 +384,14 @@ function OffersList({ initialItemId }: OffersListProps) {
           ))}
         </div>
       )}
+
+      <AchievementOverlay
+        open={achievement.achievement !== null}
+        onClose={achievement.dismiss}
+        kicker={achievement.achievement?.kicker}
+        title={achievement.achievement?.title ?? ""}
+        description={achievement.achievement?.description}
+      />
     </div>
   );
 }

@@ -92,6 +92,8 @@ class OpportunityProgressOut(BaseModel):
     title: str
     issuer: str
     points_needed: int
+    display_state: str
+    progress_text: str
 
 
 class VectorAreaSignalOut(BaseModel):
@@ -118,6 +120,8 @@ class HomeSnapshotOut(BaseModel):
     growth: GrowthProgressOut
     rank: RankProgressOut
     points_balance: int
+    points_today: int
+    points_month: int
     activity: ActivityStatsOut
     next_step: NextStepOut | None
     nearest_event: EventSummaryOut | None
@@ -125,6 +129,8 @@ class HomeSnapshotOut(BaseModel):
     active_project: ProjectSummaryOut | None
     opportunities: list[OpportunitySummaryOut]
     new_opportunity: OpportunityProgressOut | None
+    almost_opportunity: OpportunityProgressOut | None
+    locked_opportunity: OpportunityProgressOut | None
     nearest_locked_opportunity: OpportunityProgressOut | None
     tasks_available_count: int
     tasks_in_progress_count: int

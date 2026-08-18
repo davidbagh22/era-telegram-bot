@@ -21,6 +21,13 @@ const DESTINATION_OPTIONS: { value: TaskDestinationKey; label: string }[] = [
   { value: "leaders", label: "Чат лидеров" },
 ];
 
+const TASK_POINT_PRESETS = [
+  { points: 40, label: "Лёгкая", description: "Небольшая понятная задача" },
+  { points: 80, label: "Стандартная", description: "Обычная рабочая задача" },
+  { points: 150, label: "Сложная", description: "Требует заметного вклада" },
+  { points: 200, label: "Высокая ответственность", description: "Ключевая задача с серьёзным результатом" },
+] as const;
+
 const inputStyle = {
   fontFamily: "var(--era-font-body)",
   minHeight: "2.75rem",
@@ -63,7 +70,7 @@ export function OpenTasksTab() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
-  const [points, setPoints] = useState("10");
+  const [points, setPoints] = useState(80);
   const [maxParticipants, setMaxParticipants] = useState("1");
   const [formError, setFormError] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -91,14 +98,14 @@ export function OpenTasksTab() {
         title,
         description,
         deadline: new Date(deadline).toISOString(),
-        points: Number(points) || 0,
+        points,
         max_participants: Number(maxParticipants) || 1,
         destinations,
       });
       setTitle("");
       setDescription("");
       setDeadline("");
-      setPoints("10");
+      setPoints(80);
       setMaxParticipants("1");
       setDestinations([]);
       setShowForm(false);
@@ -175,15 +182,36 @@ export function OpenTasksTab() {
               onChange={(event) => setDeadline(event.target.value)}
               style={inputStyle}
             />
-            <input
-              type="number"
-              min={0}
-              max={1000}
-              value={points}
-              onChange={(event) => setPoints(event.target.value)}
-              placeholder="Баллы"
-              style={inputStyle}
-            />
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+              <strong style={{ fontSize: "0.875rem" }}>Сложность и баллы</strong>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.5rem" }}>
+                {TASK_POINT_PRESETS.map((preset) => {
+                  const selected = points === preset.points;
+                  return (
+                    <button
+                      key={preset.points}
+                      type="button"
+                      onClick={() => setPoints(preset.points)}
+                      aria-pressed={selected}
+                      style={{
+                        minHeight: "4.5rem",
+                        padding: "0.65rem",
+                        textAlign: "left",
+                        borderRadius: "0.75rem",
+                        border: selected ? "1px solid var(--era-violet)" : "1px solid var(--era-border)",
+                        background: selected ? "var(--era-tint-violet)" : "var(--era-surface)",
+                        color: "var(--era-text)",
+                      }}
+                    >
+                      <strong style={{ display: "block" }}>{preset.label} · {preset.points}</strong>
+                      <span style={{ display: "block", marginTop: "0.2rem", color: "var(--era-text-muted)", fontSize: "0.75rem" }}>
+                        {preset.description}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <input
               type="number"
               min={1}

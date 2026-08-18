@@ -1,11 +1,13 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-type ToastTone = "success" | "error" | "info";
+export type NotificationTone = "signal" | "attention" | "success" | "system";
+type LegacyToastTone = "error" | "info";
+type ToastTone = NotificationTone | LegacyToastTone;
 
 interface ToastItem {
   id: number;
-  tone: ToastTone;
+  tone: NotificationTone;
   message: string;
 }
 
@@ -15,13 +17,29 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
-const TONE_COLORS: Record<ToastTone, string> = {
+const TONE_COLORS: Record<NotificationTone, string> = {
+  signal: "var(--era-violet)",
+  attention: "var(--era-signal-red)",
   success: "var(--era-success)",
-  error: "var(--era-error)",
-  info: "var(--era-violet)",
+  system: "var(--era-blue)",
+};
+
+const TONE_LABELS: Record<NotificationTone, string> = {
+  signal: "Сигнал",
+  attention: "Внимание",
+  success: "Готово",
+  system: "Система",
 };
 
 const AUTO_DISMISS_MS = 3500;
+
+function normalizeTone(tone: ToastTone): NotificationTone {
+  // Compatibility aliases keep existing call sites safe while the visual
+  // system itself has one explicit semantic vocabulary.
+  if (tone === "error") return "attention";
+  if (tone === "info") return "system";
+  return tone;
+}
 
 /** Mount once at the app root (see main.tsx) — every screen calls
  * useToast().show(...) instead of a native alert(), which this codebase
@@ -31,9 +49,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const nextId = useRef(0);
 
-  const show = useCallback((message: string, tone: ToastTone = "info") => {
+  const show = useCallback((message: string, tone: ToastTone = "system") => {
     const id = nextId.current++;
-    setToasts((current) => [...current, { id, tone, message }]);
+    setToasts((current) => [...current, { id, tone: normalizeTone(tone), message }]);
     window.setTimeout(() => {
       setToasts((current) => current.filter((toast) => toast.id !== id));
     }, AUTO_DISMISS_MS);
@@ -61,7 +79,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={toast.id}
             className="era-toast"
-            role="status"
+            role={toast.tone === "attention" ? "alert" : "status"}
+            aria-label={`${TONE_LABELS[toast.tone]}: ${toast.message}`}
             style={{
               borderRadius: "var(--era-radius-control)",
               background: "var(--era-surface)",
@@ -73,6 +92,19 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               pointerEvents: "auto",
             }}
           >
+            <span
+              style={{
+                display: "block",
+                marginBottom: "0.15rem",
+                color: TONE_COLORS[toast.tone],
+                fontSize: "0.68rem",
+                fontWeight: 800,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              {TONE_LABELS[toast.tone]}
+            </span>
             {toast.message}
           </div>
         ))}

@@ -1,6 +1,7 @@
 export type OpportunityScope = "for_me" | "all" | "saved" | "mine";
 export type OpportunityState = "available" | "almost" | "closed" | "requested" | "review" | "issued";
 export type OpportunitySort = "closing_soon" | "newest" | "by_organization";
+export type OpportunityDisplayState = "locked" | "almost" | "available" | "new";
 
 export interface EligibilityCheck {
   key: string;
@@ -29,6 +30,7 @@ export interface Opportunity {
   category: string | null;
   min_rank: string | null;
   eligible: boolean;
+  display_state: OpportunityDisplayState;
   eligibility_checks: EligibilityCheck[];
   missing_requirements: string[];
   default_award_wording: string | null;
