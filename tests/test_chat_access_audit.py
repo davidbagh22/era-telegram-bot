@@ -219,7 +219,7 @@ class ChatJoinRequestAuditTests(unittest.IsolatedAsyncioTestCase):
             bot.send_message.assert_awaited_once()
             call = bot.send_message.await_args
             self.assertEqual(call.args[0], 999)
-            self.assertIn("Хочешь в ЭРА", call.args[1])
+            self.assertIn("Хотите в ЭРА", call.args[1])
             markup = call.kwargs["reply_markup"]
             self.assertEqual(markup.inline_keyboard[0][0].callback_data, "registration:start")
 
@@ -251,7 +251,7 @@ class ChatJoinRequestAuditTests(unittest.IsolatedAsyncioTestCase):
 
             bot.send_message.assert_awaited_once()
             call = bot.send_message.await_args
-            self.assertNotIn("Хочешь в ЭРА", call.args[1])
+            self.assertNotIn("Хотите в ЭРА", call.args[1])
             self.assertNotIn("reply_markup", call.kwargs)
 
 

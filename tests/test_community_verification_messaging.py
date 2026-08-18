@@ -30,8 +30,11 @@ class FakeBot:
         self.failures = failures or {}
         self.sent: list[int] = []
         self.pinned: list[tuple[int, int]] = []
+        self.banned: list[tuple[int, int]] = []
+        self.unbanned: list[tuple[int, int]] = []
         self._next_message_id = 1000
         self.pin_should_fail = False
+        self.ban_should_fail = False
 
     async def send_message(self, chat_id: int, text: str, reply_markup=None) -> FakeMessage:
         self.sent.append(chat_id)
@@ -44,6 +47,14 @@ class FakeBot:
         if self.pin_should_fail:
             raise TelegramAPIError(method=_method(chat_id), message="cannot pin")
         self.pinned.append((chat_id, message_id))
+
+    async def ban_chat_member(self, chat_id: int, user_id: int) -> None:
+        if self.ban_should_fail:
+            raise TelegramAPIError(method=_method(chat_id), message="cannot ban")
+        self.banned.append((chat_id, user_id))
+
+    async def unban_chat_member(self, chat_id: int, user_id: int, only_if_banned: bool = False) -> None:
+        self.unbanned.append((chat_id, user_id))
 
 
 def _settings(**overrides) -> SimpleNamespace:
@@ -256,6 +267,68 @@ class CommunityVerificationMessagingTests(unittest.IsolatedAsyncioTestCase):
             await cv_service.send_launch_wave(session, bot, campaign, actor_id=1)
             actions = (await session.scalars(select(AuditLog.action))).all()
             self.assertIn("community_verification.launch_sent", actions)
+
+    async def test_remind_selected_only_reaches_still_unregistered_people(self) -> None:
+        """ToR §16: admin picks specific people to remind -- but the server
+        re-verifies "not registered" itself rather than trusting the
+        client's selection, in case someone registered in the meantime."""
+        async with self.session_factory() as session:
+            campaign = await cv_service.start_campaign(session, window_hours=72, started_by=1)
+            await self._make_user(session, telegram_id=1)  # registered since the client fetched its list
+            bot = FakeBot()
+
+            result = await cv_service.remind_selected(session, bot, campaign, [1, 2, 3], actor_id=1)
+
+            self.assertEqual(result.requested, 3)
+            self.assertEqual(result.eligible, 2)
+            self.assertEqual(result.sent, 2)
+            self.assertEqual(sorted(bot.sent), [2, 3])
+
+    async def test_remind_selected_is_idempotent_with_automatic_wave(self) -> None:
+        async with self.session_factory() as session:
+            campaign = await cv_service.start_campaign(session, window_hours=72, started_by=1)
+            bot = FakeBot()
+            await cv_service.remind_selected(session, bot, campaign, [42], actor_id=1)
+            second = await cv_service.remind_selected(session, bot, campaign, [42], actor_id=1)
+            self.assertEqual(second.sent, 0)
+            self.assertEqual(bot.sent, [42])
+
+    async def test_remove_selected_bans_then_unbans_each_person(self) -> None:
+        """ToR §3/§62's kick pattern, driven by the admin's explicit bulk
+        action instead of the reject-sync path -- same underlying primitive."""
+        async with self.session_factory() as session:
+            bot = FakeBot()
+            result = await cv_service.remove_selected(session, bot, _settings(), [10, 20], actor_id=1)
+            self.assertEqual(result.removed, 2)
+            self.assertEqual(result.failed, 0)
+            self.assertEqual(sorted(bot.banned), [(-1001, 10), (-1001, 20)])
+            self.assertEqual(sorted(bot.unbanned), [(-1001, 10), (-1001, 20)])
+            actions = (
+                await session.scalars(
+                    select(AuditLog).where(AuditLog.action == "chat_access.member_removed")
+                )
+            ).all()
+            self.assertEqual(len(actions), 2)
+
+    async def test_remove_selected_never_raises_on_a_failed_removal(self) -> None:
+        """ToR §13's spirit applies here too: one failure must not abort
+        the whole batch or crash the request."""
+        async with self.session_factory() as session:
+            bot = FakeBot()
+            bot.ban_should_fail = True
+            result = await cv_service.remove_selected(session, bot, _settings(), [10], actor_id=1)
+            self.assertEqual(result.removed, 0)
+            self.assertEqual(result.failed, 1)
+
+    async def test_remove_selected_noop_without_bound_general_chat(self) -> None:
+        async with self.session_factory() as session:
+            bot = FakeBot()
+            result = await cv_service.remove_selected(
+                session, bot, _settings(general_chat_id=None), [10], actor_id=1
+            )
+            self.assertEqual(result.removed, 0)
+            self.assertEqual(result.failed, 1)
+            self.assertEqual(bot.banned, [])
 
 
 if __name__ == "__main__":

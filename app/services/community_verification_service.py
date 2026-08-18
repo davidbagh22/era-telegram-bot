@@ -23,6 +23,7 @@ from app.config import Settings
 from app.database.chat_moderation import CommunityVerificationCampaign, CommunityVerificationDelivery
 from app.database.models import User
 from app.services.audit_service import audit
+from app.services.chat_access_service import remove_member
 from app.services.notification_service import BroadcastFailure, broadcast_detailed
 from app.utils.constants import ApplicationStatus
 
@@ -51,7 +52,7 @@ LAUNCH_ANNOUNCEMENT_TEXT = (
     "реальный опыт и постепенно брать больше ответственности внутри ЭРА.\n\n"
     "Мы также обновляем состав сообщества, чтобы в общем пространстве "
     "оставались реальные участники ЭРА.\n\n"
-    "Пройди короткую регистрацию и подтверждение — после этого твой профиль "
+    "Пройдите короткую регистрацию и подтверждение — после этого Ваш профиль "
     "станет частью новой системы."
 )
 
@@ -59,7 +60,7 @@ LAUNCH_ANNOUNCEMENT_TEXT = (
 # to pending/approved/rejected (enforced by reminder_eligible_telegram_ids).
 REMINDER_TEXT = (
     "До завершения первой верификации ЭРА — 1 день.\n\n"
-    "Если ещё не зарегистрировался, открой ЭРА и создай свой профиль.\n\n"
+    "Если ещё не зарегистрировались, откройте ЭРА и создайте свой профиль.\n\n"
     "Это займёт несколько минут и даст доступ ко всей новой системе: "
     "событиям, проектам, возможностям и «Моему вектору»."
 )
@@ -523,3 +524,94 @@ async def run_verification_reminders(bot: Bot, settings: Settings, session_facto
         # -- without this, everything above rolls back on __aexit__ (same bug
         # class documented in app/api/deps.py::get_session).
         await session.commit()
+
+
+@dataclass(frozen=True)
+class RemindSelectedResult:
+    requested: int
+    eligible: int
+    sent: int
+    blocked: int
+    unreachable: int
+    failed: int
+
+
+async def remind_selected(
+    session: AsyncSession,
+    bot: Bot,
+    campaign: CommunityVerificationCampaign,
+    telegram_ids: list[int],
+    *,
+    actor_id: int | None,
+) -> RemindSelectedResult:
+    """ToR §16: admin-picked "Напомнить" for specific people, on top of the
+    automatic 24h-before wave. Still re-verifies "not registered" server-
+    side -- never trusts the client's selection blindly -- and still goes
+    through the same idempotent _send_wave, so someone reminded manually
+    won't also get double-reminded by the automatic job later."""
+    requested = len(telegram_ids)
+    if not telegram_ids:
+        return RemindSelectedResult(0, 0, 0, 0, 0, 0)
+    known = set(
+        (await session.scalars(select(User.telegram_id).where(User.telegram_id.in_(telegram_ids)))).all()
+    )
+    eligible_ids = [telegram_id for telegram_id in telegram_ids if telegram_id not in known]
+    result = await _send_wave(
+        session, bot, campaign=campaign, kind=REMINDER_KIND, telegram_ids=eligible_ids, text=REMINDER_TEXT
+    )
+    if result.sent or result.blocked or result.unreachable or result.failed:
+        await audit(
+            session,
+            actor_id=actor_id,
+            action="community_verification.reminder_sent",
+            entity_type="community_verification_campaign",
+            entity_id=campaign.id,
+            new_value={"manual": True, "sent": result.sent, "blocked": result.blocked, "failed": result.failed},
+        )
+    return RemindSelectedResult(
+        requested=requested,
+        eligible=len(eligible_ids),
+        sent=result.sent,
+        blocked=result.blocked,
+        unreachable=result.unreachable,
+        failed=result.failed,
+    )
+
+
+@dataclass(frozen=True)
+class RemoveSelectedResult:
+    requested: int
+    removed: int
+    failed: int
+
+
+async def remove_selected(
+    session: AsyncSession,
+    bot: Bot,
+    settings: Settings,
+    telegram_ids: list[int],
+    *,
+    actor_id: int | None,
+) -> RemoveSelectedResult:
+    """ToR §16: admin-picked "Удалить" for specific not-registered people
+    still in the general chat. Deliberately NOT automatic (ToR §17) -- this
+    only ever runs from an explicit admin action, one call per confirmed
+    batch from the Mini App's confirm-before-bulk-delete screen."""
+    if settings.general_chat_id is None or not telegram_ids:
+        return RemoveSelectedResult(len(telegram_ids), 0, len(telegram_ids))
+    removed = failed = 0
+    for telegram_id in telegram_ids:
+        ok = await remove_member(bot, settings.general_chat_id, telegram_id)
+        if ok:
+            removed += 1
+        else:
+            failed += 1
+        await audit(
+            session,
+            actor_id=actor_id,
+            action="chat_access.member_removed",
+            entity_type="user",
+            entity_id=None,
+            new_value={"telegram_id": telegram_id, "chat_key": "general", "ok": ok, "reason": "community_verification_manual"},
+        )
+    return RemoveSelectedResult(requested=len(telegram_ids), removed=removed, failed=failed)

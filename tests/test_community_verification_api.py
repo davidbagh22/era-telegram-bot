@@ -162,6 +162,88 @@ class CommunityVerificationApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), [])
 
+    def test_remind_selected_requires_nonempty_list(self) -> None:
+        session = SimpleNamespace()
+        app = _build_app(_admin(), session, bot=AsyncMock())
+        client = TestClient(app)
+        response = client.post("/api/v1/admin/community-verification/remind", json={"telegram_ids": []})
+        self.assertEqual(response.status_code, 422)
+
+    def test_remind_selected_requires_a_campaign(self) -> None:
+        with patch(
+            "app.api.v1.community_verification.cv_service.latest_campaign",
+            new=AsyncMock(return_value=None),
+        ):
+            session = SimpleNamespace()
+            app = _build_app(_admin(), session, bot=AsyncMock())
+            client = TestClient(app)
+            response = client.post(
+                "/api/v1/admin/community-verification/remind", json={"telegram_ids": [1, 2]}
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "no_campaign")
+
+    def test_remind_selected_returns_summary(self) -> None:
+        from app.services import community_verification_service as cv_service
+
+        with (
+            patch(
+                "app.api.v1.community_verification.cv_service.latest_campaign",
+                new=AsyncMock(return_value=SimpleNamespace(id=1)),
+            ),
+            patch(
+                "app.api.v1.community_verification.cv_service.remind_selected",
+                new=AsyncMock(
+                    return_value=cv_service.RemindSelectedResult(
+                        requested=2, eligible=1, sent=1, blocked=0, unreachable=0, failed=0
+                    )
+                ),
+            ),
+        ):
+            session = SimpleNamespace()
+            app = _build_app(_admin(), session, bot=AsyncMock())
+            client = TestClient(app)
+            response = client.post(
+                "/api/v1/admin/community-verification/remind", json={"telegram_ids": [1, 2]}
+            )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["requested"], 2)
+        self.assertEqual(body["sent"], 1)
+
+    def test_remove_selected_requires_nonempty_list(self) -> None:
+        session = SimpleNamespace()
+        app = _build_app(_admin(), session, bot=AsyncMock())
+        client = TestClient(app)
+        response = client.post("/api/v1/admin/community-verification/remove", json={"telegram_ids": []})
+        self.assertEqual(response.status_code, 422)
+
+    def test_remove_selected_returns_summary(self) -> None:
+        from app.services import community_verification_service as cv_service
+
+        with patch(
+            "app.api.v1.community_verification.cv_service.remove_selected",
+            new=AsyncMock(return_value=cv_service.RemoveSelectedResult(requested=2, removed=2, failed=0)),
+        ):
+            session = SimpleNamespace()
+            app = _build_app(_admin(), session, bot=AsyncMock())
+            client = TestClient(app)
+            response = client.post(
+                "/api/v1/admin/community-verification/remove", json={"telegram_ids": [1, 2]}
+            )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["removed"], 2)
+
+    def test_remind_and_remove_forbidden_for_non_admin(self) -> None:
+        session = SimpleNamespace()
+        app = _build_app(_participant(), session, bot=AsyncMock())
+        client = TestClient(app)
+        remind = client.post("/api/v1/admin/community-verification/remind", json={"telegram_ids": [1]})
+        remove = client.post("/api/v1/admin/community-verification/remove", json={"telegram_ids": [1]})
+        self.assertEqual(remind.status_code, 403)
+        self.assertEqual(remove.status_code, 403)
+
 
 if __name__ == "__main__":
     unittest.main()

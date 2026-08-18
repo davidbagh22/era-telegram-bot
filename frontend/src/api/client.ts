@@ -760,6 +760,39 @@ export function fetchCommunityVerificationNotRegistered(): Promise<CommunityVeri
   );
 }
 
+export interface CommunityVerificationRemindResult {
+  requested: number;
+  eligible: number;
+  sent: number;
+  blocked: number;
+  unreachable: number;
+  failed: number;
+}
+
+export function remindCommunityVerificationSelected(
+  telegramIds: number[],
+): Promise<CommunityVerificationRemindResult> {
+  return authorizedPost<CommunityVerificationRemindResult>(
+    "/api/v1/admin/community-verification/remind",
+    { telegram_ids: telegramIds },
+  );
+}
+
+export interface CommunityVerificationRemoveResult {
+  requested: number;
+  removed: number;
+  failed: number;
+}
+
+export function removeCommunityVerificationSelected(
+  telegramIds: number[],
+): Promise<CommunityVerificationRemoveResult> {
+  return authorizedPost<CommunityVerificationRemoveResult>(
+    "/api/v1/admin/community-verification/remove",
+    { telegram_ids: telegramIds },
+  );
+}
+
 export function fetchAdminProjects(): Promise<ProjectForModeration[]> {
   return authorizedGet<ProjectForModeration[]>("/api/v1/admin/projects");
 }

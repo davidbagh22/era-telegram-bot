@@ -4,9 +4,12 @@ import {
   describeActionError,
   fetchCommunityVerificationNotRegistered,
   fetchCommunityVerificationStatus,
+  remindCommunityVerificationSelected,
+  removeCommunityVerificationSelected,
   sendCommunityVerificationLaunch,
   startCommunityVerificationCampaign,
 } from "../../api/client";
+import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { MonoLabel } from "../../components/MonoLabel";
@@ -72,8 +75,55 @@ export function AdminCommunityVerificationScreen() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [lastWave, setLastWave] = useState<CommunityVerificationLaunchWave | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [lastActionSummary, setLastActionSummary] = useState<string | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
+
+  const toggleSelected = useCallback((telegramId: number) => {
+    setSelected((previous) => {
+      const next = new Set(previous);
+      if (next.has(telegramId)) next.delete(telegramId);
+      else next.add(telegramId);
+      return next;
+    });
+  }, []);
+
+  const handleRemindSelected = useCallback(async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      const result = await remindCommunityVerificationSelected(ids);
+      setLastActionSummary(`Напоминание отправлено: ${result.sent} из ${result.requested}`);
+      setSelected(new Set());
+      refresh();
+    } catch (error) {
+      setActionError(describeActionError(error));
+    } finally {
+      setBusy(false);
+    }
+  }, [selected, refresh]);
+
+  const handleRemoveSelected = useCallback(async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      const result = await removeCommunityVerificationSelected(ids);
+      setLastActionSummary(`Удалено из чата: ${result.removed} из ${result.requested}`);
+      setSelected(new Set());
+      setConfirmingDelete(false);
+      refresh();
+    } catch (error) {
+      setActionError(describeActionError(error));
+    } finally {
+      setBusy(false);
+    }
+  }, [selected, refresh]);
 
   const handleSendLaunch = useCallback(async () => {
     setBusy(true);
@@ -228,43 +278,96 @@ export function AdminCommunityVerificationScreen() {
       )}
 
       <section style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-        <MonoLabel>Не зарегистрированы (получили сообщение, но не завершили регистрацию)</MonoLabel>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.6rem" }}>
+          <MonoLabel>Не зарегистрированы</MonoLabel>
+          {selected.size > 0 && (
+            <span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>Выбрано: {selected.size}</span>
+          )}
+        </div>
+        {lastActionSummary && (
+          <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.78rem" }}>{lastActionSummary}</p>
+        )}
         {notRegistered.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>}
         {notRegistered.status === "error" && <EmptyState text="Не удалось загрузить список." />}
         {notRegistered.status === "ready" && notRegistered.data.length === 0 && (
           <EmptyState text="Пока пусто — либо кампания не запускалась, либо все, кому написал бот, уже зарегистрированы." />
         )}
         {notRegistered.status === "ready" && notRegistered.data.length > 0 && (
-          <Card style={{ padding: "0.5rem 0" }}>
-            {notRegistered.data.map((entry, index) => (
-              <div
-                key={entry.telegram_id}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "0.6rem",
-                  padding: "0.6rem 1rem",
-                  borderBottom: index < notRegistered.data.length - 1 ? "1px solid var(--era-border)" : "none",
-                }}
-              >
-                <div>
-                  <strong>ID {entry.telegram_id}</strong>
-                  <div style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>
-                    Отправлено: {formatDateTime(entry.notified_at)}
+          <>
+            <Card style={{ padding: "0.5rem 0" }}>
+              {notRegistered.data.map((entry, index) => (
+                <label
+                  key={entry.telegram_id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "0.6rem",
+                    padding: "0.6rem 1rem",
+                    borderBottom: index < notRegistered.data.length - 1 ? "1px solid var(--era-border)" : "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(entry.telegram_id)}
+                      onChange={() => toggleSelected(entry.telegram_id)}
+                      aria-label={`Выбрать ID ${entry.telegram_id}`}
+                    />
+                    <div>
+                      <strong>ID {entry.telegram_id}</strong>
+                      <div style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>
+                        Отправлено: {formatDateTime(entry.notified_at)}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <StatusBadge label={entry.delivery_status} tone="neutral" />
-              </div>
-            ))}
-          </Card>
+                  <StatusBadge label={entry.delivery_status} tone="neutral" />
+                </label>
+              ))}
+            </Card>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <button type="button" disabled={busy || selected.size === 0} onClick={handleRemindSelected}>
+                Напомнить выбранным
+              </button>
+              <button
+                type="button"
+                disabled={busy || selected.size === 0}
+                onClick={() => setConfirmingDelete(true)}
+                style={{ color: "var(--era-error)" }}
+              >
+                Удалить выбранных
+              </button>
+            </div>
+          </>
         )}
         <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.78rem" }}>
           Напоминание уходит автоматически за 24 часа до конца волны, только тем, кто ещё не
-          зарегистрировался. Решение по каждому человеку (оставить/удалить) появится здесь на
-          следующем этапе.
+          зарегистрировался. Оставить — просто ничего не выбирать.
         </p>
       </section>
+
+      <BottomSheet open={confirmingDelete} onClose={() => setConfirmingDelete(false)} title="Удалить из чата">
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <p style={{ margin: 0 }}>
+            Выбранные аккаунты ({selected.size}) будут удалены из общего чата ЭРА. Это необратимо —
+            им нужно будет отправить новый запрос на вступление, чтобы вернуться.
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button type="button" onClick={() => setConfirmingDelete(false)} style={{ flex: 1 }}>
+              Отмена
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleRemoveSelected}
+              style={{ flex: 1, background: "var(--era-error)", color: "#fff" }}
+            >
+              Подтвердить удаление
+            </button>
+          </div>
+        </div>
+      </BottomSheet>
     </div>
   );
 }

@@ -175,3 +175,58 @@ async def list_not_registered_endpoint(
         )
         for entry in entries
     ]
+
+
+class TelegramIdsIn(BaseModel):
+    telegram_ids: list[int]
+
+
+class RemindSelectedOut(BaseModel):
+    requested: int
+    eligible: int
+    sent: int
+    blocked: int
+    unreachable: int
+    failed: int
+
+
+@router.post("/remind", response_model=RemindSelectedOut)
+async def remind_selected_endpoint(
+    payload: TelegramIdsIn,
+    admin: User = Depends(require_full_admin),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot = Depends(get_bot),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> RemindSelectedOut:
+    """ToR §16's per-person/bulk "Напомнить"."""
+    if not payload.telegram_ids:
+        raise HTTPException(status_code=422, detail="telegram_ids_required")
+    campaign = await cv_service.latest_campaign(session)
+    if campaign is None:
+        raise HTTPException(status_code=409, detail="no_campaign")
+    result = await cv_service.remind_selected(session, bot, campaign, payload.telegram_ids, actor_id=admin.id)
+    return RemindSelectedOut(**result.__dict__)
+
+
+class RemoveSelectedOut(BaseModel):
+    requested: int
+    removed: int
+    failed: int
+
+
+@router.post("/remove", response_model=RemoveSelectedOut)
+async def remove_selected_endpoint(
+    payload: TelegramIdsIn,
+    admin: User = Depends(require_full_admin),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot = Depends(get_bot),
+    settings: Settings = Depends(get_settings),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> RemoveSelectedOut:
+    """ToR §16/§17's per-person/bulk "Удалить" -- deliberately requires an
+    explicit admin call every time (never automatic), matching the ToR's
+    strongest constraint: no auto-removal of anyone but REJECTED applicants."""
+    if not payload.telegram_ids:
+        raise HTTPException(status_code=422, detail="telegram_ids_required")
+    result = await cv_service.remove_selected(session, bot, settings, payload.telegram_ids, actor_id=admin.id)
+    return RemoveSelectedOut(**result.__dict__)
