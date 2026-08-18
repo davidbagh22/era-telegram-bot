@@ -10,6 +10,7 @@ from app.database.models import Event, EventRegistration, Project, Task, User
 from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
 from app.repositories.users import user_stats
 from app.services.activity_service import list_tasks
+from app.services.development_service import VectorHomeSummary, vector_home_summary
 from app.services.growth_service import GrowthProgress, growth_progress_for
 from app.services.opportunity_service import (
     ACTIVE_APPLICATION_STATUSES,
@@ -144,6 +145,8 @@ class HomeSnapshot:
     # "N доступны · M в работе" -- counts only, no row payload duplication.
     tasks_available_count: int
     tasks_in_progress_count: int
+    # DELTA ToR §2-5: safe "Мой вектор" summary; None means never checked in.
+    vector: VectorHomeSummary | None
 
 
 async def _active_task(session: AsyncSession, user_id: int) -> Task | None:
@@ -349,6 +352,7 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
     )
     tasks_available_count = len(await list_tasks(session, user, "available"))
     tasks_in_progress_count = len(await list_tasks(session, user, "mine"))
+    vector = await vector_home_summary(session, user.id)
 
     next_step = _build_next_step(
         active_task=active_task,
@@ -409,4 +413,5 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
         ],
         tasks_available_count=tasks_available_count,
         tasks_in_progress_count=tasks_in_progress_count,
+        vector=vector,
     )

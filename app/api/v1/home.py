@@ -94,6 +94,24 @@ class OpportunityProgressOut(BaseModel):
     points_needed: int
 
 
+class VectorAreaSignalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    area: str
+    label: str
+    value: int
+    trend: str
+
+
+class VectorHomeSummaryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    pulse: int
+    updated_at: str
+    areas: dict[str, int]
+    signals: list[VectorAreaSignalOut]
+
+
 class HomeSnapshotOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -110,6 +128,7 @@ class HomeSnapshotOut(BaseModel):
     nearest_locked_opportunity: OpportunityProgressOut | None
     tasks_available_count: int
     tasks_in_progress_count: int
+    vector: VectorHomeSummaryOut | None
 
 
 @router.get("/home", response_model=HomeSnapshotOut)

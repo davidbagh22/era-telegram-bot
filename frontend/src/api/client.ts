@@ -252,6 +252,11 @@ export function fetchLeaderboard(): Promise<Leaderboard> {
   return authorizedGet<Leaderboard>("/api/v1/leaderboard");
 }
 
+// DELTA ToR §52-54: Топ недели widget on Home — always the fixed top-5.
+export function fetchWeeklyLeaderboard(): Promise<Leaderboard> {
+  return authorizedGet<Leaderboard>("/api/v1/leaderboard/weekly");
+}
+
 export function fetchEvents(scope: EventScope): Promise<EventItem[]> {
   return authorizedGet<EventItem[]>(`/api/v1/events?scope=${scope}`);
 }

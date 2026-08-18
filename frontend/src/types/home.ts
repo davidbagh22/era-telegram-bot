@@ -63,6 +63,20 @@ export interface ActivityStats {
   portfolio_items: number;
 }
 
+export interface VectorAreaSignal {
+  area: string;
+  label: string;
+  value: number;
+  trend: "up" | "down";
+}
+
+export interface VectorHomeSummary {
+  pulse: number;
+  updated_at: string;
+  areas: Record<string, number>;
+  signals: VectorAreaSignal[];
+}
+
 export interface HomeSnapshot {
   growth: GrowthProgress;
   rank: RankProgress;
@@ -77,4 +91,5 @@ export interface HomeSnapshot {
   nearest_locked_opportunity: OpportunityProgress | null;
   tasks_available_count: number;
   tasks_in_progress_count: number;
+  vector: VectorHomeSummary | null;
 }

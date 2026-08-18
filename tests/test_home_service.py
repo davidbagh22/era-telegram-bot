@@ -15,6 +15,7 @@ from app.database.models import (
     Task,
     User,
 )
+from app.database.development_models import UserVectorProfile
 from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
 from app.services.home_service import build_home_snapshot
 from app.utils.constants import ParticipationStatus, ProjectStatus, RegistrationStatus, TaskStatus
@@ -329,6 +330,43 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
             # underlying user_stats() call, not two separate queries that
             # could drift).
             self.assertEqual(snapshot.points_balance, snapshot.activity.points)
+
+    async def test_snapshot_carries_task_counts_and_vector_summary(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            session.add(
+                UserVectorProfile(
+                    user_id=user.id,
+                    current_index=74,
+                    state_json={"energy": 67, "agency": 76, "autonomy": 71, "connection": 82, "direction": 74},
+                    last_checkin_at=datetime.now(timezone.utc),
+                )
+            )
+            open_task = Task(
+                title="Open",
+                description="d",
+                creator_id=user.id,
+                deadline=datetime.now(timezone.utc) + timedelta(days=1),
+                points=10,
+                task_type="challenge",
+                status=TaskStatus.PUBLISHED,
+            )
+            session.add(open_task)
+            await session.flush()
+
+            snapshot = await build_home_snapshot(session, user)
+
+            self.assertEqual(snapshot.tasks_available_count, 1)
+            self.assertEqual(snapshot.tasks_in_progress_count, 0)
+            self.assertIsNotNone(snapshot.vector)
+            self.assertEqual(snapshot.vector.pulse, 74)
+            self.assertEqual(snapshot.vector.areas["support"], 76)
+
+    async def test_snapshot_vector_is_none_when_never_checked_in(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            snapshot = await build_home_snapshot(session, user)
+            self.assertIsNone(snapshot.vector)
 
 
 if __name__ == "__main__":
