@@ -37,6 +37,10 @@ interface DeepLink {
   userId: number | null;
   specialScreen: SpecialScreen | null;
   developmentRoute: DevelopmentRoute | null;
+  // DELTA ToR §32-34: `#/media/guide` (and future non-numeric media
+  // sub-routes) need somewhere to land distinct from the numeric
+  // `#/media/{itemId}` case already handled by communitySection/itemId.
+  mediaRoute: "guide" | null;
   invalid: boolean;
 }
 
@@ -109,6 +113,7 @@ function link(overrides: Partial<DeepLink> = {}): DeepLink {
     userId: null,
     specialScreen: null,
     developmentRoute: null,
+    mediaRoute: null,
     invalid: false,
     ...overrides,
   };
@@ -175,6 +180,8 @@ function parseDeepLink(): DeepLink | null {
     return link({ tab: "community", communitySection: communityMatch[1] as CommunitySection, itemId });
   }
 
+  if (route === "media/guide") return link({ tab: "community", communitySection: "media", mediaRoute: "guide" });
+
   if (route === "progress") return link({ tab: "home", specialScreen: "progress" });
   if (route === "leaderboard") return link({ tab: "community", communitySection: "leaderboard" });
   if (route === "community") return link({ tab: "community" });
@@ -201,6 +208,7 @@ function renderTab(
   initialActivitySection: LegacyActivitySection | null,
   initialCommunitySection: CommunitySection | null,
   initialItemId: number | null,
+  initialMediaRoute: "guide" | null,
   isDeepLinkedTab: boolean,
   onTabChange: (tab: TabKey) => void,
 ) {
@@ -223,7 +231,7 @@ function renderTab(
   }
   if (tab === "projects") return <ProjectsScreen initialProjectId={initialProjectId} />;
   if (tab === "events") return <EventsScreen initialItemId={isDeepLinkedTab ? initialItemId : null} />;
-  if (tab === "community") return <CommunityScreen initialSection={isDeepLinkedTab ? initialCommunitySection : null} initialItemId={isDeepLinkedTab ? initialItemId : null} />;
+  if (tab === "community") return <CommunityScreen initialSection={isDeepLinkedTab ? initialCommunitySection : null} initialItemId={isDeepLinkedTab ? initialItemId : null} initialMediaRoute={isDeepLinkedTab ? initialMediaRoute : null} />;
   return <ProfileScreen onOpenDevelopment={() => navigateToRoute("development")} />;
 }
 
@@ -318,7 +326,7 @@ export function App() {
           onEnterWorkspace={user.is_admin || user.is_leader ? () => setInWorkspace(true) : undefined}
           onOpenDevelopment={() => navigateToRoute("development")}
         />
-      ) : renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.tab === activeTab, handleTabChange)}
+      ) : renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.mediaRoute ?? null, deepLink?.tab === activeTab, handleTabChange)}
     </UserLayout>
   );
 }

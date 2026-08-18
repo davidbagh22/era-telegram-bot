@@ -9,6 +9,9 @@ export interface NextStep {
   kind: "task" | "event" | "project" | "growth" | "opportunity";
   title: string;
   description: string;
+  entity_id: number | null;
+  route: string | null;
+  action_label: string;
 }
 
 export interface EventSummary {

@@ -125,8 +125,23 @@ export function HomeScreen({
   const todayEventCount = data.nearest_event && isToday(data.nearest_event.event_date) ? 1 : 0;
   const levelTag = `${String(data.growth.level_index + 1).padStart(2, "0")} / ${data.growth.label.toUpperCase()}`;
 
+  // DELTA ToR §6: every next_step must resolve to a real tap action --
+  // never a card that looks interactive but does nothing. next_step.kind
+  // picks which existing on-open callback owns the entity_id; "growth" has
+  // no single entity and always routes to the Vector/development screen.
+  function nextStepOnClick(): (() => void) | undefined {
+    if (!data.next_step) return undefined;
+    const { kind, entity_id } = data.next_step;
+    if (kind === "task" && entity_id != null && onOpenTask) return () => onOpenTask(entity_id);
+    if (kind === "event" && entity_id != null && onOpenEvent) return () => onOpenEvent(entity_id);
+    if (kind === "project" && entity_id != null && onOpenProject) return () => onOpenProject(entity_id);
+    if (kind === "opportunity" && entity_id != null && onOpenOpportunity) return () => onOpenOpportunity(entity_id);
+    if (kind === "growth" && onOpenDevelopment) return onOpenDevelopment;
+    return undefined;
+  }
+
   const focus: { title: string; description: string; onClick?: () => void } | null = data.next_step
-    ? { title: data.next_step.title, description: data.next_step.description }
+    ? { title: data.next_step.title, description: data.next_step.description, onClick: nextStepOnClick() }
     : data.active_task
       ? {
           title: data.active_task.title,
@@ -142,7 +157,7 @@ export function HomeScreen({
         : null;
 
   return (
-    <div className="era-page era-stagger" style={{ padding: "1.15rem 1.15rem 1.5rem", display: "flex", flexDirection: "column", gap: "1.75rem" }}>
+    <div className="era-page era-stagger" style={{ padding: "1.15rem 1.15rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.75rem" }}>
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
         <MonoLabel tone="violet">ЭРА</MonoLabel>
         <button
@@ -258,7 +273,10 @@ export function HomeScreen({
         )}
       </Card>
 
-      {focus && (
+      {/* ToR §6: "Карточки без action запрещены" -- if nothing resolved an
+          onClick (e.g. a callback prop wasn't passed in), don't show a
+          focus card that looks tappable but isn't. */}
+      {focus && focus.onClick && (
         <FocusCard
           eyebrow="ТВОЙ ФОКУС"
           title={focus.title}

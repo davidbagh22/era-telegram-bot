@@ -13,6 +13,7 @@ from app.config import Settings
 from app.database.media_models import MediaContentItem, MediaLibraryItem, MediaRequest
 from app.database.models import Task, User
 from app.services import media_service
+from app.utils.constants import ApplicationStatus
 
 router = APIRouter(prefix="/media", tags=["media"])
 
@@ -26,12 +27,41 @@ class MediaTaskOut(BaseModel):
     status: str
 
 
+class MediaPermissionsOut(BaseModel):
+    """ToR §67's Home/Media Hub permissions contract -- the frontend reads
+    this instead of re-deriving access from role strings."""
+
+    tools_read: bool
+    content_plan_read: bool
+    content_plan_write: bool
+    members_manage: bool
+    analytics_read: bool
+    publications_manage: bool
+
+
 class MediaHubOut(BaseModel):
+    access_level: Literal["no_access", "pending", "member", "leader", "admin"]
+    permissions: MediaPermissionsOut
     chat_url: str
     channel_url: str
     open_tasks: list[MediaTaskOut]
     my_tasks: list[MediaTaskOut]
     can_manage: bool
+
+
+class MediaApplicantOut(BaseModel):
+    id: int
+    name: str
+    applied_at: str
+
+
+class MediaMemberOut(BaseModel):
+    id: int
+    name: str
+
+
+class MediaDecisionIn(BaseModel):
+    action: Literal["approve", "reject", "revoke"]
 
 
 class LibraryItemOut(BaseModel):
@@ -40,6 +70,7 @@ class LibraryItemOut(BaseModel):
     title: str
     description: str | None
     url: str
+    destination_type: Literal["internal_route", "external_url", "file"]
 
 
 class IdeaIn(BaseModel):
@@ -169,6 +200,7 @@ def _library_out(item: MediaLibraryItem) -> LibraryItemOut:
         title=item.title,
         description=item.description,
         url=item.url,
+        destination_type=item.destination_type,
     )
 
 
@@ -183,8 +215,17 @@ def _request_out(item: MediaRequest) -> MediaRequestOut:
     )
 
 
-async def require_media_hub(user: User = Depends(get_current_user)) -> User:
-    if not media_service.can_use_media_hub(user):
+def _display_name(user: User) -> str:
+    return f"{user.first_name} {user.last_name or ''}".strip()
+
+
+async def require_media_hub(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    level = await media_service.media_access_level(session, user, settings)
+    if not media_service.can_use_media_hub(level):
         raise HTTPException(status_code=403, detail="media_hub_access_required")
     return user
 
@@ -201,20 +242,91 @@ async def require_media_desk(
 
 @router.get("/hub", response_model=MediaHubOut)
 async def read_media_hub(
-    user: User = Depends(require_media_hub),
+    user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> MediaHubOut:
+    # Deliberately not gated by require_media_hub: NO_ACCESS/PENDING users
+    # must still be able to load this endpoint to see the "Подать заявку"
+    # / "Заявка рассматривается" screens (ToR §28) instead of a bare 403.
+    level = await media_service.media_access_level(session, user, settings)
+    permissions = MediaPermissionsOut(**media_service.media_permissions(level))
+    if not media_service.can_use_media_hub(level):
+        return MediaHubOut(
+            access_level=level,
+            permissions=permissions,
+            chat_url="",
+            channel_url="",
+            open_tasks=[],
+            my_tasks=[],
+            can_manage=False,
+        )
     open_tasks = await media_service.media_tasks_for_user(session, user.id, mine=False)
     my_tasks = await media_service.media_tasks_for_user(session, user.id, mine=True)
     my_ids = {task.id for task in my_tasks}
     return MediaHubOut(
+        access_level=level,
+        permissions=permissions,
         chat_url=settings.media_chat_url,
         channel_url=settings.era_channel_url,
         open_tasks=[_task_out(task) for task in open_tasks if task.id not in my_ids],
         my_tasks=[_task_out(task) for task in my_tasks],
-        can_manage=await media_service.can_manage_media(session, user, settings),
+        can_manage=level in ("leader", "admin"),
     )
+
+
+@router.post("/apply", response_model=MediaHubOut)
+async def apply_to_media(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> MediaHubOut:
+    """ToR §28 NO_ACCESS CTA. Any approved, non-blocked participant may
+    apply -- deliberately not gated by require_media_hub (that's exactly
+    the access this creates)."""
+    if user.is_blocked or user.is_archived or user.application_status != ApplicationStatus.APPROVED:
+        raise HTTPException(status_code=403, detail="media_apply_requires_approved_membership")
+    try:
+        await media_service.apply_for_media(session, user)
+    except ValueError as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
+    return await read_media_hub(user=user, session=session, settings=settings)
+
+
+@router.get("/team/applications", response_model=list[MediaApplicantOut])
+async def read_media_applications(
+    _user: User = Depends(require_media_desk),
+    session: AsyncSession = Depends(get_session),
+) -> list[MediaApplicantOut]:
+    return [
+        MediaApplicantOut(id=applicant.id, name=_display_name(applicant), applied_at=applied_at.isoformat())
+        for applicant, applied_at in await media_service.list_media_applications(session)
+    ]
+
+
+@router.get("/team/members", response_model=list[MediaMemberOut])
+async def read_media_members(
+    _user: User = Depends(require_media_desk),
+    session: AsyncSession = Depends(get_session),
+) -> list[MediaMemberOut]:
+    return [
+        MediaMemberOut(id=member.id, name=_display_name(member))
+        for member in await media_service.list_media_members(session)
+    ]
+
+
+@router.post("/team/{user_id}/decide")
+async def decide_media_applicant(
+    user_id: int,
+    payload: MediaDecisionIn,
+    _user: User = Depends(require_media_desk),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    try:
+        await media_service.decide_media_application(session, user_id, payload.action)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    return {"status": "ok"}
 
 
 @router.get("/library", response_model=list[LibraryItemOut])

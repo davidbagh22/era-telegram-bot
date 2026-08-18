@@ -73,7 +73,16 @@ class MediaLibraryItem(TimestampMixin, Base):
     category: Mapped[str] = mapped_column(String(64), default="archive", index=True)
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
+    # DELTA ToR §32-34: what `url` means depends on destination_type.
+    # "external_url" -> a real external link the frontend opens in a new
+    # tab/browser (Canva, Telegram chat, channel, ...). "internal_route" ->
+    # an in-app hash route (e.g. "media/guide") the Mini App must navigate
+    # to with SPA routing, never window.open/openLink -- opening an
+    # internal ERA page externally drops Telegram initData (the reported
+    # "empty_init_data" bug). "file" is reserved for a future in-app file
+    # viewer; treated the same as internal_route until one exists.
     url: Mapped[str] = mapped_column(String(1000))
+    destination_type: Mapped[str] = mapped_column(String(24), default="external_url", index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 

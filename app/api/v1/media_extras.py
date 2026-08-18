@@ -103,8 +103,13 @@ class LibraryCreateIn(BaseModel):
     url: str = Field(min_length=4, max_length=1000)
 
 
-async def _hub_user(user: User = Depends(get_current_user)) -> User:
-    if not media_service.can_use_media_hub(user):
+async def _hub_user(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    level = await media_service.media_access_level(session, user, settings)
+    if not media_service.can_use_media_hub(level):
         raise HTTPException(status_code=403, detail="media_hub_access_required")
     return user
 

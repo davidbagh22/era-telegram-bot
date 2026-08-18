@@ -35,6 +35,9 @@ class NextStepOut(BaseModel):
     kind: str
     title: str
     description: str
+    entity_id: int | None = None
+    route: str | None = None
+    action_label: str = "Открыть"
 
 
 class EventSummaryOut(BaseModel):

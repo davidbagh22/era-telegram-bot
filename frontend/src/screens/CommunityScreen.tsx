@@ -15,6 +15,7 @@ export type CommunitySection = "opportunities" | "leaderboard" | "surveys" | "me
 interface CommunityScreenProps {
   initialSection?: CommunitySection | null;
   initialItemId?: number | null;
+  initialMediaRoute?: "guide" | null;
 }
 
 const SECTION_CARDS: {
@@ -59,7 +60,7 @@ function sectionHash(section: CommunitySection): string {
   return section === "leaderboard" ? "#/leaderboard" : `#/${section}`;
 }
 
-export function CommunityScreen({ initialSection = null, initialItemId = null }: CommunityScreenProps) {
+export function CommunityScreen({ initialSection = null, initialItemId = null, initialMediaRoute = null }: CommunityScreenProps) {
   const [fallbackSection, setFallbackSection] = useState<CommunitySection | null>(initialSection);
   const hasRouteHash = window.location.hash.startsWith("#/");
   const section = hasRouteHash ? initialSection : initialSection ?? fallbackSection;
@@ -76,7 +77,7 @@ export function CommunityScreen({ initialSection = null, initialItemId = null }:
   };
 
   if (section === "leaderboard") return <LeaderboardScreen onBack={backToCommunity} />;
-  if (section === "media") return <MediaScreen onBack={backToCommunity} />;
+  if (section === "media") return <MediaScreen onBack={backToCommunity} initialView={initialMediaRoute} />;
 
   if (section) {
     return (

@@ -60,21 +60,31 @@ class MediaTeamMember:
 
 
 async def seed_media_guide(session: AsyncSession, settings: Settings) -> None:
+    """Idempotent: inserts the Guide item if missing, and self-heals it to
+    the current internal-route contract if an older seed already created it
+    with a full external URL (DELTA ToR §32 -- fixing the "opens in Safari"
+    bug must not require every environment to be re-seeded from scratch)."""
     title = "Гайд Media ЭРА"
-    if await session.scalar(select(MediaLibraryItem.id).where(MediaLibraryItem.title == title)):
+    # No settings.effective_miniapp_url/host baked in -- this is a plain
+    # in-app hash route, resolved relative to wherever the Mini App is
+    # already running, and MUST be opened with SPA navigation, never
+    # window.open/Telegram openLink (see MediaScreen's openLibraryItem).
+    route = "media/guide"
+    description = "Tone of voice, структура постов и Reels, правила визуала."
+    existing = await session.scalar(select(MediaLibraryItem).where(MediaLibraryItem.title == title))
+    if existing is not None:
+        if existing.destination_type != "internal_route" or existing.url != route:
+            existing.destination_type = "internal_route"
+            existing.url = route
         return
-    url = (
-        f"{settings.effective_miniapp_url.rstrip('/')}#/media/guide"
-        if settings.effective_miniapp_url
-        else settings.era_channel_url
-    )
     session.add(
         MediaLibraryItem(
             kind="guide",
             category="guides",
             title=title,
-            description="Tone of voice, структура постов и Reels, правила визуала.",
-            url=url,
+            description=description,
+            url=route,
+            destination_type="internal_route",
             sort_order=25,
             is_active=True,
         )

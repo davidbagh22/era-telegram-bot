@@ -71,6 +71,9 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertIsNotNone(snapshot.next_step)
             self.assertEqual(snapshot.next_step.kind, "task")
+            # DELTA ToR §6: next_step must carry a real, actionable target.
+            self.assertEqual(snapshot.next_step.entity_id, task.id)
+            self.assertEqual(snapshot.next_step.route, f"/tasks/{task.id}")
             self.assertIsNotNone(snapshot.active_task)
             self.assertEqual(snapshot.active_task.id, task.id)
             self.assertIsNone(snapshot.nearest_event)
@@ -99,6 +102,8 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
             snapshot = await build_home_snapshot(session, user)
 
             self.assertEqual(snapshot.next_step.kind, "event")
+            self.assertEqual(snapshot.next_step.entity_id, event.id)
+            self.assertEqual(snapshot.next_step.route, f"/events/{event.id}")
             self.assertIsNotNone(snapshot.nearest_event)
             self.assertEqual(snapshot.nearest_event.id, event.id)
 
@@ -142,6 +147,8 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(snapshot.next_step.kind, "project")
             self.assertIn("оставшиеся блоки", snapshot.next_step.description)
+            self.assertEqual(snapshot.next_step.entity_id, project.id)
+            self.assertEqual(snapshot.next_step.route, f"/projects/{project.id}")
             self.assertEqual(snapshot.active_project.id, project.id)
 
     async def test_needs_revision_project_has_different_hint(self) -> None:
@@ -167,6 +174,10 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
             snapshot = await build_home_snapshot(session, user)
             self.assertEqual(snapshot.next_step.kind, "growth")
             self.assertEqual(snapshot.growth.level, "active")
+            # No single entity backs a growth nudge -- the frontend falls
+            # back to its "growth" kind handler (opens the Vector screen).
+            self.assertIsNone(snapshot.next_step.entity_id)
+            self.assertEqual(snapshot.next_step.route, "/development")
 
     async def test_opportunity_suggested_for_leader_with_nothing_else(self) -> None:
         async with self.session_factory() as session:
@@ -188,6 +199,8 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
             snapshot = await build_home_snapshot(session, user)
 
             self.assertEqual(snapshot.next_step.kind, "opportunity")
+            self.assertEqual(snapshot.next_step.entity_id, initiative.id)
+            self.assertEqual(snapshot.next_step.route, f"/opportunities/{initiative.id}")
             self.assertEqual(len(snapshot.opportunities), 1)
             self.assertEqual(snapshot.opportunities[0].id, initiative.id)
 
