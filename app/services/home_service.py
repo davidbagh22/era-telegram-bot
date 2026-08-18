@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models import Event, EventRegistration, Project, Task, User
 from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
 from app.repositories.users import user_stats
+from app.services.activity_service import list_tasks
 from app.services.growth_service import GrowthProgress, growth_progress_for
 from app.services.opportunity_service import (
     ACTIVE_APPLICATION_STATUSES,
@@ -139,6 +140,10 @@ class HomeSnapshot:
     opportunities: list[OpportunitySummary]
     new_opportunity: OpportunityProgress | None
     nearest_locked_opportunity: OpportunityProgress | None
+    # DELTA ToR §15: the compact "Задания" entry card on Home --
+    # "N доступны · M в работе" -- counts only, no row payload duplication.
+    tasks_available_count: int
+    tasks_in_progress_count: int
 
 
 async def _active_task(session: AsyncSession, user_id: int) -> Task | None:
@@ -342,6 +347,8 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
     new_opportunity, nearest_locked_opportunity = await _recognition_progress(
         session, user, activity.points
     )
+    tasks_available_count = len(await list_tasks(session, user, "available"))
+    tasks_in_progress_count = len(await list_tasks(session, user, "mine"))
 
     next_step = _build_next_step(
         active_task=active_task,
@@ -400,4 +407,6 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
             )
             for o in opportunities
         ],
+        tasks_available_count=tasks_available_count,
+        tasks_in_progress_count=tasks_in_progress_count,
     )

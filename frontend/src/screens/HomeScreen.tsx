@@ -58,6 +58,7 @@ interface HomeScreenProps {
   onOpenEvent?: (id: number) => void;
   onOpenProject?: (id: number) => void;
   onOpenTask?: (id: number) => void;
+  onOpenTasks?: () => void;
   onOpenCommunity?: () => void;
   onOpenOpportunity?: (id: number) => void;
 }
@@ -92,6 +93,7 @@ export function HomeScreen({
   onOpenEvent,
   onOpenProject,
   onOpenTask,
+  onOpenTasks,
   onOpenCommunity,
   onOpenOpportunity,
 }: HomeScreenProps) {
@@ -283,6 +285,22 @@ export function HomeScreen({
           actionLabel={focus.description}
           onClick={focus.onClick}
         />
+      )}
+
+      {/* ToR §15: compact "Задания" entry point -- Tasks has no bottom-nav
+          slot of its own, so Home is one of its main doors in. */}
+      {onOpenTasks && (
+        <Card onClick={onOpenTasks} style={{ padding: "1.1rem" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
+            <div style={{ minWidth: 0 }}>
+              <MonoLabel tone="violet">Задания</MonoLabel>
+              <strong style={{ display: "block", marginTop: ".3rem", fontSize: "1.05rem" }}>
+                {data.tasks_available_count} доступно · {data.tasks_in_progress_count} в работе
+              </strong>
+            </div>
+            <span aria-hidden="true" style={{ color: "var(--era-text-muted)", fontSize: "1.125rem", flexShrink: 0 }}>→</span>
+          </div>
+        </Card>
       )}
 
       {onOpenDevelopment && (

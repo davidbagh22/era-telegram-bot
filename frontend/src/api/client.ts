@@ -4,8 +4,10 @@ import type {
   EventItem,
   EventScope,
   HistoryEntry,
+  MissionTemplate,
   TaskItem,
   TaskScope,
+  TaskSquad,
 } from "../types/activity";
 import type { ApiErrorBody, MiniAppAuthResponse, MiniAppUserSummary } from "../types/auth";
 import type {
@@ -266,6 +268,39 @@ export function fetchTasks(scope: TaskScope): Promise<TaskItem[]> {
 
 export function claimTask(taskId: number): Promise<TaskItem> {
   return authorizedPost<TaskItem>(`/api/v1/tasks/${taskId}/claim`);
+}
+
+export function fetchTaskSquad(taskId: number): Promise<TaskSquad> {
+  return authorizedGet<TaskSquad>(`/api/v1/tasks/${taskId}/squad`);
+}
+
+export function confirmTaskSquadPlan(taskId: number): Promise<TaskSquad> {
+  return authorizedPost<TaskSquad>(`/api/v1/tasks/${taskId}/squad/confirm-plan`);
+}
+
+export function assignTaskSubtask(
+  taskId: number,
+  subtaskId: number,
+  assigneeId: number | null,
+): Promise<TaskSquad> {
+  return authorizedPatch<TaskSquad>(`/api/v1/tasks/${taskId}/squad/subtasks/${subtaskId}`, {
+    assignee_id: assigneeId,
+  });
+}
+
+// Community Mission templates (DELTA ToR §13) — leader/admin only, used to
+// make the 26 authored missions actually reachable by launching them into
+// real Task rows.
+export function fetchMissionTemplates(): Promise<MissionTemplate[]> {
+  return authorizedGet<MissionTemplate[]>("/api/v1/tasks/missions/templates");
+}
+
+export function launchMission(templateId: number): Promise<TaskItem> {
+  return authorizedPost<TaskItem>(`/api/v1/tasks/missions/${templateId}/launch`);
+}
+
+export function launchAllMissions(): Promise<TaskItem[]> {
+  return authorizedPost<TaskItem[]>("/api/v1/tasks/missions/launch-all");
 }
 
 export function fetchCalendar(): Promise<CalendarItem[]> {

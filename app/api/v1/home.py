@@ -108,6 +108,8 @@ class HomeSnapshotOut(BaseModel):
     opportunities: list[OpportunitySummaryOut]
     new_opportunity: OpportunityProgressOut | None
     nearest_locked_opportunity: OpportunityProgressOut | None
+    tasks_available_count: int
+    tasks_in_progress_count: int
 
 
 @router.get("/home", response_model=HomeSnapshotOut)

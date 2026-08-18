@@ -18,6 +18,7 @@ import { PendingScreen } from "../screens/PendingScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { ProgressScreen } from "../screens/ProgressScreen";
 import { ProjectsScreen } from "../screens/ProjectsScreen";
+import { TasksScreen } from "../screens/TasksScreen";
 import { UserPublicProfileScreen } from "../screens/UserPublicProfileScreen";
 import { AdminEventsScreen } from "../screens/admin/AdminEventsScreen";
 import type { MiniAppUserSummary } from "../types/auth";
@@ -213,6 +214,11 @@ function renderTab(
   onTabChange: (tab: TabKey) => void,
 ) {
   if (tab === "home") {
+    // DELTA ToR §7: "Задания" is a standalone screen again, not a nested
+    // ActivityScreen section -- #/tasks and #/tasks/{id} land here directly.
+    if (isDeepLinkedTab && initialActivitySection === "tasks") {
+      return <TasksScreen initialItemId={initialItemId} onBack={() => navigateToTab("home")} />;
+    }
     if (isDeepLinkedTab && initialActivitySection) return <ActivityScreen initialSection={initialActivitySection} initialItemId={initialItemId} />;
     return (
       <HomeScreen
@@ -224,6 +230,7 @@ function renderTab(
         onOpenEvent={(id) => navigateToRoute(`events/${id}`)}
         onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
         onOpenTask={(id) => navigateToRoute(`tasks/${id}`)}
+        onOpenTasks={() => navigateToRoute("tasks")}
         onOpenCommunity={() => onTabChange("community")}
         onOpenOpportunity={(id) => navigateToRoute(`opportunities/${id}`)}
       />

@@ -75,4 +75,6 @@ export interface HomeSnapshot {
   opportunities: OpportunitySummary[];
   new_opportunity: OpportunityProgress | null;
   nearest_locked_opportunity: OpportunityProgress | null;
+  tasks_available_count: number;
+  tasks_in_progress_count: number;
 }

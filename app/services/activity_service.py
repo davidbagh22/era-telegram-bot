@@ -14,6 +14,8 @@ from app.database.models import (
     PortfolioItem,
     Task,
     User,
+    UserDepartment,
+    UserDirection,
 )
 from app.services import task_service
 from app.services.event_registration_service import ACTIVE_REGISTRATION_STATUSES
@@ -21,7 +23,10 @@ from app.services.event_service import PUBLIC_EVENT_STATUSES
 from app.utils.constants import RegistrationStatus, TaskStatus
 
 EventScope = Literal["all", "for_me", "mine", "past"]
-TaskScope = Literal["available", "mine", "review", "completed"]
+# DELTA ToR §8: restores "Для тебя" (deterministic recommendation, not AI
+# ranking) and "Командные" (TEAM/SOLO_OR_TEAM claim-mode tasks) alongside
+# the 4 scopes that already existed.
+TaskScope = Literal["available", "for_you", "team", "mine", "review", "completed"]
 
 # "for_me" is intentionally an alias of "all" for now: Event.access_type
 # exists on the model but no audience-targeting rule reads it anywhere in
@@ -85,6 +90,52 @@ async def list_events(
     return [(event, registration) for event, registration in rows]
 
 
+async def _user_department_and_direction_ids(
+    session: AsyncSession, user: User
+) -> tuple[set[int], set[int]]:
+    department_ids = set(
+        (
+            await session.scalars(
+                select(UserDepartment.department_id).where(UserDepartment.user_id == user.id)
+            )
+        ).all()
+    )
+    direction_ids = set(
+        (
+            await session.scalars(
+                select(UserDirection.direction_id).where(UserDirection.user_id == user.id)
+            )
+        ).all()
+    )
+    return department_ids, direction_ids
+
+
+async def _for_you_tasks(
+    session: AsyncSession, user: User, available: list[Task], *, limit: int = 12
+) -> list[Task]:
+    """Deterministic rules per DELTA ToR §9 (no AI ranking): prioritize a
+    task that matches the participant's own department/direction, then
+    break ties by nearest deadline (matches the "дедлайн" signal the ToR
+    lists) -- the same shape as opportunity_service.recommended_offers's
+    eligibility-first, deadline-second ordering, adapted for tasks."""
+    department_ids, direction_ids = await _user_department_and_direction_ids(session, user)
+
+    def score(task: Task) -> tuple[int, object]:
+        matches = 0
+        if task.direction_id is not None and task.direction_id in direction_ids:
+            matches += 2
+        if task.department_id is not None and task.department_id in department_ids:
+            matches += 1
+        return (-matches, task.deadline)
+
+    return sorted(available, key=score)[:limit]
+
+
+def _claim_mode(task: Task) -> str | None:
+    reward = getattr(task, "reward_json", None) or {}
+    return (reward.get("community_mission") or {}).get("claim_mode")
+
+
 async def list_tasks(session: AsyncSession, user: User, scope: TaskScope) -> list[Task]:
     all_tasks = await task_service.list_for_user(session, user)
     joined_ids = await task_service.joined_task_ids(session, user, all_tasks)
@@ -93,6 +144,16 @@ async def list_tasks(session: AsyncSession, user: User, scope: TaskScope) -> lis
         return [
             task for task in all_tasks if task_service.is_open_public_task(task, joined_ids, user)
         ]
+    if scope == "for_you":
+        available = [
+            task for task in all_tasks if task_service.is_open_public_task(task, joined_ids, user)
+        ]
+        return await _for_you_tasks(session, user, available)
+    if scope == "team":
+        available = [
+            task for task in all_tasks if task_service.is_open_public_task(task, joined_ids, user)
+        ]
+        return [task for task in available if _claim_mode(task) in ("TEAM", "SOLO_OR_TEAM")]
     if scope == "mine":
         return [
             task

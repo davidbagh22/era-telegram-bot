@@ -8,9 +8,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.content.community_missions_pack import load_community_missions
 from app.database import Base  # imports community model metadata
 from app.database.community_models import CommunityMissionTemplate, TaskSquad, TaskSubtask
-from app.database.models import TaskParticipant, User
+from app.database.models import Task, TaskParticipant, User
 from app.services import task_service
-from app.services.community_mission_service import launch_mission, seed_community_missions
+from app.services.community_mission_service import (
+    launch_all_pending_missions,
+    launch_mission,
+    launched_template_ids,
+    seed_community_missions,
+)
 from app.utils.constants import ApplicationStatus
 
 
@@ -39,6 +44,32 @@ class CommunityMissionTests(unittest.IsolatedAsyncioTestCase):
                 await session.scalar(select(func.count(CommunityMissionTemplate.id))) or 0
             )
             self.assertEqual(count, 26)
+
+    async def test_launch_all_pending_missions_launches_all_26_once(self) -> None:
+        # DELTA ToR §13/§76 Phase 2 item 9: "Сделать все 26 missions
+        # доступными" -- and calling this twice must not create duplicates.
+        async with self.session_factory() as session:
+            admin = User(telegram_id=1, first_name="Admin", application_status=ApplicationStatus.APPROVED)
+            session.add(admin)
+            await session.flush()
+            await seed_community_missions(session)
+
+            first_pass = await launch_all_pending_missions(session, creator_id=admin.id)
+            self.assertEqual(len(first_pass), 26)
+
+            second_pass = await launch_all_pending_missions(session, creator_id=admin.id)
+            self.assertEqual(second_pass, [])
+
+            task_count = int(
+                await session.scalar(
+                    select(func.count(Task.id)).where(Task.task_type == "challenge")
+                )
+                or 0
+            )
+            self.assertEqual(task_count, 26)
+
+            templates = (await session.scalars(select(CommunityMissionTemplate))).all()
+            self.assertEqual(await launched_template_ids(session), {t.id for t in templates})
 
     async def test_multiple_people_join_one_task_squad(self) -> None:
         async with self.session_factory() as session:

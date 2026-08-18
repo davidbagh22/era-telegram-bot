@@ -167,6 +167,27 @@ async def list_mission_templates(
     return list(rows.all())
 
 
+async def launched_template_ids(session: AsyncSession) -> set[int]:
+    """DELTA ToR §13: which templates already have a live Task instance.
+    `launch_mission` intentionally creates a fresh Task on every call (so a
+    repeatable mission can be relaunched as a new instance later per
+    §13.7) -- this is what lets a bulk "launch everything pending" action
+    stay idempotent instead of creating 26 duplicate tasks on a second click.
+    Scans challenge tasks rather than a JSON-containment query so this
+    works identically on SQLite and Postgres."""
+    rows = (
+        await session.scalars(
+            select(Task.reward_json).where(Task.task_type == "challenge")
+        )
+    ).all()
+    ids: set[int] = set()
+    for reward in rows:
+        template_id = ((reward or {}).get("community_mission") or {}).get("template_id")
+        if isinstance(template_id, int):
+            ids.add(template_id)
+    return ids
+
+
 async def launch_mission(
     session: AsyncSession,
     template: CommunityMissionTemplate,
@@ -205,6 +226,22 @@ async def launch_mission(
     session.add(task)
     await session.flush()
     return task
+
+
+async def launch_all_pending_missions(session: AsyncSession, *, creator_id: int) -> list[Task]:
+    """DELTA ToR §13/§76 Phase 2 item 9: makes all 26 authored missions
+    actually reachable. Launches every active template that doesn't have a
+    live instance yet; already-launched templates are skipped, so calling
+    this repeatedly (e.g. an admin clicking the button twice) never creates
+    duplicates."""
+    already_launched = await launched_template_ids(session)
+    templates = await list_mission_templates(session)
+    launched: list[Task] = []
+    for template in templates:
+        if template.id in already_launched:
+            continue
+        launched.append(await launch_mission(session, template, creator_id=creator_id))
+    return launched
 
 
 async def _joined_user_ids(session: AsyncSession, task_id: int) -> list[int]:

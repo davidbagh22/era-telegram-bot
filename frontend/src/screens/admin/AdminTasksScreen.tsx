@@ -1,5 +1,12 @@
 import { useCallback, useState } from "react";
-import { decideTaskSubmission, describeActionError, fetchAdminTaskSubmissions } from "../../api/client";
+import {
+  decideTaskSubmission,
+  describeActionError,
+  fetchAdminTaskSubmissions,
+  fetchMissionTemplates,
+  launchAllMissions,
+  launchMission,
+} from "../../api/client";
 import { ActionCell } from "../../components/ActionCell";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
@@ -13,7 +20,7 @@ const DECISIONS: { action: TaskReviewAction; label: string; primary?: boolean }[
   { action: "reject", label: "Отклонить" },
 ];
 
-type TasksSection = "review" | "create";
+type TasksSection = "review" | "create" | "missions";
 
 export function AdminTasksScreen() {
   const [section, setSection] = useState<TasksSection | null>(null);
@@ -28,6 +35,7 @@ export function AdminTasksScreen() {
         </Card>
         <ActionCell title="Создать задание" description="Открыть задачу, назначить аудиторию, срок и баллы" leading="＋" onClick={() => setSection("create")} />
         <ActionCell title="Проверить результаты" description="Принять работу, отправить на доработку или отклонить" leading="✓" onClick={() => setSection("review")} />
+        <ActionCell title="Community Missions" description="Запустить 26 авторских заданий как реальные задачи" leading="◎" onClick={() => setSection("missions")} />
       </div>
     );
   }
@@ -35,9 +43,87 @@ export function AdminTasksScreen() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <button type="button" onClick={() => setSection(null)} style={{ alignSelf: "flex-start" }}>← К заданиям</button>
-      <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{section === "create" ? "Создать задание" : "Проверить результаты"}</h2>
+      <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{section === "create" ? "Создать задание" : section === "review" ? "Проверить результаты" : "Community Missions"}</h2>
       {section === "create" && <OpenTasksTab />}
       {section === "review" && <TaskSubmissionReview />}
+      {section === "missions" && <MissionTemplatesPanel />}
+    </div>
+  );
+}
+
+/** DELTA ToR §13/§76 Phase 2 item 9: the 26 authored missions are seeded
+ * idempotently every boot but never became real, visible Tasks -- this is
+ * the missing human trigger, reusing the already-built launch endpoints. */
+function MissionTemplatesPanel() {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const state = useAsync(() => fetchMissionTemplates(), [refreshKey]);
+  const [busyId, setBusyId] = useState<number | "all" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+
+  const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
+
+  const launchOne = async (templateId: number) => {
+    setBusyId(templateId);
+    setError(null);
+    try {
+      await launchMission(templateId);
+      setStatus("Задача создана.");
+      refresh();
+    } catch (cause) {
+      setError(describeActionError(cause));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const launchAll = async () => {
+    setBusyId("all");
+    setError(null);
+    try {
+      const launched = await launchAllMissions();
+      setStatus(launched.length ? `Запущено заданий: ${launched.length}.` : "Все миссии уже запущены.");
+      refresh();
+    } catch (cause) {
+      setError(describeActionError(cause));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (state.status === "loading") return <EmptyState text="Загружаем шаблоны…" />;
+  if (state.status === "error") return <EmptyState text="Не удалось загрузить шаблоны миссий." />;
+
+  const pending = state.data.filter((template) => !template.is_launched).length;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <Card>
+        <strong>{pending} из {state.data.length} ещё не запущены</strong>
+        <p style={{ margin: "0.4rem 0 0", color: "var(--era-text-muted)", fontSize: "0.85rem" }}>Повторный запуск не создаёт дубликаты — уже запущенные миссии пропускаются.</p>
+        <button type="button" disabled={busyId === "all" || pending === 0} onClick={() => void launchAll()} style={{ marginTop: "0.6rem" }}>
+          {busyId === "all" ? "Запускаем…" : "Запустить все не запущенные"}
+        </button>
+      </Card>
+      {status && <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.85rem" }}>{status}</p>}
+      {error && <p style={{ margin: 0, color: "var(--era-error)", fontSize: "0.85rem" }}>{error}</p>}
+      {state.data.map((template) => (
+        <Card key={template.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
+          <div style={{ minWidth: 0 }}>
+            <strong>{template.title}</strong>
+            <div style={{ color: "var(--era-text-muted)", fontSize: "0.8rem", marginTop: 3 }}>
+              {template.code} · месяц {template.month} · {template.claim_mode === "SOLO" ? "соло" : `команда ${template.min_people}-${template.max_people}`} · +{template.points}
+            </div>
+          </div>
+          {template.is_launched ? (
+            <span style={{ flexShrink: 0, color: "var(--era-text-muted)", fontSize: "0.8rem", fontWeight: 700 }}>Запущена</span>
+          ) : (
+            <button type="button" disabled={busyId === template.id} onClick={() => void launchOne(template.id)} style={{ flexShrink: 0 }}>
+              {busyId === template.id ? "…" : "Запустить"}
+            </button>
+          )}
+        </Card>
+      ))}
     </div>
   );
 }

@@ -63,7 +63,7 @@ export interface EventActivity {
   submit_deep_link: string | null;
 }
 
-export type TaskScope = "available" | "mine" | "review" | "completed";
+export type TaskScope = "available" | "for_you" | "team" | "mine" | "review" | "completed";
 
 export interface TaskItem {
   id: number;
@@ -76,6 +76,56 @@ export interface TaskItem {
   is_joined_or_assigned: boolean;
   can_submit: boolean;
   submit_deep_link: string | null;
+  // Community Mission / Task Squad metadata (DELTA ToR §11-12) -- null/0
+  // for plain tasks that were never launched from a mission template.
+  mission_code: string | null;
+  claim_mode: "SOLO" | "TEAM" | "SOLO_OR_TEAM" | null;
+  min_people: number | null;
+  max_people: number | null;
+  workspace_chat_key: string | null;
+  deliverable: string | null;
+  squad_size: number;
+  squad_status: "forming" | "active" | "completed" | null;
+}
+
+export interface TaskSubtask {
+  id: number;
+  role_key: string;
+  title: string;
+  assignee_id: number | null;
+  deadline: string | null;
+  status: string;
+  deliverable: string | null;
+}
+
+export interface TaskSquad {
+  id: number;
+  task_id: number;
+  responsible_user_id: number | null;
+  workspace_chat_key: string;
+  status: "forming" | "active" | "completed";
+  checkpoint_at: string | null;
+  participant_ids: number[];
+  subtasks: TaskSubtask[];
+}
+
+export interface MissionTemplate {
+  id: number;
+  code: string;
+  month: number;
+  title: string;
+  description: string;
+  category: string;
+  claim_mode: string;
+  min_people: number;
+  max_people: number;
+  workspace_chat_key: string;
+  deadline_days: number;
+  deliverable: string;
+  points: number;
+  counts_toward: string[];
+  repeatable: boolean;
+  is_launched: boolean;
 }
 
 export interface CalendarItem {
