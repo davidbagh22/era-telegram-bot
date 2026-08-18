@@ -1,4 +1,4 @@
-const SIZES = { sm: 32, md: 48, lg: 72 } as const;
+const SIZES = { sm: 32, md: 48, lg: 56 } as const;
 
 interface AvatarProps {
   firstName: string;
