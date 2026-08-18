@@ -36,6 +36,19 @@ svg {
   max-width: 100%;
 }
 
+/* Profile hero: names may be long in Cyrillic. Wrap only between words;
+   never split a surname into arbitrary characters like "БАГДАСАРЯ / Н".
+   The fluid size keeps the full word inside the avatar/name row down to
+   the supported 320px viewport. */
+.era-page > .era-card.era-premium-ambient:first-child h1 {
+  font-size: clamp(1.6rem, 7vw, 2rem) !important;
+  line-height: 1 !important;
+  overflow-wrap: normal !important;
+  word-break: keep-all !important;
+  hyphens: none !important;
+  text-wrap: balance;
+}
+
 /*
  * ERA visual refinement layer, light/signal identity. Imported after
  * tokens.css. Nav-specific tokens live here since FloatingNav is the only
