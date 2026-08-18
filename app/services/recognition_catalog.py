@@ -4,12 +4,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.partners import Partner, PartnerInitiative
-from app.utils.constants import ParticipationStatus
-
-# Authored recognition catalog from the Points/Ranks/Opportunities master ToR.
-# These are real application opportunities, not "coming soon" placeholders.
-# Coming-soon forums/internships/delegations stay presentation-only until a
-# real process exists, exactly as required by the ToR.
 
 ISSUERS = {
     "ЭРА": "Объединение лидеров и культурных инициатив (ЭРА).",
@@ -23,8 +17,6 @@ ISSUERS = {
     ),
 }
 
-
-# DELTA ToR §16 "Направление результата" filter values.
 OPPORTUNITY_CATEGORIES = (
     "projects",
     "events",
@@ -36,404 +28,130 @@ OPPORTUNITY_CATEGORIES = (
 )
 
 
+def _category(issuer: str, title: str) -> str:
+    lowered = title.lower()
+    if "волонт" in lowered:
+        return "volunteering"
+    if "лидер" in lowered:
+        return "leadership"
+    if "проект" in lowered:
+        return "projects"
+    if "организ" in lowered or "мероприяти" in lowered:
+        return "events"
+    if issuer == "Дом Москвы в Ереване" and "культур" in lowered:
+        return "projects"
+    return "public_activity"
+
+
 def _item(
     issuer: str,
     title: str,
     points: int,
-    rank: str | None,
     *,
-    metrics: dict[str, int] | None = None,
-    any_metrics: list[dict[str, int]] | None = None,
-    any_documents: list[str] | None = None,
-    wording: str,
     opportunity_type: str = "certificate",
-    partner_review: bool = False,
-    category: str | None = None,
+    volunteer_hours: int | None = None,
 ) -> dict:
     eligibility: dict = {}
-    if metrics:
-        eligibility["required_metrics"] = metrics
-    if any_metrics:
-        eligibility["required_any_metrics"] = any_metrics
-    if any_documents:
-        eligibility["required_any_documents"] = any_documents
+    if volunteer_hours is not None:
+        eligibility = {"required_metrics": {"volunteer_hours": volunteer_hours}}
     return {
         "issuer": issuer,
         "title": title,
         "points": points,
-        "rank": rank,
+        # The current approved catalog uses points as the threshold. There is
+        # no rank requirement unless it is explicitly authored later.
+        "rank": None,
         "eligibility": eligibility,
-        "wording": wording,
+        "wording": title,
         "opportunity_type": opportunity_type,
-        "partner_review": partner_review,
-        "category": category,
+        "partner_review": issuer != "ЭРА",
+        "category": _category(issuer, title),
     }
 
 
+ERA_ITEMS = (
+    ("Активный участник ЭРА", 1500, "certificate"),
+    ("За активное участие в жизни сообщества ЭРА", 1500, "certificate"),
+    ("За вклад в развитие сообщества ЭРА", 2250, "certificate"),
+    ("За инициативность и командную работу", 2250, "certificate"),
+    ("За проектную деятельность", 3000, "certificate"),
+    ("За вклад в организацию мероприятий", 3000, "certificate"),
+    ("Благодарственное письмо ЭРА", 3500, "letter"),
+    ("За общественную активность и инициативность", 4000, "certificate"),
+    ("Организатор ЭРА", 4000, "certificate"),
+    ("За лидерство и развитие команды", 5000, "certificate"),
+    ("Лидер сообщества ЭРА", 5000, "certificate"),
+    ("Рекомендательное письмо ЭРА", 5500, "letter"),
+)
+
+ASSOCIATION_ITEMS = (
+    ("Общественная деятельность — III степень", 2500, None),
+    ("Общественная деятельность — II степень", 3500, None),
+    ("Общественная деятельность — I степень", 5000, None),
+    ("Волонтёрская деятельность — III степень", 2500, 20),
+    ("Волонтёрская деятельность — II степень", 3500, 40),
+    ("Волонтёрская деятельность — I степень", 5000, 80),
+    ("Развитие студенческого сообщества — III степень", 3000, None),
+    ("Развитие студенческого сообщества — II степень", 4500, None),
+    ("Развитие студенческого сообщества — I степень", 6000, None),
+    ("За лидерство и развитие молодёжных инициатив", 7000, None),
+)
+
+MOSCOW_HOUSE_ITEMS = (
+    ("За активное участие в молодёжных и культурных проектах", 3000),
+    ("За вклад в реализацию общественно-культурных инициатив", 4500),
+    ("Благодарственное письмо «За вклад в развитие молодёжного сотрудничества»", 6000),
+)
+
+KSOORS_ITEMS = (
+    ("За активное участие в общественной жизни российских соотечественников", 3000),
+    ("За вклад в развитие молодёжных инициатив", 3000),
+    ("За активную общественную деятельность", 4000),
+    ("За вклад в сохранение и развитие культурных связей", 4000),
+    ("За проектную и организационную деятельность", 5000),
+    ("За вклад в развитие молодёжного движения российских соотечественников", 5000),
+    ("За вклад в развитие общественного сотрудничества", 6000),
+    ("За лидерство в молодёжной общественной деятельности", 6000),
+    ("За значительный вклад в развитие сообщества российских соотечественников", 7000),
+    ("За особый вклад в развитие молодёжного движения российских соотечественников в Армении", 8000),
+)
+
 RECOGNITION_CATALOG = [
-    # ЭРА — 10 certificates + two letters.
-    _item(
-        "ЭРА",
-        "Активный участник ЭРА",
-        1500,
-        ParticipationStatus.ACTIVE_MEMBER,
-        wording="За активное участие в жизни сообщества ЭРА и подтверждённый личный вклад.",
-        category="public_activity",
-    ),
-    _item(
-        "ЭРА",
-        "За активное участие в жизни сообщества ЭРА",
-        1500,
-        ParticipationStatus.ACTIVE_MEMBER,
-        any_metrics=[{"events_attended": 3}, {"tasks_completed": 2}],
-        wording="За активное участие в жизни сообщества ЭРА, инициативность и вовлечённость.",
-        category="public_activity",
-    ),
-    _item(
-        "ЭРА",
-        "За вклад в развитие сообщества ЭРА",
-        2250,
-        ParticipationStatus.ACTIVE_MEMBER,
-        any_metrics=[
-            {"social_activities": 2},
-            {"project_activities": 3},
-            {"partner_activities": 2},
-        ],
-        wording="За значимый вклад в развитие сообщества ЭРА и реализацию совместных инициатив.",
-        category="public_activity",
-    ),
-    _item(
-        "ЭРА",
-        "За инициативность и командную работу",
-        2250,
-        ParticipationStatus.ACTIVE_MEMBER,
-        metrics={"tasks_completed": 3},
-        wording="За инициативность, ответственность и результативную работу в команде ЭРА.",
-        category="projects",
-    ),
-    _item(
-        "ЭРА",
-        "За проектную деятельность",
-        3000,
-        ParticipationStatus.TEAM_MEMBER,
-        metrics={"projects_completed": 2, "project_activities": 7},
-        any_documents=[
-            "Активный участник ЭРА",
-            "За активное участие в жизни сообщества ЭРА",
-        ],
-        wording="За активную проектную деятельность, инициативность и значимый вклад в реализацию молодёжных проектов ЭРА.",
-        category="projects",
-    ),
-    _item(
-        "ЭРА",
-        "За вклад в организацию мероприятий",
-        3000,
-        ParticipationStatus.TEAM_MEMBER,
-        any_metrics=[{"events_organized": 2}, {"events_coordinated": 1}],
-        wording="За значимый вклад в подготовку и организацию мероприятий ЭРА.",
-        category="events",
-    ),
-    _item(
-        "ЭРА",
-        "За общественную активность и инициативность",
-        4000,
-        ParticipationStatus.TEAM_MEMBER,
-        metrics={"social_activities": 3},
-        wording="За общественную активность, инициативность и вклад в социальные проекты ЭРА.",
-        category="public_activity",
-    ),
-    _item(
-        "ЭРА",
-        "Организатор ЭРА",
-        4000,
-        ParticipationStatus.PROJECT_CURATOR,
-        any_metrics=[{"events_organized": 3}, {"events_coordinated": 2}],
-        wording="За высокий уровень организации, координации и ответственности в проектах и мероприятиях ЭРА.",
-        category="events",
-    ),
-    _item(
-        "ЭРА",
-        "За лидерство и развитие команды",
-        5000,
-        ParticipationStatus.PROJECT_CURATOR,
-        metrics={"leadership_activities": 5},
-        wording="За лидерство, развитие команды и устойчивый вклад в рост участников ЭРА.",
-        category="leadership",
-    ),
-    _item(
-        "ЭРА",
-        "Лидер сообщества ЭРА",
-        5000,
-        ParticipationStatus.COMMUNITY_LEADER,
-        metrics={"leadership_activities": 5, "mentorship_outcomes": 1},
-        wording="За устойчивое лидерство, развитие других участников и значимый вклад в развитие сообщества ЭРА.",
-        category="leadership",
-    ),
-    _item(
-        "ЭРА",
-        "Благодарственное письмо ЭРА",
-        3500,
-        ParticipationStatus.TEAM_MEMBER,
-        any_metrics=[
-            {"project_activities": 3},
-            {"events_organized": 2},
-            {"social_activities": 3},
-        ],
-        wording="За значимый личный вклад в развитие сообщества ЭРА, инициативность и участие в реализации проектов и мероприятий.",
-        opportunity_type="letter",
-        category="public_activity",
-    ),
-    _item(
-        "ЭРА",
-        "Рекомендательное письмо ЭРА",
-        5500,
-        ParticipationStatus.PROJECT_CURATOR,
-        any_metrics=[{"projects_led": 1}, {"leadership_activities": 5}],
-        wording="Рекомендательное письмо на основании подтверждённых ролей, проектов, задач, мероприятий и результатов участника.",
-        opportunity_type="letter",
-        category="leadership",
-    ),
-
-    # Ассоциация студентов российских вузов в Армении.
-    _item(
-        "Ассоциация студентов российских вузов в Армении",
-        "Общественная деятельность — III степень",
-        2500,
-        ParticipationStatus.ACTIVE_MEMBER,
-        metrics={"social_activities": 1},
-        wording="За активную общественную деятельность и участие в развитии студенческого сообщества.",
-        partner_review=True,
-        category="public_activity",
-    ),
-    _item(
-        "Ассоциация студентов российских вузов в Армении",
-        "Общественная деятельность — II степень",
-        3500,
-        ParticipationStatus.TEAM_MEMBER,
-        metrics={"social_activities": 3},
-        wording="За значимый вклад в общественную деятельность студенческого сообщества.",
-        partner_review=True,
-        category="public_activity",
-    ),
-    _item(
-        "Ассоциация студентов российских вузов в Армении",
-        "Общественная деятельность — I степень",
-        5000,
-        ParticipationStatus.PROJECT_CURATOR,
-        metrics={"social_activities": 5},
-        wording="За значительный и устойчивый вклад в общественную деятельность студенческого сообщества.",
-        partner_review=True,
-        category="public_activity",
-    ),
-    _item(
-        "Ассоциация студентов российских вузов в Армении",
-        "Волонтёрство — III степень",
-        2500,
-        ParticipationStatus.ACTIVE_MEMBER,
-        metrics={"volunteer_hours": 20},
-        wording="За подтверждённую волонтёрскую деятельность и вклад в общественные инициативы.",
-        partner_review=True,
-        category="volunteering",
-    ),
-    _item(
-        "Ассоциация студентов российских вузов в Армении",
-        "Волонтёрство — II степень",
-        3500,
-        ParticipationStatus.TEAM_MEMBER,
-        metrics={"volunteer_hours": 40},
-        wording="За значимый объём подтверждённой волонтёрской деятельности.",
-        partner_review=True,
-        category="volunteering",
-    ),
-    _item(
-        "Ассоциация студентов российских вузов в Армении",
-        "Волонтёрство — I степень",
-        5000,
-        ParticipationStatus.PROJECT_CURATOR,
-        metrics={"volunteer_hours": 80},
-        wording="За высокий уровень и устойчивый вклад в волонтёрскую деятельность.",
-        partner_review=True,
-        category="volunteering",
-    ),
-    _item(
-        "Ассоциация студентов российских вузов в Армении",
-        "Развитие студенческого сообщества — III степень",
-        3000,
-        ParticipationStatus.TEAM_MEMBER,
-        metrics={"student_association_activities": 1},
-        wording="За вклад в развитие студенческого сообщества российских вузов в Армении.",
-        partner_review=True,
-        category="public_activity",
-    ),
-    _item(
-        "Ассоциация студентов российских вузов в Армении",
-        "Развитие студенческого сообщества — II степень",
-        4500,
-        ParticipationStatus.PROJECT_CURATOR,
-        metrics={"student_association_activities": 3},
-        wording="За значимый вклад в развитие студенческого сообщества российских вузов в Армении.",
-        partner_review=True,
-        category="public_activity",
-    ),
-    _item(
-        "Ассоциация студентов российских вузов в Армении",
-        "Развитие студенческого сообщества — I степень",
-        6000,
-        ParticipationStatus.COMMUNITY_LEADER,
-        metrics={"student_association_activities": 5},
-        wording="За устойчивый вклад в развитие студенческого сообщества российских вузов в Армении.",
-        partner_review=True,
-        category="public_activity",
-    ),
-    _item(
-        "Ассоциация студентов российских вузов в Армении",
-        "За лидерство и развитие молодёжных инициатив",
-        7000,
-        ParticipationStatus.COMMUNITY_LEADER,
-        metrics={"leadership_activities": 5, "student_association_activities": 3},
-        wording="За лидерство и значимый вклад в развитие молодёжных и студенческих инициатив.",
-        partner_review=True,
-        category="leadership",
-    ),
-
-    # Дом Москвы в Ереване — requires activity explicitly tagged to issuer.
-    _item(
-        "Дом Москвы в Ереване",
-        "За активное участие в молодёжных и культурных проектах",
-        3000,
-        ParticipationStatus.ACTIVE_MEMBER,
-        metrics={"house_moscow_activities": 1},
-        wording="За активное участие в молодёжных и культурных проектах Дома Москвы в Ереване.",
-        partner_review=True,
-        category="projects",
-    ),
-    _item(
-        "Дом Москвы в Ереване",
-        "За вклад в реализацию общественно-культурных инициатив",
-        4500,
-        ParticipationStatus.TEAM_MEMBER,
-        metrics={"house_moscow_activities": 3},
-        wording="За значимый вклад в реализацию общественно-культурных инициатив Дома Москвы в Ереване.",
-        partner_review=True,
-        category="public_activity",
-    ),
-    _item(
-        "Дом Москвы в Ереване",
-        "Благодарственное письмо «За вклад в развитие молодёжного сотрудничества»",
-        6000,
-        ParticipationStatus.PROJECT_CURATOR,
-        metrics={"house_moscow_activities": 5},
-        wording="За значимый вклад в развитие молодёжного сотрудничества и реализацию совместных инициатив.",
-        opportunity_type="letter",
-        partner_review=True,
-        category="international",
-    ),
-
-    # КСООРС Армении.
-    _item(
-        "КСООРС Армении",
-        "За активное участие в общественной жизни российских соотечественников",
-        3000,
-        ParticipationStatus.ACTIVE_MEMBER,
-        metrics={"ksoors_activities": 1},
-        wording="За активное участие в общественной жизни российских соотечественников в Армении.",
-        partner_review=True,
-        category="public_activity",
-    ),
-    _item(
-        "КСООРС Армении",
-        "За вклад в развитие молодёжных инициатив",
-        3000,
-        ParticipationStatus.ACTIVE_MEMBER,
-        metrics={"ksoors_activities": 1, "leadership_activities": 1},
-        wording="За вклад в развитие молодёжных инициатив российских соотечественников в Армении.",
-        partner_review=True,
-        category="public_activity",
-    ),
-    _item(
-        "КСООРС Армении",
-        "За активную общественную деятельность",
-        4000,
-        ParticipationStatus.TEAM_MEMBER,
-        metrics={"ksoors_activities": 2, "social_activities": 2},
-        wording="За активную общественную деятельность в сообществе российских соотечественников.",
-        partner_review=True,
-        category="public_activity",
-    ),
-    _item(
-        "КСООРС Армении",
-        "За вклад в сохранение и развитие культурных связей",
-        4000,
-        ParticipationStatus.TEAM_MEMBER,
-        metrics={"ksoors_activities": 2, "culture_activities": 2},
-        wording="За вклад в сохранение и развитие культурных связей российских соотечественников.",
-        partner_review=True,
-        category="international",
-    ),
-    _item(
-        "КСООРС Армении",
-        "За проектную и организационную деятельность",
-        5000,
-        ParticipationStatus.PROJECT_CURATOR,
-        metrics={"ksoors_activities": 3, "project_activities": 5},
-        wording="За результативную проектную и организационную деятельность.",
-        partner_review=True,
-        category="projects",
-    ),
-    _item(
-        "КСООРС Армении",
-        "За вклад в развитие молодёжного движения российских соотечественников",
-        5000,
-        ParticipationStatus.PROJECT_CURATOR,
-        metrics={"ksoors_activities": 3, "leadership_activities": 3},
-        wording="За значимый вклад в развитие молодёжного движения российских соотечественников.",
-        partner_review=True,
-        category="public_activity",
-    ),
-    _item(
-        "КСООРС Армении",
-        "За вклад в развитие общественного сотрудничества",
-        6000,
-        ParticipationStatus.PROJECT_CURATOR,
-        metrics={"ksoors_activities": 4, "partner_activities": 2},
-        wording="За значимый вклад в развитие общественного сотрудничества российских соотечественников.",
-        partner_review=True,
-        category="international",
-    ),
-    _item(
-        "КСООРС Армении",
-        "За лидерство в молодёжной общественной деятельности",
-        6000,
-        ParticipationStatus.COMMUNITY_LEADER,
-        metrics={"ksoors_activities": 4, "leadership_activities": 5},
-        wording="За лидерство в молодёжной общественной деятельности российских соотечественников.",
-        partner_review=True,
-        category="leadership",
-    ),
-    _item(
-        "КСООРС Армении",
-        "За значительный вклад в развитие сообщества российских соотечественников",
-        7000,
-        ParticipationStatus.COMMUNITY_LEADER,
-        metrics={"ksoors_activities": 6},
-        wording="За значительный и устойчивый вклад в развитие сообщества российских соотечественников в Армении.",
-        partner_review=True,
-        category="public_activity",
-    ),
-    _item(
-        "КСООРС Армении",
-        "За особый вклад в развитие молодёжного движения российских соотечественников в Армении",
-        8000,
-        ParticipationStatus.COMMUNITY_LEADER,
-        metrics={"ksoors_activities": 8, "leadership_activities": 5},
-        wording="За особый вклад в развитие молодёжного движения российских соотечественников в Армении.",
-        partner_review=True,
-        category="leadership",
-    ),
+    *[
+        _item("ЭРА", title, points, opportunity_type=opportunity_type)
+        for title, points, opportunity_type in ERA_ITEMS
+    ],
+    *[
+        _item(
+            "Ассоциация студентов российских вузов в Армении",
+            title,
+            points,
+            volunteer_hours=volunteer_hours,
+        )
+        for title, points, volunteer_hours in ASSOCIATION_ITEMS
+    ],
+    *[
+        _item("Дом Москвы в Ереване", title, points)
+        for title, points in MOSCOW_HOUSE_ITEMS
+    ],
+    *[
+        _item("КСООРС Армении", title, points)
+        for title, points in KSOORS_ITEMS
+    ],
 ]
+
+# Contract guard: 12 ЭРА + 10 association + 3 Moscow House + 10 КСООРС.
+assert len(RECOGNITION_CATALOG) == 35
 
 
 async def seed_recognition_catalog(session: AsyncSession) -> None:
+    """Create missing recognition documents and self-heal authored fields.
+
+    The catalog above is the approved product contract. Existing rows can
+    predate that contract, so points/rank/eligibility/type are synchronized
+    instead of only filling null fields. External partner opportunities are
+    never touched.
+    """
     partners: dict[str, Partner] = {}
     for name, description in ISSUERS.items():
         partner = await session.scalar(select(Partner).where(Partner.name == name))
@@ -447,45 +165,81 @@ async def seed_recognition_catalog(session: AsyncSession) -> None:
             )
             session.add(partner)
             await session.flush()
+        else:
+            partner.description = description
+            partner.status = "issuer"
+            partner.is_active = True
+            partner.is_archived = False
         partners[name] = partner
+
+    expected_titles_by_partner: dict[int, set[str]] = {
+        partner.id: set() for partner in partners.values()
+    }
 
     for item in RECOGNITION_CATALOG:
         partner = partners[item["issuer"]]
+        expected_titles_by_partner[partner.id].add(item["title"])
         existing = await session.scalar(
             select(PartnerInitiative).where(
                 PartnerInitiative.partner_id == partner.id,
                 PartnerInitiative.title == item["title"],
             )
         )
-        if existing is not None:
-            # DELTA ToR §16: self-heal the new category field onto rows
-            # seeded before it existed, same idempotent-update pattern as
-            # the Media Guide fix -- never overwrite an admin-edited value.
-            if existing.category is None and item["category"] is not None:
-                existing.category = item["category"]
-            continue
-        session.add(
-            PartnerInitiative(
+        portfolio_type = "letter" if item["opportunity_type"] == "letter" else "certificate"
+        description = (
+            "Официальное признание подтверждённой деятельности. "
+            "Баллы являются порогом репутации и не списываются."
+        )
+        if existing is None:
+            existing = PartnerInitiative(
                 partner_id=partner.id,
                 title=item["title"],
-                description=(
-                    "Официальное признание подтверждённой деятельности. "
-                    "Баллы являются порогом репутации и не списываются."
-                ),
+                description=description,
                 point_cost=item["points"],
                 quantity=None,
                 instruction="Подайте заявку после выполнения всех условий.",
                 opportunity_type=item["opportunity_type"],
-                min_rank=item["rank"],
+                min_rank=None,
                 eligibility_json=item["eligibility"],
                 default_award_wording=item["wording"],
                 partner_review_required=item["partner_review"],
-                portfolio_item_type=(
-                    "letter" if item["opportunity_type"] == "letter" else "certificate"
-                ),
+                portfolio_item_type=portfolio_type,
                 category=item["category"],
                 is_active=True,
                 is_archived=False,
             )
-        )
+            session.add(existing)
+            continue
+
+        existing.description = description
+        existing.point_cost = item["points"]
+        existing.quantity = None
+        existing.instruction = "Подайте заявку после выполнения всех условий."
+        existing.opportunity_type = item["opportunity_type"]
+        existing.min_rank = None
+        existing.eligibility_json = item["eligibility"]
+        existing.default_award_wording = item["wording"]
+        existing.partner_review_required = item["partner_review"]
+        existing.portfolio_item_type = portfolio_type
+        existing.category = item["category"]
+        existing.is_active = True
+        existing.is_archived = False
+
+    # Hide obsolete recognition rows from these issuers so the participant
+    # sees exactly the approved 35-document catalog, not historical drafts.
+    for partner in partners.values():
+        rows = (
+            await session.scalars(
+                select(PartnerInitiative).where(
+                    PartnerInitiative.partner_id == partner.id,
+                    PartnerInitiative.opportunity_type.in_(("certificate", "letter")),
+                )
+            )
+        ).all()
+        allowed = expected_titles_by_partner[partner.id]
+        for row in rows:
+            if row.title not in allowed:
+                row.is_active = False
+                row.is_archived = True
+
     await session.flush()
