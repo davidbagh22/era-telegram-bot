@@ -9,6 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import Settings
 from app.services.chat_faq_service import ensure_general_faq_pinned
 from app.services.community_mission_service import process_task_squad_notifications
+from app.services.community_verification_service import run_verification_reminders
 from app.services.development_notification_service import send_monthly_development_reminders
 from app.services.event_custom_reminder_service import send_configured_event_reminders
 from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
@@ -132,6 +133,21 @@ def add_system_jobs(
         minutes=1,
         args=(bot, settings, session_factory),
         id="media-chat-automation",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
+    )
+    scheduler.add_job(
+        run_verification_reminders,
+        "interval",
+        # ToR §14's reminder is "24h before the end", not a fixed clock time
+        # -- polling hourly and letting the delivery-row idempotency (ToR
+        # §12/§56) decide who's actually new-to-remind is the same pattern
+        # event_custom_reminder_service uses for its own rolling window.
+        minutes=60,
+        args=(bot, settings, session_factory),
+        id="community-verification-reminders",
         replace_existing=True,
         max_instances=1,
         coalesce=True,

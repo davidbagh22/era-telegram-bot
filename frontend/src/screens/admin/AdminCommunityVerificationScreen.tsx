@@ -4,6 +4,7 @@ import {
   describeActionError,
   fetchCommunityVerificationNotRegistered,
   fetchCommunityVerificationStatus,
+  sendCommunityVerificationLaunch,
   startCommunityVerificationCampaign,
 } from "../../api/client";
 import { Card } from "../../components/Card";
@@ -11,6 +12,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { MonoLabel } from "../../components/MonoLabel";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useAsync } from "../../hooks/useAsync";
+import type { CommunityVerificationLaunchWave } from "../../types/admin";
 
 const WINDOW_OPTIONS: { hours: number; label: string }[] = [
   { hours: 24, label: "24 часа" },
@@ -24,6 +26,13 @@ const STATUS_LABELS: Record<string, string> = {
   not_started: "Не запущена",
   active: "Активна",
   completed: "Завершена",
+};
+
+const PIN_STATUS_LABELS: Record<string, string> = {
+  posted: "опубликован сейчас",
+  already_posted: "уже был опубликован раньше",
+  failed: "не получилось опубликовать — проверьте права бота в чате",
+  no_chat_bound: "общий чат не подключён",
 };
 
 function formatDateTime(value: string | null): string {
@@ -62,14 +71,36 @@ export function AdminCommunityVerificationScreen() {
   const [windowHours, setWindowHours] = useState(72);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [lastWave, setLastWave] = useState<CommunityVerificationLaunchWave | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
+
+  const handleSendLaunch = useCallback(async () => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const wave = await sendCommunityVerificationLaunch();
+      setLastWave(wave);
+      refresh();
+    } catch (error) {
+      setActionError(describeActionError(error));
+    } finally {
+      setBusy(false);
+    }
+  }, [refresh]);
 
   const handleStart = useCallback(async () => {
     setBusy(true);
     setActionError(null);
     try {
+      // ToR §76 DoD reads campaign-start as one admin action that produces
+      // both the pin and the personal DMs -- chained here, but each half
+      // stays independently idempotent server-side so a failure partway
+      // through (e.g. this second call times out) is always safely retryable
+      // via the "Отправить рассылку ещё раз" button below.
       await startCommunityVerificationCampaign(windowHours);
+      const wave = await sendCommunityVerificationLaunch();
+      setLastWave(wave);
       refresh();
     } catch (error) {
       setActionError(describeActionError(error));
@@ -159,9 +190,23 @@ export function AdminCommunityVerificationScreen() {
             </button>
           </div>
         ) : (
-          <button type="button" disabled={busy} onClick={handleComplete}>
-            Завершить волну вручную
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <button type="button" disabled={busy} onClick={handleSendLaunch}>
+                Отправить рассылку ещё раз
+              </button>
+              <button type="button" disabled={busy} onClick={handleComplete}>
+                Завершить волну вручную
+              </button>
+            </div>
+            {lastWave && (
+              <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.78rem" }}>
+                Закреп: {PIN_STATUS_LABELS[lastWave.pin_status]} · Отправлено: {lastWave.sent} · Заблокировали
+                бота: {lastWave.blocked} · Недоступны: {lastWave.unreachable}
+                {lastWave.failed > 0 && ` · Ошибка отправки: ${lastWave.failed}`}
+              </p>
+            )}
+          </div>
         )}
       </Card>
 
@@ -215,7 +260,9 @@ export function AdminCommunityVerificationScreen() {
           </Card>
         )}
         <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.78rem" }}>
-          Массовое напоминание и удаление выбранных появятся здесь после запуска рассылки (следующий этап).
+          Напоминание уходит автоматически за 24 часа до конца волны, только тем, кто ещё не
+          зарегистрировался. Решение по каждому человеку (оставить/удалить) появится здесь на
+          следующем этапе.
         </p>
       </section>
     </div>

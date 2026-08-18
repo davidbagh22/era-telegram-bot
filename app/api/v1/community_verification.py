@@ -1,8 +1,7 @@
-"""Community Verification ToR §7/§19: admin campaign control + dashboard.
+"""Community Verification ToR §7-16/§19: admin campaign control, dashboard,
+and the launch/reminder DM waves + pinned chat post.
 
-Reject/removal/reminder actions are added in later phases of the same ToR;
-this module ships the read-only dashboard plus start/complete campaign
-control first (Phase 2).
+Removal/moderation-gate changes are a later phase of the same ToR.
 """
 
 from __future__ import annotations
@@ -109,6 +108,48 @@ async def complete_campaign_endpoint(
         raise HTTPException(status_code=409, detail="no_active_campaign")
     campaign = await cv_service.complete_campaign(session, campaign, actor_id=admin.id)
     return _campaign_out(campaign)
+
+
+class LaunchWaveOut(BaseModel):
+    pin_status: Literal["posted", "already_posted", "failed", "no_chat_bound"]
+    total_recipients: int
+    already_attempted: int
+    sent: int
+    blocked: int
+    unreachable: int
+    failed: int
+
+
+def _wave_out(pin_status: str, result: cv_service.WaveResult) -> LaunchWaveOut:
+    return LaunchWaveOut(
+        pin_status=pin_status,
+        total_recipients=result.total_recipients,
+        already_attempted=result.already_attempted,
+        sent=result.sent,
+        blocked=result.blocked,
+        unreachable=result.unreachable,
+        failed=result.failed,
+    )
+
+
+@router.post("/send-launch", response_model=LaunchWaveOut)
+async def send_launch_endpoint(
+    admin: User = Depends(require_full_admin),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot = Depends(get_bot),
+    settings: Settings = Depends(get_settings),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> LaunchWaveOut:
+    """ToR §8/§10: one pinned chat post + the same text as a personal DM to
+    every known user. Safe to call more than once -- both the pin and the
+    per-recipient DMs are idempotent, so a retry after a partial failure
+    (timeout, bot restart) only ever reaches whoever hasn't been reached yet."""
+    campaign = await cv_service.active_campaign(session)
+    if campaign is None:
+        raise HTTPException(status_code=409, detail="no_active_campaign")
+    pin_status = await cv_service.post_launch_pin(session, bot, settings, campaign, actor_id=admin.id)
+    result = await cv_service.send_launch_wave(session, bot, campaign, actor_id=admin.id)
+    return _wave_out(pin_status, result)
 
 
 class NotRegisteredEntryOut(BaseModel):

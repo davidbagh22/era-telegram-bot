@@ -23,16 +23,46 @@ from app.config import Settings
 from app.database.chat_moderation import CommunityVerificationCampaign, CommunityVerificationDelivery
 from app.database.models import User
 from app.services.audit_service import audit
+from app.services.notification_service import BroadcastFailure, broadcast_detailed
 from app.utils.constants import ApplicationStatus
 
 ALLOWED_WINDOW_HOURS = (24, 48, 72, 120, 168)
 DEFAULT_WINDOW_HOURS = 72
 LAUNCH_KIND = "initial"
 REMINDER_KIND = "reminder"
+# Sentinel row for the one pinned chat post (ToR §8) -- 0 is never a real
+# Telegram user id, so it can share the same delivery table / unique
+# constraint as personal DMs instead of a second table for one row.
+CHAT_PIN_KIND = "chat_pin"
+CHAT_PIN_SENTINEL_TELEGRAM_ID = 0
 # ToR §12's idempotency key, kept for documentation / external audit greps --
 # the actual idempotency mechanism is the DB unique constraint on
 # (campaign_id, telegram_id, kind), not a string comparison.
 IDEMPOTENCY_KEY_TEMPLATE = "community_verification:{campaign_id}:{telegram_id}:{kind}"
+
+# ToR §8 -- one pinned post in the general chat, and (ToR §10) the exact
+# same text as a personal DM to every known user.
+LAUNCH_ANNOUNCEMENT_TEXT = (
+    "ЭРА становится больше, чем чат.\n\n"
+    "Мы запускаем единое пространство ЭРА: события, проекты, задания, "
+    "возможности, баллы, портфолио и «Мой вектор» — личный раздел, который "
+    "помогает видеть свой прогресс, фокус и следующий шаг.\n\n"
+    "Здесь можно не просто следить за событиями, а участвовать, собирать "
+    "реальный опыт и постепенно брать больше ответственности внутри ЭРА.\n\n"
+    "Мы также обновляем состав сообщества, чтобы в общем пространстве "
+    "оставались реальные участники ЭРА.\n\n"
+    "Пройди короткую регистрацию и подтверждение — после этого твой профиль "
+    "станет частью новой системы."
+)
+
+# ToR §14 -- only to people who haven't started/finished registration; never
+# to pending/approved/rejected (enforced by reminder_eligible_telegram_ids).
+REMINDER_TEXT = (
+    "До завершения первой верификации ЭРА — 1 день.\n\n"
+    "Если ещё не зарегистрировался, открой ЭРА и создай свой профиль.\n\n"
+    "Это займёт несколько минут и даст доступ ко всей новой системе: "
+    "событиям, проектам, возможностям и «Моему вектору»."
+)
 
 
 class CampaignError(Exception):
@@ -290,3 +320,206 @@ async def not_registered_recipients(
         for telegram_id, status, sent_at in rows
         if telegram_id not in known
     ]
+
+
+def _classify_failure(failure: BroadcastFailure | None) -> str:
+    """ToR §11's status vocabulary, mapped from the same
+    notification_service failure reasons every other broadcast in this repo
+    already produces (app/services/admin_broadcast_service.py)."""
+    if failure is None:
+        return "sent"
+    reason = failure.reason
+    if reason.startswith("TelegramForbiddenError"):
+        return "blocked"
+    if reason.startswith("TelegramNotFound") or reason.startswith("TelegramBadRequest"):
+        return "unreachable"
+    return "failed"
+
+
+async def _already_attempted(session: AsyncSession, campaign_id: int, kind: str) -> set[int]:
+    return set(
+        (
+            await session.scalars(
+                select(CommunityVerificationDelivery.telegram_id).where(
+                    CommunityVerificationDelivery.campaign_id == campaign_id,
+                    CommunityVerificationDelivery.kind == kind,
+                )
+            )
+        ).all()
+    )
+
+
+@dataclass(frozen=True)
+class WaveResult:
+    total_recipients: int
+    already_attempted: int
+    sent: int
+    blocked: int
+    unreachable: int
+    failed: int
+
+
+async def _send_wave(
+    session: AsyncSession,
+    bot: Bot,
+    *,
+    campaign: CommunityVerificationCampaign,
+    kind: str,
+    telegram_ids: list[int],
+    text: str,
+) -> WaveResult:
+    """Shared idempotent send-and-record path for both the launch wave and
+    the reminder wave (ToR §12/§56: never send the same kind twice to the
+    same person for the same campaign -- enforced here by pre-filtering
+    against existing rows, and structurally by the DB unique constraint if
+    two requests ever race)."""
+    attempted = await _already_attempted(session, campaign.id, kind)
+    pending_ids = [telegram_id for telegram_id in telegram_ids if telegram_id not in attempted]
+    if not pending_ids:
+        return WaveResult(len(telegram_ids), len(telegram_ids), 0, 0, 0, 0)
+
+    result = await broadcast_detailed(bot, pending_ids, text)
+    failed_by_id = {failure.chat_id: failure for failure in result.failures}
+    now = datetime.now(timezone.utc)
+    counts = {"sent": 0, "blocked": 0, "unreachable": 0, "failed": 0}
+    for telegram_id in pending_ids:
+        status = _classify_failure(failed_by_id.get(telegram_id))
+        counts[status] += 1
+        session.add(
+            CommunityVerificationDelivery(
+                campaign_id=campaign.id,
+                telegram_id=telegram_id,
+                kind=kind,
+                status=status,
+                attempt_count=1,
+                sent_at=now if status == "sent" else None,
+                last_attempt_at=now,
+            )
+        )
+    await session.flush()
+    return WaveResult(
+        total_recipients=len(telegram_ids),
+        already_attempted=len(attempted),
+        sent=counts["sent"],
+        blocked=counts["blocked"],
+        unreachable=counts["unreachable"],
+        failed=counts["failed"],
+    )
+
+
+async def send_launch_wave(
+    session: AsyncSession, bot: Bot, campaign: CommunityVerificationCampaign, *, actor_id: int | None
+) -> WaveResult:
+    recipients = await eligible_launch_recipients(session)
+    result = await _send_wave(
+        session,
+        bot,
+        campaign=campaign,
+        kind=LAUNCH_KIND,
+        telegram_ids=[user.telegram_id for user in recipients],
+        text=LAUNCH_ANNOUNCEMENT_TEXT,
+    )
+    await audit(
+        session,
+        actor_id=actor_id,
+        action="community_verification.launch_sent",
+        entity_type="community_verification_campaign",
+        entity_id=campaign.id,
+        new_value={"sent": result.sent, "blocked": result.blocked, "unreachable": result.unreachable, "failed": result.failed},
+    )
+    return result
+
+
+async def send_reminder_wave(
+    session: AsyncSession, bot: Bot, campaign: CommunityVerificationCampaign, *, actor_id: int | None = None
+) -> WaveResult:
+    telegram_ids = await reminder_eligible_telegram_ids(session, campaign)
+    result = await _send_wave(
+        session, bot, campaign=campaign, kind=REMINDER_KIND, telegram_ids=telegram_ids, text=REMINDER_TEXT
+    )
+    if result.sent or result.blocked or result.unreachable or result.failed:
+        await audit(
+            session,
+            actor_id=actor_id,
+            action="community_verification.reminder_sent",
+            entity_type="community_verification_campaign",
+            entity_id=campaign.id,
+            new_value={"sent": result.sent, "blocked": result.blocked, "unreachable": result.unreachable, "failed": result.failed},
+        )
+    return result
+
+
+async def post_launch_pin(
+    session: AsyncSession, bot: Bot, settings: Settings, campaign: CommunityVerificationCampaign, *, actor_id: int | None
+) -> str:
+    """ToR §8: exactly one pinned post in the general chat. Only recorded on
+    confirmed success, unlike the personal-DM rows -- a failed pin attempt
+    (bot temporarily lacks pin rights, etc.) should stay retryable rather
+    than permanently "used up" the one allowed post.
+
+    Returns one of "posted" / "already_posted" / "failed" / "no_chat_bound"
+    -- a plain bool here previously conflated "already done" with "just
+    failed", which produced misleading admin-facing copy."""
+    if settings.general_chat_id is None:
+        return "no_chat_bound"
+    already = await session.scalar(
+        select(CommunityVerificationDelivery.id).where(
+            CommunityVerificationDelivery.campaign_id == campaign.id,
+            CommunityVerificationDelivery.kind == CHAT_PIN_KIND,
+        )
+    )
+    if already is not None:
+        return "already_posted"
+    try:
+        message = await bot.send_message(settings.general_chat_id, LAUNCH_ANNOUNCEMENT_TEXT)
+        await bot.pin_chat_message(settings.general_chat_id, message.message_id, disable_notification=False)
+    except TelegramAPIError:
+        return "failed"
+    now = datetime.now(timezone.utc)
+    session.add(
+        CommunityVerificationDelivery(
+            campaign_id=campaign.id,
+            telegram_id=CHAT_PIN_SENTINEL_TELEGRAM_ID,
+            kind=CHAT_PIN_KIND,
+            status="sent",
+            attempt_count=1,
+            sent_at=now,
+            last_attempt_at=now,
+        )
+    )
+    await audit(
+        session,
+        actor_id=actor_id,
+        action="community_verification.pin_posted",
+        entity_type="community_verification_campaign",
+        entity_id=campaign.id,
+        new_value=None,
+    )
+    return "posted"
+
+
+async def run_verification_reminders(bot: Bot, settings: Settings, session_factory) -> None:
+    """Scheduler hook (ToR §14): fires the reminder wave once a campaign is
+    within its last 24h. Safe to poll repeatedly -- send_reminder_wave's own
+    idempotency means only genuinely new-since-last-poll recipients ever get
+    a second message."""
+    async with session_factory() as session:
+        now = datetime.now(timezone.utc)
+        campaigns = (
+            await session.scalars(
+                select(CommunityVerificationCampaign).where(
+                    CommunityVerificationCampaign.status == "active",
+                    CommunityVerificationCampaign.ends_at.is_not(None),
+                    CommunityVerificationCampaign.ends_at > now,
+                    CommunityVerificationCampaign.ends_at <= now + timedelta(hours=24),
+                )
+            )
+        ).all()
+        for campaign in campaigns:
+            await send_reminder_wave(session, bot, campaign)
+        await complete_expired_campaigns(session)
+        # session_factory() here is the raw AsyncSession context manager, not
+        # the FastAPI request-scoped get_session dependency that auto-commits
+        # -- without this, everything above rolls back on __aexit__ (same bug
+        # class documented in app/api/deps.py::get_session).
+        await session.commit()

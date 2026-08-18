@@ -107,6 +107,49 @@ class CommunityVerificationApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["detail"], "no_active_campaign")
 
+    def test_send_launch_requires_active_campaign(self) -> None:
+        with patch(
+            "app.api.v1.community_verification.cv_service.active_campaign",
+            new=AsyncMock(return_value=None),
+        ):
+            session = SimpleNamespace()
+            app = _build_app(_admin(), session, bot=AsyncMock())
+            client = TestClient(app)
+            response = client.post("/api/v1/admin/community-verification/send-launch")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "no_active_campaign")
+
+    def test_send_launch_returns_wave_summary(self) -> None:
+        from app.services import community_verification_service as cv_service
+
+        with (
+            patch(
+                "app.api.v1.community_verification.cv_service.active_campaign",
+                new=AsyncMock(return_value=SimpleNamespace(id=1)),
+            ),
+            patch(
+                "app.api.v1.community_verification.cv_service.post_launch_pin",
+                new=AsyncMock(return_value="posted"),
+            ),
+            patch(
+                "app.api.v1.community_verification.cv_service.send_launch_wave",
+                new=AsyncMock(
+                    return_value=cv_service.WaveResult(
+                        total_recipients=5, already_attempted=0, sent=4, blocked=1, unreachable=0, failed=0
+                    )
+                ),
+            ),
+        ):
+            session = SimpleNamespace()
+            app = _build_app(_admin(), session, bot=AsyncMock())
+            client = TestClient(app)
+            response = client.post("/api/v1/admin/community-verification/send-launch")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["pin_status"], "posted")
+        self.assertEqual(body["sent"], 4)
+        self.assertEqual(body["blocked"], 1)
+
     def test_not_registered_empty_without_any_campaign(self) -> None:
         with patch(
             "app.api.v1.community_verification.cv_service.latest_campaign",

@@ -91,6 +91,18 @@ export interface CommunityVerificationNotRegisteredEntry {
   notified_at: string | null;
 }
 
+export type CommunityVerificationPinStatus = "posted" | "already_posted" | "failed" | "no_chat_bound";
+
+export interface CommunityVerificationLaunchWave {
+  pin_status: CommunityVerificationPinStatus;
+  total_recipients: number;
+  already_attempted: number;
+  sent: number;
+  blocked: number;
+  unreachable: number;
+  failed: number;
+}
+
 export type ProjectDecisionAction =
   | "initial_accept"
   | "venue_approve"

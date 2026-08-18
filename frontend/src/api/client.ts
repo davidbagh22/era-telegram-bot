@@ -30,6 +30,7 @@ import type {
   EventForModeration,
   AuctionAdmin,
   CommunityVerificationCampaign,
+  CommunityVerificationLaunchWave,
   CommunityVerificationNotRegisteredEntry,
   CommunityVerificationStatus,
   EventParticipant,
@@ -743,6 +744,10 @@ export function startCommunityVerificationCampaign(
 
 export function completeCommunityVerificationCampaign(): Promise<CommunityVerificationCampaign> {
   return authorizedPost<CommunityVerificationCampaign>("/api/v1/admin/community-verification/complete");
+}
+
+export function sendCommunityVerificationLaunch(): Promise<CommunityVerificationLaunchWave> {
+  return authorizedPost<CommunityVerificationLaunchWave>("/api/v1/admin/community-verification/send-launch");
 }
 
 export function fetchCommunityVerificationNotRegistered(): Promise<CommunityVerificationNotRegisteredEntry[]> {
