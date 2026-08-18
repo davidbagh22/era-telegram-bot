@@ -147,6 +147,9 @@ class MediaAnalyticsOut(BaseModel):
     on_time_rate: float | None
     tasks_created: int
     tasks_completed: int
+    channel_posts_period: int
+    chat_messages_period: int
+    chat_active_authors_period: int
 
 
 class MediaRequestIn(BaseModel):
@@ -568,8 +571,9 @@ async def media_channel_health(
 async def read_media_analytics(
     _manager: User = Depends(require_media_desk),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> MediaAnalyticsOut:
-    result = await media_service.analytics(session)
+    result = await media_service.analytics(session, settings)
     return MediaAnalyticsOut(**result.__dict__)
 
 

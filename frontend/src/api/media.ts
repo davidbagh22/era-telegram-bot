@@ -94,6 +94,9 @@ export interface MediaAnalytics {
   on_time_rate: number | null;
   tasks_created: number;
   tasks_completed: number;
+  channel_posts_period: number;
+  chat_messages_period: number;
+  chat_active_authors_period: number;
 }
 
 export interface MediaPublishResult {

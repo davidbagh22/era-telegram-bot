@@ -10,6 +10,7 @@ import {
   type HealthMetric,
 } from "../../api/adminAnalytics";
 import { fetchAdminAnalyticsSummary, fetchAdminDashboard } from "../../api/client";
+import { fetchMediaAnalytics } from "../../api/media";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
@@ -268,6 +269,11 @@ export function AdminDashboardScreen() {
   const analytics = useAsync(() => fetchAdminAnalyticsSummary(), []);
   const efficiency = useAsync(() => fetchEraEfficiency(), []);
   const health = useAsync(() => fetchOrganizationHealth(), []);
+  // DELTA ToR §41: not a second analytics screen -- one compact section
+  // reusing the exact numbers Media Desk's own analytics tab already
+  // computes. Failure-tolerant on purpose: an admin without Media Desk
+  // access still sees the rest of the dashboard.
+  const mediaAnalytics = useAsync(() => fetchMediaAnalytics(), []);
   const [selectedSection, setSelectedSection] = useState<AnalyticsDetailSection | null>(null);
   const [downloadingSection, setDownloadingSection] = useState<AnalyticsDetailSection | "all" | "health" | null>(null);
   const [showAllMetrics, setShowAllMetrics] = useState(false);
@@ -389,6 +395,35 @@ export function AdminDashboardScreen() {
         ))}
         <button type="button" onClick={() => setShowAllMetrics((value) => !value)} style={{ width: "100%" }}>{showAllMetrics ? "Скрыть дополнительные" : `Показать все ${health.data.metrics.length} показателей`}</button>
       </section>
+
+      {mediaAnalytics.status === "ready" && (
+        <section>
+          <div style={{ marginBottom: "0.55rem" }}>
+            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Подразделение</p>
+            <h3 style={{ margin: "0.15rem 0 0" }}>Медиа</h3>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "0.5rem" }}>
+            <Card style={{ padding: "0.75rem 0.85rem" }}>
+              <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.3rem" }}>{mediaAnalytics.data.published}</strong>
+              <span style={{ fontSize: "0.78rem" }}>публикаций</span>
+              <span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "0.68rem" }}>+{mediaAnalytics.data.channel_posts_period} за 30 дней</span>
+            </Card>
+            <Card style={{ padding: "0.75rem 0.85rem" }}>
+              <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.3rem" }}>{mediaAnalytics.data.chat_messages_period}</strong>
+              <span style={{ fontSize: "0.78rem" }}>сообщений в чате</span>
+              <span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "0.68rem" }}>{mediaAnalytics.data.chat_active_authors_period} активных участников</span>
+            </Card>
+            <Card style={{ padding: "0.75rem 0.85rem" }}>
+              <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.3rem" }}>{mediaAnalytics.data.tasks_completed}/{mediaAnalytics.data.tasks_created}</strong>
+              <span style={{ fontSize: "0.78rem" }}>медиа-задач выполнено</span>
+            </Card>
+            <Card style={{ padding: "0.75rem 0.85rem" }}>
+              <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.3rem" }}>{mediaAnalytics.data.on_time_rate == null ? "—" : `${mediaAnalytics.data.on_time_rate}%`}</strong>
+              <span style={{ fontSize: "0.78rem" }}>вышло вовремя</span>
+            </Card>
+          </div>
+        </section>
+      )}
 
       <section>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "end", marginBottom: "0.55rem" }}><div><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Эта неделя</p><h3 style={{ margin: "0.15rem 0 0" }}>Что делать дальше</h3></div><StatusBadge label={`${efficiency.data.recommendations.length} действий`} tone="violet" /></div>

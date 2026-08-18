@@ -13,6 +13,7 @@ from app.content.era_public_pack import load_era_public_pack
 from app.database import Base
 from app.database.media_models import (
     MediaChannelDelivery,
+    MediaChatNotice,
     MediaContentItem,
     MediaContentTask,
     MediaLibraryItem,
@@ -21,6 +22,7 @@ from app.database.media_models import (
 from app.database.models import Department, Direction, Event, Task, TaskParticipant, User, UserDirection
 from app.services import media_service, task_service
 from app.services.chat_registry_service import ChatHealthResult
+from app.services.media_chat_activity_service import record_media_chat_message
 from app.services.media_dashboard_service import seed_media_guide
 from app.utils.constants import ApplicationStatus, Role
 
@@ -109,6 +111,46 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(row.destination_type, "internal_route")
             self.assertEqual(row.url, "media/guide")
+
+    async def test_analytics_channel_posts_period_only_counts_last_30_days(self) -> None:
+        from datetime import timedelta, timezone
+
+        async with self.session_factory() as session:
+            recent = MediaContentItem(
+                source_kind="manual", source_key="recent", kind="text", body="hi",
+                status="published", published_at=datetime.now(timezone.utc) - timedelta(days=5),
+            )
+            old = MediaContentItem(
+                source_kind="manual", source_key="old", kind="text", body="hi",
+                status="published", published_at=datetime.now(timezone.utc) - timedelta(days=40),
+            )
+            session.add_all([recent, old])
+            await session.flush()
+
+            result = await media_service.analytics(session, self.settings)
+
+            self.assertEqual(result.published, 2)
+            self.assertEqual(result.channel_posts_period, 1)
+
+    async def test_analytics_wires_chat_activity_when_media_chat_configured(self) -> None:
+        async with self.session_factory() as session:
+            await record_media_chat_message(
+                session, chat_id=self.settings.media_chat_id, telegram_user_id=1
+            )
+            await record_media_chat_message(
+                session, chat_id=self.settings.media_chat_id, telegram_user_id=2
+            )
+
+            result = await media_service.analytics(session, self.settings)
+
+            self.assertEqual(result.chat_messages_period, 2)
+            self.assertEqual(result.chat_active_authors_period, 2)
+
+    async def test_analytics_without_settings_skips_chat_activity_gracefully(self) -> None:
+        async with self.session_factory() as session:
+            result = await media_service.analytics(session)
+            self.assertEqual(result.chat_messages_period, 0)
+            self.assertEqual(result.chat_active_authors_period, 0)
 
     async def test_approved_participant_gets_hub_but_not_desk(self) -> None:
         async with self.session_factory() as session:
@@ -326,13 +368,20 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
             first = await media_service.publish_content(
                 session, bot, self.settings, item, manual=False
             )
+            # send_message now covers two purposes: the actual content
+            # delivery and the "Опубликовано ✓" Media Chat notice (ToR
+            # §42) -- exactly 2 calls after one successful publish.
+            after_first = bot.send_message.await_count
             second = await media_service.publish_content(
                 session, bot, self.settings, item, manual=False
             )
             self.assertTrue(first.ok)
             self.assertFalse(second.ok)
             self.assertEqual(second.code, "already_published")
-            self.assertEqual(bot.send_message.await_count, 1)
+            self.assertEqual(after_first, 2)
+            # The idempotency guarantee that matters: retrying a published
+            # item never sends anything again, notice included.
+            self.assertEqual(bot.send_message.await_count, after_first)
             delivery_count = int(
                 await session.scalar(select(func.count(MediaChannelDelivery.id))) or 0
             )
@@ -360,8 +409,85 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
                 session, bot, self.settings, item, manual=False
             )
             self.assertTrue(result.ok)
+            # The poll itself goes out via send_poll; send_message is used
+            # only for the separate "Опубликовано ✓" Media Chat notice
+            # (ToR §42), never for the poll content.
             bot.send_poll.assert_awaited_once()
-            bot.send_message.assert_not_awaited()
+            bot.send_message.assert_awaited_once()
+
+    async def test_successful_publish_posts_idempotent_media_chat_notice(self) -> None:
+        # DELTA ToR §42 "Публикация состоялась".
+        async with self.session_factory() as session:
+            item = MediaContentItem(
+                source_kind="authored_pack",
+                source_key="test:notice-success",
+                kind="text",
+                body="Материал",
+                rubric="Тестовая рубрика",
+                scheduled_at=datetime.now(timezone.utc),
+                status="scheduled",
+                poll_options=[],
+                metadata_json={"approved": True},
+            )
+            session.add(item)
+            await session.commit()
+            bot = SimpleNamespace(
+                send_message=AsyncMock(return_value=SimpleNamespace(message_id=1)),
+                send_poll=AsyncMock(),
+            )
+            await media_service.publish_content(session, bot, self.settings, item, manual=False)
+
+            notice = await session.scalar(
+                select(MediaChatNotice).where(MediaChatNotice.notice_kind == "published")
+            )
+            self.assertIsNotNone(notice)
+            self.assertEqual(notice.notice_key, f"published:{item.id}")
+            def _text_of(call):
+                return call.args[1] if len(call.args) > 1 else call.kwargs.get("text", "")
+
+            sent_texts = [_text_of(call) for call in bot.send_message.await_args_list]
+            self.assertTrue(any("Опубликовано" in text for text in sent_texts))
+            self.assertTrue(any("Тестовая рубрика" in text for text in sent_texts))
+
+    async def test_failed_publish_posts_idempotent_media_chat_notice(self) -> None:
+        # DELTA ToR §42 "Ошибка публикации".
+        from aiogram.exceptions import TelegramForbiddenError
+
+        async with self.session_factory() as session:
+            item = MediaContentItem(
+                source_kind="authored_pack",
+                source_key="test:notice-failure",
+                kind="text",
+                body="Материал",
+                scheduled_at=datetime.now(timezone.utc),
+                status="scheduled",
+                poll_options=[],
+                metadata_json={"approved": True},
+            )
+            session.add(item)
+            await session.commit()
+
+            # First call is the actual (failing) content publish attempt;
+            # the notice call that follows must still go through normally.
+            calls = {"count": 0}
+
+            async def _content_fails_notice_succeeds(*_args, **_kwargs):
+                calls["count"] += 1
+                if calls["count"] == 1:
+                    raise TelegramForbiddenError(method=SimpleNamespace(), message="bot was kicked")
+                return SimpleNamespace(message_id=2)
+
+            bot = SimpleNamespace(
+                send_message=AsyncMock(side_effect=_content_fails_notice_succeeds), send_poll=AsyncMock()
+            )
+            result = await media_service.publish_content(session, bot, self.settings, item, manual=False)
+
+            self.assertFalse(result.ok)
+            notice = await session.scalar(
+                select(MediaChatNotice).where(MediaChatNotice.notice_kind == "publish_failed")
+            )
+            self.assertIsNotNone(notice)
+            self.assertEqual(notice.notice_key, f"publish-failed:{item.id}")
 
     async def test_manual_content_is_never_auto_published(self) -> None:
         async with self.session_factory() as session:

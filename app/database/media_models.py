@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date as date_, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base, TimestampMixin
@@ -143,3 +143,18 @@ class MediaAttachment(TimestampMixin, Base):
     source_chat_id: Mapped[int | None] = mapped_column(Integer, index=True)
     source_message_id: Mapped[int | None] = mapped_column(Integer, index=True)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class MediaChatActivity(TimestampMixin, Base):
+    """DELTA ToR §38-41: daily aggregate of human activity in a Media chat.
+    Deliberately not a per-message log -- no message content is stored,
+    only a same-day dedup of author ids to compute unique_authors."""
+
+    __tablename__ = "media_chat_activity"
+    __table_args__ = (UniqueConstraint("chat_id", "activity_date", name="uq_media_chat_activity_chat_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[int] = mapped_column(Integer, index=True)
+    activity_date: Mapped[date_] = mapped_column(Date, index=True)
+    human_messages: Mapped[int] = mapped_column(Integer, default=0)
+    author_ids_json: Mapped[list[int]] = mapped_column(JSON, default=list)

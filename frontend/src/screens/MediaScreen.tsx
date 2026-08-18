@@ -442,14 +442,25 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
       </div>
     );
   } else if (view === "analytics") {
+    // ToR §36: Медиа сейчас -- Публикации (всего + за 30 дней) / В срок /
+    // Задачи / Media Chat активность.
     body = analytics ? (
       <div style={{ display: "grid", gap: 10 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <Card><div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.published}</div><div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>опубликовано</div></Card>
-          <Card><div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.planned}</div><div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>в плане</div></Card>
-          <Card><div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.tasks_completed}/{analytics.tasks_created}</div><div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>задач выполнено</div></Card>
+          <Card>
+            <div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.published}</div>
+            <div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>публикаций всего</div>
+            <div style={{ color: "var(--era-text-muted)", fontSize: 11, marginTop: 3 }}>+{analytics.channel_posts_period} за 30 дней</div>
+          </Card>
           <Card><div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.on_time_rate == null ? "—" : `${analytics.on_time_rate}%`}</div><div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>в срок</div></Card>
+          <Card><div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.tasks_completed}/{analytics.tasks_created}</div><div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>задач выполнено</div></Card>
+          <Card><div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.planned}</div><div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>в плане</div></Card>
         </div>
+        <Card>
+          <div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.chat_messages_period}</div>
+          <div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>сообщений в Media Chat за 30 дней</div>
+          <div style={{ color: "var(--era-text-muted)", fontSize: 11, marginTop: 3 }}>{analytics.chat_active_authors_period} активных участников</div>
+        </Card>
         {analytics.failed > 0 ? <Card><strong>Требуют внимания: {analytics.failed}</strong><div style={{ color: "var(--era-text-muted)", marginTop: 5 }}>Система не делает слепой повтор, чтобы не создать дубль публикации.</div></Card> : null}
       </div>
     ) : <Card>Аналитика пока пуста.</Card>;
