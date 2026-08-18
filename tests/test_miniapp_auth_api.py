@@ -38,6 +38,7 @@ def _user(**overrides) -> SimpleNamespace:
         is_blocked=False,
         is_archived=False,
         permission_grants=[],
+        onboarding_version=0,
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)

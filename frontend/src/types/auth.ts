@@ -9,6 +9,7 @@ export interface MiniAppUserSummary {
   is_leader: boolean;
   is_admin: boolean;
   permissions: string[];
+  onboarding_seen: boolean;
 }
 
 export interface MiniAppAuthResponse {

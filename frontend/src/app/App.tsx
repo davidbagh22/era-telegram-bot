@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { markOnboardingSeen } from "../api/client";
 import type { TabKey } from "../components/FloatingNav";
 import { useAuth } from "../hooks/useAuth";
 import { AdminLayout } from "../layouts/AdminLayout";
@@ -14,6 +15,7 @@ import { EventsScreen } from "../screens/EventsScreen";
 import { HomeScreen } from "../screens/HomeScreen";
 import { LeaderScreen } from "../screens/LeaderScreen";
 import { ObjectUnavailableScreen } from "../screens/ObjectUnavailableScreen";
+import { OnboardingScreen } from "../screens/OnboardingScreen";
 import { PendingScreen } from "../screens/PendingScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { ProgressScreen } from "../screens/ProgressScreen";
@@ -279,6 +281,20 @@ export function App() {
   const { user } = auth;
   if (user.application_status === "pending" || user.application_status === "needs_info") return <PendingScreen onRefresh={auth.refresh} />;
   if (user.application_status === "rejected" || user.is_blocked) return <BlockedScreen />;
+
+  // Community Verification ToR §35: one-time post-approval screen, only on
+  // a fresh normal open -- never hijacks a deep link (e.g. a task-submit
+  // reminder tap), which just shows onboarding on the next plain open instead.
+  if (!user.onboarding_seen && !deepLink) {
+    return (
+      <OnboardingScreen
+        onDone={async () => {
+          await markOnboardingSeen();
+          auth.refresh();
+        }}
+      />
+    );
+  }
 
   const goHome = () => navigateToTab("home");
   if (deepLink?.invalid) return <ObjectUnavailableScreen onHome={goHome} />;

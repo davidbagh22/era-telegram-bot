@@ -223,6 +223,22 @@ async def unrestrict_member(bot: Bot, chat_id: int, user_id: int) -> bool:
         return False
 
 
+async def remove_member(bot: Bot, chat_id: int, user_id: int) -> bool:
+    """Community Verification ToR §3/§62: an explicitly REJECTED applicant
+    already in the chat gets actually removed, not just muted. Ban-then-
+    immediately-unban is the standard Bot API "kick" -- ban alone would be a
+    permanent block, which is stronger than the ToR asks for (a rejected
+    person could still, e.g., be legitimately re-approved later and rejoin
+    through a fresh Join Request)."""
+    try:
+        await bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
+        await bot.unban_chat_member(chat_id=chat_id, user_id=user_id, only_if_banned=True)
+        return True
+    except TelegramAPIError:
+        logger.exception("Could not remove member chat=%s user=%s", chat_id, user_id)
+        return False
+
+
 async def notify_user(bot: Bot, user_id: int, text: str) -> None:
     try:
         await bot.send_message(user_id, text)
@@ -270,11 +286,16 @@ async def sync_user_chat_access(
     for chat_id in settings.chat_ids:
         chat_key = chat_key_for_id(settings, chat_id)
         decision = check_chat_access(user, chat_key)
-        ok = (
-            await unrestrict_member(bot, chat_id, user.telegram_id)
-            if decision.allowed
-            else await restrict_member(bot, chat_id, user.telegram_id)
-        )
+        if decision.allowed:
+            ok = await unrestrict_member(bot, chat_id, user.telegram_id)
+        elif chat_key == "general" and decision.reason == "rejected":
+            # ToR §3/§62: an explicit rejection removes a general-chat
+            # member outright, not just mutes them -- restrict_member below
+            # stays the behavior for every other reason (not_registered,
+            # not_approved, blocked, archived) and every other chat.
+            ok = await remove_member(bot, chat_id, user.telegram_id)
+        else:
+            ok = await restrict_member(bot, chat_id, user.telegram_id)
         fixed += int(ok)
         failed += int(not ok)
         if ok and decision.allowed and chat_key == "general":

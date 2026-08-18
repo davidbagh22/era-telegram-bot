@@ -29,6 +29,10 @@ import type {
   EventDecisionAction,
   EventForModeration,
   AuctionAdmin,
+  CommunityVerificationCampaign,
+  CommunityVerificationLaunchWave,
+  CommunityVerificationNotRegisteredEntry,
+  CommunityVerificationStatus,
   EventParticipant,
   GoalCreatePayload,
   GoalDecisionAction,
@@ -240,6 +244,10 @@ function authorizedPatch<T>(path: string, body: unknown): Promise<T> {
 
 export function fetchMe(): Promise<MiniAppUserSummary> {
   return authorizedGet<MiniAppUserSummary>("/api/v1/me");
+}
+
+export function markOnboardingSeen(): Promise<MiniAppUserSummary> {
+  return authorizedPost<MiniAppUserSummary>("/api/v1/me/onboarding-seen");
 }
 
 export function fetchHome(): Promise<HomeSnapshot> {
@@ -723,6 +731,65 @@ export function requestApplicationInfo(
   return authorizedPost<PendingApplication>(
     `/api/v1/admin/applications/${userId}/request-info`,
     { comment },
+  );
+}
+
+export function fetchCommunityVerificationStatus(): Promise<CommunityVerificationStatus> {
+  return authorizedGet<CommunityVerificationStatus>("/api/v1/admin/community-verification/status");
+}
+
+export function startCommunityVerificationCampaign(
+  windowHours: number,
+): Promise<CommunityVerificationCampaign> {
+  return authorizedPost<CommunityVerificationCampaign>("/api/v1/admin/community-verification/start", {
+    window_hours: windowHours,
+  });
+}
+
+export function completeCommunityVerificationCampaign(): Promise<CommunityVerificationCampaign> {
+  return authorizedPost<CommunityVerificationCampaign>("/api/v1/admin/community-verification/complete");
+}
+
+export function sendCommunityVerificationLaunch(): Promise<CommunityVerificationLaunchWave> {
+  return authorizedPost<CommunityVerificationLaunchWave>("/api/v1/admin/community-verification/send-launch");
+}
+
+export function fetchCommunityVerificationNotRegistered(): Promise<CommunityVerificationNotRegisteredEntry[]> {
+  return authorizedGet<CommunityVerificationNotRegisteredEntry[]>(
+    "/api/v1/admin/community-verification/not-registered",
+  );
+}
+
+export interface CommunityVerificationRemindResult {
+  requested: number;
+  eligible: number;
+  sent: number;
+  blocked: number;
+  unreachable: number;
+  failed: number;
+}
+
+export function remindCommunityVerificationSelected(
+  telegramIds: number[],
+): Promise<CommunityVerificationRemindResult> {
+  return authorizedPost<CommunityVerificationRemindResult>(
+    "/api/v1/admin/community-verification/remind",
+    { telegram_ids: telegramIds },
+  );
+}
+
+export interface CommunityVerificationRemoveResult {
+  requested: number;
+  removed: number;
+  failed: number;
+}
+
+export function removeCommunityVerificationSelected(
+  telegramIds: number[],
+): Promise<CommunityVerificationRemoveResult> {
+  return authorizedPost<CommunityVerificationRemoveResult>(
+    "/api/v1/admin/community-verification/remove",
+    { telegram_ids: telegramIds },
   );
 }
 

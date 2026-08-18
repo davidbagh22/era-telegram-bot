@@ -84,6 +84,12 @@ class User(TimestampMixin, Base):
     # keyboard visible on the client until the bot explicitly removes it —
     # they may still have one cached from weeks ago.
     legacy_reply_keyboard_removed: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Community Verification ToR §35/§47: one-time "Как устроена ЭРА" screen
+    # on first approved Mini App launch. `onboarding_version` (not a bool)
+    # so a future copy rewrite can re-show it by bumping
+    # CURRENT_ONBOARDING_VERSION without a data migration.
+    onboarding_version: Mapped[int] = mapped_column(Integer, default=0)
+    onboarding_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     departments: Mapped[list[UserDepartment]] = relationship(
         back_populates="user", cascade="all, delete-orphan", lazy="selectin"

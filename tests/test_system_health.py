@@ -123,6 +123,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "media-channel-publication",
                 "media-task-cards",
                 "media-chat-automation",
+                "community-verification-reminders",
                 "my-vector-monthly-reminders",
                 "general-chat-faq-pin",
             ],

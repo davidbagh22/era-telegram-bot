@@ -19,6 +19,7 @@ from app.api.v1 import (
     auth,
     career,
     community_users,
+    community_verification,
     development,
     event_attendance,
     event_posters,
@@ -91,6 +92,10 @@ api_router.include_router(admin_project_detail.router)
 api_router.include_router(admin_event_create.router)
 api_router.include_router(admin_event_operations.router)
 api_router.include_router(admin_event_attendance.router)
+# Community verification campaign dashboard is its own dedicated router,
+# registered before the large legacy admin router for the same shadowing
+# reasons as the others above.
+api_router.include_router(community_verification.router)
 api_router.include_router(admin.router)
 api_router.include_router(system.router)
 api_router.include_router(profile.router)
