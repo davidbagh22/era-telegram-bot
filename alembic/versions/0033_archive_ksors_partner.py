@@ -17,7 +17,7 @@ partner_tasks/partner_initiatives seed data and code), so this archives it
 instead of deleting it — recoverable, and every list query in the app
 already filters on is_archived.is_(False).
 
-Revision ID: 0033_archive_legacy_ksors_partner
+Revision ID: 0033_archive_ksors_partner
 Revises: 0032_timestamp_defaults
 """
 
@@ -29,7 +29,9 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0033_archive_legacy_ksors_partner"
+# alembic_version.version_num is VARCHAR(32) in Postgres; SQLite doesn't
+# enforce the limit but Postgres does, so keep this <=32 chars.
+revision = "0033_archive_ksors_partner"
 down_revision = "0032_timestamp_defaults"
 branch_labels = None
 depends_on = None
