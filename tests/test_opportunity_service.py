@@ -514,6 +514,52 @@ class OpportunityServiceTests(unittest.IsolatedAsyncioTestCase):
             rows_all = await opportunity_service.list_offers_admin(session, include_archived=True)
             self.assertEqual({o.id for o, _ in rows_all}, {visible.id, archived.id})
 
+    async def test_list_all_offers_includes_inactive_and_expired(self) -> None:
+        # DELTA ToR §16 "Закрыто" state -- list_active_offers alone would
+        # never have anything for that filter to show.
+        async with self.session_factory() as session:
+            partner = self._partner()
+            session.add(partner)
+            await session.flush()
+            active = self._offer(partner_id=partner.id)
+            inactive = self._offer(partner_id=partner.id, is_active=False)
+            expired = self._offer(
+                partner_id=partner.id,
+                expires_at=datetime.now(timezone.utc) - timedelta(days=1),
+            )
+            session.add_all([active, inactive, expired])
+            await session.flush()
+
+            active_only = await opportunity_service.list_active_offers(session)
+            self.assertEqual({o.id for o, _ in active_only}, {active.id})
+
+            all_offers = await opportunity_service.list_all_offers(session)
+            self.assertEqual({o.id for o, _ in all_offers}, {active.id, inactive.id, expired.id})
+
+    async def test_list_offer_facets_excludes_issuers_with_no_active_offers(self) -> None:
+        # DELTA ToR §18-19: a legacy Partner row with zero offers (like the
+        # old "КСОРС Армении" seed row) must never show up as a filter
+        # choice -- facets are derived from what's actually in the active
+        # catalog, not from every Partner row that ever existed.
+        async with self.session_factory() as session:
+            live_partner = Partner(name="Живой партнёр", description="d")
+            dead_partner = Partner(name="Мёртвый партнёр", description="d")
+            session.add_all([live_partner, dead_partner])
+            await session.flush()
+            session.add(
+                self._offer(
+                    partner_id=live_partner.id,
+                    opportunity_type="certificate",
+                    category="projects",
+                )
+            )
+            await session.flush()
+
+            facets = await opportunity_service.list_offer_facets(session)
+            self.assertEqual(facets["issuers"], ["Живой партнёр"])
+            self.assertIn("certificate", facets["types"])
+            self.assertEqual(facets["categories"], ["projects"])
+
 
 if __name__ == "__main__":
     unittest.main()

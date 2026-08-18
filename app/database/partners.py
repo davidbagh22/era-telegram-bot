@@ -54,6 +54,11 @@ class PartnerInitiative(TimestampMixin, Base):
     # certificate/letter are reputation-gated recognition opportunities.
     opportunity_type: Mapped[str] = mapped_column(String(32), default="external", index=True)
     min_rank: Mapped[str | None] = mapped_column(String(32), index=True)
+    # DELTA ToR §16: "Направление результата" filter -- one of projects/
+    # events/volunteering/public_activity/media/leadership/international.
+    # Nullable: legacy/external offers predate this and stay uncategorized
+    # rather than being force-fit into a guessed bucket.
+    category: Mapped[str | None] = mapped_column(String(32), index=True)
     eligibility_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     default_award_wording: Mapped[str | None] = mapped_column(Text)
     partner_review_required: Mapped[bool] = mapped_column(Boolean, default=False)

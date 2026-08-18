@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from typing import Literal
+
 from aiogram import Bot
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -14,6 +17,18 @@ from app.services.notification_service import notify_admins
 from app.services.opportunity_service import OpportunityScope
 
 router = APIRouter(prefix="/opportunities", tags=["opportunities"])
+
+OpportunityState = Literal["available", "almost", "closed", "requested", "review", "issued"]
+OpportunitySort = Literal["closing_soon", "newest", "by_organization"]
+
+_REQUESTED_STATUSES = {"pending", "requested"}
+_REVIEW_STATUSES = {"under_review", "needs_info", "partner_review", "approved"}
+
+
+class FacetsOut(BaseModel):
+    issuers: list[str]
+    types: list[str]
+    categories: list[str]
 
 
 class EligibilityCheckOut(BaseModel):
@@ -34,6 +49,7 @@ class OpportunityOut(BaseModel):
     point_cost: int
     required_points: int
     opportunity_type: str
+    category: str | None
     min_rank: str | None
     eligible: bool
     eligibility_checks: list[EligibilityCheckOut] = Field(default_factory=list)
@@ -47,6 +63,8 @@ class OpportunityOut(BaseModel):
     application_status: str | None
     is_saved: bool
     reasons: list[str] = Field(default_factory=list)
+    is_offer_open: bool
+    state: OpportunityState
 
 
 class ApplicationOut(BaseModel):
@@ -59,6 +77,46 @@ def _is_recognition_offer(offer: PartnerInitiative) -> bool:
     # Existing partner opportunities predate opportunity_type. Treat absent
     # metadata as the legacy external kind; recognition remains opt-in only.
     return getattr(offer, "opportunity_type", "external") in {"certificate", "letter"}
+
+
+def _is_offer_open(offer: PartnerInitiative, slots: int | None, now: datetime) -> bool:
+    if not offer.is_active or offer.is_archived:
+        return False
+    if offer.expires_at and offer.expires_at < now:
+        return False
+    if slots is not None and slots <= 0:
+        return False
+    return True
+
+
+def _compute_state(
+    *,
+    offer_open: bool,
+    application_status: str | None,
+    eligible: bool,
+    missing_requirements: list[str],
+) -> OpportunityState:
+    """DELTA ToR §16-17's Статус facet. Application status wins whenever
+    present -- what happened to *your* request matters more than the
+    offer's current eligibility once you've already applied."""
+    if application_status == "issued":
+        return "issued"
+    if application_status in _REQUESTED_STATUSES:
+        return "requested"
+    if application_status in _REVIEW_STATUSES:
+        return "review"
+    if eligible:
+        return "available" if offer_open else "closed"
+    # "Почти доступно": not eligible yet, but only one requirement stands
+    # between the participant and it -- a real, non-fabricated closeness
+    # signal computed from the same eligibility_checks the card already
+    # shows, not an invented number. Everything else (offer genuinely
+    # closed, or open but too far to matter right now) collapses into
+    # "closed" -- the ToR's Статус facet has no separate bucket for "open,
+    # but not realistically actionable yet".
+    if offer_open and len(missing_requirements) <= 1:
+        return "almost"
+    return "closed"
 
 
 async def _to_opportunity_out(
@@ -88,6 +146,14 @@ async def _to_opportunity_out(
     else:
         eligible = slots is None or slots > 0
 
+    offer_open = _is_offer_open(offer, slots, datetime.now(timezone.utc))
+    state = _compute_state(
+        offer_open=offer_open,
+        application_status=application.status if application else None,
+        eligible=eligible,
+        missing_requirements=missing_requirements,
+    )
+
     return OpportunityOut(
         id=offer.id,
         partner_name=partner.name,
@@ -96,6 +162,7 @@ async def _to_opportunity_out(
         point_cost=offer.point_cost,
         required_points=offer.point_cost,
         opportunity_type=getattr(offer, "opportunity_type", "external"),
+        category=getattr(offer, "category", None),
         min_rank=getattr(offer, "min_rank", None),
         eligible=eligible,
         eligibility_checks=eligibility_checks,
@@ -109,49 +176,102 @@ async def _to_opportunity_out(
         application_status=application.status if application else None,
         is_saved=await opportunity_service.is_saved(session, offer.id, user.id),
         reasons=reasons or [],
+        is_offer_open=offer_open,
+        state=state,
     )
+
+
+def _matches_facets(
+    offer: PartnerInitiative,
+    partner: Partner,
+    *,
+    issuer: str | None,
+    otype: str | None,
+    category: str | None,
+) -> bool:
+    if issuer and partner.name != issuer:
+        return False
+    if otype and getattr(offer, "opportunity_type", "external") != otype:
+        return False
+    if category and getattr(offer, "category", None) != category:
+        return False
+    return True
+
+
+_SORT_KEYS = {
+    "closing_soon": lambda item: (item.expires_at is None, item.expires_at or ""),
+    "newest": lambda item: item.id,
+    "by_organization": lambda item: (item.partner_name, item.title),
+}
+
+
+def _sort_opportunities(items: list[OpportunityOut], sort: OpportunitySort) -> list[OpportunityOut]:
+    if sort == "newest":
+        return sorted(items, key=_SORT_KEYS["newest"], reverse=True)
+    return sorted(items, key=_SORT_KEYS[sort])
+
+
+@router.get("/facets", response_model=FacetsOut)
+async def read_opportunity_facets(
+    _user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> FacetsOut:
+    return FacetsOut(**await opportunity_service.list_offer_facets(session))
 
 
 @router.get("", response_model=list[OpportunityOut])
 async def read_opportunities(
     scope: OpportunityScope = Query("for_me"),
+    issuer: str | None = Query(None),
+    type: str | None = Query(None),  # noqa: A002 -- matches the ToR's own param name
+    category: str | None = Query(None),
+    state: OpportunityState | None = Query(None),
+    sort: OpportunitySort = Query("closing_soon"),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> list[OpportunityOut]:
+    """DELTA ToR §16-17: scope stays the top-level "Для тебя/Все/Сохранённые/
+    Мои заявки" switch; issuer/type/category/state/sort are the real filter
+    sheet layered on top of whichever scope is active, all resolved
+    server-side so the result set actually matches what was asked for."""
+    out: list[OpportunityOut] = []
+
     if scope == "saved":
         rows = await opportunity_service.list_saved_offers(session, user)
-        return [
-            await _to_opportunity_out(session, offer, partner, user)
-            for offer, partner in rows
-        ]
-
-    if scope == "mine":
+        rows = [r for r in rows if _matches_facets(*r, issuer=issuer, otype=type, category=category)]
+        out = [await _to_opportunity_out(session, offer, partner, user) for offer, partner in rows]
+    elif scope == "mine":
         applications = await opportunity_service.list_my_applications(session, user)
-        out: list[OpportunityOut] = []
         for _, offer in applications:
             partner = await session.get(Partner, offer.partner_id)
-            if partner is not None:
-                out.append(await _to_opportunity_out(session, offer, partner, user))
-        return out
-
-    if scope == "for_me":
+            if partner is None or not _matches_facets(offer, partner, issuer=issuer, otype=type, category=category):
+                continue
+            out.append(await _to_opportunity_out(session, offer, partner, user))
+    elif scope == "for_me":
         recommended = await opportunity_service.recommended_offers(session, user)
-        return [
-            await _to_opportunity_out(
-                session,
-                item.offer,
-                item.partner,
-                user,
-                reasons=item.reasons,
-            )
+        recommended = [
+            item for item in recommended
+            if _matches_facets(item.offer, item.partner, issuer=issuer, otype=type, category=category)
+        ]
+        out = [
+            await _to_opportunity_out(session, item.offer, item.partner, user, reasons=item.reasons)
             for item in recommended
         ]
+    else:
+        # "closed" has nothing to show from the active-only catalog --
+        # only fetch inactive/expired/archived rows when someone actually
+        # asked for that state, so the common case stays a cheap query.
+        rows = (
+            await opportunity_service.list_all_offers(session)
+            if state == "closed"
+            else await opportunity_service.list_active_offers(session)
+        )
+        rows = [r for r in rows if _matches_facets(*r, issuer=issuer, otype=type, category=category)]
+        out = [await _to_opportunity_out(session, offer, partner, user) for offer, partner in rows]
 
-    rows = await opportunity_service.list_active_offers(session)
-    return [
-        await _to_opportunity_out(session, offer, partner, user)
-        for offer, partner in rows
-    ]
+    if state:
+        out = [item for item in out if item.state == state]
+    return _sort_opportunities(out, sort)
 
 
 @router.get("/{offer_id}", response_model=OpportunityOut)

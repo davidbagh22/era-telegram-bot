@@ -67,7 +67,17 @@ import type {
   LeaderOverview,
   OpenTaskCreatePayload,
 } from "../types/leader";
-import type { Auction, Opportunity, OpportunityScope, Reward, Survey, SurveyDetail } from "../types/opportunity";
+import type {
+  Auction,
+  Opportunity,
+  OpportunityFacets,
+  OpportunityScope,
+  OpportunitySort,
+  OpportunityState,
+  Reward,
+  Survey,
+  SurveyDetail,
+} from "../types/opportunity";
 import type { AdminDeletionRequest, DeletionRequest, Profile } from "../types/profile";
 import type {
   ProjectDetail,
@@ -482,8 +492,27 @@ export function messageProjectTeam(projectId: number, text: string): Promise<Tea
   });
 }
 
-export function fetchOpportunities(scope: OpportunityScope): Promise<Opportunity[]> {
-  return authorizedGet<Opportunity[]>(`/api/v1/opportunities?scope=${scope}`);
+export interface OpportunityFilters {
+  scope: OpportunityScope;
+  issuer?: string | null;
+  type?: string | null;
+  category?: string | null;
+  state?: OpportunityState | null;
+  sort?: OpportunitySort;
+}
+
+export function fetchOpportunities(filters: OpportunityFilters): Promise<Opportunity[]> {
+  const params = new URLSearchParams({ scope: filters.scope });
+  if (filters.issuer) params.set("issuer", filters.issuer);
+  if (filters.type) params.set("type", filters.type);
+  if (filters.category) params.set("category", filters.category);
+  if (filters.state) params.set("state", filters.state);
+  if (filters.sort) params.set("sort", filters.sort);
+  return authorizedGet<Opportunity[]>(`/api/v1/opportunities?${params.toString()}`);
+}
+
+export function fetchOpportunityFacets(): Promise<OpportunityFacets> {
+  return authorizedGet<OpportunityFacets>("/api/v1/opportunities/facets");
 }
 
 export function fetchOpportunity(offerId: number): Promise<Opportunity> {
