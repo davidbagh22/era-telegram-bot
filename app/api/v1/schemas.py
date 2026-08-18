@@ -7,6 +7,12 @@ from app.database.models import User
 from app.services.authorization_service import active_permissions, is_full_admin
 from app.utils.constants import PRIVILEGED_ROLES
 
+# Community Verification ToR §35/§47: bump this to re-show the "Как
+# устроена ЭРА" onboarding screen to everyone after a real copy/nav rewrite
+# -- comparing versions, not a bool, is what makes that possible without a
+# data migration.
+CURRENT_ONBOARDING_VERSION = 1
+
 
 class MiniAppUserSummary(BaseModel):
     id: int
@@ -19,6 +25,7 @@ class MiniAppUserSummary(BaseModel):
     is_leader: bool
     is_admin: bool
     permissions: list[str]
+    onboarding_seen: bool
 
 
 def summarize_user(user: User, settings: Settings) -> MiniAppUserSummary:
@@ -33,4 +40,5 @@ def summarize_user(user: User, settings: Settings) -> MiniAppUserSummary:
         is_leader=user.role in PRIVILEGED_ROLES,
         is_admin=is_full_admin(user, settings, user.telegram_id),
         permissions=sorted(active_permissions(user)),
+        onboarding_seen=user.onboarding_version >= CURRENT_ONBOARDING_VERSION,
     )

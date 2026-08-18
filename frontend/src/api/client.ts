@@ -246,6 +246,10 @@ export function fetchMe(): Promise<MiniAppUserSummary> {
   return authorizedGet<MiniAppUserSummary>("/api/v1/me");
 }
 
+export function markOnboardingSeen(): Promise<MiniAppUserSummary> {
+  return authorizedPost<MiniAppUserSummary>("/api/v1/me/onboarding-seen");
+}
+
 export function fetchHome(): Promise<HomeSnapshot> {
   return authorizedGet<HomeSnapshot>("/api/v1/home");
 }

@@ -34,6 +34,7 @@ from app.database.models import (
     User,
     UserBadge,
 )
+from app.api.v1.schemas import CURRENT_ONBOARDING_VERSION
 from app.database.session import create_engine_and_sessionmaker
 from app.utils.constants import ApplicationStatus, EventStatus, Role
 
@@ -65,6 +66,12 @@ REWARD_REDEEMER_TELEGRAM_ID = 900007
 # awards points, same reasoning as REWARD_REDEEMER_TELEGRAM_ID above — this
 # submitter's balance must stay untouched by every other spec.
 ACTIVITY_SUBMITTER_TELEGRAM_ID = 900008
+# Community Verification ToR §35/§47: dedicated fixture for
+# onboarding.spec.ts, kept at onboarding_version=0 (unseen) while every
+# other seeded user below is bumped to CURRENT_ONBOARDING_VERSION so the
+# rest of the E2E suite -- written before this ToR -- keeps landing
+# straight on Home/Profile/etc. instead of the new onboarding gate.
+ONBOARDING_PENDING_TELEGRAM_ID = 900009
 
 
 async def seed() -> None:
@@ -92,29 +99,39 @@ async def seed() -> None:
             role=Role.PARTICIPANT,
             application_status=ApplicationStatus.APPROVED,
         )
+        pending_applicant = User(
+            telegram_id=PENDING_APPLICANT_TELEGRAM_ID,
+            first_name="E2E Pending Applicant",
+            role=Role.PARTICIPANT,
+            application_status=ApplicationStatus.PENDING,
+            city="Ереван",
+            occupation="Тестировщик",
+            motivation="Хочу помогать проверять ЭРА",
+            # Bumped like every other pre-approved fixture below: these two
+            # specs approve this applicant mid-test and then assert it lands
+            # straight on Home, same as an already-onboarded returning
+            # member being re-approved -- not a brand-new registrant, whose
+            # first-ever approval is the one case onboarding.spec.ts covers
+            # with its own dedicated ONBOARDING_PENDING_TELEGRAM_ID fixture.
+            onboarding_version=CURRENT_ONBOARDING_VERSION,
+        )
+        pending_sync_applicant = User(
+            telegram_id=PENDING_SYNC_APPLICANT_TELEGRAM_ID,
+            first_name="E2E Sync Applicant",
+            role=Role.PARTICIPANT,
+            application_status=ApplicationStatus.PENDING,
+            city="Ереван",
+            occupation="Тестировщик",
+            motivation="Проверяю автообновление Mini App",
+            onboarding_version=CURRENT_ONBOARDING_VERSION,
+        )
         session.add_all(
             [
                 participant,
                 leader,
                 admin,
-                User(
-                    telegram_id=PENDING_APPLICANT_TELEGRAM_ID,
-                    first_name="E2E Pending Applicant",
-                    role=Role.PARTICIPANT,
-                    application_status=ApplicationStatus.PENDING,
-                    city="Ереван",
-                    occupation="Тестировщик",
-                    motivation="Хочу помогать проверять ЭРА",
-                ),
-                User(
-                    telegram_id=PENDING_SYNC_APPLICANT_TELEGRAM_ID,
-                    first_name="E2E Sync Applicant",
-                    role=Role.PARTICIPANT,
-                    application_status=ApplicationStatus.PENDING,
-                    city="Ереван",
-                    occupation="Тестировщик",
-                    motivation="Проверяю автообновление Mini App",
-                ),
+                pending_applicant,
+                pending_sync_applicant,
             ]
         )
         bidder = User(
@@ -225,6 +242,24 @@ async def seed() -> None:
                 status="pending",
             )
         )
+        session.add(
+            User(
+                telegram_id=ONBOARDING_PENDING_TELEGRAM_ID,
+                first_name="E2E Onboarding Pending",
+                role=Role.PARTICIPANT,
+                application_status=ApplicationStatus.APPROVED,
+                onboarding_version=0,
+            )
+        )
+        for seeded_user in (
+            participant,
+            leader,
+            admin,
+            bidder,
+            redeemer,
+            activity_submitter,
+        ):
+            seeded_user.onboarding_version = CURRENT_ONBOARDING_VERSION
         await session.commit()
 
     await engine.dispose()
@@ -235,7 +270,8 @@ async def seed() -> None:
         f"pending_sync_applicant={PENDING_SYNC_APPLICANT_TELEGRAM_ID}, "
         f"auction_bidder={AUCTION_BIDDER_TELEGRAM_ID}, "
         f"reward_redeemer={REWARD_REDEEMER_TELEGRAM_ID}, "
-        f"activity_submitter={ACTIVITY_SUBMITTER_TELEGRAM_ID}"
+        f"activity_submitter={ACTIVITY_SUBMITTER_TELEGRAM_ID}, "
+        f"onboarding_pending={ONBOARDING_PENDING_TELEGRAM_ID}"
     )
 
 
