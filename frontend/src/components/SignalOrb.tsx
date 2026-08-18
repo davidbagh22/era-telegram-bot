@@ -61,6 +61,7 @@ export function SignalOrb({ percent, size = 220, strokeWidth, children, animatio
 
   return (
     <div
+      data-testid="signal-orb"
       style={{
         position: "relative",
         width: size,
@@ -68,6 +69,7 @@ export function SignalOrb({ percent, size = 220, strokeWidth, children, animatio
         flexShrink: 0,
         display: "grid",
         placeItems: "center",
+        isolation: "isolate",
       }}
     >
       {glow && (
@@ -86,7 +88,12 @@ export function SignalOrb({ percent, size = 220, strokeWidth, children, animatio
         />
       )}
 
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ position: "relative", zIndex: 1 }}>
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", zIndex: 1 }}
+      >
         <defs>
           <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="var(--era-violet)" />
@@ -123,7 +130,19 @@ export function SignalOrb({ percent, size = 220, strokeWidth, children, animatio
       </div>
 
       {children && (
-        <div style={{ position: "relative", zIndex: 2, display: "grid", placeItems: "center", textAlign: "center", padding: "8%" }}>
+        <div
+          data-testid="signal-orb-content"
+          style={{
+            position: "absolute",
+            inset: "12%",
+            zIndex: 2,
+            display: "grid",
+            placeItems: "center",
+            alignContent: "center",
+            textAlign: "center",
+            minWidth: 0,
+          }}
+        >
           {children}
         </div>
       )}
