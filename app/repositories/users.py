@@ -1,8 +1,8 @@
 from collections.abc import Iterable
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
@@ -18,6 +18,7 @@ from app.database.models import (
     UserDirection,
 )
 from app.services.consent_service import CURRENT_POLICY_VERSION, record_consent
+from app.utils.constants import PointCategory
 from app.services.referral_service import bind_referral_code
 from app.utils.validators import calculate_age
 
@@ -173,6 +174,45 @@ async def rating(session: AsyncSession, limit: int = 10) -> list[tuple[User, int
             .outerjoin(PointTransaction, PointTransaction.user_id == User.id)
             .where(User.application_status == "approved", User.is_blocked.is_(False))
             .group_by(User.id)
+            .order_by(func.sum(PointTransaction.points).desc().nullslast(), User.id)
+            .limit(limit)
+        )
+    ).all()
+    return [(user, int(score)) for user, score in rows]
+
+
+async def weekly_rating(
+    session: AsyncSession, *, week_start: datetime, limit: int = 10
+) -> list[tuple[User, int]]:
+    """DELTA ToR §52-53's Top-5 недели: only confirmed contribution counts
+    -- positive-points rows only (no negative correction/redemption entries
+    dragging a total down) and never PointCategory.DIGITAL_ENGAGEMENT (daily
+    app opens/streaks shouldn't be able to buy a place on this board). Rows
+    with no category (legacy transactions predating the taxonomy) still
+    count -- they're real contributions, just uncategorized.
+    """
+    rows = (
+        await session.execute(
+            select(
+                User, func.coalesce(func.sum(PointTransaction.points), 0).label("score")
+            )
+            .outerjoin(
+                PointTransaction,
+                (PointTransaction.user_id == User.id)
+                & (PointTransaction.created_at >= week_start)
+                & (PointTransaction.points > 0)
+                # NULL category (legacy, pre-taxonomy rows) must still count
+                # -- "category != DIGITAL_ENGAGEMENT" alone is NULL (i.e.
+                # excluded) under SQL's three-valued logic when category IS
+                # NULL, which would wrongly drop every uncategorized row.
+                & or_(
+                    PointTransaction.category.is_(None),
+                    PointTransaction.category != PointCategory.DIGITAL_ENGAGEMENT,
+                ),
+            )
+            .where(User.application_status == "approved", User.is_blocked.is_(False))
+            .group_by(User.id)
+            .having(func.coalesce(func.sum(PointTransaction.points), 0) > 0)
             .order_by(func.sum(PointTransaction.points).desc().nullslast(), User.id)
             .limit(limit)
         )

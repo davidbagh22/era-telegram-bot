@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models import Event, EventRegistration, PointTransaction, Project, Task, User
 from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
 from app.repositories.users import user_stats
+from app.services.activity_service import list_tasks
+from app.services.development_service import VectorHomeSummary, vector_home_summary
 from app.services.growth_service import GrowthProgress, growth_progress_for
 from app.services.opportunity_service import (
     ACTIVE_APPLICATION_STATUSES,
@@ -37,6 +39,17 @@ class NextStep:
     kind: str
     title: str
     description: str
+    # DELTA ToR §6: a next_step the frontend can't act on is a dead card.
+    # entity_id/route are alternate ways to point at the same target --
+    # entity_id lets the frontend reuse its existing onOpenTask/onOpenEvent/
+    # etc. callbacks (preferred, matches how every other Home card already
+    # navigates), route is the literal path per the ToR's API contract for
+    # any future generic router. action_label is the CTA text; kinds with
+    # no single entity ("growth") leave entity_id/route unset and the
+    # frontend falls back to its kind-specific handler (e.g. onOpenDevelopment).
+    entity_id: int | None = None
+    route: str | None = None
+    action_label: str = "Открыть"
 
 
 @dataclass(frozen=True)
@@ -116,6 +129,12 @@ class HomeSnapshot:
     almost_opportunity: OpportunityProgress | None
     locked_opportunity: OpportunityProgress | None
     nearest_locked_opportunity: OpportunityProgress | None
+    # DELTA ToR §15: the compact "Задания" entry card on Home --
+    # "N доступны · M в работе" -- counts only, no row payload duplication.
+    tasks_available_count: int
+    tasks_in_progress_count: int
+    # DELTA ToR §2-5: safe "Мой вектор" summary; None means never checked in.
+    vector: VectorHomeSummary | None
 
 
 def _period_starts(now: datetime) -> tuple[datetime, datetime]:
@@ -377,6 +396,8 @@ def _build_next_step(
             kind="task",
             title=f"Задача: {active_task.title}",
             description="Проверьте требования и отправьте результат до дедлайна.",
+            entity_id=active_task.id,
+            route=f"/tasks/{active_task.id}",
         )
     if nearest_event_row is not None:
         event, _ = nearest_event_row
@@ -384,6 +405,8 @@ def _build_next_step(
             kind="event",
             title=f"Мероприятие: {event.title}",
             description=f"{event.event_date.isoformat()} · {event.location}",
+            entity_id=event.id,
+            route=f"/events/{event.id}",
         )
     if active_project is not None:
         description = (
@@ -395,18 +418,24 @@ def _build_next_step(
             kind="project",
             title=f"Проект: {active_project.title}",
             description=description,
+            entity_id=active_project.id,
+            route=f"/projects/{active_project.id}",
         )
     if growth.level != "leader":
         return NextStep(
             kind="growth",
             title="Продолжайте расти в ЭРА",
             description="Участвуйте в мероприятиях и задачах, чтобы перейти на следующий уровень.",
+            route="/development",
+            action_label="Пройти",
         )
     if opportunities:
         return NextStep(
             kind="opportunity",
             title=f"Возможность: {opportunities[0].title}",
             description="Подходит вам — откройте «Возможности», чтобы подать заявку.",
+            entity_id=opportunities[0].id,
+            route=f"/opportunities/{opportunities[0].id}",
         )
     return None
 
@@ -429,6 +458,9 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
     available_opportunity, almost_opportunity, locked_opportunity = await _recognition_progress(
         session, user
     )
+    tasks_available_count = len(await list_tasks(session, user, "available"))
+    tasks_in_progress_count = len(await list_tasks(session, user, "mine"))
+    vector = await vector_home_summary(session, user.id)
 
     next_step = _build_next_step(
         active_task=active_task,
@@ -491,4 +523,7 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
             )
             for o in opportunities
         ],
+        tasks_available_count=tasks_available_count,
+        tasks_in_progress_count=tasks_in_progress_count,
+        vector=vector,
     )

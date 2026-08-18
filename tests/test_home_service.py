@@ -15,6 +15,7 @@ from app.database.models import (
     Task,
     User,
 )
+from app.database.development_models import UserVectorProfile
 from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
 from app.services.home_service import build_home_snapshot
 from app.utils.constants import ParticipationStatus, ProjectStatus, RegistrationStatus, TaskStatus
@@ -71,6 +72,9 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertIsNotNone(snapshot.next_step)
             self.assertEqual(snapshot.next_step.kind, "task")
+            # DELTA ToR §6: next_step must carry a real, actionable target.
+            self.assertEqual(snapshot.next_step.entity_id, task.id)
+            self.assertEqual(snapshot.next_step.route, f"/tasks/{task.id}")
             self.assertIsNotNone(snapshot.active_task)
             self.assertEqual(snapshot.active_task.id, task.id)
             self.assertIsNone(snapshot.nearest_event)
@@ -99,6 +103,8 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
             snapshot = await build_home_snapshot(session, user)
 
             self.assertEqual(snapshot.next_step.kind, "event")
+            self.assertEqual(snapshot.next_step.entity_id, event.id)
+            self.assertEqual(snapshot.next_step.route, f"/events/{event.id}")
             self.assertIsNotNone(snapshot.nearest_event)
             self.assertEqual(snapshot.nearest_event.id, event.id)
 
@@ -142,6 +148,8 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(snapshot.next_step.kind, "project")
             self.assertIn("оставшиеся блоки", snapshot.next_step.description)
+            self.assertEqual(snapshot.next_step.entity_id, project.id)
+            self.assertEqual(snapshot.next_step.route, f"/projects/{project.id}")
             self.assertEqual(snapshot.active_project.id, project.id)
 
     async def test_needs_revision_project_has_different_hint(self) -> None:
@@ -167,6 +175,10 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
             snapshot = await build_home_snapshot(session, user)
             self.assertEqual(snapshot.next_step.kind, "growth")
             self.assertEqual(snapshot.growth.level, "active")
+            # No single entity backs a growth nudge -- the frontend falls
+            # back to its "growth" kind handler (opens the Vector screen).
+            self.assertIsNone(snapshot.next_step.entity_id)
+            self.assertEqual(snapshot.next_step.route, "/development")
 
     async def test_opportunity_suggested_for_leader_with_nothing_else(self) -> None:
         async with self.session_factory() as session:
@@ -188,6 +200,8 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
             snapshot = await build_home_snapshot(session, user)
 
             self.assertEqual(snapshot.next_step.kind, "opportunity")
+            self.assertEqual(snapshot.next_step.entity_id, initiative.id)
+            self.assertEqual(snapshot.next_step.route, f"/opportunities/{initiative.id}")
             self.assertEqual(len(snapshot.opportunities), 1)
             self.assertEqual(snapshot.opportunities[0].id, initiative.id)
 
@@ -316,6 +330,43 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
             # underlying user_stats() call, not two separate queries that
             # could drift).
             self.assertEqual(snapshot.points_balance, snapshot.activity.points)
+
+    async def test_snapshot_carries_task_counts_and_vector_summary(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            session.add(
+                UserVectorProfile(
+                    user_id=user.id,
+                    current_index=74,
+                    state_json={"energy": 67, "agency": 76, "autonomy": 71, "connection": 82, "direction": 74},
+                    last_checkin_at=datetime.now(timezone.utc),
+                )
+            )
+            open_task = Task(
+                title="Open",
+                description="d",
+                creator_id=user.id,
+                deadline=datetime.now(timezone.utc) + timedelta(days=1),
+                points=10,
+                task_type="challenge",
+                status=TaskStatus.PUBLISHED,
+            )
+            session.add(open_task)
+            await session.flush()
+
+            snapshot = await build_home_snapshot(session, user)
+
+            self.assertEqual(snapshot.tasks_available_count, 1)
+            self.assertEqual(snapshot.tasks_in_progress_count, 0)
+            self.assertIsNotNone(snapshot.vector)
+            self.assertEqual(snapshot.vector.pulse, 74)
+            self.assertEqual(snapshot.vector.areas["support"], 76)
+
+    async def test_snapshot_vector_is_none_when_never_checked_in(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            snapshot = await build_home_snapshot(session, user)
+            self.assertIsNone(snapshot.vector)
 
 
 if __name__ == "__main__":

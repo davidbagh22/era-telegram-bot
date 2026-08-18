@@ -184,6 +184,66 @@ class ActivityServiceTests(unittest.IsolatedAsyncioTestCase):
             tasks = await list_tasks(session, user, "mine")
             self.assertEqual([task.id for task in tasks], [assigned.id])
 
+    async def test_for_you_scope_prioritizes_users_own_direction(self) -> None:
+        # DELTA ToR §9: deterministic rules, not AI ranking -- a task in the
+        # user's own direction should sort ahead of an unrelated one.
+        async with self.session_factory() as session:
+            from app.database.models import Department, Direction, UserDirection
+
+            user = await self._make_user(session)
+            department = Department(name="Внешние связи")
+            session.add(department)
+            await session.flush()
+            direction = Direction(department_id=department.id, name="Медиа")
+            other_direction = Direction(department_id=department.id, name="Культура")
+            session.add_all([direction, other_direction])
+            await session.flush()
+            session.add(UserDirection(user_id=user.id, direction_id=direction.id, status="approved"))
+            await session.flush()
+
+            unrelated = await self._task(
+                creator_id=user.id,
+                task_type="challenge",
+                status=TaskStatus.PUBLISHED,
+                deadline=datetime.now(timezone.utc) + timedelta(days=1),
+            )
+            matching = await self._task(
+                creator_id=user.id,
+                task_type="challenge",
+                status=TaskStatus.PUBLISHED,
+                direction_id=direction.id,
+                deadline=datetime.now(timezone.utc) + timedelta(days=5),
+            )
+            session.add_all([unrelated, matching])
+            await session.flush()
+
+            tasks = await list_tasks(session, user, "for_you")
+            self.assertEqual([task.id for task in tasks], [matching.id, unrelated.id])
+
+    async def test_team_scope_only_returns_team_claim_mode_tasks(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            solo_task = await self._task(
+                creator_id=user.id,
+                task_type="challenge",
+                status=TaskStatus.PUBLISHED,
+                reward_json={"community_mission": {"claim_mode": "SOLO"}},
+            )
+            team_task = await self._task(
+                creator_id=user.id,
+                task_type="challenge",
+                status=TaskStatus.PUBLISHED,
+                reward_json={"community_mission": {"claim_mode": "TEAM"}},
+            )
+            plain_task = await self._task(
+                creator_id=user.id, task_type="challenge", status=TaskStatus.PUBLISHED
+            )
+            session.add_all([solo_task, team_task, plain_task])
+            await session.flush()
+
+            tasks = await list_tasks(session, user, "team")
+            self.assertEqual([task.id for task in tasks], [team_task.id])
+
     async def test_review_and_completed_scopes(self) -> None:
         async with self.session_factory() as session:
             user = await self._make_user(session)

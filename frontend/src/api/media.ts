@@ -13,12 +13,36 @@ export interface MediaTask {
   status: string;
 }
 
+export type MediaAccessLevel = "no_access" | "pending" | "member" | "leader" | "admin";
+
+export interface MediaPermissions {
+  tools_read: boolean;
+  content_plan_read: boolean;
+  content_plan_write: boolean;
+  members_manage: boolean;
+  analytics_read: boolean;
+  publications_manage: boolean;
+}
+
 export interface MediaHub {
+  access_level: MediaAccessLevel;
+  permissions: MediaPermissions;
   chat_url: string;
   channel_url: string;
   open_tasks: MediaTask[];
   my_tasks: MediaTask[];
   can_manage: boolean;
+}
+
+export interface MediaApplicant {
+  id: number;
+  name: string;
+  applied_at: string;
+}
+
+export interface MediaMember {
+  id: number;
+  name: string;
 }
 
 export interface MediaLibraryItem {
@@ -27,6 +51,16 @@ export interface MediaLibraryItem {
   title: string;
   description: string | null;
   url: string;
+  // "internal_route" -> an in-app hash route (e.g. "media/guide"), must be
+  // opened with SPA navigation, never window.open/openLink (DELTA ToR §32-34).
+  destination_type: "internal_route" | "external_url" | "file";
+}
+
+export interface MediaGuide {
+  principles: string[];
+  post: string[];
+  reels: string[];
+  visual: string[];
 }
 
 export interface MediaContent {
@@ -60,6 +94,9 @@ export interface MediaAnalytics {
   on_time_rate: number | null;
   tasks_created: number;
   tasks_completed: number;
+  channel_posts_period: number;
+  chat_messages_period: number;
+  chat_active_authors_period: number;
 }
 
 export interface MediaPublishResult {
@@ -120,7 +157,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const fetchMediaHub = () => request<MediaHub>("/api/v1/media/hub");
+export const applyToMedia = () => request<MediaHub>("/api/v1/media/apply", { method: "POST" });
 export const fetchMediaLibrary = () => request<MediaLibraryItem[]>("/api/v1/media/library");
+export const fetchMediaGuide = () => request<MediaGuide>("/api/v1/media/guide");
+export const fetchMediaApplications = () => request<MediaApplicant[]>("/api/v1/media/team/applications");
+export const fetchMediaMembers = () => request<MediaMember[]>("/api/v1/media/team/members");
+export const decideMediaApplicant = (userId: number, action: "approve" | "reject" | "revoke") =>
+  request<{ status: string }>(`/api/v1/media/team/${userId}/decide`, {
+    method: "POST",
+    body: JSON.stringify({ action }),
+  });
 export const submitMediaIdea = (text: string) =>
   request<MediaContent>("/api/v1/media/ideas", { method: "POST", body: JSON.stringify({ text }) });
 

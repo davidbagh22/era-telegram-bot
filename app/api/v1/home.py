@@ -35,6 +35,9 @@ class NextStepOut(BaseModel):
     kind: str
     title: str
     description: str
+    entity_id: int | None = None
+    route: str | None = None
+    action_label: str = "Открыть"
 
 
 class EventSummaryOut(BaseModel):
@@ -93,6 +96,24 @@ class OpportunityProgressOut(BaseModel):
     progress_text: str
 
 
+class VectorAreaSignalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    area: str
+    label: str
+    value: int
+    trend: str
+
+
+class VectorHomeSummaryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    pulse: int
+    updated_at: str
+    areas: dict[str, int]
+    signals: list[VectorAreaSignalOut]
+
+
 class HomeSnapshotOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -111,6 +132,9 @@ class HomeSnapshotOut(BaseModel):
     almost_opportunity: OpportunityProgressOut | None
     locked_opportunity: OpportunityProgressOut | None
     nearest_locked_opportunity: OpportunityProgressOut | None
+    tasks_available_count: int
+    tasks_in_progress_count: int
+    vector: VectorHomeSummaryOut | None
 
 
 @router.get("/home", response_model=HomeSnapshotOut)

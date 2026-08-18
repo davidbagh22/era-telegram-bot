@@ -27,10 +27,12 @@ test("eraPath admin opens the separate Admin workspace directly", async ({ page 
   await expect(page).toHaveURL(/#\/admin$/);
 });
 
-test("#/tasks deep link opens the task surface directly", async ({ page }) => {
+test("#/tasks deep link opens the standalone Tasks screen directly", async ({ page }) => {
+  // DELTA ToR §7: "Задания" is a standalone screen again (was nested under
+  // the old Activity menu, whose own heading read "Задачи").
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/tasks`);
 
-  await expect(page.getByRole("heading", { name: "Задачи" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Задания" })).toBeVisible();
   await expect(page.getByText(/Пока нет задач в этом разделе/)).toBeVisible();
   await expect(page).toHaveURL(/#\/tasks$/);
 });

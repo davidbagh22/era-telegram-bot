@@ -2,13 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActionCell } from "../components/ActionCell";
 import { Card } from "../components/Card";
 import {
+  applyToMedia,
   createMediaTasks,
+  decideMediaApplicant,
   fetchMediaAnalytics,
+  fetchMediaApplications,
   fetchMediaChannelHealth,
   fetchMediaConfig,
   fetchMediaContentPlan,
   fetchMediaHub,
   fetchMediaLibrary,
+  fetchMediaMembers,
   fetchMediaToday,
   pauseMedia,
   publishMediaContentNow,
@@ -17,15 +21,20 @@ import {
   skipMediaContent,
   submitMediaIdea,
   type MediaAnalytics,
+  type MediaApplicant,
   type MediaConfig,
   type MediaContent,
   type MediaHub,
   type MediaLibraryItem,
+  type MediaMember,
   type MediaTask,
 } from "../api/media";
+import { MediaGuideScreen } from "./MediaGuideScreen";
 
 interface MediaScreenProps {
   onBack?: () => void;
+  /** Deep-linked destination inside Media, e.g. from `#/media/guide`. */
+  initialView?: "guide" | null;
 }
 
 type DeskView =
@@ -37,6 +46,7 @@ type DeskView =
   | "chat"
   | "channel"
   | "files"
+  | "guide"
   | "analytics"
   | "settings";
 
@@ -64,6 +74,23 @@ function formatDate(value: string | null): string {
 function openExternal(url: string): void {
   if (!url) return;
   window.open(url, "_blank", "noopener,noreferrer");
+}
+
+/** ToR §32-34/§72: internal ERA pages must stay inside the Mini App (SPA
+ * hash navigation) so Telegram initData survives -- only real external
+ * resources (Canva, Telegram chat/channel, Google Drive, ...) get
+ * window.open, and those show the `↗` "leaving the app" hint. */
+function openLibraryItem(item: MediaLibraryItem, setView: (view: DeskView) => void): void {
+  if (item.destination_type === "external_url") {
+    openExternal(item.url);
+    return;
+  }
+  if (item.url === "media/guide" || item.kind === "guide") {
+    setView("guide");
+    return;
+  }
+  const target = item.url.replace(/^\/+/, "");
+  if (window.location.hash !== `#/${target}`) window.location.hash = `#/${target}`;
 }
 
 function TaskList({ tasks, empty }: { tasks: MediaTask[]; empty: string }) {
@@ -152,7 +179,7 @@ function ContentCard({
   );
 }
 
-export function MediaScreen({ onBack }: MediaScreenProps) {
+export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
   const [hub, setHub] = useState<MediaHub | null>(null);
   const [library, setLibrary] = useState<MediaLibraryItem[]>([]);
   const [today, setToday] = useState<MediaContent[]>([]);
@@ -160,17 +187,25 @@ export function MediaScreen({ onBack }: MediaScreenProps) {
   const [config, setConfig] = useState<MediaConfig | null>(null);
   const [analytics, setAnalytics] = useState<MediaAnalytics | null>(null);
   const [channelHealth, setChannelHealth] = useState<{ ok: boolean; detail: string } | null>(null);
+  const [applications, setApplications] = useState<MediaApplicant[]>([]);
+  const [members, setMembers] = useState<MediaMember[]>([]);
   const [idea, setIdea] = useState("");
   const [ideaStatus, setIdeaStatus] = useState<string | null>(null);
-  const [view, setView] = useState<DeskView>("home");
+  const [view, setView] = useState<DeskView>(initialView ?? "home");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [applyStatus, setApplyStatus] = useState<string | null>(null);
 
+  // DELTA ToR §28: NO_ACCESS/PENDING never reach the library endpoint (it
+  // 403s below MEDIA_MEMBER) -- fetching it unconditionally would turn a
+  // normal "not a member yet" state into a hard error screen.
   const loadHub = useCallback(async () => {
-    const [hubResult, libraryResult] = await Promise.all([fetchMediaHub(), fetchMediaLibrary()]);
+    const hubResult = await fetchMediaHub();
     setHub(hubResult);
-    setLibrary(libraryResult);
+    if (hubResult.permissions.tools_read) {
+      setLibrary(await fetchMediaLibrary());
+    }
     return hubResult;
   }, []);
 
@@ -189,6 +224,15 @@ export function MediaScreen({ onBack }: MediaScreenProps) {
     setChannelHealth(healthResult);
   }, []);
 
+  const loadTeam = useCallback(async () => {
+    const [applicationsResult, membersResult] = await Promise.all([
+      fetchMediaApplications(),
+      fetchMediaMembers(),
+    ]);
+    setApplications(applicationsResult);
+    setMembers(membersResult);
+  }, []);
+
   const refresh = useCallback(async () => {
     setError(null);
     try {
@@ -202,6 +246,35 @@ export function MediaScreen({ onBack }: MediaScreenProps) {
   }, [loadDesk, loadHub]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    if (view === "team" && hub?.can_manage) void loadTeam();
+  }, [view, hub?.can_manage, loadTeam]);
+
+  const apply = async () => {
+    setBusy(true);
+    setApplyStatus(null);
+    try {
+      const nextHub = await applyToMedia();
+      setHub(nextHub);
+      setApplyStatus(null);
+    } catch (cause) {
+      setApplyStatus(cause instanceof Error ? cause.message : "Не удалось отправить заявку");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const decide = async (userId: number, action: "approve" | "reject" | "revoke") => {
+    setBusy(true);
+    try {
+      await decideMediaApplicant(userId, action);
+      await loadTeam();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось выполнить действие");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const files = useMemo(() => library.filter((item) => item.kind !== "chat" && item.kind !== "channel"), [library]);
 
@@ -245,6 +318,33 @@ export function MediaScreen({ onBack }: MediaScreenProps) {
   if (loading) return <div className="era-page" style={{ padding: "1.25rem" }}>Загружаем Media Hub…</div>;
   if (!hub) return <div className="era-page" style={{ padding: "1.25rem" }}>{error || "Media Hub недоступен"}</div>;
 
+  // ToR §28: NO_ACCESS / PENDING never see internal Media tools -- just the
+  // public blurb + apply CTA, or a waiting state once applied.
+  if (hub.access_level === "no_access" || hub.access_level === "pending") {
+    return (
+      <div className="era-page" style={{ padding: "1.25rem 1.25rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
+        {onBack ? (
+          <button type="button" onClick={onBack} style={{ ...buttonStyle(false), alignSelf: "flex-start", padding: "0.55rem 0.7rem" }} aria-label="Назад">←</button>
+        ) : null}
+        <Card gradient style={{ display: "grid", gap: 12 }}>
+          <div style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 900, color: "var(--era-text-secondary)" }}>Медиа ЭРА</div>
+          <h2 style={{ margin: 0, fontSize: "var(--era-text-3xl)" }}>Тексты, фото, видео, Reels, визуал и работа с каналом</h2>
+          {hub.access_level === "pending" ? (
+            <p style={{ margin: 0, color: "var(--era-text-secondary)", lineHeight: 1.5 }}>Заявка рассматривается. Как только руководитель Медиа её одобрит, здесь появятся задачи, чат и материалы команды.</p>
+          ) : (
+            <>
+              <p style={{ margin: 0, color: "var(--era-text-secondary)", lineHeight: 1.5 }}>Возьми задачу, сделай материал, попади в команду и собери портфолио внутри ЭРА.</p>
+              <button disabled={busy} type="button" onClick={() => void apply()} style={buttonStyle(true)}>Подать заявку</button>
+              {applyStatus ? <div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>{applyStatus}</div> : null}
+            </>
+          )}
+        </Card>
+      </div>
+    );
+  }
+
+  if (view === "guide") return <MediaGuideScreen onBack={() => setView("home")} />;
+
   const header = (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
       {(view !== "home" || onBack) ? (
@@ -258,6 +358,7 @@ export function MediaScreen({ onBack }: MediaScreenProps) {
       <div>
         <div style={{ fontSize: "0.72rem", color: "var(--era-text-muted)", fontWeight: 900, textTransform: "uppercase" }}>ЭРА · Медиа</div>
         <h1 style={{ margin: "0.15rem 0 0", fontSize: "var(--era-text-3xl)", lineHeight: 1.05 }}>
+          {/* "guide" returns its own MediaGuideScreen above before header is built. */}
           {view === "home" ? "Media Hub" : view === "today" ? "Сегодня" : view === "plan" ? "Контент-план" : view === "tasks" ? "Задачи" : view === "team" ? "Команда" : view === "chat" ? "Media Chat" : view === "channel" ? "Канал" : view === "files" ? "Файлы" : view === "analytics" ? "Аналитика" : "Настройки"}
         </h1>
       </div>
@@ -273,16 +374,44 @@ export function MediaScreen({ onBack }: MediaScreenProps) {
     body = <Card style={{ display: "grid", gap: 12 }}><strong>Открытые медиа-задачи</strong><TaskList tasks={hub.open_tasks} empty="Все задачи уже разобраны." /><strong style={{ marginTop: 8 }}>Мои задачи</strong><TaskList tasks={hub.my_tasks} empty="У тебя пока нет взятых медиа-задач." /></Card>;
   } else if (view === "team") {
     body = (
-      <Card style={{ display: "grid", gap: 10 }}>
-        <strong>Команда формируется через реальные задачи</strong>
-        <p style={{ margin: 0, color: "var(--era-text-muted)", lineHeight: 1.5 }}>
-          Кто берёт медиа-задачу, автоматически попадает в рабочий поток. Выполненные материалы остаются в истории задач и учитываются в прогрессе Медиа.
-        </p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      <div style={{ display: "grid", gap: 10 }}>
+        <Card style={{ display: "grid", gap: 10 }}>
+          <strong>Заявки</strong>
+          {applications.length ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              {applications.map((applicant) => (
+                <Card key={applicant.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 800 }}>{applicant.name}</div>
+                    <div style={{ color: "var(--era-text-muted)", fontSize: 12, marginTop: 3 }}>Заявка от {formatDate(applicant.applied_at)}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button disabled={busy} type="button" onClick={() => void decide(applicant.id, "approve")} style={buttonStyle(true)}>Одобрить</button>
+                    <button disabled={busy} type="button" onClick={() => void decide(applicant.id, "reject")} style={buttonStyle(false)}>Отклонить</button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : <p style={{ margin: 0, color: "var(--era-text-muted)" }}>Новых заявок нет.</p>}
+        </Card>
+        <Card style={{ display: "grid", gap: 10 }}>
+          <strong>Участники</strong>
+          {members.length ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              {members.map((member) => (
+                <Card key={member.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ fontWeight: 800, minWidth: 0 }}>{member.name}</div>
+                  <button disabled={busy} type="button" onClick={() => void decide(member.id, "revoke")} style={{ ...buttonStyle(false), flexShrink: 0 }}>Отозвать доступ</button>
+                </Card>
+              ))}
+            </div>
+          ) : <p style={{ margin: 0, color: "var(--era-text-muted)" }}>Пока нет одобренных участников.</p>}
+        </Card>
+        <Card style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <Card><div style={{ fontSize: 24, fontWeight: 900 }}>{hub.my_tasks.length}</div><div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>моих активных</div></Card>
           <Card><div style={{ fontSize: 24, fontWeight: 900 }}>{hub.open_tasks.length}</div><div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>свободных</div></Card>
-        </div>
-      </Card>
+        </Card>
+      </div>
     );
   } else if (view === "chat") {
     body = <ActionCell title="Открыть Media Chat" description="Координация, задачи и материалы команды" leading={<span>💬</span>} onClick={() => openExternal(hub.chat_url)} />;
@@ -299,16 +428,39 @@ export function MediaScreen({ onBack }: MediaScreenProps) {
       </div>
     );
   } else if (view === "files") {
-    body = <div style={{ display: "grid", gap: 10 }}>{files.map((item) => <ActionCell key={item.id} title={item.title} description={item.description || item.kind} leading={<span>◫</span>} onClick={() => openExternal(item.url)} />)}</div>;
+    body = (
+      <div style={{ display: "grid", gap: 10 }}>
+        {files.map((item) => (
+          <ActionCell
+            key={item.id}
+            title={item.title}
+            description={item.description || item.kind}
+            leading={<span>{item.destination_type === "external_url" ? "↗" : "◫"}</span>}
+            onClick={() => openLibraryItem(item, setView)}
+          />
+        ))}
+      </div>
+    );
   } else if (view === "analytics") {
+    // ToR §36: Медиа сейчас -- Публикации (всего + за 30 дней) / В срок /
+    // Задачи / Media Chat активность.
     body = analytics ? (
       <div style={{ display: "grid", gap: 10 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <Card><div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.published}</div><div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>опубликовано</div></Card>
-          <Card><div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.planned}</div><div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>в плане</div></Card>
-          <Card><div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.tasks_completed}/{analytics.tasks_created}</div><div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>задач выполнено</div></Card>
+          <Card>
+            <div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.published}</div>
+            <div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>публикаций всего</div>
+            <div style={{ color: "var(--era-text-muted)", fontSize: 11, marginTop: 3 }}>+{analytics.channel_posts_period} за 30 дней</div>
+          </Card>
           <Card><div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.on_time_rate == null ? "—" : `${analytics.on_time_rate}%`}</div><div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>в срок</div></Card>
+          <Card><div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.tasks_completed}/{analytics.tasks_created}</div><div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>задач выполнено</div></Card>
+          <Card><div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.planned}</div><div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>в плане</div></Card>
         </div>
+        <Card>
+          <div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.chat_messages_period}</div>
+          <div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>сообщений в Media Chat за 30 дней</div>
+          <div style={{ color: "var(--era-text-muted)", fontSize: 11, marginTop: 3 }}>{analytics.chat_active_authors_period} активных участников</div>
+        </Card>
         {analytics.failed > 0 ? <Card><strong>Требуют внимания: {analytics.failed}</strong><div style={{ color: "var(--era-text-muted)", marginTop: 5 }}>Система не делает слепой повтор, чтобы не создать дубль публикации.</div></Card> : null}
       </div>
     ) : <Card>Аналитика пока пуста.</Card>;
@@ -388,7 +540,7 @@ export function MediaScreen({ onBack }: MediaScreenProps) {
   }
 
   return (
-    <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
+    <div className="era-page" style={{ padding: "1.25rem 1.25rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
       {header}
       {error ? <Card><strong>Нужно внимание</strong><div style={{ color: "var(--era-text-muted)", marginTop: 5 }}>{error}</div></Card> : null}
       {body}

@@ -29,15 +29,20 @@ type ResultSection =
   | "certificates"
   | "recommendations";
 
-const RESULT_SECTIONS: { key: ResultSection; title: string; description: string }[] = [
-  { key: "projects", title: "Проекты", description: "Проекты и роли, которые вы прошли в ЭРА" },
-  { key: "events", title: "Мероприятия", description: "События, в которых вы участвовали" },
-  { key: "tasks", title: "Задачи", description: "Практическая работа и выполненные результаты" },
-  { key: "volunteer", title: "Волонтёрство", description: "Социальный вклад и инициативы" },
-  { key: "leadership", title: "Лидерство", description: "Управленческий опыт и ответственность" },
-  { key: "badges", title: "Достижения", description: "Знаки, уровни и признание вашего вклада" },
-  { key: "certificates", title: "Сертификаты", description: "Подтверждения участия и обучения" },
-  { key: "recommendations", title: "Рекомендации", description: "Рекомендательные материалы и признание" },
+// DELTA ToR §51: "Мои результаты" collapses into a compact 2×3 grid
+// instead of a long vertical feed. "Достижения" folds badges/
+// certificates/recommendations into one cell -- all three are
+// recognition-style portfolio entries, and the ToR names exactly 6 cells,
+// not 8, without asking to drop any existing category from the data.
+type DashboardCell = "projects" | "events" | "tasks" | "volunteer" | "leadership" | "achievements";
+
+const DASHBOARD_CELLS: { key: DashboardCell; label: string; title: string; description: string }[] = [
+  { key: "projects", label: "Проекты", title: "Проекты", description: "Проекты и роли, которые вы прошли в ЭРА" },
+  { key: "events", label: "События", title: "Мероприятия", description: "События, в которых вы участвовали" },
+  { key: "tasks", label: "Задачи", title: "Задачи", description: "Практическая работа и выполненные результаты" },
+  { key: "volunteer", label: "Волонтёрство", title: "Волонтёрство", description: "Социальный вклад и инициативы" },
+  { key: "leadership", label: "Лидерство", title: "Лидерство", description: "Управленческий опыт и ответственность" },
+  { key: "achievements", label: "Достижения", title: "Достижения", description: "Знаки, сертификаты и рекомендации" },
 ];
 
 function PortfolioSection({ title, entries }: { title: string; entries: PortfolioEntry[] }) {
@@ -83,7 +88,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showCareerPortfolio, setShowCareerPortfolio] = useState(false);
   const [showReferral, setShowReferral] = useState(false);
-  const [resultSection, setResultSection] = useState<ResultSection | null>(null);
+  const [activeDashboardCell, setActiveDashboardCell] = useState<DashboardCell | null>(null);
   const toast = useToast();
 
   const handleExportData = useCallback(async () => {
@@ -156,13 +161,21 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
     certificates: data.certificates,
     recommendations: data.recommendations,
   };
+  const dashboardEntries: Record<DashboardCell, PortfolioEntry[]> = {
+    projects: resultEntries.projects,
+    events: resultEntries.events,
+    tasks: resultEntries.tasks,
+    volunteer: resultEntries.volunteer,
+    leadership: resultEntries.leadership,
+    achievements: [...resultEntries.badges, ...resultEntries.certificates, ...resultEntries.recommendations],
+  };
 
-  if (resultSection) {
-    const config = RESULT_SECTIONS.find((item) => item.key === resultSection);
+  if (activeDashboardCell) {
+    const config = DASHBOARD_CELLS.find((item) => item.key === activeDashboardCell);
     return (
-      <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-        <button type="button" onClick={() => setResultSection(null)} style={{ alignSelf: "flex-start" }}>← Назад</button>
-        <PortfolioSection title={config?.title ?? "Результаты"} entries={resultEntries[resultSection]} />
+      <div className="era-page" style={{ padding: "1.25rem 1.25rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <button type="button" onClick={() => setActiveDashboardCell(null)} style={{ alignSelf: "flex-start" }}>← Назад</button>
+        <PortfolioSection title={config?.title ?? "Результаты"} entries={dashboardEntries[activeDashboardCell]} />
       </div>
     );
   }
@@ -174,7 +187,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
     : Math.max(0, Math.min(1, data.growth.level_index / (data.growth.level_count - 1)));
 
   return (
-    <div className="era-page era-stagger" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
+    <div className="era-page era-stagger" style={{ padding: "1.25rem 1.25rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
       <Card gradient style={{ position: "relative", overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem", minWidth: 0 }}>
           <Avatar firstName={data.first_name} lastName={data.last_name} size="lg" />
@@ -278,17 +291,23 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
 
       <ActionCell title="Рейтинг участников" description="Ваше место, баллы и активные участники" onClick={() => setShowLeaderboard(true)} />
 
+      {/* ToR §51: compact 2×3 grid instead of a long vertical feed of 8
+          rows each saying "N записей" -- a bare, sizeable number reads
+          faster than repeating the word "записей" six times over. */}
       <section>
         <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Мои результаты</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", minWidth: 0 }}>
-          {RESULT_SECTIONS.map((item) => (
-            <ActionCell
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", minWidth: 0 }}>
+          {DASHBOARD_CELLS.map((item) => (
+            <Card
               key={item.key}
-              title={item.title}
-              description={item.description}
-              meta={`${resultEntries[item.key].length} записей`}
-              onClick={() => setResultSection(item.key)}
-            />
+              onClick={() => setActiveDashboardCell(item.key)}
+              style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.3rem", minHeight: "5.5rem", justifyContent: "center" }}
+            >
+              <strong style={{ fontSize: "1.75rem", fontFamily: "var(--era-font-display)", lineHeight: 1 }}>
+                {dashboardEntries[item.key].length}
+              </strong>
+              <span style={{ color: "var(--era-text-muted)", fontSize: "0.85rem" }}>{item.label}</span>
+            </Card>
           ))}
         </div>
       </section>

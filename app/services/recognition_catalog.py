@@ -24,6 +24,18 @@ ISSUERS = {
 }
 
 
+# DELTA ToR §16 "Направление результата" filter values.
+OPPORTUNITY_CATEGORIES = (
+    "projects",
+    "events",
+    "volunteering",
+    "public_activity",
+    "media",
+    "leadership",
+    "international",
+)
+
+
 def _item(
     issuer: str,
     title: str,
@@ -36,6 +48,7 @@ def _item(
     wording: str,
     opportunity_type: str = "certificate",
     partner_review: bool = False,
+    category: str | None = None,
 ) -> dict:
     eligibility: dict = {}
     if metrics:
@@ -53,6 +66,7 @@ def _item(
         "wording": wording,
         "opportunity_type": opportunity_type,
         "partner_review": partner_review,
+        "category": category,
     }
 
 
@@ -64,6 +78,7 @@ RECOGNITION_CATALOG = [
         1500,
         ParticipationStatus.ACTIVE_MEMBER,
         wording="За активное участие в жизни сообщества ЭРА и подтверждённый личный вклад.",
+        category="public_activity",
     ),
     _item(
         "ЭРА",
@@ -72,6 +87,7 @@ RECOGNITION_CATALOG = [
         ParticipationStatus.ACTIVE_MEMBER,
         any_metrics=[{"events_attended": 3}, {"tasks_completed": 2}],
         wording="За активное участие в жизни сообщества ЭРА, инициативность и вовлечённость.",
+        category="public_activity",
     ),
     _item(
         "ЭРА",
@@ -84,6 +100,7 @@ RECOGNITION_CATALOG = [
             {"partner_activities": 2},
         ],
         wording="За значимый вклад в развитие сообщества ЭРА и реализацию совместных инициатив.",
+        category="public_activity",
     ),
     _item(
         "ЭРА",
@@ -92,6 +109,7 @@ RECOGNITION_CATALOG = [
         ParticipationStatus.ACTIVE_MEMBER,
         metrics={"tasks_completed": 3},
         wording="За инициативность, ответственность и результативную работу в команде ЭРА.",
+        category="projects",
     ),
     _item(
         "ЭРА",
@@ -104,6 +122,7 @@ RECOGNITION_CATALOG = [
             "За активное участие в жизни сообщества ЭРА",
         ],
         wording="За активную проектную деятельность, инициативность и значимый вклад в реализацию молодёжных проектов ЭРА.",
+        category="projects",
     ),
     _item(
         "ЭРА",
@@ -112,6 +131,7 @@ RECOGNITION_CATALOG = [
         ParticipationStatus.TEAM_MEMBER,
         any_metrics=[{"events_organized": 2}, {"events_coordinated": 1}],
         wording="За значимый вклад в подготовку и организацию мероприятий ЭРА.",
+        category="events",
     ),
     _item(
         "ЭРА",
@@ -120,6 +140,7 @@ RECOGNITION_CATALOG = [
         ParticipationStatus.TEAM_MEMBER,
         metrics={"social_activities": 3},
         wording="За общественную активность, инициативность и вклад в социальные проекты ЭРА.",
+        category="public_activity",
     ),
     _item(
         "ЭРА",
@@ -128,6 +149,7 @@ RECOGNITION_CATALOG = [
         ParticipationStatus.PROJECT_CURATOR,
         any_metrics=[{"events_organized": 3}, {"events_coordinated": 2}],
         wording="За высокий уровень организации, координации и ответственности в проектах и мероприятиях ЭРА.",
+        category="events",
     ),
     _item(
         "ЭРА",
@@ -136,6 +158,7 @@ RECOGNITION_CATALOG = [
         ParticipationStatus.PROJECT_CURATOR,
         metrics={"leadership_activities": 5},
         wording="За лидерство, развитие команды и устойчивый вклад в рост участников ЭРА.",
+        category="leadership",
     ),
     _item(
         "ЭРА",
@@ -144,6 +167,7 @@ RECOGNITION_CATALOG = [
         ParticipationStatus.COMMUNITY_LEADER,
         metrics={"leadership_activities": 5, "mentorship_outcomes": 1},
         wording="За устойчивое лидерство, развитие других участников и значимый вклад в развитие сообщества ЭРА.",
+        category="leadership",
     ),
     _item(
         "ЭРА",
@@ -157,6 +181,7 @@ RECOGNITION_CATALOG = [
         ],
         wording="За значимый личный вклад в развитие сообщества ЭРА, инициативность и участие в реализации проектов и мероприятий.",
         opportunity_type="letter",
+        category="public_activity",
     ),
     _item(
         "ЭРА",
@@ -166,6 +191,7 @@ RECOGNITION_CATALOG = [
         any_metrics=[{"projects_led": 1}, {"leadership_activities": 5}],
         wording="Рекомендательное письмо на основании подтверждённых ролей, проектов, задач, мероприятий и результатов участника.",
         opportunity_type="letter",
+        category="leadership",
     ),
 
     # Ассоциация студентов российских вузов в Армении.
@@ -177,6 +203,7 @@ RECOGNITION_CATALOG = [
         metrics={"social_activities": 1},
         wording="За активную общественную деятельность и участие в развитии студенческого сообщества.",
         partner_review=True,
+        category="public_activity",
     ),
     _item(
         "Ассоциация студентов российских вузов в Армении",
@@ -186,6 +213,7 @@ RECOGNITION_CATALOG = [
         metrics={"social_activities": 3},
         wording="За значимый вклад в общественную деятельность студенческого сообщества.",
         partner_review=True,
+        category="public_activity",
     ),
     _item(
         "Ассоциация студентов российских вузов в Армении",
@@ -195,6 +223,7 @@ RECOGNITION_CATALOG = [
         metrics={"social_activities": 5},
         wording="За значительный и устойчивый вклад в общественную деятельность студенческого сообщества.",
         partner_review=True,
+        category="public_activity",
     ),
     _item(
         "Ассоциация студентов российских вузов в Армении",
@@ -204,6 +233,7 @@ RECOGNITION_CATALOG = [
         metrics={"volunteer_hours": 20},
         wording="За подтверждённую волонтёрскую деятельность и вклад в общественные инициативы.",
         partner_review=True,
+        category="volunteering",
     ),
     _item(
         "Ассоциация студентов российских вузов в Армении",
@@ -213,6 +243,7 @@ RECOGNITION_CATALOG = [
         metrics={"volunteer_hours": 40},
         wording="За значимый объём подтверждённой волонтёрской деятельности.",
         partner_review=True,
+        category="volunteering",
     ),
     _item(
         "Ассоциация студентов российских вузов в Армении",
@@ -222,6 +253,7 @@ RECOGNITION_CATALOG = [
         metrics={"volunteer_hours": 80},
         wording="За высокий уровень и устойчивый вклад в волонтёрскую деятельность.",
         partner_review=True,
+        category="volunteering",
     ),
     _item(
         "Ассоциация студентов российских вузов в Армении",
@@ -231,6 +263,7 @@ RECOGNITION_CATALOG = [
         metrics={"student_association_activities": 1},
         wording="За вклад в развитие студенческого сообщества российских вузов в Армении.",
         partner_review=True,
+        category="public_activity",
     ),
     _item(
         "Ассоциация студентов российских вузов в Армении",
@@ -240,6 +273,7 @@ RECOGNITION_CATALOG = [
         metrics={"student_association_activities": 3},
         wording="За значимый вклад в развитие студенческого сообщества российских вузов в Армении.",
         partner_review=True,
+        category="public_activity",
     ),
     _item(
         "Ассоциация студентов российских вузов в Армении",
@@ -249,6 +283,7 @@ RECOGNITION_CATALOG = [
         metrics={"student_association_activities": 5},
         wording="За устойчивый вклад в развитие студенческого сообщества российских вузов в Армении.",
         partner_review=True,
+        category="public_activity",
     ),
     _item(
         "Ассоциация студентов российских вузов в Армении",
@@ -258,6 +293,7 @@ RECOGNITION_CATALOG = [
         metrics={"leadership_activities": 5, "student_association_activities": 3},
         wording="За лидерство и значимый вклад в развитие молодёжных и студенческих инициатив.",
         partner_review=True,
+        category="leadership",
     ),
 
     # Дом Москвы в Ереване — requires activity explicitly tagged to issuer.
@@ -269,6 +305,7 @@ RECOGNITION_CATALOG = [
         metrics={"house_moscow_activities": 1},
         wording="За активное участие в молодёжных и культурных проектах Дома Москвы в Ереване.",
         partner_review=True,
+        category="projects",
     ),
     _item(
         "Дом Москвы в Ереване",
@@ -278,6 +315,7 @@ RECOGNITION_CATALOG = [
         metrics={"house_moscow_activities": 3},
         wording="За значимый вклад в реализацию общественно-культурных инициатив Дома Москвы в Ереване.",
         partner_review=True,
+        category="public_activity",
     ),
     _item(
         "Дом Москвы в Ереване",
@@ -288,6 +326,7 @@ RECOGNITION_CATALOG = [
         wording="За значимый вклад в развитие молодёжного сотрудничества и реализацию совместных инициатив.",
         opportunity_type="letter",
         partner_review=True,
+        category="international",
     ),
 
     # КСООРС Армении.
@@ -299,6 +338,7 @@ RECOGNITION_CATALOG = [
         metrics={"ksoors_activities": 1},
         wording="За активное участие в общественной жизни российских соотечественников в Армении.",
         partner_review=True,
+        category="public_activity",
     ),
     _item(
         "КСООРС Армении",
@@ -308,6 +348,7 @@ RECOGNITION_CATALOG = [
         metrics={"ksoors_activities": 1, "leadership_activities": 1},
         wording="За вклад в развитие молодёжных инициатив российских соотечественников в Армении.",
         partner_review=True,
+        category="public_activity",
     ),
     _item(
         "КСООРС Армении",
@@ -317,6 +358,7 @@ RECOGNITION_CATALOG = [
         metrics={"ksoors_activities": 2, "social_activities": 2},
         wording="За активную общественную деятельность в сообществе российских соотечественников.",
         partner_review=True,
+        category="public_activity",
     ),
     _item(
         "КСООРС Армении",
@@ -326,6 +368,7 @@ RECOGNITION_CATALOG = [
         metrics={"ksoors_activities": 2, "culture_activities": 2},
         wording="За вклад в сохранение и развитие культурных связей российских соотечественников.",
         partner_review=True,
+        category="international",
     ),
     _item(
         "КСООРС Армении",
@@ -335,6 +378,7 @@ RECOGNITION_CATALOG = [
         metrics={"ksoors_activities": 3, "project_activities": 5},
         wording="За результативную проектную и организационную деятельность.",
         partner_review=True,
+        category="projects",
     ),
     _item(
         "КСООРС Армении",
@@ -344,6 +388,7 @@ RECOGNITION_CATALOG = [
         metrics={"ksoors_activities": 3, "leadership_activities": 3},
         wording="За значимый вклад в развитие молодёжного движения российских соотечественников.",
         partner_review=True,
+        category="public_activity",
     ),
     _item(
         "КСООРС Армении",
@@ -353,6 +398,7 @@ RECOGNITION_CATALOG = [
         metrics={"ksoors_activities": 4, "partner_activities": 2},
         wording="За значимый вклад в развитие общественного сотрудничества российских соотечественников.",
         partner_review=True,
+        category="international",
     ),
     _item(
         "КСООРС Армении",
@@ -362,6 +408,7 @@ RECOGNITION_CATALOG = [
         metrics={"ksoors_activities": 4, "leadership_activities": 5},
         wording="За лидерство в молодёжной общественной деятельности российских соотечественников.",
         partner_review=True,
+        category="leadership",
     ),
     _item(
         "КСООРС Армении",
@@ -371,6 +418,7 @@ RECOGNITION_CATALOG = [
         metrics={"ksoors_activities": 6},
         wording="За значительный и устойчивый вклад в развитие сообщества российских соотечественников в Армении.",
         partner_review=True,
+        category="public_activity",
     ),
     _item(
         "КСООРС Армении",
@@ -380,6 +428,7 @@ RECOGNITION_CATALOG = [
         metrics={"ksoors_activities": 8, "leadership_activities": 5},
         wording="За особый вклад в развитие молодёжного движения российских соотечественников в Армении.",
         partner_review=True,
+        category="leadership",
     ),
 ]
 
@@ -402,13 +451,18 @@ async def seed_recognition_catalog(session: AsyncSession) -> None:
 
     for item in RECOGNITION_CATALOG:
         partner = partners[item["issuer"]]
-        exists = await session.scalar(
-            select(PartnerInitiative.id).where(
+        existing = await session.scalar(
+            select(PartnerInitiative).where(
                 PartnerInitiative.partner_id == partner.id,
                 PartnerInitiative.title == item["title"],
             )
         )
-        if exists:
+        if existing is not None:
+            # DELTA ToR §16: self-heal the new category field onto rows
+            # seeded before it existed, same idempotent-update pattern as
+            # the Media Guide fix -- never overwrite an admin-edited value.
+            if existing.category is None and item["category"] is not None:
+                existing.category = item["category"]
             continue
         session.add(
             PartnerInitiative(
@@ -429,6 +483,7 @@ async def seed_recognition_catalog(session: AsyncSession) -> None:
                 portfolio_item_type=(
                     "letter" if item["opportunity_type"] == "letter" else "certificate"
                 ),
+                category=item["category"],
                 is_active=True,
                 is_archived=False,
             )

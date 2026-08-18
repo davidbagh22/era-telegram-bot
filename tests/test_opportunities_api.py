@@ -266,5 +266,84 @@ class OpportunitySaveApiTests(unittest.TestCase):
         self.assertTrue(response.json()["is_saved"])
 
 
+class OpportunityFilterHelpersTests(unittest.TestCase):
+    """DELTA ToR §16-17: pure-function coverage for the real multi-facet
+    filter -- the bits that used to just hide already-loaded cards
+    client-side (see docs/DELTA ToR) now live server-side here."""
+
+    def test_matches_facets_filters_by_issuer_type_and_category(self) -> None:
+        from app.api.v1.opportunities import _matches_facets
+
+        offer = _offer(opportunity_type="certificate", category="projects")
+        partner = _partner(name="ЭРА")
+
+        self.assertTrue(_matches_facets(offer, partner, issuer=None, otype=None, category=None))
+        self.assertTrue(_matches_facets(offer, partner, issuer="ЭРА", otype="certificate", category="projects"))
+        self.assertFalse(_matches_facets(offer, partner, issuer="Другой", otype=None, category=None))
+        self.assertFalse(_matches_facets(offer, partner, issuer=None, otype="letter", category=None))
+        self.assertFalse(_matches_facets(offer, partner, issuer=None, otype=None, category="events"))
+
+    def test_compute_state_prioritizes_application_status(self) -> None:
+        from app.api.v1.opportunities import _compute_state
+
+        self.assertEqual(
+            _compute_state(offer_open=True, application_status="issued", eligible=True, missing_requirements=[]),
+            "issued",
+        )
+        self.assertEqual(
+            _compute_state(offer_open=True, application_status="pending", eligible=False, missing_requirements=["Баллы"]),
+            "requested",
+        )
+        self.assertEqual(
+            _compute_state(offer_open=True, application_status="partner_review", eligible=True, missing_requirements=[]),
+            "review",
+        )
+
+    def test_compute_state_available_almost_and_closed(self) -> None:
+        from app.api.v1.opportunities import _compute_state
+
+        self.assertEqual(
+            _compute_state(offer_open=True, application_status=None, eligible=True, missing_requirements=[]),
+            "available",
+        )
+        self.assertEqual(
+            _compute_state(offer_open=True, application_status=None, eligible=False, missing_requirements=["Баллы"]),
+            "almost",
+        )
+        self.assertEqual(
+            _compute_state(offer_open=True, application_status=None, eligible=False, missing_requirements=["Баллы", "Ранг"]),
+            "closed",
+        )
+        self.assertEqual(
+            _compute_state(offer_open=False, application_status=None, eligible=True, missing_requirements=[]),
+            "closed",
+        )
+
+    def test_sort_opportunities_by_organization_and_newest(self) -> None:
+        from app.api.v1.opportunities import OpportunityOut, _sort_opportunities
+
+        def _out(**overrides) -> OpportunityOut:
+            defaults = dict(
+                id=1, partner_name="B", title="Z", description="d", point_cost=0,
+                required_points=0, opportunity_type="certificate", category=None,
+                min_rank=None, eligible=True, default_award_wording=None,
+                partner_review_required=False, remaining_slots="unlimited",
+                expires_at=None, instruction=None, source_url=None,
+                application_status=None, is_saved=False, is_offer_open=True,
+                state="available", display_state="available",
+            )
+            defaults.update(overrides)
+            return OpportunityOut(**defaults)
+
+        a = _out(id=1, partner_name="Alpha", title="Second")
+        b = _out(id=2, partner_name="Beta", title="First")
+
+        by_org = _sort_opportunities([b, a], "by_organization")
+        self.assertEqual([item.partner_name for item in by_org], ["Alpha", "Beta"])
+
+        by_newest = _sort_opportunities([a, b], "newest")
+        self.assertEqual([item.id for item in by_newest], [2, 1])
+
+
 if __name__ == "__main__":
     unittest.main()

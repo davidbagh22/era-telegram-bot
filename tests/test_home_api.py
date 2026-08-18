@@ -57,6 +57,9 @@ def _snapshot() -> HomeSnapshot:
         almost_opportunity=None,
         locked_opportunity=None,
         nearest_locked_opportunity=None,
+        tasks_available_count=4,
+        tasks_in_progress_count=1,
+        vector=None,
     )
 
 

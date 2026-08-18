@@ -23,6 +23,8 @@ class OpportunityDisplayStateTests(unittest.IsolatedAsyncioTestCase):
             instruction=None,
             source_url=None,
             created_at=datetime.now(timezone.utc) - timedelta(days=30),
+            is_active=True,
+            is_archived=False,
         )
         defaults.update(overrides)
         return SimpleNamespace(**defaults)

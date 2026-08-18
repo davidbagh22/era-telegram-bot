@@ -198,6 +198,36 @@ async def list_active_offers(session: AsyncSession) -> list[tuple[PartnerInitiat
     return list(result.all())
 
 
+async def list_all_offers(session: AsyncSession) -> list[tuple[PartnerInitiative, Partner]]:
+    """Like list_active_offers but also returns inactive/archived/expired
+    offers -- needed for the DELTA ToR §16 "Закрыто" state filter, which
+    would otherwise never have anything to show."""
+    result = await session.execute(
+        select(PartnerInitiative, Partner)
+        .join(Partner, Partner.id == PartnerInitiative.partner_id)
+        .order_by(Partner.name, PartnerInitiative.point_cost, PartnerInitiative.title)
+    )
+    return list(result.all())
+
+
+async def list_offer_facets(session: AsyncSession) -> dict[str, list[str]]:
+    """DELTA ToR §16-17 filter sheet options, sourced from what's actually
+    in the catalog rather than hardcoded -- an issuer with zero offers
+    (e.g. a stale legacy Partner row) never shows up as a choice."""
+    now = datetime.now(timezone.utc)
+    rows = (
+        await session.execute(
+            select(Partner.name, PartnerInitiative.opportunity_type, PartnerInitiative.category)
+            .join(Partner, Partner.id == PartnerInitiative.partner_id)
+            .where(*_active_offer_filters(now))
+        )
+    ).all()
+    issuers = sorted({name for name, _, _ in rows})
+    types_ = sorted({otype for _, otype, _ in rows})
+    categories = sorted({category for _, _, category in rows if category})
+    return {"issuers": issuers, "types": types_, "categories": categories}
+
+
 async def remaining_slots(session: AsyncSession, offer: PartnerInitiative) -> int | None:
     if offer.quantity is None:
         return None

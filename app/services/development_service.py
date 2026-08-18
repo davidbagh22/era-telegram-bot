@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from statistics import mean
 from typing import Any
@@ -518,6 +519,83 @@ async def _baseline(session: AsyncSession, user_id: int) -> dict[str, int]:
         code: round(mean(int(row.state_json.get(code, 0)) for row in rows))
         for code in STATE_DIMENSIONS
     }
+
+
+# DELTA ToR §5: the internal dimension code ("agency") isn't the wire name
+# the Home privacy contract specifies ("support") -- this is a rename map,
+# not a second taxonomy.
+_AREA_WIRE_KEYS = {
+    "energy": "energy",
+    "agency": "support",
+    "autonomy": "autonomy",
+    "connection": "connection",
+    "direction": "direction",
+}
+
+
+@dataclass(frozen=True)
+class VectorAreaSignal:
+    area: str
+    label: str
+    value: int
+    trend: str  # "up" | "down"
+
+
+@dataclass(frozen=True)
+class VectorHomeSummary:
+    pulse: int
+    updated_at: str
+    areas: dict[str, int]
+    signals: list[VectorAreaSignal]
+
+
+async def vector_home_summary(session: AsyncSession, user_id: int) -> VectorHomeSummary | None:
+    """DELTA ToR §2-5: Home's safe "Мой вектор" summary -- pulse, areas,
+    last-updated only. Never answers, notes, goal text or raw psychometric
+    data (that stays behind My Vector's own consent-gated screens). None
+    when the participant has never completed a check-in -- the Home card
+    must show a real "not filled in yet" CTA, never a fabricated 0."""
+    profile = await session.get(UserVectorProfile, user_id)
+    if profile is None or profile.current_index is None or not profile.state_json:
+        return None
+
+    state = profile.state_json
+    areas = {_AREA_WIRE_KEYS[code]: int(state.get(code, 0)) for code in STATE_DIMENSIONS}
+
+    signals: list[VectorAreaSignal] = []
+    latest_checkin = await session.scalar(
+        select(MonthlyCheckin)
+        .where(MonthlyCheckin.user_id == user_id, MonthlyCheckin.status == "completed")
+        .order_by(desc(MonthlyCheckin.month))
+        .limit(1)
+    )
+    if latest_checkin is not None and latest_checkin.delta_json:
+        ranked = sorted(
+            (
+                (code, int(latest_checkin.delta_json.get(code, 0)))
+                for code in STATE_DIMENSIONS
+                if latest_checkin.delta_json.get(code)
+            ),
+            key=lambda item: abs(item[1]),
+            reverse=True,
+        )
+        for code, delta in ranked[:2]:
+            signals.append(
+                VectorAreaSignal(
+                    area=_AREA_WIRE_KEYS[code],
+                    label=STATE_LABELS[code],
+                    value=int(state.get(code, 0)),
+                    trend="up" if delta > 0 else "down",
+                )
+            )
+
+    updated_at = profile.last_checkin_at or profile.updated_at
+    return VectorHomeSummary(
+        pulse=int(profile.current_index),
+        updated_at=updated_at.isoformat(),
+        areas=areas,
+        signals=signals,
+    )
 
 
 def _support_text(state: dict[str, int], profile: UserVectorProfile | None) -> str:

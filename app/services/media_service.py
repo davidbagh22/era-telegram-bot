@@ -27,12 +27,18 @@ from app.database.media_models import (
     MediaLibraryItem,
     MediaRequest,
 )
-from app.database.models import AppSetting, Direction, Event, Project, Task, User
+from app.database.models import AppSetting, Direction, Event, Project, Task, User, UserDirection
 from app.services.authorization_service import is_full_admin
 from app.services.chat_registry_service import check_chats_health
+from app.services.media_chat_activity_service import chat_activity_summary
 from app.utils.constants import ApplicationStatus, TaskStatus
 
 MEDIA_SETTINGS_KEY = "media_os_settings"
+# DELTA ToR §27-31: real Media ACL tiers, built on the existing
+# Direction/UserDirection membership model (ToR §30 explicitly forbids a
+# second roles table) rather than a binary "any approved participant" gate.
+MEDIA_DIRECTION_NAME = "Медиа"
+MediaAccessLevel = Literal["no_access", "pending", "member", "leader", "admin"]
 MEDIA_TASK_POINTS = {
     "text": 50,
     "stories": 50,
@@ -99,11 +105,18 @@ LIBRARY_DEFAULTS = (
 @dataclass(frozen=True)
 class MediaAnalytics:
     planned: int
+    # All-time count of tracked publications (ToR §67's channel_posts_total)
+    # -- status=published only, never failed/skipped (ToR §37).
     published: int
     failed: int
     on_time_rate: float | None
     tasks_created: int
     tasks_completed: int
+    # DELTA ToR §36-41: last-30-days slice of `published`, plus Media Chat
+    # human-activity (§38-41's chat_messages_period/chat_active_authors_period).
+    channel_posts_period: int
+    chat_messages_period: int
+    chat_active_authors_period: int
 
 
 @dataclass(frozen=True)
@@ -111,15 +124,6 @@ class PublishResult:
     ok: bool
     code: str
     message_id: int | None = None
-
-
-def can_use_media_hub(user: User | None) -> bool:
-    return bool(
-        user
-        and user.application_status == ApplicationStatus.APPROVED
-        and not user.is_blocked
-        and not user.is_archived
-    )
 
 
 async def can_manage_media(
@@ -135,11 +139,162 @@ async def can_manage_media(
         return True
     lead = await session.scalar(
         select(Direction.id).where(
-            Direction.name == "Медиа",
+            Direction.name == MEDIA_DIRECTION_NAME,
             Direction.leader_id == user.id,
         )
     )
     return lead is not None
+
+
+async def _media_direction(session: AsyncSession) -> Direction | None:
+    return await session.scalar(select(Direction).where(Direction.name == MEDIA_DIRECTION_NAME))
+
+
+async def _media_membership_status(session: AsyncSession, user_id: int) -> str | None:
+    return await session.scalar(
+        select(UserDirection.status)
+        .join(Direction, Direction.id == UserDirection.direction_id)
+        .where(UserDirection.user_id == user_id, Direction.name == MEDIA_DIRECTION_NAME)
+    )
+
+
+async def media_access_level(
+    session: AsyncSession, user: User | None, settings: Settings
+) -> MediaAccessLevel:
+    """DELTA ToR §28: NO_ACCESS / PENDING / MEDIA_MEMBER / MEDIA_LEADER / ADMIN.
+    Checked in that priority so a Direction leader or admin always gets full
+    access even if they never went through the member application flow."""
+    if (
+        user is None
+        or user.is_blocked
+        or user.is_archived
+        or user.application_status != ApplicationStatus.APPROVED
+    ):
+        return "no_access"
+    if is_full_admin(user, settings, user.telegram_id):
+        return "admin"
+    if await can_manage_media(session, user, settings):
+        return "leader"
+    status = await _media_membership_status(session, user.id)
+    if status == "approved":
+        return "member"
+    if status == "pending":
+        return "pending"
+    return "no_access"
+
+
+def can_use_media_hub(level: MediaAccessLevel) -> bool:
+    return level not in ("no_access", "pending")
+
+
+def media_permissions(level: MediaAccessLevel) -> dict[str, bool]:
+    """ToR §67's Home/Media Hub `permissions` contract. MEDIA_MEMBER only
+    ever gets tools_read; Content Plan, member management, analytics and
+    publishing stay MEDIA_LEADER/ADMIN-only (ToR §29)."""
+    if level in ("leader", "admin"):
+        return {
+            "tools_read": True,
+            "content_plan_read": True,
+            "content_plan_write": True,
+            "members_manage": True,
+            "analytics_read": True,
+            "publications_manage": True,
+        }
+    if level == "member":
+        return {
+            "tools_read": True,
+            "content_plan_read": False,
+            "content_plan_write": False,
+            "members_manage": False,
+            "analytics_read": False,
+            "publications_manage": False,
+        }
+    return {
+        "tools_read": False,
+        "content_plan_read": False,
+        "content_plan_write": False,
+        "members_manage": False,
+        "analytics_read": False,
+        "publications_manage": False,
+    }
+
+
+async def apply_for_media(session: AsyncSession, user: User) -> MediaAccessLevel:
+    """ToR §28 NO_ACCESS CTA: "Подать заявку". Idempotent -- re-applying
+    while already pending/approved is a no-op, never creates duplicate rows
+    (UserDirection is unique on user_id+direction_id)."""
+    direction = await _media_direction(session)
+    if direction is None:
+        raise ValueError("media_direction_missing")
+    row = await session.scalar(
+        select(UserDirection).where(
+            UserDirection.user_id == user.id, UserDirection.direction_id == direction.id
+        )
+    )
+    if row is None:
+        session.add(UserDirection(user_id=user.id, direction_id=direction.id, status="pending"))
+        await session.flush()
+        return "pending"
+    if row.status == "approved":
+        return "member"
+    row.status = "pending"
+    await session.flush()
+    return "pending"
+
+
+async def decide_media_application(
+    session: AsyncSession, target_user_id: int, action: Literal["approve", "reject", "revoke"]
+) -> None:
+    """ToR §31 "Команда" approve/reject/revoke. Reject and revoke both land
+    on status="rejected" -- the distinction that matters to the user (never
+    applied vs. applied and declined) isn't meaningful to the ACL check,
+    only to whoever is looking at the applications list."""
+    direction = await _media_direction(session)
+    if direction is None:
+        raise ValueError("media_direction_missing")
+    row = await session.scalar(
+        select(UserDirection).where(
+            UserDirection.user_id == target_user_id, UserDirection.direction_id == direction.id
+        )
+    )
+    if row is None:
+        if action != "approve":
+            raise ValueError("application_not_found")
+        session.add(UserDirection(user_id=target_user_id, direction_id=direction.id, status="approved"))
+    else:
+        row.status = "approved" if action == "approve" else "rejected"
+    await session.flush()
+
+
+async def list_media_applications(session: AsyncSession) -> list[tuple[User, datetime]]:
+    direction = await _media_direction(session)
+    if direction is None:
+        return []
+    rows = (
+        await session.execute(
+            select(User, UserDirection.created_at)
+            .join(UserDirection, UserDirection.user_id == User.id)
+            .where(UserDirection.direction_id == direction.id, UserDirection.status == "pending")
+            .order_by(UserDirection.created_at.asc())
+        )
+    ).all()
+    return [(row[0], row[1]) for row in rows]
+
+
+async def list_media_members(session: AsyncSession) -> list[User]:
+    direction = await _media_direction(session)
+    if direction is None:
+        return []
+    return list(
+        (
+            await session.scalars(
+                select(User)
+                .join(UserDirection, UserDirection.user_id == User.id)
+                .where(UserDirection.direction_id == direction.id, UserDirection.status == "approved")
+                .order_by(User.first_name.asc())
+            )
+        ).all()
+    )
 
 
 async def media_config(session: AsyncSession) -> dict[str, Any]:
@@ -629,12 +784,14 @@ async def publish_content(
                 delivery.status = "failed_safe"
                 delivery.last_error = "telegram_retry_after_exhausted"
                 await session.commit()
+                await _notify_publish_failed(session, bot, settings, item, reason="telegram_retry_after_exhausted")
                 return PublishResult(False, "retry_exhausted")
             await asyncio.sleep(min(max(float(exc.retry_after), 0.0), 30.0))
         except (TelegramForbiddenError, TelegramBadRequest) as exc:
             delivery.status = "failed_safe"
             delivery.last_error = type(exc).__name__
             await session.commit()
+            await _notify_publish_failed(session, bot, settings, item, reason=type(exc).__name__)
             return PublishResult(False, "telegram_rejected")
         except TelegramAPIError as exc:
             # API errors don't prove a successful send. Treat them as
@@ -642,17 +799,20 @@ async def publish_content(
             delivery.status = "uncertain"
             delivery.last_error = type(exc).__name__
             await session.commit()
+            await _notify_publish_failed(session, bot, settings, item, reason=type(exc).__name__)
             return PublishResult(False, "delivery_uncertain")
         except Exception as exc:  # network/runtime ambiguity: never blind retry
             delivery.status = "uncertain"
             delivery.last_error = type(exc).__name__
             await session.commit()
+            await _notify_publish_failed(session, bot, settings, item, reason=type(exc).__name__)
             return PublishResult(False, "delivery_uncertain")
 
     if message is None:
         delivery.status = "uncertain"
         delivery.last_error = "no_message_result"
         await session.commit()
+        await _notify_publish_failed(session, bot, settings, item, reason="no_message_result")
         return PublishResult(False, "delivery_uncertain")
 
     now = datetime.now(timezone.utc)
@@ -665,7 +825,39 @@ async def publish_content(
     item.published_at = now
     item.telegram_message_id = message_id
     await session.commit()
+    await _send_media_chat_notice(
+        session,
+        bot,
+        settings,
+        notice_key=f"published:{item.id}",
+        notice_kind="published",
+        ref_type="content",
+        ref_id=item.id,
+        text=f"Опубликовано ✓\n\n{item.rubric or item.theme or 'Материал'}",
+    )
     return PublishResult(True, "published", message_id)
+
+
+async def _notify_publish_failed(
+    session: AsyncSession, bot: Bot, settings: Settings, item: MediaContentItem, *, reason: str
+) -> None:
+    """ToR §42 "Ошибка публикации" -- goes to the leader/admin-facing Media
+    chat, same idempotent-per-item pattern as every other chat notice here."""
+    await _send_media_chat_notice(
+        session,
+        bot,
+        settings,
+        notice_key=f"publish-failed:{item.id}",
+        notice_kind="publish_failed",
+        ref_type="content",
+        ref_id=item.id,
+        text=(
+            "Публикация не вышла\n\n"
+            f"{item.rubric or item.theme or 'Материал'}\n"
+            f"Причина: {reason}\n\n"
+            "Откройте Media Desk, чтобы посмотреть и исправить вручную."
+        ),
+    )
 
 
 async def publish_due_channel_content(
@@ -801,7 +993,7 @@ async def process_media_chat_automation(
             )
 
 
-async def analytics(session: AsyncSession) -> MediaAnalytics:
+async def analytics(session: AsyncSession, settings: Settings | None = None) -> MediaAnalytics:
     planned = int(
         await session.scalar(
             select(func.count()).select_from(MediaContentItem).where(
@@ -858,6 +1050,22 @@ async def analytics(session: AsyncSession) -> MediaAnalytics:
         )
         or 0
     )
+    period_start = datetime.now(timezone.utc) - timedelta(days=30)
+    channel_posts_period = int(
+        await session.scalar(
+            select(func.count()).select_from(MediaContentItem).where(
+                MediaContentItem.status == "published",
+                MediaContentItem.published_at >= period_start,
+            )
+        )
+        or 0
+    )
+    chat_messages_period = 0
+    chat_active_authors_period = 0
+    if settings is not None and settings.media_chat_id is not None:
+        chat_summary = await chat_activity_summary(session, settings.media_chat_id)
+        chat_messages_period = chat_summary.messages_30d
+        chat_active_authors_period = chat_summary.active_authors_30d
     return MediaAnalytics(
         planned=planned,
         published=published,
@@ -865,4 +1073,7 @@ async def analytics(session: AsyncSession) -> MediaAnalytics:
         on_time_rate=on_time_rate,
         tasks_created=tasks_created,
         tasks_completed=tasks_completed,
+        channel_posts_period=channel_posts_period,
+        chat_messages_period=chat_messages_period,
+        chat_active_authors_period=chat_active_authors_period,
     )

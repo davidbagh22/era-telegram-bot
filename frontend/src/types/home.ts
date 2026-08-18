@@ -9,6 +9,9 @@ export interface NextStep {
   kind: "task" | "event" | "project" | "growth" | "opportunity";
   title: string;
   description: string;
+  entity_id: number | null;
+  route: string | null;
+  action_label: string;
 }
 
 export interface EventSummary {
@@ -62,6 +65,20 @@ export interface ActivityStats {
   portfolio_items: number;
 }
 
+export interface VectorAreaSignal {
+  area: string;
+  label: string;
+  value: number;
+  trend: "up" | "down";
+}
+
+export interface VectorHomeSummary {
+  pulse: number;
+  updated_at: string;
+  areas: Record<string, number>;
+  signals: VectorAreaSignal[];
+}
+
 export interface HomeSnapshot {
   growth: GrowthProgress;
   rank: RankProgress;
@@ -78,4 +95,7 @@ export interface HomeSnapshot {
   almost_opportunity: OpportunityProgress | null;
   locked_opportunity: OpportunityProgress | null;
   nearest_locked_opportunity: OpportunityProgress | null;
+  tasks_available_count: number;
+  tasks_in_progress_count: number;
+  vector: VectorHomeSummary | null;
 }

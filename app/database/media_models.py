@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date as date_, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base, TimestampMixin
@@ -73,7 +73,16 @@ class MediaLibraryItem(TimestampMixin, Base):
     category: Mapped[str] = mapped_column(String(64), default="archive", index=True)
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
+    # DELTA ToR §32-34: what `url` means depends on destination_type.
+    # "external_url" -> a real external link the frontend opens in a new
+    # tab/browser (Canva, Telegram chat, channel, ...). "internal_route" ->
+    # an in-app hash route (e.g. "media/guide") the Mini App must navigate
+    # to with SPA routing, never window.open/openLink -- opening an
+    # internal ERA page externally drops Telegram initData (the reported
+    # "empty_init_data" bug). "file" is reserved for a future in-app file
+    # viewer; treated the same as internal_route until one exists.
     url: Mapped[str] = mapped_column(String(1000))
+    destination_type: Mapped[str] = mapped_column(String(24), default="external_url", index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
@@ -134,3 +143,18 @@ class MediaAttachment(TimestampMixin, Base):
     source_chat_id: Mapped[int | None] = mapped_column(Integer, index=True)
     source_message_id: Mapped[int | None] = mapped_column(Integer, index=True)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class MediaChatActivity(TimestampMixin, Base):
+    """DELTA ToR §38-41: daily aggregate of human activity in a Media chat.
+    Deliberately not a per-message log -- no message content is stored,
+    only a same-day dedup of author ids to compute unique_authors."""
+
+    __tablename__ = "media_chat_activity"
+    __table_args__ = (UniqueConstraint("chat_id", "activity_date", name="uq_media_chat_activity_chat_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[int] = mapped_column(Integer, index=True)
+    activity_date: Mapped[date_] = mapped_column(Date, index=True)
+    human_messages: Mapped[int] = mapped_column(Integer, default=0)
+    author_ids_json: Mapped[list[int]] = mapped_column(JSON, default=list)

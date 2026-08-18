@@ -18,6 +18,17 @@ body,
   overflow-x: clip;
 }
 
+:root {
+  /* DELTA ToR §56/60: the last card on a scrollable page must never end
+     up under the fixed bottom nav or the floating context-help "i"
+     (ContextHelp.tsx sits at bottom: 5.5rem, ~2.75rem tall, i.e. its top
+     edge is ~8.25rem from the viewport bottom) -- confirmed live: without
+     this, Home's last "Для тебя" card scrolls in underneath the FAB.
+     10rem clears the FAB with the ToR's "+24px" buffer on top; screens
+     that render ContextHelp should use this for their bottom padding. */
+  --era-page-bottom-safe: calc(10rem + env(safe-area-inset-bottom, 0px));
+}
+
 img,
 video,
 canvas,

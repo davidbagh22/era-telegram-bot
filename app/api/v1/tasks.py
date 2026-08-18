@@ -14,7 +14,9 @@ from app.services.activity_service import TaskScope, list_tasks
 from app.services.community_mission_service import (
     assign_subtask,
     confirm_squad_plan,
+    launch_all_pending_missions,
     launch_mission,
+    launched_template_ids,
     list_mission_templates,
 )
 from app.utils.constants import PRIVILEGED_ROLES
@@ -60,6 +62,7 @@ class MissionTemplateOut(BaseModel):
     points: int
     counts_toward: list[str]
     repeatable: bool
+    is_launched: bool
 
 
 class SubtaskOut(BaseModel):
@@ -143,7 +146,7 @@ async def _to_task_out(
     )
 
 
-def _template_out(item: CommunityMissionTemplate) -> MissionTemplateOut:
+def _template_out(item: CommunityMissionTemplate, launched_ids: set[int]) -> MissionTemplateOut:
     return MissionTemplateOut(
         id=item.id,
         code=item.code,
@@ -160,6 +163,7 @@ def _template_out(item: CommunityMissionTemplate) -> MissionTemplateOut:
         points=item.points,
         counts_toward=list(item.counts_toward or []),
         repeatable=item.repeatable,
+        is_launched=item.id in launched_ids,
     )
 
 
@@ -218,8 +222,13 @@ async def read_mission_templates(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> list[MissionTemplateOut]:
-    del user
-    return [_template_out(item) for item in await list_mission_templates(session, month=month)]
+    if user.role not in PRIVILEGED_ROLES:
+        raise HTTPException(status_code=403, detail="forbidden")
+    launched_ids = await launched_template_ids(session)
+    return [
+        _template_out(item, launched_ids)
+        for item in await list_mission_templates(session, month=month)
+    ]
 
 
 @router.post("/missions/{template_id}/launch", response_model=TaskOut)
@@ -236,6 +245,20 @@ async def launch_community_mission(
         raise HTTPException(status_code=404, detail="mission_not_found")
     task = await launch_mission(session, template, creator_id=user.id)
     return await _to_task_out(session, task, user, settings)
+
+
+@router.post("/missions/launch-all", response_model=list[TaskOut])
+async def launch_all_missions(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> list[TaskOut]:
+    """DELTA ToR §13/§76 Phase 2 item 9: one action to make all 26 authored
+    missions available at once, instead of 26 individual launch clicks."""
+    if user.role not in PRIVILEGED_ROLES:
+        raise HTTPException(status_code=403, detail="forbidden")
+    tasks = await launch_all_pending_missions(session, creator_id=user.id)
+    return [await _to_task_out(session, task, user, settings) for task in tasks]
 
 
 @router.get("", response_model=list[TaskOut])

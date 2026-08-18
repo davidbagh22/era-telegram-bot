@@ -4,8 +4,10 @@ import type {
   EventItem,
   EventScope,
   HistoryEntry,
+  MissionTemplate,
   TaskItem,
   TaskScope,
+  TaskSquad,
 } from "../types/activity";
 import type { ApiErrorBody, MiniAppAuthResponse, MiniAppUserSummary } from "../types/auth";
 import type {
@@ -65,7 +67,17 @@ import type {
   LeaderOverview,
   OpenTaskCreatePayload,
 } from "../types/leader";
-import type { Auction, Opportunity, OpportunityScope, Reward, Survey, SurveyDetail } from "../types/opportunity";
+import type {
+  Auction,
+  Opportunity,
+  OpportunityFacets,
+  OpportunityScope,
+  OpportunitySort,
+  OpportunityState,
+  Reward,
+  Survey,
+  SurveyDetail,
+} from "../types/opportunity";
 import type { AdminDeletionRequest, DeletionRequest, Profile } from "../types/profile";
 import type {
   ProjectDetail,
@@ -240,6 +252,11 @@ export function fetchLeaderboard(): Promise<Leaderboard> {
   return authorizedGet<Leaderboard>("/api/v1/leaderboard");
 }
 
+// DELTA ToR §52-54: Топ недели widget on Home — always the fixed top-5.
+export function fetchWeeklyLeaderboard(): Promise<Leaderboard> {
+  return authorizedGet<Leaderboard>("/api/v1/leaderboard/weekly");
+}
+
 export function fetchEvents(scope: EventScope): Promise<EventItem[]> {
   return authorizedGet<EventItem[]>(`/api/v1/events?scope=${scope}`);
 }
@@ -266,6 +283,39 @@ export function fetchTasks(scope: TaskScope): Promise<TaskItem[]> {
 
 export function claimTask(taskId: number): Promise<TaskItem> {
   return authorizedPost<TaskItem>(`/api/v1/tasks/${taskId}/claim`);
+}
+
+export function fetchTaskSquad(taskId: number): Promise<TaskSquad> {
+  return authorizedGet<TaskSquad>(`/api/v1/tasks/${taskId}/squad`);
+}
+
+export function confirmTaskSquadPlan(taskId: number): Promise<TaskSquad> {
+  return authorizedPost<TaskSquad>(`/api/v1/tasks/${taskId}/squad/confirm-plan`);
+}
+
+export function assignTaskSubtask(
+  taskId: number,
+  subtaskId: number,
+  assigneeId: number | null,
+): Promise<TaskSquad> {
+  return authorizedPatch<TaskSquad>(`/api/v1/tasks/${taskId}/squad/subtasks/${subtaskId}`, {
+    assignee_id: assigneeId,
+  });
+}
+
+// Community Mission templates (DELTA ToR §13) — leader/admin only, used to
+// make the 26 authored missions actually reachable by launching them into
+// real Task rows.
+export function fetchMissionTemplates(): Promise<MissionTemplate[]> {
+  return authorizedGet<MissionTemplate[]>("/api/v1/tasks/missions/templates");
+}
+
+export function launchMission(templateId: number): Promise<TaskItem> {
+  return authorizedPost<TaskItem>(`/api/v1/tasks/missions/${templateId}/launch`);
+}
+
+export function launchAllMissions(): Promise<TaskItem[]> {
+  return authorizedPost<TaskItem[]>("/api/v1/tasks/missions/launch-all");
 }
 
 export function fetchCalendar(): Promise<CalendarItem[]> {
@@ -447,8 +497,27 @@ export function messageProjectTeam(projectId: number, text: string): Promise<Tea
   });
 }
 
-export function fetchOpportunities(scope: OpportunityScope): Promise<Opportunity[]> {
-  return authorizedGet<Opportunity[]>(`/api/v1/opportunities?scope=${scope}`);
+export interface OpportunityFilters {
+  scope: OpportunityScope;
+  issuer?: string | null;
+  type?: string | null;
+  category?: string | null;
+  state?: OpportunityState | null;
+  sort?: OpportunitySort;
+}
+
+export function fetchOpportunities(filters: OpportunityFilters): Promise<Opportunity[]> {
+  const params = new URLSearchParams({ scope: filters.scope });
+  if (filters.issuer) params.set("issuer", filters.issuer);
+  if (filters.type) params.set("type", filters.type);
+  if (filters.category) params.set("category", filters.category);
+  if (filters.state) params.set("state", filters.state);
+  if (filters.sort) params.set("sort", filters.sort);
+  return authorizedGet<Opportunity[]>(`/api/v1/opportunities?${params.toString()}`);
+}
+
+export function fetchOpportunityFacets(): Promise<OpportunityFacets> {
+  return authorizedGet<OpportunityFacets>("/api/v1/opportunities/facets");
 }
 
 export function fetchOpportunity(offerId: number): Promise<Opportunity> {

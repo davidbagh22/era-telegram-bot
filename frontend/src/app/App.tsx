@@ -18,6 +18,7 @@ import { PendingScreen } from "../screens/PendingScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { ProgressScreen } from "../screens/ProgressScreen";
 import { ProjectsScreen } from "../screens/ProjectsScreen";
+import { TasksScreen } from "../screens/TasksScreen";
 import { UserPublicProfileScreen } from "../screens/UserPublicProfileScreen";
 import { AdminEventsScreen } from "../screens/admin/AdminEventsScreen";
 import type { MiniAppUserSummary } from "../types/auth";
@@ -37,6 +38,10 @@ interface DeepLink {
   userId: number | null;
   specialScreen: SpecialScreen | null;
   developmentRoute: DevelopmentRoute | null;
+  // DELTA ToR §32-34: `#/media/guide` (and future non-numeric media
+  // sub-routes) need somewhere to land distinct from the numeric
+  // `#/media/{itemId}` case already handled by communitySection/itemId.
+  mediaRoute: "guide" | null;
   invalid: boolean;
 }
 
@@ -109,6 +114,7 @@ function link(overrides: Partial<DeepLink> = {}): DeepLink {
     userId: null,
     specialScreen: null,
     developmentRoute: null,
+    mediaRoute: null,
     invalid: false,
     ...overrides,
   };
@@ -175,6 +181,8 @@ function parseDeepLink(): DeepLink | null {
     return link({ tab: "community", communitySection: communityMatch[1] as CommunitySection, itemId });
   }
 
+  if (route === "media/guide") return link({ tab: "community", communitySection: "media", mediaRoute: "guide" });
+
   if (route === "progress") return link({ tab: "home", specialScreen: "progress" });
   if (route === "leaderboard") return link({ tab: "community", communitySection: "leaderboard" });
   if (route === "community") return link({ tab: "community" });
@@ -201,10 +209,16 @@ function renderTab(
   initialActivitySection: LegacyActivitySection | null,
   initialCommunitySection: CommunitySection | null,
   initialItemId: number | null,
+  initialMediaRoute: "guide" | null,
   isDeepLinkedTab: boolean,
   onTabChange: (tab: TabKey) => void,
 ) {
   if (tab === "home") {
+    // DELTA ToR §7: "Задания" is a standalone screen again, not a nested
+    // ActivityScreen section -- #/tasks and #/tasks/{id} land here directly.
+    if (isDeepLinkedTab && initialActivitySection === "tasks") {
+      return <TasksScreen initialItemId={initialItemId} onBack={() => navigateToTab("home")} />;
+    }
     if (isDeepLinkedTab && initialActivitySection) return <ActivityScreen initialSection={initialActivitySection} initialItemId={initialItemId} />;
     return (
       <HomeScreen
@@ -216,6 +230,7 @@ function renderTab(
         onOpenEvent={(id) => navigateToRoute(`events/${id}`)}
         onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
         onOpenTask={(id) => navigateToRoute(`tasks/${id}`)}
+        onOpenTasks={() => navigateToRoute("tasks")}
         onOpenCommunity={() => onTabChange("community")}
         onOpenOpportunity={(id) => navigateToRoute(`opportunities/${id}`)}
       />
@@ -223,7 +238,7 @@ function renderTab(
   }
   if (tab === "projects") return <ProjectsScreen initialProjectId={initialProjectId} />;
   if (tab === "events") return <EventsScreen initialItemId={isDeepLinkedTab ? initialItemId : null} />;
-  if (tab === "community") return <CommunityScreen initialSection={isDeepLinkedTab ? initialCommunitySection : null} initialItemId={isDeepLinkedTab ? initialItemId : null} />;
+  if (tab === "community") return <CommunityScreen initialSection={isDeepLinkedTab ? initialCommunitySection : null} initialItemId={isDeepLinkedTab ? initialItemId : null} initialMediaRoute={isDeepLinkedTab ? initialMediaRoute : null} />;
   return <ProfileScreen onOpenDevelopment={() => navigateToRoute("development")} />;
 }
 
@@ -318,7 +333,7 @@ export function App() {
           onEnterWorkspace={user.is_admin || user.is_leader ? () => setInWorkspace(true) : undefined}
           onOpenDevelopment={() => navigateToRoute("development")}
         />
-      ) : renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.tab === activeTab, handleTabChange)}
+      ) : renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.mediaRoute ?? null, deepLink?.tab === activeTab, handleTabChange)}
     </UserLayout>
   );
 }

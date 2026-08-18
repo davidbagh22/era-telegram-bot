@@ -1,4 +1,6 @@
 export type OpportunityScope = "for_me" | "all" | "saved" | "mine";
+export type OpportunityState = "available" | "almost" | "closed" | "requested" | "review" | "issued";
+export type OpportunitySort = "closing_soon" | "newest" | "by_organization";
 export type OpportunityDisplayState = "locked" | "almost" | "available" | "new";
 
 export interface EligibilityCheck {
@@ -7,6 +9,12 @@ export interface EligibilityCheck {
   required: string;
   current: string;
   ok: boolean;
+}
+
+export interface OpportunityFacets {
+  issuers: string[];
+  types: string[];
+  categories: string[];
 }
 
 export interface Opportunity {
@@ -19,6 +27,7 @@ export interface Opportunity {
   point_cost: number;
   required_points: number;
   opportunity_type: "external" | "certificate" | "letter" | string;
+  category: string | null;
   min_rank: string | null;
   eligible: boolean;
   display_state: OpportunityDisplayState;
@@ -33,6 +42,8 @@ export interface Opportunity {
   application_status: string | null;
   is_saved: boolean;
   reasons: string[];
+  is_offer_open: boolean;
+  state: OpportunityState;
 }
 
 export interface Auction {

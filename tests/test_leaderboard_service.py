@@ -6,8 +6,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.base import Base
 from app.database.models import PointTransaction, User
-from app.services.leaderboard_service import MAX_TOP_LIMIT, build_leaderboard
-from app.utils.constants import ApplicationStatus, ParticipationStatus
+from app.services.leaderboard_service import (
+    MAX_TOP_LIMIT,
+    _current_week_start,
+    build_leaderboard,
+    build_weekly_leaderboard,
+)
+from app.utils.constants import ApplicationStatus, ParticipationStatus, PointCategory
 
 
 class LeaderboardServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -43,18 +48,18 @@ class LeaderboardServiceTests(unittest.IsolatedAsyncioTestCase):
         await session.flush()
         return user
 
-    async def _award(self, session, user: User, points: int, key: str) -> None:
-        session.add(
-            PointTransaction(
-                user_id=user.id,
-                points=points,
-                reason="test",
-                approved_by=user.id,
-                source_type="test",
-                source_id=1,
-                idempotency_key=key,
-            )
+    async def _award(self, session, user: User, points: int, key: str, **overrides) -> None:
+        defaults = dict(
+            user_id=user.id,
+            points=points,
+            reason="test",
+            approved_by=user.id,
+            source_type="test",
+            source_id=1,
+            idempotency_key=key,
         )
+        defaults.update(overrides)
+        session.add(PointTransaction(**defaults))
         await session.flush()
 
     async def test_entries_ordered_by_points_and_marks_viewer(self) -> None:
@@ -120,6 +125,58 @@ class LeaderboardServiceTests(unittest.IsolatedAsyncioTestCase):
             snapshot = await build_leaderboard(session, viewer)
 
             self.assertEqual(snapshot.entries[0].display_name, "User1")
+
+    async def test_weekly_leaderboard_excludes_out_of_week_and_digital_engagement(self) -> None:
+        # DELTA ToR §52-53: only confirmed in-week contribution counts.
+        from datetime import timedelta
+
+        async with self.session_factory() as session:
+            week_start = _current_week_start()
+            contributor = await self._make_user(session, 1)
+            engagement_only = await self._make_user(session, 2)
+            last_week = await self._make_user(session, 3)
+
+            await self._award(session, contributor, 40, "in-week", created_at=week_start + timedelta(hours=1))
+            await self._award(
+                session, engagement_only, 100, "engagement",
+                created_at=week_start + timedelta(hours=1), category=PointCategory.DIGITAL_ENGAGEMENT,
+            )
+            await self._award(session, last_week, 100, "before-week", created_at=week_start - timedelta(hours=1))
+
+            snapshot = await build_weekly_leaderboard(session, contributor)
+
+            self.assertEqual([e.points for e in snapshot.entries], [40])
+            self.assertTrue(snapshot.entries[0].is_you)
+
+    async def test_weekly_leaderboard_excludes_negative_corrections(self) -> None:
+        from datetime import timedelta
+
+        async with self.session_factory() as session:
+            week_start = _current_week_start()
+            user = await self._make_user(session, 1)
+            await self._award(session, user, 30, "earned", created_at=week_start + timedelta(hours=1))
+            await self._award(session, user, -10, "correction", created_at=week_start + timedelta(hours=2))
+
+            snapshot = await build_weekly_leaderboard(session, user)
+
+            # The negative correction is excluded from the sum entirely
+            # (ToR §53) rather than netted against the real contribution.
+            self.assertEqual(snapshot.entries[0].points, 30)
+
+    async def test_weekly_leaderboard_top5_cap(self) -> None:
+        from datetime import timedelta
+
+        async with self.session_factory() as session:
+            week_start = _current_week_start()
+            viewer = await self._make_user(session, 0)
+            for i in range(1, 8):
+                user = await self._make_user(session, i)
+                await self._award(session, user, 100 - i, f"k{i}", created_at=week_start + timedelta(hours=1))
+
+            snapshot = await build_weekly_leaderboard(session, viewer)
+
+            self.assertEqual(len(snapshot.entries), 5)
+            self.assertEqual([e.points for e in snapshot.entries], [99, 98, 97, 96, 95])
 
 
 if __name__ == "__main__":

@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import User
-from app.repositories.users import rating
+from app.repositories.users import rating, weekly_rating
 from app.services.growth_service import growth_progress_for
+
+# DELTA ToR §53: "понедельник 00:00 → сейчас" in Asia/Yerevan, regardless of
+# the server's own timezone.
+WEEKLY_TOP_TIMEZONE = "Asia/Yerevan"
+WEEKLY_TOP_LIMIT = 5
 
 # Same fetch cap app/handlers/participant/cabinet.py's _rating_context()
 # already uses to place a participant even past the visible top slice —
@@ -83,4 +90,25 @@ async def build_leaderboard(
         None,
     )
 
+    return LeaderboardSnapshot(entries=entries, me=me)
+
+
+def _current_week_start(now: datetime | None = None) -> datetime:
+    tz = ZoneInfo(WEEKLY_TOP_TIMEZONE)
+    local_now = (now or datetime.now(timezone.utc)).astimezone(tz)
+    monday = local_now.date() - timedelta(days=local_now.weekday())
+    return datetime.combine(monday, time.min, tzinfo=tz)
+
+
+async def build_weekly_leaderboard(
+    session: AsyncSession, viewer: User, *, limit: int = WEEKLY_TOP_LIMIT
+) -> LeaderboardSnapshot:
+    """DELTA ToR §52-54: Top-5 недели on Home. Same LeaderboardEntry shape
+    as the all-time board (build_leaderboard) so the frontend/UserPublicProfile
+    tap-through behaves identically -- this is a different *query window*,
+    not a second leaderboard concept."""
+    week_start = _current_week_start()
+    rows = await weekly_rating(session, week_start=week_start, limit=limit)
+    entries = [_entry(rank, user, points, viewer.id) for rank, (user, points) in enumerate(rows, start=1)]
+    me = next((entry for entry in entries if entry.is_you), None)
     return LeaderboardSnapshot(entries=entries, me=me)
