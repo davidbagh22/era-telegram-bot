@@ -22,6 +22,7 @@ def _settings() -> SimpleNamespace:
         external_department_chat_id=None,
         leaders_chat_id=None,
         chat_ids={-1001},
+        era_channel_url="https://t.me/era_channel",
     )
 
 
@@ -97,6 +98,35 @@ class ChatAccessAuditTests(unittest.IsolatedAsyncioTestCase):
                 )
             ).all()
             self.assertEqual(rows[0].new_value["failed"], 1)
+
+    async def test_sync_removes_rejected_user_from_general_chat(self) -> None:
+        """ToR §3/§62: a rejected applicant already in the general chat gets
+        actually removed (ban+immediately-unban), not just muted."""
+        async with self.session_factory() as session:
+            user = await self._make_user(session, application_status=ApplicationStatus.REJECTED)
+            bot = AsyncMock()
+
+            fixed, failed = await sync_user_chat_access(bot, _settings(), session, user)
+
+            self.assertEqual(fixed, 1)
+            self.assertEqual(failed, 0)
+            bot.ban_chat_member.assert_awaited_once_with(chat_id=-1001, user_id=user.telegram_id)
+            bot.unban_chat_member.assert_awaited_once_with(
+                chat_id=-1001, user_id=user.telegram_id, only_if_banned=True
+            )
+            bot.restrict_chat_member.assert_not_called()
+
+    async def test_sync_still_restricts_pending_user_not_removes(self) -> None:
+        """Only REJECTED triggers removal -- not_approved (still PENDING)
+        keeps the existing mute-only behavior."""
+        async with self.session_factory() as session:
+            user = await self._make_user(session, application_status=ApplicationStatus.PENDING)
+            bot = AsyncMock()
+
+            await sync_user_chat_access(bot, _settings(), session, user)
+
+            bot.restrict_chat_member.assert_awaited_once()
+            bot.ban_chat_member.assert_not_called()
 
 
 class ChatJoinRequestAuditTests(unittest.IsolatedAsyncioTestCase):
@@ -175,6 +205,54 @@ class ChatJoinRequestAuditTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0].new_value["reason"], "rejected")
             bot.decline_chat_join_request.assert_awaited_once()
+
+    async def test_unregistered_join_request_gets_rich_onboarding_dm(self) -> None:
+        """ToR §22-24: a brand-new person (no User row at all) gets the full
+        "what is ЭРА" pitch with a real "Начать регистрацию" button, not the
+        generic one-line access_message()."""
+        async with self.session_factory() as session:
+            bot = AsyncMock()
+            request = self._request(chat_id=-1001, telegram_id=999)
+
+            await handle_chat_join_request(request, bot, _settings(), session)
+
+            bot.send_message.assert_awaited_once()
+            call = bot.send_message.await_args
+            self.assertEqual(call.args[0], 999)
+            self.assertIn("Хочешь в ЭРА", call.args[1])
+            markup = call.kwargs["reply_markup"]
+            self.assertEqual(markup.inline_keyboard[0][0].callback_data, "registration:start")
+
+    async def test_pending_applicant_join_request_gets_status_dm(self) -> None:
+        """ToR §26: someone who already registered and is on
+        PENDING/NEEDS_INFO must never be told to register again."""
+        async with self.session_factory() as session:
+            user = await self._make_user(session, application_status=ApplicationStatus.PENDING)
+            bot = AsyncMock()
+            request = self._request(chat_id=-1001, telegram_id=user.telegram_id)
+
+            await handle_chat_join_request(request, bot, _settings(), session)
+
+            bot.send_message.assert_awaited_once()
+            call = bot.send_message.await_args
+            self.assertIn("Заявка уже у команды ЭРА", call.args[1])
+            markup = call.kwargs["reply_markup"]
+            self.assertEqual(markup.inline_keyboard[0][0].callback_data, "registration:status")
+
+    async def test_rejected_join_request_keeps_generic_short_message(self) -> None:
+        """ToR §27: decline stays on the existing generic access_message()
+        -- no new registration prompt for a rejected applicant."""
+        async with self.session_factory() as session:
+            user = await self._make_user(session, application_status=ApplicationStatus.REJECTED)
+            bot = AsyncMock()
+            request = self._request(chat_id=-1001, telegram_id=user.telegram_id)
+
+            await handle_chat_join_request(request, bot, _settings(), session)
+
+            bot.send_message.assert_awaited_once()
+            call = bot.send_message.await_args
+            self.assertNotIn("Хочешь в ЭРА", call.args[1])
+            self.assertNotIn("reply_markup", call.kwargs)
 
 
 if __name__ == "__main__":

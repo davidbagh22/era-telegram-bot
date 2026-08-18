@@ -17,11 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.chat_moderation import ChatModerationSetting
 from app.database.models import ChatGreeting, User
+from app.keyboards.common import registration_keyboard
 from app.keyboards.faq import (
     GENERAL_CHAT_EVENTS_TEXT,
     GENERAL_CHAT_PROFILE_TEXT,
     general_chat_navigation_keyboard,
 )
+from app.keyboards.registration import pending_registration_keyboard
 from app.repositories.users import get_user_by_telegram_id
 from app.services.audit_service import audit
 from app.services.chat_access_service import (
@@ -42,6 +44,46 @@ from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES
 from app.utils.deep_links import miniapp_events_url, miniapp_profile_url
 
 router = Router(name="chat")
+
+# Community Verification ToR §22-27: general-chat Join Request onboarding.
+# Richer than access_message()'s short reasons (which stay as-is for every
+# other chat/context) -- these two are specifically what a brand-new person
+# sees the moment they request to join, so they get the full "what is ЭРА"
+# pitch instead of a one-line access-denied notice.
+JOIN_REQUEST_NOT_REGISTERED_TEXT = (
+    "Хочешь в ЭРА — начни отсюда.\n\n"
+    "Общий чат открыт для подтверждённых участников сообщества.\n\n"
+    "Сначала создай профиль ЭРА — после регистрации заявка поступит "
+    "администратору, и после подтверждения бот автоматически откроет вход.\n\n"
+    "Внутри тебя ждут события, проекты, задания, возможности, портфолио и "
+    "«Мой вектор» — личный инструмент, который помогает видеть свой прогресс "
+    "и следующий шаг."
+)
+
+JOIN_REQUEST_PENDING_TEXT = (
+    "Заявка уже у команды ЭРА.\n\n"
+    "Мы получили твою регистрацию.\n\n"
+    "После подтверждения администратором бот автоматически откроет вход в "
+    "общий чат."
+)
+
+
+async def _send_join_request_onboarding(
+    bot: Bot, settings: Settings, *, chat_key: str | None, reason: str, telegram_id: int
+) -> None:
+    """ToR §22-27: general chat gets the rich onboarding copy (with a real
+    action button, via safe_send -- notify_user doesn't take reply_markup);
+    every other managed chat keeps the existing short access_message()
+    notice via notify_user, unchanged."""
+    if chat_key == "general" and reason == "not_registered":
+        await safe_send(bot, telegram_id, JOIN_REQUEST_NOT_REGISTERED_TEXT, registration_keyboard())
+        return
+    if chat_key == "general" and reason == "not_approved":
+        await safe_send(
+            bot, telegram_id, JOIN_REQUEST_PENDING_TEXT, pending_registration_keyboard(settings.era_channel_url)
+        )
+        return
+    await notify_user(bot, telegram_id, access_message(reason))
 
 _activity: dict[tuple[int, int], deque[float]] = defaultdict(lambda: deque(maxlen=8))
 _personal_attacks = {"дурак", "идиот", "тупой", "тупая", "ненавижу тебя"}
@@ -72,6 +114,19 @@ async def _moderation_enabled(session: AsyncSession, chat_id: int) -> bool:
 
 def _is_approved_member(user: User | None) -> bool:
     return bool(user and user.application_status == ApplicationStatus.APPROVED and not user.is_blocked and not user.is_archived)
+
+
+# Community Verification ToR §1/§17/§75: the general chat must never become
+# a de-facto "closed club" for people who simply haven't registered/been
+# approved yet -- only a genuine REJECTED decision (or blocked/archived)
+# still gets restricted/removed there. Internal/external/leaders/media stay
+# on the existing strict behavior unchanged -- they're narrow, legitimately
+# gated chats this ToR isn't about. This only covers *existing* members
+# already in the chat (moderation_gate, quick-nav); brand-new joins that
+# bypass Join Request (welcome_members) are deliberately NOT covered here --
+# §21 wants every future entry point to go through Join Request instead.
+def _general_chat_grace_period(chat_key: str | None, reason: str) -> bool:
+    return chat_key == "general" and reason in ("not_registered", "not_approved")
 
 
 @router.chat_join_request()
@@ -137,7 +192,9 @@ async def handle_chat_join_request(
                 "reason": decision.reason,
             },
         )
-    await notify_user(bot, request.from_user.id, access_message(decision.reason))
+    await _send_join_request_onboarding(
+        bot, settings, chat_key=decision.chat_key, reason=decision.reason, telegram_id=request.from_user.id
+    )
 
 
 async def _soft_moderation(message: Message) -> None:
@@ -297,6 +354,16 @@ async def general_chat_quick_navigation(
         return
 
     decision = check_chat_access(user, "general")
+    if not decision.allowed and _general_chat_grace_period("general", decision.reason):
+        # Grace period: still clear the reply-keyboard trigger text (it's
+        # noise either way -- Telegram can't route a Web App button through
+        # a group keyboard tap), but never restrict or nag an
+        # unregistered/unapproved existing member over it.
+        try:
+            await message.delete()
+        except TelegramAPIError:
+            pass
+        return
     if not decision.allowed:
         if message.from_user:
             await restrict_member(bot, message.chat.id, message.from_user.id)
@@ -338,6 +405,9 @@ async def general_chat_quick_navigation(
 async def moderation_gate(message: Message, bot: Bot, user: User | None, settings: Settings, session: AsyncSession) -> None:
     chat_key = chat_key_for_id(settings, message.chat.id)
     decision = check_chat_access(user, chat_key)
+    if _general_chat_grace_period(chat_key, decision.reason):
+        await _soft_moderation(message)
+        return
     enabled = await _moderation_enabled(session, message.chat.id)
     allowed = decision.allowed if chat_key else (
         _is_approved_member(user)
