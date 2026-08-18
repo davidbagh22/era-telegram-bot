@@ -51,9 +51,6 @@ export function SignalOrb({ percent, size = 220, strokeWidth, children, animatio
 
     animatedOrbKeys.add(animationKey);
     circle.style.strokeDashoffset = `${circumference}`;
-    // Force a layout flush so the browser registers the starting offset
-    // before we transition to the target — otherwise it can skip straight
-    // to the end state.
     void circle.getBoundingClientRect();
     circle.style.transition = "stroke-dashoffset 900ms cubic-bezier(0.22, 1, 0.36, 1)";
     circle.style.strokeDashoffset = `${circumference * (1 - normalized)}`;
@@ -68,6 +65,7 @@ export function SignalOrb({ percent, size = 220, strokeWidth, children, animatio
         flexShrink: 0,
         display: "grid",
         placeItems: "center",
+        isolation: "isolate",
       }}
     >
       {glow && (
@@ -86,7 +84,7 @@ export function SignalOrb({ percent, size = 220, strokeWidth, children, animatio
         />
       )}
 
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ position: "relative", zIndex: 1 }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ position: "absolute", inset: 0, zIndex: 1 }}>
         <defs>
           <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="var(--era-violet)" />
@@ -123,7 +121,19 @@ export function SignalOrb({ percent, size = 220, strokeWidth, children, animatio
       </div>
 
       {children && (
-        <div style={{ position: "relative", zIndex: 2, display: "grid", placeItems: "center", textAlign: "center", padding: "8%" }}>
+        <div
+          style={{
+            position: "absolute",
+            inset: "14%",
+            zIndex: 2,
+            display: "grid",
+            placeItems: "center",
+            textAlign: "center",
+            minWidth: 0,
+            minHeight: 0,
+            overflow: "hidden",
+          }}
+        >
           {children}
         </div>
       )}
