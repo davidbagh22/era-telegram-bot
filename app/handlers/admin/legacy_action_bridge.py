@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
 
 from app.config import Settings
 from app.keyboards.participant import open_app_button
@@ -25,6 +27,10 @@ LEGACY_ADMIN_ACTIONS = {
     "admin:portfolio",
     "admin:proposals",
     "admin:rewards",
+    "admin:goals",
+    "admin:contacts",
+    "admin:structure",
+    "admin:surveys",
     "admin:menu:activity",
     "admin:participants",
     "admin:task:new",
@@ -39,12 +45,25 @@ LEGACY_ADMIN_ACTIONS = {
 }
 
 
+def _admin_url(settings: Settings) -> str:
+    return miniapp_admin_url(settings.effective_miniapp_url)
+
+
+@router.message(Command("panel"))
+async def panel_launcher(message: Message, settings: Settings, state: FSMContext) -> None:
+    """Keep /panel as a compatibility launcher, not a second Admin OS."""
+    await state.clear()
+    await message.answer(
+        texts.ADMIN_PANEL_MOVED,
+        reply_markup=open_app_button(_admin_url(settings)),
+    )
+
+
 @router.callback_query(F.data.in_(LEGACY_ADMIN_ACTIONS))
 async def open_admin_miniapp(call: CallbackQuery, settings: Settings) -> None:
     """Give every retained legacy button one deterministic safe destination."""
     await call.answer()
-    url = miniapp_admin_url(settings.effective_miniapp_url)
     await call.message.answer(
         texts.ADMIN_PANEL_MOVED,
-        reply_markup=open_app_button(url),
+        reply_markup=open_app_button(_admin_url(settings)),
     )
