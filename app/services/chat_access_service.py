@@ -79,6 +79,24 @@ def _has_department(user: User, marker: str) -> bool:
     return any(marker in link.department.name.casefold() for link in user.departments)
 
 
+def _has_media_membership(user: User) -> bool:
+    """Use the existing Direction/UserDirection membership as Media ACL.
+
+    Media Desk already uses this same source of truth.  The Telegram working
+    chat must not be a weaker path that lets every approved participant bypass
+    Media Lead approval.  Be defensive around partially-loaded relationships:
+    a missing relationship means no Media access, never implicit access.
+    """
+    for link in getattr(user, "directions", None) or []:
+        direction = getattr(link, "direction", None)
+        if direction is None or str(getattr(direction, "name", "")).casefold() != "медиа":
+            continue
+        if getattr(direction, "leader_id", None) == user.id:
+            return True
+        return str(getattr(link, "status", "")).casefold() == "approved"
+    return False
+
+
 def check_chat_access(user: User | None, chat_key: str | None) -> ChatAccessDecision:
     if chat_key is None:
         return ChatAccessDecision(True, None, "unmanaged_chat")
@@ -94,10 +112,13 @@ def check_chat_access(user: User | None, chat_key: str | None) -> ChatAccessDeci
         return ChatAccessDecision(False, chat_key, "not_approved", pending=True)
     if user.role == Role.ADMIN:
         return ChatAccessDecision(True, chat_key, "approved")
-    # General and Media are open working entry points for every approved ERA
-    # participant. Media is intentionally not department-gated.
-    if chat_key in {"general", "media"}:
+    if chat_key == "general":
         return ChatAccessDecision(True, chat_key, "approved")
+    if chat_key == "media":
+        allowed = _has_media_membership(user)
+        return ChatAccessDecision(
+            allowed, chat_key, "approved" if allowed else "media_approval_required"
+        )
     if chat_key == "internal":
         allowed = _has_department(user, "внутрен")
         return ChatAccessDecision(
@@ -125,6 +146,7 @@ def access_message(reason: str) -> str:
         "rejected": "Заявка в ЭРА не одобрена, поэтому доступ к закрытым чатам не открыт.",
         "wrong_department": "Этот чат доступен только участникам соответствующего направления ЭРА.",
         "wrong_role": "Этот чат доступен только лидерам и команде ЭРА.",
+        "media_approval_required": "Media Chat доступен только участникам, которых одобрил руководитель Медиа.",
         "unknown_chat": "Этот чат не найден в настройках доступа ЭРА.",
     }
     return messages.get(reason, "Доступ к этому чату пока не открыт.")
