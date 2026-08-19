@@ -16,7 +16,13 @@ from app.utils.deep_links import miniapp_event_url
 
 
 async def send_configured_event_reminders(bot: Bot, settings: Settings, session_factory) -> None:
-    """Send the nearest configured reminder threshold exactly once per registration."""
+    """Send the nearest configured reminder threshold exactly once per registration.
+
+    The semantic delivery key is written before Telegram is called. The existing
+    EventReminderDelivery remains the domain-level marker, so a crash after the
+    Telegram send but before the domain commit completes the marker on restart
+    without sending a second message.
+    """
     now = datetime.now(ZoneInfo(settings.timezone))
     async with session_factory() as session:
         rows = (
@@ -80,6 +86,9 @@ async def send_configured_event_reminders(bot: Bot, settings: Settings, session_
                     if url
                     else None
                 ),
+                settings=settings,
+                delivery_key=f"event-custom-reminder:{registration.id}:{threshold}",
+                notification_type="event_custom_reminder",
             )
             if not sent:
                 continue
