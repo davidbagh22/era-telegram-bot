@@ -77,12 +77,21 @@ class ExecutiveWorkbookTests(unittest.IsolatedAsyncioTestCase):
             for row in ws.iter_rows()
             for cell in row
         ).casefold()
-        self.assertNotIn("telegram_id", rendered)
-        self.assertNotIn("user_id", rendered)
-        self.assertNotIn("raw answer", rendered)
-        self.assertNotIn("personal notes", rendered)
+        # Executive export may explain the privacy rule in prose, but it must
+        # never expose the underlying technical/raw field names or PII columns.
+        for forbidden in (
+            "telegram_id",
+            "user_id",
+            "raw_answer",
+            "raw_answers",
+            "personal_notes",
+            "phone_number",
+            "email_address",
+        ):
+            self.assertNotIn(forbidden, rendered)
         self.assertIn("aggregate only", rendered)
         self.assertIn("meaningful activity", rendered)
+        self.assertEqual(len(wb.sheetnames), 13)
 
 
 if __name__ == "__main__":
