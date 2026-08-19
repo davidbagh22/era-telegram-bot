@@ -351,10 +351,12 @@ async def score_project_completion(
     *,
     approved_by_id: int | None,
 ) -> list[PointTransaction]:
-    """Award only people with a confirmed project contribution plus author.
+    """Reward only users whose contribution is explicitly confirmed.
 
-    The author is treated as Project Lead for the +150 result bonus. This is
-    deliberately based on real project data, not a global role multiplier.
+    Project authorship is not evidence of completed work. The author receives
+    the participant completion reward and Project Lead result bonus only when
+    the author also has a confirmed ``ProjectMember`` contribution. This keeps
+    project completion aligned with the platform-wide verified-activity rule.
     """
     members = list(
         (
@@ -368,7 +370,6 @@ async def score_project_completion(
         ).all()
     )
     participant_ids = {member.user_id for member in members}
-    participant_ids.add(project.author_id)
     awarded: list[PointTransaction] = []
     for user_id in sorted(participant_ids):
         transaction = await record_verified_activity(
@@ -386,18 +387,19 @@ async def score_project_completion(
         )
         awarded.append(transaction)
 
-    lead = await record_verified_activity(
-        session,
-        user_id=project.author_id,
-        points=PROJECT_LEAD_RESULT_POINTS,
-        reason=f"Результат Project Lead: {project.title}",
-        category=PointCategory.PROJECT,
-        source_type="project_lead_result",
-        source_id=project.id,
-        idempotency_key=f"project:{project.id}:lead:{project.author_id}:result",
-        approved_by=approved_by_id,
-        related_project_id=project.id,
-        metric_updates={"projects_led": 1, "leadership_activities": 1},
-    )
-    awarded.append(lead)
+    if project.author_id in participant_ids:
+        lead = await record_verified_activity(
+            session,
+            user_id=project.author_id,
+            points=PROJECT_LEAD_RESULT_POINTS,
+            reason=f"Результат Project Lead: {project.title}",
+            category=PointCategory.PROJECT,
+            source_type="project_lead_result",
+            source_id=project.id,
+            idempotency_key=f"project:{project.id}:lead:{project.author_id}:result",
+            approved_by=approved_by_id,
+            related_project_id=project.id,
+            metric_updates={"projects_led": 1, "leadership_activities": 1},
+        )
+        awarded.append(lead)
     return awarded
