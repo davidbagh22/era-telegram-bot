@@ -18,6 +18,7 @@ from app.services.leadership_weekly_service import (
     open_weekly_pulses_job,
 )
 from app.services.media_attachment_service import post_missing_media_task_cards
+from app.services.media_pipeline_service import reconcile_media_pipeline_job
 from app.services.media_service import process_media_chat_automation, publish_due_channel_content
 from app.services.participation_lifecycle_service import run_reactivation_cycle
 from app.services.project_scoring_reconciliation_service import reconcile_project_scoring_job
@@ -105,6 +106,17 @@ def add_system_jobs(
         minutes=1,
         args=(bot, settings, session_factory),
         id="task-squad-notifications",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
+    )
+    scheduler.add_job(
+        reconcile_media_pipeline_job,
+        "interval",
+        minutes=1,
+        args=(session_factory,),
+        id="media-content-pipeline-reconciliation",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
