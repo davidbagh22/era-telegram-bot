@@ -4,6 +4,7 @@ import { ActionCell } from "../../components/ActionCell";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { useAsync } from "../../hooks/useAsync";
+import type { AdminMetricKey } from "../../types/adminMetrics";
 
 const ATTENTION_LABELS = {
   users_pending: "Новые заявки ждут решения",
@@ -33,6 +34,7 @@ interface AdminOverviewScreenProps {
   onOpenVerification: () => void;
   onOpenReports: () => void;
   onOpenSystem: () => void;
+  onOpenMetric: (metric: AdminMetricKey, total: number) => void;
 }
 
 function timeAgo(iso: string): string {
@@ -62,7 +64,7 @@ function KpiButton({ value, label, note, onClick }: { value: number; label: stri
         <div style={{ fontSize: "1.9rem", fontWeight: 950, lineHeight: 1 }}>{value}</div>
         <strong style={{ display: "block", marginTop: "0.45rem" }}>{label}</strong>
         <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: "0.76rem" }}>
-          {note ?? "Открыть список →"}
+          {note ?? "Открыть точный список →"}
         </span>
       </Card>
     </button>
@@ -81,6 +83,7 @@ export function AdminOverviewScreen({
   onOpenVerification,
   onOpenReports,
   onOpenSystem,
+  onOpenMetric,
 }: AdminOverviewScreenProps) {
   const dashboard = useAsync(() => fetchAdminDashboard(), []);
   const activity = useAsync(() => fetchRecentActivity(), []);
@@ -116,6 +119,12 @@ export function AdminOverviewScreen({
 
   const latestHealth = system.status === "ready" ? system.data.latest : null;
   const healthIssues = latestHealth?.checks.filter((check) => check.status !== "ok") ?? [];
+  const roster = metrics.current_roster ?? metrics.users_total ?? 0;
+  const activeBase = metrics.active_base ?? 0;
+  const projectsActive = metrics.projects_active ?? 0;
+  const eventsLive = metrics.events_live ?? 0;
+  const registrations = metrics.event_registrations ?? 0;
+  const taskResults = metrics.task_results ?? 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.15rem" }}>
@@ -155,12 +164,12 @@ export function AdminOverviewScreen({
       <section>
         <h2 style={{ fontSize: ".86rem", color: "var(--era-text-muted)", margin: "0 0 .55rem" }}>ЖИВЫЕ ПОКАЗАТЕЛИ</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: ".55rem" }}>
-          <KpiButton value={metrics.current_roster ?? metrics.users_total ?? 0} label="Участники" note="Текущий подтверждённый состав" onClick={onOpenPeople} />
-          <KpiButton value={metrics.active_base ?? 0} label="Активная база" note="Реальные действия за 14 дней" onClick={onOpenPeople} />
-          <KpiButton value={metrics.projects_active ?? 0} label="Проекты" onClick={onOpenProjects} />
-          <KpiButton value={metrics.events_live ?? 0} label="События" onClick={onOpenEvents} />
-          <KpiButton value={metrics.event_registrations ?? 0} label="Регистрации" onClick={onOpenEvents} />
-          <KpiButton value={metrics.task_results ?? 0} label="Задания на проверке" onClick={onOpenTasks} />
+          <KpiButton value={roster} label="Участники" note="Точный подтверждённый состав" onClick={() => onOpenMetric("current_roster", roster)} />
+          <KpiButton value={activeBase} label="Активная база" note="Meaningful Activity · 14 дней" onClick={() => onOpenMetric("active_base", activeBase)} />
+          <KpiButton value={projectsActive} label="Проекты" onClick={() => onOpenMetric("projects_active", projectsActive)} />
+          <KpiButton value={eventsLive} label="События" onClick={() => onOpenMetric("events_live", eventsLive)} />
+          <KpiButton value={registrations} label="Регистрации" onClick={() => onOpenMetric("event_registrations", registrations)} />
+          <KpiButton value={taskResults} label="Задания на проверке" onClick={() => onOpenMetric("task_results", taskResults)} />
         </div>
       </section>
 
@@ -182,21 +191,10 @@ export function AdminOverviewScreen({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
             {(metrics.event_waitlist ?? 0) > 0 && (
-              <ActionCell
-                title={`${metrics.event_waitlist} в листе ожидания`}
-                description="Проверьте ближайшие события и свободные места"
-                leading="◎"
-                onClick={onOpenEvents}
-              />
+              <ActionCell title={`${metrics.event_waitlist} в листе ожидания`} description="Проверьте ближайшие события и свободные места" leading="◎" onClick={onOpenEvents} />
             )}
             {attentionItems.map((item) => (
-              <ActionCell
-                key={item.key}
-                title={`${item.value} · ${item.label}`}
-                description="Открыть и решить →"
-                leading="!"
-                onClick={attentionActions[item.key]}
-              />
+              <ActionCell key={item.key} title={`${item.value} · ${item.label}`} description="Открыть и решить →" leading="!" onClick={attentionActions[item.key]} />
             ))}
           </div>
         )}
@@ -216,13 +214,7 @@ export function AdminOverviewScreen({
         <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .55rem" }}>Ближайшие мероприятия</h2>
         {upcoming.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загружаем афишу…</p>}
         {upcoming.status === "error" && <EmptyState text="Не удалось загрузить ближайшие события." />}
-        {upcoming.status === "ready" && upcoming.data.length === 0 && (
-          <Card>
-            <strong>Пока нет ближайших мероприятий</strong>
-            <p style={{ margin: ".3rem 0 0", color: "var(--era-text-muted)" }}>Создайте первое событие — регистрация и участники будут собраны автоматически.</p>
-            <button type="button" className="era-btn-primary" onClick={onOpenEvents} style={{ marginTop: ".75rem", width: "100%" }}>Создать мероприятие</button>
-          </Card>
-        )}
+        {upcoming.status === "ready" && upcoming.data.length === 0 && <EmptyState text="Пока нет ближайших мероприятий." />}
         {upcoming.status === "ready" && upcoming.data.slice(0, 3).map((event) => (
           <button key={event.id} type="button" onClick={onOpenEvents} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left", marginBottom: ".5rem" }}>
             <Card style={{ padding: ".8rem .9rem" }}>
@@ -248,7 +240,7 @@ export function AdminOverviewScreen({
         <h2 style={{ fontSize: ".86rem", color: "var(--era-text-muted)", margin: "0 0 .5rem" }}>ПОСЛЕДНЯЯ АКТИВНОСТЬ</h2>
         {activity.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>}
         {activity.status === "error" && <EmptyState text="Не удалось загрузить активность." />}
-        {activity.status === "ready" && activity.data.length === 0 && <EmptyState text="Пока нет новых действий. Они появятся здесь после первых изменений." />}
+        {activity.status === "ready" && activity.data.length === 0 && <EmptyState text="Пока нет новых действий." />}
         {activity.status === "ready" && activity.data.slice(0, 8).map((entry) => (
           <div key={entry.id} style={{ display: "flex", justifyContent: "space-between", gap: ".6rem", padding: ".55rem 0", borderBottom: "1px solid var(--era-border)", fontSize: ".8rem" }}>
             <span style={{ overflowWrap: "anywhere" }}>{entry.actor_name ? <strong>{entry.actor_name} </strong> : null}{entry.summary}</span>
