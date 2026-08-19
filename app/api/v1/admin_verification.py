@@ -6,10 +6,12 @@ from datetime import datetime, timezone
 from aiogram import Bot
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.config import Settings
+from app.database.community_verification_models import CommunityVerificationCampaign
 from app.database.models import User
 from app.services.authorization_service import is_full_admin
 from app.services.community_verification_service import (
@@ -71,9 +73,7 @@ def _require_bot(bot: Bot | None) -> Bot:
     return bot
 
 
-async def _campaign_out(
-    session: AsyncSession, campaign
-) -> CampaignOut:
+async def _campaign_out(session: AsyncSession, campaign) -> CampaignOut:
     rows = await campaign_segment_rows(session, campaign)
     counts = Counter(str(row["registration_status"]) for row in rows)
     delivery_counts = Counter(str(row["delivery_status"]) for row in rows)
@@ -92,6 +92,14 @@ async def _campaign_out(
     )
 
 
+async def _latest_campaign(session: AsyncSession) -> CommunityVerificationCampaign | None:
+    return await session.scalar(
+        select(CommunityVerificationCampaign)
+        .order_by(CommunityVerificationCampaign.started_at.desc())
+        .limit(1)
+    )
+
+
 @router.get("", response_model=CampaignOut | None)
 async def read_verification_campaign(
     user: User = Depends(get_current_user),
@@ -100,7 +108,7 @@ async def read_verification_campaign(
 ) -> CampaignOut | None:
     _require_admin(user, settings)
     await complete_due_campaigns(session, now=datetime.now(timezone.utc))
-    campaign = await active_campaign(session)
+    campaign = await _latest_campaign(session)
     if campaign is None:
         return None
     return await _campaign_out(session, campaign)
