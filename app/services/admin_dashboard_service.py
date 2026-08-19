@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,7 @@ from app.database.models import (
     UserQuestion,
 )
 from app.services.authorization_service import is_full_admin
+from app.services.meaningful_activity_service import meaningful_user_ids_since
 from app.utils.constants import (
     ApplicationStatus,
     EventStatus,
@@ -69,29 +71,55 @@ class DashboardMetrics:
 
 
 async def dashboard_metrics(session: AsyncSession) -> DashboardMetrics:
-    """Live Command Center counters. Every number maps to a real entity list."""
-    values = {
-        "users_total": await _count(session, User, User.is_archived.is_(False)),
-        "users_approved": await _count(
+    """Live Command Center counters backed by real entity/source queries."""
+    current_roster_conditions = (
+        User.application_status == ApplicationStatus.APPROVED,
+        User.is_archived.is_(False),
+        User.is_blocked.is_(False),
+    )
+    active_ids = await meaningful_user_ids_since(
+        session,
+        datetime.now(timezone.utc) - timedelta(days=14),
+        include_current_responsibility=True,
+    )
+    if active_ids:
+        active_base = await _count(
             session,
             User,
-            User.application_status == ApplicationStatus.APPROVED,
-            User.is_archived.is_(False),
-        ),
+            *current_roster_conditions,
+            User.id.in_(active_ids),
+        )
+    else:
+        active_base = 0
+
+    current_roster = await _count(session, User, *current_roster_conditions)
+    values = {
+        # `users_total` stays as the compatibility key consumed by the current
+        # Mini App, but its meaning is now the real current approved roster,
+        # not every non-archived application row.
+        "users_total": current_roster,
+        "current_roster": current_roster,
+        "users_approved": current_roster,
+        "active_base": active_base,
         "users_pending": await _count(
             session,
             User,
             User.application_status.in_([ApplicationStatus.PENDING, ApplicationStatus.NEEDS_INFO]),
             User.is_archived.is_(False),
         ),
+        # Legacy organizational-role count retained for compatibility and
+        # drill-downs, but never presented as Active Base.
         "activists": await _count(
-            session, User, User.role == Role.ACTIVIST, User.is_archived.is_(False)
+            session,
+            User,
+            User.role == Role.ACTIVIST,
+            *current_roster_conditions,
         ),
         "leaders": await _count(
             session,
             User,
             User.role.in_([Role.LEADER, Role.HEAD, Role.COUNCIL, Role.ADMIN]),
-            User.is_archived.is_(False),
+            *current_roster_conditions,
         ),
         "projects_review": await _count(
             session,
