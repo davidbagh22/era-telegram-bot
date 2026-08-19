@@ -6,6 +6,7 @@ from app.api.v1 import (
     activity,
     admin,
     admin_analytics_details,
+    admin_application_decisions,
     admin_applications,
     admin_autocontent,
     admin_career,
@@ -68,6 +69,7 @@ api_router.include_router(auctions.router)
 api_router.include_router(rewards.router)
 api_router.include_router(surveys.router)
 api_router.include_router(admin_applications.router)
+api_router.include_router(admin_application_decisions.router)
 api_router.include_router(admin_autocontent.router)
 api_router.include_router(admin_career.router)
 api_router.include_router(admin_development.router)
