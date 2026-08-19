@@ -1,6 +1,8 @@
 import { authenticate, ApiError } from "./client";
 import { getInitData } from "../telegram/webApp";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+
 export interface ParticipationState {
   participation_mode: "ACTIVE" | "LIGHT" | "PAUSED" | "OBSERVER" | "EXITED";
   activity_state: "ADAPTATION" | "ACTIVE" | "COOLING" | "INACTIVE" | "DORMANT" | "ARCHIVE_CANDIDATE";
@@ -21,7 +23,7 @@ async function freshToken(): Promise<string> {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await freshToken();
-  const response = await fetch(`/api/v1${path}`, {
+  const response = await fetch(`${API_BASE_URL}/api/v1${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
