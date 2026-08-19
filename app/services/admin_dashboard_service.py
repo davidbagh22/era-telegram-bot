@@ -20,6 +20,7 @@ from app.database.models import (
     User,
     UserQuestion,
 )
+from app.services.authorization_service import is_full_admin
 from app.utils.constants import (
     ApplicationStatus,
     EventStatus,
@@ -44,16 +45,14 @@ ATTENTION_KEYS = (
 
 
 def has_dashboard_access(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    return bool(
-        telegram_id in settings.admin_ids
-        or (user and user.role == Role.ADMIN and not user.is_blocked)
-        or (
-            user
-            and not user.is_blocked
-            and not user.is_archived
-            and any(g.is_active for g in (user.permission_grants or []))
-        )
-    )
+    """Global Command Center access is an administrator capability.
+
+    A delegated permission such as ``people.view`` or ``events.manage`` must
+    never become a back door into organization-wide analytics, contacts,
+    leadership workload, exports, or other endpoints that share the admin
+    router's dashboard guard. Scoped managers use their dedicated scoped APIs.
+    """
+    return is_full_admin(user, settings, telegram_id)
 
 
 async def _count(session: AsyncSession, model, *conditions) -> int:
