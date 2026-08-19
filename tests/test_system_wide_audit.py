@@ -175,7 +175,7 @@ class SystemWideAuditTests(unittest.TestCase):
             "task_review_block2.router",
             "projects_block5_decision.router",
             "event_registration_block14.router",
-            "event_activities_block15.router",
+            "event_activities_block7.router",
             "partner_offers_block16.router",
             "auction_block17.router",
         ]
@@ -183,12 +183,11 @@ class SystemWideAuditTests(unittest.TestCase):
         missing += [m for m in admin_required if m not in admin]
         self.assertFalse(missing, "Critical routers are not wired: " + ", ".join(missing))
 
-    def test_modern_participant_routers_precede_legacy_overlaps(self) -> None:
+    def test_modern_participant_routers_precede_remaining_legacy_overlaps(self) -> None:
         participant = read(APP / "handlers" / "participant" / "__init__.py")
         order_pairs = [
             ("task_block2.router", "cabinet.router"),
             ("events_stability_block8.router", "events.router"),
-            ("event_activities_block15.router", "event_activities_block7.router"),
             ("auction_block17.router", "growth.router"),
             ("directions_block7.router", "departments.router"),
             ("projects_block5.router", "projects.router"),
@@ -196,11 +195,14 @@ class SystemWideAuditTests(unittest.TestCase):
         failures = [
             f"{newer} must be before {legacy}"
             for newer, legacy in order_pairs
-            if participant.index(newer) > participant.index(legacy)
+            if newer not in participant
+            or legacy not in participant
+            or participant.index(newer) > participant.index(legacy)
         ]
-        self.assertFalse(failures, "Participant legacy router order changed:\n" + "\n".join(failures))
+        self.assertNotIn("event_activities_block7.router", participant)
+        self.assertFalse(failures, "Participant router ownership/order changed:\n" + "\n".join(failures))
 
-    def test_modern_admin_routers_are_wired_and_legacy_panel_is_removed(self) -> None:
+    def test_modern_admin_routers_are_wired_and_duplicate_panels_are_removed(self) -> None:
         admin = read(APP / "handlers" / "admin" / "__init__.py")
         required = [
             "dashboard_block_a.router",
@@ -211,32 +213,34 @@ class SystemWideAuditTests(unittest.TestCase):
             "projects_block5_decision.router",
             "events_block6.router",
             "event_registration_block14.router",
-            "event_activities_stability.router",
+            "event_activities_block7.router",
             "auction_block17.router",
             "partner_offers_block16.router",
             "approval_bonus_fix.router",
             "chat_binding_stability.router",
             "offices_management.router",
+            "legacy_action_bridge.router",
         ]
         missing = [router for router in required if router not in admin]
         self.assertFalse(missing, "Modern admin routers are not wired: " + ", ".join(missing))
         self.assertNotIn("panel.router", admin)
         self.assertNotIn("panel,", admin)
+        self.assertNotIn("management_ready.router", admin)
+        self.assertNotIn("event_activities_block15.router", admin)
 
-    def test_modern_leader_routers_precede_legacy_panel_overlaps(self) -> None:
+    def test_modern_leader_routers_precede_legacy_bridge_and_panel_is_removed(self) -> None:
         leader = read(APP / "handlers" / "leader" / "__init__.py")
-        order_pairs = [
-            ("open_tasks.router", "panel.router"),
-            ("events_block6.router", "panel.router"),
-            ("event_activities_block7.router", "panel.router"),
-            ("task_deadline_buttons.router", "panel.router"),
+        canonical = [
+            "open_tasks.router",
+            "events_block6.router",
+            "event_activities_block7.router",
+            "task_deadline_buttons.router",
         ]
-        failures = [
-            f"{newer} must be before {legacy}"
-            for newer, legacy in order_pairs
-            if leader.index(newer) > leader.index(legacy)
-        ]
-        self.assertFalse(failures, "Leader legacy router order changed:\n" + "\n".join(failures))
+        self.assertIn("legacy_bridge.router", leader)
+        for marker in canonical:
+            self.assertIn(marker, leader)
+            self.assertLess(leader.index(marker), leader.index("legacy_bridge.router"))
+        self.assertNotIn("panel.router", leader)
 
     def test_inactive_legacy_alias_routers_stay_unwired(self) -> None:
         admin = read(APP / "handlers" / "admin" / "__init__.py")
@@ -249,11 +253,9 @@ class SystemWideAuditTests(unittest.TestCase):
 
     def test_points_sensitive_flows_have_idempotency_markers(self) -> None:
         targets = {
-            # Task review deliberately no longer calls add_points directly:
-            # it enters the canonical verified-activity scoring pipeline.
             "app/services/task_review_service.py": ["score_task_completion", "approved"],
             "app/handlers/admin/event_registration_block14.py": ["add_points", "ATTENDED"],
-            "app/handlers/admin/event_activities_block15.py": ["add_points", "approved"],
+            "app/handlers/admin/event_activities_block7.py": ["score_event_activity_completion", "approved"],
             "app/services/opportunity_service.py": ["add_points", "approved"],
             "app/handlers/admin/auction_block17.py": ["points=-bid.amount", "winner"],
         }
