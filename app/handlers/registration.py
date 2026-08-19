@@ -74,6 +74,29 @@ PLATFORMS = {
 }
 
 
+def application_status_message(status: str) -> str:
+    """Return a truthful participant-facing application status.
+
+    Rejection reasons remain internal-only: this presenter exposes the status,
+    never the admin comment/reason stored with the application review.
+    """
+    if status == ApplicationStatus.APPROVED:
+        return texts.APPLICATION_APPROVED
+    if status == ApplicationStatus.REJECTED:
+        return (
+            "Статус заявки: не одобрена.\n\n"
+            "Доступ участника к закрытым разделам и чатам ЭРА не открыт. "
+            "Если вы считаете, что произошла ошибка, напишите команде ЭРА."
+        )
+    if status == ApplicationStatus.NEEDS_INFO:
+        return (
+            "Статус заявки: нужно уточнение.\n\n"
+            "Команда ЭРА запросила дополнительную информацию. "
+            "Проверьте последние сообщения от бота и ответьте на запрос администратора."
+        )
+    return texts.APPLICATION_PENDING
+
+
 def _platform_from_url(url: str) -> str:
     host = urlparse(url).netloc.lower().removeprefix("www.")
     for domain, platform in PLATFORMS.items():
@@ -214,7 +237,16 @@ async def registration_start(
 ) -> None:
     await call.answer()
     if user is not None:
-        await call.message.answer(texts.APPLICATION_PENDING)
+        await call.message.answer(application_status_message(user.application_status))
+        if user.application_status == ApplicationStatus.APPROVED:
+            await call.message.answer(
+                texts.MAIN_MENU,
+                reply_markup=main_inline_keyboard(
+                    privileged=user.role in PRIVILEGED_ROLES,
+                    admin=user.role == Role.ADMIN,
+                    miniapp_url=settings.effective_miniapp_url,
+                ),
+            )
         return
     try:
         subscribed = await is_channel_member(bot, call.from_user.id, settings)
@@ -655,7 +687,7 @@ async def registration_status(call: CallbackQuery, user, settings: Settings) -> 
         return
     if user.application_status == ApplicationStatus.APPROVED:
         await call.message.answer(
-            texts.APPLICATION_APPROVED,
+            application_status_message(user.application_status),
             reply_markup=main_inline_keyboard(
                 privileged=user.role in PRIVILEGED_ROLES,
                 admin=user.role == Role.ADMIN,
@@ -664,6 +696,10 @@ async def registration_status(call: CallbackQuery, user, settings: Settings) -> 
         )
         return
     await call.message.answer(
-        texts.APPLICATION_PENDING,
-        reply_markup=pending_registration_keyboard(settings.era_channel_url),
+        application_status_message(user.application_status),
+        reply_markup=(
+            pending_registration_keyboard(settings.era_channel_url)
+            if user.application_status in {ApplicationStatus.PENDING, ApplicationStatus.NEEDS_INFO}
+            else None
+        ),
     )
