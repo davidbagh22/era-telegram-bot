@@ -31,7 +31,7 @@ export async function fetchAdminMetric(metric: AdminMetricKey): Promise<AdminMet
 
 export async function downloadAdminMetric(metric: AdminMetricKey): Promise<void> {
   const bearer = await token();
-  const response = await fetch(`${API_BASE_URL}/api/v1/admin/analytics/drilldown/${metric}.xlsx`, {
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/analytics/drilldown/export/${metric}.xlsx`, {
     headers: { Authorization: `Bearer ${bearer}` },
   });
   if (!response.ok) throw new ApiError(response.status, await detail(response));
