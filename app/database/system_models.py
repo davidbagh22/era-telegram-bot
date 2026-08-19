@@ -42,6 +42,10 @@ class SystemIncident(TimestampMixin, Base):
     detail: Mapped[str] = mapped_column(Text)
     check_key: Mapped[str | None] = mapped_column(String(96), index=True)
     occurrence_count: Mapped[int] = mapped_column(Integer, default=1)
+    # Incremented only when a resolved incident becomes open again. It gives
+    # each incident episode stable idempotency keys for alert + recovery while
+    # still allowing a future re-open to notify admins again.
+    notification_generation: Mapped[int] = mapped_column(Integer, default=1)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
