@@ -279,7 +279,7 @@ def scoped_task_points(task: Task, participant: User) -> int:
     # when no stronger actual leadership role already applies.
     if (
         multiplier == 1.0
-        and participant.participation_status == ParticipationStatus.CURATOR
+        and participant.participation_status == ParticipationStatus.PROJECT_CURATOR
     ):
         multiplier = CURATOR_SCOPED_MULTIPLIER
     return int(round(base * multiplier))
