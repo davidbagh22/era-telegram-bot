@@ -53,6 +53,17 @@ async def _load(session: AsyncSession, metric: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+def _row_out(row) -> MetricRowOut:
+    return MetricRowOut(
+        id=row.id,
+        entity_type=row.entity_type,
+        entity_id=row.entity_id,
+        title=row.title,
+        subtitle=row.subtitle,
+        status=row.status,
+    )
+
+
 @router.get("/{metric}", response_model=MetricDrilldownOut)
 async def read_metric_drilldown(
     metric: str,
@@ -64,7 +75,7 @@ async def read_metric_drilldown(
         metric=result.metric,
         label=result.label,
         total=result.total,
-        items=[MetricRowOut(**row.__dict__) for row in result.rows],
+        items=[_row_out(row) for row in result.rows],
     )
 
 
