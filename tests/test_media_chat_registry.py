@@ -44,6 +44,7 @@ class MediaChatRegistryTests(unittest.IsolatedAsyncioTestCase):
         direction = SimpleNamespace(name="Медиа", leader_id=None)
         membership = SimpleNamespace(direction=direction, status="approved")
         user = SimpleNamespace(
+            id=101,
             application_status=ApplicationStatus.APPROVED,
             is_blocked=False,
             is_archived=False,
