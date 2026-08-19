@@ -171,7 +171,7 @@ def pending_registration_keyboard(channel_url: str) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="Проверить статус заявки",
-                    callback_data="registration:status:v2",
+                    callback_data="registration:status",
                 )
             ],
             [InlineKeyboardButton(text="Перейти на канал ЭРА", url=channel_url)],
