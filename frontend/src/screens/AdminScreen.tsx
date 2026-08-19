@@ -9,16 +9,17 @@ import { AdminDevelopmentScreen } from "./admin/AdminDevelopmentScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
 import { AdminMaintenanceScreen, type MaintenanceTarget } from "./admin/AdminMaintenanceScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
-import { AdminOffersScreen } from "./admin/AdminOffersScreen";
+import { AdminOffersScreen, type OffersSection } from "./admin/AdminOffersScreen";
 import { AdminOverviewScreen } from "./admin/AdminOverviewScreen";
 import { AdminProjectsScreen } from "./admin/AdminProjectsScreen";
 import { AdminSurveysScreen } from "./admin/AdminSurveysScreen";
 import { AdminTasksScreen } from "./admin/AdminTasksScreen";
 import { AdminToolsScreen } from "./admin/AdminToolsScreen";
 import { AdminUsersScreen } from "./admin/AdminUsersScreen";
+import { AdminVerificationScreen } from "./admin/AdminVerificationScreen";
 import { SystemPanel } from "./admin/tools/SystemPanel";
 
-type PeopleSection = "participants" | "development" | "career" | "applications" | "offices" | "data-rights";
+type PeopleSection = "participants" | "verification" | "development" | "career" | "applications" | "offices" | "data-rights";
 type WorkSection = "projects" | "events" | "tasks" | "offers";
 type CommsSection = "surveys" | "tools";
 type ControlSection = "analytics" | "system" | "maintenance";
@@ -32,6 +33,7 @@ type InitialAdminRoute = {
 
 const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
   { value: "participants", label: "Участники", description: "Люди, роли и состояние сообщества" },
+  { value: "verification", label: "Проверка состава", description: "Community Verification, напоминания и ручные решения" },
   { value: "development", label: "Состояние и развитие", description: "Добровольные Check-in, охват и потребности сообщества" },
   { value: "career", label: "Портфолио и рекомендации", description: "Проверка достижений и утверждение официальных рекомендательных писем" },
   { value: "applications", label: "Заявки", description: "Новые регистрации и решения по ним" },
@@ -99,6 +101,7 @@ export function AdminScreen() {
   const [group, setGroup] = useState<AdminGroup>(launchRoute.openApplications ? "people" : "overview");
   const [peopleSection, setPeopleSection] = useState<PeopleSection | null>(launchRoute.openApplications ? "applications" : null);
   const [workSection, setWorkSection] = useState<WorkSection | null>(null);
+  const [offersInitialSection, setOffersInitialSection] = useState<OffersSection>("applications");
   const [commsSection, setCommsSection] = useState<CommsSection | null>(null);
   const [controlSection, setControlSection] = useState<ControlSection | null>(null);
 
@@ -117,9 +120,10 @@ export function AdminScreen() {
     setCommsSection(null);
     setControlSection(null);
   };
-  const openWork = (section: WorkSection) => {
+  const openWork = (section: WorkSection, offersSection: OffersSection = "applications") => {
     setGroup("work");
     setWorkSection(section);
+    if (section === "offers") setOffersInitialSection(offersSection);
     setPeopleSection(null);
     setCommsSection(null);
     setControlSection(null);
@@ -166,18 +170,22 @@ export function AdminScreen() {
           <AdminOverviewScreen
             onOpenPeople={() => openPeople("participants")}
             onOpenApplications={() => openPeople("applications")}
+            onOpenVerification={() => openPeople("verification")}
+            onOpenCareer={() => openPeople("career")}
             onOpenProjects={() => openWork("projects")}
             onOpenEvents={() => openWork("events")}
             onOpenTasks={() => openWork("tasks")}
+            onOpenOffers={() => openWork("offers", "rewards")}
             onOpenComms={openComms}
           />
         )}
 
-        {group === "people" && !peopleSection && <SectionMenu title="Люди" description="Участники, развитие, портфолио, регистрации, роли и права на данные." options={PEOPLE_SECTIONS} onOpen={setPeopleSection} />}
+        {group === "people" && !peopleSection && <SectionMenu title="Люди" description="Участники, проверка состава, развитие, портфолио, регистрации, роли и права на данные." options={PEOPLE_SECTIONS} onOpen={setPeopleSection} />}
         {group === "people" && peopleSection && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={PEOPLE_SECTIONS.find((item) => item.value === peopleSection)?.label ?? "Люди"} onBack={() => setPeopleSection(null)} />
             {peopleSection === "participants" && <AdminUsersScreen />}
+            {peopleSection === "verification" && <AdminVerificationScreen />}
             {peopleSection === "development" && <AdminDevelopmentScreen />}
             {peopleSection === "career" && <AdminCareerScreen />}
             {peopleSection === "applications" && <AdminApplicationsScreen initialApplicationId={launchRoute.applicationId} />}
@@ -193,7 +201,7 @@ export function AdminScreen() {
             {workSection === "projects" && <AdminProjectsScreen />}
             {workSection === "events" && <AdminEventsScreen />}
             {workSection === "tasks" && <AdminTasksScreen />}
-            {workSection === "offers" && <AdminOffersScreen />}
+            {workSection === "offers" && <AdminOffersScreen key={offersInitialSection} initialSection={offersInitialSection} />}
           </div>
         )}
 
