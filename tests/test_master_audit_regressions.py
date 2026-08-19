@@ -4,9 +4,11 @@ import unittest
 from types import SimpleNamespace
 
 from app.config import Settings
+from app.handlers.registration import application_status_message
 from app.services.activity_scoring_service import scoped_task_points
 from app.services.admin_dashboard_service import has_dashboard_access
 from app.services.chat_access_service import check_chat_access
+from app.utils import texts
 from app.utils.constants import ApplicationStatus, ParticipationStatus, Role
 
 
@@ -43,6 +45,26 @@ class AdminPermissionBoundaryTests(unittest.TestCase):
     def test_admin_role_can_open_global_command_center(self) -> None:
         user = _user(role=Role.ADMIN)
         self.assertTrue(has_dashboard_access(user, _settings(), user.telegram_id))
+
+
+class ApplicationStatusPresenterTests(unittest.TestCase):
+    def test_pending_stays_pending(self) -> None:
+        self.assertEqual(application_status_message(ApplicationStatus.PENDING), texts.APPLICATION_PENDING)
+
+    def test_rejected_is_not_presented_as_pending(self) -> None:
+        value = application_status_message(ApplicationStatus.REJECTED)
+        self.assertIn("не одобрена", value)
+        self.assertNotEqual(value, texts.APPLICATION_PENDING)
+
+    def test_needs_info_is_not_presented_as_pending(self) -> None:
+        value = application_status_message(ApplicationStatus.NEEDS_INFO)
+        self.assertIn("нужно уточнение", value)
+        self.assertNotEqual(value, texts.APPLICATION_PENDING)
+
+    def test_status_text_never_contains_internal_rejection_reason(self) -> None:
+        value = application_status_message(ApplicationStatus.REJECTED)
+        self.assertNotIn("reason", value.casefold())
+        self.assertNotIn("admin", value.casefold())
 
 
 class ScopedMultiplierTests(unittest.TestCase):
