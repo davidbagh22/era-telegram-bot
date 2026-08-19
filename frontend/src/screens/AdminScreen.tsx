@@ -135,6 +135,13 @@ export function AdminScreen() {
     setWorkSection(null);
     setControlSection(null);
   };
+  const openControl = (section: ControlSection) => {
+    setGroup("control");
+    setControlSection(section);
+    setPeopleSection(null);
+    setWorkSection(null);
+    setCommsSection(null);
+  };
   const openComms = () => openCommsSection("tools");
   const openMaintenanceTarget = (target: MaintenanceTarget) => {
     if (
@@ -156,11 +163,7 @@ export function AdminScreen() {
       openCommsSection(target);
       return;
     }
-    setGroup("control");
-    setControlSection(target);
-    setPeopleSection(null);
-    setWorkSection(null);
-    setCommsSection(null);
+    openControl(target);
   };
 
   return (
@@ -177,6 +180,8 @@ export function AdminScreen() {
             onOpenTasks={() => openWork("tasks")}
             onOpenOffers={() => openWork("offers", "rewards")}
             onOpenComms={openComms}
+            onOpenReports={() => openControl("analytics")}
+            onOpenSystem={() => openControl("system")}
           />
         )}
 
