@@ -123,6 +123,8 @@ class SystemSchedulerTests(unittest.TestCase):
                 "media-channel-publication",
                 "media-task-cards",
                 "media-chat-automation",
+                "participation-reactivation",
+                "community-verification-expiry",
                 "my-vector-monthly-reminders",
                 "general-chat-faq-pin",
             ],
