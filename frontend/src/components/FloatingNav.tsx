@@ -1,7 +1,7 @@
 import {
-  CommunityIcon,
   EventIcon,
   HomeIcon,
+  OpportunitiesIcon,
   ProfileIcon,
   ProjectsIcon,
 } from "./icons";
@@ -13,7 +13,11 @@ const TABS: { key: TabKey; label: string; Icon: typeof HomeIcon }[] = [
   { key: "home", label: "Главная", Icon: HomeIcon },
   { key: "projects", label: "Проекты", Icon: ProjectsIcon },
   { key: "events", label: "События", Icon: EventIcon },
-  { key: "community", label: "Сообщество", Icon: CommunityIcon },
+  // Keep the internal `community` key for backwards-compatible deep links,
+  // but the primary participant navigation is the approved Opportunities
+  // surface. Secondary community tools remain reachable through their own
+  // deep links and screens; they are not a sixth main tab.
+  { key: "community", label: "Возможности", Icon: OpportunitiesIcon },
   { key: "profile", label: "Профиль", Icon: ProfileIcon },
 ];
 
@@ -22,8 +26,7 @@ interface FloatingNavProps {
   onChange: (tab: TabKey) => void;
 }
 
-/** Floating white/glass bottom nav (ToR §13): violet glow + a small signal
- * dot for the active tab, grey for the rest, max 5 items. */
+/** Floating white/glass bottom nav: five primary participant destinations. */
 export function FloatingNav({ active, onChange }: FloatingNavProps) {
   const activeIndex = Math.max(0, TABS.findIndex((tab) => tab.key === active));
 
@@ -82,6 +85,12 @@ export function FloatingNav({ active, onChange }: FloatingNavProps) {
             type="button"
             onClick={() => {
               if (!isActive) selectionHaptic();
+              if (key === "community") {
+                if (window.location.hash !== "#/opportunities") {
+                  window.location.hash = "#/opportunities";
+                }
+                return;
+              }
               onChange(key);
             }}
             aria-current={isActive ? "page" : undefined}
@@ -132,8 +141,6 @@ export function FloatingNav({ active, onChange }: FloatingNavProps) {
             >
               {label}
             </span>
-            {/* Small signal dot for the active tab (ToR §13), replacing the
-                previous full-width underline mark. */}
             <span
               aria-hidden="true"
               className="era-bottom-nav__active-mark"
