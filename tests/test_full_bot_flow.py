@@ -36,9 +36,10 @@ class FullBotFlowSmokeTests(unittest.TestCase):
             "app/handlers/admin/task_review_block2.py",
             "app/handlers/admin/projects_block5_decision.py",
             "app/handlers/admin/event_registration_block14.py",
-            "app/handlers/admin/event_activities_block15.py",
+            "app/handlers/admin/event_activities_block7.py",
             "app/handlers/admin/partner_offers_block16.py",
             "app/handlers/admin/auction_block17.py",
+            "app/handlers/admin/legacy_action_bridge.py",
             "app/services/event_card.py",
             "app/services/excel_service.py",
         ]
@@ -63,12 +64,15 @@ class FullBotFlowSmokeTests(unittest.TestCase):
             "task_review_block2.router",
             "projects_block5_decision.router",
             "event_registration_block14.router",
-            "event_activities_block15.router",
+            "event_activities_block7.router",
             "partner_offers_block16.router",
             "auction_block17.router",
-            "management_ready.router",
+            "legacy_action_bridge.router",
         ):
             self.assertIn(marker, admin)
+        # Removed duplicate owners must stay unmounted.
+        self.assertNotIn("event_activities_block15.router", admin)
+        self.assertNotIn("management_ready.router", admin)
 
     def test_core_safety_contracts(self) -> None:
         registration = source("app/handlers/registration.py")
