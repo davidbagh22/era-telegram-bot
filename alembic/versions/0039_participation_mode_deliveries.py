@@ -1,6 +1,6 @@
 """Add durable participation-mode notification deliveries.
 
-Revision ID: 0039_participation_mode_deliveries
+Revision ID: 0039_participation_delivery
 Revises: 0038_unify_portfolio
 
 Tolerate fresh databases where historical 0001 has already created current
@@ -13,7 +13,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0039_participation_mode_deliveries"
+revision = "0039_participation_delivery"
 down_revision = "0038_unify_portfolio"
 branch_labels = None
 depends_on = None
