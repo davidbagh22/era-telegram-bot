@@ -30,7 +30,7 @@ def test_pulse_is_privacy_safe_aggregate_not_person_score() -> None:
 
     assert "community_analytics(session, period_days=30)" in source
     assert 'pulse = None if vector_suppressed' in source
-    assert "Stable traits, interests" in source
+    assert "raw ответы и личные заметки не используются" in source
     assert "traits_json" not in source
     assert "strengths_json" not in source
     assert "personal_notes" not in source
