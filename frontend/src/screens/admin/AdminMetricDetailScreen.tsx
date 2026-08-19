@@ -66,7 +66,7 @@ export function AdminMetricDetailScreen({ metric, expectedTotal, onBack, onOpenE
                   key={`${item.entity_type}:${item.id}`}
                   title={item.title}
                   description={[item.subtitle, item.status].filter(Boolean).join(" · ") || "Открыть запись"}
-                  onClick={onOpenEntity ? () => onOpenEntity(item.entity_type, item.entity_id) : undefined}
+                  onClick={() => onOpenEntity?.(item.entity_type, item.entity_id)}
                 />
               ))}
             </div>
