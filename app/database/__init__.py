@@ -31,6 +31,11 @@ from app.database.career_models import (  # noqa: F401
     RecommendationRequest,
 )
 from app.database.referral_models import ReferralCode, ReferralRelationship  # noqa: F401
+from app.database.participation_models import (  # noqa: F401
+    ParticipationLifecycle,
+    ReactivationCampaign,
+    ReactivationDelivery,
+)
 import app.database.socials  # noqa: F401
 import app.database.partners  # noqa: F401
 import app.database.chat_moderation  # noqa: F401
@@ -70,4 +75,7 @@ __all__ = [
     "RecommendationRequest",
     "ReferralCode",
     "ReferralRelationship",
+    "ParticipationLifecycle",
+    "ReactivationCampaign",
+    "ReactivationDelivery",
 ]
