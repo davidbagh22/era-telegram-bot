@@ -25,6 +25,7 @@ from app.handlers.admin import (
     approval_bonus_fix,
     chat_binding_stability,
     offices_management,
+    legacy_action_bridge,
 )
 from app.middlewares.admin_bot_access import AdminBotAccessFilter
 
@@ -66,5 +67,8 @@ router.include_router(partners_admin.router)
 router.include_router(approval_bonus_fix.router)
 router.include_router(chat_binding_stability.router)
 router.include_router(offices_management.router)
+# Last on purpose: only legacy callbacks not claimed by a real current handler
+# reach this bridge, and they open the admin Mini App instead of dead-ending.
+router.include_router(legacy_action_bridge.router)
 
 __all__ = ["router"]
