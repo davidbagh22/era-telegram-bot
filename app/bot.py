@@ -22,6 +22,7 @@ from app.handlers.admin import router as admin_router
 from app.handlers.leader import router as leader_router
 from app.handlers.participant import router as participant_router
 from app.middlewares.auth import DatabaseAuthMiddleware
+from app.middlewares.community_identity import CommunityIdentityMiddleware
 from app.middlewares.legacy_keyboard_cleanup import LegacyKeyboardCleanupMiddleware
 from app.middlewares.media_chat_activity import MediaChatActivityMiddleware
 from app.middlewares.referral_chat_reward import ReferralChatRewardMiddleware
@@ -59,6 +60,10 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     chat.router.chat_join_request.outer_middleware(referral_chat_reward)
     chat.router.message.outer_middleware(referral_chat_reward)
 
+    community_identity = CommunityIdentityMiddleware()
+    chat.router.chat_join_request.outer_middleware(community_identity)
+    chat.router.message.outer_middleware(community_identity)
+
     media_chat_activity = MediaChatActivityMiddleware()
     media_chat_files.router.message.outer_middleware(media_chat_activity)
     chat.router.message.outer_middleware(media_chat_activity)
@@ -66,9 +71,6 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     dispatcher.include_routers(
         emergency.router,
         start.router,
-        # New status buttons use a dedicated state-aware callback before the
-        # legacy registration router. The callback value is versioned, so
-        # there is no duplicate exact handler in the dispatcher.
         registration_status.router,
         registration.router,
         referrals.router,
