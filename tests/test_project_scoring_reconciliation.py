@@ -62,18 +62,60 @@ class ProjectScoringReconciliationTests(unittest.IsolatedAsyncioTestCase):
             lead_points = await total_points(session, lead.id)
             await reconcile_project_scoring(session)
 
-            # Member: first contribution 50 + milestone 120 + project 250.
+            # Member: first confirmed contribution 50 + milestone 120 +
+            # completed-project participant reward 250.
             self.assertEqual(member_points, 420)
             self.assertEqual(await total_points(session, member_user.id), 420)
-            # Lead: completed project 250 + Project Lead result 150.
-            self.assertEqual(lead_points, 400)
-            self.assertEqual(await total_points(session, lead.id), 400)
+
+            # Authorship alone is not a verified contribution. The project
+            # author receives neither participant-completion nor lead-result
+            # points until their own ProjectMember contribution is confirmed.
+            self.assertEqual(lead_points, 0)
+            self.assertEqual(await total_points(session, lead.id), 0)
             self.assertEqual(
                 await get_metric(
                     session, user_id=member_user.id, metric_key="projects_completed"
                 ),
                 1,
             )
+            self.assertEqual(
+                await get_metric(session, user_id=lead.id, metric_key="projects_led"),
+                0,
+            )
+
+    async def test_confirmed_project_lead_receives_lead_result_once(self) -> None:
+        async with self.session_factory() as session:
+            lead = User(telegram_id=11, first_name="Lead")
+            session.add(lead)
+            await session.flush()
+            project = Project(
+                author_id=lead.id,
+                title="Led project",
+                short_description="d",
+                status="completed",
+            )
+            session.add(project)
+            await session.flush()
+            session.add(
+                ProjectMember(
+                    project_id=project.id,
+                    user_id=lead.id,
+                    status="accepted",
+                    contribution_status="confirmed",
+                    contribution_summary="Led delivery",
+                    contribution_confirmed_at=datetime.now().astimezone(),
+                    contribution_confirmed_by=lead.id,
+                )
+            )
+            await session.flush()
+
+            await reconcile_project_scoring(session)
+            first_total = await total_points(session, lead.id)
+            await reconcile_project_scoring(session)
+
+            # 50 first contribution + 250 completed project + 150 Project Lead result.
+            self.assertEqual(first_total, 450)
+            self.assertEqual(await total_points(session, lead.id), 450)
             self.assertEqual(
                 await get_metric(session, user_id=lead.id, metric_key="projects_led"),
                 1,
