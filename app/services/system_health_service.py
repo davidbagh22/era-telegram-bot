@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from sqlalchemy import func, select, text
@@ -13,7 +14,11 @@ from sqlalchemy import func, select, text
 from app.config import Settings
 from app.database.models import PointTransaction, TaskDelivery
 from app.database.system_models import BackupHistory, SystemDiagnosticRun, SystemIncident
-from app.services.notification_service import notify_admins
+from app.services.notification_service import (
+    admin_notification_recipients,
+    notify_admins_once,
+    safe_send_once,
+)
 
 _SECRET_PATTERNS = (
     re.compile(
@@ -425,6 +430,7 @@ async def _sync_incidents(
                 detail=sanitize_runtime_detail(check.detail),
                 check_key=check.key,
                 occurrence_count=1,
+                notification_generation=1,
                 first_seen_at=now,
                 last_seen_at=now,
                 current_commit=commit_sha,
@@ -447,6 +453,7 @@ async def _sync_incidents(
             incident.resolved_at = None
             incident.recovery_notified = False
             if not was_open:
+                incident.notification_generation = max(1, incident.notification_generation) + 1
                 incident.admin_notified = False
                 opened_or_reopened.append(incident)
 
@@ -468,52 +475,90 @@ async def _sync_incidents(
     return opened_or_reopened, recovered
 
 
+async def _deliver_incident_episode(
+    bot: Bot,
+    settings: Settings,
+    incident: SystemIncident,
+    *,
+    recovery: bool,
+) -> bool:
+    recipients = await admin_notification_recipients(settings)
+    if not recipients:
+        return False
+    generation = max(1, incident.notification_generation)
+    if recovery:
+        text_value = (
+            f"✅ ЭРА: восстановление\n\n{incident.title}\n"
+            "Проверка снова проходит успешно."
+        )
+        prefix = "system-incident-recovery"
+        notification_type = "system_incident_recovery"
+    else:
+        text_value = (
+            "🚨 ЭРА: системный инцидент\n\n"
+            f"{incident.title}\n"
+            f"Критичность: {incident.severity}\n"
+            f"Диагностика: {incident.detail}\n\n"
+            "Откройте Admin Mode → Коммуникации → Инструменты → Система."
+        )
+        prefix = "system-incident-open"
+        notification_type = "system_incident"
+
+    complete = 0
+    for chat_id in recipients:
+        result = await safe_send_once(
+            bot,
+            settings,
+            chat_id,
+            text_value,
+            delivery_key=f"{prefix}:{incident.id}:g{generation}:{chat_id}",
+            notification_type=notification_type,
+        )
+        if result.sent or result.status in {"blocked", "unreachable", "skipped"}:
+            complete += 1
+    return complete == len(recipients)
+
+
 async def _notify_incident_changes(
     bot: Bot,
     settings: Settings,
     session_factory,
-    opened_ids: list[int],
-    recovered_ids: list[int],
 ) -> None:
+    """Retry every unfinished incident episode without creating duplicates."""
     async with session_factory() as session:
-        if opened_ids:
-            incidents = list(
-                (
-                    await session.scalars(
-                        select(SystemIncident).where(SystemIncident.id.in_(opened_ids))
+        open_incidents = list(
+            (
+                await session.scalars(
+                    select(SystemIncident).where(
+                        SystemIncident.category == "runtime_health",
+                        SystemIncident.status == "open",
+                        SystemIncident.severity.in_(["high", "critical"]),
+                        SystemIncident.admin_notified.is_(False),
                     )
-                ).all()
-            )
-            for incident in incidents:
-                if incident.severity not in {"high", "critical"} or incident.admin_notified:
-                    continue
-                sent, _ = await notify_admins(
-                    bot,
-                    settings,
-                    "🚨 ЭРА: системный инцидент\n\n"
-                    f"{incident.title}\n"
-                    f"Критичность: {incident.severity}\n"
-                    f"Диагностика: {incident.detail}\n\n"
-                    "Откройте Admin Mode → Коммуникации → Инструменты → Система.",
                 )
-                incident.admin_notified = sent > 0
-        if recovered_ids:
-            incidents = list(
-                (
-                    await session.scalars(
-                        select(SystemIncident).where(SystemIncident.id.in_(recovered_ids))
+            ).all()
+        )
+        for incident in open_incidents:
+            incident.admin_notified = await _deliver_incident_episode(
+                bot, settings, incident, recovery=False
+            )
+
+        recovered_incidents = list(
+            (
+                await session.scalars(
+                    select(SystemIncident).where(
+                        SystemIncident.category == "runtime_health",
+                        SystemIncident.status == "resolved",
+                        SystemIncident.admin_notified.is_(True),
+                        SystemIncident.recovery_notified.is_(False),
                     )
-                ).all()
-            )
-            for incident in incidents:
-                if not incident.admin_notified or incident.recovery_notified:
-                    continue
-                sent, _ = await notify_admins(
-                    bot,
-                    settings,
-                    f"✅ ЭРА: восстановление\n\n{incident.title}\nПроверка снова проходит успешно.",
                 )
-                incident.recovery_notified = sent > 0
+            ).all()
+        )
+        for incident in recovered_incidents:
+            incident.recovery_notified = await _deliver_incident_episode(
+                bot, settings, incident, recovery=True
+            )
         await session.commit()
 
 
@@ -548,19 +593,11 @@ async def run_system_diagnostics(
             duration_ms=int((time.perf_counter() - started) * 1000),
         )
         session.add(run)
-        opened, recovered = await _sync_incidents(session, checks, commit_sha)
+        await _sync_incidents(session, checks, commit_sha)
         await session.commit()
         await session.refresh(run)
-        opened_ids = [item.id for item in opened]
-        recovered_ids = [item.id for item in recovered]
 
-    await _notify_incident_changes(
-        bot,
-        settings,
-        session_factory,
-        opened_ids,
-        recovered_ids,
-    )
+    await _notify_incident_changes(bot, settings, session_factory)
     return {
         "id": run.id,
         "run_type": run.run_type,
@@ -637,6 +674,7 @@ def _incident_payload(item: SystemIncident) -> dict[str, Any]:
         "detail": item.detail,
         "check_key": item.check_key,
         "occurrence_count": item.occurrence_count,
+        "notification_generation": item.notification_generation,
         "first_seen_at": item.first_seen_at.isoformat(),
         "last_seen_at": item.last_seen_at.isoformat(),
         "resolved_at": item.resolved_at.isoformat() if item.resolved_at else None,
@@ -678,7 +716,8 @@ async def send_daily_system_summary(
         item for item in snapshot["incidents"] if item["status"] == "open"
     ]
     latest_backup = snapshot["backups"][0] if snapshot["backups"] else None
-    await notify_admins(
+    local_day = _now().astimezone(ZoneInfo(settings.timezone)).date().isoformat()
+    await notify_admins_once(
         bot,
         settings,
         "🩺 ЭРА: ежедневное состояние системы\n\n"
@@ -686,4 +725,6 @@ async def send_daily_system_summary(
         f" · {latest['score'] if latest else '—'}/100\n"
         f"Открытых инцидентов: {len(open_incidents)}\n"
         f"Последний backup: {latest_backup['status'] if latest_backup else 'нет данных'}",
+        delivery_key=f"system-daily-summary:{local_day}",
+        notification_type="system_daily_summary",
     )
