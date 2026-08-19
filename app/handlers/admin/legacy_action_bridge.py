@@ -32,6 +32,7 @@ LEGACY_ADMIN_ACTIONS = {
     "admin:structure",
     "admin:surveys",
     "admin:menu:activity",
+    "admin:menu:communications",
     "admin:participants",
     "admin:task:new",
     "admin:applications",
@@ -42,6 +43,8 @@ LEGACY_ADMIN_ACTIONS = {
     "admin:people:list:all:0:0",
     "admin:people:roles",
     "admin:people:search",
+    "admin:analytics:excel:all",
+    "admin:analytics:excel:surveys",
 }
 
 
