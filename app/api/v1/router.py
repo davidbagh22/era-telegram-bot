@@ -31,6 +31,7 @@ from app.api.v1 import (
     media,
     media_extras,
     opportunities,
+    participation,
     positions,
     profile,
     project_builder,
@@ -46,6 +47,7 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
 api_router.include_router(me.router)
 api_router.include_router(home.router)
+api_router.include_router(participation.router)
 api_router.include_router(development.router)
 api_router.include_router(career.router)
 api_router.include_router(referrals.router)
