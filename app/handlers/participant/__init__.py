@@ -10,7 +10,6 @@ from app.handlers.participant import (
     project_event_photo_flow,
     projects_block5,
     event_activities_block15,
-    event_activities_block7,
     surveys,
     about,
     directions_block7,
@@ -41,8 +40,9 @@ router.include_routers(
     task_reply.router,
     project_event_photo_flow.router,
     projects_block5.router,
+    # One canonical participant proof flow: block15 enforces proof type,
+    # registered status, duplicate protection and admin notifications.
     event_activities_block15.router,
-    event_activities_block7.router,
     surveys.router,
     cabinet_hubs.router,
     directions_block7.router,
