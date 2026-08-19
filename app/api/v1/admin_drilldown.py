@@ -64,6 +64,25 @@ def _row_out(row) -> MetricRowOut:
     )
 
 
+@router.get("/export/{metric}.xlsx")
+async def export_metric_drilldown(
+    metric: str,
+    _admin: User = Depends(require_full_admin),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    result = await _load(session, metric)
+    content = _workbook_bytes(result.label, result.rows)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="era-{metric}.xlsx"',
+            "X-ERA-Metric": result.metric,
+            "X-ERA-Total": str(result.total),
+        },
+    )
+
+
 @router.get("/{metric}", response_model=MetricDrilldownOut)
 async def read_metric_drilldown(
     metric: str,
@@ -101,22 +120,3 @@ def _workbook_bytes(label: str, rows) -> bytes:
     raw = BytesIO()
     wb.save(raw)
     return finalize_business_workbook(raw.getvalue())
-
-
-@router.get("/{metric}.xlsx")
-async def export_metric_drilldown(
-    metric: str,
-    _admin: User = Depends(require_full_admin),
-    session: AsyncSession = Depends(get_session),
-) -> Response:
-    result = await _load(session, metric)
-    content = _workbook_bytes(result.label, result.rows)
-    return Response(
-        content=content,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": f'attachment; filename="era-{metric}.xlsx"',
-            "X-ERA-Metric": result.metric,
-            "X-ERA-Total": str(result.total),
-        },
-    )
