@@ -36,6 +36,11 @@ from app.database.participation_models import (  # noqa: F401
     ReactivationCampaign,
     ReactivationDelivery,
 )
+from app.database.community_verification_models import (  # noqa: F401
+    CommunityMemberIdentity,
+    CommunityVerificationCampaign,
+    CommunityVerificationDelivery,
+)
 import app.database.socials  # noqa: F401
 import app.database.partners  # noqa: F401
 import app.database.chat_moderation  # noqa: F401
@@ -78,4 +83,7 @@ __all__ = [
     "ParticipationLifecycle",
     "ReactivationCampaign",
     "ReactivationDelivery",
+    "CommunityMemberIdentity",
+    "CommunityVerificationCampaign",
+    "CommunityVerificationDelivery",
 ]
