@@ -1,17 +1,46 @@
 from __future__ import annotations
 
 from datetime import date as date_, datetime
+from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.database.base import Base, TimestampMixin
 
 
+class MediaContentStatus(StrEnum):
+    """MASTER Media pipeline; names mirror the product contract exactly.
+
+    Lower-case DB values preserve compatibility with the existing service and
+    API while one enum becomes the only accepted state vocabulary.
+    """
+
+    IDEA = "idea"
+    PLANNED = "planned"
+    ASSIGNED = "assigned"
+    IN_PROGRESS = "in_progress"
+    REVIEW = "review"
+    READY = "ready"
+    SCHEDULED = "scheduled"
+    PUBLISHED = "published"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+
+
+MEDIA_CONTENT_STATUS_VALUES = tuple(status.value for status in MediaContentStatus)
+
+
 class MediaContentItem(TimestampMixin, Base):
     __tablename__ = "media_content_items"
-    __table_args__ = (UniqueConstraint("source_key", name="uq_media_content_source_key"),)
+    __table_args__ = (
+        UniqueConstraint("source_key", name="uq_media_content_source_key"),
+        CheckConstraint(
+            "status IN ('idea','planned','assigned','in_progress','review','ready','scheduled','published','skipped','failed')",
+            name="ck_media_content_status",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     source_kind: Mapped[str] = mapped_column(String(32), index=True)
@@ -30,11 +59,22 @@ class MediaContentItem(TimestampMixin, Base):
     needs_visual: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     needs_video: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
-    status: Mapped[str] = mapped_column(String(24), default="PLANNED", index=True)
+    status: Mapped[str] = mapped_column(String(24), default=MediaContentStatus.PLANNED.value, index=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     telegram_message_id: Mapped[int | None] = mapped_column(Integer)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    @validates("status")
+    def validate_status(self, _key: str, value: str | MediaContentStatus) -> str:
+        raw = value.value if isinstance(value, MediaContentStatus) else str(value).strip().lower()
+        # `draft` and historical upper-case PLANNED were produced by earlier
+        # versions. They are the same product state and are normalized here.
+        if raw == "draft":
+            raw = MediaContentStatus.PLANNED.value
+        if raw not in MEDIA_CONTENT_STATUS_VALUES:
+            raise ValueError(f"invalid_media_content_status:{raw}")
+        return raw
 
 
 class MediaChannelDelivery(TimestampMixin, Base):
