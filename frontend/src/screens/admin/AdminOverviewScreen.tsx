@@ -26,6 +26,10 @@ interface AdminOverviewScreenProps {
   onOpenEvents?: () => void;
   onOpenTasks?: () => void;
   onOpenComms?: () => void;
+  onOpenOffers?: () => void;
+  onOpenCareer?: () => void;
+  onOpenVerification?: () => void;
+  onOpenReports?: () => void;
 }
 
 function timeAgo(iso: string): string {
@@ -48,26 +52,29 @@ function KpiButton({ value, label, note, onClick }: { value: number; label: stri
       type="button"
       onClick={onClick}
       disabled={!onClick}
-      style={{
-        appearance: "none",
-        border: 0,
-        padding: 0,
-        background: "transparent",
-        textAlign: "left",
-        minWidth: 0,
-        cursor: onClick ? "pointer" : "default",
-      }}
+      style={{ appearance: "none", border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: onClick ? "pointer" : "default" }}
     >
       <Card style={{ minHeight: 112, padding: "0.9rem" }}>
         <div style={{ fontSize: "1.9rem", fontWeight: 950, lineHeight: 1 }}>{value}</div>
         <strong style={{ display: "block", marginTop: "0.45rem" }}>{label}</strong>
-        <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: "0.76rem" }}>{note ?? "Открыть список →"}</span>
+        <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: "0.76rem" }}>{note ?? (onClick ? "Открыть список →" : "Текущий показатель")}</span>
       </Card>
     </button>
   );
 }
 
-export function AdminOverviewScreen({ onOpenPeople, onOpenApplications, onOpenProjects, onOpenEvents, onOpenTasks, onOpenComms }: AdminOverviewScreenProps) {
+export function AdminOverviewScreen({
+  onOpenPeople,
+  onOpenApplications,
+  onOpenProjects,
+  onOpenEvents,
+  onOpenTasks,
+  onOpenComms,
+  onOpenOffers,
+  onOpenCareer,
+  onOpenVerification,
+  onOpenReports,
+}: AdminOverviewScreenProps) {
   const dashboard = useAsync(() => fetchAdminDashboard(), []);
   const activity = useAsync(() => fetchRecentActivity(), []);
   const upcoming = useAsync(() => fetchEvents("all"), []);
@@ -82,7 +89,11 @@ export function AdminOverviewScreen({ onOpenPeople, onOpenApplications, onOpenPr
     if (key === "projects_review") return onOpenProjects;
     if (key === "events_pending" || key === "activity_results") return onOpenEvents;
     if (key === "task_results") return onOpenTasks;
-    if (["questions", "departments"].includes(key)) return onOpenComms;
+    if (key === "rewards") return onOpenOffers;
+    if (key === "portfolio") return onOpenCareer;
+    if (key === "reports") return onOpenReports;
+    if (key === "questions") return onOpenComms;
+    if (key === "departments") return onOpenPeople;
     return undefined;
   };
 
@@ -102,14 +113,23 @@ export function AdminOverviewScreen({ onOpenPeople, onOpenApplications, onOpenPr
       <section>
         <h2 style={{ fontSize: ".86rem", color: "var(--era-text-muted)", margin: "0 0 .55rem" }}>ЖИВЫЕ ПОКАЗАТЕЛИ</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: ".55rem" }}>
-          <KpiButton value={metrics.users_total ?? 0} label="Участники" onClick={onOpenPeople} />
-          <KpiButton value={metrics.activists ?? 0} label="Активные" onClick={onOpenPeople} />
+          <KpiButton value={metrics.current_roster ?? metrics.users_total ?? 0} label="Участники" note="Текущий подтверждённый состав" onClick={onOpenPeople} />
+          <KpiButton value={metrics.active_base ?? 0} label="Активная база" note="Реальные действия за 14 дней" onClick={onOpenPeople} />
           <KpiButton value={metrics.projects_active ?? 0} label="Проекты" onClick={onOpenProjects} />
           <KpiButton value={metrics.events_live ?? 0} label="События" onClick={onOpenEvents} />
           <KpiButton value={metrics.event_registrations ?? 0} label="Регистрации" onClick={onOpenEvents} />
           <KpiButton value={metrics.task_results ?? 0} label="Задания на проверке" onClick={onOpenTasks} />
         </div>
       </section>
+
+      {onOpenVerification && (
+        <ActionCell
+          title="Проверка актуального состава"
+          description="Community Verification: запуск, напоминания, недоступные и ручные решения"
+          leading="◎"
+          onClick={onOpenVerification}
+        />
+      )}
 
       <section>
         <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .55rem" }}>Требует внимания</h2>
@@ -121,10 +141,18 @@ export function AdminOverviewScreen({ onOpenPeople, onOpenApplications, onOpenPr
           </Card>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
-            {(metrics.event_waitlist ?? 0) > 0 && <ActionCell title={`${metrics.event_waitlist} в листе ожидания`} description="Проверьте ближайшие события и свободные места" leading="◎" onClick={() => onOpenEvents?.()} />}
+            {(metrics.event_waitlist ?? 0) > 0 && <ActionCell title={`${metrics.event_waitlist} в листе ожидания`} description="Проверьте ближайшие события и свободные места" leading="◎" onClick={onOpenEvents} />}
             {attentionItems.map((item) => {
               const action = attentionAction(item.key);
-              return <ActionCell key={item.key} title={`${item.value} · ${item.label}`} description={action ? "Открыть и решить →" : "Посмотреть в соответствующем разделе"} leading="!" onClick={() => action?.()} />;
+              return (
+                <ActionCell
+                  key={item.key}
+                  title={`${item.value} · ${item.label}`}
+                  description={action ? "Открыть и решить →" : "Нет безопасного автоматического действия — откройте соответствующий рабочий раздел"}
+                  leading="!"
+                  onClick={action}
+                />
+              );
             })}
           </div>
         )}
