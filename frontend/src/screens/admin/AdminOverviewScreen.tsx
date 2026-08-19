@@ -1,4 +1,5 @@
 import { fetchAdminDashboard, fetchEvents, fetchRecentActivity } from "../../api/client";
+import { fetchSystemSnapshot } from "../../api/systemClient";
 import { ActionCell } from "../../components/ActionCell";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
@@ -30,6 +31,7 @@ interface AdminOverviewScreenProps {
   onOpenCareer?: () => void;
   onOpenVerification?: () => void;
   onOpenReports?: () => void;
+  onOpenSystem?: () => void;
 }
 
 function timeAgo(iso: string): string {
@@ -48,12 +50,7 @@ function formatEventDate(value: string): string {
 
 function KpiButton({ value, label, note, onClick }: { value: number; label: string; note?: string; onClick?: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      style={{ appearance: "none", border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: onClick ? "pointer" : "default" }}
-    >
+    <button type="button" onClick={onClick} disabled={!onClick} style={{ appearance: "none", border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: onClick ? "pointer" : "default" }}>
       <Card style={{ minHeight: 112, padding: "0.9rem" }}>
         <div style={{ fontSize: "1.9rem", fontWeight: 950, lineHeight: 1 }}>{value}</div>
         <strong style={{ display: "block", marginTop: "0.45rem" }}>{label}</strong>
@@ -74,10 +71,12 @@ export function AdminOverviewScreen({
   onOpenCareer,
   onOpenVerification,
   onOpenReports,
+  onOpenSystem,
 }: AdminOverviewScreenProps) {
   const dashboard = useAsync(() => fetchAdminDashboard(), []);
   const activity = useAsync(() => fetchRecentActivity(), []);
   const upcoming = useAsync(() => fetchEvents("all"), []);
+  const system = useAsync(() => fetchSystemSnapshot(), []);
 
   if (dashboard.status === "loading") return <p style={{ color: "var(--era-text-muted)" }}>Загружаем пульт…</p>;
   if (dashboard.status === "error") return <EmptyState text="Не удалось загрузить пульт управления. Попробуйте ещё раз." />;
@@ -97,6 +96,9 @@ export function AdminOverviewScreen({
     return undefined;
   };
 
+  const latestHealth = system.status === "ready" ? system.data.latest : null;
+  const healthIssues = latestHealth?.checks.filter((check) => check.status !== "ok") ?? [];
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.15rem" }}>
       <Card gradient style={{ position: "relative", overflow: "hidden", minHeight: 172 }}>
@@ -110,6 +112,28 @@ export function AdminOverviewScreen({
         </div>
       </Card>
 
+      <button type="button" onClick={onOpenSystem} disabled={!onOpenSystem} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left" }}>
+        <Card style={{ padding: ".8rem 1rem" }}>
+          {system.status === "loading" && <span style={{ color: "var(--era-text-muted)" }}>Проверяем API · Bot · Telegram · DB · Backup…</span>}
+          {system.status === "error" && <strong style={{ color: "var(--era-error)" }}>Health API недоступен · открыть диагностику →</strong>}
+          {system.status === "ready" && !latestHealth && <strong>Health: нет данных · запустить диагностику →</strong>}
+          {latestHealth && healthIssues.length === 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", gap: ".75rem", alignItems: "center" }}>
+              <strong>Система в порядке</strong>
+              <span style={{ color: "var(--era-success)", fontWeight: 850 }}>{latestHealth.score}/100 ✓</span>
+            </div>
+          )}
+          {latestHealth && healthIssues.length > 0 && (
+            <div>
+              <strong style={{ color: "var(--era-error)" }}>{healthIssues.length} системных проблем · {latestHealth.score}/100</strong>
+              <span style={{ display: "block", marginTop: ".25rem", color: "var(--era-text-muted)", fontSize: ".76rem" }}>
+                {healthIssues.slice(0, 3).map((item) => item.title).join(" · ")}{healthIssues.length > 3 ? " · …" : ""} →
+              </span>
+            </div>
+          )}
+        </Card>
+      </button>
+
       <section>
         <h2 style={{ fontSize: ".86rem", color: "var(--era-text-muted)", margin: "0 0 .55rem" }}>ЖИВЫЕ ПОКАЗАТЕЛИ</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: ".55rem" }}>
@@ -122,14 +146,7 @@ export function AdminOverviewScreen({
         </div>
       </section>
 
-      {onOpenVerification && (
-        <ActionCell
-          title="Проверка актуального состава"
-          description="Community Verification: запуск, напоминания, недоступные и ручные решения"
-          leading="◎"
-          onClick={onOpenVerification}
-        />
-      )}
+      {onOpenVerification && <ActionCell title="Проверка актуального состава" description="Community Verification: запуск, напоминания, недоступные и ручные решения" leading="◎" onClick={onOpenVerification} />}
 
       <section>
         <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .55rem" }}>Требует внимания</h2>
@@ -144,15 +161,7 @@ export function AdminOverviewScreen({
             {(metrics.event_waitlist ?? 0) > 0 && <ActionCell title={`${metrics.event_waitlist} в листе ожидания`} description="Проверьте ближайшие события и свободные места" leading="◎" onClick={onOpenEvents} />}
             {attentionItems.map((item) => {
               const action = attentionAction(item.key);
-              return (
-                <ActionCell
-                  key={item.key}
-                  title={`${item.value} · ${item.label}`}
-                  description={action ? "Открыть и решить →" : "Нет безопасного автоматического действия — откройте соответствующий рабочий раздел"}
-                  leading="!"
-                  onClick={action}
-                />
-              );
+              return <ActionCell key={item.key} title={`${item.value} · ${item.label}`} description={action ? "Открыть и решить →" : "Откройте соответствующий рабочий раздел"} leading="!" onClick={action} />;
             })}
           </div>
         )}
@@ -172,9 +181,7 @@ export function AdminOverviewScreen({
         <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .55rem" }}>Ближайшие мероприятия</h2>
         {upcoming.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загружаем афишу…</p>}
         {upcoming.status === "error" && <EmptyState text="Не удалось загрузить ближайшие события." />}
-        {upcoming.status === "ready" && upcoming.data.length === 0 && (
-          <Card><strong>Пока нет ближайших мероприятий</strong><p style={{ margin: ".3rem 0 0", color: "var(--era-text-muted)" }}>Создайте первое событие — регистрация и участники будут собраны автоматически.</p>{onOpenEvents && <button type="button" className="era-btn-primary" onClick={onOpenEvents} style={{ marginTop: ".75rem", width: "100%" }}>Создать мероприятие</button>}</Card>
-        )}
+        {upcoming.status === "ready" && upcoming.data.length === 0 && <Card><strong>Пока нет ближайших мероприятий</strong><p style={{ margin: ".3rem 0 0", color: "var(--era-text-muted)" }}>Создайте первое событие — регистрация и участники будут собраны автоматически.</p>{onOpenEvents && <button type="button" className="era-btn-primary" onClick={onOpenEvents} style={{ marginTop: ".75rem", width: "100%" }}>Создать мероприятие</button>}</Card>}
         {upcoming.status === "ready" && upcoming.data.slice(0, 3).map((event) => (
           <button key={event.id} type="button" onClick={onOpenEvents} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left", marginBottom: ".5rem" }}>
             <Card style={{ padding: ".8rem .9rem" }}>
