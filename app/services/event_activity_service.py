@@ -13,25 +13,14 @@ from app.database.models import (
     PointTransaction,
     User,
 )
-from app.services.points_service import add_points
-from app.utils.constants import RegistrationStatus
+from app.services.activity_scoring_service import record_verified_activity
+from app.utils.constants import PointCategory, RegistrationStatus
 from app.utils.validators import clean_text
 
-# Event Activities — proof-of-participation tasks tied to a completed
-# event (e.g. "post a story", "write a review"), reviewed and paid out in
-# points. Distinct from Task submissions (app/services/task_service.py):
-# these are event-scoped, go through an optional leader pre-review step
-# before an admin's final approval, and creation uses the Bot's own
-# pipe-delimited bulk-line format rather than one-activity-at-a-time.
-#
-# Ported from the *live* handlers, not app/handlers/admin/panel.py's own
-# (dead, shadowed — see docs/ERA_PLATFORM_PROGRESS.md's PR 30 section for
-# the router-precedence investigation that found this):
-# app/handlers/admin/event_activities_stability.py (list/review/decide),
-# app/handlers/admin/event_activities_block15.py (create),
-# app/handlers/admin/event_activities_block7.py (send-to-participants),
-# app/handlers/leader/event_activities_block7.py (leader pre-review),
-# app/handlers/participant/event_activities_block15.py (browse/submit).
+# Event Activities — proof-of-participation tasks tied to a completed event
+# (e.g. "post a story", "write a review"). They stay event-scoped, but final
+# approval now enters the same verified-activity scoring pipeline as attendance,
+# ordinary Tasks and Projects so metrics/rank/lifecycle cannot drift.
 
 ALLOWED_SUBMISSION_TYPES = {"photo", "link", "text", "file", "manual", "video"}
 REVIEWABLE_STATUSES = {"pending", "leader_approved"}
@@ -44,9 +33,7 @@ ACTIVE_REGISTRATION_STATUSES = {
 
 
 def parse_bulk_lines(raw_text: str) -> tuple[list[dict], int]:
-    """"Title | points | type | description" per line — same format and
-    validation as the Bot's own create_finish handlers. Returns
-    (parsed activities, rejected line count)."""
+    """"Title | points | type | description" per line."""
     parsed: list[dict] = []
     rejected = 0
     for raw_line in (raw_text or "").splitlines():
@@ -67,7 +54,12 @@ def parse_bulk_lines(raw_text: str) -> tuple[list[dict], int]:
             rejected += 1
             continue
         parsed.append(
-            {"title": title, "points": points, "submission_type": submission_type, "description": description or title}
+            {
+                "title": title,
+                "points": points,
+                "submission_type": submission_type,
+                "description": description or title,
+            }
         )
     return parsed, rejected
 
@@ -145,13 +137,13 @@ async def list_reviewable_submissions(
 
 
 async def admin_decide(
-    session: AsyncSession, submission: EventActivitySubmission, *, approve: bool, reviewer_id: int | None
+    session: AsyncSession,
+    submission: EventActivitySubmission,
+    *,
+    approve: bool,
+    reviewer_id: int | None,
 ) -> EventActivity | None:
-    """Returns the activity on success, None if the submission was
-    already decided. Mirrors the Bot's own double-award guard: checks
-    for an existing matching PointTransaction (a pre-idempotency-key
-    scheme) on top of the source_id idempotency_key add_points() already
-    enforces, since this ported straight from event_activities_stability.py."""
+    """Final review. Verified approval is scored exactly once through the core pipeline."""
     if submission.status not in REVIEWABLE_STATUSES:
         return None
     activity = await session.get(EventActivity, submission.activity_id)
@@ -162,6 +154,10 @@ async def admin_decide(
     if not approve:
         await session.flush()
         return activity
+
+    # Preserve compatibility with historical rows that pre-date the current
+    # idempotency key: do not create a second award if an old matching point
+    # transaction already exists.
     existing = await session.scalar(
         select(PointTransaction).where(
             PointTransaction.user_id == submission.user_id,
@@ -173,17 +169,20 @@ async def admin_decide(
     if existing or submission.points_awarded > 0:
         await session.flush()
         return activity
+
     submission.points_awarded = activity.points
-    await add_points(
+    await record_verified_activity(
         session,
         user_id=submission.user_id,
         points=activity.points,
         reason=f"Активность после мероприятия: {activity.title}",
         approved_by=reviewer_id,
+        category=PointCategory.EVENT,
         related_event_id=activity.event_id,
         source_type="event_activity",
         source_id=submission.id,
         idempotency_key=f"event_activity:{submission.id}:approval",
+        metric_updates={"event_activities": 1},
     )
     return activity
 
@@ -207,7 +206,10 @@ async def list_leader_pending(
         .join(EventActivity, EventActivity.id == EventActivitySubmission.activity_id)
         .join(Event, Event.id == EventActivity.event_id)
         .join(User, User.id == EventActivitySubmission.user_id)
-        .where(EventActivitySubmission.activity_id.in_(activity_ids), EventActivitySubmission.status == "pending")
+        .where(
+            EventActivitySubmission.activity_id.in_(activity_ids),
+            EventActivitySubmission.status == "pending",
+        )
         .order_by(EventActivitySubmission.created_at)
         .limit(50)
     )
@@ -215,7 +217,11 @@ async def list_leader_pending(
 
 
 async def leader_decide(
-    session: AsyncSession, submission: EventActivitySubmission, *, approve: bool, reviewer_id: int
+    session: AsyncSession,
+    submission: EventActivitySubmission,
+    *,
+    approve: bool,
+    reviewer_id: int,
 ) -> EventActivity | None:
     if submission.status != "pending":
         return None
@@ -229,7 +235,9 @@ async def leader_decide(
 # -- Participant --
 
 
-async def _active_registration(session: AsyncSession, event_id: int, user_id: int) -> EventRegistration | None:
+async def _active_registration(
+    session: AsyncSession, event_id: int, user_id: int
+) -> EventRegistration | None:
     return await session.scalar(
         select(EventRegistration).where(
             EventRegistration.event_id == event_id,
@@ -242,8 +250,6 @@ async def _active_registration(session: AsyncSession, event_id: int, user_id: in
 async def list_activities_for_participant(
     session: AsyncSession, event: Event, user: User
 ) -> list[EventActivity] | None:
-    """None means "not registered" (distinct from an empty list, which
-    means registered but no activities yet)."""
     if not await _active_registration(session, event.id, user.id):
         return None
     return list(
@@ -257,19 +263,20 @@ async def list_activities_for_participant(
     )
 
 
-async def get_submission(session: AsyncSession, activity_id: int, user_id: int) -> EventActivitySubmission | None:
+async def get_submission(
+    session: AsyncSession, activity_id: int, user_id: int
+) -> EventActivitySubmission | None:
     return await session.scalar(
         select(EventActivitySubmission).where(
-            EventActivitySubmission.activity_id == activity_id, EventActivitySubmission.user_id == user_id
+            EventActivitySubmission.activity_id == activity_id,
+            EventActivitySubmission.user_id == user_id,
         )
     )
 
 
-async def submit_manual(session: AsyncSession, activity: EventActivity, user: User) -> EventActivitySubmission:
-    """The "manual" proof type needs no participant-supplied material —
-    used for e.g. "helped at registration, confirmed by the organizer in
-    person" — so submission happens immediately, same as the Bot's own
-    proof_start() short-circuit for this type."""
+async def submit_manual(
+    session: AsyncSession, activity: EventActivity, user: User
+) -> EventActivitySubmission:
     existing = await get_submission(session, activity.id, user.id)
     submission = existing or EventActivitySubmission(activity_id=activity.id, user_id=user.id)
     submission.text = "Заявка на ручную проверку"
