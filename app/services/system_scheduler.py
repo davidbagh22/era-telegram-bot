@@ -9,6 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import Settings
 from app.services.chat_faq_service import ensure_general_faq_pinned
 from app.services.community_mission_service import process_task_squad_notifications
+from app.services.community_verification_jobs import complete_verification_campaigns_job
 from app.services.development_notification_service import send_monthly_development_reminders
 from app.services.event_custom_reminder_service import send_configured_event_reminders
 from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
@@ -144,6 +145,17 @@ def add_system_jobs(
         hours=1,
         args=(bot, settings, session_factory),
         id="participation-reactivation",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
+    )
+    scheduler.add_job(
+        complete_verification_campaigns_job,
+        "interval",
+        minutes=5,
+        args=(session_factory,),
+        id="community-verification-expiry",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
