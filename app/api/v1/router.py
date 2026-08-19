@@ -11,6 +11,7 @@ from app.api.v1 import (
     admin_autocontent,
     admin_career,
     admin_development,
+    admin_drilldown,
     admin_event_attendance,
     admin_event_create,
     admin_event_operations,
@@ -78,6 +79,7 @@ api_router.include_router(admin_autocontent.router)
 api_router.include_router(admin_career.router)
 api_router.include_router(admin_development.router)
 api_router.include_router(admin_analytics_details.router)
+api_router.include_router(admin_drilldown.router)
 api_router.include_router(admin_executive_export.router)
 api_router.include_router(admin_participation.router)
 api_router.include_router(admin_people_detail.router)
