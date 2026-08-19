@@ -5,7 +5,7 @@ import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { useAsync } from "../../hooks/useAsync";
 
-const ATTENTION_LABELS: Record<string, string> = {
+const ATTENTION_LABELS = {
   users_pending: "Новые заявки ждут решения",
   projects_review: "Проекты ждут проверки",
   events_pending: "События ждут согласования",
@@ -16,22 +16,23 @@ const ATTENTION_LABELS: Record<string, string> = {
   reports: "Отчёты требуют внимания",
   questions: "Есть новые вопросы участников",
   departments: "Есть заявки по направлениям",
-};
+} as const;
 
-const ATTENTION_ORDER = Object.keys(ATTENTION_LABELS);
+type AttentionKey = keyof typeof ATTENTION_LABELS;
+const ATTENTION_ORDER = Object.keys(ATTENTION_LABELS) as AttentionKey[];
 
 interface AdminOverviewScreenProps {
-  onOpenPeople?: () => void;
-  onOpenApplications?: () => void;
-  onOpenProjects?: () => void;
-  onOpenEvents?: () => void;
-  onOpenTasks?: () => void;
-  onOpenComms?: () => void;
-  onOpenOffers?: () => void;
-  onOpenCareer?: () => void;
-  onOpenVerification?: () => void;
-  onOpenReports?: () => void;
-  onOpenSystem?: () => void;
+  onOpenPeople: () => void;
+  onOpenApplications: () => void;
+  onOpenProjects: () => void;
+  onOpenEvents: () => void;
+  onOpenTasks: () => void;
+  onOpenComms: () => void;
+  onOpenOffers: () => void;
+  onOpenCareer: () => void;
+  onOpenVerification: () => void;
+  onOpenReports: () => void;
+  onOpenSystem: () => void;
 }
 
 function timeAgo(iso: string): string {
@@ -45,16 +46,24 @@ function timeAgo(iso: string): string {
 }
 
 function formatEventDate(value: string): string {
-  return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" }).format(new Date(`${value}T00:00:00`));
+  return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" }).format(
+    new Date(`${value}T00:00:00`),
+  );
 }
 
-function KpiButton({ value, label, note, onClick }: { value: number; label: string; note?: string; onClick?: () => void }) {
+function KpiButton({ value, label, note, onClick }: { value: number; label: string; note?: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} disabled={!onClick} style={{ appearance: "none", border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: onClick ? "pointer" : "default" }}>
+    <button
+      type="button"
+      onClick={onClick}
+      style={{ appearance: "none", border: 0, padding: 0, background: "transparent", textAlign: "left", minWidth: 0, cursor: "pointer" }}
+    >
       <Card style={{ minHeight: 112, padding: "0.9rem" }}>
         <div style={{ fontSize: "1.9rem", fontWeight: 950, lineHeight: 1 }}>{value}</div>
         <strong style={{ display: "block", marginTop: "0.45rem" }}>{label}</strong>
-        <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: "0.76rem" }}>{note ?? (onClick ? "Открыть список →" : "Текущий показатель")}</span>
+        <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: "0.76rem" }}>
+          {note ?? "Открыть список →"}
+        </span>
       </Card>
     </button>
   );
@@ -78,22 +87,31 @@ export function AdminOverviewScreen({
   const upcoming = useAsync(() => fetchEvents("all"), []);
   const system = useAsync(() => fetchSystemSnapshot(), []);
 
-  if (dashboard.status === "loading") return <p style={{ color: "var(--era-text-muted)" }}>Загружаем пульт…</p>;
-  if (dashboard.status === "error") return <EmptyState text="Не удалось загрузить пульт управления. Попробуйте ещё раз." />;
+  if (dashboard.status === "loading") {
+    return <p style={{ color: "var(--era-text-muted)" }}>Загружаем пульт…</p>;
+  }
+  if (dashboard.status === "error") {
+    return <EmptyState text="Не удалось загрузить пульт управления. Попробуйте ещё раз." />;
+  }
 
   const { metrics, attention_total } = dashboard.data;
-  const attentionItems = ATTENTION_ORDER.map((key) => ({ key, label: ATTENTION_LABELS[key], value: metrics[key] ?? 0 })).filter((item) => item.value > 0);
-  const attentionAction = (key: string): (() => void) | undefined => {
-    if (key === "users_pending") return onOpenApplications;
-    if (key === "projects_review") return onOpenProjects;
-    if (key === "events_pending" || key === "activity_results") return onOpenEvents;
-    if (key === "task_results") return onOpenTasks;
-    if (key === "rewards") return onOpenOffers;
-    if (key === "portfolio") return onOpenCareer;
-    if (key === "reports") return onOpenReports;
-    if (key === "questions") return onOpenComms;
-    if (key === "departments") return onOpenPeople;
-    return undefined;
+  const attentionItems = ATTENTION_ORDER.map((key) => ({
+    key,
+    label: ATTENTION_LABELS[key],
+    value: metrics[key] ?? 0,
+  })).filter((item) => item.value > 0);
+
+  const attentionActions: Record<AttentionKey, () => void> = {
+    users_pending: onOpenApplications,
+    projects_review: onOpenProjects,
+    events_pending: onOpenEvents,
+    task_results: onOpenTasks,
+    activity_results: onOpenEvents,
+    rewards: onOpenOffers,
+    portfolio: onOpenCareer,
+    reports: onOpenReports,
+    questions: onOpenComms,
+    departments: onOpenPeople,
   };
 
   const latestHealth = system.status === "ready" ? system.data.latest : null;
@@ -112,7 +130,7 @@ export function AdminOverviewScreen({
         </div>
       </Card>
 
-      <button type="button" onClick={onOpenSystem} disabled={!onOpenSystem} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left" }}>
+      <button type="button" onClick={onOpenSystem} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left" }}>
         <Card style={{ padding: ".8rem 1rem" }}>
           {system.status === "loading" && <span style={{ color: "var(--era-text-muted)" }}>Проверяем API · Bot · Telegram · DB · Backup…</span>}
           {system.status === "error" && <strong style={{ color: "var(--era-error)" }}>Health API недоступен · открыть диагностику →</strong>}
@@ -146,7 +164,12 @@ export function AdminOverviewScreen({
         </div>
       </section>
 
-      {onOpenVerification && <ActionCell title="Проверка актуального состава" description="Community Verification: запуск, напоминания, недоступные и ручные решения" leading="◎" onClick={onOpenVerification} />}
+      <ActionCell
+        title="Проверка актуального состава"
+        description="Community Verification: запуск, напоминания, недоступные и ручные решения"
+        leading="◎"
+        onClick={onOpenVerification}
+      />
 
       <section>
         <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .55rem" }}>Требует внимания</h2>
@@ -158,11 +181,23 @@ export function AdminOverviewScreen({
           </Card>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
-            {(metrics.event_waitlist ?? 0) > 0 && <ActionCell title={`${metrics.event_waitlist} в листе ожидания`} description="Проверьте ближайшие события и свободные места" leading="◎" onClick={onOpenEvents} />}
-            {attentionItems.map((item) => {
-              const action = attentionAction(item.key);
-              return <ActionCell key={item.key} title={`${item.value} · ${item.label}`} description={action ? "Открыть и решить →" : "Откройте соответствующий рабочий раздел"} leading="!" onClick={action} />;
-            })}
+            {(metrics.event_waitlist ?? 0) > 0 && (
+              <ActionCell
+                title={`${metrics.event_waitlist} в листе ожидания`}
+                description="Проверьте ближайшие события и свободные места"
+                leading="◎"
+                onClick={onOpenEvents}
+              />
+            )}
+            {attentionItems.map((item) => (
+              <ActionCell
+                key={item.key}
+                title={`${item.value} · ${item.label}`}
+                description="Открыть и решить →"
+                leading="!"
+                onClick={attentionActions[item.key]}
+              />
+            ))}
           </div>
         )}
       </section>
@@ -170,10 +205,10 @@ export function AdminOverviewScreen({
       <section>
         <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .55rem" }}>Быстрые действия</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: ".55rem" }}>
-          {onOpenEvents && <ActionCell title="Создать мероприятие" description="Афиша → регистрация → напоминания → публикация" leading="＋" onClick={onOpenEvents} />}
-          {onOpenProjects && <ActionCell title="Создать проект" description="Идея, команда, план и запуск" leading="＋" onClick={onOpenProjects} />}
-          {onOpenTasks && <ActionCell title="Создать задание" description="Назначить результат, срок и баллы" leading="＋" onClick={onOpenTasks} />}
-          {onOpenComms && <ActionCell title="Сделать рассылку" description="Личные сообщения, чаты и предпросмотр" leading="↗" onClick={onOpenComms} />}
+          <ActionCell title="Создать мероприятие" description="Афиша → регистрация → напоминания → публикация" leading="＋" onClick={onOpenEvents} />
+          <ActionCell title="Создать проект" description="Идея, команда, план и запуск" leading="＋" onClick={onOpenProjects} />
+          <ActionCell title="Создать задание" description="Назначить результат, срок и баллы" leading="＋" onClick={onOpenTasks} />
+          <ActionCell title="Сделать рассылку" description="Личные сообщения, чаты и предпросмотр" leading="↗" onClick={onOpenComms} />
         </div>
       </section>
 
@@ -181,13 +216,27 @@ export function AdminOverviewScreen({
         <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .55rem" }}>Ближайшие мероприятия</h2>
         {upcoming.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загружаем афишу…</p>}
         {upcoming.status === "error" && <EmptyState text="Не удалось загрузить ближайшие события." />}
-        {upcoming.status === "ready" && upcoming.data.length === 0 && <Card><strong>Пока нет ближайших мероприятий</strong><p style={{ margin: ".3rem 0 0", color: "var(--era-text-muted)" }}>Создайте первое событие — регистрация и участники будут собраны автоматически.</p>{onOpenEvents && <button type="button" className="era-btn-primary" onClick={onOpenEvents} style={{ marginTop: ".75rem", width: "100%" }}>Создать мероприятие</button>}</Card>}
+        {upcoming.status === "ready" && upcoming.data.length === 0 && (
+          <Card>
+            <strong>Пока нет ближайших мероприятий</strong>
+            <p style={{ margin: ".3rem 0 0", color: "var(--era-text-muted)" }}>Создайте первое событие — регистрация и участники будут собраны автоматически.</p>
+            <button type="button" className="era-btn-primary" onClick={onOpenEvents} style={{ marginTop: ".75rem", width: "100%" }}>Создать мероприятие</button>
+          </Card>
+        )}
         {upcoming.status === "ready" && upcoming.data.slice(0, 3).map((event) => (
           <button key={event.id} type="button" onClick={onOpenEvents} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left", marginBottom: ".5rem" }}>
             <Card style={{ padding: ".8rem .9rem" }}>
               <div style={{ display: "flex", gap: ".8rem", alignItems: "center" }}>
-                <div style={{ minWidth: 52, textAlign: "center" }}><strong style={{ display: "block", fontSize: "1.25rem" }}>{formatEventDate(event.event_date).split(" ")[0]}</strong><span style={{ color: "var(--era-text-muted)", fontSize: ".74rem" }}>{formatEventDate(event.event_date).split(" ").slice(1).join(" ")}</span></div>
-                <div style={{ minWidth: 0, flex: 1 }}><strong style={{ display: "block", overflowWrap: "anywhere" }}>{event.title}</strong><span style={{ color: "var(--era-text-muted)", fontSize: ".8rem" }}>{event.participant_limit ? `${event.registered_count} / ${event.participant_limit} участников` : `${event.registered_count} участников`} · {event.event_time}</span></div>
+                <div style={{ minWidth: 52, textAlign: "center" }}>
+                  <strong style={{ display: "block", fontSize: "1.25rem" }}>{formatEventDate(event.event_date).split(" ")[0]}</strong>
+                  <span style={{ color: "var(--era-text-muted)", fontSize: ".74rem" }}>{formatEventDate(event.event_date).split(" ").slice(1).join(" ")}</span>
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <strong style={{ display: "block", overflowWrap: "anywhere" }}>{event.title}</strong>
+                  <span style={{ color: "var(--era-text-muted)", fontSize: ".8rem" }}>
+                    {event.participant_limit ? `${event.registered_count} / ${event.participant_limit} участников` : `${event.registered_count} участников`} · {event.event_time}
+                  </span>
+                </div>
                 <span>→</span>
               </div>
             </Card>
