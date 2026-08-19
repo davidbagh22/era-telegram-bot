@@ -64,3 +64,16 @@ test("analytics shows ERA efficiency, Pulse and opens real records behind metric
   await expect(page.getByRole("button", { name: /Полный XLSX/ })).toBeVisible();
   await expect(page.locator(".era-card").filter({ hasText: /participant|admin|leader|activist/i }).first()).toBeVisible();
 });
+
+test("overview KPI opens the exact underlying rows instead of a generic section", async ({ page }) => {
+  await enterAdminWorkspace(page);
+  await expect(page.getByRole("heading", { name: /Вот что происходит в ЭРА сегодня/ })).toBeVisible();
+
+  const currentRoster = page.getByRole("button", { name: /Участники.*Точный подтверждённый состав/ });
+  await expect(currentRoster).toBeVisible();
+  await currentRoster.click();
+
+  await expect(page.getByRole("heading", { name: "Текущий состав" })).toBeVisible();
+  await expect(page.getByText(/Список построен тем же правилом, что и KPI на главной/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /Скачать эти .* строк в Excel/ })).toBeVisible();
+});
