@@ -14,6 +14,7 @@ from app.services.event_custom_reminder_service import send_configured_event_rem
 from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
 from app.services.media_attachment_service import post_missing_media_task_cards
 from app.services.media_service import process_media_chat_automation, publish_due_channel_content
+from app.services.participation_lifecycle_service import run_reactivation_cycle
 from app.services.project_scoring_reconciliation_service import reconcile_project_scoring_job
 from app.services.system_health_service import run_system_diagnostics, send_daily_system_summary
 
@@ -132,6 +133,17 @@ def add_system_jobs(
         minutes=1,
         args=(bot, settings, session_factory),
         id="media-chat-automation",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
+    )
+    scheduler.add_job(
+        run_reactivation_cycle,
+        "interval",
+        hours=1,
+        args=(bot, settings, session_factory),
+        id="participation-reactivation",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
