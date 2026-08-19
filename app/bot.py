@@ -15,7 +15,6 @@ from app.handlers import (
     media_chat_files,
     referrals,
     registration,
-    registration_status,
     start,
 )
 from app.handlers.admin import router as admin_router
@@ -71,7 +70,6 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     dispatcher.include_routers(
         emergency.router,
         start.router,
-        registration_status.router,
         registration.router,
         referrals.router,
         admin_router,
