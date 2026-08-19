@@ -211,17 +211,6 @@ async def select_direction(
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
     )
 
-
-@router.callback_query(F.data == "department:chats")
-async def department_chats(call: CallbackQuery, user: User | None, settings: Settings) -> None:
-    if not await _guard(call, user):
-        return
-    rows = []
-    if settings.internal_department_chat_url:
-        rows.append([InlineKeyboardButton(text="🌿 Чат внутренних связей", url=settings.internal_department_chat_url)])
-    if settings.external_department_chat_url:
-        rows.append([InlineKeyboardButton(text="🌍 Чат внешних связей", url=settings.external_department_chat_url)])
-    if settings.general_chat_url:
-        rows.append([InlineKeyboardButton(text="💬 Общий чат ЭРА", url=settings.general_chat_url)])
-    rows.append([InlineKeyboardButton(text="← Департаменты", callback_data="cabinet:departments")])
-    await call.message.answer("Чаты ЭРА\n\nВыберите нужный чат", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+# department:chats has one canonical owner in departments.py. This newer
+# direction-selection module already renders chat URLs contextually and does
+# not need a second exact handler for the same callback.
