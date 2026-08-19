@@ -80,13 +80,6 @@ def _has_department(user: User, marker: str) -> bool:
 
 
 def _has_media_membership(user: User) -> bool:
-    """Use the existing Direction/UserDirection membership as Media ACL.
-
-    Media Desk already uses this same source of truth.  The Telegram working
-    chat must not be a weaker path that lets every approved participant bypass
-    Media Lead approval.  Be defensive around partially-loaded relationships:
-    a missing relationship means no Media access, never implicit access.
-    """
     for link in getattr(user, "directions", None) or []:
         direction = getattr(link, "direction", None)
         if direction is None or str(getattr(direction, "name", "")).casefold() != "медиа":
@@ -121,19 +114,13 @@ def check_chat_access(user: User | None, chat_key: str | None) -> ChatAccessDeci
         )
     if chat_key == "internal":
         allowed = _has_department(user, "внутрен")
-        return ChatAccessDecision(
-            allowed, chat_key, "approved" if allowed else "wrong_department"
-        )
+        return ChatAccessDecision(allowed, chat_key, "approved" if allowed else "wrong_department")
     if chat_key == "external":
         allowed = _has_department(user, "внешн")
-        return ChatAccessDecision(
-            allowed, chat_key, "approved" if allowed else "wrong_department"
-        )
+        return ChatAccessDecision(allowed, chat_key, "approved" if allowed else "wrong_department")
     if chat_key == "leaders":
         allowed = user.role in PRIVILEGED_ROLES
-        return ChatAccessDecision(
-            allowed, chat_key, "approved" if allowed else "wrong_role"
-        )
+        return ChatAccessDecision(allowed, chat_key, "approved" if allowed else "wrong_role")
     return ChatAccessDecision(False, chat_key, "unknown_chat")
 
 
@@ -153,12 +140,7 @@ def access_message(reason: str) -> str:
 
 
 async def remember_join_request(
-    session: AsyncSession,
-    *,
-    chat_id: int,
-    user_id: int,
-    chat_key: str,
-    reason: str,
+    session: AsyncSession, *, chat_id: int, user_id: int, chat_key: str, reason: str
 ) -> None:
     current = await session.scalar(
         select(PendingChatJoinRequest).where(
@@ -183,12 +165,7 @@ async def remember_join_request(
 
 
 async def close_join_request(
-    session: AsyncSession,
-    *,
-    chat_id: int,
-    user_id: int,
-    status: str,
-    reason: str,
+    session: AsyncSession, *, chat_id: int, user_id: int, status: str, reason: str
 ) -> None:
     current = await session.scalar(
         select(PendingChatJoinRequest).where(
@@ -221,11 +198,7 @@ async def decline_join_request(bot: Bot, chat_id: int, user_id: int) -> bool:
 
 async def restrict_member(bot: Bot, chat_id: int, user_id: int) -> bool:
     try:
-        await bot.restrict_chat_member(
-            chat_id=chat_id,
-            user_id=user_id,
-            permissions=restricted_permissions(),
-        )
+        await bot.restrict_chat_member(chat_id=chat_id, user_id=user_id, permissions=restricted_permissions())
         return True
     except TelegramAPIError:
         logger.exception("Could not restrict member chat=%s user=%s", chat_id, user_id)
@@ -234,14 +207,25 @@ async def restrict_member(bot: Bot, chat_id: int, user_id: int) -> bool:
 
 async def unrestrict_member(bot: Bot, chat_id: int, user_id: int) -> bool:
     try:
-        await bot.restrict_chat_member(
-            chat_id=chat_id,
-            user_id=user_id,
-            permissions=writable_permissions(),
-        )
+        await bot.restrict_chat_member(chat_id=chat_id, user_id=user_id, permissions=writable_permissions())
         return True
     except TelegramAPIError:
         logger.exception("Could not unrestrict member chat=%s user=%s", chat_id, user_id)
+        return False
+
+
+async def remove_rejected_member(bot: Bot, chat_id: int, user_id: int) -> bool:
+    """Rejected applicants are removed and remain unable to re-enter.
+
+    Unlike Community Verification's manual roster cleanup (kick + unban), a
+    rejected application is a durable access decision, so the Telegram ban is
+    intentionally not immediately lifted.
+    """
+    try:
+        await bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
+        return True
+    except TelegramAPIError:
+        logger.exception("Could not remove rejected member chat=%s user=%s", chat_id, user_id)
         return False
 
 
@@ -292,11 +276,23 @@ async def sync_user_chat_access(
     for chat_id in settings.chat_ids:
         chat_key = chat_key_for_id(settings, chat_id)
         decision = check_chat_access(user, chat_key)
-        ok = (
-            await unrestrict_member(bot, chat_id, user.telegram_id)
-            if decision.allowed
-            else await restrict_member(bot, chat_id, user.telegram_id)
-        )
+        if user.application_status == ApplicationStatus.REJECTED:
+            ok = await remove_rejected_member(bot, chat_id, user.telegram_id)
+            if ok:
+                await audit(
+                    session,
+                    actor_id=user.id,
+                    action="chat_access.member_removed",
+                    entity_type="user",
+                    entity_id=user.id,
+                    new_value={"chat_id": chat_id, "reason": "application_rejected"},
+                )
+        else:
+            ok = (
+                await unrestrict_member(bot, chat_id, user.telegram_id)
+                if decision.allowed
+                else await restrict_member(bot, chat_id, user.telegram_id)
+            )
         fixed += int(ok)
         failed += int(not ok)
         if ok and decision.allowed and chat_key == "general":
@@ -309,10 +305,6 @@ async def sync_user_chat_access(
             action="chat_access.synced",
             entity_type="user",
             entity_id=user.id,
-            new_value={
-                "telegram_id": user.telegram_id,
-                "fixed": fixed,
-                "failed": failed,
-            },
+            new_value={"telegram_id": user.telegram_id, "fixed": fixed, "failed": failed},
         )
     return fixed, failed
