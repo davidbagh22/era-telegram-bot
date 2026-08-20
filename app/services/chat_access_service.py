@@ -215,12 +215,7 @@ async def unrestrict_member(bot: Bot, chat_id: int, user_id: int) -> bool:
 
 
 async def remove_rejected_member(bot: Bot, chat_id: int, user_id: int) -> bool:
-    """Rejected applicants are removed and remain unable to re-enter.
-
-    Unlike Community Verification's manual roster cleanup (kick + unban), a
-    rejected application is a durable access decision, so the Telegram ban is
-    intentionally not immediately lifted.
-    """
+    """Legacy helper kept for compatibility; chat sync no longer removes rejected users."""
     try:
         await bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
         return True
@@ -273,26 +268,13 @@ async def sync_user_chat_access(
         else:
             failed += 1
 
+    # Chat membership may still be controlled at join-request time, but once a
+    # person is in a chat the bot must never mute or remove them because of ERA
+    # registration, application status, role, department, block or archive state.
     for chat_id in settings.chat_ids:
         chat_key = chat_key_for_id(settings, chat_id)
         decision = check_chat_access(user, chat_key)
-        if user.application_status == ApplicationStatus.REJECTED:
-            ok = await remove_rejected_member(bot, chat_id, user.telegram_id)
-            if ok:
-                await audit(
-                    session,
-                    actor_id=user.id,
-                    action="chat_access.member_removed",
-                    entity_type="user",
-                    entity_id=user.id,
-                    new_value={"chat_id": chat_id, "reason": "application_rejected"},
-                )
-        else:
-            ok = (
-                await unrestrict_member(bot, chat_id, user.telegram_id)
-                if decision.allowed
-                else await restrict_member(bot, chat_id, user.telegram_id)
-            )
+        ok = await unrestrict_member(bot, chat_id, user.telegram_id)
         fixed += int(ok)
         failed += int(not ok)
         if ok and decision.allowed and chat_key == "general":
