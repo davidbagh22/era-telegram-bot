@@ -130,10 +130,10 @@ export function VectorHomeScreen({
       <section style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
         <MonoLabel>Мой рост</MonoLabel>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "0.55rem" }}>
-          <Metric label="Проекты" value={data.metrics.projects} />
-          <Metric label="События" value={data.metrics.events} />
-          <Metric label="Задачи" value={data.metrics.tasks} />
-          <Metric label="Активность" value={data.metrics.streak} suffix=" серия" />
+          <Metric label="Проекты" value={data.activity.projects} />
+          <Metric label="Завершённые задачи" value={data.activity.completed_tasks} />
+          <Metric label="Результаты в портфолио" value={data.activity.portfolio_items} />
+          <Metric label="Баллы за месяц" value={data.points_month} />
         </div>
         <Card onClick={() => onNavigate("assessments")}><strong>Навыки и исследования</strong><p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", fontSize: "0.82rem" }}>Инструменты, которые помогают увидеть устойчивые особенности и сильные стороны.</p><span style={{ display: "block", marginTop: "0.45rem", color: "var(--era-violet)", fontWeight: 800, fontSize: "0.8rem" }}>Открыть исследования →</span></Card>
       </section>
@@ -169,6 +169,6 @@ export function VectorHomeScreen({
   );
 }
 
-function Metric({ label, value, suffix = "" }: { label: string; value: number; suffix?: string }) {
-  return <Card style={{ padding: "0.8rem" }}><strong style={{ display: "block", fontSize: "1.25rem" }}>{value}</strong><span style={{ display: "block", marginTop: "0.15rem", color: "var(--era-text-muted)", fontSize: "0.75rem" }}>{label}{suffix}</span></Card>;
+function Metric({ label, value }: { label: string; value: number }) {
+  return <Card style={{ padding: "0.8rem" }}><strong style={{ display: "block", fontSize: "1.25rem" }}>{value}</strong><span style={{ display: "block", marginTop: "0.15rem", color: "var(--era-text-muted)", fontSize: "0.75rem" }}>{label}</span></Card>;
 }
