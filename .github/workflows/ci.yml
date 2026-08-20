@@ -90,6 +90,8 @@ jobs:
         run: alembic upgrade heads
       - name: Run the real startup seed path and verify timestamp defaults
         run: python scripts/postgres_migration_smoke.py
+      - name: Prove concurrent point idempotency on PostgreSQL
+        run: python scripts/postgres_points_race.py
 
   frontend:
     runs-on: ubuntu-latest
