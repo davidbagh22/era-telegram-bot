@@ -17,6 +17,7 @@ interface TelegramWebApp {
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;
   setBottomBarColor?: (color: string) => void;
+  openTelegramLink?: (url: string) => void;
   HapticFeedback?: TelegramHapticFeedback;
 }
 
@@ -61,6 +62,20 @@ export function applyTelegramTheme(): void {
   try { webApp?.setHeaderColor?.("#F7F7FA"); } catch { /* older clients */ }
   try { webApp?.setBackgroundColor?.("#F7F7FA"); } catch { /* older clients */ }
   try { webApp?.setBottomBarColor?.("#F7F7FA"); } catch { /* older clients */ }
+}
+
+export function openTelegramShare(url: string, text: string): boolean {
+  const webApp = getTelegramWebApp();
+  if (!webApp?.openTelegramLink) return false;
+  const shareUrl = new URL("https://t.me/share/url");
+  shareUrl.searchParams.set("url", url);
+  shareUrl.searchParams.set("text", text);
+  try {
+    webApp.openTelegramLink(shareUrl.toString());
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function selectionHaptic(): void {
