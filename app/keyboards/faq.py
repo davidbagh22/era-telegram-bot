@@ -1,9 +1,4 @@
-from aiogram.types import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
-)
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 GENERAL_CHAT_EVENTS_TEXT = "📅 События"
 GENERAL_CHAT_PROFILE_TEXT = "🔥 Моя ЭРА"
@@ -33,21 +28,6 @@ def faq_keyboard(bot_username: str | None = None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def general_chat_navigation_keyboard() -> ReplyKeyboardMarkup:
-    """Persistent two-action dock for the general ERA chat.
-
-    Telegram does not allow reply-keyboard WebApp buttons in group chats, so
-    these buttons intentionally send short service texts. The group handler
-    deletes those texts immediately and continues the action privately.
-    """
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text=GENERAL_CHAT_EVENTS_TEXT),
-                KeyboardButton(text=GENERAL_CHAT_PROFILE_TEXT),
-            ]
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-        input_field_placeholder="События или Моя ЭРА",
-    )
+def general_chat_navigation_keyboard() -> ReplyKeyboardRemove:
+    """Actively remove the old persistent reply keyboard from the general chat."""
+    return ReplyKeyboardRemove(remove_keyboard=True)
