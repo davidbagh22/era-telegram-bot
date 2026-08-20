@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from aiogram import F, Bot, Router
-from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.exceptions import TelegramAPIError
+from aiogram.filters import Filter
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,25 @@ from app.utils.deep_links import miniapp_profile_url
 router = Router(name="general_chat_navigation")
 
 
+class ApprovedGeneralChat(Filter):
+    """Only consume quick-action text for a real approved general-chat member.
+
+    If this filter returns False, the update continues to the existing chat
+    router where normal access-control/moderation rules remain authoritative.
+    """
+
+    async def __call__(
+        self,
+        message: Message,
+        settings: Settings,
+        user: User | None,
+    ) -> bool:
+        return (
+            chat_key_for_id(settings, message.chat.id) == "general"
+            and check_chat_access(user, "general").allowed
+        )
+
+
 async def _delete_quick_action_message(message: Message) -> None:
     """Keep the shared chat clean after a reply-keyboard tap."""
     try:
@@ -27,15 +46,8 @@ async def _delete_quick_action_message(message: Message) -> None:
         pass
 
 
-def _is_general_chat(message: Message, settings: Settings) -> bool:
-    return chat_key_for_id(settings, message.chat.id) == "general"
-
-
-def _can_use_general_chat(user: User | None) -> bool:
-    return check_chat_access(user, "general").allowed
-
-
 @router.message(
+    ApprovedGeneralChat(),
     F.text == GENERAL_CHAT_EVENTS_TEXT,
     ~F.chat.type.in_({"private"}),
 )
@@ -43,7 +55,6 @@ async def open_events_from_general_chat(
     message: Message,
     bot: Bot,
     user: User | None,
-    settings: Settings,
     session: AsyncSession,
 ) -> None:
     """Show the actual current event list in the participant's bot DM.
@@ -53,9 +64,6 @@ async def open_events_from_general_chat(
     and continue privately, so the general chat remains a community feed rather
     than a navigation log.
     """
-    if not _is_general_chat(message, settings) or not _can_use_general_chat(user):
-        raise SkipHandler
-
     await _delete_quick_action_message(message)
     if user is None:
         return
@@ -78,6 +86,7 @@ async def open_events_from_general_chat(
 
 
 @router.message(
+    ApprovedGeneralChat(),
     F.text == GENERAL_CHAT_PROFILE_TEXT,
     ~F.chat.type.in_({"private"}),
 )
@@ -88,9 +97,6 @@ async def open_profile_from_general_chat(
     settings: Settings,
 ) -> None:
     """Hand off from the shared chat to the participant's profile Mini App."""
-    if not _is_general_chat(message, settings) or not _can_use_general_chat(user):
-        raise SkipHandler
-
     await _delete_quick_action_message(message)
     if user is None:
         return
