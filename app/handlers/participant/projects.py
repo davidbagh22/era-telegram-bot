@@ -50,8 +50,9 @@ async def _send_projects_menu(message: Message, user: User | None) -> None:
 
 
 def _question_markup(index: int):
-    question = PROJECT_QUESTIONS[index]
-    return project_question_keyboard(index, question.ai_hint is not None)
+    # The bot mirrors the theory-only constructor: there is no AI action,
+    # generated answer, or external AI prompt hidden behind this keyboard.
+    return project_question_keyboard(index, False)
 
 
 async def _ask_question(
@@ -209,22 +210,6 @@ async def project_answer(
         caption="Копия проекта — файл останется в этом чате",
     ):
         await message.answer("Проект собран, но Telegram не дал отправить копию файлом. Текстовая версия выше сохранена.")
-
-
-@router.callback_query(ProjectStates.answer, F.data.startswith("project:hint:"))
-async def project_hint(call: CallbackQuery, state: FSMContext) -> None:
-    await call.answer()
-    index = int(call.data.rsplit(":", 1)[-1])
-    data = await state.get_data()
-    if index != int(data.get("question_index", -1)):
-        await call.message.answer("Эта подсказка относится к предыдущему шагу")
-        return
-    hint = PROJECT_QUESTIONS[index].ai_hint
-    if hint:
-        await call.message.answer(
-            "Скопируйте этот запрос в удобный ИИ-чат, замените текст в скобках и верните готовый ответ сюда:\n\n"
-            f"{hint}"
-        )
 
 
 @router.callback_query(ProjectStates.answer, F.data == "project:previous")
