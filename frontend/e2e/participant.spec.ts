@@ -5,10 +5,9 @@ const PARTICIPANT_TELEGRAM_ID = 900001;
 test("participant gets light ERA UI, opens event details, and registers", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
 
-  // "УРОВЕНЬ" (the level tag next to the greeting) is the stable Home
-  // landmark for the light/signal redesign -- present for every
-  // authenticated participant, unlike screen-specific copy.
-  await expect(page.getByText("УРОВЕНЬ", { exact: true })).toBeVisible();
+  // The Vector-first Home card is the stable landmark for every approved
+  // participant after the growth-system redesign.
+  await expect(page.getByText("МОЙ ВЕКТОР", { exact: true })).toBeVisible();
   const bodyBackground = await page.locator("body").evaluate((node) => getComputedStyle(node).backgroundColor);
   // The redesign is light-first by design (tokens.css §0/§2) -- the old
   // near-black surface must never come back as the default body color.
