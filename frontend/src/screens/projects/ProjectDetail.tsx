@@ -69,6 +69,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
   const [questionIndex, setQuestionIndex] = useState(0);
   const [showWorkspace, setShowWorkspace] = useState(initialShowWorkspace);
   const [hintOpen, setHintOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +121,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
   const currentHint = currentQuestion
     ? hintForProjectQuestion(currentQuestion.key, currentQuestion.title, currentQuestion.prompt)
     : null;
+  const isDraftLike = project.status === "draft" || project.status === "needs_revision";
 
   const saveQuestion = async (question: ProjectQuestion, value: string) => {
     const updated = await updateProject(projectId, { [question.key]: value });
@@ -161,7 +163,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
     if (!currentQuestion) return;
     const answer = answers[currentQuestion.key] ?? "";
     if (!answer.trim()) {
-      setActionError("Заполните этот шаг. Подсказка объясняет логику, но сам ответ остаётся вашим.");
+      setActionError("Заполните этот шаг своими словами. Теория помогает разобраться, но ответ остаётся вашим.");
       return;
     }
     await persistStep(currentQuestion, questionIndex, answer, "next");
@@ -206,15 +208,16 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
     }
   };
 
-  const handleCancel = async () => {
+  const handleDelete = async () => {
     setBusy(true);
     setActionError(null);
     try {
-      const updated = await cancelProject(projectId);
-      setProject(updated);
-      setSavedNotice("Проект удалён из активной работы");
+      await cancelProject(projectId);
+      setDeleteOpen(false);
+      onBack();
     } catch (error) {
-      setActionError(actionMessage(error, "Не удалось удалить проект."));
+      setDeleteOpen(false);
+      setActionError(actionMessage(error, isDraftLike ? "Не удалось удалить черновик." : "Не удалось убрать проект."));
     } finally {
       setBusy(false);
     }
@@ -273,8 +276,20 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
               <p style={{ margin: "0.6rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{currentQuestion.prompt}</p>
             </Card>
 
+            {currentHint && (
+              <Card style={{ background: "linear-gradient(135deg, rgba(99,44,255,.08), rgba(255,100,0,.05)), var(--era-surface)", borderColor: "rgba(99,44,255,.16)" }}>
+                <p style={{ margin: "0 0 0.45rem", color: "var(--era-violet)", fontSize: "var(--era-text-xs)", fontWeight: 850, textTransform: "uppercase" }}>Теория шага</p>
+                <strong style={{ display: "block", lineHeight: 1.45 }}>{currentHint.what}</strong>
+                <p style={{ margin: "0.55rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55 }}>{currentHint.why}</p>
+                <div style={{ marginTop: "0.75rem", paddingTop: "0.7rem", borderTop: "1px solid var(--era-border)" }}>
+                  <strong style={{ display: "block", fontSize: "var(--era-text-sm)" }}>Что написать</strong>
+                  <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.5 }}>{currentHint.write}</p>
+                </div>
+              </Card>
+            )}
+
             <button type="button" onClick={() => setHintOpen(true)} style={{ width: "100%", textAlign: "left", padding: "0.8rem 0.9rem", borderRadius: "var(--era-radius-control)", border: "1px solid rgba(99,44,255,.22)", background: "var(--era-tint-violet)", color: "var(--era-violet)", fontWeight: 800 }}>
-              Получить подсказку →
+              Подробнее: вопросы и ошибки →
             </button>
 
             <Card>
@@ -290,7 +305,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
                   setSavedNotice(null);
                 }}
                 rows={6}
-                placeholder="Напишите своими словами. Подсказка объясняет логику, но не пишет проект вместо вас."
+                placeholder="Напишите своими словами. Используйте теорию выше как ориентир."
                 style={{ minHeight: 150 }}
               />
             </Card>
@@ -306,10 +321,15 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
               <button type="button" className="era-btn-primary" disabled={busy} onClick={() => void handleNext()}>{busy ? "● Сохраняем…" : questionIndex === questions.length - 1 ? "К финальному preview →" : "Сохранить и дальше →"}</button>
             </div>
             <button type="button" disabled={busy} onClick={() => void handleSaveAndClose()}>Сохранить и выйти</button>
+            {project.can_delete && isDraftLike && (
+              <button type="button" disabled={busy} onClick={() => setDeleteOpen(true)} style={{ color: "var(--era-error)" }}>
+                Удалить черновик
+              </button>
+            )}
           </div>
 
           {currentHint && (
-            <BottomSheet open={hintOpen} onClose={() => setHintOpen(false)} title={`Подсказка · ${currentHint.title}`}>
+            <BottomSheet open={hintOpen} onClose={() => setHintOpen(false)} title={`Разбор шага · ${currentHint.title}`}>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem", maxHeight: "68vh", overflowY: "auto" }}>
                 <HintBlock title="Что означает этот раздел" text={currentHint.what} />
                 <HintBlock title="Зачем он нужен" text={currentHint.why} />
@@ -324,7 +344,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
                   <strong style={{ display: "block", marginBottom: "0.4rem" }}>Типичные ошибки</strong>
                   <ul style={{ margin: 0, paddingLeft: "1.1rem", color: "var(--era-text-muted)", lineHeight: 1.55 }}>{currentHint.mistakes.map((item) => <li key={item}>{item}</li>)}</ul>
                 </div>
-                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.8rem", lineHeight: 1.5 }}>Подсказка ничего не подставляет в ваш ответ и не придумывает партнёров, людей, бюджет, показатели, результаты или цифры.</p>
+                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.8rem", lineHeight: 1.5 }}>Разбор шага только объясняет логику. Он ничего не подставляет в ответ и не придумывает партнёров, людей, бюджет, показатели, результаты или цифры.</p>
               </div>
             </BottomSheet>
           )}
@@ -351,11 +371,31 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
 
           {project.can_edit && !constructorComplete && <button type="button" className="era-btn-primary" onClick={openEditor}>Продолжить конструктор</button>}
           {project.can_submit && <button type="button" className="era-btn-primary" disabled={busy || !constructorComplete} onClick={() => void handleSubmit()}>{busy ? "Отправляем…" : "Отправить на рассмотрение"}</button>}
-          {project.can_delete && <button type="button" disabled={busy} onClick={() => void handleCancel()}>Удалить проект</button>}
+          {project.can_delete && (
+            <button type="button" disabled={busy} onClick={() => setDeleteOpen(true)} style={{ color: "var(--era-error)" }}>
+              {isDraftLike ? "Удалить черновик" : "Убрать проект из моих"}
+            </button>
+          )}
           <button type="button" onClick={() => setShowWorkspace((value) => !value)}>{showWorkspace ? "Скрыть рабочую зону" : "Открыть рабочую зону →"}</button>
           {showWorkspace && <ProjectWorkspace projectId={projectId} />}
         </>
       )}
+
+      <BottomSheet open={deleteOpen} onClose={() => setDeleteOpen(false)} title={isDraftLike ? "Удалить черновик?" : "Убрать проект?"}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
+          <p style={{ margin: 0, color: "var(--era-text-muted)", lineHeight: 1.55 }}>
+            {isDraftLike
+              ? "Черновик исчезнет из ваших проектов. Все сохранённые ответы этого черновика больше не будут доступны через интерфейс."
+              : "Проект исчезнет из вашего рабочего списка. Это действие доступно только автору проекта в разрешённом статусе."}
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.55rem" }}>
+            <button type="button" disabled={busy} onClick={() => setDeleteOpen(false)}>Оставить</button>
+            <button type="button" disabled={busy} onClick={() => void handleDelete()} style={{ color: "var(--era-error)", borderColor: "rgba(255,102,117,.35)" }}>
+              {busy ? "Удаляем…" : isDraftLike ? "Удалить черновик" : "Убрать"}
+            </button>
+          </div>
+        </div>
+      </BottomSheet>
     </div>
   );
 }
