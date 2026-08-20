@@ -5,6 +5,7 @@ import {
   fetchAdminApplications,
   rejectApplication,
   requestApplicationInfo,
+  setUserArchived,
 } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
@@ -82,6 +83,7 @@ function ApplicationCard({
   onApprove,
   onRequestInfo,
   onReject,
+  onDelete,
   focused = false,
 }: {
   application: PendingApplication;
@@ -91,6 +93,7 @@ function ApplicationCard({
   onApprove: () => void;
   onRequestInfo: () => void;
   onReject: () => void;
+  onDelete: () => void;
   focused?: boolean;
 }) {
   const fullName = `${application.first_name} ${application.last_name ?? ""}`.trim();
@@ -257,6 +260,14 @@ function ApplicationCard({
           <button type="button" disabled={busy || !comment.trim()} onClick={onReject}>
             Отклонить
           </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onDelete}
+            style={{ color: "var(--era-error)", borderColor: "var(--era-error)" }}
+          >
+            Удалить анкету
+          </button>
         </div>
       </div>
     </Card>
@@ -324,6 +335,32 @@ export function AdminApplicationsScreen({ initialApplicationId = null }: { initi
     [comments, refresh],
   );
 
+  const handleDelete = useCallback(
+    async (userId: number, fullName: string) => {
+      const confirmed = window.confirm(
+        `Удалить анкету ${fullName}? Она исчезнет из очереди заявок.`,
+      );
+      if (!confirmed) return;
+
+      setBusyId(userId);
+      setActionError(null);
+      try {
+        await setUserArchived(userId, true);
+        setComments((previous) => {
+          const next = { ...previous };
+          delete next[userId];
+          return next;
+        });
+        refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [refresh],
+  );
+
   if (state.status === "loading") {
     return <p style={{ color: "var(--era-text-muted)" }}>Загрузка полной анкеты и фотографии…</p>;
   }
@@ -358,21 +395,25 @@ export function AdminApplicationsScreen({ initialApplicationId = null }: { initi
       {actionError && (
         <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
       )}
-      {applications.map((application) => (
-        <ApplicationCard
-          key={application.id}
-          application={application}
-          focused={application.id === initialApplicationId}
-          busy={busyId === application.id}
-          comment={comments[application.id] ?? ""}
-          onComment={(value) =>
-            setComments((previous) => ({ ...previous, [application.id]: value }))
-          }
-          onApprove={() => handleApprove(application.id)}
-          onRequestInfo={() => handleRequestInfo(application.id)}
-          onReject={() => handleReject(application.id)}
-        />
-      ))}
+      {applications.map((application) => {
+        const fullName = `${application.first_name} ${application.last_name ?? ""}`.trim();
+        return (
+          <ApplicationCard
+            key={application.id}
+            application={application}
+            focused={application.id === initialApplicationId}
+            busy={busyId === application.id}
+            comment={comments[application.id] ?? ""}
+            onComment={(value) =>
+              setComments((previous) => ({ ...previous, [application.id]: value }))
+            }
+            onApprove={() => handleApprove(application.id)}
+            onRequestInfo={() => handleRequestInfo(application.id)}
+            onReject={() => handleReject(application.id)}
+            onDelete={() => handleDelete(application.id, fullName)}
+          />
+        );
+      })}
     </div>
   );
 }
