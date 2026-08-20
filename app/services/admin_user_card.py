@@ -280,6 +280,23 @@ async def send_admin_application_cards(
             sent += 1
         else:
             failed += 1
+
     if not recipients:
         logger.error("Application card was not sent: no admin recipients found")
+        raise RuntimeError("admin_notification_recipients_missing")
+    if sent == 0:
+        # safe_send deliberately converts Telegram delivery errors into False.
+        # Escalate total delivery failure so registration.py can execute its
+        # simpler fallback notification instead of silently losing the alert.
+        logger.error(
+            "Application card delivery failed for all recipients user_id=%s",
+            target.id,
+        )
+        raise RuntimeError("application_card_delivery_failed")
+    if failed:
+        logger.warning(
+            "Application card delivery partially failed user_id=%s failed=%s",
+            target.id,
+            failed,
+        )
     return sent, failed
