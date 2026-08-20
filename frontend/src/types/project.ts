@@ -23,7 +23,6 @@ export interface ProjectQuestion {
   block: string;
   title: string;
   prompt: string;
-  ai_hint: string | null;
   input_type: "text" | "date" | "time";
 }
 

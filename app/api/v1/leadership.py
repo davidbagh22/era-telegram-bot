@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Literal
 
 from aiogram import Bot
@@ -338,9 +338,6 @@ class ReportSubmitIn(BaseModel):
     clarity_score: int | None = Field(default=None, ge=1, le=5)
     load_score: int | None = Field(default=None, ge=1, le=5)
     attention_text: str = ""
-    # Kept for backward-compatible clients only. The server deliberately does
-    # not trust these fields; report scope is derived from the leader's active
-    # office assignment and then frozen for the week.
     scope_type: str | None = None
     scope_id: int | None = None
 

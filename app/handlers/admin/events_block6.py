@@ -14,6 +14,7 @@ from app.services.event_card import format_event_text, send_event_card, send_eve
 from app.services.notification_service import safe_send
 from app.utils import texts
 from app.utils.constants import EVENT_STATUS_LABELS, EventStatus
+from app.utils.deep_links import telegram_event_miniapp_url
 from app.utils.validators import clean_text
 
 router = Router(name="admin_events_block6")
@@ -41,6 +42,24 @@ def public_text(event: Event) -> str:
         event,
         header="📅 Новое мероприятие ЭРА",
         extra_text="Регистрация открыта в боте.",
+    )
+
+
+async def public_event_keyboard(
+    bot: Bot, settings: Settings, event: Event
+) -> InlineKeyboardMarkup | None:
+    """Group-safe direct link to the exact event screen in the Main Mini App."""
+    username = (settings.bot_username or "").strip()
+    if not username:
+        me = await bot.get_me()
+        username = me.username or ""
+    url = telegram_event_miniapp_url(username, event.id)
+    if not url:
+        return None
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Открыть мероприятие", url=url)]
+        ]
     )
 
 
@@ -156,16 +175,21 @@ async def broadcast_publish(call: CallbackQuery, user: User | None, settings: Se
     if not event or PREPARED_MARK not in (event.additional_info or ""):
         await call.message.answer("Сначала нажмите «Подготовить рассылку 1/2»")
         return
+
+    # The public announcement and registration become one atomic product step:
+    # every new event appears in the general chat with a direct route to this
+    # exact event screen rather than a generic Mini App/home link.
+    event.status = EventStatus.REGISTRATION_OPEN
+    event.additional_info = (event.additional_info or "").replace(PREPARED_MARK, "").strip()
     if settings.general_chat_id:
         await send_event_card_to_chat(
             bot,
             settings.general_chat_id,
             event,
-            header="📅 Новое мероприятие ЭРА",
-            extra_text="Регистрация открыта в боте.",
+            header="🔥 Новое событие ЭРА",
+            extra_text="Регистрация открыта.",
+            keyboard=await public_event_keyboard(bot, settings, event),
         )
-    event.status = EventStatus.REGISTRATION_OPEN
-    event.additional_info = (event.additional_info or "").replace(PREPARED_MARK, "").strip()
     await audit(session, actor_id=user.id if user else None, action="event.broadcast_published", entity_type="event", entity_id=event.id)
     await call.message.answer("Рассылка отправлена, регистрация открыта.", reply_markup=event_kb(event))
 

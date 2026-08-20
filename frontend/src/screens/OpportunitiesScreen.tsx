@@ -8,7 +8,6 @@ import {
   unsaveOpportunity,
   type OpportunityFilters,
 } from "../api/client";
-import { AchievementOverlay } from "../components/AchievementOverlay";
 import { BottomSheet } from "../components/BottomSheet";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
@@ -22,233 +21,197 @@ import { RewardsPanel } from "./opportunities/RewardsPanel";
 import { SurveysPanel } from "./opportunities/SurveysPanel";
 
 export type OpportunitiesSection = "offers" | "auctions" | "rewards" | "surveys";
+type QuickKey = "all" | "for_me" | "available" | "almost";
+type UiSort = "recommended" | "closing_soon" | "newest" | "required_points";
 
-const QUICK_STATES: { key: string; label: string; scope: OpportunityScope; state: OpportunityState | null }[] = [
+const STORAGE_KEY = "era.opportunities.state.v2";
+
+const QUICK_STATES: { key: QuickKey; label: string; scope: OpportunityScope; state: OpportunityState | null }[] = [
   { key: "all", label: "Все", scope: "all", state: null },
   { key: "for_me", label: "Для тебя", scope: "for_me", state: null },
   { key: "available", label: "Доступно", scope: "all", state: "available" },
-  { key: "almost", label: "Почти доступно", scope: "all", state: "almost" },
-  { key: "mine", label: "Мои заявки", scope: "mine", state: null },
+  { key: "almost", label: "Скоро доступно", scope: "all", state: "almost" },
 ];
-
-const TYPE_LABELS: Record<string, string> = {
-  certificate: "Сертификат",
-  letter: "Письмо",
-  external: "Внешняя возможность",
-};
-
-const CATEGORY_LABELS: Record<string, string> = {
-  projects: "Проекты",
-  events: "Мероприятия",
-  volunteering: "Волонтёрство",
-  public_activity: "Общественная деятельность",
-  media: "Медиа",
-  leadership: "Лидерство",
-  international: "Международная/партнёрская деятельность",
-};
 
 const STATE_LABELS: Record<OpportunityState, string> = {
   available: "Доступно",
-  almost: "Почти доступно",
+  almost: "Скоро доступно",
   closed: "Закрыто",
   requested: "Заявка отправлена",
   review: "На рассмотрении",
   issued: "Выдано",
 };
 
-const SORT_LABELS: Record<OpportunitySort, string> = {
-  by_organization: "По организации",
-  closing_soon: "Ближе всего к открытию",
+const UI_SORT_LABELS: Record<UiSort, string> = {
+  recommended: "Рекомендованные",
+  closing_soon: "Ближайшие",
   newest: "Новые",
+  required_points: "По требуемым баллам",
 };
 
-const ISSUER_TONE: Record<string, string> = {
-  "ЭРА": "Официальное подтверждение твоего вклада и роста внутри сообщества.",
-  "Ассоциация студентов российских вузов в Армении": "Документы за общественную, волонтёрскую и лидерскую работу в студенческой среде.",
-  "Дом Москвы в Ереване": "Признание вклада в молодёжные и общественно-культурные инициативы.",
-  "КСООРС Армении": "Документы за вклад в общественную жизнь, сотрудничество и молодёжное движение соотечественников.",
+const CATEGORY_LABELS: Record<string, string> = {
+  recognition: "Признание и документы",
+  documents: "Признание и документы",
+  education: "Образовательные программы",
+  delegations: "Делегации",
+  grants: "Гранты и конкурсы",
+  competitions: "Гранты и конкурсы",
+  era_pro: "ЭРА PRO",
+  events: "Мероприятия",
+  other: "Другое",
+  projects: "Проекты",
+  volunteering: "Волонтёрство",
+  media: "Медиа",
+  leadership: "Лидерство",
+  international: "Международные возможности",
 };
 
-const RECOGNITION_TYPES = new Set(["certificate", "letter"]);
-const APPLIED_STATUSES = new Set(["pending", "requested", "under_review", "needs_info", "partner_review", "approved", "issued"]);
 const APPLICATION_STATUS_LABELS: Record<string, string> = {
-  pending: "на проверке",
-  requested: "заявка отправлена",
-  under_review: "проверка ЭРА",
-  needs_info: "нужна информация",
-  partner_review: "проверка партнёра",
-  approved: "одобрено",
-  issued: "выдано",
-  rejected: "отклонено",
+  pending: "Заявка рассматривается",
+  requested: "Заявка отправлена",
+  under_review: "Заявка рассматривается",
+  needs_info: "Нужно дополнить",
+  partner_review: "На рассмотрении партнёра",
+  approved: "Одобрено",
+  issued: "Выдано",
+  rejected: "Отклонено",
 };
 
-const COMING_SOON = [
-  ["Форумы и поездки", "Отбор на молодёжные форумы и внешние программы."],
-  ["Стажировки и практика", "Реальный профессиональный опыт у партнёров."],
-  ["Закрытые встречи", "Спикеры, эксперты и партнёры."],
-  ["Образовательные программы", "Курсы, мастер-классы и программы развития."],
-  ["Делегации и представительство", "Представление ЭРА на внешних площадках."],
-  ["Гранты и конкурсы", "Сильные проекты и внешние конкурсные возможности."],
-  ["Наставничество", "Работа с сильными лидерами и экспертами."],
-] as const;
+const APPLIED_STATUSES = new Set(["pending", "requested", "under_review", "needs_info", "partner_review", "approved", "issued"]);
 
-const HIGHLIGHT_MS = 2500;
-const ACHIEVEMENT_SNAPSHOT_KEY = "era.opportunities.achievementSnapshot";
-
-type OpportunityAchievement = {
-  kicker: string;
-  title: string;
-  description: string;
-} | null;
-
-function useOpportunityAchievement(offers: Opportunity[] | null, enabled: boolean) {
-  const [achievement, setAchievement] = useState<OpportunityAchievement>(null);
-
-  useEffect(() => {
-    if (!offers || !enabled) return;
-    const availableIds = offers
-      .filter((offer) => offer.display_state === "available" || offer.display_state === "new")
-      .map((offer) => offer.id);
-    const issuedIds = offers
-      .filter((offer) => offer.application_status === "issued")
-      .map((offer) => offer.id);
-
-    let previous: { availableIds: number[]; issuedIds: number[] } | null = null;
-    try {
-      const raw = window.localStorage.getItem(ACHIEVEMENT_SNAPSHOT_KEY);
-      previous = raw ? JSON.parse(raw) : null;
-      window.localStorage.setItem(ACHIEVEMENT_SNAPSHOT_KEY, JSON.stringify({ availableIds, issuedIds }));
-    } catch {
-      return;
-    }
-    if (!previous) return;
-
-    const newlyIssuedId = issuedIds.find((id) => !previous!.issuedIds.includes(id));
-    if (newlyIssuedId !== undefined) {
-      const offer = offers.find((item) => item.id === newlyIssuedId);
-      if (offer) {
-        setAchievement({
-          kicker: "Достижение",
-          title: "ДОКУМЕНТ ВЫДАН",
-          description: `«${offer.title}» теперь подтверждает твой результат.`,
-        });
-      }
-      return;
-    }
-
-    const unlockedId = availableIds.find((id) => !previous!.availableIds.includes(id));
-    if (unlockedId !== undefined) {
-      const offer = offers.find((item) => item.id === unlockedId);
-      if (offer) {
-        setAchievement({
-          kicker: "Новая возможность",
-          title: "ТЕПЕРЬ ДОСТУПНО",
-          description: `Ты открыл «${offer.title}».`,
-        });
-      }
-    }
-  }, [offers, enabled]);
-
-  return { achievement, dismiss: () => setAchievement(null) };
+interface StoredState {
+  scope: OpportunityScope;
+  status: OpportunityState | null;
+  category: string | null;
+  sort: UiSort;
+  scrollY: number;
 }
 
-const EMPTY_FILTERS = {
-  issuer: null as string | null,
-  type: null as string | null,
-  category: null as string | null,
-};
+function loadStoredState(): StoredState | null {
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) as StoredState : null;
+  } catch {
+    return null;
+  }
+}
+
+function backendSort(sort: UiSort): OpportunitySort {
+  if (sort === "newest") return "newest";
+  if (sort === "closing_soon") return "closing_soon";
+  return "by_organization";
+}
+
+function sortClient(items: Opportunity[], sort: UiSort): Opportunity[] {
+  if (sort === "required_points") return [...items].sort((a, b) => a.required_points - b.required_points);
+  if (sort === "recommended") {
+    return [...items].sort((a, b) => {
+      const reasons = b.reasons.length - a.reasons.length;
+      if (reasons !== 0) return reasons;
+      if (a.eligible !== b.eligible) return a.eligible ? -1 : 1;
+      return a.required_points - b.required_points;
+    });
+  }
+  return items;
+}
 
 function formatPoints(value: number): string {
   return new Intl.NumberFormat("ru-RU").format(value);
 }
 
-interface OffersListProps {
-  initialItemId?: number | null;
-}
-
-function OffersList({ initialItemId }: OffersListProps) {
-  // Full catalog is the default. "Для тебя" remains a separate curated view.
-  const [scope, setScope] = useState<OpportunityScope>(initialItemId ? "mine" : "all");
-  const [filters, setFilters] = useState<{
-    issuer: string | null;
-    type: string | null;
-    category: string | null;
-    status: OpportunityState | null;
-  }>({ ...EMPTY_FILTERS, status: null });
-  const [sort, setSort] = useState<OpportunitySort>("by_organization");
+function OffersList({ initialItemId }: { initialItemId?: number | null }) {
+  const stored = useMemo(() => loadStoredState(), []);
+  const [scope, setScope] = useState<OpportunityScope>(initialItemId ? "mine" : stored?.scope ?? "all");
+  const [status, setStatus] = useState<OpportunityState | null>(initialItemId ? null : stored?.status ?? null);
+  const [category, setCategory] = useState<string | null>(stored?.category ?? null);
+  const [sort, setSort] = useState<UiSort>(stored?.sort ?? "recommended");
   const [showFilterSheet, setShowFilterSheet] = useState(false);
-  const [draftFilters, setDraftFilters] = useState(filters);
-  const [draftSort, setDraftSort] = useState<OpportunitySort>("by_organization");
+  const [draftCategory, setDraftCategory] = useState<string | null>(category);
+  const [draftStatus, setDraftStatus] = useState<OpportunityState | null>(status);
+  const [draftSort, setDraftSort] = useState<UiSort>(sort);
   const [refreshKey, setRefreshKey] = useState(0);
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(initialItemId ?? null);
-  const [highlightId, setHighlightId] = useState<number | null>(initialItemId ?? null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const query: OpportunityFilters = {
     scope,
-    state: filters.status,
-    sort,
-    issuer: filters.issuer,
-    type: filters.type,
-    category: filters.category,
+    state: status,
+    sort: backendSort(sort),
+    issuer: null,
+    type: null,
+    category,
   };
-  const listState = useAsync(
-    () => fetchOpportunities(query),
-    [scope, filters.status, filters.issuer, filters.type, filters.category, sort, refreshKey],
-  );
+  const listState = useAsync(() => fetchOpportunities(query), [scope, status, category, sort, refreshKey]);
   const facetsState = useAsync(() => fetchOpportunityFacets(), []);
-  const activeQuick = QUICK_STATES.find((item) => item.scope === scope && item.state === filters.status);
-  const hasExtraFilters = Boolean(filters.issuer || filters.type || filters.category) || sort !== "by_organization";
-  const achievement = useOpportunityAchievement(
-    listState.status === "ready" ? listState.data : null,
-    scope === "for_me",
+  const previewState = useAsync(
+    () => showFilterSheet
+      ? fetchOpportunities({ scope, state: draftStatus, sort: backendSort(draftSort), issuer: null, type: null, category: draftCategory })
+      : Promise.resolve([] as Opportunity[]),
+    [showFilterSheet, scope, draftStatus, draftCategory, draftSort],
   );
 
+  const offers = useMemo(
+    () => listState.status === "ready" ? sortClient(listState.data, sort) : [],
+    [listState, sort],
+  );
+  const activeQuick = QUICK_STATES.find((item) => item.scope === scope && item.state === status)?.key ?? null;
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
-  const grouped = useMemo(() => {
-    if (listState.status !== "ready" || scope !== "all" || filters.status) return null;
-    const map = new Map<string, Opportunity[]>();
-    for (const offer of listState.data) {
-      const group = map.get(offer.partner_name) ?? [];
-      group.push(offer);
-      map.set(offer.partner_name, group);
-    }
-    return [...map.entries()];
-  }, [listState.status, listState.status === "ready" ? listState.data : null, scope, filters.status]);
+  useEffect(() => {
+    const restore = stored?.scrollY ?? 0;
+    if (restore <= 0) return;
+    const frame = window.requestAnimationFrame(() => window.scrollTo({ top: restore, behavior: "auto" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [stored]);
 
-  const openFilterSheet = () => {
-    setDraftFilters(filters);
+  useEffect(() => {
+    const save = () => {
+      try {
+        window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ scope, status, category, sort, scrollY: window.scrollY } satisfies StoredState));
+      } catch {
+        // Embedded/private modes may disable storage. Filtering still works.
+      }
+    };
+    window.addEventListener("pagehide", save);
+    return () => {
+      save();
+      window.removeEventListener("pagehide", save);
+    };
+  }, [scope, status, category, sort]);
+
+  useEffect(() => {
+    if (!initialItemId || listState.status !== "ready") return;
+    const frame = window.requestAnimationFrame(() => document.getElementById(`opportunity-${initialItemId}`)?.scrollIntoView({ block: "center" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [initialItemId, listState.status]);
+
+  const chooseQuick = (key: QuickKey) => {
+    const option = QUICK_STATES.find((item) => item.key === key)!;
+    setScope(option.scope);
+    setStatus(option.state);
+    if (key === "for_me") setSort("recommended");
+  };
+
+  const openFilters = () => {
+    setDraftCategory(category);
+    setDraftStatus(status);
     setDraftSort(sort);
     setShowFilterSheet(true);
   };
 
-  const applyFilterSheet = () => {
-    setFilters(draftFilters);
+  const applyFilters = () => {
+    setCategory(draftCategory);
+    setStatus(draftStatus);
     setSort(draftSort);
-    if (scope === "for_me" && (draftFilters.issuer || draftFilters.type || draftFilters.category)) {
-      setScope("all");
-    }
     setShowFilterSheet(false);
   };
 
-  const resetAll = () => {
-    const cleared = { ...EMPTY_FILTERS, status: null };
-    setFilters(cleared);
-    setDraftFilters(cleared);
-    setSort("by_organization");
-    setDraftSort("by_organization");
-    setScope("all");
-    setShowFilterSheet(false);
+  const resetFilters = () => {
+    setDraftCategory(null);
+    setDraftStatus(null);
+    setDraftSort("recommended");
   };
-
-  useEffect(() => {
-    if (highlightId === null || listState.status !== "ready") return;
-    document.getElementById(`opportunity-${highlightId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-    const timer = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
-    return () => clearTimeout(timer);
-  }, [highlightId, listState.status]);
 
   const handleApply = useCallback(async (offerId: number) => {
     setPendingId(offerId);
@@ -263,12 +226,12 @@ function OffersList({ initialItemId }: OffersListProps) {
     }
   }, [refresh]);
 
-  const handleToggleSave = useCallback(async (offerId: number, isSaved: boolean) => {
-    setPendingId(offerId);
+  const handleSave = useCallback(async (offer: Opportunity) => {
+    setPendingId(offer.id);
     setActionError(null);
     try {
-      if (isSaved) await unsaveOpportunity(offerId);
-      else await saveOpportunity(offerId);
+      if (offer.is_saved) await unsaveOpportunity(offer.id);
+      else await saveOpportunity(offer.id);
       refresh();
     } catch (error) {
       setActionError(describeActionError(error));
@@ -277,46 +240,27 @@ function OffersList({ initialItemId }: OffersListProps) {
     }
   }, [refresh]);
 
-  const renderCard = (offer: Opportunity, showIssuer: boolean) => (
-    <OpportunityCard
-      key={offer.id}
-      offer={offer}
-      showIssuer={showIssuer}
-      expanded={expandedId === offer.id}
-      highlighted={offer.id === highlightId}
-      pending={pendingId === offer.id}
-      onToggleExpanded={() => setExpandedId((current) => current === offer.id ? null : offer.id)}
-      onApply={() => handleApply(offer.id)}
-      onToggleSave={() => handleToggleSave(offer.id, offer.is_saved)}
-    />
-  );
-
-  const recognitionCount = listState.status === "ready"
-    ? listState.data.filter((offer) => RECOGNITION_TYPES.has(offer.opportunity_type)).length
-    : 0;
+  const categories = facetsState.status === "ready" ? facetsState.data.categories : [];
+  const previewCount = previewState.status === "ready" ? previewState.data.length : null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
-      <div style={{ display: "flex", gap: "0.5rem", overflowX: "auto", paddingBottom: "0.15rem" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.55rem" }}>
         {QUICK_STATES.map((option) => {
-          const active = option.key === activeQuick?.key;
+          const active = option.key === activeQuick;
           return (
             <button
               key={option.key}
               type="button"
-              onClick={() => {
-                setScope(option.scope);
-                setFilters((current) => ({ ...current, status: option.state }));
-                if (option.key === "all") setSort("by_organization");
-              }}
+              onClick={() => chooseQuick(option.key)}
               style={{
-                flexShrink: 0,
-                padding: "0.48rem 0.82rem",
-                borderRadius: "var(--era-radius-pill)",
+                minWidth: 0,
+                padding: "0.7rem 0.65rem",
+                borderRadius: "var(--era-radius-control)",
                 border: active ? "1px solid var(--era-violet)" : "1px solid var(--era-border)",
                 background: active ? "var(--era-tint-violet)" : "var(--era-surface)",
                 color: active ? "var(--era-violet)" : "var(--era-text)",
-                fontWeight: 750,
+                fontWeight: 800,
                 fontSize: "0.84rem",
               }}
             >
@@ -326,127 +270,78 @@ function OffersList({ initialItemId }: OffersListProps) {
         })}
       </div>
 
-      <Card>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
-            <div>
-              <MonoLabel tone="violet">Каталог признания</MonoLabel>
-              <strong style={{ display: "block", marginTop: "0.25rem", fontSize: "1.05rem" }}>
-                {scope === "all" && !filters.status ? "Все документы" : activeQuick?.label ?? "Возможности"}
-              </strong>
-              {listState.status === "ready" && (
-                <span style={{ display: "block", marginTop: "0.2rem", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>
-                  {recognitionCount} документов в текущем списке
-                </span>
-              )}
-            </div>
-            <button type="button" onClick={openFilterSheet} style={{ flexShrink: 0 }}>
-              Фильтры{hasExtraFilters ? " •" : ""}
-            </button>
+      <Card style={{ padding: "1rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.8rem" }}>
+          <div>
+            <MonoLabel tone="violet">Каталог возможностей</MonoLabel>
+            <strong style={{ display: "block", marginTop: "0.3rem" }}>
+              {activeQuick ? QUICK_STATES.find((item) => item.key === activeQuick)?.label : "Подборка"}
+            </strong>
+            <p style={{ margin: "0.28rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8rem", lineHeight: 1.45 }}>
+              Баллы показывают подтверждённую активность и не списываются при открытии возможности.
+            </p>
           </div>
-          <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.82rem", lineHeight: 1.45 }}>
-            Баллы — это порог подтверждённой активности. При получении документа они не списываются.
-          </p>
+          <button type="button" onClick={openFilters}>Фильтры{category || status || sort !== "recommended" ? " •" : ""}</button>
         </div>
       </Card>
 
       <PointsRulesSheet />
 
       <BottomSheet open={showFilterSheet} onClose={() => setShowFilterSheet(false)} title="Фильтры">
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem", maxHeight: "60vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem", maxHeight: "68vh", overflowY: "auto" }}>
           <FilterGroup
-            title="Организация"
-            options={[{ value: null, label: "Все" }, ...(facetsState.status === "ready" ? facetsState.data.issuers.map((item) => ({ value: item, label: item })) : [])]}
-            value={draftFilters.issuer}
-            onChange={(value) => setDraftFilters((current) => ({ ...current, issuer: value }))}
-          />
-          <FilterGroup
-            title="Тип"
-            options={[{ value: null, label: "Все" }, ...(facetsState.status === "ready" ? facetsState.data.types.map((item) => ({ value: item, label: TYPE_LABELS[item] ?? item })) : [])]}
-            value={draftFilters.type}
-            onChange={(value) => setDraftFilters((current) => ({ ...current, type: value }))}
-          />
-          <FilterGroup
-            title="Направление"
-            options={[{ value: null, label: "Все" }, ...(facetsState.status === "ready" ? facetsState.data.categories.map((item) => ({ value: item, label: CATEGORY_LABELS[item] ?? item })) : [])]}
-            value={draftFilters.category}
-            onChange={(value) => setDraftFilters((current) => ({ ...current, category: value }))}
+            title="Категория"
+            options={[{ value: null, label: "Все категории" }, ...categories.map((value) => ({ value, label: CATEGORY_LABELS[value] ?? value }))]}
+            value={draftCategory}
+            onChange={setDraftCategory}
           />
           <FilterGroup
             title="Статус"
-            options={[{ value: null, label: "Все" }, ...(Object.keys(STATE_LABELS) as OpportunityState[]).map((item) => ({ value: item, label: STATE_LABELS[item] }))]}
-            value={draftFilters.status}
-            onChange={(value) => setDraftFilters((current) => ({ ...current, status: value }))}
+            options={[
+              { value: null, label: "Все" },
+              { value: "available", label: "Доступно" },
+              { value: "almost", label: "Скоро доступно" },
+              { value: "closed", label: "Закрыто" },
+            ]}
+            value={draftStatus}
+            onChange={(value) => setDraftStatus(value as OpportunityState | null)}
           />
           <FilterGroup
             title="Сортировка"
-            options={(Object.keys(SORT_LABELS) as OpportunitySort[]).map((item) => ({ value: item, label: SORT_LABELS[item] }))}
+            options={(Object.keys(UI_SORT_LABELS) as UiSort[]).map((value) => ({ value, label: UI_SORT_LABELS[value] }))}
             value={draftSort}
-            onChange={(value) => setDraftSort((value ?? "by_organization") as OpportunitySort)}
+            onChange={(value) => setDraftSort((value ?? "recommended") as UiSort)}
           />
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button type="button" onClick={resetAll} style={{ flex: 1 }}>Сбросить</button>
-            <button type="button" className="era-btn-primary" onClick={applyFilterSheet} style={{ flex: 1 }}>Показать</button>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.55rem", position: "sticky", bottom: 0, background: "var(--era-surface)", paddingTop: "0.35rem" }}>
+            <button type="button" onClick={resetFilters}>Сбросить</button>
+            <button type="button" className="era-btn-primary" onClick={applyFilters}>
+              {previewCount === null ? "Показать" : `Показать ${previewCount}`}
+            </button>
           </div>
         </div>
       </BottomSheet>
 
-      {actionError && <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>}
+      {actionError && <p style={{ margin: 0, color: "var(--era-error)", fontSize: "0.82rem" }}>{actionError}</p>}
       {listState.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>}
       {listState.status === "error" && <EmptyState text="Не удалось загрузить возможности." />}
-      {listState.status === "ready" && listState.data.length === 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", alignItems: "flex-start" }}>
-          <EmptyState text="По этим параметрам пока ничего нет" />
-          <button type="button" onClick={resetAll}>Показать весь каталог</button>
-        </div>
-      )}
+      {listState.status === "ready" && offers.length === 0 && <EmptyState text="По этим параметрам пока ничего нет." />}
 
-      {grouped ? grouped.map(([issuer, offers]) => (
-        <section key={issuer} style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-          <div style={{ padding: "0.25rem 0.1rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "baseline" }}>
-              <strong style={{ fontSize: "1rem" }}>{issuer}</strong>
-              <span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem", whiteSpace: "nowrap" }}>{offers.length}</span>
-            </div>
-            {ISSUER_TONE[issuer] && (
-              <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8rem", lineHeight: 1.4 }}>{ISSUER_TONE[issuer]}</p>
-            )}
-          </div>
-          {offers.map((offer) => renderCard(offer, false))}
-        </section>
-      )) : listState.status === "ready" ? listState.data.map((offer) => renderCard(offer, true)) : null}
-
-      {(scope === "for_me" || scope === "all") && (
-        <details style={{ marginTop: "0.25rem" }}>
-          <summary style={{ cursor: "pointer", fontWeight: 750 }}>Скоро в ЭРА</summary>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem", marginTop: "0.65rem" }}>
-            {COMING_SOON.map(([title, description]) => (
-              <Card key={title}>
-                <strong>{title}</strong>
-                <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.82rem" }}>{description}</p>
-              </Card>
-            ))}
-          </div>
-        </details>
-      )}
-
-      <AchievementOverlay
-        open={achievement.achievement !== null}
-        onClose={achievement.dismiss}
-        kicker={achievement.achievement?.kicker}
-        title={achievement.achievement?.title ?? ""}
-        description={achievement.achievement?.description}
-      />
+      {offers.map((offer) => (
+        <OpportunityCard
+          key={offer.id}
+          offer={offer}
+          expanded={expandedId === offer.id}
+          pending={pendingId === offer.id}
+          onToggle={() => setExpandedId((current) => current === offer.id ? null : offer.id)}
+          onApply={() => handleApply(offer.id)}
+          onSave={() => handleSave(offer)}
+        />
+      ))}
     </div>
   );
 }
 
-function FilterGroup<T extends string>({
-  title,
-  options,
-  value,
-  onChange,
-}: {
+function FilterGroup<T extends string>({ title, options, value, onChange }: {
   title: string;
   options: { value: T | null; label: string }[];
   value: T | null;
@@ -454,25 +349,12 @@ function FilterGroup<T extends string>({
 }) {
   return (
     <div>
-      <strong style={{ display: "block", marginBottom: "0.4rem", fontSize: "0.9rem" }}>{title}</strong>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+      <strong style={{ display: "block", marginBottom: "0.45rem" }}>{title}</strong>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem" }}>
         {options.map((option) => {
           const active = option.value === value;
           return (
-            <button
-              key={option.label}
-              type="button"
-              onClick={() => onChange(option.value)}
-              style={{
-                padding: "0.4rem 0.7rem",
-                borderRadius: "var(--era-radius-pill)",
-                border: active ? "1px solid var(--era-violet)" : "1px solid var(--era-border)",
-                background: active ? "var(--era-tint-violet)" : "var(--era-surface-2)",
-                color: active ? "var(--era-violet)" : "var(--era-text)",
-                fontSize: "0.8rem",
-                fontWeight: 650,
-              }}
-            >
+            <button key={option.label} type="button" onClick={() => onChange(option.value)} style={{ padding: "0.48rem 0.7rem", borderRadius: "var(--era-radius-pill)", border: active ? "1px solid var(--era-violet)" : "1px solid var(--era-border)", background: active ? "var(--era-tint-violet)" : "var(--era-surface-2)", color: active ? "var(--era-violet)" : "var(--era-text)", fontWeight: 700, fontSize: "0.8rem" }}>
               {option.label}
             </button>
           );
@@ -482,133 +364,65 @@ function FilterGroup<T extends string>({
   );
 }
 
-function OpportunityCard({
-  offer,
-  showIssuer,
-  expanded,
-  highlighted,
-  pending,
-  onToggleExpanded,
-  onApply,
-  onToggleSave,
-}: {
+function OpportunityCard({ offer, expanded, pending, onToggle, onApply, onSave }: {
   offer: Opportunity;
-  showIssuer: boolean;
   expanded: boolean;
-  highlighted: boolean;
   pending: boolean;
-  onToggleExpanded: () => void;
+  onToggle: () => void;
   onApply: () => void;
-  onToggleSave: () => void;
+  onSave: () => void;
 }) {
-  const recognition = RECOGNITION_TYPES.has(offer.opportunity_type);
   const applied = APPLIED_STATUSES.has(offer.application_status ?? "");
   const pointsCheck = offer.eligibility_checks.find((check) => check.key === "points");
   const currentPoints = pointsCheck ? Number(pointsCheck.current) || 0 : 0;
-  const progressPercent = recognition && offer.required_points > 0
-    ? Math.max(0, Math.min(100, Math.round((currentPoints / offer.required_points) * 100)))
-    : null;
-  // Current approved catalog only adds a non-points requirement for the
-  // three volunteering degrees. Historical rank/metric checks are hidden
-  // while the backend self-heals old rows on deploy.
-  const visibleChecks = recognition
-    ? offer.eligibility_checks.filter((check) => check.key === "points" || check.key === "metric:volunteer_hours")
-    : offer.eligibility_checks;
-  const volunteerCheck = visibleChecks.find((check) => check.key === "metric:volunteer_hours");
-  const ctaLabel = applied
-    ? null
-    : recognition && !offer.eligible
-      ? offer.state === "almost" ? "Осталось немного" : "Условия ещё не выполнены"
-      : "Подать заявку";
+  const progress = offer.required_points > 0 ? Math.min(100, Math.round((currentPoints / offer.required_points) * 100)) : 100;
+  const remaining = Math.max(0, offer.required_points - currentPoints);
 
   return (
     <div id={`opportunity-${offer.id}`}>
-      <Card style={highlighted ? { boxShadow: "0 0 0 2px var(--era-violet)" } : undefined}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
-          {showIssuer && <MonoLabel tone="violet">{offer.partner_name.toUpperCase()}</MonoLabel>}
-
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.55rem", alignItems: "flex-start" }}>
+      <Card>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.7rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
             <div style={{ minWidth: 0 }}>
-              <strong style={{ display: "block", lineHeight: 1.28 }}>{offer.title}</strong>
-              {recognition && (
-                <span style={{ display: "block", marginTop: "0.28rem", color: "var(--era-violet)", fontSize: "0.8rem", fontWeight: 750 }}>
-                  от {formatPoints(offer.required_points)} баллов
-                  {volunteerCheck ? ` · ${volunteerCheck.required} ч. волонтёрства` : ""}
-                </span>
-              )}
+              <MonoLabel tone="violet">{offer.partner_name}</MonoLabel>
+              <strong style={{ display: "block", marginTop: "0.3rem", lineHeight: 1.3 }}>{offer.title}</strong>
+              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>{CATEGORY_LABELS[offer.category ?? ""] ?? offer.category ?? "Возможность"}</p>
             </div>
-            {offer.application_status ? (
-              <StatusBadge label={APPLICATION_STATUS_LABELS[offer.application_status] ?? offer.application_status} tone="violet" />
-            ) : recognition ? (
-              <StatusBadge label={STATE_LABELS[offer.state]} tone={offer.eligible ? "success" : "neutral"} />
-            ) : null}
+            <StatusBadge label={offer.application_status ? APPLICATION_STATUS_LABELS[offer.application_status] ?? offer.application_status : STATE_LABELS[offer.state]} tone={offer.eligible ? "success" : "neutral"} />
           </div>
 
-          {recognition && progressPercent !== null && (
+          {offer.required_points > 0 && (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.76rem", color: "var(--era-text-muted)", marginBottom: "0.25rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", color: "var(--era-text-muted)", fontSize: "0.78rem", marginBottom: "0.3rem" }}>
                 <span>{formatPoints(currentPoints)} / {formatPoints(offer.required_points)}</span>
-                <span>{progressPercent}%</span>
+                <span>{progress}%</span>
               </div>
-              <div style={{ height: 6, borderRadius: 999, background: "var(--era-surface-2)", overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${progressPercent}%`, background: "var(--era-gradient-signal)" }} />
+              <div style={{ height: 6, borderRadius: 999, overflow: "hidden", background: "var(--era-surface-2)" }}>
+                <div style={{ width: `${progress}%`, height: "100%", background: "var(--era-gradient-signal)" }} />
               </div>
+              {!offer.eligible && remaining > 0 && <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "0.78rem" }}>Ещё {formatPoints(remaining)} баллов до выполнения порога</p>}
             </div>
           )}
 
-          {!recognition && (
-            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.82rem" }}>
-              {offer.description} · {offer.point_cost} баллов
-            </p>
-          )}
-
-          <button type="button" onClick={onToggleExpanded} style={{ alignSelf: "flex-start" }}>
-            {expanded ? "Скрыть" : "Подробнее"}
-          </button>
+          <button type="button" onClick={onToggle} style={{ alignSelf: "flex-start" }}>{expanded ? "Скрыть" : "Подробнее"}</button>
 
           {expanded && (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
-              {recognition && visibleChecks.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-                  <span style={{ fontSize: "0.78rem", color: "var(--era-text-muted)" }}>Условия получения</span>
-                  {visibleChecks.map((check) => (
-                    <div key={check.key} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", fontSize: "0.82rem" }}>
-                      <span aria-hidden="true">{check.ok ? "✓" : "○"}</span>
-                      <span style={{ color: check.ok ? "var(--era-text)" : "var(--era-text-muted)" }}>
-                        {check.label}: {check.current} / нужно {check.required}
-                      </span>
-                    </div>
-                  ))}
+              <p style={{ margin: 0, color: "var(--era-text-secondary)", fontSize: "0.84rem", lineHeight: 1.5 }}>{offer.description}</p>
+              {offer.missing_requirements.length > 0 && (
+                <div style={{ padding: "0.75rem", borderRadius: "var(--era-radius-md)", background: "var(--era-surface-2)" }}>
+                  <strong style={{ fontSize: "0.82rem" }}>Что ещё нужно</strong>
+                  <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>{offer.missing_requirements.join(" · ")}</p>
                 </div>
               )}
-
-              {recognition && (
-                <div style={{ padding: "0.72rem", borderRadius: "var(--era-radius-control)", background: "var(--era-surface-2)" }}>
-                  <span style={{ fontSize: "0.76rem", color: "var(--era-text-muted)" }}>Что фиксируется</span>
-                  <p style={{ margin: "0.25rem 0 0", fontSize: "0.84rem", lineHeight: 1.4 }}>
-                    Официальный документ · verified achievement · запись в портфолио · подтверждение опыта
-                  </p>
-                </div>
-              )}
-
-              {offer.reasons.length > 0 && (
-                <p style={{ margin: 0, color: "var(--era-violet)", fontSize: "0.8rem" }}>{offer.reasons.join(" · ")}</p>
-              )}
-
+              {offer.reasons.length > 0 && <p style={{ margin: 0, color: "var(--era-violet)", fontSize: "0.8rem" }}>{offer.reasons.join(" · ")}</p>}
               <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                {ctaLabel && (
-                  <button
-                    type="button"
-                    className="era-btn-primary"
-                    disabled={pending || (recognition && !offer.eligible)}
-                    onClick={onApply}
-                  >
-                    {ctaLabel}
+                {!applied && (
+                  <button type="button" className="era-btn-primary" disabled={pending || !offer.eligible} onClick={onApply}>
+                    {offer.eligible ? "Подать заявку" : offer.state === "almost" ? "Скоро доступно" : "Условия не выполнены"}
                   </button>
                 )}
-                <button type="button" disabled={pending} onClick={onToggleSave}>
-                  {offer.is_saved ? "Убрать из сохранённых" : "Сохранить"}
-                </button>
+                <button type="button" disabled={pending} onClick={onSave}>{offer.is_saved ? "Убрать из сохранённых" : "Сохранить"}</button>
               </div>
             </div>
           )}
@@ -625,18 +439,18 @@ interface OpportunitiesScreenProps {
 }
 
 export function OpportunitiesScreen({ initialSection = "offers", initialItemId, onBack }: OpportunitiesScreenProps = {}) {
-  const section = initialSection;
   return (
     <div className="era-page" style={{ padding: "1.25rem 1.25rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1rem" }}>
-      {onBack && <button type="button" onClick={onBack}>← Сообщество</button>}
+      {onBack && <button type="button" onClick={onBack}>← Назад</button>}
       <div>
-        <MonoLabel tone="violet">Следующий уровень</MonoLabel>
+        <MonoLabel tone="violet">Рост открывает доступ</MonoLabel>
         <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.75rem", fontWeight: 800, margin: "0.35rem 0 0" }}>Возможности</h1>
+        <p style={{ margin: "0.4rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>То, что становится доступно благодаря подтверждённой активности в ЭРА.</p>
       </div>
-      {section === "offers" && <OffersList initialItemId={initialItemId ?? null} />}
-      {section === "auctions" && <AuctionsPanel />}
-      {section === "rewards" && <RewardsPanel />}
-      {section === "surveys" && <SurveysPanel />}
+      {initialSection === "offers" && <OffersList initialItemId={initialItemId ?? null} />}
+      {initialSection === "auctions" && <AuctionsPanel />}
+      {initialSection === "rewards" && <RewardsPanel />}
+      {initialSection === "surveys" && <SurveysPanel />}
     </div>
   );
 }

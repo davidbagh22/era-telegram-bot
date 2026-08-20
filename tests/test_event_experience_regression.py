@@ -97,7 +97,6 @@ class EventExperienceRegressionTests(unittest.IsolatedAsyncioTestCase):
             registration, _ = await register_for_event(session, event, participant.id)
             self.assertEqual(await total_points(session, participant.id), 10)
 
-            # Cancel and re-register: still just the one +10, ever, for this event.
             registration.status = RegistrationStatus.CANCELLED
             await session.flush()
             await register_for_event(session, event, participant.id)
@@ -135,8 +134,8 @@ class EventExperienceRegressionTests(unittest.IsolatedAsyncioTestCase):
 
 
 class MasterPromptStaticRegressionTests(unittest.TestCase):
-    def test_project_constructor_is_sixteen_questions_plus_preview(self) -> None:
-        self.assertEqual(len(PROJECT_QUESTIONS), 16)
+    def test_project_constructor_is_eighteen_questions_plus_preview(self) -> None:
+        self.assertEqual(len(PROJECT_QUESTIONS), 18)
         keys = [question.key for question in PROJECT_QUESTIONS]
         self.assertEqual(
             keys,
@@ -146,14 +145,16 @@ class MasterPromptStaticRegressionTests(unittest.TestCase):
                 "problem",
                 "target_audience",
                 "goal",
-                "scenario",
+                "project_tasks",
                 "format",
+                "uniqueness",
+                "scenario",
                 "team",
-                "implementation_plan",
+                "partners",
                 "resources",
-                "activities",
-                "tasks",
-                "points",
+                "budget",
+                "implementation_plan",
+                "promotion",
                 "expected_result",
                 "success_metrics",
                 "risks",
@@ -166,7 +167,6 @@ class MasterPromptStaticRegressionTests(unittest.TestCase):
 
         service = AIService(Settings(bot_token="1234567890:test-token"))
         with self.assertRaises(ValueError):
-            # Validation happens before any network call / API-key requirement.
             import asyncio
 
             asyncio.run(

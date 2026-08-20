@@ -10,6 +10,7 @@ import { AuthErrorScreen } from "../screens/AuthErrorScreen";
 import { BlockedScreen } from "../screens/BlockedScreen";
 import { CommunityScreen, type CommunitySection } from "../screens/CommunityScreen";
 import { DevelopmentScreen, type DevelopmentRoute } from "../screens/DevelopmentScreen";
+import { EraProScreen } from "../screens/EraProScreen";
 import { EventsScreen } from "../screens/EventsScreen";
 import { HomeScreen } from "../screens/HomeScreen";
 import { LeaderScreen } from "../screens/LeaderScreen";
@@ -20,12 +21,13 @@ import { ProgressScreen } from "../screens/ProgressScreen";
 import { ProjectsScreen } from "../screens/ProjectsScreen";
 import { TasksScreen } from "../screens/TasksScreen";
 import { UserPublicProfileScreen } from "../screens/UserPublicProfileScreen";
+import { VectorHomeScreen } from "../screens/VectorHomeScreen";
 import { AdminEventsScreen } from "../screens/admin/AdminEventsScreen";
 import type { MiniAppUserSummary } from "../types/auth";
 
 type LegacyActivitySection = "tasks" | "calendar" | "history";
 type WorkspaceKind = "admin" | "leader";
-type SpecialScreen = "progress" | "development";
+type SpecialScreen = "progress" | "development" | "era-pro";
 
 interface DeepLink {
   tab: TabKey;
@@ -38,9 +40,6 @@ interface DeepLink {
   userId: number | null;
   specialScreen: SpecialScreen | null;
   developmentRoute: DevelopmentRoute | null;
-  // DELTA ToR §32-34: `#/media/guide` (and future non-numeric media
-  // sub-routes) need somewhere to land distinct from the numeric
-  // `#/media/{itemId}` case already handled by communitySection/itemId.
   mediaRoute: "guide" | null;
   invalid: boolean;
 }
@@ -49,7 +48,7 @@ const TAB_HASH: Record<TabKey, string> = {
   home: "#/home",
   projects: "#/projects",
   events: "#/events",
-  community: "#/community",
+  community: "#/opportunities",
   profile: "#/profile",
 };
 
@@ -136,6 +135,7 @@ function parseDeepLink(): DeepLink | null {
 
   const developmentRoute = parseDevelopmentRoute(route);
   if (developmentRoute) return link({ tab: "home", specialScreen: "development", developmentRoute });
+  if (route === "era-pro") return link({ tab: "community", specialScreen: "era-pro" });
 
   const adminEventMatch = route.match(/^admin\/events\/(\d+)$/);
   if (adminEventMatch) {
@@ -214,8 +214,6 @@ function renderTab(
   onTabChange: (tab: TabKey) => void,
 ) {
   if (tab === "home") {
-    // DELTA ToR §7: "Задания" is a standalone screen again, not a nested
-    // ActivityScreen section -- #/tasks and #/tasks/{id} land here directly.
     if (isDeepLinkedTab && initialActivitySection === "tasks") {
       return <TasksScreen initialItemId={initialItemId} onBack={() => navigateToTab("home")} />;
     }
@@ -231,7 +229,7 @@ function renderTab(
         onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
         onOpenTask={(id) => navigateToRoute(`tasks/${id}`)}
         onOpenTasks={() => navigateToRoute("tasks")}
-        onOpenCommunity={() => onTabChange("community")}
+        onOpenCommunity={() => navigateToRoute("opportunities")}
         onOpenOpportunity={(id) => navigateToRoute(`opportunities/${id}`)}
       />
     );
@@ -286,7 +284,7 @@ export function App() {
   if (deepLink?.workspace === "leader" && !user.is_leader) return <ObjectUnavailableScreen onHome={goHome} />;
 
   if (deepLink?.userId) {
-    return <UserLayout activeTab="community" onTabChange={handleTabChange}><UserPublicProfileScreen userId={deepLink.userId} onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("community")} /></UserLayout>;
+    return <UserLayout activeTab="community" onTabChange={handleTabChange}><UserPublicProfileScreen userId={deepLink.userId} onBack={() => window.history.length > 1 ? window.history.back() : navigateToRoute("opportunities")} /></UserLayout>;
   }
 
   if (deepLink?.specialScreen === "progress") {
@@ -303,13 +301,29 @@ export function App() {
   }
 
   if (deepLink?.specialScreen === "development") {
+    const developmentRoute = deepLink.developmentRoute ?? "home";
     return (
       <UserLayout activeTab="home" onTabChange={handleTabChange}>
-        <DevelopmentScreen
-          route={deepLink.developmentRoute ?? "home"}
-          onNavigate={(route) => navigateToRoute(route === "home" ? "development" : `development/${route}`)}
-          onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("home")}
-        />
+        {developmentRoute === "home" ? (
+          <VectorHomeScreen
+            onNavigate={(route) => navigateToRoute(`development/${route}`)}
+            onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("home")}
+          />
+        ) : (
+          <DevelopmentScreen
+            route={developmentRoute}
+            onNavigate={(route) => navigateToRoute(route === "home" ? "development" : `development/${route}`)}
+            onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("home")}
+          />
+        )}
+      </UserLayout>
+    );
+  }
+
+  if (deepLink?.specialScreen === "era-pro") {
+    return (
+      <UserLayout activeTab="community" onTabChange={handleTabChange}>
+        <EraProScreen onBack={() => window.history.length > 1 ? window.history.back() : navigateToRoute("opportunities")} />
       </UserLayout>
     );
   }

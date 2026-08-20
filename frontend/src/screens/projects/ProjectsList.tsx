@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { createProject, describeActionError, fetchProjects } from "../../api/client";
+import { cancelProject, createProject, describeActionError, fetchProjects } from "../../api/client";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useAsync } from "../../hooks/useAsync";
-import type { ProjectScope } from "../../types/project";
+import type { ProjectScope, ProjectSummary } from "../../types/project";
 import { projectStatusLabel } from "./statusLabels";
 
 const SCOPES: { value: ProjectScope; label: string }[] = [
@@ -19,13 +19,21 @@ interface ProjectsListProps {
   onSelect: (projectId: number) => void;
 }
 
+function isDraft(project: ProjectSummary): boolean {
+  return project.status === "draft" || project.status === "needs_revision";
+}
+
 export function ProjectsList({ onSelect }: ProjectsListProps) {
   const [scope, setScope] = useState<ProjectScope>("mine");
   const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [idea, setIdea] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const state = useAsync(() => fetchProjects(scope), [scope]);
+  const [deleteCandidate, setDeleteCandidate] = useState<ProjectSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const state = useAsync(() => fetchProjects(scope), [scope, refreshKey]);
   const scopeLabel = SCOPES.find((option) => option.value === scope)?.label ?? scope;
 
   const handleCreate = async () => {
@@ -40,6 +48,21 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
       setCreateError(describeActionError(error));
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleDeleteDraft = async () => {
+    if (!deleteCandidate) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await cancelProject(deleteCandidate.id);
+      setDeleteCandidate(null);
+      setRefreshKey((value) => value + 1);
+    } catch (error) {
+      setDeleteError(describeActionError(error));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -73,7 +96,7 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
               <p style={{ margin: "0 0 0.2rem", color: "var(--era-red)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Новый проект</p>
               <strong style={{ fontSize: "var(--era-text-xl)" }}>Начните с одной мысли</strong>
               <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>
-                Не нужно заполнять проект целиком сейчас. Опишите идею одним предложением — дальше конструктор сам проведёт по аудитории, сценарию, команде, бюджету и продвижению.
+                Не нужно заполнять проект целиком сейчас. Опишите идею одним предложением — дальше конструктор проведёт по аудитории, сценарию, команде, бюджету и продвижению.
               </p>
             </div>
             <textarea
@@ -90,20 +113,47 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
         </Card>
       )}
 
+      {deleteError && <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{deleteError}</p>}
       {state.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>}
       {state.status === "error" && <EmptyState text="Не удалось загрузить проекты." />}
       {state.status === "ready" && state.data.length === 0 && <EmptyState text="Проектов в этом разделе пока нет." />}
       {state.status === "ready" && state.data.map((project) => (
         <Card key={project.id}>
-          <button type="button" onClick={() => onSelect(project.id)} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
-              <strong>{project.title}</strong>
-              <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
-            </div>
-            <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>{project.short_description}</p>
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+            <button type="button" onClick={() => onSelect(project.id)} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
+                <strong>{project.title}</strong>
+                <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
+              </div>
+              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>{project.short_description}</p>
+            </button>
+            {scope === "mine" && isDraft(project) && (
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => { setDeleteError(null); setDeleteCandidate(project); }}
+                style={{ alignSelf: "flex-start", color: "var(--era-error)", minHeight: "auto", padding: "0.35rem 0.55rem" }}
+              >
+                Удалить черновик
+              </button>
+            )}
+          </div>
         </Card>
       ))}
+
+      <BottomSheet open={Boolean(deleteCandidate)} onClose={() => setDeleteCandidate(null)} title="Удалить черновик?">
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
+          <p style={{ margin: 0, color: "var(--era-text-muted)", lineHeight: 1.55 }}>
+            {deleteCandidate ? `«${deleteCandidate.title}» исчезнет из ваших проектов. Восстановить его через интерфейс будет нельзя.` : ""}
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.55rem" }}>
+            <button type="button" disabled={deleting} onClick={() => setDeleteCandidate(null)}>Оставить</button>
+            <button type="button" disabled={deleting} onClick={() => void handleDeleteDraft()} style={{ color: "var(--era-error)", borderColor: "rgba(255,102,117,.35)" }}>
+              {deleting ? "Удаляем…" : "Удалить"}
+            </button>
+          </div>
+        </div>
+      </BottomSheet>
     </div>
   );
 }

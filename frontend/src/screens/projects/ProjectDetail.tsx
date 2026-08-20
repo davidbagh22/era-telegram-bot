@@ -6,10 +6,12 @@ import {
   submitProject,
   updateProject,
 } from "../../api/client";
-import { assistProjectAnswer, fetchProjectBuilderQuestions } from "../../api/projectBuilder";
+import { fetchProjectBuilderQuestions } from "../../api/projectBuilder";
+import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
+import { hintForProjectQuestion } from "../../help/projectBuilderHints";
 import type { ProjectDetail as ProjectDetailType, ProjectQuestion } from "../../types/project";
 import { projectStatusLabel } from "./statusLabels";
 import { ProjectWorkspace } from "./ProjectWorkspace";
@@ -20,7 +22,6 @@ interface ProjectDetailProps {
   initialShowWorkspace?: boolean;
 }
 
-type AiOperation = "formulate" | "shorten" | "improve";
 type SaveIntent = "next" | "close";
 
 type PendingRetry = {
@@ -67,8 +68,8 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
   const [editing, setEditing] = useState(false);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [showWorkspace, setShowWorkspace] = useState(initialShowWorkspace);
-  const [aiBusy, setAiBusy] = useState<AiOperation | null>(null);
-  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [hintOpen, setHintOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,9 +89,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
       .catch(() => {
         if (!cancelled) setLoadError("Не удалось загрузить проект. Попробуйте открыть его ещё раз.");
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [projectId]);
 
   useEffect(() => {
@@ -99,6 +98,10 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
     return () => window.clearTimeout(timeout);
   }, [savedNotice]);
 
+  useEffect(() => {
+    setHintOpen(false);
+  }, [questionIndex]);
+
   const answeredQuestions = useMemo(
     () => questions.filter((question) => (answers[question.key] ?? "").trim()),
     [answers, questions],
@@ -106,9 +109,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
 
   const legacyAnswers = useMemo(() => {
     const questionKeys = new Set(questions.map((question) => question.key));
-    return Object.entries(answers).filter(([key, value]) => {
-      return Boolean(value?.trim()) && !questionKeys.has(key) && Boolean(LEGACY_LABELS[key]);
-    });
+    return Object.entries(answers).filter(([key, value]) => Boolean(value?.trim()) && !questionKeys.has(key) && Boolean(LEGACY_LABELS[key]));
   }, [answers, questions]);
 
   if (loadError) return <EmptyState text={loadError} />;
@@ -116,26 +117,21 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
 
   const currentQuestion = questions[questionIndex] ?? null;
   const constructorComplete = questions.length > 0 && answeredQuestions.length === questions.length;
-  const progress = questions.length
-    ? Math.round((answeredQuestions.length / questions.length) * (constructorComplete ? 100 : 94))
-    : 0;
+  const progress = questions.length ? Math.round((answeredQuestions.length / questions.length) * (constructorComplete ? 100 : 94)) : 0;
+  const currentHint = currentQuestion
+    ? hintForProjectQuestion(currentQuestion.key, currentQuestion.title, currentQuestion.prompt)
+    : null;
+  const isDraftLike = project.status === "draft" || project.status === "needs_revision";
 
   const saveQuestion = async (question: ProjectQuestion, value: string) => {
     const updated = await updateProject(projectId, { [question.key]: value });
     setProject(updated);
     const savedValue = updated.form_data?.[question.key];
-    if (typeof savedValue === "string") {
-      setAnswers((previous) => ({ ...previous, [question.key]: savedValue }));
-    }
+    if (typeof savedValue === "string") setAnswers((previous) => ({ ...previous, [question.key]: savedValue }));
     return updated;
   };
 
-  const persistStep = async (
-    question: ProjectQuestion,
-    sourceIndex: number,
-    answer: string,
-    intent: SaveIntent,
-  ) => {
+  const persistStep = async (question: ProjectQuestion, sourceIndex: number, answer: string, intent: SaveIntent) => {
     setBusy(true);
     setActionError(null);
     setSaveError(null);
@@ -143,8 +139,6 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
     try {
       await saveQuestion(question, answer);
       setPendingRetry(null);
-      setAiSuggestion(null);
-
       if (intent === "next") {
         if (sourceIndex < questions.length - 1) {
           setSavedNotice("Сохранено");
@@ -159,12 +153,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
       }
     } catch (error) {
       setSaveError(actionMessage(error, "Не удалось сохранить этот шаг. Ответ не потерян."));
-      setPendingRetry({
-        questionKey: question.key,
-        questionIndex: sourceIndex,
-        answer,
-        intent,
-      });
+      setPendingRetry({ questionKey: question.key, questionIndex: sourceIndex, answer, intent });
     } finally {
       setBusy(false);
     }
@@ -174,22 +163,16 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
     if (!currentQuestion) return;
     const answer = answers[currentQuestion.key] ?? "";
     if (!answer.trim()) {
-      setActionError("Заполните этот шаг — так проект не останется пустой карточкой.");
+      setActionError("Заполните этот шаг своими словами. Теория помогает разобраться, но ответ остаётся вашим.");
       return;
     }
     await persistStep(currentQuestion, questionIndex, answer, "next");
   };
 
   const handleSaveAndClose = async () => {
-    if (!currentQuestion) {
-      setEditing(false);
-      return;
-    }
+    if (!currentQuestion) { setEditing(false); return; }
     const answer = answers[currentQuestion.key] ?? "";
-    if (!answer.trim()) {
-      setEditing(false);
-      return;
-    }
+    if (!answer.trim()) { setEditing(false); return; }
     await persistStep(currentQuestion, questionIndex, answer, "close");
   };
 
@@ -207,7 +190,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
 
   const handleSubmit = async () => {
     if (!constructorComplete) {
-      setActionError(`Сначала завершите все ${questions.length || 16} вопросов конструктора и проверьте финальный preview.`);
+      setActionError(`Сначала завершите все ${questions.length} шагов конструктора и проверьте финальный preview.`);
       return;
     }
     setBusy(true);
@@ -225,15 +208,16 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
     }
   };
 
-  const handleCancel = async () => {
+  const handleDelete = async () => {
     setBusy(true);
     setActionError(null);
     try {
-      const updated = await cancelProject(projectId);
-      setProject(updated);
-      setSavedNotice("Проект удалён из активной работы");
+      await cancelProject(projectId);
+      setDeleteOpen(false);
+      onBack();
     } catch (error) {
-      setActionError(actionMessage(error, "Не удалось удалить проект."));
+      setDeleteOpen(false);
+      setActionError(actionMessage(error, isDraftLike ? "Не удалось удалить черновик." : "Не удалось убрать проект."));
     } finally {
       setBusy(false);
     }
@@ -244,36 +228,15 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
     setSaveError(null);
     setPendingRetry(null);
     setSavedNotice(null);
-    setAiSuggestion(null);
     setQuestionIndex(firstUnansweredIndex(questions, answers));
     setEditing(true);
-  };
-
-  const runAi = async (operation: AiOperation) => {
-    if (!currentQuestion) return;
-    const answer = (answers[currentQuestion.key] ?? "").trim();
-    if (!answer) {
-      setActionError("Сначала напишите свой черновик. ИИ помогает с формулировкой, но не придумывает ответ вместо вас.");
-      return;
-    }
-    setActionError(null);
-    setAiBusy(operation);
-    setAiSuggestion(null);
-    try {
-      const result = await assistProjectAnswer(currentQuestion.key, answer, operation);
-      setAiSuggestion(result);
-    } catch (error) {
-      setActionError(actionMessage(error, "ИИ-подсказка сейчас недоступна. Ваш текст не изменён."));
-    } finally {
-      setAiBusy(null);
-    }
   };
 
   return (
     <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <button type="button" onClick={onBack}>← К проектам</button>
 
-      <Card gradient style={{ position: "relative", overflow: "hidden" }}>
+      <Card gradient>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: "0 0 0.25rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Проект ЭРА</p>
@@ -284,48 +247,26 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
         </div>
       </Card>
 
-      {actionError && (
-        <Card style={{ borderColor: "rgba(255,102,117,0.35)", background: "rgba(255,102,117,0.06)" }}>
-          <strong style={{ color: "var(--era-error)" }}>Нужно действие</strong>
-          <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>{actionError}</p>
-        </Card>
-      )}
+      {actionError && <Card style={{ borderColor: "rgba(255,102,117,0.35)", background: "rgba(255,102,117,0.06)" }}><strong style={{ color: "var(--era-error)" }}>Нужно действие</strong><p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>{actionError}</p></Card>}
       {saveError && pendingRetry && currentQuestion?.key === pendingRetry.questionKey && (
         <Card style={{ borderColor: "rgba(255,102,117,0.35)", background: "rgba(255,102,117,0.06)" }}>
           <strong style={{ color: "var(--era-error)" }}>Шаг не сохранён</strong>
-          <p style={{ margin: "0.3rem 0 0.7rem", color: "var(--era-text-muted)", lineHeight: 1.45 }}>{saveError}</p>
-          <button type="button" className="era-btn-primary" disabled={busy} onClick={() => void handleRetrySave()}>
-            {busy ? "Повторяем…" : "Повторить сохранение"}
-          </button>
+          <p style={{ margin: "0.3rem 0 0.7rem", color: "var(--era-text-muted)" }}>{saveError}</p>
+          <button type="button" className="era-btn-primary" disabled={busy} onClick={() => void handleRetrySave()}>{busy ? "Повторяем…" : "Повторить сохранение"}</button>
         </Card>
       )}
-
-      {editing && busy && aiBusy === null && <p className="era-save-indicator">● Сохраняем…</p>}
-      {savedNotice && !actionError && !saveError && (
-        <p className="era-save-indicator" data-state={savedNotice === "Сохранено" || savedNotice === "Черновик сохранён" ? "saved" : "info"}>
-          ✓ {savedNotice}
-        </p>
-      )}
-
-      {project.admin_comment && (
-        <Card>
-          <strong>Комментарий команды ЭРА</strong>
-          <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)" }}>{project.admin_comment}</p>
-        </Card>
-      )}
+      {editing && busy && <p className="era-save-indicator">● Сохраняем…</p>}
+      {savedNotice && !actionError && !saveError && <p className="era-save-indicator" data-state={savedNotice === "Сохранено" || savedNotice === "Черновик сохранён" ? "saved" : "info"}>✓ {savedNotice}</p>}
+      {project.admin_comment && <Card><strong>Комментарий команды ЭРА</strong><p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)" }}>{project.admin_comment}</p></Card>}
 
       {editing && currentQuestion ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", marginBottom: "0.35rem" }}>
-              <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
-                Конструктор · {String(questionIndex + 1).padStart(2, "0")} / {String(questions.length).padStart(2, "0")}
-              </p>
+              <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Конструктор · {String(questionIndex + 1).padStart(2, "0")} / {String(questions.length).padStart(2, "0")}</p>
               <strong style={{ fontSize: "var(--era-text-xs)" }}>{progress}%</strong>
             </div>
-            <div style={{ height: 6, borderRadius: 999, background: "var(--era-ring-track)", overflow: "hidden" }}>
-              <div style={{ width: `${progress}%`, height: "100%", borderRadius: 999, background: "var(--era-gradient)", transition: "width 240ms cubic-bezier(0.22,1,0.36,1)" }} />
-            </div>
+            <div style={{ height: 6, borderRadius: 999, background: "var(--era-ring-track)", overflow: "hidden" }}><div style={{ width: `${progress}%`, height: "100%", borderRadius: 999, background: "var(--era-gradient)", transition: "width 240ms cubic-bezier(0.22,1,0.36,1)" }} /></div>
           </div>
 
           <div key={currentQuestion.key} className="era-question-step" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -335,6 +276,22 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
               <p style={{ margin: "0.6rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{currentQuestion.prompt}</p>
             </Card>
 
+            {currentHint && (
+              <Card style={{ background: "linear-gradient(135deg, rgba(99,44,255,.08), rgba(255,100,0,.05)), var(--era-surface)", borderColor: "rgba(99,44,255,.16)" }}>
+                <p style={{ margin: "0 0 0.45rem", color: "var(--era-violet)", fontSize: "var(--era-text-xs)", fontWeight: 850, textTransform: "uppercase" }}>Теория шага</p>
+                <strong style={{ display: "block", lineHeight: 1.45 }}>{currentHint.what}</strong>
+                <p style={{ margin: "0.55rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55 }}>{currentHint.why}</p>
+                <div style={{ marginTop: "0.75rem", paddingTop: "0.7rem", borderTop: "1px solid var(--era-border)" }}>
+                  <strong style={{ display: "block", fontSize: "var(--era-text-sm)" }}>Что написать</strong>
+                  <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.5 }}>{currentHint.write}</p>
+                </div>
+              </Card>
+            )}
+
+            <button type="button" onClick={() => setHintOpen(true)} style={{ width: "100%", textAlign: "left", padding: "0.8rem 0.9rem", borderRadius: "var(--era-radius-control)", border: "1px solid rgba(99,44,255,.22)", background: "var(--era-tint-violet)", color: "var(--era-violet)", fontWeight: 800 }}>
+              Получить подсказку
+            </button>
+
             <Card>
               <label htmlFor={`project-answer-${currentQuestion.key}`} style={{ display: "block", fontWeight: 800, marginBottom: "0.5rem" }}>Ваш ответ</label>
               <textarea
@@ -343,118 +300,111 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
                 onChange={(event) => {
                   const value = event.target.value;
                   setAnswers((previous) => ({ ...previous, [currentQuestion.key]: value }));
-                  setPendingRetry((previous) => (
-                    previous?.questionKey === currentQuestion.key
-                      ? { ...previous, answer: value }
-                      : previous
-                  ));
+                  setPendingRetry((previous) => previous?.questionKey === currentQuestion.key ? { ...previous, answer: value } : previous);
                   setActionError(null);
                   setSavedNotice(null);
-                  setAiSuggestion(null);
                 }}
                 rows={6}
-                placeholder="Пишите своими словами — ИИ может помочь только с вашим текстом"
+                placeholder="Напишите своими словами. Используйте теорию выше как ориентир."
                 style={{ minHeight: 150 }}
               />
             </Card>
 
-            <Card style={{ background: "linear-gradient(135deg, rgba(99,44,255,.08), rgba(255,100,0,.045)), var(--era-surface)" }}>
-              <strong>AI-подсказка</strong>
-              <p style={{ margin: ".35rem 0 .7rem", color: "var(--era-text-muted)", fontSize: ".82rem", lineHeight: 1.4 }}>
-                Работает только с текущим ответом. Не придумывает партнёров, бюджет, показатели, участников или результаты.
-              </p>
-              <div style={{ display: "grid", gap: ".45rem" }}>
-                <button type="button" disabled={aiBusy !== null} onClick={() => void runAi("formulate")}>{aiBusy === "formulate" ? "Формулирую…" : "Помоги сформулировать"}</button>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".45rem" }}>
-                  <button type="button" disabled={aiBusy !== null} onClick={() => void runAi("shorten")}>{aiBusy === "shorten" ? "Сокращаю…" : "Сделай короче"}</button>
-                  <button type="button" disabled={aiBusy !== null} onClick={() => void runAi("improve")}>{aiBusy === "improve" ? "Улучшаю…" : "Улучши мой вариант"}</button>
-                </div>
-              </div>
-              {currentQuestion.ai_hint && <p style={{ margin: ".65rem 0 0", color: "var(--era-text-muted)", fontSize: ".76rem" }}>{currentQuestion.ai_hint}</p>}
-            </Card>
-
-            {aiSuggestion && (
-              <Card style={{ borderColor: "rgba(255,100,0,.32)", background: "rgba(255,100,0,.055)" }}>
-                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: ".76rem", fontWeight: 800, textTransform: "uppercase" }}>Вариант ИИ — решаете вы</p>
-                <p style={{ margin: ".5rem 0", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{aiSuggestion}</p>
-                <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: ".45rem" }}>
-                  <button type="button" className="era-btn-primary" onClick={() => { setAnswers((previous) => ({ ...previous, [currentQuestion.key]: aiSuggestion })); setPendingRetry((previous) => previous?.questionKey === currentQuestion.key ? { ...previous, answer: aiSuggestion } : previous); setAiSuggestion(null); setSavedNotice("Вариант принят. Можно отредактировать перед сохранением."); }}>Использовать вариант</button>
-                  <button type="button" onClick={() => setAiSuggestion(null)}>Оставить мой</button>
-                </div>
-              </Card>
-            )}
-
             <div style={{ display: "grid", gridTemplateColumns: questionIndex > 0 ? "0.8fr 1.2fr" : "1fr", gap: "0.5rem" }}>
               {questionIndex > 0 && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    if (pendingRetry) {
-                      setActionError("Сначала повторите сохранение этого шага — ответ уже сохранён на экране и не потерян.");
-                      return;
-                    }
-                    setActionError(null);
-                    setAiSuggestion(null);
-                    setQuestionIndex((index) => Math.max(0, index - 1));
-                  }}
-                >
-                  ← Назад
-                </button>
+                <button type="button" disabled={busy} onClick={() => {
+                  if (pendingRetry) { setActionError("Сначала повторите сохранение этого шага — ответ на экране и не потерян."); return; }
+                  setActionError(null);
+                  setQuestionIndex((index) => Math.max(0, index - 1));
+                }}>← Назад</button>
               )}
-              <button type="button" className="era-btn-primary" disabled={busy || aiBusy !== null} onClick={() => void handleNext()}>
-                {busy ? "● Сохраняем…" : questionIndex === questions.length - 1 ? "К финальному preview →" : "Сохранить и дальше →"}
-              </button>
+              <button type="button" className="era-btn-primary" disabled={busy} onClick={() => void handleNext()}>{busy ? "● Сохраняем…" : questionIndex === questions.length - 1 ? "К финальному preview →" : "Сохранить и дальше →"}</button>
             </div>
-            <button type="button" disabled={busy || aiBusy !== null} onClick={() => void handleSaveAndClose()}>Сохранить и выйти</button>
+            <button type="button" disabled={busy} onClick={() => void handleSaveAndClose()}>Сохранить и выйти</button>
+            {project.can_delete && isDraftLike && (
+              <button type="button" disabled={busy} onClick={() => setDeleteOpen(true)} style={{ color: "var(--era-error)" }}>
+                Удалить черновик
+              </button>
+            )}
           </div>
+
+          {currentHint && (
+            <BottomSheet open={hintOpen} onClose={() => setHintOpen(false)} title={`Разбор шага · ${currentHint.title}`}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem", maxHeight: "68vh", overflowY: "auto" }}>
+                <HintBlock title="Что означает этот раздел" text={currentHint.what} />
+                <HintBlock title="Зачем он нужен" text={currentHint.why} />
+                <HintBlock title="Что сюда писать" text={currentHint.write} />
+                {currentHint.formula && <HintBlock title="Формула" text={currentHint.formula} emphasis />}
+                <div style={{ padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: "var(--era-surface-2)" }}>
+                  <strong style={{ display: "block", marginBottom: "0.4rem" }}>На какие вопросы ответить</strong>
+                  <ul style={{ margin: 0, paddingLeft: "1.1rem", color: "var(--era-text-muted)", lineHeight: 1.55 }}>{currentHint.questions.map((item) => <li key={item}>{item}</li>)}</ul>
+                </div>
+                <HintBlock title="Как выглядит хороший ответ" text={currentHint.good} />
+                <div style={{ padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: "rgba(255,102,117,.06)", border: "1px solid rgba(255,102,117,.18)" }}>
+                  <strong style={{ display: "block", marginBottom: "0.4rem" }}>Типичные ошибки</strong>
+                  <ul style={{ margin: 0, paddingLeft: "1.1rem", color: "var(--era-text-muted)", lineHeight: 1.55 }}>{currentHint.mistakes.map((item) => <li key={item}>{item}</li>)}</ul>
+                </div>
+                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.8rem", lineHeight: 1.5 }}>Разбор шага только объясняет логику. Он ничего не подставляет в ответ и не придумывает партнёров, людей, бюджет, показатели, результаты или цифры.</p>
+              </div>
+            </BottomSheet>
+          )}
         </div>
       ) : (
         <>
           <Card style={constructorComplete ? { borderColor: "rgba(255,100,0,.28)" } : undefined}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
               <div>
-                <p style={{ margin: "0 0 .2rem", color: constructorComplete ? "var(--era-gold-ink)" : "var(--era-text-muted)", fontSize: ".72rem", fontWeight: 850, textTransform: "uppercase" }}>
-                  {constructorComplete ? `Шаг ${questions.length + 1} из ${questions.length + 1} · Финальный preview` : "Паспорт проекта"}
-                </p>
+                <p style={{ margin: "0 0 .2rem", color: constructorComplete ? "var(--era-gold-ink)" : "var(--era-text-muted)", fontSize: ".72rem", fontWeight: 850, textTransform: "uppercase" }}>{constructorComplete ? "Финальный preview" : "Паспорт проекта"}</p>
                 <strong style={{ fontSize: "var(--era-text-lg)" }}>{constructorComplete ? "Проверьте проект перед отправкой" : "Проект собирается"}</strong>
-                <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>Заполнено {answeredQuestions.length} из {questions.length} вопросов</p>
+                <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>Заполнено {answeredQuestions.length} из {questions.length} шагов</p>
               </div>
               {project.can_edit && <button type="button" onClick={openEditor}>{answeredQuestions.length ? "Редактировать" : "Начать"}</button>}
             </div>
-
-            {answeredQuestions.length === 0 ? (
-              <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)" }}>Пока есть только идея. Откройте конструктор и доведите её до полноценного проекта.</p>
-            ) : (
+            {answeredQuestions.length === 0 ? <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)" }}>Пока есть только идея. Конструктор поможет превратить её в структуру проекта.</p> : (
               <div className="era-stagger" style={{ display: "flex", flexDirection: "column", gap: "0.9rem", marginTop: "0.85rem" }}>
-                {answeredQuestions.map((question) => (
-                  <div key={question.key}>
-                    <p style={{ margin: 0, fontSize: "0.78rem", fontWeight: 750, color: "var(--era-text-muted)" }}>{question.title}</p>
-                    <p style={{ margin: "0.25rem 0 0", whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{answers[question.key]}</p>
-                  </div>
-                ))}
+                {answeredQuestions.map((question) => <div key={question.key}><p style={{ margin: 0, fontSize: "0.78rem", fontWeight: 750, color: "var(--era-text-muted)" }}>{question.title}</p><p style={{ margin: "0.25rem 0 0", whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{answers[question.key]}</p></div>)}
               </div>
             )}
           </Card>
 
-          {legacyAnswers.length > 0 && (
-            <Card>
-              <strong>Ранее заполненные данные</strong>
-              <p style={{ margin: ".25rem 0 .65rem", color: "var(--era-text-muted)", fontSize: ".8rem" }}>Старые поля проекта сохранены и не потеряны после обновления конструктора.</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
-                {legacyAnswers.map(([key, value]) => <div key={key}><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: ".76rem", fontWeight: 750 }}>{LEGACY_LABELS[key]}</p><p style={{ margin: ".2rem 0 0", whiteSpace: "pre-wrap" }}>{value}</p></div>)}
-              </div>
-            </Card>
-          )}
+          {legacyAnswers.length > 0 && <Card><strong>Ранее заполненные данные</strong><p style={{ margin: ".25rem 0 .65rem", color: "var(--era-text-muted)", fontSize: ".8rem" }}>Старые поля сохранены и не потеряны.</p><div style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>{legacyAnswers.map(([key, value]) => <div key={key}><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: ".76rem", fontWeight: 750 }}>{LEGACY_LABELS[key]}</p><p style={{ margin: ".2rem 0 0", whiteSpace: "pre-wrap" }}>{value}</p></div>)}</div></Card>}
 
           {project.can_edit && !constructorComplete && <button type="button" className="era-btn-primary" onClick={openEditor}>Продолжить конструктор</button>}
           {project.can_submit && <button type="button" className="era-btn-primary" disabled={busy || !constructorComplete} onClick={() => void handleSubmit()}>{busy ? "Отправляем…" : "Отправить на рассмотрение"}</button>}
-          {project.can_delete && <button type="button" disabled={busy} onClick={() => void handleCancel()}>Удалить проект</button>}
-
+          {project.can_delete && (
+            <button type="button" disabled={busy} onClick={() => setDeleteOpen(true)} style={{ color: "var(--era-error)" }}>
+              {isDraftLike ? "Удалить черновик" : "Убрать проект из моих"}
+            </button>
+          )}
           <button type="button" onClick={() => setShowWorkspace((value) => !value)}>{showWorkspace ? "Скрыть рабочую зону" : "Открыть рабочую зону →"}</button>
           {showWorkspace && <ProjectWorkspace projectId={projectId} />}
         </>
       )}
+
+      <BottomSheet open={deleteOpen} onClose={() => setDeleteOpen(false)} title={isDraftLike ? "Удалить черновик?" : "Убрать проект?"}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
+          <p style={{ margin: 0, color: "var(--era-text-muted)", lineHeight: 1.55 }}>
+            {isDraftLike
+              ? "Черновик исчезнет из ваших проектов. Все сохранённые ответы этого черновика больше не будут доступны через интерфейс."
+              : "Проект исчезнет из вашего рабочего списка. Это действие доступно только автору проекта в разрешённом статусе."}
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.55rem" }}>
+            <button type="button" disabled={busy} onClick={() => setDeleteOpen(false)}>Оставить</button>
+            <button type="button" disabled={busy} onClick={() => void handleDelete()} style={{ color: "var(--era-error)", borderColor: "rgba(255,102,117,.35)" }}>
+              {busy ? "Удаляем…" : isDraftLike ? "Удалить черновик" : "Убрать"}
+            </button>
+          </div>
+        </div>
+      </BottomSheet>
+    </div>
+  );
+}
+
+function HintBlock({ title, text, emphasis = false }: { title: string; text: string; emphasis?: boolean }) {
+  return (
+    <div style={{ padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: emphasis ? "var(--era-tint-violet)" : "var(--era-surface-2)", border: emphasis ? "1px solid rgba(99,44,255,.18)" : "1px solid var(--era-border)" }}>
+      <strong style={{ display: "block", marginBottom: "0.3rem" }}>{title}</strong>
+      <p style={{ margin: 0, color: emphasis ? "var(--era-text)" : "var(--era-text-muted)", lineHeight: 1.5 }}>{text}</p>
     </div>
   );
 }

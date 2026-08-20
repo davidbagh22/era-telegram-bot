@@ -1,15 +1,10 @@
-import { useState } from "react";
-import { ActionCell } from "../components/ActionCell";
-import { EditorialHero } from "../components/EditorialHero";
-import { CommunityIcon, OpportunitiesIcon, SurveyIcon } from "../components/icons";
+import { useEffect } from "react";
 import { LeaderboardScreen } from "./LeaderboardScreen";
 import { MediaScreen } from "./MediaScreen";
 import { OpportunitiesScreen, type OpportunitiesSection } from "./OpportunitiesScreen";
 
-// Legacy rewards/auctions remain routable so old notifications/links do not
-// break, but they are intentionally no longer advertised as primary community
-// navigation: the new Opportunities model treats recognition points as
-// reputation, not a spendable store currency.
+// `community` remains only as a compatibility shell for old deep links.
+// Participant navigation now treats Opportunities as the real fifth domain.
 export type CommunitySection = "opportunities" | "leaderboard" | "surveys" | "media" | "rewards" | "auctions";
 
 interface CommunityScreenProps {
@@ -18,113 +13,32 @@ interface CommunityScreenProps {
   initialMediaRoute?: "guide" | null;
 }
 
-const SECTION_CARDS: {
-  value: CommunitySection;
-  label: string;
-  description: string;
-  Icon: typeof CommunityIcon;
-}[] = [
-  {
-    value: "opportunities",
-    label: "Возможности",
-    description: "Документы, заявки и следующие точки роста",
-    Icon: OpportunitiesIcon,
-  },
-  {
-    value: "media",
-    label: "Медиа",
-    description: "Возьми реальную задачу, войди в команду и собери портфолио",
-    Icon: CommunityIcon,
-  },
-  {
-    value: "leaderboard",
-    label: "Рейтинг",
-    description: "Ваш прогресс и активные участники ЭРА",
-    Icon: CommunityIcon,
-  },
-  {
-    value: "surveys",
-    label: "Опросы",
-    description: "Быстро влиять на решения команды",
-    Icon: SurveyIcon,
-  },
-];
-
-function toOpportunitySection(section: CommunitySection): OpportunitiesSection | undefined {
-  if (section === "opportunities") return "offers";
+function toOpportunitySection(section: CommunitySection | null): OpportunitiesSection {
   if (section === "surveys" || section === "rewards" || section === "auctions") return section;
-  return undefined;
-}
-
-function sectionHash(section: CommunitySection): string {
-  return section === "leaderboard" ? "#/leaderboard" : `#/${section}`;
+  return "offers";
 }
 
 export function CommunityScreen({ initialSection = null, initialItemId = null, initialMediaRoute = null }: CommunityScreenProps) {
-  const [fallbackSection, setFallbackSection] = useState<CommunitySection | null>(initialSection);
-  const hasRouteHash = window.location.hash.startsWith("#/");
-  const section = hasRouteHash ? initialSection : initialSection ?? fallbackSection;
+  useEffect(() => {
+    // Old #/community bookmarks should not reopen a redundant menu. Canonicalize
+    // them to the actual participant destination while keeping historic links alive.
+    if (!initialSection && window.location.hash === "#/community") {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/opportunities`);
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    }
+  }, [initialSection]);
 
-  const openSection = (next: CommunitySection) => {
-    setFallbackSection(next);
-    const hash = sectionHash(next);
-    if (window.location.hash !== hash) window.location.hash = hash;
+  const backToOpportunities = () => {
+    if (window.location.hash !== "#/opportunities") window.location.hash = "#/opportunities";
   };
 
-  const backToCommunity = () => {
-    setFallbackSection(null);
-    if (window.location.hash !== "#/community") window.location.hash = "#/community";
-  };
-
-  if (section === "leaderboard") return <LeaderboardScreen onBack={backToCommunity} />;
-  if (section === "media") return <MediaScreen onBack={backToCommunity} initialView={initialMediaRoute} />;
-
-  if (section) {
-    return (
-      <OpportunitiesScreen
-        initialSection={toOpportunitySection(section)}
-        initialItemId={initialItemId}
-        onBack={backToCommunity}
-      />
-    );
-  }
+  if (initialSection === "leaderboard") return <LeaderboardScreen onBack={backToOpportunities} />;
+  if (initialSection === "media") return <MediaScreen onBack={backToOpportunities} initialView={initialMediaRoute} />;
 
   return (
-    <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
-      <EditorialHero
-        eyebrow="Среда роста"
-        title="Сообщество"
-        description="Здесь активность превращается в опыт, статус и следующие возможности."
-        glow="signal"
-      >
-        <span
-          aria-hidden="true"
-          style={{
-            width: 46,
-            height: 46,
-            borderRadius: "50%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "var(--era-tint-violet)",
-            color: "var(--era-violet)",
-          }}
-        >
-          <CommunityIcon width={23} height={23} />
-        </span>
-      </EditorialHero>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", minWidth: 0 }}>
-        {SECTION_CARDS.map(({ value, label, description, Icon }) => (
-          <ActionCell
-            key={value}
-            title={label}
-            description={description}
-            leading={<Icon width={21} height={21} />}
-            onClick={() => openSection(value)}
-          />
-        ))}
-      </div>
-    </div>
+    <OpportunitiesScreen
+      initialSection={toOpportunitySection(initialSection)}
+      initialItemId={initialItemId}
+    />
   );
 }

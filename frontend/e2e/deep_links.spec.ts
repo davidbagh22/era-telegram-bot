@@ -28,8 +28,6 @@ test("eraPath admin opens the separate Admin workspace directly", async ({ page 
 });
 
 test("#/tasks deep link opens the standalone Tasks screen directly", async ({ page }) => {
-  // DELTA ToR §7: "Задания" is a standalone screen again (was nested under
-  // the old Activity menu, whose own heading read "Задачи").
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/tasks`);
 
   await expect(page.getByRole("heading", { name: "Задания" })).toBeVisible();
@@ -44,32 +42,22 @@ test("#/events deep link opens the Events tab", async ({ page }) => {
   await expect(page.getByText("E2E тестовое мероприятие")).toBeVisible();
 });
 
-test("#/opportunities deep link opens Community on offers", async ({ page }) => {
+test("#/opportunities deep link opens Opportunities on offers", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/opportunities`);
 
-  // The Opportunities redesign (recognition points as reputation, not a
-  // spendable store -- see CommunityScreen.tsx) collapsed every section
-  // under one shared "Возможности" heading; there is no longer a
-  // per-section "Предложения" title.
   await expect(page.getByRole("heading", { name: "Возможности" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Фильтр" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Фильтры/ })).toBeVisible();
 });
 
-// auctions/rewards/surveys are legacy-routable (old notifications/deep
-// links must keep working) but no longer have their own per-section
-// heading -- they render under the same shared "Возможности" title as
-// every other Opportunities section.
 for (const hash of ["auctions", "rewards", "surveys"] as const) {
-  test(`#/${hash} deep link opens its Community feature`, async ({ page }) => {
+  test(`#/${hash} deep link keeps the legacy feature reachable`, async ({ page }) => {
     await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/${hash}`);
     await expect(page.getByRole("heading", { name: "Возможности" })).toBeVisible();
   });
 }
 
-test("community navigation stays synchronized with browser history", async ({ page }) => {
+test("legacy community navigation stays synchronized with browser history", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/community`);
-  // Auctions/rewards are intentionally no longer primary community
-  // navigation (see CommunityScreen.tsx) -- use a card that still is.
   await page.getByText("Опросы", { exact: true }).first().click();
   await expect(page).toHaveURL(/#\/surveys$/);
   await expect(page.getByRole("heading", { name: "Возможности" })).toBeVisible();

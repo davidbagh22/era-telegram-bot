@@ -26,6 +26,7 @@ from app.api.v1 import (
     community_users,
     development,
     engagement,
+    era_pro,
     event_attendance,
     event_posters,
     events,
@@ -58,6 +59,7 @@ api_router.include_router(engagement.router)
 api_router.include_router(development.router)
 api_router.include_router(career.router)
 api_router.include_router(referrals.router)
+api_router.include_router(era_pro.router)
 api_router.include_router(leaderboard.router)
 api_router.include_router(community_users.router)
 api_router.include_router(event_posters.router)
