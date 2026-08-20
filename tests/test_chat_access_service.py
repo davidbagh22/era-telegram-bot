@@ -110,7 +110,7 @@ def test_user_facing_access_messages_are_specific() -> None:
     assert "лидерам" in access_message("wrong_role").casefold()
 
 
-def test_chat_handlers_use_join_requests_and_restrictions() -> None:
+def test_chat_handlers_keep_join_access_without_write_restrictions() -> None:
     chat_source = (ROOT / "app/handlers/chat.py").read_text(encoding="utf-8")
     service_source = (ROOT / "app/services/chat_access_service.py").read_text(encoding="utf-8")
     # The live user-approval path is approval_bonus_fix.py::approve_user_with_100_points
@@ -124,7 +124,11 @@ def test_chat_handlers_use_join_requests_and_restrictions() -> None:
 
     assert "@router.chat_join_request()" in chat_source
     assert "handle_chat_join_request" in chat_source
-    assert "restrict_member(bot, message.chat.id" in chat_source
+    assert "restrict_member(bot, message.chat.id" not in chat_source
+    assert "await remove_rejected_member(bot" not in service_source
+    assert "else await restrict_member" not in service_source
+    assert "await unrestrict_member(bot, chat_id, user.telegram_id)" in service_source
+    assert "Право писать остаётся у всех." in chat_source
     assert "ban_chat_member" not in chat_source
     assert "approve_chat_join_request" in service_source
     assert "decline_chat_join_request" in service_source

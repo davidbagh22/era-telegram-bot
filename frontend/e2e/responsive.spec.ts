@@ -42,7 +42,7 @@ for (const width of WIDTHS) {
     await expectNoHorizontalOverflow(page, width);
 
     const nav = page.getByRole("navigation", { name: "Основная навигация" });
-    for (const tabName of ["Проекты", "События", "Сообщество", "Профиль", "Главная"]) {
+    for (const tabName of ["Проекты", "События", "Возможности", "Профиль", "Главная"]) {
       await nav.getByRole("button", { name: tabName, exact: true }).click();
       await expectNoHorizontalOverflow(page, width);
     }

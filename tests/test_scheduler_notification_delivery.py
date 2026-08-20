@@ -39,16 +39,19 @@ def test_scheduler_reminders_keep_retry_and_recipient_contracts() -> None:
     # Legacy/admin broadcasts still use the detailed delivery contract so
     # temporary Telegram failures do not advance reminder state.
     assert "from app.services.notification_service import (" in source
-    assert "broadcast_detailed" in source
+    assert "broadcast_detailed_once" in source
     assert "admin_notification_recipients" in source
     assert "if not _delivery_finished(result):\n            logger.warning(" in source
     assert "if not _delivery_finished(result):\n                continue" in source
 
-    # Participant event/task reminders now use the single-primary-action shell.
-    # They must still retry later when no notification was delivered.
+    # Participant event/task reminders use durable single-recipient delivery.
+    # Event stages retry when delivery fails. Task stages advance only when all
+    # eligible recipients completed delivery, including the creator when due.
     assert "send_bot_notification" in source
     assert "if not sent:\n                    continue" in source
-    assert "if not delivered and (participant_ids or creator is not None):\n                continue" in source
+    assert "expected_recipients = 0" in source
+    assert "completed_recipients += int(sent)" in source
+    assert "if expected_recipients and completed_recipients < expected_recipients:\n                continue" in source
 
     # Automatic admin recipients are resolved centrally, never from a stale
     # environment-only ADMIN_IDS snapshot inside the scheduler.
