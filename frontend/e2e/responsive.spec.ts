@@ -38,11 +38,11 @@ for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
 
-    await expect(page.getByText("УРОВЕНЬ", { exact: true })).toBeVisible();
+    await expect(page.getByText("МОЙ ВЕКТОР", { exact: true })).toBeVisible();
     await expectNoHorizontalOverflow(page, width);
 
     const nav = page.getByRole("navigation", { name: "Основная навигация" });
-    for (const tabName of ["Проекты", "События", "Сообщество", "Профиль", "Главная"]) {
+    for (const tabName of ["Проекты", "События", "Возможности", "Профиль", "Главная"]) {
       await nav.getByRole("button", { name: tabName, exact: true }).click();
       await expectNoHorizontalOverflow(page, width);
     }
