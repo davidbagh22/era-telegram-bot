@@ -118,7 +118,15 @@ async def project_start(
     )
     await state.update_data(project_id=project.id, question_index=0)
     await state.set_state(ProjectStates.answer)
-    await call.message.answer(texts.PROJECT_INTRO)
+    await call.message.answer(
+        "Вы открыли рабочий конструктор проекта 🚀\n\n"
+        "Впереди 18 шагов: от идеи и проблемы до бюджета, продвижения, "
+        "показателей и рисков.\n\n"
+        "На каждом шаге сначала идёт короткая теория — зачем этот раздел нужен "
+        "и что именно в нём важно описать. Ответ всегда формулируете Вы.\n\n"
+        "Каждый ответ сохраняется. Если понадобится пауза — черновик останется "
+        "в разделе «Проекты»."
+    )
     await _ask_question(call.message, 0)
 
 
