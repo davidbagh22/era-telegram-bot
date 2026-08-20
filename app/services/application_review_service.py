@@ -8,6 +8,7 @@ from app.database.models import User
 from app.services.audit_service import audit
 from app.services.digital_engagement_service import award_profile_completion
 from app.services.points_service import add_points
+from app.services.referral_service import award_registration_referral
 from app.utils.constants import ApplicationStatus, ParticipationStatus, Role
 
 
@@ -45,10 +46,17 @@ async def approve_application(
         idempotency_key=f"registration_approval:{target.id}",
     )
     # Registration requires the full participant profile. Award the approved
-    # +50 profile-completion rule only when the persisted User fields really
+    # profile-completion rule only when the persisted User fields really
     # satisfy the completeness check; idempotency prevents re-approval/retry
     # from paying twice and the global monthly digital cap still applies.
     await award_profile_completion(session, target, profile_version="v1")
+
+    # Referral stage 1 is tied to the authoritative application decision.
+    # Opening/joining a chat must never produce referral points. The referral
+    # service remains idempotent, so retries or repeated approval handlers
+    # cannot pay this stage twice.
+    await award_registration_referral(session, invitee_user_id=target.id)
+
     await audit(
         session,
         actor_id=actor_id,
