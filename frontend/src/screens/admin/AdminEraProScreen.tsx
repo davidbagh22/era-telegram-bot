@@ -43,7 +43,7 @@ function ApplicationCard({ application, busy, comment, onComment, onDecision }: 
           <strong style={{ display: "block", marginTop: "0.28rem", fontSize: "1.05rem" }}>{application.full_name}</strong>
           <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>{application.username ? `@${application.username}` : `ID ${application.user_id}`} · {formatPoints(application.points)} баллов</p>
         </div>
-        <StatusBadge label={application.status === "needs_info" ? "Нужно дополнить" : "На рассмотрении"} tone={application.status === "needs_info" ? "warning" : "violet"} />
+        <StatusBadge label={application.status === "needs_info" ? "Нужно дополнить" : "На рассмотрении"} tone={application.status === "needs_info" ? "gold" : "violet"} />
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>{application.directions.map((key) => <span key={key} style={{ padding: "0.4rem 0.55rem", borderRadius: 999, background: "var(--era-surface-2)", border: "1px solid var(--era-border)", fontSize: "0.76rem" }}>{DIRECTION_LABELS[key] ?? key}</span>)}</div>
