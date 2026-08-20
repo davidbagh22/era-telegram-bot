@@ -8,7 +8,6 @@ class ProjectQuestion:
     block: str
     title: str
     prompt: str
-    ai_hint: str | None = None
     input_type: str = "text"
 
 
