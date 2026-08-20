@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { fetchReferralSummary } from "../api/referrals";
 import { Card } from "../components/Card";
+import { ContextHelp } from "../components/ContextHelp";
 import { SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { useToast } from "../components/Toast";
@@ -33,6 +34,13 @@ export function ReferralScreen({ onBack }: ReferralScreenProps) {
     if (state.status !== "ready") return;
     const data = state.data;
     try {
+      if (window.Telegram?.WebApp?.openTelegramLink) {
+        const shareUrl = new URL("https://t.me/share/url");
+        shareUrl.searchParams.set("url", data.invite_url);
+        shareUrl.searchParams.set("text", data.share_text);
+        window.Telegram.WebApp.openTelegramLink(shareUrl.toString());
+        return;
+      }
       if (navigator.share) {
         await navigator.share({
           title: "Присоединяйся к ЭРА",
@@ -41,11 +49,11 @@ export function ReferralScreen({ onBack }: ReferralScreenProps) {
         });
         return;
       }
-      await copyText(data.share_text);
-      toast.show("Приглашение скопировано", "success");
+      await copyText(data.invite_url || data.share_text);
+      toast.show("Ссылка скопирована", "success");
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      toast.show("Не удалось поделиться. Скопируйте код вручную.", "attention");
+      toast.show("Не удалось поделиться. Скопируйте ссылку вручную.", "attention");
     }
   }, [state, toast]);
 
@@ -63,20 +71,12 @@ export function ReferralScreen({ onBack }: ReferralScreenProps) {
     return (
       <div className="era-page" style={{ padding: "1.25rem" }}>
         <button type="button" onClick={onBack} style={{ marginBottom: "1rem" }}>← Назад</button>
-        <StatusBanner title="Не удалось открыть приглашение" description="Закройте и снова откройте этот раздел." />
+        <StatusBanner title="Не удалось открыть приглашения" description="Попробуйте открыть раздел ещё раз." />
       </div>
     );
   }
 
   const data = state.data;
-  const monthlyPercent = Math.min(
-    100,
-    Math.round((data.monthly_earned_points / Math.max(1, data.monthly_cap)) * 100),
-  );
-  const copyCode = async () => {
-    await copyText(data.code);
-    toast.show("Код скопирован", "success");
-  };
   const copyLink = async () => {
     await copyText(data.invite_url || data.share_text);
     toast.show(data.invite_url ? "Ссылка скопирована" : "Приглашение скопировано", "success");
@@ -86,102 +86,94 @@ export function ReferralScreen({ onBack }: ReferralScreenProps) {
     <div className="era-page era-stagger" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
       <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← Назад</button>
 
-      <div>
-        <p style={{ margin: "0 0 0.35rem", color: "var(--era-red)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em" }}>
-          Расти вместе
+      <header>
+        <p style={{ margin: "0 0 0.35rem", color: "var(--era-violet)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em" }}>
+          Приглашения
         </p>
-        <h1 style={{ margin: 0, fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)" }}>Пригласить друга</h1>
-        <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55 }}>
-          Поделитесь ссылкой и кодом. Баллы приходят только за реальные подтверждённые действия — автоматически.
+        <h1 style={{ margin: 0, fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)" }}>
+          Пригласи человека, которому здесь действительно будет интересно
+        </h1>
+        <p style={{ margin: "0.65rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55 }}>
+          Баллы начисляются не за отправленные ссылки. Они появляются, когда приглашённый тобой человек действительно становится частью ЭРА.
         </p>
-      </div>
+      </header>
 
-      <Card gradient style={{ position: "relative", overflow: "hidden" }}>
-        <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 700 }}>ВАШ КОД</p>
-        <div style={{ marginTop: "0.55rem", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "clamp(2rem, 11vw, 3.1rem)", fontWeight: 900, letterSpacing: ".16em", lineHeight: 1 }}>
-          {data.code}
-        </div>
-        <p style={{ margin: "0.75rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>
-          Друг вводит эти 6 цифр во время регистрации.
+      <Card gradient>
+        <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
+          Ваша персональная ссылка
         </p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.65rem", marginTop: "1rem" }}>
-          <button type="button" onClick={copyCode}>Скопировать код</button>
-          <button type="button" onClick={copyLink}>Скопировать ссылку</button>
+        <div style={{ marginTop: "0.65rem", padding: "0.75rem", borderRadius: "var(--era-radius-md)", background: "rgba(255,255,255,.5)", overflowWrap: "anywhere", fontSize: "var(--era-text-sm)" }}>
+          {data.invite_url || `Код: ${data.code}`}
         </div>
-        <button type="button" className="era-btn-primary" onClick={share} style={{ width: "100%", marginTop: "0.65rem" }}>
-          Отправить приглашение
-        </button>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.65rem", marginTop: "0.8rem" }}>
+          <button type="button" onClick={copyLink}>Скопировать</button>
+          <button type="button" className="era-btn-primary" onClick={share}>Поделиться</button>
+        </div>
       </Card>
 
       <section>
-        <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Как это работает</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.7rem" }}>
+        <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Когда появляются баллы</h2>
+        <div style={{ display: "grid", gap: "0.7rem" }}>
           <Card>
-            <div style={{ display: "grid", gridTemplateColumns: "2.25rem minmax(0, 1fr) auto", gap: "0.75rem", alignItems: "center" }}>
-              <div aria-hidden="true" style={{ width: "2.25rem", height: "2.25rem", borderRadius: "50%", display: "grid", placeItems: "center", background: "var(--era-tint-red)", fontWeight: 900 }}>1</div>
+            <div style={{ display: "grid", gridTemplateColumns: "2.1rem minmax(0, 1fr) auto", gap: "0.75rem", alignItems: "center" }}>
+              <div aria-hidden="true" style={{ width: "2.1rem", height: "2.1rem", borderRadius: "50%", display: "grid", placeItems: "center", background: "var(--era-tint-violet)", fontWeight: 900 }}>1</div>
               <div>
-                <strong>Регистрация + общий чат</strong>
-                <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>Друг регистрируется, вводит ваш код и вступает в общий чат после одобрения.</p>
+                <strong>Регистрация одобрена</strong>
+                <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>
+                  Человек зарегистрировался по вашей ссылке, прошёл анкету и получил статус APPROVED.
+                </p>
               </div>
-              <strong style={{ whiteSpace: "nowrap" }}>+{data.registration_points_each} каждому</strong>
+              <strong style={{ whiteSpace: "nowrap" }}>+{data.registration_points_each}</strong>
             </div>
           </Card>
+
           <Card>
-            <div style={{ display: "grid", gridTemplateColumns: "2.25rem minmax(0, 1fr) auto", gap: "0.75rem", alignItems: "center" }}>
-              <div aria-hidden="true" style={{ width: "2.25rem", height: "2.25rem", borderRadius: "50%", display: "grid", placeItems: "center", background: "var(--era-tint-red)", fontWeight: 900 }}>2</div>
+            <div style={{ display: "grid", gridTemplateColumns: "2.1rem minmax(0, 1fr) auto", gap: "0.75rem", alignItems: "center" }}>
+              <div aria-hidden="true" style={{ width: "2.1rem", height: "2.1rem", borderRadius: "50%", display: "grid", placeItems: "center", background: "var(--era-tint-violet)", fontWeight: 900 }}>2</div>
               <div>
-                <strong>Первое мероприятие</strong>
-                <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>После первого реально посещённого мероприятия система подтверждает следующий этап.</p>
+                <strong>Первое подтверждённое участие</strong>
+                <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>
+                  После первого подтверждённого участия в мероприятии или проекте ЭРА.
+                </p>
               </div>
-              <strong style={{ whiteSpace: "nowrap" }}>+{data.first_event_points_each} каждому</strong>
-            </div>
-          </Card>
-          <Card>
-            <div style={{ display: "grid", gridTemplateColumns: "2.25rem minmax(0, 1fr) auto", gap: "0.75rem", alignItems: "center" }}>
-              <div aria-hidden="true" style={{ width: "2.25rem", height: "2.25rem", borderRadius: "50%", display: "grid", placeItems: "center", background: "var(--era-tint-red)", fontWeight: 900 }}>3</div>
-              <div>
-                <strong>Активный участник</strong>
-                <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>Когда приглашённый дорастает до статуса «Активный участник», система начисляет третий бонус автоматически.</p>
-              </div>
-              <strong style={{ whiteSpace: "nowrap" }}>+{data.active_points_each} каждому</strong>
+              <strong style={{ whiteSpace: "nowrap" }}>+{data.first_event_points_each}</strong>
             </div>
           </Card>
         </div>
+        <p style={{ margin: "0.7rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>
+          Максимум +{data.per_invitee_cap} баллов за одного человека. Баллы получает пригласивший участник; они не списываются.
+        </p>
       </section>
 
       <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "baseline" }}>
+        <p style={{ margin: "0 0 0.8rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
+          Статистика
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "0.65rem", textAlign: "center" }}>
           <div>
-            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Лимит месяца</p>
-            <strong style={{ display: "block", marginTop: "0.35rem", fontSize: "var(--era-text-xl)" }}>
-              {data.monthly_earned_points} / {data.monthly_cap}
-            </strong>
+            <strong style={{ display: "block", fontSize: "var(--era-text-xl)" }}>{data.invited_count}</strong>
+            <span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>Приглашено</span>
           </div>
-          <span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", textAlign: "right" }}>
-            до {data.per_invitee_cap} за полный путь одного друга
-          </span>
+          <div>
+            <strong style={{ display: "block", fontSize: "var(--era-text-xl)" }}>{data.registered_count}</strong>
+            <span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>Вступили</span>
+          </div>
+          <div>
+            <strong style={{ display: "block", fontSize: "var(--era-text-xl)" }}>{data.first_event_count}</strong>
+            <span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>Стали активными</span>
+          </div>
         </div>
-        <div
-          aria-label={`Реферальный лимит использован на ${monthlyPercent}%`}
-          style={{ height: "0.45rem", marginTop: "0.85rem", borderRadius: "999px", background: "var(--era-border)", overflow: "hidden" }}
-        >
-          <div style={{ width: `${monthlyPercent}%`, height: "100%", borderRadius: "inherit", background: "var(--era-red)", transition: "width 180ms ease" }} />
-        </div>
-      </Card>
-
-      <Card>
-        <p style={{ margin: "0 0 0.75rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Ваш результат</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.9rem" }}>
-          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{data.invited_count}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>ввели ваш код</span></div>
-          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{data.first_event_count}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>пришли на событие</span></div>
-          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{data.active_count}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>стали активными</span></div>
-          <div><strong style={{ fontSize: "var(--era-text-2xl)" }}>{data.earned_points}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>заработано баллов</span></div>
+        <div style={{ marginTop: "1rem", paddingTop: "0.9rem", borderTop: "1px solid var(--era-border)", display: "flex", justifyContent: "space-between", gap: "1rem" }}>
+          <span style={{ color: "var(--era-text-muted)" }}>Получено</span>
+          <strong>+{data.earned_points} баллов</strong>
         </div>
       </Card>
 
       <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", lineHeight: 1.5 }}>
-        Код привязывается к новичку один раз. Самоприглашение и повторное начисление за одно и то же действие не работают. Лимит {data.monthly_cap} применяется к реферальному заработку приглашающего за календарный месяц.
+        Переход по ссылке и вступление в чат сами по себе ничего не начисляют. Самоприглашение, повторный аккаунт и повторное начисление за одно действие блокируются на backend.
       </p>
+
+      <ContextHelp mode="user" topic="referral" />
     </div>
   );
 }
