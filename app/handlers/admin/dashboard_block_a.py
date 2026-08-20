@@ -54,14 +54,16 @@ async def admin_dashboard(
     user: User | None,
     settings: Settings,
     state: FSMContext,
-    session: AsyncSession,
+    session: AsyncSession | None = None,
 ) -> None:
     # The Mini App remains the primary admin surface, but the bot must make
     # pending registrations visible even if a Telegram notification was lost.
+    # ``session`` stays optional for compatibility with legacy direct callers;
+    # aiogram injects it during normal bot routing.
     if not await _guard(message, user, settings):
         return
     await state.clear()
-    pending = await _pending_applications(session, limit=26)
+    pending = await _pending_applications(session, limit=26) if session is not None else []
     count = len(pending)
     if count:
         visible_count = min(count, 25)
