@@ -9,6 +9,7 @@ class ProjectQuestion:
     title: str
     prompt: str
     input_type: str = "text"
+    ai_hint: str | None = None
 
 
 # The constructor teaches project logic instead of writing a project for the
