@@ -21,6 +21,7 @@ import { ProgressScreen } from "../screens/ProgressScreen";
 import { ProjectsScreen } from "../screens/ProjectsScreen";
 import { TasksScreen } from "../screens/TasksScreen";
 import { UserPublicProfileScreen } from "../screens/UserPublicProfileScreen";
+import { VectorHomeScreen } from "../screens/VectorHomeScreen";
 import { AdminEventsScreen } from "../screens/admin/AdminEventsScreen";
 import type { MiniAppUserSummary } from "../types/auth";
 
@@ -300,13 +301,21 @@ export function App() {
   }
 
   if (deepLink?.specialScreen === "development") {
+    const developmentRoute = deepLink.developmentRoute ?? "home";
     return (
       <UserLayout activeTab="home" onTabChange={handleTabChange}>
-        <DevelopmentScreen
-          route={deepLink.developmentRoute ?? "home"}
-          onNavigate={(route) => navigateToRoute(route === "home" ? "development" : `development/${route}`)}
-          onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("home")}
-        />
+        {developmentRoute === "home" ? (
+          <VectorHomeScreen
+            onNavigate={(route) => navigateToRoute(`development/${route}`)}
+            onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("home")}
+          />
+        ) : (
+          <DevelopmentScreen
+            route={developmentRoute}
+            onNavigate={(route) => navigateToRoute(route === "home" ? "development" : `development/${route}`)}
+            onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("home")}
+          />
+        )}
       </UserLayout>
     );
   }
