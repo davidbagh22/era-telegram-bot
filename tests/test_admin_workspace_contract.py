@@ -10,7 +10,7 @@ class AdminWorkspaceContractTests(unittest.TestCase):
         app = (FRONTEND / "app" / "App.tsx").read_text(encoding="utf-8")
         profile = (FRONTEND / "screens" / "ProfileScreen.tsx").read_text(encoding="utf-8")
         self.assertIn("const [inWorkspace, setInWorkspace] = useState(false)", app)
-        self.assertIn('title="Управление ЭРА"', profile)
+        self.assertIn('isAdmin ? "Управление ЭРА" : "Пространство лидера"', profile)
         self.assertIn("onEnterWorkspace", app)
 
     def test_control_is_a_dedicated_admin_destination(self) -> None:
