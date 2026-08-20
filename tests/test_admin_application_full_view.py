@@ -159,6 +159,19 @@ class FullAdminApplicationViewTests(unittest.IsolatedAsyncioTestCase):
         ):
             self.assertIn(marker, source)
 
+    def test_admin_screen_can_delete_application_safely(self) -> None:
+        source = Path("frontend/src/screens/admin/AdminApplicationsScreen.tsx").read_text(
+            encoding="utf-8"
+        )
+        for marker in (
+            "Удалить анкету",
+            "window.confirm",
+            "setUserArchived",
+            "await setUserArchived(userId, true)",
+            "Она исчезнет из очереди заявок",
+        ):
+            self.assertIn(marker, source)
+
 
 if __name__ == "__main__":
     unittest.main()
