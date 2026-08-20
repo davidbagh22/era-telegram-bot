@@ -6,6 +6,23 @@ from app.services.points_service import InsufficientPointsError, add_points
 from app.utils.constants import PointCategory
 
 
+class _AsyncContextManager:
+    async def __aenter__(self):
+        return None
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+def _session_for_insert() -> AsyncMock:
+    """Model AsyncSession's synchronous begin_nested() contract correctly."""
+    session = AsyncMock()
+    session.scalar.return_value = None
+    session.add = Mock()
+    session.begin_nested = Mock(return_value=_AsyncContextManager())
+    return session
+
+
 class PointsTransactionTests(unittest.IsolatedAsyncioTestCase):
     async def test_idempotency_key_reuses_existing_transaction(self) -> None:
         existing = PointTransaction(
@@ -49,9 +66,7 @@ class PointsTransactionTests(unittest.IsolatedAsyncioTestCase):
         session.add.assert_not_called()
 
     async def test_category_is_derived_from_source_type(self) -> None:
-        session = AsyncMock()
-        session.scalar.return_value = None
-        session.add = Mock()
+        session = _session_for_insert()
 
         await add_points(
             session,
@@ -67,9 +82,7 @@ class PointsTransactionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(transaction.category, PointCategory.EVENT)
 
     async def test_category_falls_back_to_other_for_unknown_source_type(self) -> None:
-        session = AsyncMock()
-        session.scalar.return_value = None
-        session.add = Mock()
+        session = _session_for_insert()
 
         await add_points(
             session,
@@ -85,9 +98,7 @@ class PointsTransactionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(transaction.category, PointCategory.OTHER)
 
     async def test_explicit_category_overrides_source_type_mapping(self) -> None:
-        session = AsyncMock()
-        session.scalar.return_value = None
-        session.add = Mock()
+        session = _session_for_insert()
 
         await add_points(
             session,
