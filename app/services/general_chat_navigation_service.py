@@ -26,14 +26,14 @@ async def ensure_general_chat_navigation(
     chat_id = settings.general_chat_id
     if not chat_id:
         return
+    marker_action = f"{NAVIGATION_INSTALL_ACTION}:{int(chat_id)}"
 
     async with session_factory() as session:
         already_installed = await session.scalar(
             select(AuditLog.id)
             .where(
-                AuditLog.action == NAVIGATION_INSTALL_ACTION,
+                AuditLog.action == marker_action,
                 AuditLog.entity_type == "chat",
-                AuditLog.entity_id == int(chat_id),
             )
             .limit(1)
         )
@@ -57,9 +57,9 @@ async def ensure_general_chat_navigation(
         await audit(
             session,
             actor_id=None,
-            action=NAVIGATION_INSTALL_ACTION,
+            action=marker_action,
             entity_type="chat",
-            entity_id=int(chat_id),
-            new_value={"message_id": sent.message_id, "version": 2},
+            entity_id=None,
+            new_value={"chat_id": int(chat_id), "message_id": sent.message_id, "version": 2},
         )
         await session.commit()
