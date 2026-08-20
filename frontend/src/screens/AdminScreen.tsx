@@ -7,6 +7,7 @@ import { AdminCareerScreen } from "./admin/AdminCareerScreen";
 import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
 import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
 import { AdminDevelopmentScreen } from "./admin/AdminDevelopmentScreen";
+import { AdminEraProScreen } from "./admin/AdminEraProScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
 import { AdminMaintenanceScreen, type MaintenanceTarget } from "./admin/AdminMaintenanceScreen";
 import { AdminMetricDetailScreen } from "./admin/AdminMetricDetailScreen";
@@ -21,7 +22,7 @@ import { AdminUsersScreen } from "./admin/AdminUsersScreen";
 import { AdminVerificationScreen } from "./admin/AdminVerificationScreen";
 import { SystemPanel } from "./admin/tools/SystemPanel";
 
-type PeopleSection = "participants" | "verification" | "development" | "career" | "applications" | "offices" | "data-rights";
+type PeopleSection = "participants" | "verification" | "development" | "career" | "applications" | "era-pro" | "offices" | "data-rights";
 type WorkSection = "projects" | "events" | "tasks" | "offers";
 type CommsSection = "surveys" | "tools";
 type ControlSection = "analytics" | "system" | "maintenance";
@@ -40,6 +41,7 @@ const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
   { value: "development", label: "Состояние и развитие", description: "Добровольные Check-in, охват и потребности сообщества" },
   { value: "career", label: "Портфолио и рекомендации", description: "Проверка достижений и утверждение официальных рекомендательных писем" },
   { value: "applications", label: "Заявки", description: "Новые регистрации и решения по ним" },
+  { value: "era-pro", label: "Заявки ЭРА PRO", description: "Отбор участников, достигших порога 8 000 баллов" },
   { value: "offices", label: "Должности", description: "Организационные роли и структура" },
   { value: "data-rights", label: "Данные и права", description: "Запросы на экспорт и удаление персональных данных" },
 ];
@@ -206,7 +208,7 @@ export function AdminScreen() {
           />
         )}
 
-        {group === "people" && !peopleSection && <SectionMenu title="Люди" description="Участники, проверка состава, развитие, портфолио, регистрации, роли и права на данные." options={PEOPLE_SECTIONS} onOpen={setPeopleSection} />}
+        {group === "people" && !peopleSection && <SectionMenu title="Люди" description="Участники, проверка состава, развитие, портфолио, регистрации, ЭРА PRO, роли и права на данные." options={PEOPLE_SECTIONS} onOpen={setPeopleSection} />}
         {group === "people" && peopleSection && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={PEOPLE_SECTIONS.find((item) => item.value === peopleSection)?.label ?? "Люди"} onBack={() => setPeopleSection(null)} />
@@ -215,6 +217,7 @@ export function AdminScreen() {
             {peopleSection === "development" && <AdminDevelopmentScreen />}
             {peopleSection === "career" && <AdminCareerScreen />}
             {peopleSection === "applications" && <AdminApplicationsScreen initialApplicationId={launchRoute.applicationId} />}
+            {peopleSection === "era-pro" && <AdminEraProScreen />}
             {peopleSection === "offices" && <AdminOfficesScreen />}
             {peopleSection === "data-rights" && <AdminDataRightsScreen />}
           </div>
