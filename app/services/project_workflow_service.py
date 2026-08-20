@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Project, User
 from app.services.audit_service import audit
-from app.services.points_service import add_points, add_portfolio_item
 from app.services.project_builder import PROJECT_QUESTIONS, render_project_document
 from app.utils.constants import ProjectStatus
 
@@ -36,10 +35,6 @@ REVIEW_STATUSES = {
 }
 OPEN_STATUSES = {ProjectStatus.APPROVED, ProjectStatus.IN_PROGRESS}
 
-# Keep the JSON form_data as the source of truth for all 16 constructor
-# answers, while mirroring only semantically equivalent answers into legacy
-# typed columns used by existing reports/search. Never overload one typed
-# column with a different question (e.g. success_metrics != expected_result).
 _COLUMN_BY_QUESTION_KEY: dict[str, str] = {
     "title": "title",
     "idea": "short_description",
@@ -285,7 +280,6 @@ async def decide_project(
     if action not in PROJECT_DECISION_ACTIONS:
         raise ValueError(f"unknown project decision action: {action!r}")
 
-    old_status = project.status
     project.admin_comment = comment
 
     if action == "initial_accept":
@@ -296,31 +290,15 @@ async def decide_project(
         project.venue_remind_at = datetime.now().astimezone() + timedelta(days=1)
         notice = "Проект прошёл первичную проверку и перешёл к следующему этапу"
     elif action == "venue_approve":
+        # Approval opens the project for work. It is not itself a verified
+        # contribution and therefore must not create reputation points or a
+        # verified portfolio achievement. Rewards are issued later by the
+        # shared verified-activity scoring flow when concrete contributions
+        # and the completed project result are confirmed.
         project.status = ProjectStatus.APPROVED
         project.venue_status = "approved"
         project.venue_comment = comment
         project.venue_remind_at = None
-        if old_status != ProjectStatus.APPROVED:
-            await add_points(
-                session,
-                user_id=project.author_id,
-                points=30,
-                reason=f"Одобренный проект: {project.title}",
-                approved_by=actor.id,
-                related_project_id=project.id,
-                source_type="project_approval",
-                source_id=project.id,
-                idempotency_key=f"project_approval:{project.id}",
-            )
-            await add_portfolio_item(
-                session,
-                user_id=project.author_id,
-                title=f"Автор проекта: {project.title}",
-                item_type="project",
-                description=project.short_description,
-                issued_by=actor.id,
-                related_project_id=project.id,
-            )
         notice = "Проект одобрен. Следующий шаг — оформить мероприятие или найти команду"
     elif action == "revise":
         project.status = ProjectStatus.NEEDS_REVISION

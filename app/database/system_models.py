@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base, TimestampMixin
@@ -42,6 +42,10 @@ class SystemIncident(TimestampMixin, Base):
     detail: Mapped[str] = mapped_column(Text)
     check_key: Mapped[str | None] = mapped_column(String(96), index=True)
     occurrence_count: Mapped[int] = mapped_column(Integer, default=1)
+    # Incremented only when a resolved incident becomes open again. It gives
+    # each incident episode stable idempotency keys for alert + recovery while
+    # still allowing a future re-open to notify admins again.
+    notification_generation: Mapped[int] = mapped_column(Integer, default=1)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -70,3 +74,28 @@ class BackupHistory(TimestampMixin, Base):
     restore_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error_code: Mapped[str | None] = mapped_column(String(96))
     error_detail: Mapped[str | None] = mapped_column(Text)
+
+
+class NotificationDelivery(TimestampMixin, Base):
+    """Durable idempotency ledger for automatic Telegram notifications.
+
+    The message body, reply markup and user profile data are intentionally not
+    persisted. ``payload_hash`` is only a consistency guard against accidental
+    reuse of one delivery key for different content.
+    """
+
+    __tablename__ = "notification_deliveries"
+    __table_args__ = (
+        UniqueConstraint("delivery_key", name="uq_notification_deliveries_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    delivery_key: Mapped[str] = mapped_column(String(200), index=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    notification_type: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(96))
+    payload_hash: Mapped[str] = mapped_column(String(64))

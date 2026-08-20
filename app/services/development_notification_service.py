@@ -88,6 +88,9 @@ async def send_monthly_development_reminders(
                 ),
                 footer="Без оценок, штрафов и обязательных серий — только твоя собственная динамика.",
                 action=PrimaryAction(label="Проверить себя", callback_data="vector:start"),
+                settings=settings,
+                delivery_key=f"development-monthly:{month}:{user.id}",
+                notification_type="development_monthly_checkin",
             )
             if not sent:
                 continue
@@ -101,9 +104,9 @@ async def send_monthly_development_reminders(
             )
         await session.commit()
 
-    # The scheduler already runs this function daily. A separate job is not
-    # needed: the weekly pass is idempotent and therefore sends at most once in
-    # each calendar week even after restarts.
+    # The scheduler already runs this function daily. The weekly pass reuses a
+    # stable delivery key, so a restart between Telegram send and audit commit
+    # completes the marker without creating a second message.
     await send_weekly_development_pulses(bot, settings, session_factory)
 
 
@@ -113,7 +116,6 @@ async def send_weekly_development_pulses(
     session_factory,
 ) -> None:
     """Offer one optional energy pulse each week to consenting participants."""
-    del settings
     now = datetime.now(timezone.utc)
     today = now.date()
     week_start = today - timedelta(days=today.weekday())
@@ -149,6 +151,9 @@ async def send_weekly_development_pulses(
                 body="Как у тебя с энергией прямо сейчас? Один ответ — и готово.",
                 footer="Это необязательно и ни на что не влияет. Пульс нужен только для твоей личной динамики.",
                 action=PrimaryAction(label="Отметить состояние", callback_data="vector:pulse:start"),
+                settings=settings,
+                delivery_key=f"development-weekly:{week_start.isoformat()}:{user.id}",
+                notification_type="development_weekly_pulse",
             )
             if not sent:
                 continue

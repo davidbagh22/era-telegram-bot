@@ -30,11 +30,26 @@ class MediaChatRegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("media", BIND_CHAT_KEYS)
         self.assertEqual(BIND_CHAT_KEYS["media"][0], "media_chat_id")
 
-    def test_approved_participant_can_access_media(self) -> None:
+    def test_approved_participant_without_media_membership_is_denied(self) -> None:
         user = User(
             telegram_id=1,
             first_name="Participant",
             application_status=ApplicationStatus.APPROVED,
+        )
+        decision = check_chat_access(user, "media")
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "media_approval_required")
+
+    def test_approved_media_member_can_access_media(self) -> None:
+        direction = SimpleNamespace(name="Медиа", leader_id=None)
+        membership = SimpleNamespace(direction=direction, status="approved")
+        user = SimpleNamespace(
+            id=101,
+            application_status=ApplicationStatus.APPROVED,
+            is_blocked=False,
+            is_archived=False,
+            role="participant",
+            directions=[membership],
         )
         decision = check_chat_access(user, "media")
         self.assertTrue(decision.allowed)

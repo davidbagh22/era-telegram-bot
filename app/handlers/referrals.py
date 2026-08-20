@@ -39,6 +39,32 @@ async def start_referral_code(call: CallbackQuery, state: FSMContext) -> None:
     )
 
 
+@router.callback_query(RegistrationStates.referral_code, F.data == "reg:ref:use")
+async def use_prefilled_referral_code(call: CallbackQuery, state: FSMContext) -> None:
+    """Keep an already validated referral code and return to consent."""
+    await call.answer()
+    data = await state.get_data()
+    code = data.get("referral_code")
+    if not code:
+        await call.message.answer(
+            "Сохранённого кода нет. Отправьте 6-значный код друга сообщением.",
+            reply_markup=referral_code_keyboard(),
+        )
+        return
+    await _return_to_consent(call.message, state, code=str(code))
+
+
+@router.callback_query(RegistrationStates.referral_code, F.data == "reg:ref:change")
+async def change_prefilled_referral_code(call: CallbackQuery, state: FSMContext) -> None:
+    """Discard the current prefill and wait for a new validated code."""
+    await call.answer()
+    await state.update_data(referral_code=None)
+    await call.message.answer(
+        "Отправьте новый 6-значный код друга одним сообщением.",
+        reply_markup=referral_code_keyboard(),
+    )
+
+
 @router.callback_query(RegistrationStates.referral_code, F.data == "reg:ref:skip")
 async def skip_referral_code(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()

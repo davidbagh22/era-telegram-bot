@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.config import Settings
 from app.database.models import AppSetting, User
-from app.services.notification_service import safe_send
+from app.services.notification_service import safe_send_once
 from app.utils.constants import ApplicationStatus
 
 
@@ -18,6 +18,13 @@ BIRTHDAY_TEXT = """🎉 С днём рождения!
 
 
 async def send_birthday_greetings(bot: Bot, settings: Settings, session_factory) -> int:
+    """Send birthday greetings exactly once per user/day, including crash recovery.
+
+    The AppSetting remains the cheap whole-day completion marker. The durable
+    notification ledger is the per-recipient source of truth, so a process crash
+    after sending to some users but before committing the marker cannot resend to
+    those users on restart.
+    """
     today = datetime.now(ZoneInfo(settings.timezone)).date()
     setting_key = f"birthday_greetings:{today:%Y-%m-%d}"
     sent_count = 0
@@ -40,18 +47,30 @@ async def send_birthday_greetings(bot: Bot, settings: Settings, session_factory)
             )
         ).all()
 
-        sent_user_ids: list[int] = []
+        completed_user_ids: list[int] = []
         for user in users:
             if user.birth_date.month != today.month or user.birth_date.day != today.day:
                 continue
-            if await safe_send(bot, user.telegram_id, BIRTHDAY_TEXT):
+            result = await safe_send_once(
+                bot,
+                settings,
+                user.telegram_id,
+                BIRTHDAY_TEXT,
+                delivery_key=f"birthday:{today:%Y-%m-%d}:{user.id}",
+                notification_type="birthday",
+            )
+            if result.sent and not result.duplicate:
                 sent_count += 1
-                sent_user_ids.append(user.id)
+            if result.sent or result.status in {"blocked", "unreachable", "skipped"}:
+                completed_user_ids.append(user.id)
 
         session.add(
             AppSetting(
                 key=setting_key,
-                value={"sent_user_ids": sent_user_ids, "sent_count": sent_count},
+                value={
+                    "completed_user_ids": completed_user_ids,
+                    "newly_sent_count": sent_count,
+                },
             )
         )
         await session.commit()

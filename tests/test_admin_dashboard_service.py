@@ -24,14 +24,14 @@ class HasDashboardAccessTests(unittest.TestCase):
         user = SimpleNamespace(role=Role.ADMIN, is_blocked=False, is_archived=False, permission_grants=[])
         self.assertTrue(has_dashboard_access(user, self._settings(), 1))
 
-    def test_any_active_permission_grants_access(self) -> None:
+    def test_active_narrow_permission_does_not_grant_global_dashboard(self) -> None:
         user = SimpleNamespace(
             role="participant",
             is_blocked=False,
             is_archived=False,
             permission_grants=[SimpleNamespace(is_active=True, permission="people.view")],
         )
-        self.assertTrue(has_dashboard_access(user, self._settings(), 1))
+        self.assertFalse(has_dashboard_access(user, self._settings(), 1))
 
     def test_inactive_permission_grant_does_not_grant_access(self) -> None:
         user = SimpleNamespace(

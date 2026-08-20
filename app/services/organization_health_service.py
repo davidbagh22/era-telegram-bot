@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
@@ -24,8 +24,14 @@ from app.database.models import (
     UserDepartment,
     UserDirection,
 )
+from app.database.participation_models import ParticipationLifecycle
 from app.services import development_analytics
 from app.services.admin_dashboard_service import dashboard_metrics
+from app.services.meaningful_activity_service import (
+    meaningful_points_condition,
+    meaningful_user_ids_since,
+)
+from app.services.participation_lifecycle_service import MODE_ACTIVE, MODE_EXITED, MODE_LIGHT
 from app.utils.constants import (
     ApplicationStatus,
     EventStatus,
@@ -96,13 +102,59 @@ async def _count(session: AsyncSession, model, *conditions) -> int:
     return int(await session.scalar(query) or 0)
 
 
-async def build_organization_health(session: AsyncSession) -> OrganizationHealthSnapshot:
-    """Build a broad, factual organization-health snapshot.
+def _current_roster_conditions():
+    return (
+        User.application_status == ApplicationStatus.APPROVED,
+        User.is_archived.is_(False),
+        User.is_blocked.is_(False),
+        or_(
+            ParticipationLifecycle.user_id.is_(None),
+            ParticipationLifecycle.participation_mode != MODE_EXITED,
+        ),
+    )
 
-    The second top-level KPI — ``pulse`` — comes only from the privacy-safe
-    aggregate current-state part of "Мой вектор". Stable traits, interests,
-    notes and individual answers never enter the pulse. Cohorts smaller than
-    the development privacy threshold stay suppressed.
+
+def _active_denominator_conditions():
+    return (
+        User.application_status == ApplicationStatus.APPROVED,
+        User.is_archived.is_(False),
+        User.is_blocked.is_(False),
+        or_(
+            ParticipationLifecycle.user_id.is_(None),
+            ParticipationLifecycle.participation_mode.in_([MODE_ACTIVE, MODE_LIGHT]),
+        ),
+    )
+
+
+async def _user_count(session: AsyncSession, *conditions) -> int:
+    return int(
+        await session.scalar(
+            select(func.count(User.id))
+            .select_from(User)
+            .outerjoin(ParticipationLifecycle, ParticipationLifecycle.user_id == User.id)
+            .where(*conditions)
+        )
+        or 0
+    )
+
+
+async def _meaningful_active_count(session: AsyncSession, cutoff: datetime) -> int:
+    ids = await meaningful_user_ids_since(
+        session, cutoff, include_current_responsibility=True
+    )
+    if not ids:
+        return 0
+    return await _user_count(session, *_active_denominator_conditions(), User.id.in_(ids))
+
+
+async def build_organization_health(session: AsyncSession) -> OrganizationHealthSnapshot:
+    """Build factual organization health from verified operational activity.
+
+    Digital engagement points (daily app entry, Vector check-ins, profile
+    actions, etc.) remain reputation events but never make Active Base or
+    retention look healthier. Participation mode is also respected: PAUSED,
+    OBSERVER and EXITED are removed from the active denominator while their
+    history remains intact.
     """
 
     now = datetime.now(timezone.utc)
@@ -113,63 +165,58 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
     month_ago_date = today - timedelta(days=30)
     two_weeks_ahead = today + timedelta(days=14)
 
-    approved_filter = (
-        User.application_status == ApplicationStatus.APPROVED,
-        User.is_archived.is_(False),
-        User.is_blocked.is_(False),
+    approved_total = await _user_count(session, *_current_roster_conditions())
+    active_denominator = await _user_count(session, *_active_denominator_conditions())
+    new_7d = await _user_count(
+        session, *_current_roster_conditions(), User.created_at >= week_ago
     )
-
-    approved_total = await _count(session, User, *approved_filter)
-    new_7d = await _count(session, User, *approved_filter, User.created_at >= week_ago)
-    new_30d = await _count(session, User, *approved_filter, User.created_at >= month_ago)
-    leaders = await _count(
+    new_30d = await _user_count(
+        session, *_current_roster_conditions(), User.created_at >= month_ago
+    )
+    leaders = await _user_count(
         session,
-        User,
-        *approved_filter,
+        *_current_roster_conditions(),
         User.role.in_([Role.LEADER, Role.HEAD, Role.COUNCIL, Role.ADMIN]),
     )
-    activists = await _count(session, User, *approved_filter, User.role == Role.ACTIVIST)
-    progressed = await _count(
+    activists = await _user_count(
+        session, *_current_roster_conditions(), User.role == Role.ACTIVIST
+    )
+    progressed = await _user_count(
         session,
-        User,
-        *approved_filter,
+        *_current_roster_conditions(),
         User.role.in_([Role.ACTIVIST, Role.LEADER, Role.HEAD, Role.COUNCIL, Role.ADMIN]),
     )
 
-    async def active_users_since(cutoff: datetime) -> int:
-        return int(
-            await session.scalar(
-                select(func.count(func.distinct(PointTransaction.user_id)))
-                .join(User, User.id == PointTransaction.user_id)
-                .where(PointTransaction.created_at >= cutoff, *approved_filter)
-            )
-            or 0
-        )
+    active_7d = await _meaningful_active_count(session, week_ago)
+    active_30d = await _meaningful_active_count(session, month_ago)
+    active_90d = await _meaningful_active_count(session, quarter_ago)
+    dormant_30d = max(active_denominator - active_30d, 0)
 
-    active_7d = await active_users_since(week_ago)
-    active_30d = await active_users_since(month_ago)
-    active_90d = await active_users_since(quarter_ago)
-    dormant_30d = max(approved_total - active_30d, 0)
-
-    retention_denominator = await _count(session, User, *approved_filter, User.created_at < month_ago)
-    retained_30d = int(
-        await session.scalar(
-            select(func.count(func.distinct(User.id)))
-            .join(PointTransaction, PointTransaction.user_id == User.id)
-            .where(
-                *approved_filter,
-                User.created_at < month_ago,
-                PointTransaction.created_at >= month_ago,
-            )
+    retention_denominator = await _user_count(
+        session,
+        *_active_denominator_conditions(),
+        User.created_at < month_ago,
+    )
+    retained_ids = await meaningful_user_ids_since(
+        session, month_ago, include_current_responsibility=True
+    )
+    retained_30d = (
+        await _user_count(
+            session,
+            *_active_denominator_conditions(),
+            User.created_at < month_ago,
+            User.id.in_(retained_ids),
         )
-        or 0
+        if retained_ids
+        else 0
     )
 
     department_users = int(
         await session.scalar(
             select(func.count(func.distinct(UserDepartment.user_id)))
             .join(User, User.id == UserDepartment.user_id)
-            .where(*approved_filter)
+            .outerjoin(ParticipationLifecycle, ParticipationLifecycle.user_id == User.id)
+            .where(*_current_roster_conditions())
         )
         or 0
     )
@@ -177,7 +224,8 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
         await session.scalar(
             select(func.count(func.distinct(UserDirection.user_id)))
             .join(User, User.id == UserDirection.user_id)
-            .where(*approved_filter)
+            .outerjoin(ParticipationLifecycle, ParticipationLifecycle.user_id == User.id)
+            .where(*_current_roster_conditions())
         )
         or 0
     )
@@ -283,7 +331,8 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
         session,
         ProjectMember,
         ProjectMember.joined_at.is_not(None),
-        ProjectMember.status.in_(["approved", "active", "member"]),
+        ProjectMember.status.in_(["accepted", "active", "completed"]),
+        ProjectMember.contribution_status == "confirmed",
     )
 
     open_tasks = await _count(
@@ -320,11 +369,17 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
         EventActivitySubmission.status == "approved",
     )
 
-    point_actions_30d = await _count(session, PointTransaction, PointTransaction.created_at >= month_ago)
+    point_actions_30d = await _count(
+        session,
+        PointTransaction,
+        PointTransaction.created_at >= month_ago,
+        meaningful_points_condition(),
+    )
     points_30d = int(
         await session.scalar(
             select(func.coalesce(func.sum(PointTransaction.points), 0)).where(
-                PointTransaction.created_at >= month_ago
+                PointTransaction.created_at >= month_ago,
+                meaningful_points_condition(),
             )
         )
         or 0
@@ -377,19 +432,19 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
         ]
 
     metrics = [
-        HealthMetric("approved", "Люди", "Одобрено участников", approved_total, str(approved_total), "текущая база без архивных и заблокированных"),
-        HealthMetric("new_7d", "Люди", "Новые за 7 дней", new_7d, f"+{new_7d}", "одобрены за последнюю неделю"),
-        HealthMetric("new_30d", "Люди", "Новые за 30 дней", new_30d, f"+{new_30d}", "одобрены за последний месяц"),
-        HealthMetric("leaders", "Люди", "Лидеров и руководителей", leaders, str(leaders), f"{_pct(leaders, approved_total):.1f}% сообщества"),
-        HealthMetric("activists", "Люди", "Активистов", activists, str(activists), "роль «активист» в системе"),
-        HealthMetric("growth_conversion", "Люди", "Рост участник → активный/лидер", _pct(progressed, approved_total), f"{_pct(progressed, approved_total):.1f}%", "доля одобренных, перешедших из базовой роли", _cap(_pct(progressed, approved_total))),
+        HealthMetric("approved", "Люди", "Текущий состав", approved_total, str(approved_total), "одобрены, не заблокированы, не архивированы и не вышли"),
+        HealthMetric("new_7d", "Люди", "Новые за 7 дней", new_7d, f"+{new_7d}", "новые в текущем составе за последнюю неделю"),
+        HealthMetric("new_30d", "Люди", "Новые за 30 дней", new_30d, f"+{new_30d}", "новые в текущем составе за последний месяц"),
+        HealthMetric("leaders", "Люди", "Лидеров и руководителей", leaders, str(leaders), f"{_pct(leaders, approved_total):.1f}% текущего состава"),
+        HealthMetric("activists", "Люди", "Роль «Активист»", activists, str(activists), "организационная роль, не Active Base"),
+        HealthMetric("growth_conversion", "Люди", "Рост участник → активный/лидер", _pct(progressed, approved_total), f"{_pct(progressed, approved_total):.1f}%", "доля текущего состава, перешедшая из базовой роли", _cap(_pct(progressed, approved_total))),
         HealthMetric("department_coverage", "Люди", "Выбрали департамент", _pct(department_users, approved_total), f"{_pct(department_users, approved_total):.1f}%", "структурная включённость"),
         HealthMetric("direction_coverage", "Люди", "Выбрали направление", _pct(direction_users, approved_total), f"{_pct(direction_users, approved_total):.1f}%", "предметная включённость"),
-        HealthMetric("active_7d", "Вовлечённость", "Активны за 7 дней", active_7d, f"{active_7d} · {_pct(active_7d, approved_total):.1f}%", "есть подтверждённое действие/баллы"),
-        HealthMetric("active_30d", "Вовлечённость", "Активны за 30 дней", active_30d, f"{active_30d} · {_pct(active_30d, approved_total):.1f}%", "основной показатель текущей вовлечённости", _cap(_pct(active_30d, approved_total))),
-        HealthMetric("active_90d", "Вовлечённость", "Активны за 90 дней", active_90d, f"{active_90d} · {_pct(active_90d, approved_total):.1f}%", "широкий контур удержания"),
-        HealthMetric("retention_30d", "Вовлечённость", "30-дневное удержание", _pct(retained_30d, retention_denominator), f"{_pct(retained_30d, retention_denominator):.1f}%", "из участников старше 30 дней проявили активность за последний месяц", _cap(_pct(retained_30d, retention_denominator))),
-        HealthMetric("dormant_30d", "Вовлечённость", "Без активности 30 дней", dormant_30d, str(dormant_30d), "одобрены, но без подтверждённых действий за месяц"),
+        HealthMetric("active_7d", "Вовлечённость", "Meaningful activity за 7 дней", active_7d, f"{active_7d} · {_pct(active_7d, active_denominator):.1f}%", "только подтверждённые реальные действия или текущая ответственность"),
+        HealthMetric("active_30d", "Вовлечённость", "Meaningful activity за 30 дней", active_30d, f"{active_30d} · {_pct(active_30d, active_denominator):.1f}%", "digital engagement не считается operational activity", _cap(_pct(active_30d, active_denominator))),
+        HealthMetric("active_90d", "Вовлечённость", "Meaningful activity за 90 дней", active_90d, f"{active_90d} · {_pct(active_90d, active_denominator):.1f}%", "широкий контур реальной активности"),
+        HealthMetric("retention_30d", "Вовлечённость", "30-дневное удержание", _pct(retained_30d, retention_denominator), f"{_pct(retained_30d, retention_denominator):.1f}%", "ACTIVE/LIGHT участники старше 30 дней с meaningful action или текущей ответственностью", _cap(_pct(retained_30d, retention_denominator))),
+        HealthMetric("dormant_30d", "Вовлечённость", "Без meaningful activity 30 дней", dormant_30d, str(dormant_30d), "PAUSED/OBSERVER/EXITED исключены из знаменателя"),
         HealthMetric("events_30d", "События", "Мероприятий за 30 дней", events_30d, str(events_30d), "проведённые/живые события"),
         HealthMetric("upcoming_14d", "События", "Событий на 14 дней", upcoming_14d, str(upcoming_14d), "запланированный ритм"),
         HealthMetric("event_registrations", "События", "Регистраций за 30 дней", event_registrations_30d, str(event_registrations_30d), "по событиям последнего месяца"),
@@ -399,13 +454,13 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
         HealthMetric("active_projects", "Проекты", "Проектов в работе", active_projects, str(active_projects), "одобрены или уже реализуются"),
         HealthMetric("new_projects_30d", "Проекты", "Новых проектов за 30 дней", new_projects_30d, str(new_projects_30d), "новый проектный поток"),
         HealthMetric("completed_projects", "Проекты", "Завершено проектов", completed_projects, str(completed_projects), "накопленный подтверждённый результат"),
-        HealthMetric("project_members", "Проекты", "Участий в командах", project_members, str(project_members), "подтверждённые включения в проектные команды"),
+        HealthMetric("project_members", "Проекты", "Подтверждённых вкладов", project_members, str(project_members), "только ProjectMember с confirmed contribution"),
         HealthMetric("open_tasks", "Исполнение", "Открытых заданий", open_tasks, str(open_tasks), "новые, опубликованные, в работе или на проверке"),
         HealthMetric("completed_tasks_30d", "Исполнение", "Заданий завершено за 30 дней", completed_tasks_30d, str(completed_tasks_30d), "реальный операционный выпуск"),
         HealthMetric("overdue_tasks", "Исполнение", "Просроченных заданий", overdue_tasks, str(overdue_tasks), "срок прошёл, задача не закрыта"),
         HealthMetric("task_acceptance", "Исполнение", "Принято результатов заданий", _pct(task_approved_30d, task_submissions_30d), f"{_pct(task_approved_30d, task_submissions_30d):.1f}%", f"{task_approved_30d} из {task_submissions_30d} отправок за 30 дней"),
         HealthMetric("activity_acceptance", "Исполнение", "Принято активностей событий", _pct(activity_approved_30d, activity_submissions_30d), f"{_pct(activity_approved_30d, activity_submissions_30d):.1f}%", f"{activity_approved_30d} из {activity_submissions_30d} отправок за 30 дней"),
-        HealthMetric("point_actions", "Исполнение", "Подтверждённых действий", point_actions_30d, str(point_actions_30d), f"{points_30d:+d} баллов за 30 дней"),
+        HealthMetric("point_actions", "Исполнение", "Подтверждённых реальных действий", point_actions_30d, str(point_actions_30d), f"{points_30d:+d} баллов из operational activity за 30 дней"),
         HealthMetric("queue", "Операции", "На очереди решений", queues.attention_total, str(queues.attention_total), "заявки, модерация, результаты, вопросы и отчёты"),
         HealthMetric("department_apps", "Операции", "Заявок в департаменты", pending_department_apps, str(pending_department_apps), "ждут решения"),
         HealthMetric("data_rights", "Операции", "Запросов по данным", pending_data_rights, str(pending_data_rights), "запросы на удаление/анонимизацию ждут обработки"),
@@ -414,8 +469,8 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
     ]
 
     risks: list[str] = []
-    if _pct(active_30d, approved_total) < 35 and approved_total:
-        risks.append("Низкая 30-дневная вовлечённость: нужен быстрый маршрут возвращения людей в действие.")
+    if _pct(active_30d, active_denominator) < 35 and active_denominator:
+        risks.append("Низкая 30-дневная meaningful activity: нужен быстрый маршрут возвращения людей в реальное действие.")
     if retention_denominator and _pct(retained_30d, retention_denominator) < 35:
         risks.append("Слабое удержание старших участников: проверьте переход участник → активный → лидер.")
     if upcoming_14d == 0:
@@ -442,9 +497,9 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
         risks=risks[:8],
         period_label="операционные показатели: последние 7/30/90 дней · Пульс: последние 30 дней",
         data_note=(
-            "Пульс рассчитывается только по агрегированным пяти текущим состояниям «Моего вектора» "
-            "и показывается при безопасной выборке от 5 человек. Черты, интересы, личные заметки и "
-            "индивидуальные ответы в Пульс не входят. Остальные показатели считаются по фактическим "
-            "событиям платформы."
+            "Active Base и retention считают только verified meaningful activity или текущую ответственность; "
+            "digital engagement, app login и сам факт должности/департамента не создают activity. PAUSED, OBSERVER "
+            "и EXITED не искажают активный знаменатель. Пульс рассчитывается только по агрегированным пяти текущим "
+            "состояниям «Моего вектора» при безопасной выборке от 5 человек; raw ответы и личные заметки не используются."
         ),
     )

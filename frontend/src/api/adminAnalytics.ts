@@ -1,6 +1,7 @@
 import { ApiError, authenticate } from "./client";
 
 export type AnalyticsDetailSection = "users" | "events" | "projects" | "contacts" | "goals";
+export type ExecutiveReportPeriod = "30d" | "3m" | "6m" | "1y" | "custom";
 
 export interface AnalyticsDetailItem {
   id: number;
@@ -146,6 +147,15 @@ export function downloadOrganizationHealthReport(): Promise<Blob> {
   return adminBlob("/api/v1/admin/analytics/health-report.xlsx");
 }
 
-export function downloadFullAnalyticsReport(): Promise<Blob> {
-  return adminBlob("/api/v1/admin/analytics/full-report.xlsx");
+export function downloadFullAnalyticsReport(
+  period: ExecutiveReportPeriod = "30d",
+  startDate?: string,
+  endDate?: string,
+): Promise<Blob> {
+  const params = new URLSearchParams({ period });
+  if (period === "custom" && startDate && endDate) {
+    params.set("start_date", startDate);
+    params.set("end_date", endDate);
+  }
+  return adminBlob(`/api/v1/admin/analytics/executive-report.xlsx?${params.toString()}`);
 }

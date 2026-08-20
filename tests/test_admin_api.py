@@ -154,9 +154,9 @@ class ApplicationsApiTests(unittest.TestCase):
         app = _build_app(_admin(), session)
         client = TestClient(app)
         decision = SimpleNamespace(changed=True, code="rejected")
-        with (
-            patch("app.api.v1.admin.reject_application", new=AsyncMock(return_value=decision)),
-            patch("app.api.v1.admin.safe_send", new=AsyncMock()),
+        with patch(
+            "app.api.v1.admin_application_decisions.reject_application",
+            new=AsyncMock(return_value=decision),
         ):
             response = client.post(
                 "/api/v1/admin/applications/10/reject", json={"comment": "no fit"}

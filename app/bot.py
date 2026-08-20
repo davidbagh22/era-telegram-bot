@@ -21,6 +21,7 @@ from app.handlers.admin import router as admin_router
 from app.handlers.leader import router as leader_router
 from app.handlers.participant import router as participant_router
 from app.middlewares.auth import DatabaseAuthMiddleware
+from app.middlewares.community_identity import CommunityIdentityMiddleware
 from app.middlewares.legacy_keyboard_cleanup import LegacyKeyboardCleanupMiddleware
 from app.middlewares.media_chat_activity import MediaChatActivityMiddleware
 from app.middlewares.referral_chat_reward import ReferralChatRewardMiddleware
@@ -58,21 +59,14 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     chat.router.chat_join_request.outer_middleware(referral_chat_reward)
     chat.router.message.outer_middleware(referral_chat_reward)
 
-    # DELTA ToR §38-41: counts human messages in the Media chat for the
-    # "activity in Media Chat" metric. Attached to both routers that can
-    # see a Media-chat message -- media_chat_files.router handles photo/
-    # video/document there directly, everything else (text/voice/replies)
-    # falls through to chat.router -- so either attachment point alone
-    # would miss some message types.
+    community_identity = CommunityIdentityMiddleware()
+    chat.router.chat_join_request.outer_middleware(community_identity)
+    chat.router.message.outer_middleware(community_identity)
+
     media_chat_activity = MediaChatActivityMiddleware()
     media_chat_files.router.message.outer_middleware(media_chat_activity)
     chat.router.message.outer_middleware(media_chat_activity)
 
-    # emergency.router must stay first: it owns global FSM recovery and now
-    # also dispatches FAQ /start payloads through try_handle_faq_payload().
-    # Media file replies stay before the generic chat router so a reply to a
-    # Media task card can be staged for explicit confirmation without being
-    # swallowed by unrelated group-chat handlers.
     dispatcher.include_routers(
         emergency.router,
         start.router,

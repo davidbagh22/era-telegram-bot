@@ -10,14 +10,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import Event, EventActivity, EventActivitySubmission, EventRegistration, User
 from app.services.event_activity_service import REVIEWABLE_STATUSES
-from app.services.notification_service import notify_admins, safe_send_document, safe_send_photo
+from app.services.notification_service import (
+    notify_admins,
+    safe_send_document,
+    safe_send_photo,
+    safe_send_video,
+)
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, RegistrationStatus
 from app.utils.validators import clean_text
 
 router = Router(name="participant_event_activities_block15")
 
-ALLOWED_PROOF_TYPES = {"photo", "link", "text", "file", "manual"}
+# Must stay aligned with the canonical admin event-activity authoring flow.
+ALLOWED_PROOF_TYPES = {"photo", "link", "text", "file", "video", "manual", "feedback"}
 ACTIVE_REGISTRATION_STATUSES = {
     RegistrationStatus.REGISTERED,
     RegistrationStatus.WILL_COME,
@@ -44,6 +50,8 @@ def _type_label(value: str) -> str:
         "link": "ссылка",
         "text": "текст",
         "file": "файл",
+        "video": "видео",
+        "feedback": "отзыв",
         "manual": "заявка без вложения",
     }.get(value, value)
 
@@ -58,11 +66,20 @@ def _activities_keyboard(activities: list[EventActivity]) -> InlineKeyboardMarku
         ]
         for activity in activities
     ]
-    rows.append([InlineKeyboardButton(text="← К мероприятию", callback_data=f"event:view:{activities[0].event_id}")])
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="← К мероприятию",
+                callback_data=f"event:view:{activities[0].event_id}",
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def _registration(session: AsyncSession, event_id: int, user_id: int) -> EventRegistration | None:
+async def _registration(
+    session: AsyncSession, event_id: int, user_id: int
+) -> EventRegistration | None:
     return await session.scalar(
         select(EventRegistration).where(
             EventRegistration.event_id == event_id,
@@ -115,17 +132,32 @@ async def _notify_proof(
     media_sent = media_failed = 0
     for chat_id in recipients:
         if submission.file_type == "photo":
-            ok = await safe_send_photo(bot, chat_id, submission.file_id, caption="Подтверждение активности")
+            ok = await safe_send_photo(
+                bot, chat_id, submission.file_id, caption="Подтверждение активности"
+            )
+        elif submission.file_type == "video":
+            ok = await safe_send_video(
+                bot, chat_id, submission.file_id, caption="Подтверждение активности"
+            )
         else:
-            ok = await safe_send_document(bot, chat_id, submission.file_id, caption="Подтверждение активности")
+            ok = await safe_send_document(
+                bot, chat_id, submission.file_id, caption="Подтверждение активности"
+            )
         media_sent += int(ok)
         media_failed += int(not ok)
     if media_failed:
-        await notify_admins(bot, settings, f"Не удалось доставить файл активности части получателей. Доставлено: {media_sent}. Ошибок: {media_failed}.")
+        await notify_admins(
+            bot,
+            settings,
+            "Не удалось доставить файл активности части получателей. "
+            f"Доставлено: {media_sent}. Ошибок: {media_failed}.",
+        )
 
 
 @router.callback_query(F.data.startswith("event:activities:"))
-async def activities_list(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+async def activities_list(
+    call: CallbackQuery, user: User | None, session: AsyncSession
+) -> None:
     await call.answer()
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
@@ -142,7 +174,10 @@ async def activities_list(call: CallbackQuery, user: User | None, session: Async
         (
             await session.scalars(
                 select(EventActivity)
-                .where(EventActivity.event_id == event.id, EventActivity.is_active.is_(True))
+                .where(
+                    EventActivity.event_id == event.id,
+                    EventActivity.is_active.is_(True),
+                )
                 .order_by(EventActivity.id)
             )
         ).all()
@@ -174,12 +209,16 @@ async def proof_start(
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    activity = await session.get(EventActivity, int(call.data.rsplit(":", 1)[-1]))
+    activity = await session.get(
+        EventActivity, int(call.data.rsplit(":", 1)[-1])
+    )
     if not activity or not activity.is_active:
         await call.message.answer("Активность недоступна")
         return
     if not await _registration(session, activity.event_id, user.id):
-        await call.message.answer("Активность доступна только зарегистрированным участникам.")
+        await call.message.answer(
+            "Активность доступна только зарегистрированным участникам."
+        )
         return
     existing = await session.scalar(
         select(EventActivitySubmission).where(
@@ -188,21 +227,22 @@ async def proof_start(
         )
     )
     if existing and existing.status == "approved":
-        await call.message.answer("Эта активность уже принята. Повторная отправка закрыта.")
+        await call.message.answer(
+            "Эта активность уже принята. Повторная отправка закрыта."
+        )
         return
-    # This is the router that actually fires for activity:submit: (registered
-    # before the near-duplicate handler in event_activities_block7.py, which
-    # never runs for real traffic — see docs/SYSTEM_FLOW_MATRIX.md). It was
-    # missing the "leader_approved" intermediate status, so a submission a
-    # leader had already pre-approved (but the admin hadn't signed off on
-    # yet) looked "not in review" and could be overwritten by a duplicate
-    # submit. Use the same REVIEWABLE_STATUSES source of truth as cabinet.py.
     if existing and existing.status in REVIEWABLE_STATUSES:
         await call.message.answer("Ваш результат уже на проверке.")
         return
-    proof_type = activity.submission_type if activity.submission_type in ALLOWED_PROOF_TYPES else "text"
+    proof_type = (
+        activity.submission_type
+        if activity.submission_type in ALLOWED_PROOF_TYPES
+        else "text"
+    )
     if proof_type == "manual":
-        submission = existing or EventActivitySubmission(activity_id=activity.id, user_id=user.id)
+        submission = existing or EventActivitySubmission(
+            activity_id=activity.id, user_id=user.id
+        )
         submission.text = "Заявка на ручную проверку"
         submission.file_id = None
         submission.file_type = "manual"
@@ -222,7 +262,9 @@ async def proof_start(
         "photo": "Отправьте фотографию.",
         "link": "Отправьте ссылку.",
         "text": "Отправьте текстовое подтверждение.",
+        "feedback": "Напишите короткий отзыв или обратную связь.",
         "file": "Отправьте документ или файл.",
+        "video": "Отправьте видео.",
     }
     await call.message.answer(
         f"✨ {activity.title}\n\n{activity.description}\n\n"
@@ -255,16 +297,30 @@ async def proof_finish(
             return
         file_id = message.photo[-1].file_id
         file_type = "photo"
+    elif proof_type == "video":
+        if not message.video:
+            await message.answer("Нужно отправить именно видео.")
+            return
+        file_id = message.video.file_id
+        file_type = "video"
     elif proof_type == "link":
-        if not text or not (text.startswith("http://") or text.startswith("https://") or text.startswith("t.me/")):
+        if not text or not (
+            text.startswith("http://")
+            or text.startswith("https://")
+            or text.startswith("t.me/")
+        ):
             await message.answer("Отправьте корректную ссылку.")
             return
         file_type = "link"
-    elif proof_type == "text":
+    elif proof_type in {"text", "feedback"}:
         if not text:
-            await message.answer("Отправьте текстовое подтверждение.")
+            await message.answer(
+                "Отправьте текстовое подтверждение."
+                if proof_type == "text"
+                else "Напишите отзыв или обратную связь."
+            )
             return
-        file_type = "text"
+        file_type = proof_type
     elif proof_type == "file":
         if not message.document:
             await message.answer("Нужно отправить документ или файл.")
@@ -277,7 +333,9 @@ async def proof_finish(
             EventActivitySubmission.user_id == user.id,
         )
     )
-    submission = existing or EventActivitySubmission(activity_id=activity.id, user_id=user.id)
+    submission = existing or EventActivitySubmission(
+        activity_id=activity.id, user_id=user.id
+    )
     submission.text = text
     submission.file_id = file_id
     submission.file_type = file_type
@@ -290,4 +348,6 @@ async def proof_finish(
     event = await session.get(Event, activity.event_id)
     await _notify_proof(bot, settings, submission, activity, event, user)
     await state.clear()
-    await message.answer("Результат отправлен на проверку. После решения Вы получите уведомление.")
+    await message.answer(
+        "Результат отправлен на проверку. После решения Вы получите уведомление."
+    )

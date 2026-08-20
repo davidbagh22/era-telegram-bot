@@ -1,14 +1,8 @@
 from datetime import date, datetime
 
 from aiogram import F, Bot, Router
-from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,19 +16,13 @@ from app.database.models import (
     Feedback,
     User,
 )
-from app.keyboards.participant import event_card_keyboard, event_list_keyboard
-from app.services.event_service import (
-    available_places,
-    published_events,
-    register_for_event,
-)
 from app.services.notification_service import notify_admins
 from app.states.event import EventActivityStates, FeedbackStates, SelfieStates
-from app.utils import texts, ux_texts
+from app.utils import texts
 from app.utils.constants import ApplicationStatus, RegistrationStatus
 from app.utils.validators import clean_text
 
-router = Router(name="events")
+router = Router(name="events_supplemental")
 
 
 def _approved(user: User | None) -> bool:
@@ -46,80 +34,10 @@ def _approved(user: User | None) -> bool:
     )
 
 
-async def _send_event_list(
-    message: Message, user: User | None, session: AsyncSession
-) -> None:
-    if not _approved(user):
-        await message.answer(texts.APPLICATION_PENDING)
-        return
-    events = await published_events(session)
-    if not events:
-        await message.answer(ux_texts.EVENTS_EMPTY)
-        return
-    await message.answer(
-        ux_texts.EVENTS_LIST_HEADER,
-        reply_markup=event_list_keyboard(events),
-    )
-
-
-@router.message(F.text == "📅 Мероприятия")
-@router.message(Command("events"), F.chat.type == "private")
-async def event_list_button(
-    message: Message, user: User | None, session: AsyncSession, state: FSMContext
-) -> None:
-    await state.clear()
-    await _send_event_list(message, user, session)
-
-
-@router.callback_query(F.data == "events:list")
-async def event_list(
-    call: CallbackQuery, user: User | None, session: AsyncSession
-) -> None:
-    await call.answer()
-    await _send_event_list(call.message, user, session)
-
-
-@router.callback_query(F.data.startswith("event:view:"))
-async def event_view(
-    call: CallbackQuery, user: User | None, session: AsyncSession
-) -> None:
-    await call.answer()
-    if not _approved(user):
-        await call.message.answer(texts.APPLICATION_PENDING)
-        return
-    event_id = int(call.data.rsplit(":", 1)[-1])
-    event = await session.get(Event, event_id)
-    if event is None:
-        await call.message.answer(ux_texts.EVENTS_EMPTY)
-        return
-    places = await available_places(session, event)
-    await call.message.answer(
-        texts.event_card(event, available=places),
-        reply_markup=event_card_keyboard(event.id),
-    )
-
-
-@router.callback_query(F.data.startswith("event:join:"))
-async def event_join(
-    call: CallbackQuery, user: User | None, session: AsyncSession
-) -> None:
-    await call.answer()
-    if not _approved(user):
-        await call.message.answer(texts.APPLICATION_PENDING)
-        return
-    event = await session.get(Event, int(call.data.rsplit(":", 1)[-1]))
-    if event is None:
-        await call.message.answer(ux_texts.EVENTS_EMPTY)
-        return
-    _, error = await register_for_event(session, event, user.id)
-    if error == "already":
-        await call.message.answer(texts.EVENT_ALREADY_REGISTERED)
-    elif error == "full":
-        await call.message.answer(texts.EVENT_FULL)
-    elif error == "closed":
-        await call.message.answer("Регистрация на это мероприятие уже закрыта")
-    else:
-        await call.message.answer(texts.event_registered(event))
+# Afisha/list, event:view:* and event:join:* are intentionally owned by
+# events_stability_block8. This module contains only supplemental flows that
+# happen around/after an event so router order cannot silently choose between
+# two implementations of registration.
 
 
 @router.callback_query(F.data.startswith("attendance:"))

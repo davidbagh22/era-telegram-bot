@@ -3,11 +3,13 @@ import { ActionCell } from "../components/ActionCell";
 import { ActivitiesTab } from "./leader/ActivitiesTab";
 import { OpenTasksTab } from "./leader/OpenTasksTab";
 import { OverviewTab } from "./leader/OverviewTab";
+import { WeeklyPulseTab } from "./leader/WeeklyPulseTab";
 
-type LeaderSection = "overview" | "open-tasks" | "activities";
+type LeaderSection = "overview" | "weekly-pulse" | "open-tasks" | "activities";
 
 const SECTIONS: { value: LeaderSection; label: string; description: string }[] = [
   { value: "overview", label: "Обзор", description: "Состояние вашей зоны и главное на сейчас" },
+  { value: "weekly-pulse", label: "Weekly Pulse", description: "Факты недели, ваша оценка и следующий приоритет" },
   { value: "open-tasks", label: "Открытые задачи", description: "Задачи, которые требуют внимания команды" },
   { value: "activities", label: "Активности", description: "Проекты, события и работа участников" },
 ];
@@ -31,6 +33,7 @@ export function LeaderScreen() {
           </h1>
         </div>
         {section === "overview" && <OverviewTab />}
+        {section === "weekly-pulse" && <WeeklyPulseTab />}
         {section === "open-tasks" && <OpenTasksTab />}
         {section === "activities" && <ActivitiesTab />}
       </div>
@@ -47,7 +50,7 @@ export function LeaderScreen() {
           Пространство лидера
         </h1>
         <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)" }}>
-          Команда, задачи и активности — без строк вкладок и скрытых разделов.
+          Команда, Weekly Pulse, задачи и активности — всё в одном рабочем контуре.
         </p>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", minWidth: 0 }}>

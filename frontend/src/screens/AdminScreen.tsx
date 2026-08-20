@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ActionCell } from "../components/ActionCell";
 import { AdminBottomNav, type AdminGroup } from "../components/AdminBottomNav";
+import type { AdminMetricKey } from "../types/adminMetrics";
 import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminCareerScreen } from "./admin/AdminCareerScreen";
 import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
@@ -8,22 +9,25 @@ import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
 import { AdminDevelopmentScreen } from "./admin/AdminDevelopmentScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
 import { AdminMaintenanceScreen, type MaintenanceTarget } from "./admin/AdminMaintenanceScreen";
+import { AdminMetricDetailScreen } from "./admin/AdminMetricDetailScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
-import { AdminOffersScreen } from "./admin/AdminOffersScreen";
+import { AdminOffersScreen, type OffersSection } from "./admin/AdminOffersScreen";
 import { AdminOverviewScreen } from "./admin/AdminOverviewScreen";
 import { AdminProjectsScreen } from "./admin/AdminProjectsScreen";
 import { AdminSurveysScreen } from "./admin/AdminSurveysScreen";
 import { AdminTasksScreen } from "./admin/AdminTasksScreen";
 import { AdminToolsScreen } from "./admin/AdminToolsScreen";
 import { AdminUsersScreen } from "./admin/AdminUsersScreen";
+import { AdminVerificationScreen } from "./admin/AdminVerificationScreen";
 import { SystemPanel } from "./admin/tools/SystemPanel";
 
-type PeopleSection = "participants" | "development" | "career" | "applications" | "offices" | "data-rights";
+type PeopleSection = "participants" | "verification" | "development" | "career" | "applications" | "offices" | "data-rights";
 type WorkSection = "projects" | "events" | "tasks" | "offers";
 type CommsSection = "surveys" | "tools";
 type ControlSection = "analytics" | "system" | "maintenance";
 
 type SectionOption<T extends string> = { value: T; label: string; description: string };
+type MetricDetail = { metric: AdminMetricKey; total: number };
 
 type InitialAdminRoute = {
   openApplications: boolean;
@@ -32,6 +36,7 @@ type InitialAdminRoute = {
 
 const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
   { value: "participants", label: "Участники", description: "Люди, роли и состояние сообщества" },
+  { value: "verification", label: "Проверка состава", description: "Community Verification, напоминания и ручные решения" },
   { value: "development", label: "Состояние и развитие", description: "Добровольные Check-in, охват и потребности сообщества" },
   { value: "career", label: "Портфолио и рекомендации", description: "Проверка достижений и утверждение официальных рекомендательных писем" },
   { value: "applications", label: "Заявки", description: "Новые регистрации и решения по ним" },
@@ -99,37 +104,49 @@ export function AdminScreen() {
   const [group, setGroup] = useState<AdminGroup>(launchRoute.openApplications ? "people" : "overview");
   const [peopleSection, setPeopleSection] = useState<PeopleSection | null>(launchRoute.openApplications ? "applications" : null);
   const [workSection, setWorkSection] = useState<WorkSection | null>(null);
+  const [offersInitialSection, setOffersInitialSection] = useState<OffersSection>("applications");
   const [commsSection, setCommsSection] = useState<CommsSection | null>(null);
   const [controlSection, setControlSection] = useState<ControlSection | null>(null);
+  const [metricDetail, setMetricDetail] = useState<MetricDetail | null>(null);
 
-  const changeGroup = (next: AdminGroup) => {
-    setGroup(next);
+  const clearSections = () => {
     setPeopleSection(null);
     setWorkSection(null);
     setCommsSection(null);
     setControlSection(null);
+    setMetricDetail(null);
+  };
+
+  const changeGroup = (next: AdminGroup) => {
+    setGroup(next);
+    clearSections();
   };
 
   const openPeople = (section: PeopleSection) => {
     setGroup("people");
+    clearSections();
     setPeopleSection(section);
-    setWorkSection(null);
-    setCommsSection(null);
-    setControlSection(null);
   };
-  const openWork = (section: WorkSection) => {
+  const openWork = (section: WorkSection, offersSection: OffersSection = "applications") => {
     setGroup("work");
+    clearSections();
     setWorkSection(section);
-    setPeopleSection(null);
-    setCommsSection(null);
-    setControlSection(null);
+    if (section === "offers") setOffersInitialSection(offersSection);
   };
   const openCommsSection = (section: CommsSection) => {
     setGroup("comms");
+    clearSections();
     setCommsSection(section);
-    setPeopleSection(null);
-    setWorkSection(null);
-    setControlSection(null);
+  };
+  const openControl = (section: ControlSection) => {
+    setGroup("control");
+    clearSections();
+    setControlSection(section);
+  };
+  const openMetric = (metric: AdminMetricKey, total: number) => {
+    setGroup("overview");
+    clearSections();
+    setMetricDetail({ metric, total });
   };
   const openComms = () => openCommsSection("tools");
   const openMaintenanceTarget = (target: MaintenanceTarget) => {
@@ -152,32 +169,49 @@ export function AdminScreen() {
       openCommsSection(target);
       return;
     }
-    setGroup("control");
-    setControlSection(target);
-    setPeopleSection(null);
-    setWorkSection(null);
-    setCommsSection(null);
+    openControl(target);
+  };
+  const openMetricEntity = (entityType: string) => {
+    if (entityType === "user") openPeople("participants");
+    else if (entityType === "project") openWork("projects");
+    else if (entityType === "event" || entityType === "event_registration") openWork("events");
+    else if (entityType === "task_submission") openWork("tasks");
   };
 
   return (
     <div className="era-page" style={{ minHeight: "100vh", display: "flex", flexDirection: "column", minWidth: 0 }}>
       <div style={{ flex: "1 1 auto", minWidth: 0, padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-        {group === "overview" && (
+        {group === "overview" && metricDetail && (
+          <AdminMetricDetailScreen
+            metric={metricDetail.metric}
+            expectedTotal={metricDetail.total}
+            onBack={() => setMetricDetail(null)}
+            onOpenEntity={(entityType) => openMetricEntity(entityType)}
+          />
+        )}
+        {group === "overview" && !metricDetail && (
           <AdminOverviewScreen
             onOpenPeople={() => openPeople("participants")}
             onOpenApplications={() => openPeople("applications")}
+            onOpenVerification={() => openPeople("verification")}
+            onOpenCareer={() => openPeople("career")}
             onOpenProjects={() => openWork("projects")}
             onOpenEvents={() => openWork("events")}
             onOpenTasks={() => openWork("tasks")}
+            onOpenOffers={() => openWork("offers", "rewards")}
             onOpenComms={openComms}
+            onOpenReports={() => openControl("analytics")}
+            onOpenSystem={() => openControl("system")}
+            onOpenMetric={openMetric}
           />
         )}
 
-        {group === "people" && !peopleSection && <SectionMenu title="Люди" description="Участники, развитие, портфолио, регистрации, роли и права на данные." options={PEOPLE_SECTIONS} onOpen={setPeopleSection} />}
+        {group === "people" && !peopleSection && <SectionMenu title="Люди" description="Участники, проверка состава, развитие, портфолио, регистрации, роли и права на данные." options={PEOPLE_SECTIONS} onOpen={setPeopleSection} />}
         {group === "people" && peopleSection && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={PEOPLE_SECTIONS.find((item) => item.value === peopleSection)?.label ?? "Люди"} onBack={() => setPeopleSection(null)} />
             {peopleSection === "participants" && <AdminUsersScreen />}
+            {peopleSection === "verification" && <AdminVerificationScreen />}
             {peopleSection === "development" && <AdminDevelopmentScreen />}
             {peopleSection === "career" && <AdminCareerScreen />}
             {peopleSection === "applications" && <AdminApplicationsScreen initialApplicationId={launchRoute.applicationId} />}
@@ -193,7 +227,7 @@ export function AdminScreen() {
             {workSection === "projects" && <AdminProjectsScreen />}
             {workSection === "events" && <AdminEventsScreen />}
             {workSection === "tasks" && <AdminTasksScreen />}
-            {workSection === "offers" && <AdminOffersScreen />}
+            {workSection === "offers" && <AdminOffersScreen key={offersInitialSection} initialSection={offersInitialSection} />}
           </div>
         )}
 

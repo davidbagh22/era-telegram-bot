@@ -31,6 +31,20 @@ from app.database.career_models import (  # noqa: F401
     RecommendationRequest,
 )
 from app.database.referral_models import ReferralCode, ReferralRelationship  # noqa: F401
+from app.database.participation_models import (  # noqa: F401
+    ParticipationLifecycle,
+    ReactivationCampaign,
+    ReactivationDelivery,
+)
+from app.database.community_verification_models import (  # noqa: F401
+    CommunityMemberIdentity,
+    CommunityVerificationCampaign,
+    CommunityVerificationDelivery,
+)
+from app.database.leadership_models import (  # noqa: F401
+    LeadershipFeedback,
+    LeadershipReportPulse,
+)
 import app.database.socials  # noqa: F401
 import app.database.partners  # noqa: F401
 import app.database.chat_moderation  # noqa: F401
@@ -70,4 +84,12 @@ __all__ = [
     "RecommendationRequest",
     "ReferralCode",
     "ReferralRelationship",
+    "ParticipationLifecycle",
+    "ReactivationCampaign",
+    "ReactivationDelivery",
+    "CommunityMemberIdentity",
+    "CommunityVerificationCampaign",
+    "CommunityVerificationDelivery",
+    "LeadershipFeedback",
+    "LeadershipReportPulse",
 ]

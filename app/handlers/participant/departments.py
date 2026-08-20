@@ -20,7 +20,7 @@ from app.database.models import (
     UserOffice,
 )
 from app.keyboards.common import options_keyboard
-from app.keyboards.participant import department_keyboard, departments_keyboard
+from app.keyboards.participant import departments_keyboard
 from app.services.audit_service import audit
 from app.services.notification_service import notify_admins
 from app.states.department import DepartmentApplicationStates
@@ -28,7 +28,7 @@ from app.utils import texts
 from app.utils.constants import ApplicationStatus, DEPARTMENTS
 from app.utils.validators import clean_text
 
-router = Router(name="departments")
+router = Router(name="departments_supplemental")
 
 
 async def _send_team_menu(
@@ -53,26 +53,11 @@ async def departments_menu_button(
     await _send_team_menu(message, user, settings)
 
 
-@router.callback_query(F.data == "departments:menu")
-async def departments_menu(
-    call: CallbackQuery, user: User | None, settings: Settings
-) -> None:
-    await call.answer()
-    await call.message.edit_text(
-        texts.DEPARTMENTS_OVERVIEW,
-        reply_markup=departments_keyboard(settings.general_chat_url),
-    )
-
-
-@router.callback_query(F.data.startswith("department:view:"))
-async def department_view(call: CallbackQuery, settings: Settings) -> None:
-    await call.answer()
-    key = call.data.rsplit(":", 1)[-1]
-    if key == "internal":
-        text, url = texts.INTERNAL_DEPARTMENT, settings.internal_department_chat_url
-    else:
-        text, url = texts.EXTERNAL_DEPARTMENT, settings.external_department_chat_url
-    await call.message.edit_text(text, reply_markup=department_keyboard(url))
+# `departments:menu` and `department:view:*` have one canonical owner in
+# directions_block7.py. That implementation reads the live Department /
+# Direction tables and lets participants actually persist a direction choice.
+# This supplemental router keeps only team contacts/chats and the application
+# FSM, preventing router order from silently choosing an older read-only view.
 
 
 @router.callback_query(F.data == "team:offices")
@@ -118,27 +103,33 @@ async def team_offices(call: CallbackQuery, session: AsyncSession) -> None:
 @router.callback_query(F.data == "department:chats")
 async def department_chats(call: CallbackQuery, settings: Settings) -> None:
     await call.answer()
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
+    rows: list[list[InlineKeyboardButton]] = []
+    if settings.internal_department_chat_url:
+        rows.append(
             [
                 InlineKeyboardButton(
                     text="Чат внутренних связей",
                     url=settings.internal_department_chat_url,
                 )
-            ],
+            ]
+        )
+    if settings.external_department_chat_url:
+        rows.append(
             [
                 InlineKeyboardButton(
-                    text="Чат внешних связей", url=settings.external_department_chat_url
+                    text="Чат внешних связей",
+                    url=settings.external_department_chat_url,
                 )
-            ],
-            [InlineKeyboardButton(text="Общий чат ЭРА", url=settings.general_chat_url)],
-            [InlineKeyboardButton(text="Назад", callback_data="departments:menu")],
-        ]
-    )
+            ]
+        )
+    if settings.general_chat_url:
+        rows.append(
+            [InlineKeyboardButton(text="Общий чат ЭРА", url=settings.general_chat_url)]
+        )
+    rows.append([InlineKeyboardButton(text="Назад", callback_data="departments:menu")])
     await call.message.answer(
-        "Чаты департаментов\n\nВыберите чат своего направления.", reply_markup=keyboard
+        "Чаты департаментов\n\nВыберите чат своего направления.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
     )
 
 
@@ -236,6 +227,12 @@ async def application_finish(
     direction = await session.scalar(
         select(Direction).where(Direction.name == data["application_direction"])
     )
+    if department is None or direction is None:
+        await state.clear()
+        await message.answer(
+            "Структура ЭРА изменилась во время заполнения заявки. Откройте раздел заново и выберите актуальное направление."
+        )
+        return
     application = DepartmentApplication(
         user_id=user.id,
         department_id=department.id,

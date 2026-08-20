@@ -1,9 +1,10 @@
 """Single verified-activity scoring pipeline for ERA Platform.
 
 Every real verified action enters through ``record_verified_activity`` so a
-single idempotency key drives points, ActivityMetric counters and the existing
-ParticipationStatus progression. Event, task and project helpers are adapters
-onto that one pipeline; none of them creates a second points/rank engine.
+single idempotency key drives points, ActivityMetric counters, the existing
+ParticipationStatus progression and the participation lifecycle. Event, task
+and project helpers are adapters onto that one pipeline; none creates a second
+points/rank engine.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from app.utils.constants import (
     VOLUNTEER_HOURLY_POINTS,
     VOLUNTEER_HOURS_POINTS_CAP,
     EventParticipantRole,
+    ParticipationStatus,
     PointCategory,
     Role,
 )
@@ -48,9 +50,8 @@ TASK_ACTIVITY_METRICS = {
     "mentorship": "mentorship_activities",
 }
 
-# The multiplier applies only when the task itself is explicitly marked as
-# role-scoped. Ordinary attendance, ordinary tasks and unrelated actions never
-# receive a leadership multiplier merely because the user has a title.
+# Job-title multipliers are intentionally scoped. Ordinary attendance and
+# unrelated tasks never change because a person happens to hold an office.
 ROLE_SCOPED_MULTIPLIERS = {
     Role.PARTICIPANT: 1.00,
     Role.ACTIVIST: 1.00,
@@ -59,6 +60,7 @@ ROLE_SCOPED_MULTIPLIERS = {
     Role.COUNCIL: 1.15,
     Role.ADMIN: 1.15,
 }
+CURATOR_SCOPED_MULTIPLIER = 1.05
 
 PROJECT_FIRST_CONTRIBUTION_POINTS = 50
 PROJECT_MILESTONE_POINTS = 120
@@ -110,6 +112,12 @@ async def record_verified_activity(
                 session, user_id=user_id, metric_key=metric_key, delta=delta
             )
     await promote_participation_status(session, user_id=user_id)
+    # Local import avoids turning the lifecycle service into a dependency of
+    # the lower-level points ledger. Only this verified operational gateway
+    # updates Active Base/reactivation state.
+    from app.services.participation_lifecycle_service import record_meaningful_activity
+
+    await record_meaningful_activity(session, user_id)
     return transaction
 
 
@@ -266,6 +274,14 @@ def scoped_task_points(task: Task, participant: User) -> int:
     if not (task.reward_json or {}).get("role_scoped"):
         return base
     multiplier = ROLE_SCOPED_MULTIPLIERS.get(participant.role, 1.0)
+    # Curator is a progression rank, not a job role. It receives the MASTER
+    # 1.05 multiplier only on explicitly responsibility-scoped work, and only
+    # when no stronger actual leadership role already applies.
+    if (
+        multiplier == 1.0
+        and participant.participation_status == ParticipationStatus.PROJECT_CURATOR
+    ):
+        multiplier = CURATOR_SCOPED_MULTIPLIER
     return int(round(base * multiplier))
 
 
@@ -277,7 +293,7 @@ async def score_task_completion(
     submission_id: int | None,
     approved_by_id: int | None,
 ) -> PointTransaction:
-    """Verified Task completion -> points + metrics + rank, exactly once."""
+    """Verified Task completion -> points + metrics + rank/lifecycle, once."""
     return await record_verified_activity(
         session,
         user_id=participant.id,
@@ -351,10 +367,11 @@ async def score_project_completion(
     *,
     approved_by_id: int | None,
 ) -> list[PointTransaction]:
-    """Award only people with a confirmed project contribution plus author.
+    """Reward only users whose contribution is explicitly confirmed.
 
-    The author is treated as Project Lead for the +150 result bonus. This is
-    deliberately based on real project data, not a global role multiplier.
+    Project authorship is not evidence of completed work. The author receives
+    the participant completion reward and Project Lead result bonus only when
+    the author also has a confirmed ``ProjectMember`` contribution.
     """
     members = list(
         (
@@ -368,7 +385,6 @@ async def score_project_completion(
         ).all()
     )
     participant_ids = {member.user_id for member in members}
-    participant_ids.add(project.author_id)
     awarded: list[PointTransaction] = []
     for user_id in sorted(participant_ids):
         transaction = await record_verified_activity(
@@ -386,18 +402,19 @@ async def score_project_completion(
         )
         awarded.append(transaction)
 
-    lead = await record_verified_activity(
-        session,
-        user_id=project.author_id,
-        points=PROJECT_LEAD_RESULT_POINTS,
-        reason=f"Результат Project Lead: {project.title}",
-        category=PointCategory.PROJECT,
-        source_type="project_lead_result",
-        source_id=project.id,
-        idempotency_key=f"project:{project.id}:lead:{project.author_id}:result",
-        approved_by=approved_by_id,
-        related_project_id=project.id,
-        metric_updates={"projects_led": 1, "leadership_activities": 1},
-    )
-    awarded.append(lead)
+    if project.author_id in participant_ids:
+        lead = await record_verified_activity(
+            session,
+            user_id=project.author_id,
+            points=PROJECT_LEAD_RESULT_POINTS,
+            reason=f"Результат Project Lead: {project.title}",
+            category=PointCategory.PROJECT,
+            source_type="project_lead_result",
+            source_id=project.id,
+            idempotency_key=f"project:{project.id}:lead:{project.author_id}:result",
+            approved_by=approved_by_id,
+            related_project_id=project.id,
+            metric_updates={"projects_led": 1, "leadership_activities": 1},
+        )
+        awarded.append(lead)
     return awarded

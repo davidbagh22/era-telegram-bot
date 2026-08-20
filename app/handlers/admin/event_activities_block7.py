@@ -8,14 +8,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import Event, EventActivity, EventActivitySubmission, EventRegistration, PointTransaction, User
+from app.database.models import Event, EventActivity, EventActivitySubmission, EventRegistration, User
+from app.services.event_activity_scoring_service import score_event_activity_completion
 from app.services.notification_service import safe_answer_media, safe_send
-from app.services.points_service import add_points
 from app.utils import texts
 from app.utils.constants import RegistrationStatus, Role
 from app.utils.validators import clean_text
 
 router = Router(name="admin_event_activities_block7")
+ALLOWED_TYPES = {"photo", "link", "text", "file", "video", "manual", "feedback"}
+REVIEWABLE_STATUSES = {"pending", "leader_approved"}
 
 
 class ActivityAdminStates(StatesGroup):
@@ -26,9 +28,15 @@ def is_admin(user: User | None, settings: Settings, tg_id: int) -> bool:
     return bool(
         tg_id in settings.admin_ids
         or (user and user.role == Role.ADMIN and not user.is_blocked)
-        or (user and not user.is_blocked and not user.is_archived and any(
-            g.is_active and g.permission == "events.manage" for g in (user.permission_grants or [])
-        ))
+        or (
+            user
+            and not user.is_blocked
+            and not user.is_archived
+            and any(
+                g.is_active and g.permission == "events.manage"
+                for g in (user.permission_grants or [])
+            )
+        )
     )
 
 
@@ -55,7 +63,9 @@ def event_activity_buttons(event_id: int) -> InlineKeyboardMarkup:
 
 
 def submit_button(activity_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📤 Отправить результат", callback_data=f"activity:submit:{activity_id}")]])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="📤 Отправить результат", callback_data=f"activity:submit:{activity_id}")]]
+    )
 
 
 def review_buttons(sub_id: int) -> InlineKeyboardMarkup:
@@ -66,7 +76,13 @@ def review_buttons(sub_id: int) -> InlineKeyboardMarkup:
 
 
 @router.callback_query(F.data.startswith("admin:event:activities:create:"))
-async def create_start(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext) -> None:
+async def create_start(
+    call: CallbackQuery,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
     if not await guard(call, user, settings):
         return
     event = await session.get(Event, int(call.data.rsplit(":", 1)[-1]))
@@ -77,8 +93,8 @@ async def create_start(call: CallbackQuery, user: User | None, settings: Setting
     await state.update_data(activity_event_id=event.id)
     await call.message.answer(
         "Отправьте активности списком. Одна строка = одна активность.\n\n"
-        "Формат:\n"
-        "Название | баллы | тип | описание\n\n"
+        "Формат:\nНазвание | баллы | тип | описание\n\n"
+        "Типы: photo, video, file, link, text, feedback, manual\n\n"
         "Пример:\n"
         "Сделать фото | 10 | photo | Прикрепите фото с мероприятия\n"
         "Написать отзыв | 5 | text | Напишите короткий отзыв"
@@ -86,7 +102,13 @@ async def create_start(call: CallbackQuery, user: User | None, settings: Setting
 
 
 @router.message(ActivityAdminStates.create_lines)
-async def create_finish(message: Message, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext) -> None:
+async def create_finish(
+    message: Message,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
     if not await guard(message, user, settings):
         return
     data = await state.get_data()
@@ -96,18 +118,26 @@ async def create_finish(message: Message, user: User | None, settings: Settings,
         await message.answer("Мероприятие не найдено")
         return
     created = 0
+    rejected = 0
     for raw_line in (message.text or "").splitlines():
         parts = [part.strip() for part in raw_line.split("|")]
         if len(parts) < 3:
+            rejected += 1
             continue
         title = clean_text(parts[0], 255)
         try:
             points = int(parts[1])
         except ValueError:
+            rejected += 1
             continue
-        submission_type = clean_text(parts[2], 32) or "text"
+        submission_type = (clean_text(parts[2], 32) or "text").lower()
         description = clean_text(parts[3], 1000) if len(parts) > 3 else title
-        if not title or points < 0 or points > 1000:
+        if (
+            not title
+            or not 0 <= points <= 1000
+            or submission_type not in ALLOWED_TYPES
+        ):
+            rejected += 1
             continue
         session.add(EventActivity(
             event_id=event.id,
@@ -122,25 +152,51 @@ async def create_finish(message: Message, user: User | None, settings: Settings,
         created += 1
     await state.clear()
     if not created:
-        await message.answer("Не удалось создать активности. Проверьте формат строк.")
+        await message.answer("Не удалось создать активности. Проверьте формат строк и тип подтверждения.")
         return
-    await message.answer(f"Создано активностей: {created}", reply_markup=event_activity_buttons(event.id))
+    await message.answer(
+        f"Создано активностей: {created}. Пропущено строк: {rejected}.",
+        reply_markup=event_activity_buttons(event.id),
+    )
 
 
 @router.callback_query(F.data.startswith("admin:event:activities:send:"))
-async def send_to_registered_prepare(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
+async def send_to_registered_prepare(
+    call: CallbackQuery,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+) -> None:
     if not await guard(call, user, settings):
         return
     event_id = int(call.data.rsplit(":", 1)[-1])
     event = await session.get(Event, event_id)
-    activities = (await session.scalars(select(EventActivity).where(EventActivity.event_id == event_id, EventActivity.is_active == True))).all()
+    activities = (
+        await session.scalars(
+            select(EventActivity).where(
+                EventActivity.event_id == event_id,
+                EventActivity.is_active.is_(True),
+            )
+        )
+    ).all()
     if not event or not activities:
         await call.message.answer("Мероприятие или активности не найдены")
         return
     if "[ERA_ACTIVITIES_SENT]" in (event.additional_info or ""):
         await call.message.answer("Активности уже отправлялись. Повторная рассылка заблокирована.")
         return
-    registrations = (await session.scalars(select(EventRegistration).where(EventRegistration.event_id == event_id, EventRegistration.status.in_([RegistrationStatus.REGISTERED, RegistrationStatus.WILL_COME, RegistrationStatus.ATTENDED])))).all()
+    registrations = (
+        await session.scalars(
+            select(EventRegistration).where(
+                EventRegistration.event_id == event_id,
+                EventRegistration.status.in_([
+                    RegistrationStatus.REGISTERED,
+                    RegistrationStatus.WILL_COME,
+                    RegistrationStatus.ATTENDED,
+                ]),
+            )
+        )
+    ).all()
     await call.message.answer(
         f"Проверка перед отправкой\n\n{event.title}\nАктивностей: {len(activities)}\nПолучателей: {len(registrations)}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -151,7 +207,13 @@ async def send_to_registered_prepare(call: CallbackQuery, user: User | None, set
 
 
 @router.callback_query(F.data.startswith("admin:event:activities:send_confirm:"))
-async def send_to_registered_confirm(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, bot: Bot) -> None:
+async def send_to_registered_confirm(
+    call: CallbackQuery,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+    bot: Bot,
+) -> None:
     if not await guard(call, user, settings):
         return
     event_id = int(call.data.rsplit(":", 1)[-1])
@@ -159,15 +221,39 @@ async def send_to_registered_confirm(call: CallbackQuery, user: User | None, set
     if not event or "[ERA_ACTIVITIES_SENT]" in (event.additional_info or ""):
         await call.message.answer("Рассылка уже выполнена или мероприятие недоступно")
         return
-    activities = (await session.scalars(select(EventActivity).where(EventActivity.event_id == event_id, EventActivity.is_active == True))).all()
-    registrations = (await session.scalars(select(EventRegistration).where(EventRegistration.event_id == event_id, EventRegistration.status.in_([RegistrationStatus.REGISTERED, RegistrationStatus.WILL_COME, RegistrationStatus.ATTENDED])))).all()
+    activities = (
+        await session.scalars(
+            select(EventActivity).where(
+                EventActivity.event_id == event_id,
+                EventActivity.is_active.is_(True),
+            )
+        )
+    ).all()
+    registrations = (
+        await session.scalars(
+            select(EventRegistration).where(
+                EventRegistration.event_id == event_id,
+                EventRegistration.status.in_([
+                    RegistrationStatus.REGISTERED,
+                    RegistrationStatus.WILL_COME,
+                    RegistrationStatus.ATTENDED,
+                ]),
+            )
+        )
+    ).all()
     sent = 0
     for registration in registrations:
         target = await session.get(User, registration.user_id)
-        if target:
-            for activity in activities:
-                await safe_send(bot, target.telegram_id, f"✨ Активность после мероприятия\n\n{event.title}\n\n{activity.title}\n{activity.description}\n\nФормат: {activity.submission_type}\nБаллы: {activity.points}", reply_markup=submit_button(activity.id))
-            sent += 1
+        if not target:
+            continue
+        for activity in activities:
+            await safe_send(
+                bot,
+                target.telegram_id,
+                f"✨ Активность после мероприятия\n\n{event.title}\n\n{activity.title}\n{activity.description}\n\nФормат: {activity.submission_type}\nБаллы: {activity.points}",
+                reply_markup=submit_button(activity.id),
+            )
+        sent += 1
     event.additional_info = ((event.additional_info or "") + "\n[ERA_ACTIVITIES_SENT]").strip()
     await call.message.answer(f"Активности отправлены: {sent}. Повторная отправка заблокирована.")
 
@@ -177,8 +263,15 @@ async def send_submission_card(message: Message, session: AsyncSession, sub: Eve
     target = await session.get(User, sub.user_id)
     if not activity or not target:
         return
+    status_label = {
+        "pending": "на проверке",
+        "leader_approved": "подтверждено лидером, ждёт финальной проверки",
+    }.get(sub.status, sub.status)
     await message.answer(
-        f"📥 Активность #{sub.id}\n\n{activity.title}\nУчастник: {target.first_name} {target.last_name or ''}\nСтатус: {sub.status}\nБаллы: {activity.points}\n\n{sub.text or 'материал прикреплён файлом'}",
+        f"📥 Активность #{sub.id}\n\n{activity.title}\n"
+        f"Участник: {target.first_name} {target.last_name or ''}\n"
+        f"Статус: {status_label}\nБаллы: {activity.points}\n\n"
+        f"{sub.text or 'материал прикреплён файлом'}",
         reply_markup=review_buttons(sub.id),
     )
     if sub.file_id:
@@ -192,10 +285,22 @@ async def send_submission_card(message: Message, session: AsyncSession, sub: Eve
 
 
 @router.callback_query(F.data == "admin:event_activities:review")
-async def review_list(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
+async def review_list(
+    call: CallbackQuery,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+) -> None:
     if not await guard(call, user, settings):
         return
-    items = (await session.scalars(select(EventActivitySubmission).where(EventActivitySubmission.status == "leader_approved").order_by(EventActivitySubmission.created_at).limit(50))).all()
+    items = (
+        await session.scalars(
+            select(EventActivitySubmission)
+            .where(EventActivitySubmission.status.in_(REVIEWABLE_STATUSES))
+            .order_by(EventActivitySubmission.created_at)
+            .limit(50)
+        )
+    ).all()
     if not items:
         await call.message.answer("Активностей на проверке нет")
         return
@@ -205,11 +310,17 @@ async def review_list(call: CallbackQuery, user: User | None, settings: Settings
 
 
 @router.callback_query(F.data.startswith("admin:activity:approve:"))
-async def approve(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, bot: Bot) -> None:
+async def approve(
+    call: CallbackQuery,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+    bot: Bot,
+) -> None:
     if not await guard(call, user, settings):
         return
     sub = await session.get(EventActivitySubmission, int(call.data.rsplit(":", 1)[-1]))
-    if not sub or sub.status not in {"pending", "leader_approved"}:
+    if not sub or sub.status not in REVIEWABLE_STATUSES:
         await call.message.answer("Ответ уже проверен")
         return
     activity = await session.get(EventActivity, sub.activity_id)
@@ -217,24 +328,33 @@ async def approve(call: CallbackQuery, user: User | None, settings: Settings, se
     if not activity or not target:
         await call.message.answer("Активность или участник не найдены")
         return
-    if sub.points_awarded > 0:
-        sub.status = "approved"
-        await call.message.answer("Ответ принят. Баллы уже начислялись ранее, повторно не начисляю.")
-        return
-    existing = await session.scalar(select(PointTransaction).where(PointTransaction.user_id == sub.user_id, PointTransaction.related_event_id == activity.event_id, PointTransaction.reason.ilike(f"%{activity.title}%"), PointTransaction.points > 0))
+
     sub.status = "approved"
     sub.reviewed_by = user.id if user else None
-    if existing:
-        await call.message.answer("Ответ принят. Баллы за эту активность уже начислялись ранее.")
-        return
-    sub.points_awarded = activity.points
-    await add_points(session, user_id=sub.user_id, points=activity.points, reason=f"Активность после мероприятия: {activity.title}", approved_by=user.id if user else None, related_event_id=activity.event_id, source_type="event_activity", source_id=sub.id, idempotency_key=f"event_activity:{sub.id}:approval")
-    await safe_send(bot, target.telegram_id, f"Ваш результат «{activity.title}» принят — начислено {activity.points} баллов")
-    await call.message.answer("Активность принята. Баллы начислены один раз.")
+    transaction = await score_event_activity_completion(
+        session,
+        activity=activity,
+        submission=sub,
+        participant=target,
+        approved_by_id=user.id if user else None,
+    )
+    sub.points_awarded = max(sub.points_awarded or 0, int(transaction.points or 0))
+    await safe_send(
+        bot,
+        target.telegram_id,
+        f"Ваш результат «{activity.title}» принят — начислено {transaction.points} баллов",
+    )
+    await call.message.answer("Активность принята. Баллы и показатели обновлены один раз.")
 
 
 @router.callback_query(F.data.startswith("admin:activity:reject:"))
-async def reject(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, bot: Bot) -> None:
+async def reject(
+    call: CallbackQuery,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+    bot: Bot,
+) -> None:
     if not await guard(call, user, settings):
         return
     sub = await session.get(EventActivitySubmission, int(call.data.rsplit(":", 1)[-1]))
@@ -246,5 +366,9 @@ async def reject(call: CallbackQuery, user: User | None, settings: Settings, ses
     sub.status = "rejected"
     sub.reviewed_by = user.id if user else None
     if target and activity:
-        await safe_send(bot, target.telegram_id, f"Результат «{activity.title}» не принят. Баллы не начислены.")
+        await safe_send(
+            bot,
+            target.telegram_id,
+            f"Результат «{activity.title}» не принят. Баллы не начислены.",
+        )
     await call.message.answer("Активность отклонена. Баллы не начислены.")

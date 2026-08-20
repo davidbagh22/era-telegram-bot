@@ -26,8 +26,8 @@ from app.services.general_chat_content_service import run_scheduled_slot
 from app.services.notification_service import (
     BroadcastResult,
     admin_notification_recipients,
-    broadcast_detailed,
-    safe_send,
+    broadcast_detailed_once,
+    safe_send_once,
 )
 from app.services.survey_service import (
     MONTHLY_SURVEY_DESCRIPTION,
@@ -57,7 +57,9 @@ WEEKLY_MESSAGES = {
 
 
 def _delivery_finished(result: BroadcastResult) -> bool:
-    return result.sent > 0 or (result.failed > 0 and result.temporary_failed == 0)
+    """A scheduled stage is complete only when no transient recipient remains."""
+    completed = result.sent + result.permanent_failed + result.duplicates
+    return result.temporary_failed == 0 and completed > 0
 
 
 def _reminder_lead(stage: int) -> str:
@@ -71,9 +73,9 @@ def _reminder_lead(stage: int) -> str:
 async def send_event_reminders(bot: Bot, settings: Settings, session_factory) -> None:
     """Compatibility reminder for events without configured wizard reminders.
 
-    Rich events use event_custom_reminder_service. Keeping this fallback avoids
-    losing reminders for historical events while preventing duplicate Telegram
-    messages for new events. Each reminder has one clear next action.
+    Rich events use event_custom_reminder_service. Historical events use this
+    fallback. Every user/stage has a durable delivery key, so scheduler retries
+    and process restarts cannot create duplicate Telegram messages.
     """
     now = datetime.now(ZoneInfo(settings.timezone))
     async with session_factory() as session:
@@ -137,6 +139,11 @@ async def send_event_reminders(bot: Bot, settings: Settings, session_factory) ->
                         "Если планы изменились — отмените участие заранее, чтобы место мог занять другой участник."
                     ),
                     action=action,
+                    settings=settings,
+                    delivery_key=(
+                        f"event-reminder:{event.id}:{registration.id}:{target_stage}"
+                    ),
+                    notification_type="event_reminder",
                 )
                 if not sent:
                     continue
@@ -145,12 +152,27 @@ async def send_event_reminders(bot: Bot, settings: Settings, session_factory) ->
         await session.commit()
 
 
-async def send_weekly_message(bot: Bot, chat_id: int, text: str) -> None:
-    await safe_send(bot, chat_id, text)
+async def send_weekly_message(
+    bot: Bot,
+    settings: Settings,
+    chat_id: int,
+    text: str,
+    chat_key: str,
+) -> None:
+    now = datetime.now(ZoneInfo(settings.timezone))
+    iso_year, iso_week, _ = now.isocalendar()
+    await safe_send_once(
+        bot,
+        settings,
+        chat_id,
+        text,
+        delivery_key=f"weekly-chat:{chat_key}:{iso_year}-W{iso_week:02d}",
+        notification_type="weekly_chat",
+    )
 
 
 async def send_monthly_surveys(bot: Bot, settings: Settings, session_factory) -> None:
-    """Send the monthly management pulse survey to approved participants once per month."""
+    """Send the monthly management pulse survey once per recipient/month."""
     now = datetime.now(ZoneInfo(settings.timezone))
     current_month = now.strftime("%Y-%m")
     async with session_factory() as session:
@@ -198,18 +220,22 @@ async def send_monthly_surveys(bot: Bot, settings: Settings, session_factory) ->
                 )
             ]]
         )
-        result = await broadcast_detailed(
+        result = await broadcast_detailed_once(
             bot,
+            settings,
             [participant.telegram_id for participant in recipients],
             f"🗳 {survey.title}\n\n{survey.description}\n\nОтвет займёт несколько минут",
+            delivery_key=f"monthly-survey:{survey.id}:{current_month}",
+            notification_type="monthly_survey",
             reply_markup=keyboard,
         )
         if not _delivery_finished(result):
             logger.warning(
-                "Monthly survey delivery postponed: sent=%s failed=%s temporary=%s",
+                "Monthly survey delivery postponed: sent=%s failed=%s temporary=%s duplicates=%s",
                 result.sent,
                 result.failed,
                 result.temporary_failed,
+                result.duplicates,
             )
             await session.commit()
             return
@@ -242,17 +268,21 @@ async def send_project_venue_reminders(
                 if author
                 else f"ID {project.author_id}"
             )
+            stage = project.venue_reminder_count + 1
             text = (
                 f"⏳ Нужно решение по площадке\n\n"
                 f"Проект: {project.title}\n"
                 f"Автор: {author_name}\n"
-                f"Напоминание {project.venue_reminder_count + 1} из 5\n\n"
+                f"Напоминание {stage} из 5\n\n"
                 "Выберите решение или перенесите напоминание"
             )
-            result = await broadcast_detailed(
+            result = await broadcast_detailed_once(
                 bot,
+                settings,
                 await admin_notification_recipients(settings),
                 text,
+                delivery_key=f"project-venue-reminder:{project.id}:{stage}",
+                notification_type="project_venue_reminder",
                 reply_markup=project_review_actions(project.id, ProjectStatus.VENUE_REVIEW),
             )
             if not _delivery_finished(result):
@@ -265,7 +295,7 @@ async def send_project_venue_reminders(
 
 
 async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> None:
-    """Send task deadline reminders with one direct action for each recipient."""
+    """Send task deadline reminders with durable per-recipient stage keys."""
     now = datetime.now(ZoneInfo(settings.timezone))
     async with session_factory() as session:
         tasks = (
@@ -298,46 +328,52 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
                 if url
                 else None
             )
-            delivered = False
+            stage = task.reminder_count + 1
+            expected_recipients = 0
+            completed_recipients = 0
             for user_id in participant_ids:
                 target = await session.get(User, user_id)
                 if target is None or target.is_blocked or target.is_archived:
                     continue
-                delivered = (
-                    await send_bot_notification(
-                        bot,
-                        target.telegram_id,
-                        emoji="⏳",
-                        title="Дедлайн приближается",
-                        body=(
-                            f"{task.title}\n\n"
-                            f"До: {task.deadline:%d.%m.%Y %H:%M}"
-                        ),
-                        footer="Если задача уже готова — отправьте результат из карточки задачи.",
-                        action=action,
-                    )
-                    or delivered
+                expected_recipients += 1
+                sent = await send_bot_notification(
+                    bot,
+                    target.telegram_id,
+                    emoji="⏳",
+                    title="Дедлайн приближается",
+                    body=(
+                        f"{task.title}\n\n"
+                        f"До: {task.deadline:%d.%m.%Y %H:%M}"
+                    ),
+                    footer="Если задача уже готова — отправьте результат из карточки задачи.",
+                    action=action,
+                    settings=settings,
+                    delivery_key=f"task-reminder:{task.id}:{stage}:user:{target.id}",
+                    notification_type="task_reminder",
                 )
+                completed_recipients += int(sent)
 
             creator = await session.get(User, task.creator_id)
-            if creator is not None and creator.id not in participant_ids:
-                delivered = (
-                    await send_bot_notification(
-                        bot,
-                        creator.telegram_id,
-                        emoji="⏳",
-                        title="По задаче приближается дедлайн",
-                        body=(
-                            f"{task.title}\n\n"
-                            f"До: {task.deadline:%d.%m.%Y %H:%M}"
-                        ),
-                        footer="Откройте карточку, чтобы проверить состояние работы.",
-                        action=action,
-                    )
-                    or delivered
+            if creator is not None and creator.id not in participant_ids and not creator.is_blocked and not creator.is_archived:
+                expected_recipients += 1
+                sent = await send_bot_notification(
+                    bot,
+                    creator.telegram_id,
+                    emoji="⏳",
+                    title="По задаче приближается дедлайн",
+                    body=(
+                        f"{task.title}\n\n"
+                        f"До: {task.deadline:%d.%m.%Y %H:%M}"
+                    ),
+                    footer="Откройте карточку, чтобы проверить состояние работы.",
+                    action=action,
+                    settings=settings,
+                    delivery_key=f"task-reminder:{task.id}:{stage}:creator:{creator.id}",
+                    notification_type="task_reminder",
                 )
+                completed_recipients += int(sent)
 
-            if not delivered and (participant_ids or creator is not None):
+            if expected_recipients and completed_recipients < expected_recipients:
                 continue
             task.reminder_count += 1
             task.remind_at = (
@@ -454,23 +490,29 @@ def create_scheduler(bot: Bot, settings: Settings, session_factory) -> AsyncIOSc
         max_instances=1,
         coalesce=True,
     )
-    # The old Monday post to the general chat is intentionally gone: the new
-    # editorial system guarantees at most two automatic ritual messages there.
-    # Department and leaders chat nudges remain separate operational comms.
+    # General chat has its own two-slot editorial ritual. Department/leader
+    # operational nudges remain separate, but are now durable per ISO week.
     weekly_targets = (
         (
             settings.internal_department_chat_id,
             WEEKLY_MESSAGES["internal"],
+            "internal",
             "weekly-internal",
         ),
         (
             settings.external_department_chat_id,
             WEEKLY_MESSAGES["external"],
+            "external",
             "weekly-external",
         ),
-        (settings.leaders_chat_id, WEEKLY_MESSAGES["leaders"], "weekly-leaders"),
+        (
+            settings.leaders_chat_id,
+            WEEKLY_MESSAGES["leaders"],
+            "leaders",
+            "weekly-leaders",
+        ),
     )
-    for chat_id, message, job_id in weekly_targets:
+    for chat_id, message, chat_key, job_id in weekly_targets:
         if chat_id:
             scheduler.add_job(
                 send_weekly_message,
@@ -478,7 +520,7 @@ def create_scheduler(bot: Bot, settings: Settings, session_factory) -> AsyncIOSc
                 day_of_week="mon",
                 hour=10,
                 minute=0,
-                args=(bot, chat_id, message),
+                args=(bot, settings, int(chat_id), message, chat_key),
                 id=job_id,
                 replace_existing=True,
                 max_instances=1,

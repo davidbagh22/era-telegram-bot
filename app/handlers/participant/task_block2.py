@@ -52,8 +52,9 @@ async def tasks_reply_button(message: Message, user: User | None, state: FSMCont
     await message.answer("✅ Мои задачи\n\nВыберите раздел:", reply_markup=_task_menu())
 
 
-@router.callback_query(F.data == "cabinet:tasks")
+@router.callback_query(F.data == "tasks:hub")
 async def tasks_root(call: CallbackQuery, user: User | None) -> None:
+    """Enhanced task hub; legacy cabinet:tasks keeps its single owner in cabinet.py."""
     await call.answer()
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
@@ -80,9 +81,7 @@ async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSessi
         title = "🗂 Архив задач"
         empty = ux_texts.TASKS_EMPTY_ARCHIVE
     elif mode == "open":
-        tasks = [
-            task for task in all_tasks if task_service.is_open_public_task(task, joined_ids, user)
-        ]
+        tasks = [task for task in all_tasks if task_service.is_open_public_task(task, joined_ids, user)]
         title = "🌐 Общие задачи"
         empty = "Сейчас нет открытых общих задач. Как только команда опубликует набор, он появится здесь."
     else:
@@ -94,8 +93,14 @@ async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSessi
         ]
         title = "🟢 Задачи в работе"
         empty = ux_texts.TASKS_EMPTY_ACTIVE
-    body = "\n".join(f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, task.status)}, до {task.deadline:%d.%m.%Y} · {task.points} баллов" for task in tasks) or empty
-    await call.message.answer(f"{title}\n\n{body}", reply_markup=tasks_keyboard(tasks, joined_ids) if tasks else _task_menu())
+    body = "\n".join(
+        f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, task.status)}, до {task.deadline:%d.%m.%Y} · {task.points} баллов"
+        for task in tasks
+    ) or empty
+    await call.message.answer(
+        f"{title}\n\n{body}",
+        reply_markup=tasks_keyboard(tasks, joined_ids) if tasks else _task_menu(),
+    )
 
 
 @router.callback_query(F.data.startswith("task:join:"))
@@ -106,7 +111,7 @@ async def task_join(call: CallbackQuery, user: User | None, session: AsyncSessio
     task = await session.get(Task, int(call.data.rsplit(":", 1)[-1]))
     _, reason = await task_service.claim(session, task, user)
     back_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="← Мои задачи", callback_data="cabinet:tasks")]]
+        inline_keyboard=[[InlineKeyboardButton(text="← Мои задачи", callback_data="tasks:hub")]]
     )
     if reason == "closed":
         await call.message.answer("Набор на это задание уже закрыт")
@@ -140,12 +145,12 @@ async def task_view(call: CallbackQuery, user: User | None, session: AsyncSessio
     if await task_service.can_submit(session, task, user) and task.status not in ARCHIVE_STATUSES:
         rows.append([InlineKeyboardButton(text="📤 Отправить результат", callback_data=f"task:result:{task.id}")])
     elif membership and membership.status == "pending":
-        rows.append([InlineKeyboardButton(text="⏳ Заявка на рассмотрении", callback_data="cabinet:tasks")])
+        rows.append([InlineKeyboardButton(text="⏳ Заявка на рассмотрении", callback_data="tasks:hub")])
     elif task.task_type == "challenge" and task.status == "published":
         rows.append([InlineKeyboardButton(text="🙌 Хочу помочь", callback_data=f"task:join:{task.id}")])
     if task.chat_url and await task_service.can_submit(session, task, user):
         rows.append([InlineKeyboardButton(text="💬 Чат команды", url=task.chat_url)])
-    rows.append([InlineKeyboardButton(text="← Мои задачи", callback_data="cabinet:tasks")])
+    rows.append([InlineKeyboardButton(text="← Мои задачи", callback_data="tasks:hub")])
     await call.message.answer(
         f"✅ {task.title}\n\n{task.description}\n\nСрок: {task.deadline:%d.%m.%Y %H:%M}\nНаграда: {task.points} баллов\nСтатус: {TASK_STATUS_LABELS.get(task.status, task.status)}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),

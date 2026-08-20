@@ -6,7 +6,7 @@ import { OffersPanel } from "./offers/OffersPanel";
 import { PartnersPanel } from "./offers/PartnersPanel";
 import { RewardsPanel } from "./offers/RewardsPanel";
 
-type OffersSection = "applications" | "offers" | "partners" | "auctions" | "rewards";
+export type OffersSection = "applications" | "offers" | "partners" | "auctions" | "rewards";
 
 const SECTIONS: { value: OffersSection; label: string }[] = [
   { value: "applications", label: "Заявки" },
@@ -16,8 +16,8 @@ const SECTIONS: { value: OffersSection; label: string }[] = [
   { value: "rewards", label: "Каталог" },
 ];
 
-export function AdminOffersScreen() {
-  const [section, setSection] = useState<OffersSection>("applications");
+export function AdminOffersScreen({ initialSection = "applications" }: { initialSection?: OffersSection }) {
+  const [section, setSection] = useState<OffersSection>(initialSection);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>

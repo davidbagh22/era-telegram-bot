@@ -74,7 +74,7 @@ class ProjectModerationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(project.venue_status, "pending")
             self.assertIn("следующему этапу", result.notice)
 
-    async def test_venue_approve_awards_points_and_portfolio_once(self) -> None:
+    async def test_venue_approve_does_not_award_unverified_result(self) -> None:
         async with self.session_factory() as session:
             admin = await self._make_user(session, telegram_id=1)
             author = await self._make_user(session, telegram_id=2)
@@ -87,19 +87,22 @@ class ProjectModerationTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(project.status, ProjectStatus.APPROVED)
 
+            # Approval only authorizes the project to start. It is not a
+            # verified contribution/result and therefore must create neither
+            # reputation points nor a verified portfolio achievement.
             points = await session.scalar(_points_sum_query(author.id))
-            self.assertEqual(points, 30)
+            self.assertEqual(points, 0)
             portfolio_count = len((await session.scalars(_portfolio_query(author.id))).all())
-            self.assertEqual(portfolio_count, 1)
+            self.assertEqual(portfolio_count, 0)
 
-            # Re-approving (idempotency guard) must not award points/portfolio twice.
+            # Re-approving remains idempotent and still creates no reward.
             await project_workflow_service.decide_project(
                 session, project, action="venue_approve", comment="again", actor=admin
             )
             points_after = await session.scalar(_points_sum_query(author.id))
-            self.assertEqual(points_after, 30)
+            self.assertEqual(points_after, 0)
             portfolio_count_after = len((await session.scalars(_portfolio_query(author.id))).all())
-            self.assertEqual(portfolio_count_after, 1)
+            self.assertEqual(portfolio_count_after, 0)
 
     async def test_revise_postpone_reject(self) -> None:
         async with self.session_factory() as session:
