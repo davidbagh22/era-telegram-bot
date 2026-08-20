@@ -120,6 +120,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "event-wizard-task-sync",
                 "project-scoring-reconciliation",
                 "task-squad-notifications",
+                "media-content-pipeline-reconciliation",
                 "media-channel-publication",
                 "media-task-cards",
                 "media-chat-automation",
@@ -127,6 +128,8 @@ class SystemSchedulerTests(unittest.TestCase):
                 "community-verification-expiry",
                 "my-vector-monthly-reminders",
                 "general-chat-faq-pin",
+                "leadership-weekly-pulse-open",
+                "leadership-weekly-pulse-due",
             ],
         )
 
