@@ -28,7 +28,7 @@ from app.states.project import ProjectStates
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, ProjectStatus
 from app.utils.telegram import send_long_text
-from app.utils.validators import clean_text, parse_date, parse_time
+from app.utils.validators import clean_text
 
 router = Router(name="projects")
 
@@ -50,8 +50,8 @@ async def _send_projects_menu(message: Message, user: User | None) -> None:
 
 
 def _question_markup(index: int):
-    # The bot mirrors the theory-only constructor: there is no AI action,
-    # generated answer, or external AI prompt hidden behind this keyboard.
+    # The bot mirrors the theory-only constructor. No action here can generate,
+    # shorten or rewrite a participant's answer.
     return project_question_keyboard(index, False)
 
 
@@ -145,28 +145,13 @@ async def project_answer(
     if not value:
         await message.answer("Ответ не распознан — отправьте его обычным текстом")
         return
-    question = PROJECT_QUESTIONS[index]
-    if question.input_type == "date":
-        parsed = parse_date(value)
-        if parsed is None:
-            await message.answer(
-                "Укажите дату в формате ДД.ММ.ГГГГ — например, 15.09.2026"
-            )
-            return
-        project.proposed_date = parsed
-        value = parsed.strftime("%d.%m.%Y")
-    elif question.input_type == "time":
-        parsed = parse_time(value)
-        if parsed is None:
-            await message.answer("Укажите время в формате ЧЧ:ММ — например, 18:30")
-            return
-        project.proposed_time = parsed
-        value = parsed.strftime("%H:%M")
 
+    question = PROJECT_QUESTIONS[index]
     form_data = dict(project.form_data or {})
     form_data[question.key] = value
     project.form_data = form_data
     project.current_step = index + 1
+
     if question.key == "title":
         project.title = value[:255]
     elif question.key == "idea":
@@ -179,7 +164,7 @@ async def project_answer(
         project.team = value
     elif question.key == "risks":
         project.risks = value
-    elif question.key == "success_metrics":
+    elif question.key == "expected_result":
         project.expected_result = value
     await session.flush()
 
@@ -209,7 +194,10 @@ async def project_answer(
         ),
         caption="Копия проекта — файл останется в этом чате",
     ):
-        await message.answer("Проект собран, но Telegram не дал отправить копию файлом. Текстовая версия выше сохранена.")
+        await message.answer(
+            "Проект собран, но Telegram не дал отправить копию файлом. "
+            "Текстовая версия выше сохранена."
+        )
 
 
 @router.callback_query(ProjectStates.answer, F.data == "project:previous")
@@ -315,9 +303,11 @@ async def project_submit(
         f"{project.title}\n"
         f"Автор: {user.first_name} {user.last_name or ''} ({telegram})\n\n"
         f"Суть\n{project.short_description}\n\n"
+        f"Цель\n{data.get('goal', 'не указана')}\n\n"
         f"Аудитория\n{data.get('target_audience', 'не указана')}\n\n"
-        f"Дата и время: {data.get('proposed_date', 'не указана')}, {data.get('proposed_time', 'не указано')}\n"
-        f"Площадка: {data.get('venue_request', 'не указана')}",
+        f"Формат\n{data.get('format', 'не указан')}\n\n"
+        f"Партнёры\n{data.get('partners', 'не определены')}\n\n"
+        f"Бюджет\n{data.get('budget', 'не определён')}",
         reply_markup=entity_actions("project", project.id),
     )
 
