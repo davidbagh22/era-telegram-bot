@@ -52,6 +52,9 @@ def _report(**overrides) -> SimpleNamespace:
         id=1,
         period_start=dt.date(2026, 8, 17),
         period_end=dt.date(2026, 8, 23),
+        scope_type="global",
+        scope_id=None,
+        office_assignment_id=None,
         status="green",
         main_result=None,
         blocker_type=None,
@@ -62,6 +65,22 @@ def _report(**overrides) -> SimpleNamespace:
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
+
+
+def _pulse(**overrides) -> SimpleNamespace:
+    defaults = dict(
+        system_snapshot={},
+        pace_score=None,
+        clarity_score=None,
+        load_score=None,
+        attention_text=None,
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def _view(*, report=None, pulse=None) -> SimpleNamespace:
+    return SimpleNamespace(report=report or _report(), pulse=pulse or _pulse())
 
 
 def _build_app(user, session: SimpleNamespace) -> FastAPI:
@@ -165,12 +184,12 @@ class LeadershipApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_submit_report(self) -> None:
-        session = SimpleNamespace()
+        session = SimpleNamespace(commit=AsyncMock())
         app = _build_app(_leader(), session)
         client = TestClient(app)
-        result = SimpleNamespace(report=_report(status="red", needs_help=True), attention_item=None)
+        result = _view(report=_report(status="red", needs_help=True))
         with patch(
-            "app.api.v1.leadership.leadership_report_service.submit_quick_report",
+            "app.api.v1.leadership.leadership_weekly_service.submit_weekly_pulse",
             new=AsyncMock(return_value=result),
         ):
             response = client.post(
@@ -179,18 +198,21 @@ class LeadershipApiTests(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "red")
+        session.commit.assert_awaited_once()
 
-    def test_read_current_report_none(self) -> None:
-        session = SimpleNamespace()
+    def test_read_current_report_ensures_weekly_view(self) -> None:
+        session = SimpleNamespace(commit=AsyncMock())
         app = _build_app(_leader(), session)
         client = TestClient(app)
         with patch(
-            "app.api.v1.leadership.leadership_report_service.current_report",
-            new=AsyncMock(return_value=None),
+            "app.api.v1.leadership.leadership_weekly_service.ensure_weekly_report",
+            new=AsyncMock(return_value=_view()),
         ):
             response = client.get("/api/v1/leadership/reports/current")
         self.assertEqual(response.status_code, 200)
-        self.assertIsNone(response.json())
+        self.assertEqual(response.json()["id"], 1)
+        self.assertEqual(response.json()["status"], "green")
+        session.commit.assert_awaited_once()
 
     def test_resolve_attention_item_not_found(self) -> None:
         session = SimpleNamespace(get=AsyncMock(return_value=None))
