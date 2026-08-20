@@ -289,7 +289,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
             )}
 
             <button type="button" onClick={() => setHintOpen(true)} style={{ width: "100%", textAlign: "left", padding: "0.8rem 0.9rem", borderRadius: "var(--era-radius-control)", border: "1px solid rgba(99,44,255,.22)", background: "var(--era-tint-violet)", color: "var(--era-violet)", fontWeight: 800 }}>
-              Подробнее: вопросы и ошибки →
+              Получить подсказку
             </button>
 
             <Card>
