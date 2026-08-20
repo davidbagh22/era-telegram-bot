@@ -35,8 +35,10 @@ test("project constructor teaches each step, has no AI writer and lets the autho
   await page.getByPlaceholder("Мы делаем [что] для [кого], чтобы [зачем]").fill(idea);
   await page.getByRole("button", { name: "Начать конструктор →" }).click();
 
+  // The idea was saved by project creation, so the constructor resumes at
+  // the first unanswered step: title.
   await expect(page.getByText("Теория шага", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "В чём идея?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Как будет называться проект?" })).toBeVisible();
   await expect(page.getByText("Что написать", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Подробнее: вопросы и ошибки →" })).toBeVisible();
 
