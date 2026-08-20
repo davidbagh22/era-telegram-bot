@@ -13,8 +13,8 @@ def read(path: str) -> str:
 def test_era_pro_is_threshold_not_points_purchase() -> None:
     source = read("app/api/v1/era_pro.py")
     assert "ERA_PRO_THRESHOLD = 8_000" in source
-    assert "era_pro_threshold_not_met" in source
-    assert 'status="approved"' in source or 'status == "approved"' in source
+    assert "era_pro_threshold_not_reached" in source
+    assert 'application.status == "approved"' in source
     assert "add_points(" not in source
     assert "spend_points" not in source
     assert "deduct" not in source.lower()
@@ -37,7 +37,7 @@ def test_era_pro_is_reachable_from_opportunities_and_has_context_help() -> None:
 
 
 def test_project_builder_is_learning_first_without_ai_autofill_controls() -> None:
-    screen = read("frontend/src/screens/ProjectDetail.tsx")
+    screen = read("frontend/src/screens/projects/ProjectDetail.tsx")
     hints = read("frontend/src/help/projectBuilderHints.ts")
     builder = read("app/services/project_builder.py")
 
@@ -50,8 +50,9 @@ def test_project_builder_is_learning_first_without_ai_autofill_controls() -> Non
 
     assert "Получить подсказку" in screen
     assert "projectBuilderHints" in screen
-    assert "theory" in hints or "why" in hints
-    assert builder.count("ProjectQuestion(") >= 19
+    assert "why:" in hints
+    assert builder.count("ProjectQuestion(") >= 18
+    assert "19. ФИНАЛЬНЫЙ PREVIEW" in builder
 
 
 def test_referral_copy_matches_backend_economy() -> None:
