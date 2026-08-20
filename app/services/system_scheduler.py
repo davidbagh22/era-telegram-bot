@@ -13,6 +13,7 @@ from app.services.community_verification_jobs import complete_verification_campa
 from app.services.development_notification_service import send_monthly_development_reminders
 from app.services.event_custom_reminder_service import send_configured_event_reminders
 from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
+from app.services.general_chat_navigation_service import ensure_general_chat_navigation
 from app.services.leadership_weekly_service import (
     check_weekly_pulses_job,
     open_weekly_pulses_job,
@@ -187,6 +188,17 @@ def add_system_jobs(
         replace_existing=True,
         max_instances=1,
         coalesce=True,
+    )
+    scheduler.add_job(
+        ensure_general_chat_navigation,
+        "interval",
+        hours=12,
+        args=(bot, settings, session_factory),
+        id="general-chat-quick-navigation",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
     )
     scheduler.add_job(
         ensure_general_faq_pinned,
