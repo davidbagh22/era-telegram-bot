@@ -78,6 +78,30 @@ def attendance_deep_link(bot_username: str, event_id: int, secret: str) -> str:
     return f"https://t.me/{username}?start={attendance_payload(event_id, secret)}"
 
 
+def telegram_miniapp_start_url(bot_username: str, start_param: str) -> str:
+    """Open the bot's Main Mini App from a group-safe ordinary URL.
+
+    Telegram only permits WebAppInfo reply-keyboard buttons in private chats.
+    `startapp` is therefore the direct route used by inline buttons in shared
+    chats; the frontend consumes the parameter and routes inside the Mini App.
+    """
+    username = bot_username.lstrip("@").strip()
+    start_param = start_param.strip()
+    if not username or not start_param:
+        return ""
+    return f"https://t.me/{username}?{urlencode({'startapp': start_param})}"
+
+
+def telegram_event_miniapp_url(bot_username: str, event_id: int) -> str:
+    if event_id <= 0:
+        return ""
+    return telegram_miniapp_start_url(bot_username, f"event_{event_id}")
+
+
+def telegram_profile_miniapp_url(bot_username: str) -> str:
+    return telegram_miniapp_start_url(bot_username, "profile")
+
+
 def miniapp_path_url(
     miniapp_url: str, path: str, params: dict[str, str | int] | None = None
 ) -> str:
