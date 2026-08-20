@@ -1,6 +1,7 @@
 from hashlib import sha256
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import PointTransaction, PortfolioItem, User
@@ -34,6 +35,14 @@ async def add_points(
     category: str | None = None,
     idempotency_key: str | None = None,
 ) -> PointTransaction:
+    """Add one ledger entry, returning the existing row on an idempotent retry.
+
+    The optimistic lookup is only a fast path. Correctness comes from the DB
+    unique constraint plus a SAVEPOINT around the insert: if two workers race,
+    one wins and the other rolls back only its conflicting insert, then returns
+    the committed row instead of aborting the caller's whole business
+    transaction.
+    """
     if idempotency_key:
         existing = await session.scalar(
             select(PointTransaction).where(
@@ -53,10 +62,13 @@ async def add_points(
     if is_registration_bonus:
         points = REGISTRATION_POINTS
     if points < 0:
+        # Serialize debits per user so two concurrent deductions cannot both
+        # validate against the same stale balance and push it below zero.
         await session.scalar(select(User.id).where(User.id == user_id).with_for_update())
         balance = await total_points(session, user_id)
         if balance + points < 0:
             raise InsufficientPointsError("points balance cannot become negative")
+
     transaction = PointTransaction(
         user_id=user_id,
         points=points,
@@ -70,8 +82,31 @@ async def add_points(
         related_task_id=related_task_id,
         related_project_id=related_project_id,
     )
-    session.add(transaction)
-    await session.flush()
+
+    if idempotency_key:
+        try:
+            # Add only after the SAVEPOINT has started. SQLAlchemy flushes any
+            # pre-existing outer changes when begin_nested() opens; keeping this
+            # row inside the savepoint ensures a uniqueness race cannot poison
+            # the surrounding transaction.
+            async with session.begin_nested():
+                session.add(transaction)
+                await session.flush()
+        except IntegrityError:
+            existing = await session.scalar(
+                select(PointTransaction).where(
+                    PointTransaction.idempotency_key == idempotency_key
+                )
+            )
+            if existing is not None:
+                return existing
+            # A different integrity violation must remain visible. Never turn
+            # arbitrary DB corruption/constraint failures into a fake success.
+            raise
+    else:
+        session.add(transaction)
+        await session.flush()
+
     await audit(
         session,
         actor_id=approved_by,
