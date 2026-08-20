@@ -12,7 +12,7 @@ const STATUS = {
   locked: ["Закрыто", "neutral"],
   available: ["Заявка доступна", "success"],
   submitted: ["На рассмотрении", "violet"],
-  needs_info: ["Нужно дополнить", "warning"],
+  needs_info: ["Нужно дополнить", "gold"],
   approved: ["Вы в ЭРА PRO", "success"],
   declined: ["Можно подать снова", "neutral"],
 } as const;
