@@ -33,20 +33,16 @@ from app.services.chat_access_service import (
     decline_join_request,
     notify_user,
     remember_join_request,
-    restrict_member,
-    unrestrict_member,
 )
 from app.services.notification_service import safe_send
 from app.utils import texts
-from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES
+from app.utils.constants import PRIVILEGED_ROLES
 from app.utils.deep_links import miniapp_events_url, miniapp_profile_url
 
 router = Router(name="chat")
 
 _activity: dict[tuple[int, int], deque[float]] = defaultdict(lambda: deque(maxlen=8))
 _personal_attacks = {"дурак", "идиот", "тупой", "тупая", "ненавижу тебя"}
-_dm_notice_sent: dict[tuple[int, int], float] = {}
-_DM_NOTICE_COOLDOWN = 300.0
 _GENERAL_CHAT_QUICK_ACTIONS = {
     GENERAL_CHAT_EVENTS_TEXT: (
         "📅 События ЭРА\n\nАфиша, регистрация и ваши ближайшие события — в приложении.",
@@ -68,10 +64,6 @@ def _private(message: Message) -> bool:
 async def _moderation_enabled(session: AsyncSession, chat_id: int) -> bool:
     setting = await session.scalar(select(ChatModerationSetting).where(ChatModerationSetting.chat_id == chat_id))
     return bool(setting and setting.is_enabled)
-
-
-def _is_approved_member(user: User | None) -> bool:
-    return bool(user and user.application_status == ApplicationStatus.APPROVED and not user.is_blocked and not user.is_archived)
 
 
 @router.chat_join_request()
@@ -200,7 +192,10 @@ async def moderation_on(message: Message, user: User | None, session: AsyncSessi
     setting.enabled_by = user.id
     setting.enabled_at = message.date
     await session.flush()
-    await message.reply("✅ Модерация включена для этого чата.\n\nТеперь писать смогут только одобренные участники ЭРА, руководители и администраторы.")
+    await message.reply(
+        "✅ Мягкая модерация включена.\n\n"
+        "Она только предупреждает о флуде и личных оскорблениях. Право писать остаётся у всех."
+    )
 
 
 @router.message(Command("moderation_off"), ~F.chat.type.in_({"private"}))
@@ -212,33 +207,25 @@ async def moderation_off(message: Message, user: User | None, session: AsyncSess
     if setting is not None and setting.is_enabled:
         setting.is_enabled = False
         await session.flush()
-    await message.reply("Модерация выключена для этого чата.")
+    await message.reply("Мягкая модерация выключена. Ограничений на отправку сообщений бот не устанавливает.")
 
 
 @router.message(Command("moderation_status"), ~F.chat.type.in_({"private"}))
 async def moderation_status(message: Message, session: AsyncSession) -> None:
     enabled = await _moderation_enabled(session, message.chat.id)
-    await message.reply("Модерация в этом чате: " + ("включена ✅" if enabled else "выключена"))
+    await message.reply(
+        "Мягкая модерация в этом чате: " + ("включена ✅" if enabled else "выключена")
+        + "\nПраво писать открыто для всех."
+    )
 
 
 @router.message(F.new_chat_members)
 async def welcome_members(message: Message, bot: Bot, settings: Settings, session: AsyncSession) -> None:
     me = await bot.get_me()
     welcomed = []
-    chat_key = chat_key_for_id(settings, message.chat.id)
     for member in message.new_chat_members:
         if member.is_bot:
             continue
-        joined_user = await get_user_by_telegram_id(session, member.id)
-        decision = check_chat_access(joined_user, chat_key)
-        if not decision.allowed:
-            restricted = await restrict_member(bot, message.chat.id, member.id)
-            if not restricted:
-                await message.answer("Не удалось автоматически ограничить доступ. Администратору чата нужно проверить права бота.")
-            await notify_user(bot, member.id, access_message(decision.reason))
-            continue
-        if chat_key:
-            await unrestrict_member(bot, message.chat.id, member.id)
         welcomed.append(member.first_name)
     if not welcomed:
         return
@@ -296,18 +283,6 @@ async def general_chat_quick_navigation(
         await _soft_moderation(message)
         return
 
-    decision = check_chat_access(user, "general")
-    if not decision.allowed:
-        if message.from_user:
-            await restrict_member(bot, message.chat.id, message.from_user.id)
-        try:
-            await message.delete()
-        except TelegramAPIError:
-            pass
-        if message.from_user:
-            await notify_user(bot, message.from_user.id, access_message(decision.reason))
-        return
-
     try:
         await message.delete()
     except TelegramAPIError:
@@ -335,38 +310,10 @@ async def general_chat_quick_navigation(
 
 
 @router.message(~F.chat.type.in_({"private"}))
-async def moderation_gate(message: Message, bot: Bot, user: User | None, settings: Settings, session: AsyncSession) -> None:
-    chat_key = chat_key_for_id(settings, message.chat.id)
-    decision = check_chat_access(user, chat_key)
-    enabled = await _moderation_enabled(session, message.chat.id)
-    allowed = decision.allowed if chat_key else (
-        _is_approved_member(user)
-        or bool(user and user.role in PRIVILEGED_ROLES and not user.is_blocked and not user.is_archived)
-    )
-    if (chat_key or enabled) and not allowed and message.from_user:
-        try:
-            member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-            allowed = member.status in {"administrator", "creator"}
-        except TelegramAPIError:
-            pass
-    if (chat_key or enabled) and not allowed:
-        if chat_key and message.from_user:
-            await restrict_member(bot, message.chat.id, message.from_user.id)
-        try:
-            await message.delete()
-        except TelegramAPIError:
-            pass
-        if not message.from_user:
-            return
-        key = (message.chat.id, message.from_user.id)
-        now = monotonic()
-        last_sent = _dm_notice_sent.get(key, 0.0)
-        if now - last_sent < _DM_NOTICE_COOLDOWN:
-            return
-        _dm_notice_sent[key] = now
-        await notify_user(bot, message.from_user.id, access_message(decision.reason))
-        return
-    await _soft_moderation(message)
+async def moderation_gate(message: Message, session: AsyncSession) -> None:
+    """Optional soft moderation only; never gate a member's ability to write."""
+    if await _moderation_enabled(session, message.chat.id):
+        await _soft_moderation(message)
 
 
 async def soft_moderation(message: Message) -> None:

@@ -210,7 +210,9 @@ class MiniAppAuthRateLimitTests(unittest.TestCase):
         settings = _settings()
         app = _build_app_with_rate_limiting(settings)
         client = TestClient(app)
-        with patch(
+        # Pin the fixed-window clock so this test cannot straddle a real
+        # 60-second boundary and accidentally reset the counter mid-burst.
+        with patch("app.api.rate_limit.time.time", return_value=1_700_000_000.0), patch(
             "app.api.v1.auth.get_user_by_telegram_id",
             new=AsyncMock(return_value=_user()),
         ):

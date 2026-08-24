@@ -31,9 +31,8 @@ test("admin creates and sends a survey; the participant answers it and the admin
     await surveyCard.getByRole("button", { name: "Отправить" }).click();
     await expect(surveyCard.getByText("отправлен", { exact: true })).toBeVisible();
 
-    await participantPage.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
-    await participantPage.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Сообщество" }).click();
-    await participantPage.getByRole("button", { name: "Опросы" }).click();
+    await participantPage.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/surveys`);
+    await expect(participantPage.getByRole("heading", { name: "Возможности" })).toBeVisible();
     const participantCard = participantPage.locator(".era-card", { hasText: surveyTitle });
     await expect(participantCard).toBeVisible();
     await participantCard.getByRole("button", { name: "Ответить" }).click();

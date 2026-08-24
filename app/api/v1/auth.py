@@ -55,13 +55,21 @@ async def authenticate(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> MiniAppAuthResponse:
+    # Production auth keeps the shared-IP bucket exactly as before. Dev auth
+    # is forbidden by deployment safety checks, so only local/E2E sessions
+    # get per-fixture buckets; this prevents unrelated Playwright users from
+    # exhausting one another's allowance without weakening production.
+    dev_auth = settings.dev_auth_enabled and payload.dev_telegram_id is not None
+    rate_limit_prefix = (
+        f"miniapp_auth_dev_{payload.dev_telegram_id}" if dev_auth else "miniapp_auth"
+    )
     await enforce_rate_limit(
         request,
-        key_prefix="miniapp_auth",
+        key_prefix=rate_limit_prefix,
         limit=AUTH_RATE_LIMIT,
         window_seconds=AUTH_RATE_LIMIT_WINDOW_SECONDS,
     )
-    if settings.dev_auth_enabled and payload.dev_telegram_id is not None:
+    if dev_auth:
         telegram_id = payload.dev_telegram_id
     else:
         try:

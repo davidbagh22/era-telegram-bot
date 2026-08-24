@@ -22,6 +22,8 @@ from __future__ import annotations
 import asyncio
 from datetime import date, time, timedelta
 
+from sqlalchemy import select
+
 from app.config import get_settings
 from app.database.base import Base
 from app.database.event_experience import EventExperience, EventReminderDelivery  # noqa: F401
@@ -35,6 +37,7 @@ from app.database.models import (
     UserBadge,
 )
 from app.database.session import create_engine_and_sessionmaker
+from app.services.participation_lifecycle_service import complete_onboarding
 from app.utils.constants import ApplicationStatus, EventStatus, Role
 
 # Fixed, well-known IDs so frontend/e2e/*.spec.ts can reference them directly
@@ -137,6 +140,27 @@ async def seed() -> None:
         )
         session.add_all([bidder, redeemer, activity_submitter])
         await session.flush()  # assigns participant.id/admin.id/leader.id/bidder.id/redeemer.id/activity_submitter.id, used below
+
+        # These fixed accounts exercise existing-user product flows. Mark their
+        # current onboarding as completed through the real lifecycle service so
+        # versioned onboarding does not capture unrelated E2E scenarios. Fresh
+        # users created by onboarding-specific tests remain unaffected.
+        e2e_telegram_ids = (
+            PARTICIPANT_TELEGRAM_ID,
+            LEADER_TELEGRAM_ID,
+            ADMIN_TELEGRAM_ID,
+            PENDING_APPLICANT_TELEGRAM_ID,
+            PENDING_SYNC_APPLICANT_TELEGRAM_ID,
+            AUCTION_BIDDER_TELEGRAM_ID,
+            REWARD_REDEEMER_TELEGRAM_ID,
+            ACTIVITY_SUBMITTER_TELEGRAM_ID,
+        )
+        e2e_users = (
+            await session.scalars(select(User).where(User.telegram_id.in_(e2e_telegram_ids)))
+        ).all()
+        for seeded_user in e2e_users:
+            await complete_onboarding(session, seeded_user)
+
         session.add(
             PointTransaction(
                 user_id=bidder.id,
