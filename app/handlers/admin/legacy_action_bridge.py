@@ -13,8 +13,8 @@ from app.utils.deep_links import miniapp_admin_url
 router = Router(name="admin_legacy_action_bridge")
 
 # These callback values still exist in historical bot keyboards/messages. The
-# full operational surface now lives in Admin Mini App, so stale buttons must
-# remain useful without reviving a second bot-native admin implementation.
+# full operational surface now lives in Admin Mini App, so stale buttons remain
+# useful without reviving a second bot-native admin implementation.
 LEGACY_ADMIN_ACTIONS = {
     "admin:maintenance",
     "admin:settings",
@@ -53,8 +53,9 @@ def _admin_url(settings: Settings) -> str:
 
 
 @router.message(Command("panel"))
+@router.message(Command("admin"))
 async def panel_launcher(message: Message, settings: Settings, state: FSMContext) -> None:
-    """Keep /panel as a compatibility launcher, not a second Admin OS."""
+    """Compatibility launcher: /panel and /admin open the one Admin Command Center."""
     await state.clear()
     await message.answer(
         texts.ADMIN_PANEL_MOVED,
