@@ -1,13 +1,12 @@
-import { AnalyticsIcon, CommsIcon, OverviewIcon, PeopleIcon, WorkIcon } from "./icons";
+import { CommsIcon, OverviewIcon, PeopleIcon, WorkIcon } from "./icons";
 
-export type AdminGroup = "overview" | "people" | "work" | "comms" | "control";
+export type AdminGroup = "overview" | "people" | "work" | "comms";
 
 const GROUPS: { key: AdminGroup; label: string; Icon: typeof OverviewIcon }[] = [
   { key: "overview", label: "Обзор", Icon: OverviewIcon },
   { key: "people", label: "Люди", Icon: PeopleIcon },
   { key: "work", label: "Работа", Icon: WorkIcon },
   { key: "comms", label: "Связь", Icon: CommsIcon },
-  { key: "control", label: "Контроль", Icon: AnalyticsIcon },
 ];
 
 interface AdminBottomNavProps {
