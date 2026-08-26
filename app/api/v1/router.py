@@ -37,6 +37,7 @@ from app.api.v1 import (
     me,
     media,
     media_extras,
+    media_rich_publish,
     opportunities,
     participation,
     positions,
@@ -70,6 +71,10 @@ api_router.include_router(activity.router)
 api_router.include_router(project_builder.router)
 api_router.include_router(projects.router)
 api_router.include_router(opportunities.router)
+# Must precede media.router because it intentionally owns the same publish-now
+# path and adapts only the Telegram rendering step; the original Media Desk
+# router still owns every other endpoint.
+api_router.include_router(media_rich_publish.router)
 api_router.include_router(media.router)
 api_router.include_router(media_extras.router)
 api_router.include_router(auctions.router)
