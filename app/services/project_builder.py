@@ -9,6 +9,9 @@ class ProjectQuestion:
     title: str
     prompt: str
     input_type: str = "text"
+    # Kept only for API/test compatibility. The product no longer provides
+    # AI-authored answers in the project constructor, so every question uses None.
+    ai_hint: str | None = None
 
 
 # The constructor teaches project logic instead of writing a project for the
