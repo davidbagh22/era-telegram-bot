@@ -12,41 +12,6 @@ from app.utils.deep_links import miniapp_admin_url
 
 router = Router(name="admin_legacy_action_bridge")
 
-# These callback values still exist in historical bot keyboards/messages. The
-# full operational surface now lives in Admin Mini App, so stale buttons remain
-# useful without reviving a second bot-native admin implementation.
-LEGACY_ADMIN_ACTIONS = {
-    "admin:maintenance",
-    "admin:settings",
-    "admin:broadcast",
-    "admin:greetings",
-    "admin:questions",
-    "admin:office:new",
-    "admin:permissions",
-    "admin:points",
-    "admin:portfolio",
-    "admin:proposals",
-    "admin:rewards",
-    "admin:goals",
-    "admin:contacts",
-    "admin:structure",
-    "admin:surveys",
-    "admin:menu:activity",
-    "admin:menu:communications",
-    "admin:participants",
-    "admin:task:new",
-    "admin:applications",
-    "admin:menu:users",
-    "admin:people:ages",
-    "admin:people:cities",
-    "admin:people:directions",
-    "admin:people:list:all:0:0",
-    "admin:people:roles",
-    "admin:people:search",
-    "admin:analytics:excel:all",
-    "admin:analytics:excel:surveys",
-}
-
 
 def _admin_url(settings: Settings) -> str:
     return miniapp_admin_url(settings.effective_miniapp_url)
@@ -55,7 +20,7 @@ def _admin_url(settings: Settings) -> str:
 @router.message(Command("panel"))
 @router.message(Command("admin"))
 async def panel_launcher(message: Message, settings: Settings, state: FSMContext) -> None:
-    """Compatibility launcher: /panel and /admin open the one Admin Command Center."""
+    """Compatibility launcher: old admin commands open the one Command Center."""
     await state.clear()
     await message.answer(
         texts.ADMIN_PANEL_MOVED,
@@ -63,9 +28,9 @@ async def panel_launcher(message: Message, settings: Settings, state: FSMContext
     )
 
 
-@router.callback_query(F.data.in_(LEGACY_ADMIN_ACTIONS))
+@router.callback_query(F.data.startswith("admin:"))
 async def open_admin_miniapp(call: CallbackQuery, settings: Settings) -> None:
-    """Give every retained legacy button one deterministic safe destination."""
+    """Every historical admin callback has one safe deterministic destination."""
     await call.answer()
     await call.message.answer(
         texts.ADMIN_PANEL_MOVED,
