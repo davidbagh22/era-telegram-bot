@@ -4,12 +4,10 @@ import { AdminBottomNav, type AdminGroup } from "../components/AdminBottomNav";
 import type { AdminMetricKey } from "../types/adminMetrics";
 import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminCareerScreen } from "./admin/AdminCareerScreen";
-import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
 import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
 import { AdminDevelopmentScreen } from "./admin/AdminDevelopmentScreen";
 import { AdminEraProScreen } from "./admin/AdminEraProScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
-import { AdminMaintenanceScreen, type MaintenanceTarget } from "./admin/AdminMaintenanceScreen";
 import { AdminMetricDetailScreen } from "./admin/AdminMetricDetailScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
 import { AdminOffersScreen, type OffersSection } from "./admin/AdminOffersScreen";
@@ -20,13 +18,10 @@ import { AdminTasksScreen } from "./admin/AdminTasksScreen";
 import { AdminToolsScreen } from "./admin/AdminToolsScreen";
 import { AdminUsersScreen } from "./admin/AdminUsersScreen";
 import { AdminVerificationScreen } from "./admin/AdminVerificationScreen";
-import { SystemPanel } from "./admin/tools/SystemPanel";
 
 type PeopleSection = "participants" | "verification" | "development" | "career" | "applications" | "era-pro" | "offices" | "data-rights";
 type WorkSection = "projects" | "events" | "tasks" | "offers";
 type CommsSection = "surveys" | "tools";
-type ControlSection = "analytics" | "system" | "maintenance";
-
 type SectionOption<T extends string> = { value: T; label: string; description: string };
 type MetricDetail = { metric: AdminMetricKey; total: number };
 
@@ -56,12 +51,6 @@ const WORK_SECTIONS: SectionOption<WorkSection>[] = [
 const COMMS_SECTIONS: SectionOption<CommsSection>[] = [
   { value: "surveys", label: "Опросы", description: "Обратная связь и активные опросы" },
   { value: "tools", label: "Центр связи", description: "Чаты, FAQ, приветствия, рассылки и автоконтент" },
-];
-
-const CONTROL_SECTIONS: SectionOption<ControlSection>[] = [
-  { value: "analytics", label: "Аналитика", description: "Эффективность, Пульс организации, показатели здоровья и Excel" },
-  { value: "system", label: "Состояние системы", description: "Диагностика, инциденты, резервные копии и техническое здоровье" },
-  { value: "maintenance", label: "Обслуживание", description: "Операционная очередь и быстрые переходы ко всем рабочим процессам" },
 ];
 
 function initialAdminRoute(): InitialAdminRoute {
@@ -108,14 +97,12 @@ export function AdminScreen() {
   const [workSection, setWorkSection] = useState<WorkSection | null>(null);
   const [offersInitialSection, setOffersInitialSection] = useState<OffersSection>("applications");
   const [commsSection, setCommsSection] = useState<CommsSection | null>(null);
-  const [controlSection, setControlSection] = useState<ControlSection | null>(null);
   const [metricDetail, setMetricDetail] = useState<MetricDetail | null>(null);
 
   const clearSections = () => {
     setPeopleSection(null);
     setWorkSection(null);
     setCommsSection(null);
-    setControlSection(null);
     setMetricDetail(null);
   };
 
@@ -140,39 +127,12 @@ export function AdminScreen() {
     clearSections();
     setCommsSection(section);
   };
-  const openControl = (section: ControlSection) => {
-    setGroup("control");
-    clearSections();
-    setControlSection(section);
-  };
   const openMetric = (metric: AdminMetricKey, total: number) => {
     setGroup("overview");
     clearSections();
     setMetricDetail({ metric, total });
   };
   const openComms = () => openCommsSection("tools");
-  const openMaintenanceTarget = (target: MaintenanceTarget) => {
-    if (
-      target === "applications"
-      || target === "participants"
-      || target === "development"
-      || target === "career"
-      || target === "offices"
-      || target === "data-rights"
-    ) {
-      openPeople(target);
-      return;
-    }
-    if (target === "projects" || target === "events" || target === "tasks" || target === "offers") {
-      openWork(target);
-      return;
-    }
-    if (target === "tools" || target === "surveys") {
-      openCommsSection(target);
-      return;
-    }
-    openControl(target);
-  };
   const openMetricEntity = (entityType: string) => {
     if (entityType === "user") openPeople("participants");
     else if (entityType === "project") openWork("projects");
@@ -202,8 +162,6 @@ export function AdminScreen() {
             onOpenTasks={() => openWork("tasks")}
             onOpenOffers={() => openWork("offers", "rewards")}
             onOpenComms={openComms}
-            onOpenReports={() => openControl("analytics")}
-            onOpenSystem={() => openControl("system")}
             onOpenMetric={openMetric}
           />
         )}
@@ -240,16 +198,6 @@ export function AdminScreen() {
             <SectionHeader title={COMMS_SECTIONS.find((item) => item.value === commsSection)?.label ?? "Связь"} onBack={() => setCommsSection(null)} />
             {commsSection === "surveys" && <AdminSurveysScreen />}
             {commsSection === "tools" && <AdminToolsScreen />}
-          </div>
-        )}
-
-        {group === "control" && !controlSection && <SectionMenu title="Контроль" description="Аналитика, здоровье платформы и ежедневное операционное обслуживание." options={CONTROL_SECTIONS} onOpen={setControlSection} />}
-        {group === "control" && controlSection && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <SectionHeader title={CONTROL_SECTIONS.find((item) => item.value === controlSection)?.label ?? "Контроль"} onBack={() => setControlSection(null)} />
-            {controlSection === "analytics" && <AdminDashboardScreen />}
-            {controlSection === "system" && <SystemPanel />}
-            {controlSection === "maintenance" && <AdminMaintenanceScreen onOpen={openMaintenanceTarget} />}
           </div>
         )}
       </div>
