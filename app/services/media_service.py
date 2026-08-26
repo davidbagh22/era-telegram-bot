@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import html
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Literal
@@ -34,9 +36,6 @@ from app.services.media_chat_activity_service import chat_activity_summary
 from app.utils.constants import ApplicationStatus, TaskStatus
 
 MEDIA_SETTINGS_KEY = "media_os_settings"
-# DELTA ToR §27-31: real Media ACL tiers, built on the existing
-# Direction/UserDirection membership model (ToR §30 explicitly forbids a
-# second roles table) rather than a binary "any approved participant" gate.
 MEDIA_DIRECTION_NAME = "Медиа"
 MediaAccessLevel = Literal["no_access", "pending", "member", "leader", "admin"]
 MEDIA_TASK_POINTS = {
@@ -105,15 +104,11 @@ LIBRARY_DEFAULTS = (
 @dataclass(frozen=True)
 class MediaAnalytics:
     planned: int
-    # All-time count of tracked publications (ToR §67's channel_posts_total)
-    # -- status=published only, never failed/skipped (ToR §37).
     published: int
     failed: int
     on_time_rate: float | None
     tasks_created: int
     tasks_completed: int
-    # DELTA ToR §36-41: last-30-days slice of `published`, plus Media Chat
-    # human-activity (§38-41's chat_messages_period/chat_active_authors_period).
     channel_posts_period: int
     chat_messages_period: int
     chat_active_authors_period: int
@@ -161,9 +156,6 @@ async def _media_membership_status(session: AsyncSession, user_id: int) -> str |
 async def media_access_level(
     session: AsyncSession, user: User | None, settings: Settings
 ) -> MediaAccessLevel:
-    """DELTA ToR §28: NO_ACCESS / PENDING / MEDIA_MEMBER / MEDIA_LEADER / ADMIN.
-    Checked in that priority so a Direction leader or admin always gets full
-    access even if they never went through the member application flow."""
     if (
         user is None
         or user.is_blocked
@@ -188,9 +180,6 @@ def can_use_media_hub(level: MediaAccessLevel) -> bool:
 
 
 def media_permissions(level: MediaAccessLevel) -> dict[str, bool]:
-    """ToR §67's Home/Media Hub `permissions` contract. MEDIA_MEMBER only
-    ever gets tools_read; Content Plan, member management, analytics and
-    publishing stay MEDIA_LEADER/ADMIN-only (ToR §29)."""
     if level in ("leader", "admin"):
         return {
             "tools_read": True,
@@ -220,9 +209,6 @@ def media_permissions(level: MediaAccessLevel) -> dict[str, bool]:
 
 
 async def apply_for_media(session: AsyncSession, user: User) -> MediaAccessLevel:
-    """ToR §28 NO_ACCESS CTA: "Подать заявку". Idempotent -- re-applying
-    while already pending/approved is a no-op, never creates duplicate rows
-    (UserDirection is unique on user_id+direction_id)."""
     direction = await _media_direction(session)
     if direction is None:
         raise ValueError("media_direction_missing")
@@ -245,10 +231,6 @@ async def apply_for_media(session: AsyncSession, user: User) -> MediaAccessLevel
 async def decide_media_application(
     session: AsyncSession, target_user_id: int, action: Literal["approve", "reject", "revoke"]
 ) -> None:
-    """ToR §31 "Команда" approve/reject/revoke. Reject and revoke both land
-    on status="rejected" -- the distinction that matters to the user (never
-    applied vs. applied and declined) isn't meaningful to the ACL check,
-    only to whoever is looking at the applications list."""
     direction = await _media_direction(session)
     if direction is None:
         raise ValueError("media_direction_missing")
@@ -380,7 +362,6 @@ def _scheduled_at(
 
 
 async def seed_media_os(session: AsyncSession, settings: Settings) -> None:
-    """Seed the approved authored pack and permanent Media library idempotently."""
     pack = load_era_public_pack()
     start = date.fromisoformat(pack["start_date"])
     for item in pack["items"]:
@@ -555,8 +536,6 @@ async def create_content_tasks(
 ) -> list[MediaContentTask]:
     links: list[MediaContentTask] = []
     deadline = item.scheduled_at or (datetime.now(timezone.utc) + timedelta(days=7))
-    # Give the team a buffer before publication whenever the item is still in
-    # the future, but never create a deadline in the past.
     deadline = max(datetime.now(timezone.utc) + timedelta(hours=4), deadline - timedelta(hours=24))
     for task_kind in task_kinds:
         if task_kind not in MEDIA_TASK_KINDS:
@@ -712,6 +691,68 @@ def _delivery_key(item: MediaContentItem) -> str:
     return f"era-channel:{item.id}:{stamp}"
 
 
+_BOLD_MARKER = re.compile(r"\*\*(.+?)\*\*", flags=re.DOTALL)
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?…])\s+")
+
+
+def _escape_media_inline(value: str) -> str:
+    """Escape arbitrary post text while allowing only **bold** author markup."""
+    pieces: list[str] = []
+    cursor = 0
+    for match in _BOLD_MARKER.finditer(value):
+        pieces.append(html.escape(value[cursor:match.start()]))
+        pieces.append(f"<b>{html.escape(match.group(1).strip())}</b>")
+        cursor = match.end()
+    pieces.append(html.escape(value[cursor:]))
+    return "".join(pieces)
+
+
+def _readable_media_paragraphs(body: str) -> list[str]:
+    normalized = body.replace("\r\n", "\n").replace("\r", "\n").strip()
+    explicit = [part.strip() for part in re.split(r"\n\s*\n", normalized) if part.strip()]
+    if len(explicit) != 1 or len(explicit[0]) <= 520:
+        return explicit
+
+    # Old content sometimes arrived as one very long wall of text. Split it
+    # conservatively at sentence boundaries; never rewrite wording or invent
+    # punctuation. Bullets/manual line breaks inside each chunk are preserved.
+    sentences = [part.strip() for part in _SENTENCE_BOUNDARY.split(explicit[0]) if part.strip()]
+    if len(sentences) <= 1:
+        return explicit
+    paragraphs: list[str] = []
+    current: list[str] = []
+    current_length = 0
+    for sentence in sentences:
+        projected = current_length + len(sentence) + (1 if current else 0)
+        if current and (len(current) >= 3 or projected > 420):
+            paragraphs.append(" ".join(current))
+            current = []
+            current_length = 0
+        current.append(sentence)
+        current_length += len(sentence) + (1 if current_length else 0)
+    if current:
+        paragraphs.append(" ".join(current))
+    return paragraphs or explicit
+
+
+def format_media_channel_text(item: MediaContentItem) -> str:
+    """Render a Telegram-safe, readable post without trusting raw HTML."""
+    if not item.body:
+        raise ValueError("empty_content")
+    paragraphs = _readable_media_paragraphs(item.body)
+    rendered = [_escape_media_inline(paragraph) for paragraph in paragraphs]
+
+    # A manually supplied content title is a real heading. Rubric/theme are
+    # classification metadata and must not be injected into every post.
+    heading = (item.title or "").strip()
+    if heading:
+        escaped_heading = html.escape(heading)
+        first_plain = re.sub(r"<[^>]+>", "", rendered[0]) if rendered else ""
+        if heading.casefold() not in html.unescape(first_plain).casefold():
+            rendered.insert(0, f"<b>{escaped_heading}</b>")
+    return "\n\n".join(rendered)
+
+
 async def _send_content(bot: Bot, target: int | str, item: MediaContentItem):
     if item.kind == "poll":
         options = [InputPollOption(text=option) for option in (item.poll_options or [])]
@@ -723,9 +764,11 @@ async def _send_content(bot: Bot, target: int | str, item: MediaContentItem):
             options=options,
             is_anonymous=True,
         )
-    if not item.body:
-        raise ValueError("empty_content")
-    return await bot.send_message(chat_id=target, text=item.body)
+    return await bot.send_message(
+        chat_id=target,
+        text=format_media_channel_text(item),
+        parse_mode="HTML",
+    )
 
 
 async def publish_content(
@@ -736,7 +779,6 @@ async def publish_content(
     *,
     manual: bool,
 ) -> PublishResult:
-    """Publish exactly once unless a human explicitly retries a known-safe failure."""
     if item.status == "published":
         return PublishResult(False, "already_published", item.telegram_message_id)
     if not manual and item.source_kind != "authored_pack":
@@ -767,9 +809,6 @@ async def publish_content(
             claimed_at=datetime.now(timezone.utc),
         )
         session.add(delivery)
-        # Durable claim before the Telegram side effect is the core duplicate
-        # protection: a process crash can leave `claimed`, but never a second
-        # blind AUTO send on restart.
         await session.commit()
 
     target = _channel_target(settings)
@@ -794,14 +833,12 @@ async def publish_content(
             await _notify_publish_failed(session, bot, settings, item, reason=type(exc).__name__)
             return PublishResult(False, "telegram_rejected")
         except TelegramAPIError as exc:
-            # API errors don't prove a successful send. Treat them as
-            # uncertain rather than retrying into a possible duplicate.
             delivery.status = "uncertain"
             delivery.last_error = type(exc).__name__
             await session.commit()
             await _notify_publish_failed(session, bot, settings, item, reason=type(exc).__name__)
             return PublishResult(False, "delivery_uncertain")
-        except Exception as exc:  # network/runtime ambiguity: never blind retry
+        except Exception as exc:
             delivery.status = "uncertain"
             delivery.last_error = type(exc).__name__
             await session.commit()
@@ -841,8 +878,6 @@ async def publish_content(
 async def _notify_publish_failed(
     session: AsyncSession, bot: Bot, settings: Settings, item: MediaContentItem, *, reason: str
 ) -> None:
-    """ToR §42 "Ошибка публикации" -- goes to the leader/admin-facing Media
-    chat, same idempotent-per-item pattern as every other chat notice here."""
     await _send_media_chat_notice(
         session,
         bot,
@@ -930,7 +965,6 @@ async def process_media_chat_automation(
     settings: Settings,
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    """Reason-based Media Chat automation: weekly plan + missing-work reminders."""
     if settings.media_chat_id is None:
         return
     now = datetime.now(timezone.utc)
@@ -986,7 +1020,7 @@ async def process_media_chat_automation(
                 ref_type="task",
                 ref_id=task.id,
                 text=(
-                    f"До дедлайна медиа-задачи меньше 24 часов\n\n"
+                    "До дедлайна медиа-задачи меньше 24 часов\n\n"
                     f"{task.title}\n"
                     f"Нужен результат до {task.deadline.astimezone(ZoneInfo(settings.timezone)).strftime('%d.%m %H:%M')}."
                 ),
