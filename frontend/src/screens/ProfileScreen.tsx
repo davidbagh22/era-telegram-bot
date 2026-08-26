@@ -29,11 +29,6 @@ type ResultSection =
   | "certificates"
   | "recommendations";
 
-// DELTA ToR §51: "Мои результаты" collapses into a compact 2×3 grid
-// instead of a long vertical feed. "Достижения" folds badges/
-// certificates/recommendations into one cell -- all three are
-// recognition-style portfolio entries, and the ToR names exactly 6 cells,
-// not 8, without asking to drop any existing category from the data.
 type DashboardCell = "projects" | "events" | "tasks" | "volunteer" | "leadership" | "achievements";
 
 const DASHBOARD_CELLS: { key: DashboardCell; label: string; title: string; description: string }[] = [
@@ -193,17 +188,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
           <Avatar firstName={data.first_name} lastName={data.last_name} size="lg" />
           <div style={{ minWidth: 0 }}>
             <MonoLabel tone="violet">Мой путь в ЭРА</MonoLabel>
-            <h1
-              style={{
-                fontFamily: "var(--era-font-display)",
-                fontSize: "var(--era-text-3xl)",
-                fontWeight: 800,
-                margin: "0.25rem 0 0",
-                letterSpacing: "-0.02em",
-                textTransform: "uppercase",
-                overflowWrap: "anywhere",
-              }}
-            >
+            <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-3xl)", fontWeight: 800, margin: "0.25rem 0 0", letterSpacing: "-0.02em", textTransform: "uppercase", overflowWrap: "anywhere" }}>
               {data.full_name || data.first_name}
             </h1>
             <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-secondary)" }}>
@@ -214,10 +199,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
 
         <div style={{ display: "flex", justifyContent: "center", padding: "1.5rem 0 0.5rem" }}>
           <SignalOrb percent={orbitPercent} size={168} animationKey="profile-signal-orb">
-            <div>
-              <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "2.1rem", fontWeight: 900, lineHeight: 1 }}>{points}</strong>
-              <MonoLabel>баллов</MonoLabel>
-            </div>
+            <div><strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "2.1rem", fontWeight: 900, lineHeight: 1 }}>{points}</strong><MonoLabel>баллов</MonoLabel></div>
           </SignalOrb>
         </div>
 
@@ -238,10 +220,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
               return (
                 <div key={label} style={{ display: "grid", gridTemplateColumns: "1.25rem 1fr", gap: "0.75rem", alignItems: "start" }}>
                   <span aria-hidden="true" style={{ width: 12, height: 12, marginTop: 3, borderRadius: "50%", background: reached ? "var(--era-red)" : "var(--era-ring-track)", boxShadow: current ? "0 0 0 5px var(--era-tint-red)" : "none" }} />
-                  <div>
-                    <strong style={{ color: reached ? "var(--era-text)" : "var(--era-text-muted)" }}>{label}</strong>
-                    {current && <span style={{ display: "block", marginTop: "0.15rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>Вы здесь сейчас</span>}
-                  </div>
+                  <div><strong style={{ color: reached ? "var(--era-text)" : "var(--era-text-muted)" }}>{label}</strong>{current && <span style={{ display: "block", marginTop: "0.15rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>Вы здесь сейчас</span>}</div>
                 </div>
               );
             })}
@@ -251,23 +230,13 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
 
       <section>
         <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Профессиональный рост</h2>
-        <ActionCell
-          title="Моё портфолио"
-          description="Резюме, достижения, сертификаты, подтверждающие файлы и рекомендация ЭРА"
-          meta="Открыть"
-          onClick={() => setShowCareerPortfolio(true)}
-        />
+        <ActionCell title="Моё портфолио" description="Резюме, достижения, сертификаты, подтверждающие файлы и рекомендация ЭРА" meta="Открыть" onClick={() => setShowCareerPortfolio(true)} />
       </section>
 
       {onOpenDevelopment && (
         <section>
           <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Развитие</h2>
-          <ActionCell
-            title="Мой вектор"
-            description="Моё состояние, личная история, исследования и цели"
-            meta="Ты ↔ ты"
-            onClick={onOpenDevelopment}
-          />
+          <ActionCell title="Мой вектор" description="Моё состояние, личная история, исследования и цели" meta="Ты ↔ ты" onClick={onOpenDevelopment} />
         </section>
       )}
 
@@ -275,37 +244,24 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
         <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Сообщество</h2>
         <ActionCell
           title="Пригласить друга"
-          description="Ваш личный код и ссылка. +200 каждому после регистрации и общего чата, ещё +500 после первого подтверждённого мероприятия"
+          description="Ваш личный код и ссылка. Баллы появляются после одобренной регистрации и первого подтверждённого участия."
           meta="Открыть"
           onClick={() => setShowReferral(true)}
         />
       </section>
 
       {onEnterWorkspace && (
-        <ActionCell
-          title="Управление ЭРА"
-          description={isAdmin ? "Открыть режим администратора" : isLeader ? "Открыть пространство лидера" : "Открыть рабочее пространство"}
-          onClick={onEnterWorkspace}
-        />
+        <ActionCell title="Управление ЭРА" description={isAdmin ? "Открыть режим администратора" : isLeader ? "Открыть пространство лидера" : "Открыть рабочее пространство"} onClick={onEnterWorkspace} />
       )}
 
       <ActionCell title="Рейтинг участников" description="Ваше место, баллы и активные участники" onClick={() => setShowLeaderboard(true)} />
 
-      {/* ToR §51: compact 2×3 grid instead of a long vertical feed of 8
-          rows each saying "N записей" -- a bare, sizeable number reads
-          faster than repeating the word "записей" six times over. */}
       <section>
         <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Мои результаты</h2>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", minWidth: 0 }}>
           {DASHBOARD_CELLS.map((item) => (
-            <Card
-              key={item.key}
-              onClick={() => setActiveDashboardCell(item.key)}
-              style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.3rem", minHeight: "5.5rem", justifyContent: "center" }}
-            >
-              <strong style={{ fontSize: "1.75rem", fontFamily: "var(--era-font-display)", lineHeight: 1 }}>
-                {dashboardEntries[item.key].length}
-              </strong>
+            <Card key={item.key} onClick={() => setActiveDashboardCell(item.key)} style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.3rem", minHeight: "5.5rem", justifyContent: "center" }}>
+              <strong style={{ fontSize: "1.75rem", fontFamily: "var(--era-font-display)", lineHeight: 1 }}>{dashboardEntries[item.key].length}</strong>
               <span style={{ color: "var(--era-text-muted)", fontSize: "0.85rem" }}>{item.label}</span>
             </Card>
           ))}
@@ -322,27 +278,19 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
       <section>
         <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 0.75rem" }}>Данные и конфиденциальность</h2>
         <Card>
-          <p style={{ margin: "0 0 0.75rem", color: "var(--era-text-muted)" }}>
-            Скачайте копию данных, которые ЭРА хранит о вас, или запросите удаление аккаунта.
-          </p>
+          <p style={{ margin: "0 0 0.75rem", color: "var(--era-text-muted)" }}>Скачайте копию данных, которые ЭРА хранит о вас, или запросите удаление аккаунта.</p>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             <button type="button" disabled={exporting} onClick={handleExportData}>{exporting ? "Готовим файл…" : "Скачать мои данные (JSON)"}</button>
-            <button type="button" disabled={deletionRequested} onClick={() => setDeletionOpen(true)} style={{ color: "var(--era-error)" }}>
-              {deletionRequested ? "Заявка на удаление отправлена" : "Запросить удаление аккаунта"}
-            </button>
+            <button type="button" disabled={deletionRequested} onClick={() => setDeletionOpen(true)} style={{ color: "var(--era-error)" }}>{deletionRequested ? "Заявка на удаление отправлена" : "Запросить удаление аккаунта"}</button>
           </div>
         </Card>
       </section>
 
       <BottomSheet open={deletionOpen} onClose={() => setDeletionOpen(false)} title="Запросить удаление аккаунта?">
-        <p style={{ color: "var(--era-text-muted)", margin: "0 0 1rem" }}>
-          Заявку рассмотрит администратор. После подтверждения ваши личные данные будут обезличены, а аккаунт — архивирован. Это действие нельзя отменить самостоятельно.
-        </p>
+        <p style={{ color: "var(--era-text-muted)", margin: "0 0 1rem" }}>Заявку рассмотрит администратор. После подтверждения ваши личные данные будут обезличены, а аккаунт — архивирован. Это действие нельзя отменить самостоятельно.</p>
         <div style={{ display: "flex", gap: "0.5rem" }}>
           <button type="button" onClick={() => setDeletionOpen(false)} style={{ flex: 1 }}>Отмена</button>
-          <button type="button" className="era-btn-primary" disabled={requestingDeletion} onClick={handleRequestDeletion} style={{ flex: 1 }}>
-            {requestingDeletion ? "Отправляем…" : "Отправить заявку"}
-          </button>
+          <button type="button" className="era-btn-primary" disabled={requestingDeletion} onClick={handleRequestDeletion} style={{ flex: 1 }}>{requestingDeletion ? "Отправляем…" : "Отправить заявку"}</button>
         </div>
       </BottomSheet>
     </div>
