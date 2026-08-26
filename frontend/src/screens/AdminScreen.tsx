@@ -1,14 +1,10 @@
 import { useState } from "react";
-import { ActionCell } from "../components/ActionCell";
-import { AdminBottomNav, type AdminGroup } from "../components/AdminBottomNav";
 import type { AdminMetricKey } from "../types/adminMetrics";
 import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminCareerScreen } from "./admin/AdminCareerScreen";
-import { AdminDashboardScreen } from "./admin/AdminDashboardScreen";
 import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
 import { AdminDevelopmentScreen } from "./admin/AdminDevelopmentScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
-import { AdminMaintenanceScreen, type MaintenanceTarget } from "./admin/AdminMaintenanceScreen";
 import { AdminMetricDetailScreen } from "./admin/AdminMetricDetailScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
 import { AdminOffersScreen, type OffersSection } from "./admin/AdminOffersScreen";
@@ -19,169 +15,134 @@ import { AdminTasksScreen } from "./admin/AdminTasksScreen";
 import { AdminToolsScreen } from "./admin/AdminToolsScreen";
 import { AdminUsersScreen } from "./admin/AdminUsersScreen";
 import { AdminVerificationScreen } from "./admin/AdminVerificationScreen";
-import { SystemPanel } from "./admin/tools/SystemPanel";
 
-type PeopleSection = "participants" | "verification" | "development" | "career" | "applications" | "offices" | "data-rights";
-type WorkSection = "projects" | "events" | "tasks" | "offers";
-type CommsSection = "surveys" | "tools";
-type ControlSection = "analytics" | "system" | "maintenance";
+type AdminView =
+  | "overview"
+  | "participants"
+  | "applications"
+  | "verification"
+  | "development"
+  | "career"
+  | "offices"
+  | "data-rights"
+  | "projects"
+  | "events"
+  | "tasks"
+  | "offers"
+  | "surveys"
+  | "comms";
 
-type SectionOption<T extends string> = { value: T; label: string; description: string };
 type MetricDetail = { metric: AdminMetricKey; total: number };
 
 type InitialAdminRoute = {
-  openApplications: boolean;
+  view: AdminView;
   applicationId: number | null;
 };
 
-const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
-  { value: "participants", label: "Участники", description: "Люди, роли и состояние сообщества" },
-  { value: "verification", label: "Проверка состава", description: "Community Verification, напоминания и ручные решения" },
-  { value: "development", label: "Состояние и развитие", description: "Добровольные Check-in, охват и потребности сообщества" },
-  { value: "career", label: "Портфолио и рекомендации", description: "Проверка достижений и утверждение официальных рекомендательных писем" },
-  { value: "applications", label: "Заявки", description: "Новые регистрации и решения по ним" },
-  { value: "offices", label: "Должности", description: "Организационные роли и структура" },
-  { value: "data-rights", label: "Данные и права", description: "Запросы на экспорт и удаление персональных данных" },
-];
-
-const WORK_SECTIONS: SectionOption<WorkSection>[] = [
-  { value: "projects", label: "Проекты", description: "Создание, модерация и команды проектов" },
-  { value: "events", label: "Мероприятия", description: "Создание, публикация, участники и активности" },
-  { value: "tasks", label: "Задания", description: "Создание задач и проверка результатов" },
-  { value: "offers", label: "Возможности", description: "Партнёрские предложения и заявки" },
-];
-
-const COMMS_SECTIONS: SectionOption<CommsSection>[] = [
-  { value: "surveys", label: "Опросы", description: "Обратная связь и активные опросы" },
-  { value: "tools", label: "Центр связи", description: "Чаты, FAQ, приветствия, рассылки и автоконтент" },
-];
-
-const CONTROL_SECTIONS: SectionOption<ControlSection>[] = [
-  { value: "analytics", label: "Аналитика", description: "Эффективность, Пульс организации, показатели здоровья и Excel" },
-  { value: "system", label: "Состояние системы", description: "Диагностика, инциденты, резервные копии и техническое здоровье" },
-  { value: "maintenance", label: "Обслуживание", description: "Операционная очередь и быстрые переходы ко всем рабочим процессам" },
-];
+const VIEW_TITLES: Record<Exclude<AdminView, "overview">, string> = {
+  participants: "Участники",
+  applications: "Новые заявки",
+  verification: "Проверка состава",
+  development: "Состояние и развитие",
+  career: "Портфолио и рекомендации",
+  offices: "Должности и роли",
+  "data-rights": "Данные и права",
+  projects: "Проекты",
+  events: "Мероприятия",
+  tasks: "Задания",
+  offers: "Возможности",
+  surveys: "Опросы",
+  comms: "Центр связи",
+};
 
 function initialAdminRoute(): InitialAdminRoute {
   const query = new URLSearchParams(window.location.search);
-  if (query.get("adminSection") !== "applications") {
-    return { openApplications: false, applicationId: null };
-  }
+  const rawSection = query.get("adminSection");
+  const known: AdminView[] = [
+    "participants",
+    "applications",
+    "verification",
+    "development",
+    "career",
+    "offices",
+    "data-rights",
+    "projects",
+    "events",
+    "tasks",
+    "offers",
+    "surveys",
+    "comms",
+  ];
+  const view = known.includes(rawSection as AdminView) ? (rawSection as AdminView) : "overview";
   const rawId = query.get("applicationId");
   const parsedId = rawId ? Number(rawId) : NaN;
   return {
-    openApplications: true,
+    view,
     applicationId: Number.isInteger(parsedId) && parsedId > 0 ? parsedId : null,
   };
 }
 
-function SectionMenu<T extends string>({ title, description, options, onOpen }: { title: string; description: string; options: SectionOption<T>[]; onOpen: (value: T) => void }) {
+function WorkspaceHeader({ title, onBack }: { title: string; onBack: () => void }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+      <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← Пульт ЭРА</button>
       <div>
-        <p style={{ margin: "0 0 0.25rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Управление ЭРА</p>
-        <h1 style={{ margin: 0, fontSize: "var(--era-text-3xl)" }}>{title}</h1>
-        <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)" }}>{description}</p>
+        <p style={{ margin: "0 0 .2rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
+          Admin Command Center
+        </p>
+        <h1 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{title}</h1>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", minWidth: 0 }}>
-        {options.map((option) => <ActionCell key={option.value} title={option.label} description={option.description} onClick={() => onOpen(option.value)} />)}
-      </div>
-    </div>
-  );
-}
-
-function SectionHeader({ title, onBack }: { title: string; onBack: () => void }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-      <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← Назад</button>
-      <h1 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{title}</h1>
     </div>
   );
 }
 
 export function AdminScreen() {
   const [launchRoute] = useState<InitialAdminRoute>(() => initialAdminRoute());
-  const [group, setGroup] = useState<AdminGroup>(launchRoute.openApplications ? "people" : "overview");
-  const [peopleSection, setPeopleSection] = useState<PeopleSection | null>(launchRoute.openApplications ? "applications" : null);
-  const [workSection, setWorkSection] = useState<WorkSection | null>(null);
-  const [offersInitialSection, setOffersInitialSection] = useState<OffersSection>("applications");
-  const [commsSection, setCommsSection] = useState<CommsSection | null>(null);
-  const [controlSection, setControlSection] = useState<ControlSection | null>(null);
+  const [view, setView] = useState<AdminView>(launchRoute.view);
   const [metricDetail, setMetricDetail] = useState<MetricDetail | null>(null);
+  const [offersInitialSection, setOffersInitialSection] = useState<OffersSection>("applications");
 
-  const clearSections = () => {
-    setPeopleSection(null);
-    setWorkSection(null);
-    setCommsSection(null);
-    setControlSection(null);
+  const goHome = () => {
     setMetricDetail(null);
+    setView("overview");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const changeGroup = (next: AdminGroup) => {
-    setGroup(next);
-    clearSections();
+  const open = (next: AdminView) => {
+    setMetricDetail(null);
+    setView(next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const openPeople = (section: PeopleSection) => {
-    setGroup("people");
-    clearSections();
-    setPeopleSection(section);
+  const openOffers = (section: OffersSection = "applications") => {
+    setOffersInitialSection(section);
+    open("offers");
   };
-  const openWork = (section: WorkSection, offersSection: OffersSection = "applications") => {
-    setGroup("work");
-    clearSections();
-    setWorkSection(section);
-    if (section === "offers") setOffersInitialSection(offersSection);
-  };
-  const openCommsSection = (section: CommsSection) => {
-    setGroup("comms");
-    clearSections();
-    setCommsSection(section);
-  };
-  const openControl = (section: ControlSection) => {
-    setGroup("control");
-    clearSections();
-    setControlSection(section);
-  };
+
   const openMetric = (metric: AdminMetricKey, total: number) => {
-    setGroup("overview");
-    clearSections();
     setMetricDetail({ metric, total });
+    setView("overview");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const openComms = () => openCommsSection("tools");
-  const openMaintenanceTarget = (target: MaintenanceTarget) => {
-    if (
-      target === "applications"
-      || target === "participants"
-      || target === "development"
-      || target === "career"
-      || target === "offices"
-      || target === "data-rights"
-    ) {
-      openPeople(target);
-      return;
-    }
-    if (target === "projects" || target === "events" || target === "tasks" || target === "offers") {
-      openWork(target);
-      return;
-    }
-    if (target === "tools" || target === "surveys") {
-      openCommsSection(target);
-      return;
-    }
-    openControl(target);
-  };
+
   const openMetricEntity = (entityType: string) => {
-    if (entityType === "user") openPeople("participants");
-    else if (entityType === "project") openWork("projects");
-    else if (entityType === "event" || entityType === "event_registration") openWork("events");
-    else if (entityType === "task_submission") openWork("tasks");
+    if (entityType === "user") open("participants");
+    else if (entityType === "project") open("projects");
+    else if (entityType === "event" || entityType === "event_registration") open("events");
+    else if (entityType === "task_submission") open("tasks");
   };
+
+  const detail = (content: React.ReactNode) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <WorkspaceHeader title={VIEW_TITLES[view as Exclude<AdminView, "overview">]} onBack={goHome} />
+      {content}
+    </div>
+  );
 
   return (
-    <div className="era-page" style={{ minHeight: "100vh", display: "flex", flexDirection: "column", minWidth: 0 }}>
-      <div style={{ flex: "1 1 auto", minWidth: 0, padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-        {group === "overview" && metricDetail && (
+    <div className="era-page" style={{ minHeight: "100vh", minWidth: 0 }}>
+      <main style={{ minWidth: 0, padding: "1.25rem 1.25rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1rem" }}>
+        {view === "overview" && metricDetail && (
           <AdminMetricDetailScreen
             metric={metricDetail.metric}
             expectedTotal={metricDetail.total}
@@ -189,68 +150,40 @@ export function AdminScreen() {
             onOpenEntity={(entityType) => openMetricEntity(entityType)}
           />
         )}
-        {group === "overview" && !metricDetail && (
+
+        {view === "overview" && !metricDetail && (
           <AdminOverviewScreen
-            onOpenPeople={() => openPeople("participants")}
-            onOpenApplications={() => openPeople("applications")}
-            onOpenVerification={() => openPeople("verification")}
-            onOpenCareer={() => openPeople("career")}
-            onOpenProjects={() => openWork("projects")}
-            onOpenEvents={() => openWork("events")}
-            onOpenTasks={() => openWork("tasks")}
-            onOpenOffers={() => openWork("offers", "rewards")}
-            onOpenComms={openComms}
-            onOpenReports={() => openControl("analytics")}
-            onOpenSystem={() => openControl("system")}
+            onOpenPeople={() => open("participants")}
+            onOpenApplications={() => open("applications")}
+            onOpenVerification={() => open("verification")}
+            onOpenDevelopment={() => open("development")}
+            onOpenCareer={() => open("career")}
+            onOpenOffices={() => open("offices")}
+            onOpenDataRights={() => open("data-rights")}
+            onOpenProjects={() => open("projects")}
+            onOpenEvents={() => open("events")}
+            onOpenTasks={() => open("tasks")}
+            onOpenOffers={() => openOffers("rewards")}
+            onOpenSurveys={() => open("surveys")}
+            onOpenComms={() => open("comms")}
             onOpenMetric={openMetric}
           />
         )}
 
-        {group === "people" && !peopleSection && <SectionMenu title="Люди" description="Участники, проверка состава, развитие, портфолио, регистрации, роли и права на данные." options={PEOPLE_SECTIONS} onOpen={setPeopleSection} />}
-        {group === "people" && peopleSection && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <SectionHeader title={PEOPLE_SECTIONS.find((item) => item.value === peopleSection)?.label ?? "Люди"} onBack={() => setPeopleSection(null)} />
-            {peopleSection === "participants" && <AdminUsersScreen />}
-            {peopleSection === "verification" && <AdminVerificationScreen />}
-            {peopleSection === "development" && <AdminDevelopmentScreen />}
-            {peopleSection === "career" && <AdminCareerScreen />}
-            {peopleSection === "applications" && <AdminApplicationsScreen initialApplicationId={launchRoute.applicationId} />}
-            {peopleSection === "offices" && <AdminOfficesScreen />}
-            {peopleSection === "data-rights" && <AdminDataRightsScreen />}
-          </div>
-        )}
-
-        {group === "work" && !workSection && <SectionMenu title="Работа" description="Создание и управление проектами, мероприятиями, заданиями и возможностями." options={WORK_SECTIONS} onOpen={setWorkSection} />}
-        {group === "work" && workSection && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <SectionHeader title={WORK_SECTIONS.find((item) => item.value === workSection)?.label ?? "Работа"} onBack={() => setWorkSection(null)} />
-            {workSection === "projects" && <AdminProjectsScreen />}
-            {workSection === "events" && <AdminEventsScreen />}
-            {workSection === "tasks" && <AdminTasksScreen />}
-            {workSection === "offers" && <AdminOffersScreen key={offersInitialSection} initialSection={offersInitialSection} />}
-          </div>
-        )}
-
-        {group === "comms" && !commsSection && <SectionMenu title="Связь" description="Чаты, рассылки и обратная связь без системных функций." options={COMMS_SECTIONS} onOpen={setCommsSection} />}
-        {group === "comms" && commsSection && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <SectionHeader title={COMMS_SECTIONS.find((item) => item.value === commsSection)?.label ?? "Связь"} onBack={() => setCommsSection(null)} />
-            {commsSection === "surveys" && <AdminSurveysScreen />}
-            {commsSection === "tools" && <AdminToolsScreen />}
-          </div>
-        )}
-
-        {group === "control" && !controlSection && <SectionMenu title="Контроль" description="Аналитика, здоровье платформы и ежедневное операционное обслуживание." options={CONTROL_SECTIONS} onOpen={setControlSection} />}
-        {group === "control" && controlSection && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <SectionHeader title={CONTROL_SECTIONS.find((item) => item.value === controlSection)?.label ?? "Контроль"} onBack={() => setControlSection(null)} />
-            {controlSection === "analytics" && <AdminDashboardScreen />}
-            {controlSection === "system" && <SystemPanel />}
-            {controlSection === "maintenance" && <AdminMaintenanceScreen onOpen={openMaintenanceTarget} />}
-          </div>
-        )}
-      </div>
-      <AdminBottomNav active={group} onChange={changeGroup} />
+        {view === "participants" && detail(<AdminUsersScreen />)}
+        {view === "applications" && detail(<AdminApplicationsScreen initialApplicationId={launchRoute.applicationId} />)}
+        {view === "verification" && detail(<AdminVerificationScreen />)}
+        {view === "development" && detail(<AdminDevelopmentScreen />)}
+        {view === "career" && detail(<AdminCareerScreen />)}
+        {view === "offices" && detail(<AdminOfficesScreen />)}
+        {view === "data-rights" && detail(<AdminDataRightsScreen />)}
+        {view === "projects" && detail(<AdminProjectsScreen />)}
+        {view === "events" && detail(<AdminEventsScreen />)}
+        {view === "tasks" && detail(<AdminTasksScreen />)}
+        {view === "offers" && detail(<AdminOffersScreen key={offersInitialSection} initialSection={offersInitialSection} />)}
+        {view === "surveys" && detail(<AdminSurveysScreen />)}
+        {view === "comms" && detail(<AdminToolsScreen />)}
+      </main>
     </div>
   );
 }
