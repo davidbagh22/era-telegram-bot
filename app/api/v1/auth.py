@@ -16,17 +16,6 @@ from app.repositories.users import get_user_by_telegram_id
 
 logger = logging.getLogger(__name__)
 
-# Generous enough for a user re-opening the Mini App repeatedly across
-# several tabs/devices behind one IP (offices/NATs share one outbound
-# address), tight enough to blunt a scripted attempt to mint sessions for
-# many Telegram IDs. Was 20 — raised after the real cause of the
-# intermittent rewards.spec.ts/surveys.spec.ts CI failures turned out to
-# be this exact limit: the whole E2E suite runs single-worker, sequential,
-# and every spec's page load(s) POST here, all from the CI runner's one
-# IP, well within one 60s window — 20 was already only a few specs deep
-# into a full ~24-file run. Confirmed via uvicorn.log on the failing CI
-# runs (`429 Too Many Requests` on this exact endpoint, at this exact
-# position in the run, reproducing identically on main before this fix).
 AUTH_RATE_LIMIT = 60
 AUTH_RATE_LIMIT_WINDOW_SECONDS = 60
 
@@ -55,13 +44,20 @@ async def authenticate(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> MiniAppAuthResponse:
+    # Keep the production/shared-IP bucket unchanged. Only local/E2E dev
+    # sessions get isolated buckets so separate fixtures cannot exhaust one
+    # another's allowance.
+    dev_auth = settings.dev_auth_enabled and payload.dev_telegram_id is not None
+    rate_limit_prefix = (
+        f"miniapp_auth_dev_{payload.dev_telegram_id}" if dev_auth else "miniapp_auth"
+    )
     await enforce_rate_limit(
         request,
-        key_prefix="miniapp_auth",
+        key_prefix=rate_limit_prefix,
         limit=AUTH_RATE_LIMIT,
         window_seconds=AUTH_RATE_LIMIT_WINDOW_SECONDS,
     )
-    if settings.dev_auth_enabled and payload.dev_telegram_id is not None:
+    if dev_auth:
         telegram_id = payload.dev_telegram_id
     else:
         try:
@@ -71,16 +67,6 @@ async def authenticate(
                 max_age_seconds=settings.init_data_max_age_seconds,
             )
         except InitDataError as exc:
-            # No server-side trace of *why* an auth attempt failed existed
-            # before this — every failure was silently swallowed into a
-            # generic "session expired" screen client-side (see
-            # frontend/src/screens/AuthErrorScreen.tsx), with nothing to
-            # tell a real, uniform failure (e.g. a stray character in
-            # BOT_TOKEN corrupting every HMAC check — see
-            # strip_secret_whitespace in app/config.py) apart from a user
-            # simply not opening the Mini App in time. Never logs the raw
-            # init_data itself — it's the one field here that's genuinely
-            # sensitive (contains the user's Telegram profile).
             logger.warning("miniapp auth rejected: %s", exc)
             raise HTTPException(status_code=401, detail=str(exc)) from exc
         telegram_id = verified.telegram_id
