@@ -171,7 +171,7 @@ export function openMediaRichEditor(initialValue: string): Promise<string | null
         window.alert("Разрешены только http, https и tg ссылки.");
         return;
       }
-      applyAroundSelection(textarea, `<a href="${href.replaceAll('"', "&quot;")}">`, "</a>");
+      applyAroundSelection(textarea, `<a href="${href.replace(/"/g, "&quot;")}">`, "</a>");
     });
     tool("•", "Список", () => applyLinePrefix(textarea, "• "));
     tool("❝", "Цитата", () => applyAroundSelection(textarea, "<blockquote>", "</blockquote>"));
