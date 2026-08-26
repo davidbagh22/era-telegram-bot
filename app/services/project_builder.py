@@ -9,7 +9,6 @@ class ProjectQuestion:
     title: str
     prompt: str
     input_type: str = "text"
-    ai_hint: str | None = None
 
 
 # The constructor teaches project logic instead of writing a project for the
@@ -138,8 +137,6 @@ LEGACY_FIELD_LABELS = {
     "announcement": "Анонс",
     "participant_reminder": "Сообщение участникам",
     "follow_up_plan": "План после проекта",
-    # Previous constructor steps whose meaning does not map 1:1 to the new
-    # learning workflow. Keep them visible instead of silently discarding data.
     "activities": "Активности старой версии конструктора",
     "tasks": "Задания старой версии конструктора",
     "points": "Баллы старой версии конструктора",
