@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { AdminMetricKey } from "../types/adminMetrics";
 import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminCareerScreen } from "./admin/AdminCareerScreen";
@@ -132,7 +132,7 @@ export function AdminScreen() {
     else if (entityType === "task_submission") open("tasks");
   };
 
-  const detail = (content: React.ReactNode) => (
+  const detail = (content: ReactNode) => (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
       <WorkspaceHeader title={VIEW_TITLES[view as Exclude<AdminView, "overview">]} onBack={goHome} />
       {content}
