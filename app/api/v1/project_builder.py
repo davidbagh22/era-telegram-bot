@@ -14,7 +14,6 @@ class ProjectBuilderQuestionOut(BaseModel):
     title: str
     prompt: str
     input_type: str
-    ai_hint: str | None = None
 
 
 @router.get("/questions", response_model=list[ProjectBuilderQuestionOut])
@@ -26,7 +25,6 @@ async def read_project_builder_questions() -> list[ProjectBuilderQuestionOut]:
             title=question.title,
             prompt=question.prompt,
             input_type=question.input_type,
-            ai_hint=question.ai_hint,
         )
         for question in PROJECT_QUESTIONS
     ]
