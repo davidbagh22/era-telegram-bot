@@ -44,11 +44,12 @@ def test_scheduler_reminders_keep_retry_and_recipient_contracts() -> None:
     assert "if not _delivery_finished(result):\n            logger.warning(" in source
     assert "if not _delivery_finished(result):\n                continue" in source
 
-    # Participant event/task reminders now use the single-primary-action shell.
-    # They must still retry later when no notification was delivered.
+    # Participant event/task reminders use the single-primary-action shell.
+    # Event stages do not advance after a failed delivery; task stages advance
+    # only when every eligible recipient completed delivery.
     assert "send_bot_notification" in source
     assert "if not sent:\n                    continue" in source
-    assert "if not delivered and (participant_ids or creator is not None):\n                continue" in source
+    assert "if expected_recipients and completed_recipients < expected_recipients:\n                continue" in source
 
     # Automatic admin recipients are resolved centrally, never from a stale
     # environment-only ADMIN_IDS snapshot inside the scheduler.

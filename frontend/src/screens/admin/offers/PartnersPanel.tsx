@@ -6,10 +6,12 @@ import {
   fetchAdminPartners,
   setPartnerActive,
 } from "../../../api/client";
+import { updatePartner } from "../../../api/adminOffers";
 import { Card } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { useAsync } from "../../../hooks/useAsync";
+import type { Partner } from "../../../types/admin";
 
 const inputStyle = {
   width: "100%",
@@ -21,12 +23,10 @@ const inputStyle = {
   color: "var(--era-text)",
 } as const;
 
-// The Mini App equivalent of app/handlers/admin/partners_admin.py — the
-// sponsor/partner organizations behind offers, not to be confused with the
-// offers (PartnerInitiative) themselves in OffersPanel.
 export function PartnersPanel() {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchAdminPartners(), [refreshKey]);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
@@ -36,22 +36,42 @@ export function PartnersPanel() {
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
-  const handleCreate = useCallback(async () => {
+  const resetForm = useCallback(() => {
+    setEditingId(null);
+    setName("");
+    setDescription("");
+    setSourceUrl("");
+  }, []);
+
+  const startEditing = useCallback((partner: Partner) => {
+    setEditingId(partner.id);
+    setName(partner.name);
+    setDescription(partner.description);
+    setSourceUrl(partner.source_url ?? "");
+    setActionError(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  const handleSave = useCallback(async () => {
     if (!name.trim() || !description.trim()) return;
     setCreating(true);
     setActionError(null);
     try {
-      await createPartner({ name: name.trim(), description: description.trim(), source_url: sourceUrl.trim() });
-      setName("");
-      setDescription("");
-      setSourceUrl("");
+      const payload = {
+        name: name.trim(),
+        description: description.trim(),
+        source_url: sourceUrl.trim() || null,
+      };
+      if (editingId != null) await updatePartner(editingId, payload);
+      else await createPartner({ ...payload, source_url: payload.source_url ?? "" });
+      resetForm();
       refresh();
     } catch (error) {
       setActionError(describeActionError(error));
     } finally {
       setCreating(false);
     }
-  }, [name, description, sourceUrl, refresh]);
+  }, [name, description, sourceUrl, editingId, resetForm, refresh]);
 
   const runAction = useCallback(
     async (partnerId: number, action: () => Promise<unknown>) => {
@@ -59,6 +79,7 @@ export function PartnersPanel() {
       setActionError(null);
       try {
         await action();
+        if (editingId === partnerId) resetForm();
         refresh();
       } catch (error) {
         setActionError(describeActionError(error));
@@ -66,7 +87,7 @@ export function PartnersPanel() {
         setBusyId(null);
       }
     },
-    [refresh],
+    [editingId, resetForm, refresh],
   );
 
   return (
@@ -75,7 +96,7 @@ export function PartnersPanel() {
         <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
       )}
       <Card>
-        <strong>Новый партнёр</strong>
+        <strong>{editingId != null ? "Редактирование партнёра" : "Новый партнёр"}</strong>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
           <input placeholder="Название" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
           <textarea
@@ -91,14 +112,17 @@ export function PartnersPanel() {
             onChange={(e) => setSourceUrl(e.target.value)}
             style={inputStyle}
           />
-          <button
-            type="button"
-            className="era-btn-primary"
-            disabled={creating || !name.trim() || !description.trim()}
-            onClick={handleCreate}
-          >
-            Добавить партнёра
-          </button>
+          <div style={{ display: "flex", gap: ".5rem" }}>
+            <button
+              type="button"
+              className="era-btn-primary"
+              disabled={creating || !name.trim() || !description.trim()}
+              onClick={() => void handleSave()}
+            >
+              {editingId != null ? "Сохранить изменения" : "Добавить партнёра"}
+            </button>
+            {editingId != null && <button type="button" disabled={creating} onClick={resetForm}>Отмена</button>}
+          </div>
         </div>
       </Card>
 
@@ -113,18 +137,20 @@ export function PartnersPanel() {
               {!partner.is_active && <StatusBadge label="скрыт" tone="neutral" />}
             </div>
             <p style={{ margin: "0.25rem 0 0.5rem", color: "var(--era-text-muted)" }}>{partner.description}</p>
-            <div style={{ display: "flex", gap: "0.5rem" }}>
+            {partner.source_url && <p style={{ margin: "0 0 .5rem", fontSize: ".78rem", color: "var(--era-text-muted)", overflowWrap: "anywhere" }}>{partner.source_url}</p>}
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <button type="button" disabled={busyId === partner.id} onClick={() => startEditing(partner)}>Редактировать</button>
               <button
                 type="button"
                 disabled={busyId === partner.id}
-                onClick={() => runAction(partner.id, () => setPartnerActive(partner.id, !partner.is_active))}
+                onClick={() => void runAction(partner.id, () => setPartnerActive(partner.id, !partner.is_active))}
               >
                 {partner.is_active ? "Скрыть" : "Активировать"}
               </button>
               <button
                 type="button"
                 disabled={busyId === partner.id}
-                onClick={() => runAction(partner.id, () => archivePartner(partner.id))}
+                onClick={() => void runAction(partner.id, () => archivePartner(partner.id))}
               >
                 Архивировать
               </button>

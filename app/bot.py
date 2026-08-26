@@ -11,6 +11,7 @@ from app.handlers import (
     chat_binding,
     chat_faq,
     emergency,
+    general_chat_navigation,
     leader_event_photo,
     media_chat_files,
     referrals,
@@ -78,6 +79,7 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
         participant_router,
         chat_binding.router,
         media_chat_files.router,
+        general_chat_navigation.router,
         chat.router,
         chat_faq.router,
     )

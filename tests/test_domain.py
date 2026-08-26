@@ -21,17 +21,19 @@ class _ScalarResult:
 
 
 class DomainTests(unittest.TestCase):
-    def test_project_builder_has_sixteen_questions_plus_final_preview(self) -> None:
-        self.assertEqual(len(PROJECT_QUESTIONS), 16)
+    def test_project_builder_has_eighteen_questions_plus_final_preview(self) -> None:
+        self.assertEqual(len(PROJECT_QUESTIONS), 18)
         self.assertEqual(
             [question.key for question in PROJECT_QUESTIONS],
             [
-                "idea", "title", "problem", "target_audience", "goal", "scenario",
-                "format", "team", "implementation_plan", "resources", "activities",
-                "tasks", "points", "expected_result", "success_metrics", "risks",
+                "idea", "title", "problem", "target_audience", "goal", "project_tasks",
+                "format", "uniqueness", "scenario", "team", "partners", "resources",
+                "budget", "implementation_plan", "promotion", "expected_result",
+                "success_metrics", "risks",
             ],
         )
-        self.assertTrue(all(question.ai_hint for question in PROJECT_QUESTIONS))
+        self.assertTrue(all(question.prompt.strip() for question in PROJECT_QUESTIONS))
+        self.assertTrue(all(question.ai_hint is None for question in PROJECT_QUESTIONS))
 
     def test_project_document_contains_all_constructor_sections(self) -> None:
         document = render_project_document(
@@ -41,20 +43,22 @@ class DomainTests(unittest.TestCase):
             "1. ИДЕЯ",
             "2. НАЗВАНИЕ",
             "3. ПРОБЛЕМА",
-            "4. ДЛЯ КОГО",
+            "4. ЦЕЛЕВАЯ АУДИТОРИЯ",
             "5. ЦЕЛЬ",
-            "6. ЧТО ПРОИЗОЙДЁТ",
+            "6. ЗАДАЧИ",
             "7. ФОРМАТ",
-            "8. КОМАНДА",
-            "9. ПЛАН РЕАЛИЗАЦИИ",
-            "10. РЕСУРСЫ",
-            "11. АКТИВНОСТИ",
-            "12. ЗАДАНИЯ",
-            "13. БАЛЛЫ",
-            "14. ОЖИДАЕМЫЙ РЕЗУЛЬТАТ",
-            "15. МЕТРИКИ УСПЕХА",
-            "16. РИСКИ",
-            "17. ФИНАЛЬНЫЙ PREVIEW",
+            "8. УНИКАЛЬНОСТЬ",
+            "9. МЕХАНИКА / ПУТЬ УЧАСТНИКА",
+            "10. КОМАНДА",
+            "11. ПАРТНЁРЫ",
+            "12. РЕСУРСЫ",
+            "13. БЮДЖЕТ",
+            "14. ПЛАН РЕАЛИЗАЦИИ",
+            "15. ПРОДВИЖЕНИЕ",
+            "16. РЕЗУЛЬТАТЫ",
+            "17. ПОКАЗАТЕЛИ",
+            "18. РИСКИ",
+            "19. ФИНАЛЬНЫЙ PREVIEW",
         ):
             self.assertIn(heading, document)
 

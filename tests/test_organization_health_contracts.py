@@ -43,20 +43,19 @@ def test_pulse_is_privacy_safe_aggregate_not_person_score() -> None:
 
 def test_admin_health_endpoints_and_ui_are_exposed() -> None:
     api = _read("app/api/v1/admin_analytics_details.py")
-    frontend = _read("frontend/src/screens/admin/AdminDashboardScreen.tsx")
-    maintenance = _read("frontend/src/screens/admin/AdminMaintenanceScreen.tsx")
+    dashboard = _read("frontend/src/screens/admin/AdminDashboardScreen.tsx")
+    overview = _read("frontend/src/screens/admin/AdminOverviewScreen.tsx")
 
     assert '@router.get("/health"' in api
     assert '@router.get("/health-report.xlsx")' in api
     assert '@router.get("/full-report.xlsx")' in api
     assert "build_extended_organization_health" in api
-    assert "Пульс организации" in frontend
-    assert "Здоровье организации · XLSX" in frontend
-    assert "Показать все" in frontend
-    assert "Операционный центр" in maintenance
-    assert "без возврата в бот" in maintenance
-    assert "Опасная зона" in maintenance
-    assert "runMaintenanceReset" in maintenance
+    assert "Пульс организации" in dashboard
+    assert "Здоровье организации · XLSX" in dashboard
+    assert "Показать все" in dashboard
+    assert "<AdminDashboardScreen />" in overview
+    assert "<SystemPanel />" in overview
+    assert "Техническое состояние" in overview
 
 
 def test_extended_health_uses_real_growth_opportunity_and_career_models() -> None:
@@ -80,33 +79,35 @@ def test_extended_health_uses_real_growth_opportunity_and_career_models() -> Non
         assert marker in source
 
 
-def test_maintenance_hub_routes_daily_admin_processes_inside_mini_app() -> None:
-    maintenance = _read("frontend/src/screens/admin/AdminMaintenanceScreen.tsx")
+def test_admin_overview_replaces_separate_maintenance_and_analytics_hubs() -> None:
     admin = _read("frontend/src/screens/AdminScreen.tsx")
+    overview = _read("frontend/src/screens/admin/AdminOverviewScreen.tsx")
+    nav = _read("frontend/src/components/AdminBottomNav.tsx")
 
-    for target in [
-        '"applications"',
-        '"participants"',
-        '"development"',
-        '"career"',
-        '"offices"',
-        '"projects"',
-        '"events"',
-        '"tasks"',
-        '"offers"',
-        '"data-rights"',
-        '"surveys"',
-        '"analytics"',
-        '"system"',
-        '"tools"',
+    assert "AdminMaintenanceScreen" not in admin
+    assert "ControlSection" not in admin
+    assert "CONTROL_SECTIONS" not in admin
+    assert 'label: "Контроль"' not in nav
+    assert 'label: "Аналитика"' not in nav
+    assert 'label: "Обслуживание"' not in nav
+    assert "<AdminDashboardScreen />" in overview
+    assert "<SystemPanel />" in overview
+    assert 'id="admin-analytics"' in overview
+    for destination in [
+        "participants",
+        "applications",
+        "development",
+        "career",
+        "offices",
+        "projects",
+        "events",
+        "tasks",
+        "offers",
+        "data-rights",
+        "surveys",
+        "tools",
     ]:
-        assert target in maintenance
-    assert 'target === "development"' in admin
-    assert 'target === "career"' in admin
-    assert 'target === "offices"' in admin
-    assert 'target === "surveys"' in admin
-    assert "Портфолио и рекомендации" in maintenance
-    assert "Опросы и обратная связь" in maintenance
+        assert f'"{destination}"' in admin
 
 
 def test_polish_workbook_removes_internal_ids_and_keeps_business_columns() -> None:

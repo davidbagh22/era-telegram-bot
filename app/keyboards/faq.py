@@ -1,11 +1,7 @@
-from aiogram.types import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    ReplyKeyboardRemove,
-)
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 GENERAL_CHAT_EVENTS_TEXT = "📅 События"
-GENERAL_CHAT_PROFILE_TEXT = "👤 Мой профиль"
+GENERAL_CHAT_PROFILE_TEXT = "🔥 Моя ЭРА"
 
 
 def _private_url(bot_username: str, payload: str) -> str:
@@ -33,5 +29,5 @@ def faq_keyboard(bot_username: str | None = None) -> InlineKeyboardMarkup:
 
 
 def general_chat_navigation_keyboard() -> ReplyKeyboardRemove:
-    """Actively clear the retired persistent group dock from Telegram clients."""
+    """Actively remove the old persistent reply keyboard from the general chat."""
     return ReplyKeyboardRemove(remove_keyboard=True)

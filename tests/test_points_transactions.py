@@ -50,7 +50,6 @@ class PointsTransactionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_category_is_derived_from_source_type(self) -> None:
         session = AsyncMock()
-        session.scalar.return_value = None
         session.add = Mock()
 
         await add_points(
@@ -60,7 +59,6 @@ class PointsTransactionTests(unittest.IsolatedAsyncioTestCase):
             reason="Посещение мероприятия",
             approved_by=1,
             source_type="event_attendance",
-            idempotency_key="event:1:user:3",
         )
 
         transaction = session.add.call_args_list[0][0][0]
@@ -68,7 +66,6 @@ class PointsTransactionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_category_falls_back_to_other_for_unknown_source_type(self) -> None:
         session = AsyncMock()
-        session.scalar.return_value = None
         session.add = Mock()
 
         await add_points(
@@ -78,7 +75,6 @@ class PointsTransactionTests(unittest.IsolatedAsyncioTestCase):
             reason="something new",
             approved_by=1,
             source_type="some_future_source_type",
-            idempotency_key="future:1",
         )
 
         transaction = session.add.call_args_list[0][0][0]
@@ -86,7 +82,6 @@ class PointsTransactionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_explicit_category_overrides_source_type_mapping(self) -> None:
         session = AsyncMock()
-        session.scalar.return_value = None
         session.add = Mock()
 
         await add_points(
@@ -97,7 +92,6 @@ class PointsTransactionTests(unittest.IsolatedAsyncioTestCase):
             approved_by=1,
             source_type="event_attendance",
             category=PointCategory.MANUAL,
-            idempotency_key="explicit:1",
         )
 
         transaction = session.add.call_args_list[0][0][0]

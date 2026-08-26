@@ -1,6 +1,5 @@
 from app.services.referral_service import (
-    ACTIVE_REFERRAL_POINTS,
-    FIRST_EVENT_REFERRAL_POINTS,
+    FIRST_ACTIVITY_REFERRAL_POINTS,
     REFERRAL_MONTHLY_CAP,
     REFERRAL_PER_INVITEE_CAP,
     REGISTRATION_REFERRAL_POINTS,
@@ -8,7 +7,7 @@ from app.services.referral_service import (
 )
 
 
-def test_referral_share_text_contains_context_bot_chat_code_and_rewards() -> None:
+def test_referral_share_text_contains_context_bot_code_and_rewards() -> None:
     text = _share_text(
         "181239",
         "https://t.me/ERA_1bot?start=ref_181239",
@@ -16,16 +15,12 @@ def test_referral_share_text_contains_context_bot_chat_code_and_rewards() -> Non
     )
 
     assert text.startswith("Присоединяйся к ЭРА 🔥")
-    assert "реальных проектах" in text
-    assert "Мой вектор" in text
-    assert "выбрать следующий шаг" in text
-    assert "@ERA_1bot" in text
+    assert "через реальные проекты" in text
     assert "https://t.me/ERA_1bot?start=ref_181239" in text
-    assert "https://t.me/+Q6MzTrnR21dmZjgy" in text
     assert "При регистрации введи мой код: 181239" in text
-    assert f"по {REGISTRATION_REFERRAL_POINTS}" in text
-    assert f"по {FIRST_EVENT_REFERRAL_POINTS}" in text
-    assert f"по {ACTIVE_REFERRAL_POINTS}" in text
-    assert f"до {REFERRAL_PER_INVITEE_CAP} баллов" in text
-    assert f"лимит {REFERRAL_MONTHLY_CAP} реферальных баллов в месяц" in text
-    assert "через людей, опыт и реальные действия" in text
+    assert f"+{REGISTRATION_REFERRAL_POINTS}" in text
+    assert f"+{FIRST_ACTIVITY_REFERRAL_POINTS}" in text
+    assert REFERRAL_PER_INVITEE_CAP == 100
+    assert REFERRAL_MONTHLY_CAP == 0
+    assert "не за ссылку и не за вступление в чат" in text
+    assert "после первого подтверждённого участия" in text

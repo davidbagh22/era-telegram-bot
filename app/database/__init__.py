@@ -31,6 +31,7 @@ from app.database.career_models import (  # noqa: F401
     RecommendationRequest,
 )
 from app.database.referral_models import ReferralCode, ReferralRelationship  # noqa: F401
+from app.database.era_pro_models import EraProApplication  # noqa: F401
 from app.database.participation_models import (  # noqa: F401
     ParticipationLifecycle,
     ReactivationCampaign,
@@ -84,6 +85,7 @@ __all__ = [
     "RecommendationRequest",
     "ReferralCode",
     "ReferralRelationship",
+    "EraProApplication",
     "ParticipationLifecycle",
     "ReactivationCampaign",
     "ReactivationDelivery",

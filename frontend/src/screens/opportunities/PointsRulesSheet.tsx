@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { BottomSheet } from "../../components/BottomSheet";
+import { EraProOpportunityCard } from "../../components/EraProOpportunityCard";
 
 const RULE_GROUPS = [
   {
@@ -87,11 +88,10 @@ const RULE_GROUPS = [
   {
     title: "Приглашения",
     items: [
-      "+50 — приглашённый зарегистрирован и одобрен",
-      "+75 — посетил первое мероприятие",
-      "+125 — стал активным участником",
-      "Максимум 250 за человека",
-      "Максимум 750 referral-баллов в месяц",
+      "+30 — приглашённый зарегистрирован и одобрен",
+      "+70 — первое подтверждённое участие приглашённого: мероприятие или вклад в проект",
+      "Максимум 100 баллов за одного приглашённого",
+      "Баллы не начисляются за переход по ссылке или простое вступление в чат",
     ],
   },
 ] as const;
@@ -110,6 +110,8 @@ export function PointsRulesSheet() {
 
   return (
     <>
+      <EraProOpportunityCard />
+
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -124,7 +126,7 @@ export function PointsRulesSheet() {
       <BottomSheet open={open} onClose={() => setOpen(false)} title="Как получать баллы">
         <div style={{ display: "flex", flexDirection: "column", gap: "0.7rem", maxHeight: "68vh", overflowY: "auto", paddingBottom: "0.5rem" }}>
           <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.82rem", lineHeight: 1.45 }}>
-            Баллы показывают подтверждённую активность. Для документов они являются порогом и не списываются.
+            Баллы показывают подтверждённую активность. Для документов и ЭРА PRO они являются порогом и не списываются.
           </p>
 
           {RULE_GROUPS.map((group) => (

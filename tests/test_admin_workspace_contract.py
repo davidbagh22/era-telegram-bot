@@ -10,30 +10,29 @@ class AdminWorkspaceContractTests(unittest.TestCase):
         app = (FRONTEND / "app" / "App.tsx").read_text(encoding="utf-8")
         profile = (FRONTEND / "screens" / "ProfileScreen.tsx").read_text(encoding="utf-8")
         self.assertIn("const [inWorkspace, setInWorkspace] = useState(false)", app)
-        self.assertIn('title="Управление ЭРА"', profile)
+        self.assertIn('isAdmin ? "Управление ЭРА" : "Пространство лидера"', profile)
         self.assertIn("onEnterWorkspace", app)
 
-    def test_control_is_a_dedicated_admin_destination(self) -> None:
+    def test_admin_overview_is_the_single_control_surface(self) -> None:
         nav = (FRONTEND / "components" / "AdminBottomNav.tsx").read_text(encoding="utf-8")
         screen = (FRONTEND / "screens" / "AdminScreen.tsx").read_text(encoding="utf-8")
-        self.assertIn('label: "Контроль"', nav)
-        for marker in [
-            'value: "analytics"',
-            'value: "system"',
-            'value: "maintenance"',
-            "<AdminDashboardScreen />",
-            "<SystemPanel />",
-            "<AdminMaintenanceScreen onOpen={openMaintenanceTarget} />",
-        ]:
-            self.assertIn(marker, screen)
-
-    def test_overview_and_communications_do_not_duplicate_control_tools(self) -> None:
         overview = (FRONTEND / "screens" / "admin" / "AdminOverviewScreen.tsx").read_text(encoding="utf-8")
-        tools = (FRONTEND / "screens" / "admin" / "AdminToolsScreen.tsx").read_text(encoding="utf-8")
-        self.assertNotIn("AdminDashboardScreen", overview)
-        self.assertNotIn("AdminMaintenanceScreen", overview)
-        self.assertNotIn("SystemPanel", tools)
-        self.assertNotIn('value: "system"', tools)
+
+        self.assertNotIn('label: "Контроль"', nav)
+        self.assertNotIn('"control"', nav)
+        self.assertNotIn("ControlSection", screen)
+        self.assertNotIn("AdminMaintenanceScreen", screen)
+        self.assertNotIn("CONTROL_SECTIONS", screen)
+        self.assertIn("<AdminDashboardScreen />", overview)
+        self.assertIn("<SystemPanel />", overview)
+        self.assertIn('id="admin-analytics"', overview)
+
+    def test_admin_navigation_keeps_only_operational_destinations(self) -> None:
+        nav = (FRONTEND / "components" / "AdminBottomNav.tsx").read_text(encoding="utf-8")
+        for label in ["Обзор", "Люди", "Работа", "Связь"]:
+            self.assertIn(f'label: "{label}"', nav)
+        for label in ["Контроль", "Аналитика", "Обслуживание"]:
+            self.assertNotIn(f'label: "{label}"', nav)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import { ApiError, authenticate } from "./client";
 import { getInitData } from "../telegram/webApp";
+import { openMediaRichEditor } from "../utils/mediaRichEditor";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 let tokenPromise: Promise<string> | null = null;
@@ -197,8 +198,29 @@ export const rescheduleMediaContent = (contentId: number, scheduledAt: string) =
     method: "POST",
     body: JSON.stringify({ scheduled_at: scheduledAt }),
   });
-export const publishMediaContentNow = (contentId: number) =>
-  request<MediaPublishResult>(`/api/v1/media/desk/content/${contentId}/publish-now`, { method: "POST" });
+export const patchMediaContent = (contentId: number, payload: {
+  body?: string | null;
+  poll_question?: string | null;
+  poll_options?: string[] | null;
+  rubric?: string | null;
+}) =>
+  request<MediaContent>(`/api/v1/media/desk/content/${contentId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
+export async function publishMediaContentNow(contentId: number): Promise<MediaPublishResult> {
+  const content = (await fetchMediaContentPlan()).find((item) => item.id === contentId);
+  if (content?.kind === "text") {
+    const editedBody = await openMediaRichEditor(content.body ?? "");
+    if (editedBody === null) {
+      return { ok: false, code: "cancelled", message_id: null };
+    }
+    await patchMediaContent(contentId, { body: editedBody });
+  }
+  return request<MediaPublishResult>(`/api/v1/media/desk/content/${contentId}/publish-now`, { method: "POST" });
+}
+
 export const createMediaTasks = (contentId: number, taskKinds: string[]) =>
   request<MediaTask[]>(`/api/v1/media/desk/content/${contentId}/tasks`, {
     method: "POST",

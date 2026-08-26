@@ -38,12 +38,12 @@ class TelegramSafeDeepLinkTests(unittest.TestCase):
 
 
 class ProjectBuilderContractTests(unittest.TestCase):
-    def test_builder_exposes_explanations_and_ai_prompts(self) -> None:
+    def test_builder_exposes_theory_without_auto_ai_answers(self) -> None:
         questions = asyncio.run(read_project_builder_questions())
-        self.assertEqual(len(questions), 16)
+        self.assertEqual(len(questions), 18)
         self.assertTrue(all(question.prompt.strip() for question in questions))
-        self.assertTrue(all(question.ai_hint and question.ai_hint.strip() for question in questions))
-        self.assertTrue(any(question.key == "scenario" and question.ai_hint for question in questions))
+        self.assertTrue(all(question.ai_hint is None for question in questions))
+        self.assertTrue(any(question.key == "scenario" and question.prompt.strip() for question in questions))
 
 
 class GeneralFaqContractTests(unittest.TestCase):
