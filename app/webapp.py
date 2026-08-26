@@ -34,31 +34,12 @@ from app.services.system_scheduler import add_system_jobs
 
 logger = logging.getLogger(__name__)
 
-# Render sets RENDER_GIT_COMMIT automatically for every deploy; no extra
-# render.yaml configuration is needed. Falls back to "unknown" locally
-# or on any host that doesn't set it.
 DEPLOYED_COMMIT = os.environ.get("RENDER_GIT_COMMIT", "unknown")[:7]
-
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
 class _MiniAppStaticFiles(StaticFiles):
-    """Plain StaticFiles sends no Cache-Control at all — browsers fall back
-    to a conditional GET (If-None-Match) on next navigation, which is fine
-    on the open web, but Telegram's in-app WebView is known to skip that
-    revalidation for an already-open Mini App and just keep rendering
-    whatever it loaded first. A user re-opening the Mini App after a deploy
-    could see the old build indefinitely without a full Telegram restart
-    (confirmed live on 2026-08-12 — the new build was already being served
-    correctly by the origin, the client simply never asked again).
-
-    Vite's own output makes the fix cheap: every file under assets/ is
-    content-hashed (a changed file gets a new filename), so those can be
-    cached forever, while index.html — the one file whose *reference* to
-    those hashes actually changes between deploys — must never be cached at
-    all, forcing a revalidation on every load instead of relying on the
-    client's own judgment about when to check again.
-    """
+    """Serve index without cache while keeping content-hashed assets immutable."""
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         response = await super().get_response(path, scope)
@@ -70,33 +51,28 @@ class _MiniAppStaticFiles(StaticFiles):
 
 
 def _mount_frontend(app: FastAPI, dist_dir: Path) -> None:
-    """Serve the built Mini App from the same service, when it was built."""
     if dist_dir.is_dir():
         app.mount("/app", _MiniAppStaticFiles(directory=str(dist_dir), html=True), name="miniapp")
     else:
         logger.warning(
-            "Mini App static files not found at %s; run `npm run build` in "
-            "frontend/ to serve it locally",
+            "Mini App static files not found at %s; run `npm run build` in frontend/ to serve it locally",
             dist_dir,
         )
 
 
-# Private-chat command autocomplete only. In group/supergroup chats the ERA bot
-# intentionally advertises no slash commands: the shared chat uses the pinned FAQ
-# and the persistent Events/Profile dock instead of a second command interface.
+# Telegram is a shell, not a second product navigation. The autocomplete is the
+# same for every private user, including admins: administration lives inside the
+# Mini App, and hidden diagnostic commands do not compete with the three primary
+# actions agreed for the bot.
 USER_COMMANDS = [
     BotCommand(command="start", description="Запустить ЭРА"),
     BotCommand(command="navigation", description="Навигация по ЭРА"),
     BotCommand(command="contact", description="Связь с командой"),
 ]
-
-ADMIN_COMMANDS = USER_COMMANDS + [
-    BotCommand(command="version", description="Версия запущенного бота"),
-]
+ADMIN_COMMANDS = USER_COMMANDS
 
 
 def _chat_menu_button(miniapp_url: str) -> MenuButtonWebApp | MenuButtonDefault:
-    """Persistent Mini App button in the bot's private chat."""
     if not miniapp_url:
         return MenuButtonDefault()
     return MenuButtonWebApp(text="Открыть ЭРА", web_app=WebAppInfo(url=miniapp_url))
@@ -109,14 +85,7 @@ def _menu_button_matches(expected, actual) -> bool:
 
 
 async def _configure_command_scopes(bot, settings) -> None:
-    """Keep slash autocomplete private and remove it from every group scope.
-
-    Clearing the default scope is important: Telegram falls back from a group
-    scope to default commands when no narrower list exists. Private chats then
-    get an explicit private scope, while configured ERA groups receive an
-    explicit empty chat scope as extra protection against stale BotFather or
-    previous-release command lists.
-    """
+    """Advertise only /start, /navigation and /contact in private chats."""
     await bot.set_my_commands([])
     await bot.set_my_commands(USER_COMMANDS, scope=BotCommandScopeAllPrivateChats())
     await bot.set_my_commands([], scope=BotCommandScopeAllGroupChats())
@@ -129,16 +98,10 @@ async def _configure_command_scopes(bot, settings) -> None:
     }
     for chat_id in group_chat_ids:
         if chat_id:
-            await bot.set_my_commands(
-                [],
-                scope=BotCommandScopeChat(chat_id=int(chat_id)),
-            )
+            await bot.set_my_commands([], scope=BotCommandScopeChat(chat_id=int(chat_id)))
 
     for admin_id in settings.admin_ids:
-        await bot.set_my_commands(
-            ADMIN_COMMANDS,
-            scope=BotCommandScopeChat(chat_id=admin_id),
-        )
+        await bot.set_my_commands(USER_COMMANDS, scope=BotCommandScopeChat(chat_id=admin_id))
 
 
 @asynccontextmanager
@@ -195,15 +158,10 @@ async def lifespan(app: FastAPI):
             menu_button_verified = _menu_button_matches(expected_menu_button, actual_menu_button)
             me = await bot.get_me()
             if menu_button_verified:
-                logger.info(
-                    "Chat menu button verified: bot=@%s type=%s",
-                    me.username,
-                    actual_menu_button.type,
-                )
+                logger.info("Chat menu button verified: bot=@%s type=%s", me.username, actual_menu_button.type)
             else:
                 logger.error(
-                    "Chat menu button mismatch: bot=@%s expected type=%s got type=%s "
-                    "— Telegram did not store the configuration we sent",
+                    "Chat menu button mismatch: bot=@%s expected type=%s got type=%s — Telegram did not store the configuration we sent",
                     me.username,
                     expected_menu_button.type,
                     actual_menu_button.type,
@@ -256,9 +214,7 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     if request.url.scheme == "https":
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=63072000; includeSubDomains"
-        )
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     return response
 
 
@@ -304,9 +260,5 @@ async def telegram_webhook(
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
     payload = await request.json()
     update = Update.model_validate(payload, context={"bot": request.app.state.bot})
-    background_tasks.add_task(
-        request.app.state.dispatcher.feed_update,
-        request.app.state.bot,
-        update,
-    )
+    background_tasks.add_task(request.app.state.dispatcher.feed_update, request.app.state.bot, update)
     return {"ok": True}
