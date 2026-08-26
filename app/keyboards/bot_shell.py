@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.keyboards.participant import (
     main_inline_keyboard as legacy_main_inline_keyboard,
     navigation_guide_keyboard as legacy_navigation_guide_keyboard,
 )
-from app.utils.deep_links import miniapp_admin_url, miniapp_leader_url
 
 
 def main_inline_keyboard(
@@ -14,45 +13,18 @@ def main_inline_keyboard(
     admin: bool = False,
     miniapp_url: str = "",
 ) -> InlineKeyboardMarkup:
-    """Primary bot shell without duplicating the Mini App workspace."""
-    base = legacy_main_inline_keyboard(
+    """Primary bot shell: gateway, not a second application.
+
+    With Mini App configured the authoritative participant keyboard already
+    contains exactly three actions: 🔥 Открыть ЭРА, 🧭 Навигация and 💬 Связь.
+    Admin/leader tools and Мой вектор live inside the app/navigation guide, so
+    the /start surface never grows into a parallel dashboard again.
+    """
+    return legacy_main_inline_keyboard(
         privileged=privileged,
         admin=admin,
         miniapp_url=miniapp_url,
     )
-    rows = [list(row) for row in base.inline_keyboard]
-    vector_row = [InlineKeyboardButton(text="🧭 Мой вектор", callback_data="vector:home")]
-
-    if miniapp_url:
-        insert_at = 1 if rows else 0
-        rows.insert(insert_at, vector_row)
-        insert_at += 1
-        if admin:
-            rows.insert(
-                insert_at,
-                [
-                    InlineKeyboardButton(
-                        text="⚙️ Управление ЭРА",
-                        web_app=WebAppInfo(url=miniapp_admin_url(miniapp_url)),
-                    )
-                ],
-            )
-        elif privileged:
-            rows.insert(
-                insert_at,
-                [
-                    InlineKeyboardButton(
-                        text="🧭 Режим лидера",
-                        web_app=WebAppInfo(url=miniapp_leader_url(miniapp_url)),
-                    )
-                ],
-            )
-    else:
-        # Emergency/local mode keeps the old bot tree intact and adds only the
-        # Telegram-native self-development entry.
-        rows.insert(max(0, len(rows) - 1), vector_row)
-
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def navigation_guide_keyboard(
@@ -66,6 +38,8 @@ def navigation_guide_keyboard(
         privileged=privileged,
     )
     rows = [list(row) for row in base.inline_keyboard]
+    # My Vector remains a contextual/deep-link destination, not a fourth main
+    # bot action or sixth participant bottom-nav item.
     rows.insert(0, [InlineKeyboardButton(text="🧭 Мой вектор", callback_data="vector:home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
