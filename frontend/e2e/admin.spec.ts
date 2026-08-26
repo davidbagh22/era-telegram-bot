@@ -13,13 +13,31 @@ async function enterAdminWorkspace(page: import("@playwright/test").Page) {
   await expect(profileTab(page)).toBeVisible();
   await profileTab(page).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
-  await expect(page.getByText("Управление", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "ЭРА сейчас — вся картина сразу" })).toBeVisible();
 }
 
-test("admin enters separate management workspace and approves a pending applicant", async ({ page }) => {
+test("admin lands directly on one command center with analytics and operations", async ({ page }) => {
   await enterAdminWorkspace(page);
-  await page.getByRole("button", { name: "Люди" }).click();
-  await page.getByRole("button", { name: "Заявки" }).click();
+
+  await expect(page.getByRole("heading", { name: "Главные показатели" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Требует внимания" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Все рабочие зоны" })).toBeVisible();
+  await expect(page.getByText("Эффективность", { exact: true })).toBeVisible();
+  await expect(page.getByText("Пульс", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Что делать дальше" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Открыть или выгрузить" })).toBeVisible();
+
+  // Regression: analytics/system/maintenance must never become a second menu
+  // layer again. They are embedded into the command center.
+  await expect(page.getByRole("button", { name: "Контроль", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Аналитика", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Обслуживание", exact: true })).toHaveCount(0);
+});
+
+test("admin opens pending applications directly from command center and approves one", async ({ page }) => {
+  await enterAdminWorkspace(page);
+  await page.getByRole("button", { name: /Новые заявки/ }).click();
+  await expect(page.getByRole("heading", { name: "Новые заявки" })).toBeVisible();
 
   const application = page.locator(".era-card", { hasText: "E2E Pending Applicant" });
   await expect(application).toBeVisible();
@@ -32,26 +50,17 @@ test("admin enters separate management workspace and approves a pending applican
 
   await application.getByRole("button", { name: "Одобрить" }).click();
   await expect(page.locator(".era-card", { hasText: "E2E Pending Applicant" })).not.toBeVisible();
+  await page.getByRole("button", { name: "← Пульт ЭРА" }).click();
+  await expect(page.getByRole("heading", { name: "ЭРА сейчас — вся картина сразу" })).toBeVisible();
 });
 
-test("admin control has analytics system and maintenance as separate destinations", async ({ page }) => {
+test("embedded analytics opens real records without a separate analytics window", async ({ page }) => {
   await enterAdminWorkspace(page);
-  await page.getByRole("button", { name: "Контроль" }).click();
-  await expect(page.getByRole("button", { name: /Аналитика/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Состояние системы/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Обслуживание/ })).toBeVisible();
-});
-
-test("analytics shows ERA efficiency, Pulse and opens real records behind metrics", async ({ page }) => {
-  await enterAdminWorkspace(page);
-  await page.getByRole("button", { name: "Контроль" }).click();
-  await page.getByRole("button", { name: /Аналитика/ }).click();
+  await page.getByRole("button", { name: "Вся аналитика ↓" }).click();
 
   await expect(page.getByText("Эффективность", { exact: true })).toBeVisible();
   await expect(page.getByText("Пульс", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Здоровье организации/ })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Что делать дальше" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Открыть или выгрузить" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Полный отчёт ЭРА/ })).toBeVisible();
 
   const participantsMetric = page.getByRole("button", { name: /Участники.*Люди, статусы и динамика базы/ });
@@ -65,15 +74,23 @@ test("analytics shows ERA efficiency, Pulse and opens real records behind metric
   await expect(page.locator(".era-card").filter({ hasText: /participant|admin|leader|activist/i }).first()).toBeVisible();
 });
 
-test("overview KPI opens the exact underlying rows instead of a generic section", async ({ page }) => {
+test("overview KPI opens exact underlying rows instead of a generic people menu", async ({ page }) => {
   await enterAdminWorkspace(page);
-  await expect(page.getByRole("heading", { name: /Вот что происходит в ЭРА сегодня/ })).toBeVisible();
 
-  const currentRoster = page.getByRole("button", { name: /Участники.*Точный подтверждённый состав/ });
+  const currentRoster = page.getByRole("button", { name: /Участники.*Подтверждённый состав/ });
   await expect(currentRoster).toBeVisible();
   await currentRoster.click();
 
   await expect(page.getByRole("heading", { name: "Текущий состав" })).toBeVisible();
   await expect(page.getByText(/Список построен тем же правилом, что и KPI на главной/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Скачать эти .* строк в Excel/ })).toBeVisible();
+});
+
+test("technical diagnostics are inline and do not leave the admin home", async ({ page }) => {
+  await enterAdminWorkspace(page);
+  const diagnostics = page.getByText("Техническая диагностика · API / Bot / Telegram / DB / Backup", { exact: true });
+  await diagnostics.scrollIntoViewIfNeeded();
+  await diagnostics.click();
+  await expect(page.getByText(/API|База данных|Backup/).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "ЭРА сейчас — вся картина сразу" })).toBeVisible();
 });
