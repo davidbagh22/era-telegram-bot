@@ -160,7 +160,8 @@ async def ensure_general_chat_writable(bot: Bot, settings: Settings, session_fac
     for user in users:
         try:
             member = await bot.get_chat_member(chat_id=chat_id, user_id=user.telegram_id)
-            status = str(getattr(member, "status", "")).casefold()
+            raw_status = getattr(member, "status", "")
+            status = str(getattr(raw_status, "value", raw_status)).casefold()
             if status not in {"member", "administrator", "creator", "restricted"}:
                 continue
             if await unrestrict_member(bot, chat_id, user.telegram_id):
