@@ -141,6 +141,39 @@ async def remove_rejected_member(bot: Bot, chat_id: int, user_id: int) -> bool:
         logger.exception("Could not remove rejected member chat=%s user=%s", chat_id, user_id)
         return False
 
+async def ensure_general_chat_writable(bot: Bot, settings: Settings, session_factory) -> tuple[int, int]:
+    """Make the general chat writable for every existing Telegram member.
+
+    This is deliberately independent of application status, role, department,
+    archive state, or other profile permissions. Join/access rules are kept
+    separate; this job only repairs Telegram's send permissions for people who
+    are already members of the general chat.
+    """
+    chat_id = getattr(settings, "general_chat_id", None)
+    if not chat_id:
+        return 0, 0
+
+    async with session_factory() as session:
+        users = (await session.scalars(select(User))).all()
+
+    fixed = failed = 0
+    for user in users:
+        try:
+            member = await bot.get_chat_member(chat_id=chat_id, user_id=user.telegram_id)
+            status = str(getattr(member, "status", "")).casefold()
+            if status not in {"member", "administrator", "creator", "restricted"}:
+                continue
+            if await unrestrict_member(bot, chat_id, user.telegram_id):
+                fixed += 1
+            else:
+                failed += 1
+        except TelegramAPIError:
+            # The user may simply not be a member of the general chat anymore.
+            # Do not treat that as a write-permission failure.
+            continue
+
+    return fixed, failed
+
 async def notify_user(bot: Bot, user_id: int, text: str) -> None:
     try:
         await bot.send_message(user_id, text)
