@@ -7,6 +7,7 @@ from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import Settings
+from app.services.chat_access_service import ensure_general_chat_writable
 from app.services.chat_faq_service import ensure_general_faq_pinned
 from app.services.community_mission_service import process_task_squad_notifications
 from app.services.community_verification_jobs import complete_verification_campaigns_job
@@ -194,6 +195,17 @@ def add_system_jobs(
         hours=12,
         args=(bot, settings, session_factory),
         id="general-chat-faq-pin",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
+    )
+    scheduler.add_job(
+        ensure_general_chat_writable,
+        "interval",
+        minutes=1,
+        args=(bot, settings, session_factory),
+        id="general-chat-writable-access",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
