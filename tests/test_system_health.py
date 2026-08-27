@@ -128,6 +128,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "community-verification-expiry",
                 "my-vector-monthly-reminders",
                 "general-chat-faq-pin",
+                "general-chat-writable-access",
                 "leadership-weekly-pulse-open",
                 "leadership-weekly-pulse-due",
             ],
