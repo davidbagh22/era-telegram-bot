@@ -42,7 +42,8 @@ class ProjectBuilderContractTests(unittest.TestCase):
         questions = asyncio.run(read_project_builder_questions())
         self.assertEqual(len(questions), 18)
         self.assertTrue(all(question.prompt.strip() for question in questions))
-        self.assertTrue(all(question.ai_hint is None for question in questions))
+        # The current contract intentionally exposes prompts only; AI hints were removed.
+        self.assertFalse(any(hasattr(question, "ai_hint") for question in questions))
         self.assertTrue(any(question.key == "scenario" and question.prompt.strip() for question in questions))
 
 
@@ -67,6 +68,7 @@ class GeneralFaqContractTests(unittest.TestCase):
         add_system_jobs(scheduler, SimpleNamespace(), settings, lambda: None)
         jobs = {job.id for job in scheduler.get_jobs()}
         self.assertIn("general-chat-faq-pin", jobs)
+        self.assertIn("general-chat-writable-access", jobs)
         self.assertIn("configured-event-reminders", jobs)
         self.assertIn("event-wizard-task-sync", jobs)
 
