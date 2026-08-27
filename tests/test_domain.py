@@ -33,7 +33,8 @@ class DomainTests(unittest.TestCase):
             ],
         )
         self.assertTrue(all(question.prompt.strip() for question in PROJECT_QUESTIONS))
-        self.assertTrue(all(question.ai_hint is None for question in PROJECT_QUESTIONS))
+        # Questions intentionally contain no auto-generated AI answers/hints.
+        self.assertFalse(any(hasattr(question, "ai_hint") for question in PROJECT_QUESTIONS))
 
     def test_project_document_contains_all_constructor_sections(self) -> None:
         document = render_project_document(
