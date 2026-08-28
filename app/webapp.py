@@ -28,37 +28,20 @@ from app.config import get_settings
 from app.database.session import create_engine_and_sessionmaker
 from app.request_context import RequestIDLogFilter, new_request_id, request_id_var
 from app.services.ai_service import AIService
+from app.services.chat_access_service import ensure_general_chat_writable
 from app.services.scheduler_service import create_scheduler
 from app.services.seed_service import seed_reference_data
 from app.services.system_scheduler import add_system_jobs
 
 logger = logging.getLogger(__name__)
 
-# Render sets RENDER_GIT_COMMIT automatically for every deploy; no extra
-# render.yaml configuration is needed. Falls back to "unknown" locally
-# or on any host that doesn't set it.
 DEPLOYED_COMMIT = os.environ.get("RENDER_GIT_COMMIT", "unknown")[:7]
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
 class _MiniAppStaticFiles(StaticFiles):
-    """Plain StaticFiles sends no Cache-Control at all — browsers fall back
-    to a conditional GET (If-None-Match) on next navigation, which is fine
-    on the open web, but Telegram's in-app WebView is known to skip that
-    revalidation for an already-open Mini App and just keep rendering
-    whatever it loaded first. A user re-opening the Mini App after a deploy
-    could see the old build indefinitely without a full Telegram restart
-    (confirmed live on 2026-08-12 — the new build was already being served
-    correctly by the origin, the client simply never asked again).
-
-    Vite's own output makes the fix cheap: every file under assets/ is
-    content-hashed (a changed file gets a new filename), so those can be
-    cached forever, while index.html — the one file whose *reference* to
-    those hashes actually changes between deploys — must never be cached at
-    all, forcing a revalidation on every load instead of relying on the
-    client's own judgment about when to check again.
-    """
+    """Serve hashed assets with long cache lifetime and index.html without caching."""
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         response = await super().get_response(path, scope)
@@ -81,9 +64,6 @@ def _mount_frontend(app: FastAPI, dist_dir: Path) -> None:
         )
 
 
-# Private-chat command autocomplete only. In group/supergroup chats the ERA bot
-# intentionally advertises no slash commands: the shared chat uses the pinned FAQ
-# and the persistent Events/Profile dock instead of a second command interface.
 USER_COMMANDS = [
     BotCommand(command="start", description="Запустить ЭРА"),
     BotCommand(command="navigation", description="Навигация по ЭРА"),
@@ -109,14 +89,7 @@ def _menu_button_matches(expected, actual) -> bool:
 
 
 async def _configure_command_scopes(bot, settings) -> None:
-    """Keep slash autocomplete private and remove it from every group scope.
-
-    Clearing the default scope is important: Telegram falls back from a group
-    scope to default commands when no narrower list exists. Private chats then
-    get an explicit private scope, while configured ERA groups receive an
-    explicit empty chat scope as extra protection against stale BotFather or
-    previous-release command lists.
-    """
+    """Keep slash autocomplete private and remove it from every group scope."""
     await bot.set_my_commands([])
     await bot.set_my_commands(USER_COMMANDS, scope=BotCommandScopeAllPrivateChats())
     await bot.set_my_commands([], scope=BotCommandScopeAllGroupChats())
@@ -129,16 +102,10 @@ async def _configure_command_scopes(bot, settings) -> None:
     }
     for chat_id in group_chat_ids:
         if chat_id:
-            await bot.set_my_commands(
-                [],
-                scope=BotCommandScopeChat(chat_id=int(chat_id)),
-            )
+            await bot.set_my_commands([], scope=BotCommandScopeChat(chat_id=int(chat_id)))
 
     for admin_id in settings.admin_ids:
-        await bot.set_my_commands(
-            ADMIN_COMMANDS,
-            scope=BotCommandScopeChat(chat_id=admin_id),
-        )
+        await bot.set_my_commands(ADMIN_COMMANDS, scope=BotCommandScopeChat(chat_id=admin_id))
 
 
 @asynccontextmanager
@@ -164,6 +131,12 @@ async def lifespan(app: FastAPI):
     app.state.session_factory = session_factory
     app.state.bot = bot
     app.state.dispatcher = dispatcher
+
+    # IMPORTANT: Telegram's default group permissions are authoritative for
+    # everyone in the general chat. Open writing on every deployment so no
+    # role/status/registration logic can leave the chat read-only.
+    fixed, failed = await ensure_general_chat_writable(bot, settings, session_factory)
+    logger.info("General chat write permissions enforced: fixed=%s failed=%s", fixed, failed)
 
     recovery_marker = "era:recovery:fsm-global-v2"
     redis_client = dispatcher.storage.redis
@@ -256,9 +229,7 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     if request.url.scheme == "https":
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=63072000; includeSubDomains"
-        )
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     return response
 
 
