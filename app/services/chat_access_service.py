@@ -30,9 +30,6 @@ class ChatAccessDecision:
 def writable_permissions() -> ChatPermissions:
     return ChatPermissions(can_send_messages=True, can_send_audios=True, can_send_documents=True, can_send_photos=True, can_send_videos=True, can_send_video_notes=True, can_send_voice_notes=True, can_send_polls=True, can_send_other_messages=True, can_add_web_page_previews=True)
 
-def restricted_permissions() -> ChatPermissions:
-    return ChatPermissions(can_send_messages=False, can_send_audios=False, can_send_documents=False, can_send_photos=False, can_send_videos=False, can_send_video_notes=False, can_send_voice_notes=False, can_send_polls=False, can_send_other_messages=False, can_add_web_page_previews=False)
-
 def chat_key_for_id(settings: Settings, chat_id: int) -> str | None:
     for chat_key, setting_key in CHAT_SETTING_KEYS.items():
         if getattr(settings, setting_key, None) == chat_id:
@@ -116,20 +113,12 @@ async def decline_join_request(bot: Bot, chat_id: int, user_id: int) -> bool:
         logger.exception("Could not decline join request chat=%s user=%s", chat_id, user_id)
         return False
 
-async def restrict_member(bot: Bot, chat_id: int, user_id: int) -> bool:
-    try:
-        await bot.restrict_chat_member(chat_id=chat_id, user_id=user_id, permissions=restricted_permissions())
-        return True
-    except TelegramAPIError:
-        logger.exception("Could not restrict member chat=%s user=%s", chat_id, user_id)
-        return False
-
 async def unrestrict_member(bot: Bot, chat_id: int, user_id: int) -> bool:
     try:
         await bot.restrict_chat_member(chat_id=chat_id, user_id=user_id, permissions=writable_permissions())
         return True
     except TelegramAPIError:
-        logger.exception("Could not unrestrict member chat=%s user=%s", chat_id, user_id)
+        logger.exception("Could not restore write permissions chat=%s user=%s", chat_id, user_id)
         return False
 
 async def remove_rejected_member(bot: Bot, chat_id: int, user_id: int) -> bool:
@@ -146,17 +135,14 @@ async def ensure_general_chat_writable(bot: Bot, settings: Settings, session_fac
 
     The general chat never uses role, application status, department or
     activity level to decide whether a member may send messages. The default
-    Telegram permissions are therefore explicitly writable, while known
-    members with an individual restriction are repaired as well.
+    Telegram permissions are explicitly writable, while known members with
+    an individual restriction are repaired as well.
     """
     chat_id = getattr(settings, "general_chat_id", None)
     if not chat_id:
         return 0, 0
 
     fixed = failed = 0
-
-    # This is the critical part: it changes Telegram's DEFAULT permissions,
-    # so new members are not born with a read-only restriction.
     try:
         await bot.set_chat_permissions(chat_id=chat_id, permissions=writable_permissions())
         fixed += 1
@@ -167,7 +153,6 @@ async def ensure_general_chat_writable(bot: Bot, settings: Settings, session_fac
     async with session_factory() as session:
         users = (await session.scalars(select(User))).all()
 
-    # Repair explicit per-user restrictions for all known users already in chat.
     for user in users:
         try:
             member = await bot.get_chat_member(chat_id=chat_id, user_id=user.telegram_id)
