@@ -142,21 +142,32 @@ async def remove_rejected_member(bot: Bot, chat_id: int, user_id: int) -> bool:
         return False
 
 async def ensure_general_chat_writable(bot: Bot, settings: Settings, session_factory) -> tuple[int, int]:
-    """Make the general chat writable for every existing Telegram member.
+    """Keep the general chat writable for everyone.
 
-    This is deliberately independent of application status, role, department,
-    archive state, or other profile permissions. Join/access rules are kept
-    separate; this job only repairs Telegram's send permissions for people who
-    are already members of the general chat.
+    The general chat never uses role, application status, department or
+    activity level to decide whether a member may send messages. The default
+    Telegram permissions are therefore explicitly writable, while known
+    members with an individual restriction are repaired as well.
     """
     chat_id = getattr(settings, "general_chat_id", None)
     if not chat_id:
         return 0, 0
 
+    fixed = failed = 0
+
+    # This is the critical part: it changes Telegram's DEFAULT permissions,
+    # so new members are not born with a read-only restriction.
+    try:
+        await bot.set_chat_permissions(chat_id=chat_id, permissions=writable_permissions())
+        fixed += 1
+    except TelegramAPIError:
+        logger.exception("Could not set default writable permissions chat=%s", chat_id)
+        failed += 1
+
     async with session_factory() as session:
         users = (await session.scalars(select(User))).all()
 
-    fixed = failed = 0
+    # Repair explicit per-user restrictions for all known users already in chat.
     for user in users:
         try:
             member = await bot.get_chat_member(chat_id=chat_id, user_id=user.telegram_id)
@@ -169,8 +180,6 @@ async def ensure_general_chat_writable(bot: Bot, settings: Settings, session_fac
             else:
                 failed += 1
         except TelegramAPIError:
-            # The user may simply not be a member of the general chat anymore.
-            # Do not treat that as a write-permission failure.
             continue
 
     return fixed, failed
