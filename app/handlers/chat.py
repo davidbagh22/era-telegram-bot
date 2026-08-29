@@ -15,6 +15,7 @@ from app.keyboards.faq import GENERAL_CHAT_EVENTS_TEXT, GENERAL_CHAT_PROFILE_TEX
 from app.repositories.users import get_user_by_telegram_id
 from app.services.audit_service import audit
 from app.services.chat_access_service import access_message, approve_join_request, chat_key_for_id, check_chat_access, close_join_request, decline_join_request, notify_user, remember_join_request
+from app.services.community_welcome_service import build_general_chat_welcome
 from app.services.notification_service import safe_send
 from app.utils import texts
 from app.utils.constants import PRIVILEGED_ROLES
@@ -157,11 +158,16 @@ async def welcome_members(message: Message, bot: Bot, settings: Settings, sessio
     greeting = await session.scalar(select(ChatGreeting).where(ChatGreeting.chat_key == chat_key))
     if greeting is not None and not greeting.is_enabled:
         return
-    fallback = "Добро пожаловать в ЭРА.\n\nЗдесь общаются участники сообщества, появляются анонсы, проекты и возможности.\n\nРегистрация, баллы, портфолио и личный кабинет — в личном чате с ботом."
-    body = (greeting.text if greeting is not None else fallback).replace("{name}", ", ".join(welcomed))
+
     if chat_key == "general":
+        # General chat uses a dedicated 1000-combination welcome rotation.
+        # The admin toggle still controls whether greetings are enabled, but
+        # the body no longer repeats one static database string.
+        body = build_general_chat_welcome(welcomed)
         markup = general_chat_navigation_keyboard()
     else:
+        fallback = "Добро пожаловать в ЭРА.\n\nЗдесь общаются участники сообщества, появляются анонсы, проекты и возможности.\n\nРегистрация, баллы, портфолио и личный кабинет — в личном чате с ботом."
+        body = (greeting.text if greeting is not None else fallback).replace("{name}", ", ".join(welcomed))
         markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Открыть бот", url=f"https://t.me/{me.username}?start=registration")]])
     await message.answer(body, reply_markup=markup)
 
