@@ -133,9 +133,6 @@ async def lifespan(app: FastAPI):
     app.state.bot = bot
     app.state.dispatcher = dispatcher
 
-    # Startup permission repair is intentionally isolated from all publishing:
-    # this function has no send/edit/pin path, so deployments cannot create a
-    # new public bot promo while restoring write permissions.
     fixed, failed = await enforce_general_chat_writable(bot, settings, session_factory)
     logger.info("General chat write permissions enforced: fixed=%s failed=%s", fixed, failed)
 
@@ -155,6 +152,18 @@ async def lifespan(app: FastAPI):
 
     app.state.ai_service = AIService(settings)
     scheduler = create_scheduler(bot, settings, session_factory)
+
+    # Legacy editorial automation had a morning + evening slot and a recovery
+    # loop. It is deliberately removed from the live scheduler. The only public
+    # general-chat editorial cadence is now run_daily_public_content: one quote
+    # per Moscow calendar day at a deterministic varying time in 09:00–22:00.
+    for legacy_job_id in (
+        "general-content-morning",
+        "general-content-evening",
+        "general-content-recovery",
+    ):
+        scheduler.remove_job(legacy_job_id)
+
     add_system_jobs(scheduler, bot, settings, session_factory)
     scheduler.start()
     app.state.scheduler = scheduler
