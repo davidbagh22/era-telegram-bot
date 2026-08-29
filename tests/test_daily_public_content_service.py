@@ -49,3 +49,18 @@ def test_scheduler_uses_message_free_permission_job_and_daily_content():
     assert "enforce_general_chat_writable" in source
     assert "run_daily_public_content" in source
     assert "ensure_general_chat_writable" not in source
+    assert "ensure_general_faq_pinned" not in source
+
+
+def test_startup_permission_repair_cannot_use_legacy_publisher():
+    source = open("app/webapp.py", encoding="utf-8").read()
+    assert "from app.services.chat_permissions_service import enforce_general_chat_writable" in source
+    assert "ensure_general_chat_writable" not in source
+
+
+def test_startup_pin_refresh_never_creates_registration_promo():
+    source = open("app/services/general_chat_menu_service.py", encoding="utf-8").read()
+    restore_block = source.split("async def _restore_registration_pin", 1)[1].split("async def _ensure_persistent_navigation", 1)[0]
+    assert "send_message" not in restore_block
+    assert "pin_chat_message" not in restore_block
+    assert "edit_message_text" in restore_block
