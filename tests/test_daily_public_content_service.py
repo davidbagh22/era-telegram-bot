@@ -1,6 +1,6 @@
 from app.services.daily_public_content_service import (
     CHANNEL_POSTS,
-    CHAT_QUOTES,
+    CHANNEL_QUOTES,
     WINDOW_END,
     WINDOW_START,
     scheduled_minute,
@@ -10,7 +10,7 @@ from app.services.daily_public_content_service import (
 
 def test_daily_schedule_always_stays_in_moscow_window():
     for day in ("2026-08-29", "2026-08-30", "2027-01-01", "2027-12-31"):
-        for kind in ("chat_quote", "channel_post"):
+        for kind in ("channel_quote", "channel_post"):
             minute = scheduled_minute(day, kind)
             assert WINDOW_START <= minute < WINDOW_END
             assert minute % 5 == 0
@@ -18,23 +18,32 @@ def test_daily_schedule_always_stays_in_moscow_window():
 
 def test_daily_text_is_stable_for_one_calendar_day():
     day = "2026-08-29"
-    assert text_for_day(day, "chat_quote") == text_for_day(day, "chat_quote")
+    assert text_for_day(day, "channel_quote") == text_for_day(day, "channel_quote")
     assert text_for_day(day, "channel_post") == text_for_day(day, "channel_post")
 
 
 def test_content_banks_are_human_and_varied():
-    assert len(CHAT_QUOTES) >= 30
+    assert len(CHANNEL_QUOTES) >= 30
     assert len(CHANNEL_POSTS) >= 30
-    assert len(set(CHAT_QUOTES)) == len(CHAT_QUOTES)
+    assert len(set(CHANNEL_QUOTES)) == len(CHANNEL_QUOTES)
     assert len(set(CHANNEL_POSTS)) == len(CHANNEL_POSTS)
-    assert all("@ERA_1bot" not in item for item in CHAT_QUOTES)
+    assert all("@ERA_1bot" not in item for item in CHANNEL_QUOTES)
     assert all("@ERA_1bot" not in item for item in CHANNEL_POSTS)
 
 
-def test_delivery_keys_are_day_scoped_in_source():
+def test_daily_public_content_never_targets_general_chat():
+    source = open("app/services/daily_public_content_service.py", encoding="utf-8").read()
+    run_block = source.split("async def run_daily_public_content", 1)[1]
+    assert "settings.general_chat_id" not in run_block
+    assert 'for kind in ("channel_quote", "channel_post")' in run_block
+    assert "target = _channel_target(settings)" in run_block
+
+
+def test_delivery_keys_are_day_scoped_and_claimed_before_send():
     source = open("app/services/daily_public_content_service.py", encoding="utf-8").read()
     assert 'key=f"era-daily:{kind}:{day}"' in source
-    assert 'if row and row.status == "sent"' in source
+    assert 'row.status in {"sent", "claimed", "uncertain"}' in source
+    assert source.index("await session.commit()") < source.index("await bot.send_message")
 
 
 def test_recurring_chat_permission_job_cannot_publish_messages():
@@ -73,3 +82,9 @@ def test_startup_pin_refresh_never_creates_registration_promo():
     assert "send_message" not in restore_block
     assert "pin_chat_message" not in restore_block
     assert "edit_message_text" in restore_block
+
+
+def test_legacy_registration_pin_helper_cannot_create_duplicate_message():
+    source = open("app/services/chat_access_service.py", encoding="utf-8").read()
+    block = source.split("async def ensure_general_registration_pin", 1)[1].split("async def ensure_general_chat_writable", 1)[0]
+    assert "send_message" not in block
