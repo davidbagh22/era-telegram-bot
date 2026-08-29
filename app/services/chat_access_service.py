@@ -381,10 +381,8 @@ async def ensure_general_chat_writable(
 ) -> tuple[int, int]:
     """Keep the general chat writable for everyone.
 
-    The general chat never uses role, application status, department or
-    activity level to decide whether a member may send messages. The default
-    Telegram permissions are explicitly writable, while known members with
-    an individual restriction are repaired as well.
+    This recurring maintenance job changes Telegram permissions only. It must
+    never publish, edit or pin messages in the public chat.
     """
     chat_id = getattr(settings, "general_chat_id", None)
     if not chat_id:
@@ -420,10 +418,6 @@ async def ensure_general_chat_writable(
                 failed += 1
         except TelegramAPIError:
             continue
-
-    pin_ok = await ensure_general_registration_pin(bot, chat_id, session_factory)
-    fixed += int(pin_ok)
-    failed += int(not pin_ok)
 
     return fixed, failed
 
