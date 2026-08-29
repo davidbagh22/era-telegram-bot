@@ -28,7 +28,7 @@ from app.config import get_settings
 from app.database.session import create_engine_and_sessionmaker
 from app.request_context import RequestIDLogFilter, new_request_id, request_id_var
 from app.services.ai_service import AIService
-from app.services.chat_access_service import ensure_general_chat_writable
+from app.services.chat_permissions_service import enforce_general_chat_writable
 from app.services.general_chat_menu_service import ensure_general_chat_miniapp_menu
 from app.services.scheduler_service import create_scheduler
 from app.services.seed_service import seed_reference_data
@@ -133,10 +133,10 @@ async def lifespan(app: FastAPI):
     app.state.bot = bot
     app.state.dispatcher = dispatcher
 
-    # IMPORTANT: Telegram's default group permissions are authoritative for
-    # everyone in the general chat. Open writing on every deployment so no
-    # role/status/registration logic can leave the chat read-only.
-    fixed, failed = await ensure_general_chat_writable(bot, settings, session_factory)
+    # Startup permission repair is intentionally isolated from all publishing:
+    # this function has no send/edit/pin path, so deployments cannot create a
+    # new public bot promo while restoring write permissions.
+    fixed, failed = await enforce_general_chat_writable(bot, settings, session_factory)
     logger.info("General chat write permissions enforced: fixed=%s failed=%s", fixed, failed)
 
     menu_ok = await ensure_general_chat_miniapp_menu(
