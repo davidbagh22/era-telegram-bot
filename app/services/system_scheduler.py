@@ -8,7 +8,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import Settings
 from app.services.chat_access_service import ensure_general_chat_writable
-from app.services.chat_faq_service import ensure_general_faq_pinned
 from app.services.community_mission_service import process_task_squad_notifications
 from app.services.community_verification_jobs import complete_verification_campaigns_job
 from app.services.development_notification_service import send_monthly_development_reminders
@@ -189,17 +188,9 @@ def add_system_jobs(
         max_instances=1,
         coalesce=True,
     )
-    scheduler.add_job(
-        ensure_general_faq_pinned,
-        "interval",
-        hours=12,
-        args=(bot, settings, session_factory),
-        id="general-chat-faq-pin",
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-        next_run_time=now,
-    )
+    # The general-chat bot/FAQ card is intentionally NOT scheduled.
+    # It is published only by an explicit admin action. Re-publishing it on a
+    # timer caused recurring bot messages in the public community chat.
     scheduler.add_job(
         ensure_general_chat_writable,
         "interval",
