@@ -58,6 +58,15 @@ def test_startup_permission_repair_cannot_use_legacy_publisher():
     assert "ensure_general_chat_writable" not in source
 
 
+def test_legacy_morning_evening_general_chat_jobs_are_removed_before_start():
+    source = open("app/webapp.py", encoding="utf-8").read()
+    assert '"general-content-morning"' in source
+    assert '"general-content-evening"' in source
+    assert '"general-content-recovery"' in source
+    assert "scheduler.remove_job(legacy_job_id)" in source
+    assert source.index("scheduler.remove_job(legacy_job_id)") < source.index("scheduler.start()")
+
+
 def test_startup_pin_refresh_never_creates_registration_promo():
     source = open("app/services/general_chat_menu_service.py", encoding="utf-8").read()
     restore_block = source.split("async def _restore_registration_pin", 1)[1].split("async def _ensure_persistent_navigation", 1)[0]
