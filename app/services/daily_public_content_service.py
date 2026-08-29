@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, time, timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
@@ -88,7 +88,6 @@ def _stable_number(day: str, kind: str) -> int:
 
 
 def scheduled_minute(day: str, kind: str) -> int:
-    # 09:00..21:55 MSK. Five-minute slots make the polling job deterministic.
     slots = (WINDOW_END - WINDOW_START) // 5
     return WINDOW_START + (_stable_number(day, kind) % slots) * 5
 
@@ -161,7 +160,6 @@ async def run_daily_public_content(bot: Bot, settings: Settings, session_factory
     if minute < WINDOW_START or minute >= WINDOW_END:
         return
     day = local.date().isoformat()
-
     targets: list[tuple[str, int | str | None]] = [
         ("chat_quote", settings.general_chat_id),
         ("channel_post", _channel_target(settings)),
