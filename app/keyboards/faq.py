@@ -1,7 +1,12 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 
-GENERAL_CHAT_EVENTS_TEXT = "📅 События"
-GENERAL_CHAT_PROFILE_TEXT = "🔥 Моя ЭРА"
+GENERAL_CHAT_EVENTS_TEXT = "📅 Мероприятия"
+GENERAL_CHAT_PROFILE_TEXT = "👤 Моя ЭРА"
 
 
 def _private_url(bot_username: str, payload: str) -> str:
@@ -28,6 +33,17 @@ def faq_keyboard(bot_username: str | None = None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def general_chat_navigation_keyboard() -> ReplyKeyboardRemove:
-    """Actively remove the old persistent reply keyboard from the general chat."""
-    return ReplyKeyboardRemove(remove_keyboard=True)
+def general_chat_navigation_keyboard() -> ReplyKeyboardMarkup:
+    """Persistent two-button navigation bar shown above the group text field."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text=GENERAL_CHAT_EVENTS_TEXT),
+                KeyboardButton(text=GENERAL_CHAT_PROFILE_TEXT),
+            ]
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        one_time_keyboard=False,
+        input_field_placeholder="Выберите раздел ЭРА",
+    )
