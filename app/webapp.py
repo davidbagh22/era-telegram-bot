@@ -29,6 +29,7 @@ from app.database.session import create_engine_and_sessionmaker
 from app.request_context import RequestIDLogFilter, new_request_id, request_id_var
 from app.services.ai_service import AIService
 from app.services.chat_access_service import ensure_general_chat_writable
+from app.services.general_chat_menu_service import ensure_general_chat_miniapp_menu
 from app.services.scheduler_service import create_scheduler
 from app.services.seed_service import seed_reference_data
 from app.services.system_scheduler import add_system_jobs
@@ -137,6 +138,13 @@ async def lifespan(app: FastAPI):
     # role/status/registration logic can leave the chat read-only.
     fixed, failed = await ensure_general_chat_writable(bot, settings, session_factory)
     logger.info("General chat write permissions enforced: fixed=%s failed=%s", fixed, failed)
+
+    menu_ok = await ensure_general_chat_miniapp_menu(
+        bot,
+        settings.general_chat_id,
+        session_factory,
+    )
+    logger.info("General chat direct Mini App menu enforced: ok=%s", menu_ok)
 
     recovery_marker = "era:recovery:fsm-global-v2"
     redis_client = dispatcher.storage.redis
