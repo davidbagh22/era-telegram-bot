@@ -5,8 +5,13 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import (
+    TelegramAPIError,
+    TelegramBadRequest,
+    TelegramForbiddenError,
+)
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.config import Settings
 from app.database.system_models import NotificationDelivery
@@ -15,7 +20,10 @@ MOSCOW = ZoneInfo("Europe/Moscow")
 WINDOW_START = 9 * 60
 WINDOW_END = 22 * 60
 
-CHAT_QUOTES = (
+# Short lines are deliberately written as personal captions rather than
+# generic quotations. The reader should recognise their own work, doubts,
+# responsibility and growth in them.
+CHANNEL_QUOTES = (
     "Иногда рост выглядит не как громкая победа, а как решение всё равно прийти и сделать своё.",
     "Не каждый день должен менять жизнь. Иногда достаточно не остановиться.",
     "Сильная команда начинается в момент, когда кто-то перестаёт ждать и берёт ответственность.",
@@ -32,7 +40,7 @@ CHAT_QUOTES = (
     "Хорошая среда не обещает лёгкий путь. Она даёт людей, с которыми хочется его пройти.",
     "Есть моменты, когда нужно не ждать мотивации, а самому стать причиной движения.",
     "Самые важные знакомства часто начинаются с простого: «а давай сделаем это вместе».",
-    "Если тебе доверили больше — это не давление. Это знак, что тебя уже видят сильнее, чем вчера.",
+    "Если тебе доверили больше — значит, тебя уже видят сильнее, чем вчера.",
     "Опыт появляется не тогда, когда ты всё знаешь, а когда всё равно берёшься делать.",
     "Не бойся быть тем, кто предлагает первым. Именно так вокруг идеи появляется команда.",
     "Иногда ты ещё не чувствуешь себя лидером, а люди рядом уже начинают на тебя рассчитывать.",
@@ -49,17 +57,17 @@ CHAT_QUOTES = (
 )
 
 CHANNEL_POSTS = (
-    "Ты можешь ещё не знать, куда приведёт следующий проект. Но почти всегда именно такие шаги потом становятся точками, с которых всё началось.\n\nНе обязательно видеть весь путь. Важно быть в движении.",
-    "Иногда кажется, что вокруг все уже определились, нашли своё дело и знают, куда идут. На деле многие просто однажды начали пробовать.\n\nСвоё место редко находят сразу. Чаще его создают действиями.",
-    "Есть дни без больших побед. Без сцены, наград и громких результатов. Но если сегодня ты стал чуть сильнее, надёжнее или смелее — день уже не прошёл зря.",
+    "Ты можешь ещё не знать, куда приведёт следующий проект. Но часто именно такие шаги потом становятся точками, с которых всё началось.\n\nНе обязательно видеть весь путь. Важно быть в движении.",
+    "Иногда кажется, что вокруг все уже определились и знают, куда идут. На деле многие просто однажды начали пробовать.\n\nСвоё место редко находят сразу. Чаще его создают действиями.",
+    "Есть дни без сцены, наград и громких результатов. Но если сегодня ты стал чуть сильнее, надёжнее или смелее — день уже не прошёл зря.",
     "Самая сильная возможность может сначала выглядеть как задача, на которую нет времени.\n\nА потом именно она становится опытом, человеком рядом или дверью, которую ты давно искал.",
-    "Лидерство редко начинается со слова «лидер». Оно начинается с момента, когда в комнате возникает проблема, а ты говоришь: «я сделаю».",
+    "Лидерство редко начинается со слова «лидер». Оно начинается с момента, когда возникает проблема, а ты говоришь: «я сделаю».",
     "Не каждый вклад сразу заметен. Иногда ты просто вовремя написал человеку, поддержал идею или довёл маленькую часть проекта.\n\nНо сильные команды держатся именно на таких поступках.",
     "Можно ждать, пока появится уверенность. А можно начать — и дать уверенности причину появиться.\n\nБольшая часть роста происходит именно во втором варианте.",
     "Одна из самых недооценённых вещей — оказаться среди людей, которым тоже хочется большего.\n\nСреда не делает работу за тебя. Но она меняет масштаб того, на что ты решаешься.",
     "Иногда ты думаешь, что просто помогаешь с мероприятием. А на самом деле учишься работать с людьми, держать ответственность и видеть результат своих решений.\n\nТак и собирается настоящий опыт.",
     "Тебе не обязательно быть самым опытным человеком в команде. Иногда достаточно быть тем, кому можно доверить и не перепроверять.",
-    "Некоторые возможности приходят только один раз. Другие появляются снова — но уже для тех, кто успел вырасти.\n\nПоэтому главное не успеть везде. Главное — не стоять на месте.",
+    "Некоторые возможности приходят только один раз. Другие появляются снова — но уже для тех, кто успел вырасти.\n\nГлавное не успеть везде. Главное — не стоять на месте.",
     "Если идея не выходит из головы — возможно, ей уже тесно оставаться просто идеей.\n\nИногда следующий шаг — не ещё раз подумать, а найти первого человека и начать.",
     "Самый важный момент в любом проекте — не финальная фотография. Это момент, когда ещё ничего не готово, но команда всё равно верит, что получится.",
     "Ты можешь не замечать свой рост, потому что находишься внутри него каждый день.\n\nНо оглянись: задачи, которые раньше пугали, сегодня уже кажутся обычными.",
@@ -83,17 +91,18 @@ CHANNEL_POSTS = (
 
 
 def _stable_number(day: str, kind: str) -> int:
-    digest = hashlib.sha256(f"era:{kind}:{day}:v3".encode()).digest()
+    digest = hashlib.sha256(f"era:{kind}:{day}:v4".encode()).digest()
     return int.from_bytes(digest[:8], "big")
 
 
 def scheduled_minute(day: str, kind: str) -> int:
+    """Stable daily 5-minute slot inside 09:00-22:00 Moscow time."""
     slots = (WINDOW_END - WINDOW_START) // 5
     return WINDOW_START + (_stable_number(day, kind) % slots) * 5
 
 
 def text_for_day(day: str, kind: str) -> str:
-    bank = CHAT_QUOTES if kind == "chat_quote" else CHANNEL_POSTS
+    bank = CHANNEL_QUOTES if kind == "channel_quote" else CHANNEL_POSTS
     return bank[_stable_number(day, f"text:{kind}") % len(bank)]
 
 
@@ -111,14 +120,36 @@ def _channel_target(settings: Settings) -> int | str | None:
     return None
 
 
-async def _deliver_once(bot: Bot, session_factory, *, key: str, chat_id: int | str, kind: str, text: str) -> bool:
-    db_chat_id = int(chat_id) if isinstance(chat_id, int) or str(chat_id).lstrip("-").isdigit() else 0
+async def _deliver_once(
+    bot: Bot,
+    session_factory,
+    *,
+    key: str,
+    chat_id: int | str,
+    kind: str,
+    text: str,
+) -> bool:
+    """At-most-once automatic Telegram delivery with durable DB claim.
+
+    A sent/claimed/uncertain row is never blindly retried. Only errors Telegram
+    explicitly rejected before sending are safe to retry on the next scheduler
+    pass. The unique delivery key protects against concurrent workers.
+    """
+    db_chat_id = (
+        int(chat_id)
+        if isinstance(chat_id, int) or str(chat_id).lstrip("-").isdigit()
+        else 0
+    )
     now = datetime.now(timezone.utc)
     payload_hash = hashlib.sha256(text.encode()).hexdigest()
+
     async with session_factory() as session:
-        row = await session.scalar(select(NotificationDelivery).where(NotificationDelivery.delivery_key == key))
-        if row and row.status == "sent":
-            return True
+        row = await session.scalar(
+            select(NotificationDelivery).where(NotificationDelivery.delivery_key == key)
+        )
+        if row and row.status in {"sent", "claimed", "uncertain"}:
+            return row.status == "sent"
+
         if row is None:
             row = NotificationDelivery(
                 delivery_key=key,
@@ -133,19 +164,35 @@ async def _deliver_once(bot: Bot, session_factory, *, key: str, chat_id: int | s
             )
             session.add(row)
         else:
+            # Only failed_safe is retryable: Telegram explicitly rejected the
+            # request, so the previous attempt cannot have created a message.
             row.status = "claimed"
             row.attempt_count += 1
             row.last_attempt_at = now
             row.error_code = None
             row.payload_hash = payload_hash
-        await session.commit()
+
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            return False
+
         try:
             await bot.send_message(chat_id=chat_id, text=text)
-        except TelegramAPIError as exc:
-            row.status = "failed"
+        except (TelegramForbiddenError, TelegramBadRequest) as exc:
+            row.status = "failed_safe"
             row.error_code = type(exc).__name__[:96]
             await session.commit()
             return False
+        except TelegramAPIError as exc:
+            # Ambiguous transport/API outcome: never retry automatically and
+            # risk publishing the same content twice.
+            row.status = "uncertain"
+            row.error_code = type(exc).__name__[:96]
+            await session.commit()
+            return False
+
         row.status = "sent"
         row.sent_at = datetime.now(timezone.utc)
         row.error_code = None
@@ -154,18 +201,23 @@ async def _deliver_once(bot: Bot, session_factory, *, key: str, chat_id: int | s
 
 
 async def run_daily_public_content(bot: Bot, settings: Settings, session_factory) -> None:
-    """At most one general-chat quote and one channel post per Moscow calendar day."""
+    """Publish one quote and one editorial post to the ERA channel each Moscow day.
+
+    Nothing from this service is ever sent to the general chat. Both items have
+    independent daily idempotency keys and varying 09:00-22:00 Moscow slots.
+    """
     local = datetime.now(MOSCOW)
     minute = local.hour * 60 + local.minute
     if minute < WINDOW_START or minute >= WINDOW_END:
         return
+
+    target = _channel_target(settings)
+    if target is None:
+        return
+
     day = local.date().isoformat()
-    targets: list[tuple[str, int | str | None]] = [
-        ("chat_quote", settings.general_chat_id),
-        ("channel_post", _channel_target(settings)),
-    ]
-    for kind, target in targets:
-        if target is None or minute < scheduled_minute(day, kind):
+    for kind in ("channel_quote", "channel_post"):
+        if minute < scheduled_minute(day, kind):
             continue
         await _deliver_once(
             bot,
