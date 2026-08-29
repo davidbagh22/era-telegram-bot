@@ -36,49 +36,40 @@ def _registration_markup() -> InlineKeyboardMarkup:
 
 
 async def _restore_registration_pin(bot: Bot, chat_id: int) -> bool:
-    """Keep the pinned CTA exactly as the original registration message."""
+    """Refresh only the already-pinned bot CTA; startup never creates a new promo post.
+
+    This deliberately fails closed: if the current pinned message is missing,
+    belongs to someone else, or cannot be edited, we leave the chat untouched.
+    A deployment must never be able to create a second registration message.
+    """
     try:
         me = await bot.get_me()
         chat = await bot.get_chat(chat_id)
         pinned = getattr(chat, "pinned_message", None)
-        message_id: int | None = None
-
         if (
-            pinned is not None
-            and getattr(pinned, "from_user", None) is not None
-            and pinned.from_user.id == me.id
+            pinned is None
+            or getattr(pinned, "from_user", None) is None
+            or pinned.from_user.id != me.id
         ):
-            try:
-                await bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=pinned.message_id,
-                    text=GENERAL_REGISTRATION_PIN_TEXT,
-                    parse_mode="HTML",
-                    reply_markup=_registration_markup(),
-                    disable_web_page_preview=True,
-                )
-                message_id = pinned.message_id
-            except TelegramAPIError:
-                logger.exception("Could not restore existing registration pin")
-
-        if message_id is None:
-            message = await bot.send_message(
+            logger.info("Registration pin not bot-owned; startup will not publish a replacement")
+            return True
+        try:
+            await bot.edit_message_text(
                 chat_id=chat_id,
+                message_id=pinned.message_id,
                 text=GENERAL_REGISTRATION_PIN_TEXT,
                 parse_mode="HTML",
                 reply_markup=_registration_markup(),
                 disable_web_page_preview=True,
             )
-            message_id = message.message_id
-
-        await bot.pin_chat_message(
-            chat_id=chat_id,
-            message_id=message_id,
-            disable_notification=True,
-        )
+        except TelegramAPIError as exc:
+            if "message is not modified" in str(exc).lower():
+                return True
+            logger.exception("Could not refresh registration pin; duplicate publication is disabled")
+            return False
         return True
     except TelegramAPIError:
-        logger.exception("Could not restore registration pin chat=%s", chat_id)
+        logger.exception("Could not inspect registration pin chat=%s", chat_id)
         return False
 
 
@@ -87,13 +78,7 @@ async def _ensure_persistent_navigation(
     chat_id: int,
     session_factory,
 ) -> bool:
-    """Publish the persistent reply keyboard once for every group member.
-
-    Telegram does not support Web App buttons inside a group reply keyboard.
-    These two text buttons are handled by app.handlers.chat: the trigger is
-    deleted from the group and the corresponding Mini App action is sent to
-    that participant in private.
-    """
+    """Publish the persistent reply keyboard once for every group member."""
     payload_hash = hashlib.sha256(
         (GENERAL_CHAT_NAV_TEXT + "|📅 Мероприятия|👤 Моя ЭРА").encode("utf-8")
     ).hexdigest()
@@ -173,7 +158,7 @@ async def ensure_general_chat_miniapp_menu(
     chat_id: int | None,
     session_factory,
 ) -> bool:
-    """Restore the Start pin and keep two navigation buttons by the input field."""
+    """Refresh an existing Start pin and ensure the two input-field buttons once."""
     if not chat_id:
         return False
     pin_ok = await _restore_registration_pin(bot, chat_id)
