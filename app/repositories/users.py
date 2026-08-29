@@ -18,8 +18,8 @@ from app.database.models import (
     UserDirection,
 )
 from app.services.consent_service import CURRENT_POLICY_VERSION, record_consent
-from app.utils.constants import PointCategory
 from app.services.referral_service import bind_referral_code
+from app.utils.constants import ApplicationStatus, PointCategory
 from app.utils.validators import calculate_age
 
 
@@ -71,6 +71,7 @@ async def create_user_from_registration(
         motivation=data["motivation"],
         available_time=data["available_time"],
         desired_path=data["desired_path"],
+        application_status=ApplicationStatus.PENDING,
         personal_data_consent=True,
         is_channel_subscribed=True,
         departments=[],
@@ -92,9 +93,6 @@ async def create_user_from_registration(
         data.get("departments", []),
         data.get("directions", []),
     )
-    # A friend code is optional and must never make an otherwise valid
-    # registration fail. It is validated interactively before this point;
-    # re-validation protects against stale/archived inviter data.
     try:
         await bind_referral_code(
             session,
@@ -184,13 +182,6 @@ async def rating(session: AsyncSession, limit: int = 10) -> list[tuple[User, int
 async def weekly_rating(
     session: AsyncSession, *, week_start: datetime, limit: int = 10
 ) -> list[tuple[User, int]]:
-    """DELTA ToR §52-53's Top-5 недели: only confirmed contribution counts
-    -- positive-points rows only (no negative correction/redemption entries
-    dragging a total down) and never PointCategory.DIGITAL_ENGAGEMENT (daily
-    app opens/streaks shouldn't be able to buy a place on this board). Rows
-    with no category (legacy transactions predating the taxonomy) still
-    count -- they're real contributions, just uncategorized.
-    """
     rows = (
         await session.execute(
             select(
@@ -201,10 +192,6 @@ async def weekly_rating(
                 (PointTransaction.user_id == User.id)
                 & (PointTransaction.created_at >= week_start)
                 & (PointTransaction.points > 0)
-                # NULL category (legacy, pre-taxonomy rows) must still count
-                # -- "category != DIGITAL_ENGAGEMENT" alone is NULL (i.e.
-                # excluded) under SQL's three-valued logic when category IS
-                # NULL, which would wrongly drop every uncategorized row.
                 & or_(
                     PointTransaction.category.is_(None),
                     PointTransaction.category != PointCategory.DIGITAL_ENGAGEMENT,
