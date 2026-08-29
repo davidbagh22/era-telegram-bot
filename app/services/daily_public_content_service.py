@@ -20,10 +20,9 @@ MOSCOW = ZoneInfo("Europe/Moscow")
 WINDOW_START = 9 * 60
 WINDOW_END = 22 * 60
 
-# Short lines are deliberately written as personal captions rather than
-# generic quotations. The reader should recognise their own work, doubts,
-# responsibility and growth in them.
-CHANNEL_QUOTES = (
+# Short lines for the common chat: one per day, recognisable rather than
+# generic. They deliberately contain no bot promo or service CTA.
+CHAT_QUOTES = (
     "Иногда рост выглядит не как громкая победа, а как решение всё равно прийти и сделать своё.",
     "Не каждый день должен менять жизнь. Иногда достаточно не остановиться.",
     "Сильная команда начинается в момент, когда кто-то перестаёт ждать и берёт ответственность.",
@@ -56,6 +55,8 @@ CHANNEL_QUOTES = (
     "Есть вещи, которые невозможно добавить в резюме одной строкой: характер, ответственность и привычку доводить до результата.",
 )
 
+# One channel post per day. These are written as personal captions: a person
+# should recognise their own doubts, responsibility, team and growth in them.
 CHANNEL_POSTS = (
     "Ты можешь ещё не знать, куда приведёт следующий проект. Но часто именно такие шаги потом становятся точками, с которых всё началось.\n\nНе обязательно видеть весь путь. Важно быть в движении.",
     "Иногда кажется, что вокруг все уже определились и знают, куда идут. На деле многие просто однажды начали пробовать.\n\nСвоё место редко находят сразу. Чаще его создают действиями.",
@@ -91,7 +92,7 @@ CHANNEL_POSTS = (
 
 
 def _stable_number(day: str, kind: str) -> int:
-    digest = hashlib.sha256(f"era:{kind}:{day}:v4".encode()).digest()
+    digest = hashlib.sha256(f"era:{kind}:{day}:v5".encode()).digest()
     return int.from_bytes(digest[:8], "big")
 
 
@@ -102,7 +103,7 @@ def scheduled_minute(day: str, kind: str) -> int:
 
 
 def text_for_day(day: str, kind: str) -> str:
-    bank = CHANNEL_QUOTES if kind == "channel_quote" else CHANNEL_POSTS
+    bank = CHAT_QUOTES if kind == "chat_quote" else CHANNEL_POSTS
     return bank[_stable_number(day, f"text:{kind}") % len(bank)]
 
 
@@ -164,8 +165,6 @@ async def _deliver_once(
             )
             session.add(row)
         else:
-            # Only failed_safe is retryable: Telegram explicitly rejected the
-            # request, so the previous attempt cannot have created a message.
             row.status = "claimed"
             row.attempt_count += 1
             row.last_attempt_at = now
@@ -186,8 +185,7 @@ async def _deliver_once(
             await session.commit()
             return False
         except TelegramAPIError as exc:
-            # Ambiguous transport/API outcome: never retry automatically and
-            # risk publishing the same content twice.
+            # Ambiguous outcome: never retry automatically and risk a duplicate.
             row.status = "uncertain"
             row.error_code = type(exc).__name__[:96]
             await session.commit()
@@ -201,23 +199,19 @@ async def _deliver_once(
 
 
 async def run_daily_public_content(bot: Bot, settings: Settings, session_factory) -> None:
-    """Publish one quote and one editorial post to the ERA channel each Moscow day.
-
-    Nothing from this service is ever sent to the general chat. Both items have
-    independent daily idempotency keys and varying 09:00-22:00 Moscow slots.
-    """
+    """Publish one general-chat quote and one ERA-channel post per Moscow day."""
     local = datetime.now(MOSCOW)
     minute = local.hour * 60 + local.minute
     if minute < WINDOW_START or minute >= WINDOW_END:
         return
 
-    target = _channel_target(settings)
-    if target is None:
-        return
-
     day = local.date().isoformat()
-    for kind in ("channel_quote", "channel_post"):
-        if minute < scheduled_minute(day, kind):
+    targets: tuple[tuple[str, int | str | None], ...] = (
+        ("chat_quote", settings.general_chat_id),
+        ("channel_post", _channel_target(settings)),
+    )
+    for kind, target in targets:
+        if target is None or minute < scheduled_minute(day, kind):
             continue
         await _deliver_once(
             bot,
