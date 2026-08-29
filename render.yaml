@@ -32,6 +32,8 @@ services:
         value: https://t.me/+kFak7gRKoA8xYTc6
       - key: ERA_PRO_CHANNEL_URL
         value: https://t.me/+WSagiElAvEsxMTI6
+      - key: GENERAL_CHAT_ID
+        value: "-1002973371133"
       - key: GENERAL_CHAT_URL
         value: https://t.me/+Q6MzTrnR21dmZjgy
       - key: INTERNAL_DEPARTMENT_CHAT_URL
