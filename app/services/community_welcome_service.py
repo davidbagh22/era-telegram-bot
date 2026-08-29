@@ -71,7 +71,7 @@ def combination_count() -> int:
 def build_general_chat_welcome(names: list[str]) -> str:
     """Return one of 1000 non-repeating welcome combinations per process cycle."""
     if not names:
-        names = ["друзья"]
+        names = ["Друзья"]
 
     with _lock:
         if not _queue:
@@ -84,10 +84,10 @@ def build_general_chat_welcome(names: list[str]) -> str:
     closer = _CLOSERS[index % len(_CLOSERS)]
 
     people = ", ".join(names)
-    opener = _OPENERS[opener_index]
     return (
-        f"{opener}\n\n"
-        f"{people}, {_COMMUNITY_LINES[community_index][0].lower() + _COMMUNITY_LINES[community_index][1:]}\n\n"
+        f"{_OPENERS[opener_index]}\n\n"
+        f"{people}, Вы теперь часть нашего сообщества.\n\n"
+        f"{_COMMUNITY_LINES[community_index]}\n\n"
         f"{_BOT_LINES[bot_index]}\n\n"
         f"{closer}"
     )
