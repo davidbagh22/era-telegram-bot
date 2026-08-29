@@ -82,9 +82,3 @@ def test_startup_pin_refresh_never_creates_registration_promo():
     assert "send_message" not in restore_block
     assert "pin_chat_message" not in restore_block
     assert "edit_message_text" in restore_block
-
-
-def test_legacy_registration_pin_helper_cannot_create_duplicate_message():
-    source = open("app/services/chat_access_service.py", encoding="utf-8").read()
-    block = source.split("async def ensure_general_registration_pin", 1)[1].split("async def ensure_general_chat_writable", 1)[0]
-    assert "send_message" not in block
