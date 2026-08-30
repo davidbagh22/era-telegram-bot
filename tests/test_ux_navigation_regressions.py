@@ -42,7 +42,6 @@ class ProjectBuilderContractTests(unittest.TestCase):
         questions = asyncio.run(read_project_builder_questions())
         self.assertEqual(len(questions), 18)
         self.assertTrue(all(question.prompt.strip() for question in questions))
-        # The current contract intentionally exposes prompts only; AI hints were removed.
         self.assertFalse(any(hasattr(question, "ai_hint") for question in questions))
         self.assertTrue(any(question.key == "scenario" and question.prompt.strip() for question in questions))
 
@@ -62,12 +61,13 @@ class GeneralFaqContractTests(unittest.TestCase):
         self.assertTrue(required.issubset(set(FAQ_ANSWERS)))
         self.assertTrue(all(len(FAQ_ANSWERS[key]) > 80 for key in required))
 
-    def test_scheduler_keeps_faq_pin_alive(self) -> None:
+    def test_scheduler_does_not_republish_faq_but_keeps_safe_maintenance(self) -> None:
         settings = Settings(bot_token="0000000000:TESTTOKEN", timezone="Asia/Yerevan")
         scheduler = AsyncIOScheduler(timezone=settings.timezone)
         add_system_jobs(scheduler, SimpleNamespace(), settings, lambda: None)
         jobs = {job.id for job in scheduler.get_jobs()}
-        self.assertIn("general-chat-faq-pin", jobs)
+        self.assertNotIn("general-chat-faq-pin", jobs)
+        self.assertIn("era-daily-public-content", jobs)
         self.assertIn("general-chat-writable-access", jobs)
         self.assertIn("configured-event-reminders", jobs)
         self.assertIn("event-wizard-task-sync", jobs)
