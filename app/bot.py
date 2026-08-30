@@ -23,6 +23,7 @@ from app.handlers.leader import router as leader_router
 from app.handlers.participant import router as participant_router
 from app.middlewares.auth import DatabaseAuthMiddleware
 from app.middlewares.community_identity import CommunityIdentityMiddleware
+from app.middlewares.legacy_chat_permission_recovery import LegacyChatPermissionRecoveryMiddleware
 from app.middlewares.legacy_keyboard_cleanup import LegacyKeyboardCleanupMiddleware
 from app.middlewares.media_chat_activity import MediaChatActivityMiddleware
 from app.middlewares.referral_chat_reward import ReferralChatRewardMiddleware
@@ -46,6 +47,10 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     dispatcher["settings"] = settings
     dispatcher["ai_service"] = AIService(settings)
     dispatcher.update.outer_middleware(DatabaseAuthMiddleware(session_factory))
+    # Repair historical per-user general-chat mutes as soon as any Telegram
+    # account contacts the bot privately. This also covers people absent from
+    # the database, which the periodic DB-backed sweep cannot discover.
+    dispatcher.update.outer_middleware(LegacyChatPermissionRecoveryMiddleware(settings))
     dispatcher.update.outer_middleware(LegacyKeyboardCleanupMiddleware())
 
     subscription = SubscriptionMiddleware(settings)
