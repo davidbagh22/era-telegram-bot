@@ -13,7 +13,7 @@ class AdminWorkspaceContractTests(unittest.TestCase):
         self.assertIn('isAdmin ? "Управление ЭРА" : "Пространство лидера"', profile)
         self.assertIn("onEnterWorkspace", app)
 
-    def test_admin_overview_is_the_single_control_surface(self) -> None:
+    def test_admin_overview_is_the_single_simple_control_surface(self) -> None:
         nav = (FRONTEND / "components" / "AdminBottomNav.tsx").read_text(encoding="utf-8")
         screen = (FRONTEND / "screens" / "AdminScreen.tsx").read_text(encoding="utf-8")
         overview = (FRONTEND / "screens" / "admin" / "AdminOverviewScreen.tsx").read_text(encoding="utf-8")
@@ -24,8 +24,11 @@ class AdminWorkspaceContractTests(unittest.TestCase):
         self.assertNotIn("AdminMaintenanceScreen", screen)
         self.assertNotIn("CONTROL_SECTIONS", screen)
         self.assertIn("<AdminDashboardScreen />", overview)
-        self.assertIn("<SystemPanel />", overview)
-        self.assertIn('id="admin-analytics"', overview)
+        self.assertNotIn("<SystemPanel />", overview)
+        self.assertIn("Пульт руководителя", overview)
+        self.assertIn("Нужно решить", overview)
+        self.assertIn("Быстро сделать", overview)
+        self.assertIn("Регистрация и состав", overview)
 
     def test_admin_navigation_keeps_only_operational_destinations(self) -> None:
         nav = (FRONTEND / "components" / "AdminBottomNav.tsx").read_text(encoding="utf-8")
