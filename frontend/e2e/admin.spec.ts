@@ -13,7 +13,7 @@ async function enterAdminWorkspace(page: import("@playwright/test").Page) {
   await expect(profileTab(page)).toBeVisible();
   await profileTab(page).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
-  await expect(page.getByText("Управление", { exact: true })).toBeVisible();
+  await expect(page.getByText("Пульт руководителя", { exact: true })).toBeVisible();
 }
 
 test("admin enters management workspace and approves a pending applicant", async ({ page }) => {
