@@ -48,9 +48,11 @@ def test_delivery_keys_are_day_scoped_and_claimed_before_send():
 
 def test_recurring_chat_permission_job_cannot_publish_messages():
     source = open("app/services/chat_permissions_service.py", encoding="utf-8").read()
-    assert "send_message" not in source
-    assert "edit_message" not in source
-    assert "pin_chat_message" not in source
+    # Permission fields such as can_send_messages are expected. Actual Telegram
+    # message publication/edit/pin calls are forbidden in this recurring job.
+    assert "await bot.send_message(" not in source
+    assert "await bot.edit_message" not in source
+    assert "await bot.pin_chat_message(" not in source
 
 
 def test_scheduler_uses_message_free_permission_job_and_daily_content():
@@ -59,6 +61,8 @@ def test_scheduler_uses_message_free_permission_job_and_daily_content():
     assert "run_daily_public_content" in source
     assert "ensure_general_chat_writable" not in source
     assert "ensure_general_faq_pinned" not in source
+    assert 'id="era-daily-public-content"' in source
+    assert 'id="general-chat-faq-pin"' not in source
 
 
 def test_startup_permission_repair_cannot_use_legacy_publisher():
