@@ -54,8 +54,9 @@ def test_admin_health_endpoints_and_ui_are_exposed() -> None:
     assert "Здоровье организации · XLSX" in dashboard
     assert "Показать все" in dashboard
     assert "<AdminDashboardScreen />" in overview
-    assert "<SystemPanel />" in overview
-    assert "Техническое состояние" in overview
+    assert "<SystemPanel />" not in overview
+    assert "Аналитика" in overview
+    assert "Динамика, удержание и эффективность" in overview
 
 
 def test_extended_health_uses_real_growth_opportunity_and_career_models() -> None:
@@ -91,8 +92,10 @@ def test_admin_overview_replaces_separate_maintenance_and_analytics_hubs() -> No
     assert 'label: "Аналитика"' not in nav
     assert 'label: "Обслуживание"' not in nav
     assert "<AdminDashboardScreen />" in overview
-    assert "<SystemPanel />" in overview
-    assert 'id="admin-analytics"' in overview
+    assert "<SystemPanel />" not in overview
+    assert "Пульт руководителя" in overview
+    assert "Нужно решить" in overview
+    assert "Регистрация и состав" in overview
     for destination in [
         "participants",
         "applications",
