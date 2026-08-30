@@ -1,9 +1,8 @@
 """Regression guard for ReplyKeyboardMarkup usage.
 
-Persistent Telegram reply keyboards are retired everywhere. Participant
-navigation lives in Mini App/contextual inline buttons; the general group chat
-uses one pinned FAQ whose buttons open private bot deep links. faq.py may only
-construct ReplyKeyboardRemove to clear clients that cached the historical dock.
+Persistent reply keyboards remain retired everywhere except the deliberately
+small general-chat navigation dock in app/keyboards/faq.py. That dock contains
+only «📅 Мероприятия» and «👤 Моя ЭРА» and routes presses privately.
 """
 
 from __future__ import annotations
@@ -12,6 +11,7 @@ import unittest
 from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parent.parent / "app"
+ALLOWED_REPLY_KEYBOARD_FILE = "app/keyboards/faq.py"
 
 
 def _matching_files(needle: str) -> list[str]:
@@ -24,21 +24,21 @@ def _matching_files(needle: str) -> list[str]:
 
 
 class NoLegacyReplyKeyboardTests(unittest.TestCase):
-    def test_reply_keyboard_markup_is_gone(self) -> None:
-        hits = _matching_files("ReplyKeyboardMarkup(")
-        self.assertEqual(hits, [], f"Unexpected ReplyKeyboardMarkup construction in: {hits}")
+    def _assert_only_general_chat_dock(self, needle: str) -> None:
+        hits = _matching_files(needle)
+        self.assertEqual(hits, [ALLOWED_REPLY_KEYBOARD_FILE], f"Unexpected {needle} usage in: {hits}")
 
-    def test_resize_keyboard_is_gone(self) -> None:
-        hits = _matching_files("resize_keyboard")
-        self.assertEqual(hits, [], f"Unexpected resize_keyboard usage in: {hits}")
+    def test_reply_keyboard_markup_exists_only_for_general_chat_dock(self) -> None:
+        self._assert_only_general_chat_dock("ReplyKeyboardMarkup(")
 
-    def test_is_persistent_is_gone(self) -> None:
-        hits = _matching_files("is_persistent")
-        self.assertEqual(hits, [], f"Unexpected is_persistent usage in: {hits}")
+    def test_resize_keyboard_exists_only_for_general_chat_dock(self) -> None:
+        self._assert_only_general_chat_dock("resize_keyboard")
 
-    def test_no_one_time_keyboard_flag(self) -> None:
-        hits = _matching_files("one_time_keyboard")
-        self.assertEqual(hits, [], f"Found one_time_keyboard usage in: {hits}")
+    def test_is_persistent_exists_only_for_general_chat_dock(self) -> None:
+        self._assert_only_general_chat_dock("is_persistent")
+
+    def test_one_time_keyboard_flag_exists_only_for_general_chat_dock(self) -> None:
+        self._assert_only_general_chat_dock("one_time_keyboard")
 
     def test_no_main_menu_function_left_behind(self) -> None:
         hits = _matching_files("def main_menu(")
