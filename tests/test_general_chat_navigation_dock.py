@@ -5,12 +5,18 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from urllib.parse import parse_qs, urlsplit
 
-from aiogram.types import BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, BotCommandScopeChat, ReplyKeyboardRemove
+from aiogram.types import (
+    BotCommandScopeAllGroupChats,
+    BotCommandScopeAllPrivateChats,
+    BotCommandScopeChat,
+    ReplyKeyboardMarkup,
+)
 
 from app.config import Settings
 from app.handlers import chat, chat_faq
 from app.keyboards.faq import (
     GENERAL_CHAT_EVENTS_TEXT,
+    GENERAL_CHAT_PROFILE_TEXT,
     faq_keyboard,
     general_chat_navigation_keyboard,
 )
@@ -40,10 +46,15 @@ class GeneralChatKeyboardShapeTests(unittest.TestCase):
         self.assertTrue(all(button.url and button.url.startswith("https://t.me/era_bot?start=faq_") for button in buttons))
         self.assertTrue(all(button.callback_data is None for button in buttons))
 
-    def test_old_persistent_group_keyboard_is_actively_removed(self) -> None:
+    def test_persistent_group_keyboard_has_only_two_requested_actions(self) -> None:
         markup = general_chat_navigation_keyboard()
-        self.assertIsInstance(markup, ReplyKeyboardRemove)
-        self.assertTrue(markup.remove_keyboard)
+        self.assertIsInstance(markup, ReplyKeyboardMarkup)
+        self.assertTrue(markup.is_persistent)
+        self.assertEqual(len(markup.keyboard), 1)
+        self.assertEqual(
+            [button.text for button in markup.keyboard[0]],
+            [GENERAL_CHAT_EVENTS_TEXT, GENERAL_CHAT_PROFILE_TEXT],
+        )
 
 
 class PinnedFaqRouteTests(unittest.IsolatedAsyncioTestCase):
