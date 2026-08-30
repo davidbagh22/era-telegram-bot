@@ -127,12 +127,13 @@ class SystemSchedulerTests(unittest.TestCase):
                 "participation-reactivation",
                 "community-verification-expiry",
                 "my-vector-monthly-reminders",
-                "general-chat-faq-pin",
+                "era-daily-public-content",
                 "general-chat-writable-access",
                 "leadership-weekly-pulse-open",
                 "leadership-weekly-pulse-due",
             ],
         )
+        self.assertNotIn("general-chat-faq-pin", ids)
 
 
 class SystemApiAuthorizationTests(unittest.TestCase):
