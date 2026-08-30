@@ -16,7 +16,7 @@ async function enterAdminWorkspace(page: import("@playwright/test").Page) {
   await expect(page.getByText("Управление", { exact: true })).toBeVisible();
 }
 
-test("admin enters separate management workspace and approves a pending applicant", async ({ page }) => {
+test("admin enters management workspace and approves a pending applicant", async ({ page }) => {
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: "Люди" }).click();
   await page.getByRole("button", { name: "Заявки" }).click();
@@ -34,46 +34,34 @@ test("admin enters separate management workspace and approves a pending applican
   await expect(page.locator(".era-card", { hasText: "E2E Pending Applicant" })).not.toBeVisible();
 });
 
-test("admin control has analytics system and maintenance as separate destinations", async ({ page }) => {
+test("admin overview is a simple leader control surface", async ({ page }) => {
   await enterAdminWorkspace(page);
-  await page.getByRole("button", { name: "Контроль" }).click();
+
+  await expect(page.getByText("Пульт руководителя", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Что происходит в ЭРА" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Нужно решить" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Быстро сделать" })).toBeVisible();
+  await expect(page.getByText("Регистрация и состав", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Аналитика/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Состояние системы/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Обслуживание/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Контроль" })).toHaveCount(0);
 });
 
-test("analytics shows ERA efficiency, Pulse and opens real records behind metrics", async ({ page }) => {
+test("analytics expands from overview instead of a separate control hub", async ({ page }) => {
   await enterAdminWorkspace(page);
-  await page.getByRole("button", { name: "Контроль" }).click();
   await page.getByRole("button", { name: /Аналитика/ }).click();
 
-  await expect(page.getByText("Эффективность", { exact: true })).toBeVisible();
-  await expect(page.getByText("Пульс", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Здоровье организации/ })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Что делать дальше" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Открыть или выгрузить" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Полный отчёт ЭРА/ })).toBeVisible();
-
-  const participantsMetric = page.getByRole("button", { name: /Участники.*Люди, статусы и динамика базы/ });
-  await expect(participantsMetric).toBeVisible();
-  await participantsMetric.click();
-
-  await expect(page.getByRole("heading", { name: "Участники" })).toBeVisible();
-  await expect(page.getByText("Записей в системе", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "↓ XLSX", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Полный XLSX/ })).toBeVisible();
-  await expect(page.locator(".era-card").filter({ hasText: /participant|admin|leader|activist/i }).first()).toBeVisible();
+  await expect(page.getByText("Пульс организации", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Здоровье организации.*XLSX/ })).toBeVisible();
+  await expect(page.getByText("Показать все", { exact: true })).toBeVisible();
 });
 
-test("overview KPI opens the exact underlying rows instead of a generic section", async ({ page }) => {
+test("overview KPI opens exact underlying rows", async ({ page }) => {
   await enterAdminWorkspace(page);
-  await expect(page.getByRole("heading", { name: /Вот что происходит в ЭРА сегодня/ })).toBeVisible();
 
-  const currentRoster = page.getByRole("button", { name: /Участники.*Точный подтверждённый состав/ });
+  const currentRoster = page.getByRole("button", { name: /Участники.*Открыть состав/ });
   await expect(currentRoster).toBeVisible();
   await currentRoster.click();
 
   await expect(page.getByRole("heading", { name: "Текущий состав" })).toBeVisible();
-  await expect(page.getByText(/Список построен тем же правилом, что и KPI на главной/)).toBeVisible();
-  await expect(page.getByRole("button", { name: /Скачать эти .* строк в Excel/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /XLSX/ })).toBeVisible();
 });
