@@ -10,6 +10,7 @@ from app.handlers import (
     chat,
     chat_binding,
     chat_faq,
+    chat_unlock,
     emergency,
     general_chat_navigation,
     leader_event_photo,
@@ -75,6 +76,7 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
 
     dispatcher.include_routers(
         emergency.router,
+        chat_unlock.router,
         start.router,
         registration.router,
         referrals.router,
