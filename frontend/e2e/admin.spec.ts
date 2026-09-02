@@ -19,7 +19,7 @@ async function enterAdminWorkspace(page: import("@playwright/test").Page) {
 test("admin enters management workspace and approves a pending applicant", async ({ page }) => {
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: "Люди" }).click();
-  await page.getByRole("button", { name: "Заявки" }).click();
+  await page.getByRole("button", { name: /Заявки.*Новые регистрации и решения по ним/ }).click();
 
   const application = page.locator(".era-card", { hasText: "E2E Pending Applicant" });
   await expect(application).toBeVisible();
@@ -50,9 +50,10 @@ test("analytics expands from overview instead of a separate control hub", async 
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: /Аналитика/ }).click();
 
-  await expect(page.getByText("Пульс организации", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Здоровье организации.*XLSX/ })).toBeVisible();
-  await expect(page.getByText("Показать все", { exact: true })).toBeVisible();
+  await expect(page.getByText("Здоровье ЭРА", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Два сигнала. Одна картина." })).toBeVisible();
+  await expect(page.getByText("Показатели здоровья", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Показать все .* показателей/ })).toBeVisible();
 });
 
 test("overview KPI opens exact underlying rows", async ({ page }) => {
@@ -63,5 +64,5 @@ test("overview KPI opens exact underlying rows", async ({ page }) => {
   await currentRoster.click();
 
   await expect(page.getByRole("heading", { name: "Текущий состав" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /XLSX/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Скачать эти .* строк.* в Excel/ })).toBeVisible();
 });
