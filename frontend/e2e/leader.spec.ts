@@ -5,7 +5,7 @@ const LEADER_TELEGRAM_ID = 900002;
 async function enterLeaderWorkspace(page: import("@playwright/test").Page) {
   await page.goto(`/app/?devTelegramId=${LEADER_TELEGRAM_ID}`);
   await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Профиль", exact: true }).click();
-  await page.getByRole("button", { name: /Управление ЭРА/ }).click();
+  await page.getByRole("button", { name: /Пространство лидера.*Рабочие инструменты и управление.*Открыть/ }).click();
   await expect(page.getByRole("heading", { name: "Пространство лидера" })).toBeVisible();
 }
 
