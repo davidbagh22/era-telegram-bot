@@ -22,13 +22,12 @@ async function openProfile(page: import("@playwright/test").Page) {
 test("admin starts personal, enters Admin Mode, leaves it, and returns", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
 
-  // Elevated permissions must not replace the person's own Mini App on load.
   await expect(profileTab(page)).toBeVisible();
   await expect(page.getByText("Управление", { exact: true })).toHaveCount(0);
 
   await openProfile(page);
   const workspaceButton = page.getByRole("button", {
-    name: /Управление ЭРА.*Открыть режим администратора/,
+    name: /Управление ЭРА.*Рабочие инструменты и управление.*Открыть/,
   });
   await expect(workspaceButton).toBeVisible();
   await workspaceButton.click();
@@ -41,7 +40,7 @@ test("admin starts personal, enters Admin Mode, leaves it, and returns", async (
   await expect(page.getByText("Управление", { exact: true })).toHaveCount(0);
 
   await openProfile(page);
-  await page.getByRole("button", { name: /Управление ЭРА.*Открыть режим администратора/ }).click();
+  await page.getByRole("button", { name: /Управление ЭРА.*Рабочие инструменты и управление.*Открыть/ }).click();
   await expect(page.getByText("Управление", { exact: true })).toBeVisible();
 });
 
@@ -53,7 +52,7 @@ test("leader starts personal, enters Leader Mode, leaves it, and returns", async
 
   await openProfile(page);
   const workspaceButton = page.getByRole("button", {
-    name: /Управление ЭРА.*Открыть пространство лидера/,
+    name: /Пространство лидера.*Рабочие инструменты и управление.*Открыть/,
   });
   await expect(workspaceButton).toBeVisible();
   await workspaceButton.click();
@@ -63,7 +62,7 @@ test("leader starts personal, enters Leader Mode, leaves it, and returns", async
   await expect(profileTab(page)).toBeVisible();
 
   await openProfile(page);
-  await page.getByRole("button", { name: /Управление ЭРА.*Открыть пространство лидера/ }).click();
+  await page.getByRole("button", { name: /Пространство лидера.*Рабочие инструменты и управление.*Открыть/ }).click();
   await expect(page.getByRole("heading", { name: "Пространство лидера" })).toBeVisible();
 });
 
@@ -72,4 +71,5 @@ test("a plain participant's profile has no workspace switcher action", async ({ 
   await openProfile(page);
 
   await expect(page.getByRole("button", { name: /Управление ЭРА/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Пространство лидера/ })).toHaveCount(0);
 });
