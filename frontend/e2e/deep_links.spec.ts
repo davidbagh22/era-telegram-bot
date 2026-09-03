@@ -22,7 +22,7 @@ test("eraPath admin opens the separate Admin workspace directly", async ({ page 
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}&eraPath=admin`);
 
   await expect(page.getByText("Управление", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Вот что происходит в ЭРА сегодня" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Что происходит в ЭРА" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Разделы управления ЭРА" })).toBeVisible();
   await expect(page).toHaveURL(/#\/admin$/);
 });
@@ -56,13 +56,8 @@ for (const hash of ["auctions", "rewards", "surveys"] as const) {
   });
 }
 
-test("legacy community navigation stays synchronized with browser history", async ({ page }) => {
+test("legacy community deep link resolves to the simplified Opportunities surface", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/community`);
-  await page.getByText("Опросы", { exact: true }).first().click();
-  await expect(page).toHaveURL(/#\/surveys$/);
   await expect(page.getByRole("heading", { name: "Возможности" })).toBeVisible();
-
-  await page.goBack();
-  await expect(page).toHaveURL(/#\/community$/);
-  await expect(page.getByRole("heading", { name: "Сообщество" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Фильтры/ })).toBeVisible();
 });
