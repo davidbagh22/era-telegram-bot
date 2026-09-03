@@ -40,7 +40,7 @@ test("project constructor teaches each step, has no AI writer and lets the autho
   await expect(page.getByText("Теория шага", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Как будет называться проект?" })).toBeVisible();
   await expect(page.getByText("Что написать", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Подробнее: вопросы и ошибки →" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Получить подсказку", exact: true })).toBeVisible();
 
   await expect(page.getByText("AI-подсказка", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Помоги сформулировать" })).toHaveCount(0);
