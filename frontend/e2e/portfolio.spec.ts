@@ -14,7 +14,7 @@ test("participant's earned badge appears in their portfolio", async ({ page }) =
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
 
   await page.getByRole("button", { name: "Профиль", exact: true }).click();
-  await expect(page.getByText("Мой путь в ЭРА")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Мой путь" })).toBeVisible();
 
   // The redesigned Profile keeps achievements as a first-class cell and
   // opens them on their own screen instead of rendering the whole portfolio
