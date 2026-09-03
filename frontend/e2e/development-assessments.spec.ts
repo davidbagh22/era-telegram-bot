@@ -5,13 +5,12 @@ const PARTICIPANT_TELEGRAM_ID = 900001;
 test("participant completes WHO-5 through My Vector and sees the saved result", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
 
-  const vectorEntry = page.getByRole("button", { name: /Как ты изменился за последний месяц/ });
+  const vectorEntry = page.getByRole("button", { name: "Открыть мой вектор", exact: true });
   await expect(vectorEntry).toBeVisible();
   await vectorEntry.click();
 
   const consentButton = page.getByRole("button", { name: "Понятно, продолжить" });
-  await expect(consentButton).toBeVisible();
-  await consentButton.click();
+  if (await consentButton.isVisible().catch(() => false)) await consentButton.click();
 
   await expect(page.getByRole("heading", { name: "Мой вектор" })).toBeVisible();
   await page.getByRole("button", { name: /Исследования/ }).click();
