@@ -193,11 +193,11 @@ class DigitalEngagementServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_vector_weekly_pulse_capped_at_four_per_month(self) -> None:
         async with self.session_factory() as session:
             user = await self._make_user(session)
-            base = date(2026, 8, 3)  # a Monday
+            base = date.today().replace(day=1)
             awarded = []
-            for week in range(5):
+            for pulse in range(5):
                 result = await award_vector_weekly_pulse(
-                    session, user_id=user.id, week_start=base + timedelta(weeks=week)
+                    session, user_id=user.id, week_start=base + timedelta(days=pulse)
                 )
                 awarded.append(result)
             self.assertEqual(sum(1 for r in awarded if r is not None), 4)
@@ -216,8 +216,9 @@ class DigitalEngagementServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_goal_set_capped_at_two_per_month(self) -> None:
         async with self.session_factory() as session:
             user = await self._make_user(session)
+            month = date.today().strftime("%Y-%m")
             results = [
-                await award_goal_set(session, user_id=user.id, goal_id=goal_id, month="2026-08")
+                await award_goal_set(session, user_id=user.id, goal_id=goal_id, month=month)
                 for goal_id in (1, 2, 3)
             ]
             self.assertEqual(sum(1 for r in results if r is not None), 2)
@@ -226,8 +227,9 @@ class DigitalEngagementServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_goal_completed_capped_at_two_per_month(self) -> None:
         async with self.session_factory() as session:
             user = await self._make_user(session)
+            month = date.today().strftime("%Y-%m")
             results = [
-                await award_goal_completed(session, user_id=user.id, goal_id=goal_id, month="2026-08")
+                await award_goal_completed(session, user_id=user.id, goal_id=goal_id, month=month)
                 for goal_id in (1, 2, 3)
             ]
             self.assertEqual(sum(1 for r in results if r is not None), 2)
