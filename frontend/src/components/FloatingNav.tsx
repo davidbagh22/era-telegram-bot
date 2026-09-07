@@ -12,7 +12,9 @@ export type TabKey = "home" | "projects" | "events" | "community" | "profile";
 const TABS: { key: TabKey; label: string; Icon: typeof HomeIcon }[] = [
   { key: "home", label: "Главная", Icon: HomeIcon },
   { key: "projects", label: "Проекты", Icon: ProjectsIcon },
-  { key: "events", label: "События", Icon: EventIcon },
+  // The key and old event routes stay intact for compatibility; the visible
+  // destination is the unified participation home.
+  { key: "events", label: "Участие", Icon: EventIcon },
   // Keep the internal `community` key for backwards-compatible deep links,
   // but the primary participant navigation is the approved Opportunities
   // surface. Secondary community tools remain reachable through their own

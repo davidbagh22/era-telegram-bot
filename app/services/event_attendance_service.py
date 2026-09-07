@@ -48,6 +48,7 @@ class LifecycleState:
     can_start: bool
     can_complete: bool
     confirmation_open: bool
+    confirmation_closed_at: datetime | None = None
     notified_count: int = 0
 
 
@@ -56,6 +57,7 @@ class ParticipantAttendanceState:
     event: Event
     eligible: bool
     confirmation_open: bool
+    confirmation_closed: bool
     confirmed: bool
     points_awarded: bool
 
@@ -198,6 +200,7 @@ async def lifecycle_state(
             runtime
             and runtime.attendance_code
             and runtime.completed_at
+            and runtime.confirmation_closed_at is None
             and event.status in COMPLETED_STATUSES
         ),
     )
@@ -224,6 +227,7 @@ async def start_event(
             confirmation_open=bool(
                 runtime.completed_at
                 and runtime.attendance_code
+                and runtime.confirmation_closed_at is None
                 and event.status in COMPLETED_STATUSES
             ),
             notified_count=0,
@@ -281,7 +285,8 @@ async def complete_event(
             session=runtime,
             can_start=False,
             can_complete=False,
-            confirmation_open=bool(runtime.attendance_code),
+            confirmation_open=bool(runtime.attendance_code and runtime.confirmation_closed_at is None),
+            confirmation_closed_at=runtime.confirmation_closed_at,
             notified_count=0,
         )
     if event.status != EventStatus.ACTIVE:
@@ -318,7 +323,44 @@ async def complete_event(
         can_start=False,
         can_complete=False,
         confirmation_open=True,
+        confirmation_closed_at=None,
         notified_count=notified,
+    )
+
+
+async def close_confirmation(
+    session: AsyncSession,
+    event_id: int,
+    *,
+    actor_user_id: int,
+) -> LifecycleState:
+    """Close self-service claims without changing attendance or rewards.
+
+    Locking the event serializes this with confirmation requests.  Repeated
+    calls are successful and retain the first close timestamp.
+    """
+    event = await _event_for_update(session, event_id)
+    runtime = await _attendance_session(session, event.id, create=False)
+    if runtime is None or runtime.completed_at is None or event.status not in COMPLETED_STATUSES:
+        raise ValueError("event_not_completed")
+    if runtime.confirmation_closed_at is None:
+        runtime.confirmation_closed_at = datetime.now(timezone.utc)
+        await audit(
+            session,
+            actor_id=actor_user_id,
+            action="event.attendance_confirmation_closed",
+            entity_type="event",
+            entity_id=event.id,
+            new_value={"confirmation_closed_at": runtime.confirmation_closed_at.isoformat()},
+        )
+        await session.flush()
+    return LifecycleState(
+        event=event,
+        session=runtime,
+        can_start=False,
+        can_complete=False,
+        confirmation_open=False,
+        confirmation_closed_at=runtime.confirmation_closed_at,
     )
 
 
@@ -349,6 +391,7 @@ async def participant_state(
         and runtime
         and runtime.attendance_code
         and runtime.completed_at
+        and runtime.confirmation_closed_at is None
         and event.status in COMPLETED_STATUSES
     )
     points_awarded = False
@@ -362,6 +405,7 @@ async def participant_state(
         event=event,
         eligible=eligible,
         confirmation_open=confirmation_open,
+        confirmation_closed=bool(runtime and runtime.confirmation_closed_at),
         confirmed=confirmed,
         points_awarded=points_awarded,
     )
@@ -375,14 +419,6 @@ async def confirm_attendance(
 ) -> ConfirmationResult:
     event = await _event_for_update(session, event_id)
     runtime = await _attendance_session(session, event.id, create=False)
-    if (
-        runtime is None
-        or not runtime.attendance_code
-        or runtime.completed_at is None
-        or event.status not in COMPLETED_STATUSES
-    ):
-        raise ValueError("attendance_not_open")
-
     registration = await session.scalar(
         select(EventRegistration)
         .where(
@@ -395,6 +431,25 @@ async def confirm_attendance(
         raise ValueError("not_registered")
     if registration.status not in CONFIRMABLE_REGISTRATION_STATUSES:
         raise ValueError("registration_not_active")
+
+    # A confirmed attendance is a terminal success even when an administrator
+    # has since closed the claim window. This makes retries/reloads safe and
+    # reports the durable state instead of turning success into an error.
+    if registration.status == RegistrationStatus.ATTENDED:
+        return ConfirmationResult(
+            state=await participant_state(session, event.id, user_id),
+            points_awarded=0,
+            already_confirmed=True,
+        )
+
+    if (
+        runtime is None
+        or not runtime.attendance_code
+        or runtime.completed_at is None
+        or runtime.confirmation_closed_at is not None
+        or event.status not in COMPLETED_STATUSES
+    ):
+        raise ValueError("attendance_not_open")
 
     supplied = normalize_code(code)
     expected = normalize_code(runtime.attendance_code)
