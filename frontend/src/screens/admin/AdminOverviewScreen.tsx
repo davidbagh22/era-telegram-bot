@@ -63,6 +63,15 @@ export function AdminOverviewScreen({
   const dashboard = useAsync(() => fetchAdminDashboard(), []);
   const [showAnalytics, setShowAnalytics] = useState(false);
 
+  if (showAnalytics) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <button type="button" onClick={() => setShowAnalytics(false)} style={{ alignSelf: "flex-start" }}>← Пульт</button>
+        <AdminDashboardScreen />
+      </div>
+    );
+  }
+
   if (dashboard.status === "loading") return <p style={{ color: "var(--era-text-muted)" }}>Загружаем пульт…</p>;
   if (dashboard.status === "error") return <EmptyState text="Не удалось загрузить пульт управления. Попробуйте ещё раз." />;
 
@@ -153,18 +162,17 @@ export function AdminOverviewScreen({
       </section>
 
       <section>
-        <button type="button" onClick={() => setShowAnalytics((value) => !value)} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left" }}>
+        <button type="button" onClick={() => setShowAnalytics(true)} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left" }}>
           <Card style={{ padding: ".9rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
               <div>
                 <strong style={{ display: "block" }}>Аналитика</strong>
                 <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: ".78rem" }}>Динамика, удержание и эффективность — только когда нужны.</span>
               </div>
-              <span style={{ fontWeight: 900 }}>{showAnalytics ? "↑" : "→"}</span>
+              <span style={{ fontWeight: 900 }}>→</span>
             </div>
           </Card>
         </button>
-        {showAnalytics && <div style={{ marginTop: ".75rem" }}><AdminDashboardScreen /></div>}
       </section>
     </div>
   );

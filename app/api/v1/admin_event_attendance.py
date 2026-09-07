@@ -32,6 +32,7 @@ class AdminEventAttendanceOut(BaseModel):
     can_start: bool
     can_complete: bool
     confirmation_open: bool
+    confirmation_closed_at: str | None = None
     notified_count: int = 0
 
 
@@ -52,6 +53,11 @@ def _out(state: event_attendance_service.LifecycleState) -> AdminEventAttendance
         can_start=state.can_start,
         can_complete=state.can_complete,
         confirmation_open=state.confirmation_open,
+        confirmation_closed_at=(
+            runtime.confirmation_closed_at.isoformat()
+            if runtime and runtime.confirmation_closed_at
+            else None
+        ),
         notified_count=state.notified_count,
     )
 
@@ -108,6 +114,23 @@ async def complete_admin_event(
             actor_user_id=manager.id,
             bot=bot,
             miniapp_url=settings.effective_miniapp_url,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        status = 404 if code == "event_not_found" else 409
+        raise HTTPException(status_code=status, detail=code) from exc
+    return _out(state)
+
+
+@router.post("/{event_id}/attendance/close", response_model=AdminEventAttendanceOut)
+async def close_admin_event_confirmation(
+    event_id: int,
+    manager: User = Depends(require_event_manager),
+    session: AsyncSession = Depends(get_session),
+) -> AdminEventAttendanceOut:
+    try:
+        state = await event_attendance_service.close_confirmation(
+            session, event_id, actor_user_id=manager.id
         )
     except ValueError as exc:
         code = str(exc)

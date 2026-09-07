@@ -18,6 +18,7 @@ class EventAttendanceStateOut(BaseModel):
     event_status: str
     eligible: bool
     confirmation_open: bool
+    confirmation_closed: bool = False
     confirmed: bool
     points_for_visit: int
     points_awarded: bool
@@ -38,6 +39,7 @@ def _state_out(state: event_attendance_service.ParticipantAttendanceState) -> Ev
         event_status=str(state.event.status),
         eligible=state.eligible,
         confirmation_open=state.confirmation_open,
+        confirmation_closed=state.confirmation_closed,
         confirmed=state.confirmed,
         points_for_visit=max(0, int(state.event.points_for_visit or 0)),
         points_awarded=state.points_awarded,

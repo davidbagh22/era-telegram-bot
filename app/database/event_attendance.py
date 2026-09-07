@@ -31,3 +31,9 @@ class EventAttendanceSession(Base):
     completed_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # Event completion and the end of the self-service attendance window are
+    # deliberately separate moments.  NULL keeps every pre-migration event's
+    # confirmation window open, preserving the former behaviour and data.
+    confirmation_closed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
