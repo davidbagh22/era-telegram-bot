@@ -20,7 +20,7 @@ from app.database.models import (
 from app.services import task_service
 from app.services.event_registration_service import ACTIVE_REGISTRATION_STATUSES
 from app.services.event_service import PUBLIC_EVENT_STATUSES
-from app.utils.constants import RegistrationStatus, TaskStatus
+from app.utils.constants import EventStatus, RegistrationStatus, TaskStatus
 
 EventScope = Literal["all", "for_me", "mine", "past"]
 # DELTA ToR §8: restores "Для тебя" (deterministic recommendation, not AI
@@ -38,7 +38,7 @@ async def list_events(
     session: AsyncSession, user: User, scope: EventScope
 ) -> list[tuple[Event, EventRegistration | None]]:
     if scope in ("all", "for_me"):
-        events = list(
+        public_events = list(
             (
                 await session.scalars(
                     select(Event)
@@ -50,6 +50,20 @@ async def list_events(
                 )
             ).all()
         )
+        # A completed event remains actionable for its registered participant:
+        # completion must never hide the attendance-code flow.  Reuse the same
+        # Event/EventRegistration models and merge them into the existing list.
+        registered_completed = list((await session.scalars(
+            select(Event)
+            .join(EventRegistration, EventRegistration.event_id == Event.id)
+            .where(
+                EventRegistration.user_id == user.id,
+                EventRegistration.status.in_(ACTIVE_REGISTRATION_STATUSES),
+                Event.status.in_((EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED)),
+            )
+        )).all())
+        events_by_id = {event.id: event for event in [*public_events, *registered_completed]}
+        events = sorted(events_by_id.values(), key=lambda item: (item.event_date, item.event_time))
         registrations = (
             await session.scalars(
                 select(EventRegistration).where(
@@ -69,7 +83,7 @@ async def list_events(
                 .where(
                     EventRegistration.user_id == user.id,
                     EventRegistration.status.in_(ACTIVE_REGISTRATION_STATUSES),
-                    Event.event_date >= date.today(),
+                    Event.status.not_in((EventStatus.CANCELLED,)),
                 )
                 .order_by(Event.event_date, Event.event_time)
             )
@@ -82,7 +96,7 @@ async def list_events(
             .join(EventRegistration, EventRegistration.event_id == Event.id)
             .where(
                 EventRegistration.user_id == user.id,
-                Event.event_date < date.today(),
+                Event.status.in_((EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED, EventStatus.CANCELLED)),
             )
             .order_by(Event.event_date.desc(), Event.event_time.desc())
         )

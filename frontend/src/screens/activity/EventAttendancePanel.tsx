@@ -42,8 +42,8 @@ export function EventAttendancePanel({ eventId }: { eventId: number }) {
       setRefreshKey((value) => value + 1);
       toast.show(
         result.awarded_now > 0
-          ? `Посещение подтверждено · +${result.awarded_now} баллов`
-          : "Посещение подтверждено",
+          ? `Участие подтверждено ✓ · +${result.awarded_now} баллов · Опыт добавлен в портфолио`
+          : "Участие уже подтверждено ✓ · Опыт сохранён в портфолио",
         "success",
       );
     } catch (requestError) {
@@ -75,6 +75,16 @@ export function EventAttendancePanel({ eventId }: { eventId: number }) {
   }
 
   if (!state.data.confirmation_open) {
+    if (state.data.confirmation_closed) {
+      return (
+        <Card style={{ borderColor: "var(--era-border)", background: "var(--era-surface-2)" }}>
+          <strong>Подтверждение участия закрыто</strong>
+          <p style={{ margin: ".35rem 0 0", color: "var(--era-text-muted)", fontSize: ".86rem" }}>
+            Событие и уже подтверждённый опыт останутся в вашей истории.
+          </p>
+        </Card>
+      );
+    }
     if (state.data.event_status !== "active") return null;
     return (
       <Card style={{ borderColor: "var(--era-border)" }}>

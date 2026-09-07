@@ -7,7 +7,7 @@ import { EventsTab } from "./activity/EventsTab";
 import { HistoryTab } from "./activity/HistoryTab";
 import { TasksTab } from "./activity/TasksTab";
 
-type ActivitySection = "projects" | "events" | "tasks" | "calendar" | "history";
+type ActivitySection = "now" | "projects" | "events" | "tasks" | "calendar" | "history";
 
 // 2026-08 redesign brief section 16: "Внутри Деятельности: Проекты,
 // Задачи, Мероприятия, Календарь. Но не tabs. Четыре красивые action
@@ -16,10 +16,9 @@ type ActivitySection = "projects" | "events" | "tasks" | "calendar" | "history";
 // otherwise surface) -- kept rather than dropped outright, since the
 // brief's own list wasn't meant as "delete this feature."
 const SECTIONS: { value: ActivitySection; label: string; description: string; Icon: typeof ProjectsIcon }[] = [
-  { value: "projects", label: "Проекты", description: "Свои инициативы и команды", Icon: ProjectsIcon },
+  { value: "now", label: "Сейчас", description: "Что требует вашего действия", Icon: CalendarIcon },
   { value: "tasks", label: "Задачи", description: "Открытые и назначенные вам", Icon: TaskIcon },
   { value: "events", label: "Мероприятия", description: "Афиша и регистрация", Icon: EventIcon },
-  { value: "calendar", label: "Календарь", description: "Всё, что впереди, по датам", Icon: CalendarIcon },
   { value: "history", label: "История", description: "Что вы уже прошли", Icon: HistoryIcon },
 ];
 
@@ -45,7 +44,7 @@ export function ActivityScreen({ initialSection, initialItemId, initialProjectId
     return (
       <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
         <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.375rem", margin: 0 }}>
-          Активность
+          Участие
         </h1>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           {SECTIONS.map(({ value, label, description, Icon }) => (
@@ -100,11 +99,12 @@ export function ActivityScreen({ initialSection, initialItemId, initialProjectId
   return (
     <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
       <button type="button" onClick={() => setSection(null)}>
-        ← Деятельность
+        ← Участие
       </button>
       <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.375rem", margin: 0 }}>
-        {current?.label}
+        {current?.label ?? (section === "calendar" ? "Сейчас" : "Участие")}
       </h1>
+      {section === "now" && <CalendarTab />}
       {section === "projects" && <ProjectsSection initialProjectId={initialProjectId} />}
       {section === "tasks" && <TasksTab initialItemId={section === initialSection ? initialItemId ?? null : null} />}
       {section === "events" && <EventsTab initialItemId={section === initialSection ? initialItemId ?? null : null} />}
