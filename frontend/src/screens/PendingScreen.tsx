@@ -12,8 +12,8 @@ export function PendingScreen({ onRefresh, status = "pending" }: PendingScreenPr
       <StatusBanner
         title={needsInfo ? "Дополните заявку" : "Заявка на проверке"}
         description={needsInfo ? "Команде ЭРА не хватает данных. Откройте бот: там указано, что именно нужно дополнить." : "Пока команда знакомится с заявкой, вы можете смотреть события, проекты и возможности. Действия откроются после подтверждения."}
-        actionLabel={needsInfo ? "Дополнить заявку" : "Проверить сейчас"}
-        onAction={needsInfo ? () => { window.location.href = "https://t.me/"; } : onRefresh}
+        actionLabel={needsInfo ? "Проверить после дополнения" : "Проверить сейчас"}
+        onAction={onRefresh}
       />
       <div style={{ display: "grid", gap: ".55rem" }}>
         <button type="button" onClick={() => { window.location.hash = "#/participation"; }}>Посмотреть события</button>

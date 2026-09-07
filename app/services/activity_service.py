@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
@@ -96,7 +96,10 @@ async def list_events(
             .join(EventRegistration, EventRegistration.event_id == Event.id)
             .where(
                 EventRegistration.user_id == user.id,
-                Event.status.in_((EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED, EventStatus.CANCELLED)),
+                or_(
+                    Event.event_date < date.today(),
+                    Event.status.in_((EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED, EventStatus.CANCELLED)),
+                ),
             )
             .order_by(Event.event_date.desc(), Event.event_time.desc())
         )

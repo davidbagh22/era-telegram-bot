@@ -25,7 +25,7 @@ import { VectorHomeScreen } from "../screens/VectorHomeScreen";
 import { AdminEventsScreen } from "../screens/admin/AdminEventsScreen";
 import type { MiniAppUserSummary } from "../types/auth";
 
-type LegacyActivitySection = "tasks" | "calendar" | "history";
+type LegacyActivitySection = "events" | "tasks" | "calendar" | "history";
 type WorkspaceKind = "admin" | "leader";
 type SpecialScreen = "progress" | "development" | "era-pro";
 
@@ -166,7 +166,7 @@ function parseDeepLink(): DeepLink | null {
   if (eventMatch) {
     const itemId = eventMatch[1] ? parseOptionalId(eventMatch[1]) : null;
     if (eventMatch[1] && itemId === null) return link({ invalid: true });
-    return link({ tab: "events", itemId });
+    return link({ tab: "events", activitySection: "events", itemId });
   }
 
   const userMatch = route.match(/^users\/(\d+)$/);
@@ -243,7 +243,7 @@ function renderTab(
   }
   if (tab === "projects") return <ProjectsScreen initialProjectId={initialProjectId} />;
   if (tab === "events") {
-    return isDeepLinkedTab && initialItemId
+    return isDeepLinkedTab && (initialItemId || initialActivitySection === "events")
       ? <EventsScreen initialItemId={initialItemId} />
       : <ActivityScreen />;
   }
