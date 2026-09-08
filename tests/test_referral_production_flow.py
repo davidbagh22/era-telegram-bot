@@ -109,7 +109,8 @@ class ReferralProductionFlowTests(unittest.IsolatedAsyncioTestCase):
         screen = Path("frontend/src/screens/ReferralScreen.tsx").read_text(encoding="utf-8")
         registration_copy = Path("app/handlers/referrals.py").read_text(encoding="utf-8")
 
-        self.assertIn("encodeURIComponent(data.share_text)", screen)
+        self.assertIn("encodeURIComponent(shareTarget)", screen)
+        self.assertIn("encodeURIComponent(comment)", screen)
         self.assertNotIn("URLSearchParams", screen)
         self.assertNotIn("+200", registration_copy)
         self.assertNotIn("+500", registration_copy)
