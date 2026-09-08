@@ -22,36 +22,11 @@ const SECTION_META: Record<
   AnalyticsDetailSection,
   { label: string; description: string; value: keyof AnalyticsSummary; accent: string }
 > = {
-  users: {
-    label: "Участники",
-    description: "Люди, статусы и динамика базы",
-    value: "total_users",
-    accent: "var(--era-red)",
-  },
-  events: {
-    label: "Мероприятия",
-    description: "Все события ЭРА",
-    value: "events",
-    accent: "var(--era-gold-ink)",
-  },
-  projects: {
-    label: "Проекты",
-    description: "Инициативы и проектная воронка",
-    value: "projects",
-    accent: "var(--era-red-bright)",
-  },
-  contacts: {
-    label: "Организации",
-    description: "Партнёрская база",
-    value: "contacts",
-    accent: "var(--era-blue)",
-  },
-  goals: {
-    label: "Цели",
-    description: "Цели организации и направлений",
-    value: "goals",
-    accent: "var(--era-gold)",
-  },
+  users: { label: "Участники", description: "Люди, статусы и динамика базы", value: "total_users", accent: "var(--era-red)" },
+  events: { label: "Мероприятия", description: "Все события ЭРА", value: "events", accent: "var(--era-gold-ink)" },
+  projects: { label: "Проекты", description: "Инициативы и проектная воронка", value: "projects", accent: "var(--era-red-bright)" },
+  contacts: { label: "Организации", description: "Партнёрская база", value: "contacts", accent: "var(--era-blue)" },
+  goals: { label: "Цели", description: "Цели организации и направлений", value: "goals", accent: "var(--era-gold)" },
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -72,20 +47,14 @@ const STATUS_LABELS: Record<string, string> = {
   done: "Готово",
 };
 
-const EXECUTIVE_KEYS = new Set([
-  "approved",
-  "new_30d",
-  "active_30d",
-  "retention_30d",
-  "growth_conversion",
-  "attendance_rate",
-  "feedback",
-  "active_projects",
-  "completed_tasks_30d",
-  "overdue_tasks",
-  "queue",
-  "task_delivery",
-]);
+const SIGNAL_GROUPS = [
+  { key: "people", label: "Состав", keys: ["approved", "new_30d"] },
+  { key: "activity", label: "Активность", keys: ["active_30d", "retention_30d"] },
+  { key: "participation", label: "Участие", keys: ["attendance_rate", "feedback"] },
+  { key: "projects", label: "Проекты", keys: ["active_projects"] },
+  { key: "tasks", label: "Задачи", keys: ["task_delivery", "completed_tasks_30d", "overdue_tasks"] },
+  { key: "flow", label: "Рост и очередь", keys: ["growth_conversion", "queue"] },
+] as const;
 
 function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -110,81 +79,55 @@ function priorityTone(priority: string): "red" | "violet" | "gold" {
   return "gold";
 }
 
-// Score tone: red (needs attention) -> gold (getting there) -> gold-ink
-// (healthy). Same three-stop read used for every ring on this screen so the
-// color always means the same thing at a glance, no legend required.
 function scoreTone(score: number): string {
   if (score >= 70) return "var(--era-gold-ink)";
   if (score >= 40) return "var(--era-gold)";
   return "var(--era-red-bright)";
 }
 
-function MiniRing({
-  score,
-  size,
-  accent,
-  glow = false,
-}: {
-  score: number | null;
-  size: number;
-  accent: string;
-  glow?: boolean;
-}) {
+function MiniRing({ score, size = 44 }: { score: number | null; size?: number }) {
   const safeScore = Math.max(0, Math.min(100, score ?? 0));
+  const accent = score === null ? "var(--era-ring-track)" : scoreTone(safeScore);
   return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        flexShrink: 0,
-        borderRadius: "50%",
-        padding: Math.max(3, Math.round(size * 0.065)),
-        background: score === null
-          ? "var(--era-ring-track)"
-          : `conic-gradient(${accent} 0 ${safeScore}%, var(--era-ring-track) ${safeScore}% 100%)`,
-        boxShadow: glow && score !== null ? `0 0 ${Math.round(size * 0.27)}px rgba(99,44,255,0.14)` : "none",
-      }}
-    >
+    <div style={{ width: size, height: size, flexShrink: 0, borderRadius: "50%", padding: 3, background: score === null ? "var(--era-ring-track)" : `conic-gradient(${accent} 0 ${safeScore}%, var(--era-ring-track) ${safeScore}% 100%)` }}>
       <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "var(--era-surface)", display: "grid", placeItems: "center" }}>
-        <strong style={{ fontFamily: "var(--era-font-display)", fontSize: size * 0.32, lineHeight: 1 }}>{score ?? "—"}</strong>
+        <strong style={{ fontSize: size * 0.27, lineHeight: 1 }}>{score ?? "—"}</strong>
       </div>
     </div>
   );
 }
 
-function ScoreRing({ score, label, muted = false }: { score: number | null; label: string; muted?: boolean }) {
+function SignalCard({ label, metrics }: { label: string; metrics: HealthMetric[] }) {
+  const scored = metrics.map((metric) => metric.score).filter((score): score is number => score !== null);
+  const score = scored.length ? Math.round(scored.reduce((sum, value) => sum + value, 0) / scored.length) : null;
+  const primary = metrics[0];
+  const secondary = metrics.slice(1, 3);
+
   return (
-    <div aria-label={`${label}: ${score ?? "нет данных"}${score === null ? "" : " из 100"}`}>
-      <MiniRing score={score} size={104} accent={muted ? "var(--era-gold-ink)" : "var(--era-red-bright)"} glow />
-      <span style={{ display: "block", textAlign: "center", marginTop: 4, color: "var(--era-text-muted)", fontSize: "0.64rem", fontWeight: 800 }}>
-        {score === null ? "НЕТ ДАННЫХ" : "/ 100"}
+    <Card style={{ padding: "0.8rem", minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.55rem" }}>
+        <MiniRing score={score} />
+        <div style={{ minWidth: 0 }}>
+          <strong style={{ display: "block", fontSize: "0.86rem" }}>{label}</strong>
+          <span style={{ display: "block", marginTop: 2, fontFamily: "var(--era-font-display)", fontWeight: 900, fontSize: "1.15rem", lineHeight: 1.05 }}>{primary?.display ?? "—"}</span>
+        </div>
+      </div>
+      <span style={{ display: "block", marginTop: "0.45rem", color: "var(--era-text-muted)", fontSize: "0.68rem", lineHeight: 1.35 }}>
+        {primary?.label ?? "Нет данных"}
+        {secondary.map((metric) => ` · ${metric.label}: ${metric.display}`).join("")}
       </span>
-    </div>
+    </Card>
   );
 }
 
-// A metric with a score (0-100) is a rate/percentage-style KPI (retention,
-// attendance, conversion...) -- a ring reads those at a glance. A metric
-// without one is a plain count (totals, queues) where a ring would just be
-// a circle with an arbitrary number in it, so it keeps the plain stat card.
-function MetricCard({ metric }: { metric: HealthMetric }) {
-  if (metric.score !== null) {
-    return (
-      <Card style={{ padding: "0.65rem 0.7rem", display: "flex", gap: "0.6rem", alignItems: "center" }}>
-        <MiniRing score={metric.score} size={46} accent={scoreTone(metric.score)} />
-        <div style={{ minWidth: 0 }}>
-          <strong style={{ display: "block", fontSize: "0.85rem" }}>{metric.display}</strong>
-          <span style={{ display: "block", marginTop: 1, fontWeight: 800, fontSize: "0.74rem" }}>{metric.label}</span>
-          <span style={{ display: "block", marginTop: "0.15rem", color: "var(--era-text-muted)", fontSize: "0.64rem", lineHeight: 1.3 }}>{metric.note}</span>
-        </div>
-      </Card>
-    );
-  }
+function RawMetricCard({ metric }: { metric: HealthMetric }) {
   return (
-    <Card style={{ padding: "0.75rem 0.8rem" }}>
-      <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.25rem" }}>{metric.display}</strong>
-      <span style={{ display: "block", marginTop: "0.18rem", fontWeight: 800, fontSize: "0.78rem" }}>{metric.label}</span>
-      <span style={{ display: "block", marginTop: "0.22rem", color: "var(--era-text-muted)", fontSize: "0.69rem", lineHeight: 1.35 }}>{metric.note}</span>
+    <Card style={{ padding: "0.7rem 0.8rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "0.6rem", alignItems: "baseline" }}>
+        <strong style={{ fontSize: "0.78rem" }}>{metric.label}</strong>
+        <strong style={{ whiteSpace: "nowrap" }}>{metric.display}</strong>
+      </div>
+      <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: "0.66rem", lineHeight: 1.3 }}>{metric.note}</span>
     </Card>
   );
 }
@@ -197,61 +140,43 @@ function DetailView({ section, onBack }: { section: AnalyticsDetailSection; onBa
 
   const downloadTable = async () => {
     setDownloading(true);
-    try {
-      saveBlob(await downloadAnalyticsSectionTable(section), `ERA_${section}.xlsx`);
-    } catch {
-      toast.show("Не удалось собрать Excel-таблицу.", "error");
-    } finally {
-      setDownloading(false);
-    }
+    try { saveBlob(await downloadAnalyticsSectionTable(section), `ERA_${section}.xlsx`); }
+    catch { toast.show("Не удалось собрать Excel-таблицу.", "error"); }
+    finally { setDownloading(false); }
   };
 
   const downloadFull = async () => {
     setDownloading(true);
-    try {
-      saveBlob(await downloadFullAnalyticsReport(), "ERA_full_report.xlsx");
-    } catch {
-      toast.show("Не удалось собрать полный отчёт.", "error");
-    } finally {
-      setDownloading(false);
-    }
+    try { saveBlob(await downloadFullAnalyticsReport(), "ERA_full_report.xlsx"); }
+    catch { toast.show("Не удалось собрать полный отчёт.", "error"); }
+    finally { setDownloading(false); }
   };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
       <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← Аналитика</button>
-
       <Card gradient>
         <p style={{ margin: 0, opacity: 0.72, fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Раздел аналитики</p>
         <h2 style={{ margin: "0.2rem 0 0", fontSize: "var(--era-text-2xl)" }}>{meta.label}</h2>
         <p style={{ margin: "0.35rem 0 0", opacity: 0.84 }}>{meta.description}</p>
       </Card>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "0.5rem" }}>
         <button type="button" disabled={downloading} onClick={() => void downloadTable()}>↓ XLSX</button>
         <button type="button" className="era-btn-primary" disabled={downloading} onClick={() => void downloadFull()}>↓ Полный XLSX</button>
       </div>
-
       {state.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>}
       {state.status === "error" && <EmptyState text="Не удалось загрузить записи." />}
       {state.status === "ready" && (
         <>
           <Card style={{ padding: "0.75rem 0.9rem", background: "var(--era-surface-2)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "0.75rem" }}>
-              <strong>Записей в системе</strong>
-              <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1.6rem" }}>{state.data.total}</strong>
-            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "0.75rem" }}><strong>Записей в системе</strong><strong style={{ fontSize: "1.6rem" }}>{state.data.total}</strong></div>
           </Card>
-
           {state.data.items.length === 0 ? <EmptyState text="Записей пока нет." /> : (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
               {state.data.items.map((item) => (
                 <Card key={`${section}-${item.id}`} style={{ padding: "0.8rem 0.9rem" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
-                    <div style={{ minWidth: 0 }}>
-                      <strong style={{ display: "block", overflowWrap: "anywhere" }}>{item.title}</strong>
-                      {item.subtitle && <span style={{ display: "block", marginTop: "0.25rem", color: "var(--era-text-muted)", fontSize: "0.78rem", overflowWrap: "anywhere" }}>{item.subtitle}</span>}
-                    </div>
+                    <div style={{ minWidth: 0 }}><strong style={{ display: "block", overflowWrap: "break-word" }}>{item.title}</strong>{item.subtitle && <span style={{ display: "block", marginTop: "0.25rem", color: "var(--era-text-muted)", fontSize: "0.78rem", overflowWrap: "break-word" }}>{item.subtitle}</span>}</div>
                     {item.status && <StatusBadge label={STATUS_LABELS[item.status] ?? item.status} tone="neutral" />}
                   </div>
                 </Card>
@@ -269,198 +194,115 @@ export function AdminDashboardScreen() {
   const analytics = useAsync(() => fetchAdminAnalyticsSummary(), []);
   const efficiency = useAsync(() => fetchEraEfficiency(), []);
   const health = useAsync(() => fetchOrganizationHealth(), []);
-  // DELTA ToR §41: not a second analytics screen -- one compact section
-  // reusing the exact numbers Media Desk's own analytics tab already
-  // computes. Failure-tolerant on purpose: an admin without Media Desk
-  // access still sees the rest of the dashboard.
   const mediaAnalytics = useAsync(() => fetchMediaAnalytics(), []);
   const [selectedSection, setSelectedSection] = useState<AnalyticsDetailSection | null>(null);
   const [downloadingSection, setDownloadingSection] = useState<AnalyticsDetailSection | "all" | "health" | null>(null);
-  const [showAllMetrics, setShowAllMetrics] = useState(false);
+  const [showRawMetrics, setShowRawMetrics] = useState(false);
   const toast = useToast();
 
   const handleSectionDownload = useCallback(async (section: AnalyticsDetailSection) => {
     setDownloadingSection(section);
-    try {
-      saveBlob(await downloadAnalyticsSectionTable(section), `ERA_${section}.xlsx`);
-    } catch {
-      toast.show("Не удалось собрать Excel-таблицу.", "error");
-    } finally {
-      setDownloadingSection(null);
-    }
+    try { saveBlob(await downloadAnalyticsSectionTable(section), `ERA_${section}.xlsx`); }
+    catch { toast.show("Не удалось собрать Excel-таблицу.", "error"); }
+    finally { setDownloadingSection(null); }
   }, [toast]);
 
   const handleHealthReport = useCallback(async () => {
     setDownloadingSection("health");
-    try {
-      saveBlob(await downloadOrganizationHealthReport(), "ERA_organization_health.xlsx");
-    } catch {
-      toast.show("Не удалось собрать здоровье организации.", "error");
-    } finally {
-      setDownloadingSection(null);
-    }
+    try { saveBlob(await downloadOrganizationHealthReport(), "ERA_organization_health.xlsx"); }
+    catch { toast.show("Не удалось собрать здоровье организации.", "error"); }
+    finally { setDownloadingSection(null); }
   }, [toast]);
 
   const handleFullReport = useCallback(async () => {
     setDownloadingSection("all");
-    try {
-      saveBlob(await downloadFullAnalyticsReport(), "ERA_full_report.xlsx");
-    } catch {
-      toast.show("Не удалось собрать полный отчёт.", "error");
-    } finally {
-      setDownloadingSection(null);
-    }
+    try { saveBlob(await downloadFullAnalyticsReport(), "ERA_full_report.xlsx"); }
+    catch { toast.show("Не удалось собрать полный отчёт.", "error"); }
+    finally { setDownloadingSection(null); }
   }, [toast]);
 
-  const groupedMetrics = useMemo(() => {
-    if (health.status !== "ready") return [] as { category: string; metrics: HealthMetric[]; avgScore: number | null }[];
-    const visible = showAllMetrics ? health.data.metrics : health.data.metrics.filter((metric) => EXECUTIVE_KEYS.has(metric.key));
+  const signals = useMemo(() => {
+    if (health.status !== "ready") return [];
+    const byKey = new Map(health.data.metrics.map((metric) => [metric.key, metric]));
+    return SIGNAL_GROUPS.map((group) => ({
+      ...group,
+      metrics: group.keys.map((key) => byKey.get(key)).filter((metric): metric is HealthMetric => Boolean(metric)),
+    }));
+  }, [health]);
+
+  const rawGroups = useMemo(() => {
+    if (health.status !== "ready") return [] as { category: string; metrics: HealthMetric[] }[];
     const groups = new Map<string, HealthMetric[]>();
-    visible.forEach((metric) => groups.set(metric.category, [...(groups.get(metric.category) ?? []), metric]));
-    return Array.from(groups.entries()).map(([category, metrics]) => {
-      const scored = metrics.map((m) => m.score).filter((s): s is number => s !== null);
-      const avgScore = scored.length ? Math.round(scored.reduce((sum, s) => sum + s, 0) / scored.length) : null;
-      return { category, metrics, avgScore };
-    });
-  }, [health, showAllMetrics]);
+    health.data.metrics.forEach((metric) => groups.set(metric.category, [...(groups.get(metric.category) ?? []), metric]));
+    return Array.from(groups.entries()).map(([category, metrics]) => ({ category, metrics }));
+  }, [health]);
 
   if (selectedSection) return <DetailView section={selectedSection} onBack={() => setSelectedSection(null)} />;
-
-  if (dashboard.status === "loading" || analytics.status === "loading" || efficiency.status === "loading" || health.status === "loading") {
-    return <p style={{ color: "var(--era-text-muted)" }}>Собираем аналитику ЭРА…</p>;
-  }
-  if (dashboard.status === "error" || analytics.status === "error" || efficiency.status === "error" || health.status === "error") {
-    return <EmptyState text="Не удалось загрузить аналитику. Данные не подменяются — попробуйте ещё раз." />;
-  }
+  if (dashboard.status === "loading" || analytics.status === "loading" || efficiency.status === "loading" || health.status === "loading") return <p style={{ color: "var(--era-text-muted)" }}>Собираем аналитику ЭРА…</p>;
+  if (dashboard.status === "error" || analytics.status === "error" || efficiency.status === "error" || health.status === "error") return <EmptyState text="Не удалось загрузить аналитику. Попробуйте ещё раз." />;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
       <Card style={{ padding: "1rem", background: "radial-gradient(circle at 92% 0%, rgba(99,44,255,.16), transparent 42%), var(--era-surface)" }}>
-        <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Здоровье ЭРА</p>
-        <h2 style={{ margin: "0.2rem 0 0", fontSize: "var(--era-text-2xl)" }}>Два сигнала. Одна картина.</h2>
-        <p style={{ margin: "0.45rem 0 0", color: "var(--era-text-muted)", fontSize: "0.78rem", lineHeight: 1.45 }}>
-          Эффективность показывает, как работает система. Пульс — как в среднем чувствует себя сообщество по пяти текущим областям «Моего вектора».
-        </p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.65rem", marginTop: "0.9rem" }}>
-          <div style={{ display: "grid", justifyItems: "center", textAlign: "center", gap: "0.45rem", padding: "0.8rem 0.45rem", border: "1px solid var(--era-border)", borderRadius: "var(--era-radius-card)", background: "var(--era-surface-2)" }}>
-            <ScoreRing score={efficiency.data.score} label="Эффективность ЭРА" />
-            <div><strong>Эффективность</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "0.68rem", marginTop: 3 }}>{efficiency.data.label}</span></div>
-          </div>
-          <div style={{ display: "grid", justifyItems: "center", textAlign: "center", gap: "0.45rem", padding: "0.8rem 0.45rem", border: "1px solid var(--era-border)", borderRadius: "var(--era-radius-card)", background: "var(--era-surface-2)" }}>
-            <ScoreRing score={health.data.pulse_suppressed ? null : health.data.pulse} label="Пульс организации" muted />
-            <div><strong>Пульс</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "0.68rem", marginTop: 3 }}>{health.data.pulse_label}</span></div>
-          </div>
+        <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Аналитика ЭРА</p>
+        <h2 style={{ margin: "0.2rem 0 0", fontSize: "var(--era-text-2xl)" }}>Главное на одном экране</h2>
+        <p style={{ margin: "0.4rem 0 0", color: "var(--era-text-muted)", fontSize: "0.78rem", lineHeight: 1.4 }}>Вместо десятков отдельных метрик — шесть смысловых сигналов. Исходные показатели сохранены ниже в детализации.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "0.6rem", marginTop: "0.85rem" }}>
+          <Card style={{ padding: "0.75rem", background: "var(--era-surface-2)" }}><strong style={{ display: "block", fontSize: "1.6rem" }}>{efficiency.data.score}</strong><span style={{ fontSize: "0.76rem" }}>Эффективность</span><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "0.66rem" }}>{efficiency.data.label}</span></Card>
+          <Card style={{ padding: "0.75rem", background: "var(--era-surface-2)" }}><strong style={{ display: "block", fontSize: "1.6rem" }}>{health.data.pulse_suppressed ? "—" : health.data.pulse}</strong><span style={{ fontSize: "0.76rem" }}>Пульс</span><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "0.66rem" }}>{health.data.pulse_label}</span></Card>
         </div>
-        <p style={{ margin: "0.7rem 0 0", color: "var(--era-text-muted)", fontSize: "0.69rem", lineHeight: 1.45 }}>
-          Пульс: охват {health.data.pulse_coverage}% · n={health.data.pulse_sample_size}. При выборке меньше 5 человек показатель скрывается.
-        </p>
       </Card>
 
-      {!health.data.pulse_suppressed && health.data.vector_dimensions.length > 0 && (
-        <section>
-          <div style={{ marginBottom: "0.55rem" }}><h3 style={{ margin: 0 }}>Из чего состоит Пульс</h3><p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "0.74rem" }}>Только агрегированные текущие состояния. Не черты личности и не оценка человека.</p></div>
-          <div style={{ display: "grid", gap: "0.5rem" }}>
-            {health.data.vector_dimensions.map((item) => (
-              <Card key={item.key} style={{ padding: "0.75rem 0.85rem" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "baseline" }}><strong>{item.label}</strong><strong>{item.value}{item.delta === null ? "" : ` ${item.delta > 0 ? "↑" : item.delta < 0 ? "↓" : "→"}`}</strong></div>
-                <div style={{ height: 6, borderRadius: 999, background: "var(--era-ring-track)", overflow: "hidden", marginTop: 8 }}><div style={{ width: `${Math.max(0, Math.min(100, item.value))}%`, height: "100%", background: "linear-gradient(90deg,var(--era-red),var(--era-gold-ink))" }} /></div>
-              </Card>
-            ))}
-          </div>
-        </section>
-      )}
+      <section>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: "0.6rem", marginBottom: "0.55rem" }}><div><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Ключевые показатели</p><h3 style={{ margin: "0.15rem 0 0" }}>6 сигналов</h3></div><StatusBadge label="6" tone="gold" /></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "0.5rem" }}>
+          {signals.map((signal) => <SignalCard key={signal.key} label={signal.label} metrics={signal.metrics} />)}
+        </div>
+      </section>
 
       {health.data.risks.length > 0 && (
         <section>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", marginBottom: "0.55rem" }}><h3 style={{ margin: 0 }}>Сигналы внимания</h3><StatusBadge label={`${health.data.risks.length}`} tone="red" /></div>
-          <div style={{ display: "grid", gap: "0.5rem" }}>{health.data.risks.map((risk, index) => <Card key={`${risk}-${index}`} style={{ padding: "0.75rem 0.85rem", borderLeft: "3px solid var(--era-red)" }}><span style={{ fontSize: "0.8rem", lineHeight: 1.45 }}>{risk}</span></Card>)}</div>
+          <div style={{ display: "grid", gap: "0.5rem" }}>{health.data.risks.slice(0, 5).map((risk, index) => <Card key={`${risk}-${index}`} style={{ padding: "0.75rem 0.85rem", borderLeft: "3px solid var(--era-red)" }}><span style={{ fontSize: "0.8rem", lineHeight: 1.45 }}>{risk}</span></Card>)}</div>
         </section>
       )}
 
       <section>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "end", marginBottom: "0.55rem" }}>
-          <div><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Реальные данные платформы</p><h3 style={{ margin: "0.15rem 0 0" }}>Показатели здоровья</h3></div>
-          <StatusBadge label={`${health.data.metrics.length} метрик`} tone="gold" />
-        </div>
-        {groupedMetrics.map(({ category, metrics, avgScore }) => (
-          <div key={category} style={{ marginBottom: "0.9rem" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-              {avgScore !== null && <MiniRing score={avgScore} size={28} accent={scoreTone(avgScore)} />}
-              <strong style={{ color: "var(--era-text-muted)", fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.02em" }}>{category}</strong>
-              <span style={{ flex: 1, height: 1, background: "var(--era-border)" }} />
-              <span style={{ color: "var(--era-text-muted)", fontSize: "0.68rem" }}>{metrics.length}</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "0.5rem" }}>{metrics.map((metric) => <MetricCard key={metric.key} metric={metric} />)}</div>
-          </div>
-        ))}
-        <button type="button" onClick={() => setShowAllMetrics((value) => !value)} style={{ width: "100%" }}>{showAllMetrics ? "Скрыть дополнительные" : `Показать все ${health.data.metrics.length} показателей`}</button>
+        <button type="button" onClick={() => setShowRawMetrics((value) => !value)} style={{ width: "100%" }}>{showRawMetrics ? "Скрыть исходные показатели" : "Открыть исходные показатели"}</button>
+        {showRawMetrics && <div style={{ marginTop: "0.65rem" }}>{rawGroups.map(({ category, metrics }) => <div key={category} style={{ marginBottom: "0.8rem" }}><strong style={{ display: "block", marginBottom: "0.4rem", color: "var(--era-text-muted)", fontSize: "0.7rem", textTransform: "uppercase" }}>{category}</strong><div style={{ display: "grid", gap: "0.4rem" }}>{metrics.map((metric) => <RawMetricCard key={metric.key} metric={metric} />)}</div></div>)}</div>}
       </section>
 
       {mediaAnalytics.status === "ready" && (
         <section>
-          <div style={{ marginBottom: "0.55rem" }}>
-            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Подразделение</p>
-            <h3 style={{ margin: "0.15rem 0 0" }}>Медиа</h3>
-          </div>
+          <div style={{ marginBottom: "0.55rem" }}><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Подразделение</p><h3 style={{ margin: "0.15rem 0 0" }}>Медиа</h3></div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "0.5rem" }}>
-            <Card style={{ padding: "0.75rem 0.85rem" }}>
-              <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.3rem" }}>{mediaAnalytics.data.published}</strong>
-              <span style={{ fontSize: "0.78rem" }}>публикаций</span>
-              <span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "0.68rem" }}>+{mediaAnalytics.data.channel_posts_period} за 30 дней</span>
-            </Card>
-            <Card style={{ padding: "0.75rem 0.85rem" }}>
-              <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.3rem" }}>{mediaAnalytics.data.chat_messages_period}</strong>
-              <span style={{ fontSize: "0.78rem" }}>сообщений в чате</span>
-              <span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "0.68rem" }}>{mediaAnalytics.data.chat_active_authors_period} активных участников</span>
-            </Card>
-            <Card style={{ padding: "0.75rem 0.85rem" }}>
-              <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.3rem" }}>{mediaAnalytics.data.tasks_completed}/{mediaAnalytics.data.tasks_created}</strong>
-              <span style={{ fontSize: "0.78rem" }}>медиа-задач выполнено</span>
-            </Card>
-            <Card style={{ padding: "0.75rem 0.85rem" }}>
-              <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.3rem" }}>{mediaAnalytics.data.on_time_rate == null ? "—" : `${mediaAnalytics.data.on_time_rate}%`}</strong>
-              <span style={{ fontSize: "0.78rem" }}>вышло вовремя</span>
-            </Card>
+            <Card style={{ padding: "0.75rem" }}><strong style={{ display: "block", fontSize: "1.3rem" }}>{mediaAnalytics.data.published}</strong><span style={{ fontSize: "0.75rem" }}>публикаций</span></Card>
+            <Card style={{ padding: "0.75rem" }}><strong style={{ display: "block", fontSize: "1.3rem" }}>{mediaAnalytics.data.chat_messages_period}</strong><span style={{ fontSize: "0.75rem" }}>сообщений в чате</span></Card>
+            <Card style={{ padding: "0.75rem" }}><strong style={{ display: "block", fontSize: "1.3rem" }}>{mediaAnalytics.data.tasks_completed}/{mediaAnalytics.data.tasks_created}</strong><span style={{ fontSize: "0.75rem" }}>медиа-задач</span></Card>
+            <Card style={{ padding: "0.75rem" }}><strong style={{ display: "block", fontSize: "1.3rem" }}>{mediaAnalytics.data.on_time_rate == null ? "—" : `${mediaAnalytics.data.on_time_rate}%`}</strong><span style={{ fontSize: "0.75rem" }}>вышло вовремя</span></Card>
           </div>
         </section>
       )}
 
       <section>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "end", marginBottom: "0.55rem" }}><div><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Эта неделя</p><h3 style={{ margin: "0.15rem 0 0" }}>Что делать дальше</h3></div><StatusBadge label={`${efficiency.data.recommendations.length} действий`} tone="violet" /></div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-          {efficiency.data.recommendations.map((item, index) => (
-            <Card key={`${item.title}-${index}`} style={{ padding: "0.85rem 0.9rem" }}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.65rem", alignItems: "flex-start" }}><strong style={{ fontSize: "0.95rem" }}>{item.title}</strong><StatusBadge label={priorityLabel(item.priority)} tone={priorityTone(item.priority)} /></div><p style={{ margin: "0.45rem 0 0", color: "var(--era-text-muted)", fontSize: "0.78rem", lineHeight: 1.45 }}>{item.reason}</p><p style={{ margin: "0.5rem 0 0", fontSize: "0.83rem", lineHeight: 1.45 }}><strong>→ {item.action}</strong></p></Card>
-          ))}
-        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "0.6rem", alignItems: "end", marginBottom: "0.55rem" }}><div><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Эта неделя</p><h3 style={{ margin: "0.15rem 0 0" }}>Что делать дальше</h3></div><StatusBadge label={`${efficiency.data.recommendations.length}`} tone="violet" /></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>{efficiency.data.recommendations.slice(0, 5).map((item, index) => <Card key={`${item.title}-${index}`} style={{ padding: "0.8rem" }}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.6rem", alignItems: "flex-start" }}><strong style={{ fontSize: "0.9rem" }}>{item.title}</strong><StatusBadge label={priorityLabel(item.priority)} tone={priorityTone(item.priority)} /></div><p style={{ margin: "0.4rem 0 0", color: "var(--era-text-muted)", fontSize: "0.75rem", lineHeight: 1.4 }}>{item.reason}</p><p style={{ margin: "0.4rem 0 0", fontSize: "0.8rem" }}><strong>→ {item.action}</strong></p></Card>)}</div>
       </section>
 
       <section>
         <div style={{ marginBottom: "0.55rem" }}><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Данные по объектам</p><h3 style={{ margin: "0.15rem 0 0" }}>Открыть или выгрузить</h3></div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-          {(Object.keys(SECTION_META) as AnalyticsDetailSection[]).map((section) => {
-            const meta = SECTION_META[section];
-            return (
-              <Card key={section} style={{ padding: "0.8rem 0.85rem", borderLeft: `3px solid ${meta.accent}` }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "0.75rem", alignItems: "center" }}>
-                  <button type="button" onClick={() => setSelectedSection(section)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", color: "inherit", minHeight: 0 }}><strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.45rem" }}>{analytics.data[meta.value]}</strong><strong style={{ display: "block", marginTop: "0.1rem" }}>{meta.label}</strong><span style={{ display: "block", marginTop: "0.18rem", color: "var(--era-text-muted)", fontSize: "0.72rem" }}>{meta.description} →</span></button>
-                  <button type="button" disabled={downloadingSection !== null} onClick={() => void handleSectionDownload(section)} style={{ padding: "0.5rem 0.65rem", minHeight: "2.4rem" }}>{downloadingSection === section ? "…" : "↓ XLSX"}</button>
-                </div>
-              </Card>
-            );
-          })}
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          {(Object.keys(SECTION_META) as AnalyticsDetailSection[]).map((section) => { const meta = SECTION_META[section]; return <Card key={section} style={{ padding: "0.8rem", borderLeft: `3px solid ${meta.accent}` }}><div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: "0.6rem", alignItems: "center" }}><button type="button" onClick={() => setSelectedSection(section)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", color: "inherit", minHeight: 0, minWidth: 0 }}><strong style={{ display: "block", fontSize: "1.35rem" }}>{analytics.data[meta.value]}</strong><strong style={{ display: "block" }}>{meta.label}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "0.7rem" }}>{meta.description} →</span></button><button type="button" disabled={downloadingSection !== null} onClick={() => void handleSectionDownload(section)} style={{ padding: "0.45rem 0.55rem", minHeight: "2.35rem" }}>{downloadingSection === section ? "…" : "↓ XLSX"}</button></div></Card>; })}
         </div>
       </section>
 
-      <div style={{ display: "grid", gap: "0.55rem" }}>
-        <button type="button" className="era-btn-primary" disabled={downloadingSection !== null} onClick={() => void handleHealthReport()} style={{ width: "100%", minHeight: "3.2rem" }}>{downloadingSection === "health" ? "Собираем здоровье…" : "↓ Здоровье организации · XLSX"}</button>
-        <button type="button" disabled={downloadingSection !== null} onClick={() => void handleFullReport()} style={{ width: "100%", minHeight: "3.2rem" }}>{downloadingSection === "all" ? "Собираем отчёт…" : "↓ Полный отчёт ЭРА · XLSX"}</button>
+      <div style={{ display: "grid", gap: "0.5rem" }}>
+        <button type="button" className="era-btn-primary" disabled={downloadingSection !== null} onClick={() => void handleHealthReport()} style={{ width: "100%" }}>{downloadingSection === "health" ? "Собираем…" : "↓ Здоровье организации · XLSX"}</button>
+        <button type="button" disabled={downloadingSection !== null} onClick={() => void handleFullReport()} style={{ width: "100%" }}>{downloadingSection === "all" ? "Собираем…" : "↓ Полный отчёт ЭРА · XLSX"}</button>
       </div>
 
-      <Card style={{ padding: "0.8rem 0.9rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "center" }}><div><strong>{dashboard.data.attention_total > 0 ? "Есть решения на очереди" : "Очередь чистая"}</strong><p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "0.76rem" }}>{dashboard.data.attention_total > 0 ? `${dashboard.data.attention_total} записей требуют решения. Они собраны в «Обзоре».` : "Ничего не ждёт проверки или ответа."}</p></div><strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1.5rem" }}>{dashboard.data.attention_total}</strong></div>
-      </Card>
-
-      <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.68rem", lineHeight: 1.45 }}>{health.data.data_note}</p>
+      <Card style={{ padding: "0.8rem" }}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.7rem", alignItems: "center" }}><div><strong>{dashboard.data.attention_total > 0 ? "Есть решения на очереди" : "Очередь чистая"}</strong><p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "0.74rem" }}>{dashboard.data.attention_total > 0 ? `${dashboard.data.attention_total} записей требуют решения.` : "Ничего не ждёт проверки или ответа."}</p></div><strong style={{ fontSize: "1.5rem" }}>{dashboard.data.attention_total}</strong></div></Card>
+      <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.66rem", lineHeight: 1.4 }}>{health.data.data_note}</p>
     </div>
   );
 }
