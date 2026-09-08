@@ -16,9 +16,9 @@ router.callback_query.filter(F.message.chat.type == "private")
 async def _return_to_consent(message: Message, state: FSMContext, *, code: str | None) -> None:
     await state.set_state(RegistrationStates.consent)
     prefix = (
-        f"🎁 Код друга {code} сохранён.\n\n"
-        "После одобрения регистрации и вступления в общий чат вы оба получите по 200 баллов. "
-        "После вашего первого подтверждённого мероприятия — ещё по 500 баллов каждому.\n\n"
+        f"🎁 Код приглашения {code} применён.\n\n"
+        "Пригласивший участник получит +30 баллов после одобрения вашей регистрации "
+        "и ещё +70 после вашего первого подтверждённого участия в ЭРА.\n\n"
         if code
         else ""
     )
@@ -28,13 +28,24 @@ async def _return_to_consent(message: Message, state: FSMContext, *, code: str |
 @router.callback_query(RegistrationStates.consent, F.data == "reg:ref:start")
 async def start_referral_code(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
+    data = await state.get_data()
+    existing_code = data.get("referral_code")
     await state.set_state(RegistrationStates.referral_code)
+    if existing_code:
+        await call.message.answer(
+            "🎁 Код друга\n\n"
+            f"По персональной ссылке уже применён код {existing_code}. "
+            "Можно оставить его или ввести другой 6-значный код.\n\n"
+            "Пригласивший участник получит +30 баллов после одобрения вашей регистрации "
+            "и ещё +70 после вашего первого подтверждённого участия в ЭРА.",
+            reply_markup=referral_code_keyboard(prefill=str(existing_code)),
+        )
+        return
     await call.message.answer(
         "🎁 Код друга\n\n"
         "Если вас пригласил участник ЭРА, отправьте его 6-значный код одним сообщением.\n\n"
-        "Что это даст: после одобрения вашей регистрации и вступления в общий чат — "
-        "+200 баллов вам и другу. После вашего первого подтверждённого мероприятия — "
-        "ещё +500 каждому.",
+        "Пригласивший участник получит +30 баллов после одобрения вашей регистрации "
+        "и ещё +70 после вашего первого подтверждённого участия в ЭРА.",
         reply_markup=referral_code_keyboard(),
     )
 

@@ -15,6 +15,7 @@ from app.handlers import (
     general_chat_navigation,
     leader_event_photo,
     media_chat_files,
+    referral_entry,
     referrals,
     registration,
     start,
@@ -75,6 +76,7 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     chat.router.message.outer_middleware(media_chat_activity)
 
     dispatcher.include_routers(
+        referral_entry.router,
         emergency.router,
         chat_unlock.router,
         start.router,
