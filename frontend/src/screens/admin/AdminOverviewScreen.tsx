@@ -137,7 +137,7 @@ export function AdminOverviewScreen({
 
       <section>
         <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .5rem" }}>Быстро сделать</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
           <ActionCell title="Мероприятие" description="Создать и вести" leading="＋" onClick={onOpenEvents} />
           <ActionCell title="Рассылка" description="Написать людям" leading="↗" onClick={onOpenComms} />
           <ActionCell title="Проект" description="Создать и проверить" leading="＋" onClick={onOpenProjects} />
@@ -148,11 +148,11 @@ export function AdminOverviewScreen({
       <section>
         <Card style={{ padding: ".9rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: ".75rem", alignItems: "center" }}>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <strong style={{ display: "block" }}>Регистрация и состав</strong>
-              <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: ".78rem" }}>Завершённые регистрации попадают в очередь заявок. Проверка состава — отдельный инструмент.</span>
+              <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: ".78rem", lineHeight: 1.45 }}>Завершённые регистрации попадают в очередь заявок. Проверка состава — отдельный инструмент.</span>
             </div>
-            <strong style={{ fontSize: "1.35rem" }}>{pending}</strong>
+            <strong style={{ fontSize: "1.35rem", flexShrink: 0 }}>{pending}</strong>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem", marginTop: ".75rem" }}>
             <button type="button" className="era-btn-primary" onClick={onOpenApplications}>Заявки</button>
@@ -165,11 +165,11 @@ export function AdminOverviewScreen({
         <button type="button" onClick={() => setShowAnalytics(true)} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left" }}>
           <Card style={{ padding: ".9rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <strong style={{ display: "block" }}>Аналитика</strong>
-                <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: ".78rem" }}>Динамика, удержание и эффективность — только когда нужны.</span>
+                <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: ".78rem", lineHeight: 1.45 }}>Динамика, удержание и эффективность — только когда нужны.</span>
               </div>
-              <span style={{ fontWeight: 900 }}>→</span>
+              <span style={{ fontWeight: 900, flexShrink: 0 }}>→</span>
             </div>
           </Card>
         </button>
