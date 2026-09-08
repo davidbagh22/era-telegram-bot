@@ -26,6 +26,15 @@ async function copyText(value: string): Promise<void> {
   input.remove();
 }
 
+function shareComment(value: string): string {
+  return value
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("Открой бот:"))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function ReferralScreen({ onBack }: ReferralScreenProps) {
   const state = useAsync(() => fetchReferralSummary(), []);
   const toast = useToast();
@@ -33,16 +42,19 @@ export function ReferralScreen({ onBack }: ReferralScreenProps) {
   const share = useCallback(async () => {
     if (state.status !== "ready") return;
     const data = state.data;
+    const shareTarget = data.invite_url || "https://t.me/ERA_1bot";
+    const comment = shareComment(data.share_text);
     try {
       if (window.Telegram?.WebApp?.openTelegramLink) {
-        const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(data.share_text)}`;
+        const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(shareTarget)}&text=${encodeURIComponent(comment)}`;
         window.Telegram.WebApp.openTelegramLink(shareUrl);
         return;
       }
       if (navigator.share) {
         await navigator.share({
           title: "Присоединяйся к ЭРА",
-          text: data.share_text,
+          text: comment,
+          url: shareTarget,
         });
         return;
       }
