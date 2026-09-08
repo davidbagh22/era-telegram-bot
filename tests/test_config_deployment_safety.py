@@ -38,7 +38,7 @@ class DeploymentSafetyTests(unittest.TestCase):
                 )
             )
         )
-        self.assertIsNone(get_bot(request))
+        self.assertIsNone(get_bot(request, request.app.state.settings))
 
     def test_normal_auth_exposes_configured_bot(self) -> None:
         bot = object()
@@ -53,7 +53,7 @@ class DeploymentSafetyTests(unittest.TestCase):
                 )
             )
         )
-        self.assertIs(get_bot(request), bot)
+        self.assertIs(get_bot(request, request.app.state.settings), bot)
 
     def test_dev_auth_disabled_on_render_is_fine(self) -> None:
         settings = Settings(

@@ -46,12 +46,13 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
             raise
 
 
-def get_bot(request: Request) -> Bot | None:
+def get_bot(
+    request: Request, settings: Settings = Depends(get_settings)
+) -> Bot | None:
     """The same aiogram Bot instance the webhook uses (bot and API share one
     process/deploy — see docs/ERA_PLATFORM_PROGRESS.md). None outside the
     app's lifespan (e.g. in tests), so callers must handle that instead of
     assuming a bot is always available."""
-    settings = get_settings(request)
     # Developer authentication deliberately bypasses Telegram identity. It
     # must also bypass outbound Telegram delivery: E2E uses a syntactically
     # valid dummy token, and contacting the real API would make local tests
