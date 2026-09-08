@@ -45,9 +45,11 @@ interface ContextHelpProps {
   mode: ContextHelpMode;
   /** Explicit topic is useful for modal/nested screens that do not own a route. */
   topic?: string;
+  /** Inline keeps workspace help in the header instead of covering page content. */
+  inline?: boolean;
 }
 
-export function ContextHelp({ mode, topic: explicitTopic }: ContextHelpProps) {
+export function ContextHelp({ mode, topic: explicitTopic, inline = false }: ContextHelpProps) {
   const [route, setRoute] = useState(() => currentRoute());
   const [open, setOpen] = useState(false);
   const topic = useMemo(
@@ -92,6 +94,73 @@ export function ContextHelp({ mode, topic: explicitTopic }: ContextHelpProps) {
   const bottom = mode === "leader"
     ? "calc(1rem + env(safe-area-inset-bottom, 0px))"
     : "calc(5.5rem + env(safe-area-inset-bottom, 0px))";
+
+  const helpSheet = (
+    <BottomSheet open={open} onClose={() => setOpen(false)} title={topic.title}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", paddingBottom: "0.5rem" }}>
+        <section>
+          <strong style={{ display: "block", marginBottom: "0.3rem" }}>О разделе</strong>
+          <p style={{ margin: 0, color: "var(--era-text-muted)", lineHeight: 1.55 }}>{topic.about}</p>
+        </section>
+
+        <section style={{ padding: "0.85rem", borderRadius: "var(--era-radius-card)", background: "var(--era-surface-2)", border: "1px solid var(--era-border)" }}>
+          <strong style={{ display: "block", marginBottom: "0.5rem" }}>Что здесь можно сделать</strong>
+          <ul style={{ margin: 0, paddingLeft: "1.15rem", color: "var(--era-text-muted)", display: "grid", gap: "0.35rem", lineHeight: 1.45 }}>
+            {topic.actions.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </section>
+
+        <section style={{ padding: "0.85rem", borderRadius: "var(--era-radius-card)", background: "var(--era-surface-2)", border: "1px solid var(--era-border)" }}>
+          <strong style={{ display: "block", marginBottom: "0.5rem" }}>Как это работает</strong>
+          <ol style={{ margin: 0, paddingLeft: "1.15rem", color: "var(--era-text-muted)", display: "grid", gap: "0.35rem", lineHeight: 1.45 }}>
+            {topic.steps.map((item) => <li key={item}>{item}</li>)}
+          </ol>
+        </section>
+
+        <section style={{ padding: "0.85rem", borderRadius: "var(--era-radius-card)", background: "var(--era-tint-violet, var(--era-surface-2))", border: "1px solid color-mix(in srgb, var(--era-violet) 22%, var(--era-border))" }}>
+          <strong style={{ display: "block", marginBottom: "0.3rem" }}>Совет</strong>
+          <p style={{ margin: 0, lineHeight: 1.5 }}>{topic.tip}</p>
+        </section>
+
+        {topic.action && (
+          <button type="button" className="era-btn-primary" onClick={runAction} style={{ width: "100%" }}>
+            {topic.action.label}
+          </button>
+        )}
+      </div>
+    </BottomSheet>
+  );
+
+  if (inline) {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={openHelp}
+          aria-label={`Справка: ${topic.title}`}
+          style={{
+            width: 32,
+            height: 32,
+            minHeight: 32,
+            borderRadius: "50%",
+            padding: 0,
+            border: "1px solid var(--era-border)",
+            background: "var(--era-surface)",
+            color: "var(--era-text-muted)",
+            display: "grid",
+            placeItems: "center",
+            fontFamily: "var(--era-font-display)",
+            fontSize: "0.82rem",
+            fontWeight: 900,
+            flexShrink: 0,
+          }}
+        >
+          i
+        </button>
+        {helpSheet}
+      </>
+    );
+  }
 
   return (
     <>
@@ -142,40 +211,7 @@ export function ContextHelp({ mode, topic: explicitTopic }: ContextHelpProps) {
           i
         </button>
       </div>
-
-      <BottomSheet open={open} onClose={() => setOpen(false)} title={topic.title}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", paddingBottom: "0.5rem" }}>
-          <section>
-            <strong style={{ display: "block", marginBottom: "0.3rem" }}>О разделе</strong>
-            <p style={{ margin: 0, color: "var(--era-text-muted)", lineHeight: 1.55 }}>{topic.about}</p>
-          </section>
-
-          <section style={{ padding: "0.85rem", borderRadius: "var(--era-radius-card)", background: "var(--era-surface-2)", border: "1px solid var(--era-border)" }}>
-            <strong style={{ display: "block", marginBottom: "0.5rem" }}>Что здесь можно сделать</strong>
-            <ul style={{ margin: 0, paddingLeft: "1.15rem", color: "var(--era-text-muted)", display: "grid", gap: "0.35rem", lineHeight: 1.45 }}>
-              {topic.actions.map((item) => <li key={item}>{item}</li>)}
-            </ul>
-          </section>
-
-          <section style={{ padding: "0.85rem", borderRadius: "var(--era-radius-card)", background: "var(--era-surface-2)", border: "1px solid var(--era-border)" }}>
-            <strong style={{ display: "block", marginBottom: "0.5rem" }}>Как это работает</strong>
-            <ol style={{ margin: 0, paddingLeft: "1.15rem", color: "var(--era-text-muted)", display: "grid", gap: "0.35rem", lineHeight: 1.45 }}>
-              {topic.steps.map((item) => <li key={item}>{item}</li>)}
-            </ol>
-          </section>
-
-          <section style={{ padding: "0.85rem", borderRadius: "var(--era-radius-card)", background: "var(--era-tint-violet, var(--era-surface-2))", border: "1px solid color-mix(in srgb, var(--era-violet) 22%, var(--era-border))" }}>
-            <strong style={{ display: "block", marginBottom: "0.3rem" }}>Совет</strong>
-            <p style={{ margin: 0, lineHeight: 1.5 }}>{topic.tip}</p>
-          </section>
-
-          {topic.action && (
-            <button type="button" className="era-btn-primary" onClick={runAction} style={{ width: "100%" }}>
-              {topic.action.label}
-            </button>
-          )}
-        </div>
-      </BottomSheet>
+      {helpSheet}
     </>
   );
 }
