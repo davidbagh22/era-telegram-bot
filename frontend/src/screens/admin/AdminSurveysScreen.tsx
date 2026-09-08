@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import {
+  ApiError,
   archiveSurvey,
   createSurvey,
   describeActionError,
@@ -18,11 +19,20 @@ import type { SurveyAdmin, SurveyResponseAdmin } from "../../types/admin";
 const inputStyle = {
   width: "100%",
   fontFamily: "var(--era-font-body)",
-  padding: "0.5rem",
-  borderRadius: "0.5rem",
+  padding: "0.625rem 0.75rem",
+  borderRadius: "0.75rem",
   border: "1px solid var(--era-border)",
   background: "var(--era-bg)",
   color: "var(--era-text)",
+} as const;
+
+const fieldLabelStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.3rem",
+  fontSize: "0.75rem",
+  fontWeight: 650,
+  color: "var(--era-text-muted)",
 } as const;
 
 const STATUS_LABELS: Record<string, string> = {
@@ -41,6 +51,16 @@ function textToQuestions(text: string): string[] {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+function describeSurveyActionError(error: unknown): string {
+  if (error instanceof ApiError && !error.message.trim()) {
+    if (error.status >= 500) {
+      return "Не удалось выполнить действие из-за ошибки сервера. Попробуйте ещё раз.";
+    }
+    return `Не удалось выполнить действие (HTTP ${error.status}).`;
+  }
+  return describeActionError(error);
 }
 
 // "Опросы" — the Mini App equivalent of the admin half of
@@ -85,14 +105,22 @@ export function AdminSurveysScreen() {
     setActionError(null);
     try {
       if (editingId != null) {
-        await updateSurvey(editingId, { title: title.trim(), description: description.trim() || null, questions });
+        await updateSurvey(editingId, {
+          title: title.trim(),
+          description: description.trim() || null,
+          questions,
+        });
       } else {
-        await createSurvey({ title: title.trim(), description: description.trim() || null, questions });
+        await createSurvey({
+          title: title.trim(),
+          description: description.trim() || null,
+          questions,
+        });
       }
       resetForm();
       refresh();
     } catch (error) {
-      setActionError(describeActionError(error));
+      setActionError(describeSurveyActionError(error));
     } finally {
       setCreating(false);
     }
@@ -105,7 +133,7 @@ export function AdminSurveysScreen() {
       await getOrCreateMonthlySurvey();
       refresh();
     } catch (error) {
-      setActionError(describeActionError(error));
+      setActionError(describeSurveyActionError(error));
     } finally {
       setCreating(false);
     }
@@ -119,7 +147,7 @@ export function AdminSurveysScreen() {
         await action();
         refresh();
       } catch (error) {
-        setActionError(describeActionError(error));
+        setActionError(describeSurveyActionError(error));
       } finally {
         setBusyId(null);
       }
@@ -134,7 +162,7 @@ export function AdminSurveysScreen() {
     try {
       setResponses(await fetchSurveyResponses(survey.id));
     } catch (error) {
-      setActionError(describeActionError(error));
+      setActionError(describeSurveyActionError(error));
     } finally {
       setLoadingResponses(false);
     }
@@ -143,44 +171,79 @@ export function AdminSurveysScreen() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       {actionError && (
-        <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
+        <div
+          role="alert"
+          style={{
+            color: "var(--era-error)",
+            fontSize: "0.8125rem",
+            padding: "0.65rem 0.75rem",
+            border: "1px solid color-mix(in srgb, var(--era-error) 24%, transparent)",
+            borderRadius: "0.75rem",
+            background: "color-mix(in srgb, var(--era-error) 7%, transparent)",
+          }}
+        >
+          {actionError}
+        </div>
       )}
 
       <Card>
         <strong>{editingId != null ? "Редактирование опроса" : "Новый опрос"}</strong>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
-          <input placeholder="Название" value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} />
-          <textarea
-            placeholder="Описание (необязательно)"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={2}
-            style={inputStyle}
-          />
-          <textarea
-            placeholder={"Вопросы, каждый на новой строке"}
-            value={questionsText}
-            onChange={(e) => setQuestionsText(e.target.value)}
-            rows={4}
-            style={inputStyle}
-          />
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+        <p
+          style={{
+            margin: "0.2rem 0 0",
+            color: "var(--era-text-muted)",
+            fontSize: "0.78rem",
+            lineHeight: 1.35,
+          }}
+        >
+          Соберите быстрый опрос и отправьте его участникам ЭРА.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem", marginTop: "0.75rem" }}>
+          <label style={fieldLabelStyle}>
+            Название
+            <input
+              placeholder="Например: Обратная связь после встречи"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              style={inputStyle}
+            />
+          </label>
+          <label style={fieldLabelStyle}>
+            Описание
+            <textarea
+              placeholder="Коротко объясните, зачем нужен опрос"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              style={inputStyle}
+            />
+          </label>
+          <label style={fieldLabelStyle}>
+            Вопросы
+            <textarea
+              placeholder={"Каждый вопрос — с новой строки"}
+              value={questionsText}
+              onChange={(e) => setQuestionsText(e.target.value)}
+              rows={4}
+              style={inputStyle}
+            />
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
             <button
               type="button"
               className="era-btn-primary"
               disabled={creating || !title.trim() || textToQuestions(questionsText).length === 0}
               onClick={handleSave}
             >
-              {editingId != null ? "Сохранить" : "Создать опрос"}
+              {creating ? "Сохраняем…" : editingId != null ? "Сохранить" : "Создать"}
             </button>
-            {editingId != null && (
+            {editingId != null ? (
               <button type="button" onClick={resetForm}>
                 Отмена
               </button>
-            )}
-            {editingId == null && (
+            ) : (
               <button type="button" disabled={creating} onClick={handleMonthlyTemplate}>
-                Ежемесячный шаблон
+                Шаблон месяца
               </button>
             )}
           </div>
