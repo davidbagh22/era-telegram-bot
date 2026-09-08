@@ -137,24 +137,26 @@ export function AdminOverviewScreen({
 
       <section>
         <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .5rem" }}>Быстро сделать</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem" }}>
-          <ActionCell title="Мероприятие" description="Создать и вести" leading="＋" onClick={onOpenEvents} />
-          <ActionCell title="Рассылка" description="Написать людям" leading="↗" onClick={onOpenComms} />
-          <ActionCell title="Проект" description="Создать и проверить" leading="＋" onClick={onOpenProjects} />
-          <ActionCell title="Участники" description="Состав и роли" leading="👥" onClick={onOpenPeople} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: ".55rem" }}>
+          <ActionCell compact title="Мероприятие" description="Создать и вести" leading="＋" onClick={onOpenEvents} />
+          <ActionCell compact title="Рассылка" description="Написать людям" leading="↗" onClick={onOpenComms} />
+          <ActionCell compact title="Проект" description="Создать и проверить" leading="＋" onClick={onOpenProjects} />
+          <ActionCell compact title="Участники" description="Состав и роли" leading="👥" onClick={onOpenPeople} />
         </div>
       </section>
 
       <section>
         <Card style={{ padding: ".9rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: ".75rem", alignItems: "center" }}>
-            <div>
-              <strong style={{ display: "block" }}>Регистрация и состав</strong>
-              <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: ".78rem" }}>Завершённые регистрации попадают в очередь заявок. Проверка состава — отдельный инструмент.</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: ".5rem", flexWrap: "wrap" }}>
+              <strong>Регистрация и состав</strong>
+              <span style={{ display: "inline-flex", minWidth: "1.8rem", height: "1.8rem", padding: "0 .55rem", alignItems: "center", justifyContent: "center", borderRadius: 999, background: "var(--era-tint-violet)", color: "var(--era-violet)", fontWeight: 900, fontSize: ".82rem" }}>
+                {pending}
+              </span>
             </div>
-            <strong style={{ fontSize: "1.35rem" }}>{pending}</strong>
+            <span style={{ display: "block", marginTop: 5, color: "var(--era-text-muted)", fontSize: ".78rem", lineHeight: 1.4 }}>Завершённые регистрации попадают в очередь заявок. Проверка состава — отдельный инструмент.</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem", marginTop: ".75rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: ".5rem", marginTop: ".75rem" }}>
             <button type="button" className="era-btn-primary" onClick={onOpenApplications}>Заявки</button>
             <button type="button" onClick={onOpenVerification}>Состав</button>
           </div>
@@ -167,7 +169,7 @@ export function AdminOverviewScreen({
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
               <div>
                 <strong style={{ display: "block" }}>Аналитика</strong>
-                <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: ".78rem" }}>Динамика, удержание и эффективность — только когда нужны.</span>
+                <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: ".78rem" }}>6 ключевых сигналов вместо десятков разрозненных метрик.</span>
               </div>
               <span style={{ fontWeight: 900 }}>→</span>
             </div>

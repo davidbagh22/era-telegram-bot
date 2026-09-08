@@ -7,12 +7,13 @@ interface ActionCellProps {
   leading?: ReactNode;
   onClick: () => void;
   active?: boolean;
+  compact?: boolean;
 }
 
 /**
- * ERA's primary section-entry pattern. A full-width cell replaces horizontal
- * pill/segmented navigation and keeps section choices readable on narrow
- * Telegram viewports.
+ * ERA's primary section-entry pattern. The default is a full-width cell.
+ * `compact` keeps the same visual language while making two-column admin
+ * shortcuts readable on narrow Telegram/iPhone viewports.
  */
 export function ActionCell({
   title,
@@ -21,7 +22,10 @@ export function ActionCell({
   leading,
   onClick,
   active = false,
+  compact = false,
 }: ActionCellProps) {
+  const iconSize = compact ? 34 : 42;
+
   return (
     <button
       type="button"
@@ -30,11 +34,14 @@ export function ActionCell({
       style={{
         width: "100%",
         minWidth: 0,
-        minHeight: "4.5rem",
-        padding: "0.875rem 1rem",
-        display: "flex",
+        minHeight: compact ? "5.25rem" : "4.5rem",
+        padding: compact ? "0.75rem" : "0.875rem 1rem",
+        display: "grid",
+        gridTemplateColumns: leading
+          ? `${iconSize}px minmax(0, 1fr) ${compact ? 14 : 18}px`
+          : `minmax(0, 1fr) ${compact ? 14 : 18}px`,
         alignItems: "center",
-        gap: "0.875rem",
+        columnGap: compact ? "0.55rem" : "0.875rem",
         textAlign: "left",
         borderRadius: "var(--era-radius-card)",
         border: active ? "1px solid rgba(99, 44, 255, 0.4)" : "1px solid var(--era-border)",
@@ -43,33 +50,36 @@ export function ActionCell({
           : "var(--era-surface)",
         boxShadow: "var(--era-shadow-soft)",
         color: "var(--era-text)",
+        overflow: "hidden",
       }}
     >
       {leading && (
         <span
           aria-hidden="true"
           style={{
-            width: 42,
-            height: 42,
+            width: iconSize,
+            height: iconSize,
             borderRadius: "50%",
-            flexShrink: 0,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             background: "var(--era-tint-violet)",
             color: "var(--era-violet)",
+            fontSize: compact ? "0.92rem" : undefined,
           }}
         >
           {leading}
         </span>
       )}
-      <span style={{ flex: 1, minWidth: 0 }}>
+      <span style={{ minWidth: 0 }}>
         <strong
           style={{
             display: "block",
-            fontSize: "var(--era-text-lg)",
-            lineHeight: 1.25,
-            overflowWrap: "anywhere",
+            fontSize: compact ? "0.9rem" : "var(--era-text-lg)",
+            lineHeight: 1.2,
+            overflowWrap: "normal",
+            wordBreak: "normal",
+            hyphens: "none",
           }}
         >
           {title}
@@ -80,10 +90,12 @@ export function ActionCell({
               display: "block",
               marginTop: "0.2rem",
               color: "var(--era-text-muted)",
-              fontSize: "var(--era-text-sm)",
+              fontSize: compact ? "0.72rem" : "var(--era-text-sm)",
               fontWeight: 500,
-              lineHeight: 1.35,
-              overflowWrap: "anywhere",
+              lineHeight: 1.3,
+              overflowWrap: "normal",
+              wordBreak: "normal",
+              hyphens: "none",
             }}
           >
             {description}
@@ -103,7 +115,7 @@ export function ActionCell({
           </span>
         )}
       </span>
-      <span aria-hidden="true" style={{ color: "var(--era-text-muted)", fontSize: "1.125rem", flexShrink: 0 }}>
+      <span aria-hidden="true" style={{ color: "var(--era-text-muted)", fontSize: compact ? "0.95rem" : "1.125rem", justifySelf: "end" }}>
         →
       </span>
     </button>
