@@ -4,7 +4,7 @@ import asyncio
 import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, call
 
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -106,7 +106,11 @@ class BackupHealthTests(unittest.TestCase):
 
 class SystemSchedulerTests(unittest.TestCase):
     def test_attaches_expected_jobs(self) -> None:
-        scheduler = SimpleNamespace(add_job=Mock())
+        scheduler = SimpleNamespace(
+            add_job=Mock(),
+            get_job=Mock(return_value=None),
+            remove_job=Mock(),
+        )
         settings = Settings(bot_token="1234567890:test-token")
         add_system_jobs(scheduler, SimpleNamespace(), settings, SimpleNamespace())
         ids = [call.kwargs["id"] for call in scheduler.add_job.call_args_list]
@@ -134,6 +138,15 @@ class SystemSchedulerTests(unittest.TestCase):
             ],
         )
         self.assertNotIn("general-chat-faq-pin", ids)
+        self.assertEqual(
+            scheduler.get_job.call_args_list,
+            [
+                call("general-content-morning"),
+                call("general-content-evening"),
+                call("general-content-recovery"),
+            ],
+        )
+        scheduler.remove_job.assert_not_called()
 
 
 class SystemApiAuthorizationTests(unittest.TestCase):

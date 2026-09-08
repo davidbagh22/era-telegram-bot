@@ -32,6 +32,17 @@ def add_system_jobs(
     """Attach production-health jobs and durable infrastructure maintenance."""
     now = datetime.now(ZoneInfo(settings.timezone))
 
+    # The legacy two-slot general-chat editorial scheduler is kept available for
+    # manual/admin tooling, but it must not run as recurring production content.
+    # The single Moscow-day rhythm below is the only scheduled public-content path.
+    for job_id in (
+        "general-content-morning",
+        "general-content-evening",
+        "general-content-recovery",
+    ):
+        if scheduler.get_job(job_id) is not None:
+            scheduler.remove_job(job_id)
+
     scheduler.add_job(run_system_diagnostics, "interval", minutes=15, args=(bot, settings, session_factory), kwargs={"run_type": "heartbeat"}, id="system-heartbeat", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(run_system_diagnostics, "interval", hours=4, args=(bot, settings, session_factory), kwargs={"run_type": "full"}, id="system-full-diagnostic", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(send_daily_system_summary, "cron", hour=9, minute=30, args=(bot, settings, session_factory), id="system-daily-summary", replace_existing=True, max_instances=1, coalesce=True)
