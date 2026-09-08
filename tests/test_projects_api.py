@@ -256,7 +256,9 @@ class ProjectSubmitApiTests(unittest.TestCase):
 class ProjectCancelApiTests(unittest.TestCase):
     def test_cancel_success(self) -> None:
         project = _project(author_id=1, status="draft")
-        session = SimpleNamespace(get=AsyncMock(return_value=project))
+        session = SimpleNamespace(
+            get=AsyncMock(return_value=project), refresh=AsyncMock()
+        )
         app = _build_app(session)
         client = TestClient(app)
         with patch(
@@ -265,6 +267,7 @@ class ProjectCancelApiTests(unittest.TestCase):
             response = client.post("/api/v1/projects/10/cancel")
         self.assertEqual(response.status_code, 200)
         cancel_mock.assert_awaited_once()
+        session.refresh.assert_awaited_once_with(project)
 
     def test_cancel_conflict_when_not_cancellable(self) -> None:
         project = _project(author_id=1, status="initial_review")

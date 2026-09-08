@@ -816,6 +816,7 @@ async def cancel_project(
         raise HTTPException(status_code=409, detail="project_not_cancellable")
     await project_workflow_service.cancel_project(session, project, user)
     await _commit_if_possible(session)
+    await session.refresh(project)
     return _to_detail(project)
 
 
