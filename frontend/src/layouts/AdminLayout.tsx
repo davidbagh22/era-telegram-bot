@@ -19,29 +19,31 @@ export function AdminLayout({ children, onExitWorkspace }: AdminLayoutProps) {
           borderBottom: "1px solid var(--era-border)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", minWidth: 0 }}>
           <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "0.9375rem" }}>ЭРА</strong>
           <span style={{ fontSize: "0.75rem", color: "var(--era-text-muted)" }}>Управление</span>
         </div>
-        {onExitWorkspace && (
-          <button
-            type="button"
-            onClick={onExitWorkspace}
-            style={{
-              minHeight: "auto",
-              padding: "0.3rem 0.7rem",
-              fontSize: "0.75rem",
-              border: "1px solid var(--era-border)",
-              background: "var(--era-surface)",
-              borderRadius: "var(--era-radius-pill)",
-            }}
-          >
-            ← Личное
-          </button>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+          <ContextHelp mode="admin" inline />
+          {onExitWorkspace && (
+            <button
+              type="button"
+              onClick={onExitWorkspace}
+              style={{
+                minHeight: "auto",
+                padding: "0.3rem 0.7rem",
+                fontSize: "0.75rem",
+                border: "1px solid var(--era-border)",
+                background: "var(--era-surface)",
+                borderRadius: "var(--era-radius-pill)",
+              }}
+            >
+              ← Личное
+            </button>
+          )}
+        </div>
       </div>
       {children}
-      <ContextHelp mode="admin" />
     </div>
   );
 }
