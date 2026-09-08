@@ -35,17 +35,14 @@ export function ReferralScreen({ onBack }: ReferralScreenProps) {
     const data = state.data;
     try {
       if (window.Telegram?.WebApp?.openTelegramLink) {
-        const shareUrl = new URL("https://t.me/share/url");
-        shareUrl.searchParams.set("url", data.invite_url);
-        shareUrl.searchParams.set("text", data.share_text);
-        window.Telegram.WebApp.openTelegramLink(shareUrl.toString());
+        const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(data.share_text)}`;
+        window.Telegram.WebApp.openTelegramLink(shareUrl);
         return;
       }
       if (navigator.share) {
         await navigator.share({
           title: "Присоединяйся к ЭРА",
           text: data.share_text,
-          url: data.invite_url || undefined,
         });
         return;
       }
