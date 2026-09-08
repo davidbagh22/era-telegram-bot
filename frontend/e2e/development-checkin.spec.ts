@@ -7,7 +7,7 @@ async function openVector(page: Page) {
   await page.getByRole("button", { name: "Открыть мой вектор", exact: true }).click();
   const consent = page.getByRole("button", { name: "Понятно, продолжить" });
   if (await consent.isVisible().catch(() => false)) await consent.click();
-  await expect(page.getByRole("heading", { name: "Мой вектор" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Где ты сейчас и куда двигаться дальше" })).toBeVisible();
 }
 
 async function openCurrentCheckin(page: Page) {

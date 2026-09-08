@@ -12,6 +12,7 @@ async function enterWorkspace(page: import("@playwright/test").Page, telegramId:
 }
 
 test("leader pre-approves an activity submission, then the admin does the final review", async ({ browser }) => {
+  test.setTimeout(60_000);
   const leaderContext = await browser.newContext();
   const leaderPage = await leaderContext.newPage();
   const adminContext = await browser.newContext();

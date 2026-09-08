@@ -203,6 +203,7 @@ async def lifecycle_state(
             and runtime.confirmation_closed_at is None
             and event.status in COMPLETED_STATUSES
         ),
+        confirmation_closed_at=runtime.confirmation_closed_at if runtime else None,
     )
 
 
@@ -230,6 +231,7 @@ async def start_event(
                 and runtime.confirmation_closed_at is None
                 and event.status in COMPLETED_STATUSES
             ),
+            confirmation_closed_at=runtime.confirmation_closed_at,
             notified_count=0,
         )
     if event.status not in STARTABLE_STATUSES and event.status != EventStatus.ACTIVE:
@@ -263,6 +265,7 @@ async def start_event(
         can_start=False,
         can_complete=True,
         confirmation_open=False,
+        confirmation_closed_at=runtime.confirmation_closed_at,
         notified_count=notified,
     )
 

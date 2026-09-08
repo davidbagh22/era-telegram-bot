@@ -19,7 +19,7 @@ test("a pending applicant's Mini App updates itself after admin approval, withou
   try {
     await applicantPage.goto(`/app/?devTelegramId=${PENDING_SYNC_APPLICANT_TELEGRAM_ID}`);
     await expect(
-      applicantPage.getByRole("heading", { name: "Заявка на рассмотрении" }),
+      applicantPage.getByRole("heading", { name: "Заявка на проверке" }),
     ).toBeVisible();
 
     // Approve through the real API directly (not the Admin UI's
@@ -65,7 +65,7 @@ test("a pending applicant's Mini App updates itself after admin approval, withou
     // card is the stable landmark in the current simplified navigation.
     await expect(applicantPage.getByText("МОЙ ВЕКТОР", { exact: true })).toBeVisible();
     await expect(
-      applicantPage.getByRole("heading", { name: "Заявка на рассмотрении" }),
+      applicantPage.getByRole("heading", { name: "Заявка на проверке" }),
     ).not.toBeVisible();
   } finally {
     await applicantContext.close();
