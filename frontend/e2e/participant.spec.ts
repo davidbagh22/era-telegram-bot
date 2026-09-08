@@ -13,7 +13,7 @@ test("participant gets light ERA UI, opens event details, and registers", async 
 
   await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Участие" }).click();
   await page.getByRole("button", { name: /Мероприятия/ }).click();
-  await expect(page.getByRole("heading", { name: "События" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Мероприятия" })).toBeVisible();
 
   const eventCard = page.getByText("E2E тестовое мероприятие");
   await expect(eventCard).toBeVisible();

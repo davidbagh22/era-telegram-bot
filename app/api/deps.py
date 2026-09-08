@@ -51,6 +51,14 @@ def get_bot(request: Request) -> Bot | None:
     process/deploy — see docs/ERA_PLATFORM_PROGRESS.md). None outside the
     app's lifespan (e.g. in tests), so callers must handle that instead of
     assuming a bot is always available."""
+    settings = get_settings(request)
+    # Developer authentication deliberately bypasses Telegram identity. It
+    # must also bypass outbound Telegram delivery: E2E uses a syntactically
+    # valid dummy token, and contacting the real API would make local tests
+    # slow, flaky, and capable of producing unintended side effects if a
+    # developer happened to use a live token.
+    if settings.dev_auth_enabled:
+        return None
     return getattr(request.app.state, "bot", None)
 
 

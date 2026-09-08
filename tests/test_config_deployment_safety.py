@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 
+from app.api.deps import get_bot
 from app.config import Settings
 
 
@@ -22,6 +24,36 @@ class DeploymentSafetyTests(unittest.TestCase):
             render_external_hostname="",
         )
         settings.assert_safe_for_deployment()  # must not raise
+
+    def test_dev_auth_never_exposes_bot_for_outbound_delivery(self) -> None:
+        bot = object()
+        request = SimpleNamespace(
+            app=SimpleNamespace(
+                state=SimpleNamespace(
+                    settings=Settings(
+                        bot_token="1234567890:test-token",
+                        dev_auth_enabled=True,
+                    ),
+                    bot=bot,
+                )
+            )
+        )
+        self.assertIsNone(get_bot(request))
+
+    def test_normal_auth_exposes_configured_bot(self) -> None:
+        bot = object()
+        request = SimpleNamespace(
+            app=SimpleNamespace(
+                state=SimpleNamespace(
+                    settings=Settings(
+                        bot_token="1234567890:test-token",
+                        dev_auth_enabled=False,
+                    ),
+                    bot=bot,
+                )
+            )
+        )
+        self.assertIs(get_bot(request), bot)
 
     def test_dev_auth_disabled_on_render_is_fine(self) -> None:
         settings = Settings(

@@ -120,6 +120,16 @@ export function VectorHomeScreen({
           {dimensions.length > 0 && <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: "0.35rem", marginTop: "0.9rem" }}>{dimensions.map(({ key, value }) => <div key={key} style={{ textAlign: "center", minWidth: 0 }}><strong style={{ display: "block" }}>{Math.round(value)}</strong><span style={{ display: "block", marginTop: "0.12rem", color: "var(--era-text-muted)", fontSize: "0.62rem", overflow: "hidden", textOverflow: "ellipsis" }}>{DIMENSION_LABELS[key]}</span></div>)}</div>}
           <p style={{ margin: "0.8rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>Последний снимок: {monthLabel(development.profile?.last_checkin_at)}</p>
         </Card>
+        <Card onClick={() => onNavigate("checkin")} style={{ borderLeft: "3px solid var(--era-red)" }}>
+          <strong>
+            {development.current_checkin?.status === "completed"
+              ? "Посмотреть результат месяца"
+              : "Посмотрим, что изменилось?"}
+          </strong>
+          <span style={{ display: "block", marginTop: "0.25rem", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>
+            Короткий check-in · можно продолжить позже
+          </span>
+        </Card>
       </section>
 
       <section style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
