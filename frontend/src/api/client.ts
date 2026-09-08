@@ -200,6 +200,7 @@ async function authorizedGet<T>(path: string): Promise<T> {
     throw new ApiError(401, "missing_token");
   }
   const response = await fetch(`${API_BASE_URL}${path}`, {
+    cache: "no-store",
     headers: { Authorization: `Bearer ${sessionToken}` },
   });
   if (!response.ok) {

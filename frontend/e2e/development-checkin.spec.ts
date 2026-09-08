@@ -6,12 +6,14 @@ async function openVector(page: Page) {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
   await page.getByRole("button", { name: "Открыть мой вектор", exact: true }).click();
   const consent = page.getByRole("button", { name: "Понятно, продолжить" });
+  const vectorHeading = page.getByRole("heading", { name: "Где ты сейчас и куда двигаться дальше" });
+  await expect(consent.or(vectorHeading)).toBeVisible();
   if (await consent.isVisible().catch(() => false)) await consent.click();
-  await expect(page.getByRole("heading", { name: "Твой личный маршрут роста" })).toBeVisible();
+  await expect(vectorHeading).toBeVisible();
 }
 
 async function openCurrentCheckin(page: Page) {
-  await page.getByRole("button", { name: /Посмотрим, что изменилось|Посмотреть результат месяца/ }).click();
+  await page.getByRole("button", { name: /Посмотрим, что изменилось|Посмотреть результат месяца|Начать check-in/ }).click();
 }
 
 async function currentSurface(page: Page): Promise<"question" | "context" | "result"> {

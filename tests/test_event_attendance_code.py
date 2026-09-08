@@ -161,6 +161,43 @@ def test_attendance_code_opens_only_after_completion_and_awards_once() -> None:
     asyncio.run(_attendance_code_opens_only_after_completion_and_awards_once())
 
 
+async def _confirmation_window_closes_without_losing_history() -> None:
+    engine, factory = await _session_factory()
+    try:
+        async with factory() as session:
+            manager, participant, _stranger, event, registration = await _seed_event(session)
+            await event_attendance_service.start_event(
+                session, event.id, actor_user_id=manager.id, bot=None, miniapp_url=""
+            )
+            completed = await event_attendance_service.complete_event(
+                session, event.id, actor_user_id=manager.id, bot=None, miniapp_url=""
+            )
+            assert completed.session and completed.session.attendance_code
+
+            closed = await event_attendance_service.close_confirmation(
+                session, event.id, actor_user_id=manager.id
+            )
+            repeated_close = await event_attendance_service.close_confirmation(
+                session, event.id, actor_user_id=manager.id
+            )
+            assert closed.confirmation_open is False
+            assert repeated_close.confirmation_closed_at == closed.confirmation_closed_at
+            state = await event_attendance_service.participant_state(session, event.id, participant.id)
+            assert state.confirmation_closed is True
+            assert state.confirmation_open is False
+            assert registration.status == RegistrationStatus.REGISTERED
+            with pytest.raises(ValueError, match="attendance_not_open"):
+                await event_attendance_service.confirm_attendance(
+                    session, event.id, participant.id, completed.session.attendance_code
+                )
+    finally:
+        await engine.dispose()
+
+
+def test_confirmation_window_closes_without_losing_history() -> None:
+    asyncio.run(_confirmation_window_closes_without_losing_history())
+
+
 async def _attendance_code_confirmation_applies_event_scoring_role_bonus() -> None:
     """confirm_attendance (the self-service code flow, the primary
     attendance path) now also applies the Event Scoring Profile role bonus

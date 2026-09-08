@@ -11,8 +11,9 @@ test("participant gets light ERA UI, opens event details, and registers", async 
   const bodyBackground = await page.locator("body").evaluate((node) => getComputedStyle(node).backgroundColor);
   expect(bodyBackground).not.toBe("rgb(17, 17, 24)");
 
-  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "События" }).click();
-  await expect(page.getByRole("heading", { name: "События" })).toBeVisible();
+  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Участие" }).click();
+  await page.getByRole("button", { name: /Мероприятия/ }).click();
+  await expect(page.getByRole("heading", { name: "Мероприятия" })).toBeVisible();
 
   const eventCard = page.getByText("E2E тестовое мероприятие");
   await expect(eventCard).toBeVisible();

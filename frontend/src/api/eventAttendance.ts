@@ -9,6 +9,7 @@ export interface EventAttendanceState {
   event_status: string;
   eligible: boolean;
   confirmation_open: boolean;
+  confirmation_closed: boolean;
   confirmed: boolean;
   points_for_visit: number;
   points_awarded: boolean;
@@ -28,6 +29,7 @@ export interface AdminEventAttendanceState {
   can_start: boolean;
   can_complete: boolean;
   confirmation_open: boolean;
+  confirmation_closed_at: string | null;
   notified_count: number;
 }
 
@@ -100,6 +102,12 @@ export function startAdminEvent(eventId: number): Promise<AdminEventAttendanceSt
 
 export function completeAdminEvent(eventId: number): Promise<AdminEventAttendanceState> {
   return requestJson<AdminEventAttendanceState>(`/api/v1/admin/events/${eventId}/complete`, {
+    method: "POST",
+  });
+}
+
+export function closeAdminEventConfirmation(eventId: number): Promise<AdminEventAttendanceState> {
+  return requestJson<AdminEventAttendanceState>(`/api/v1/admin/events/${eventId}/attendance/close`, {
     method: "POST",
   });
 }

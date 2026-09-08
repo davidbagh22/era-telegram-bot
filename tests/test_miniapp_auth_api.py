@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import get_session, get_settings
 from app.api.security import create_session_token
-from app.api.v1.auth import AUTH_RATE_LIMIT
+from app.api.v1.auth import DEV_AUTH_RATE_LIMIT
 from app.api.v1.router import api_router
 from app.config import Settings
 
@@ -183,8 +183,8 @@ def _build_app_with_rate_limiting(settings: Settings) -> FastAPI:
 
 class MiniAppAuthRateLimitTests(unittest.TestCase):
     """Regression coverage for the real cause of the intermittent
-    rewards.spec.ts/surveys.spec.ts E2E flake (see app/api/v1/auth.py's
-    AUTH_RATE_LIMIT comment): confirms the limit survives a realistic E2E
+    rewards.spec.ts/surveys.spec.ts E2E flake (see app/api/v1/auth.py):
+    confirms the development limit survives a realistic E2E
     burst from one IP, and that it's still an actual limit, not disabled."""
 
     def test_a_full_e2e_suite_sized_burst_from_one_ip_all_succeed(self) -> None:
@@ -195,12 +195,7 @@ class MiniAppAuthRateLimitTests(unittest.TestCase):
             "app.api.v1.auth.get_user_by_telegram_id",
             new=AsyncMock(return_value=_user()),
         ):
-            # The real, current E2E suite makes well under AUTH_RATE_LIMIT
-            # auth calls total from its single CI-runner IP within one
-            # 60s window (see app/api/v1/auth.py's comment for how this
-            # number was derived from an actual failing run's uvicorn.log)
-            # — this asserts every one of them still succeeds.
-            for _ in range(AUTH_RATE_LIMIT):
+            for _ in range(DEV_AUTH_RATE_LIMIT):
                 response = client.post(
                     "/api/v1/miniapp/auth", json={"devTelegramId": 555}
                 )
@@ -214,7 +209,7 @@ class MiniAppAuthRateLimitTests(unittest.TestCase):
             "app.api.v1.auth.get_user_by_telegram_id",
             new=AsyncMock(return_value=_user()),
         ):
-            for _ in range(AUTH_RATE_LIMIT):
+            for _ in range(DEV_AUTH_RATE_LIMIT):
                 client.post("/api/v1/miniapp/auth", json={"devTelegramId": 555})
             response = client.post(
                 "/api/v1/miniapp/auth", json={"devTelegramId": 555}

@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { ApiError } from "../../../api/client";
 import {
+  closeAdminEventConfirmation,
   completeAdminEvent,
   fetchAdminEventAttendanceState,
   startAdminEvent,
@@ -31,7 +32,7 @@ interface EventLifecyclePanelProps {
 export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelProps) {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchAdminEventAttendanceState(eventId), [eventId, refreshKey]);
-  const [busy, setBusy] = useState<"start" | "complete" | null>(null);
+  const [busy, setBusy] = useState<"start" | "complete" | "close" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
 
@@ -52,6 +53,22 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
           : "Мероприятие начато",
         "success",
       );
+      refresh();
+    } catch (requestError) {
+      setError(actionError(requestError));
+    } finally {
+      setBusy(null);
+    }
+  }, [eventId, refresh, toast]);
+
+  const closeConfirmation = useCallback(async () => {
+    if (!window.confirm("Закрыть подтверждение? Уже подтверждённые посещения и баллы сохранятся.")) return;
+    setBusy("close");
+    setError(null);
+    try {
+      await closeAdminEventConfirmation(eventId);
+      successHaptic();
+      toast.show("Подтверждение участия закрыто", "success");
       refresh();
     } catch (requestError) {
       setError(actionError(requestError));
@@ -131,8 +148,19 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
         )}
 
         {item.confirmation_open && (
-          <div style={{ padding: ".75rem .8rem", borderRadius: ".9rem", background: "rgba(85,189,130,.06)", color: "var(--era-success)", fontSize: ".84rem", fontWeight: 800 }}>
-            ✓ Ввод кода открыт зарегистрированным участникам
+          <>
+            <div style={{ padding: ".75rem .8rem", borderRadius: ".9rem", background: "rgba(85,189,130,.06)", color: "var(--era-success)", fontSize: ".84rem", fontWeight: 800 }}>
+              ✓ Ввод кода открыт зарегистрированным участникам
+            </div>
+            <button type="button" disabled={busy !== null} onClick={() => void closeConfirmation()}>
+              {busy === "close" ? "Закрываем…" : "Закрыть подтверждение участия"}
+            </button>
+          </>
+        )}
+
+        {item.confirmation_closed_at && (
+          <div style={{ padding: ".75rem .8rem", borderRadius: ".9rem", background: "var(--era-surface-2)", color: "var(--era-text-muted)", fontSize: ".84rem", fontWeight: 800 }}>
+            Подтверждение участия закрыто
           </div>
         )}
 

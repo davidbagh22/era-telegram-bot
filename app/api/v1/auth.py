@@ -17,6 +17,7 @@ from app.repositories.users import get_user_by_telegram_id
 logger = logging.getLogger(__name__)
 
 AUTH_RATE_LIMIT = 60
+DEV_AUTH_RATE_LIMIT = 240
 AUTH_RATE_LIMIT_WINDOW_SECONDS = 60
 
 router = APIRouter(tags=["miniapp-auth"])
@@ -44,9 +45,9 @@ async def authenticate(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> MiniAppAuthResponse:
-    # Keep the production/shared-IP bucket unchanged. Only local/E2E dev
-    # sessions get isolated buckets so separate fixtures cannot exhaust one
-    # another's allowance.
+    # Keep the production/shared-IP bucket unchanged. Local/E2E dev sessions
+    # are isolated per fixture and have headroom for a complete serial browser
+    # suite, whose page reloads authenticate more often than a real session.
     dev_auth = settings.dev_auth_enabled and payload.dev_telegram_id is not None
     rate_limit_prefix = (
         f"miniapp_auth_dev_{payload.dev_telegram_id}" if dev_auth else "miniapp_auth"
@@ -54,7 +55,7 @@ async def authenticate(
     await enforce_rate_limit(
         request,
         key_prefix=rate_limit_prefix,
-        limit=AUTH_RATE_LIMIT,
+        limit=DEV_AUTH_RATE_LIMIT if dev_auth else AUTH_RATE_LIMIT,
         window_seconds=AUTH_RATE_LIMIT_WINDOW_SECONDS,
     )
     if dev_auth:

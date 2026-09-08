@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.database.base import Base
+from app.database.event_attendance import EventAttendanceSession  # noqa: F401
 from app.database.event_experience import EventExperience, EventReminderDelivery  # noqa: F401
 from app.database.models import Badge, Event, EventActivity, EventActivitySubmission, PointTransaction, User, UserBadge
 from app.database.session import create_engine_and_sessionmaker

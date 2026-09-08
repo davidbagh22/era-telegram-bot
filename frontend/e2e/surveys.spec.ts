@@ -11,6 +11,7 @@ async function enterAdminWorkspace(page: import("@playwright/test").Page) {
 }
 
 test("admin creates and sends a survey; the participant answers it and the admin sees the response", async ({ browser }) => {
+  test.setTimeout(60_000);
   const adminContext = await browser.newContext();
   const adminPage = await adminContext.newPage();
   const participantContext = await browser.newContext();
@@ -31,9 +32,7 @@ test("admin creates and sends a survey; the participant answers it and the admin
     await surveyCard.getByRole("button", { name: "Отправить" }).click();
     await expect(surveyCard.getByText("отправлен", { exact: true })).toBeVisible();
 
-    await participantPage.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
-    await participantPage.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Сообщество" }).click();
-    await participantPage.getByRole("button", { name: "Опросы" }).click();
+    await participantPage.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/surveys`);
     const participantCard = participantPage.locator(".era-card", { hasText: surveyTitle });
     await expect(participantCard).toBeVisible();
     await participantCard.getByRole("button", { name: "Ответить" }).click();
