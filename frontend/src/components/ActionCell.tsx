@@ -69,7 +69,9 @@ export function ActionCell({
             display: "block",
             fontSize: "var(--era-text-lg)",
             lineHeight: 1.25,
-            overflowWrap: "anywhere",
+            overflowWrap: "break-word",
+            wordBreak: "normal",
+            hyphens: "none",
           }}
         >
           {title}
@@ -83,7 +85,9 @@ export function ActionCell({
               fontSize: "var(--era-text-sm)",
               fontWeight: 500,
               lineHeight: 1.35,
-              overflowWrap: "anywhere",
+              overflowWrap: "break-word",
+              wordBreak: "normal",
+              hyphens: "none",
             }}
           >
             {description}
@@ -97,6 +101,8 @@ export function ActionCell({
               color: "var(--era-text-muted)",
               fontSize: "var(--era-text-xs)",
               fontWeight: 600,
+              overflowWrap: "break-word",
+              wordBreak: "normal",
             }}
           >
             {meta}
