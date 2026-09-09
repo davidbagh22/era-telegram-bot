@@ -7,6 +7,14 @@ interface TelegramHapticFeedback {
   selectionChanged?: () => void;
 }
 
+interface TelegramBackButton {
+  isVisible?: boolean;
+  show?: () => void;
+  hide?: () => void;
+  onClick?: (callback: () => void) => void;
+  offClick?: (callback: () => void) => void;
+}
+
 interface TelegramWebApp {
   initData: string;
   ready: () => void;
@@ -19,6 +27,7 @@ interface TelegramWebApp {
   setBottomBarColor?: (color: string) => void;
   openTelegramLink?: (url: string) => void;
   shareMessage?: (msgId: string, callback?: (success: boolean) => void) => void;
+  BackButton?: TelegramBackButton;
   HapticFeedback?: TelegramHapticFeedback;
 }
 
@@ -63,6 +72,84 @@ export function applyTelegramTheme(): void {
   try { webApp?.setHeaderColor?.("#F7F7FA"); } catch { /* older clients */ }
   try { webApp?.setBackgroundColor?.("#F7F7FA"); } catch { /* older clients */ }
   try { webApp?.setBottomBarColor?.("#F7F7FA"); } catch { /* older clients */ }
+}
+
+function currentHashRoute(): string {
+  return window.location.hash.replace(/^#\/?/, "").replace(/^\//, "").replace(/\/$/, "");
+}
+
+function parentRoute(route: string): string | null {
+  const roots = new Set([
+    "",
+    "home",
+    "projects",
+    "participation",
+    "opportunities",
+    "profile",
+    "admin",
+    "leader",
+    "community",
+  ]);
+  if (roots.has(route)) return null;
+
+  if (route === "development" || route === "progress") return "home";
+  if (route.startsWith("development/")) return "development";
+  if (route === "era-pro") return "opportunities";
+
+  if (/^admin\/events\/\d+$/.test(route) || /^admin\/projects\/\d+$/.test(route)) return "admin";
+  if (route.startsWith("admin/")) return "admin";
+
+  if (/^projects\/\d+$/.test(route)) return "projects";
+  if (/^events\/\d+$/.test(route) || route === "events") return "participation";
+  if (/^tasks\/\d+$/.test(route)) return "tasks";
+  if (route === "tasks" || route === "calendar" || route === "history") return "home";
+
+  if (/^users\/\d+$/.test(route)) return "opportunities";
+  if (/^(opportunities|auctions|rewards|surveys|media)\/\d+$/.test(route)) return "opportunities";
+  if (["auctions", "rewards", "surveys", "media", "leaderboard"].includes(route)) return "opportunities";
+  if (route === "media/guide") return "media";
+
+  if (route.startsWith("leader/")) return "leader";
+  return "home";
+}
+
+/**
+ * Keep Telegram's native BackButton deterministic for every hash-routed child screen.
+ * We intentionally do not depend on WebView browser history: Telegram can inject its
+ * own entries, which made the arrow appear only sometimes on iOS/Android.
+ */
+export function initTelegramBackNavigation(): () => void {
+  const backButton = getTelegramWebApp()?.BackButton;
+  if (!backButton?.show || !backButton.hide || !backButton.onClick) return () => {};
+
+  const sync = () => {
+    const parent = parentRoute(currentHashRoute());
+    try {
+      if (parent) backButton.show?.();
+      else backButton.hide?.();
+    } catch {
+      // Older Telegram clients may expose a partial BackButton implementation.
+    }
+  };
+
+  const goBack = () => {
+    const parent = parentRoute(currentHashRoute());
+    if (!parent) {
+      sync();
+      return;
+    }
+    window.location.hash = `#/${parent}`;
+  };
+
+  backButton.onClick(goBack);
+  window.addEventListener("hashchange", sync);
+  sync();
+
+  return () => {
+    window.removeEventListener("hashchange", sync);
+    try { backButton.offClick?.(goBack); } catch { /* unsupported client */ }
+    try { backButton.hide?.(); } catch { /* unsupported client */ }
+  };
 }
 
 export function openTelegramShare(url: string, text: string): boolean {
