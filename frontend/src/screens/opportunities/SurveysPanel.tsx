@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { describeActionError, fetchSurvey, fetchSurveys, submitSurvey } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
@@ -59,12 +59,7 @@ export function SurveysPanel() {
     });
   }, []);
 
-  const handleChoiceToggle = useCallback((
-    surveyId: number,
-    index: number,
-    value: string,
-    maxSelections: number | null,
-  ) => {
+  const handleChoiceToggle = useCallback((surveyId: number, index: number, value: string, maxSelections: number | null) => {
     setDrafts((previous) => {
       const answers = [...(previous[surveyId] ?? [])];
       const selected = selectedValues(answers[index] ?? "");
@@ -135,9 +130,7 @@ export function SurveysPanel() {
                     const selected = selectedValues(answers[index] ?? "");
                     const searchKey = `${survey.id}:${index}`;
                     const query = (searches[searchKey] ?? "").trim().toLowerCase();
-                    const visibleOptions = spec.options.filter((option) =>
-                      !query || `${option.label} ${option.description}`.toLowerCase().includes(query),
-                    );
+                    const visibleOptions = spec.options.filter((option) => !query || `${option.label} ${option.description}`.toLowerCase().includes(query));
                     return (
                       <div key={index} style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
                         <div>
@@ -147,36 +140,14 @@ export function SurveysPanel() {
                           </p>
                         </div>
                         {spec.searchable && (
-                          <input
-                            type="search"
-                            placeholder="Найти спикера"
-                            value={searches[searchKey] ?? ""}
-                            onChange={(event) => setSearches((previous) => ({ ...previous, [searchKey]: event.target.value }))}
-                            style={{ width: "100%" }}
-                          />
+                          <input type="search" placeholder="Найти спикера" value={searches[searchKey] ?? ""} onChange={(event) => setSearches((previous) => ({ ...previous, [searchKey]: event.target.value }))} style={{ width: "100%" }} />
                         )}
                         <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem", maxHeight: "58vh", overflowY: "auto" }}>
                           {visibleOptions.map((option) => {
                             const checked = selected.includes(option.value);
                             return (
-                              <label
-                                key={option.value}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "flex-start",
-                                  gap: "0.65rem",
-                                  padding: "0.7rem",
-                                  border: checked ? "1px solid var(--era-violet)" : "1px solid var(--era-border)",
-                                  borderRadius: "var(--era-radius-control)",
-                                  background: checked ? "var(--era-tint-violet)" : "var(--era-surface)",
-                                }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => handleChoiceToggle(survey.id, index, option.value, spec.max_selections)}
-                                  style={{ marginTop: "0.2rem" }}
-                                />
+                              <label key={option.value} style={{ display: "flex", alignItems: "flex-start", gap: "0.65rem", padding: "0.7rem", border: checked ? "1px solid var(--era-violet)" : "1px solid var(--era-border)", borderRadius: "var(--era-radius-control)", background: checked ? "var(--era-tint-violet)" : "var(--era-surface)" }}>
+                                <input type="checkbox" checked={checked} onChange={() => handleChoiceToggle(survey.id, index, option.value, spec.max_selections)} style={{ marginTop: "0.2rem" }} />
                                 <span>
                                   <strong style={{ display: "block", fontSize: "0.86rem" }}>{option.label}</strong>
                                   {option.description && <span style={{ color: "var(--era-text-muted)", fontSize: "0.76rem", lineHeight: 1.4 }}>{option.description}</span>}
@@ -190,17 +161,13 @@ export function SurveysPanel() {
                   }
                   return (
                     <label key={index} style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                      <span style={{ fontSize: "0.8125rem", color: "var(--era-text-muted)" }}>
-                        {spec.text}{spec.required ? "" : " · необязательно"}
-                      </span>
+                      <span style={{ fontSize: "0.8125rem", color: "var(--era-text-muted)" }}>{spec.text}{spec.required ? "" : " · необязательно"}</span>
                       <textarea rows={2} value={answers[index] ?? ""} onChange={(event) => handleAnswerChange(survey.id, index, event.target.value)} />
                     </label>
                   );
                 })}
                 <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button type="button" className="era-btn-primary" disabled={busyId === survey.id} onClick={() => void handleSubmit(survey.id, specs)}>
-                    Сохранить выбор
-                  </button>
+                  <button type="button" className="era-btn-primary" disabled={busyId === survey.id} onClick={() => void handleSubmit(survey.id, specs)}>Сохранить выбор</button>
                   <button type="button" onClick={() => setOpenId(null)}>Отмена</button>
                 </div>
               </div>
