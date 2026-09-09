@@ -50,10 +50,10 @@ test("analytics expands from overview instead of a separate control hub", async 
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: /Аналитика/ }).click();
 
-  await expect(page.getByText("Здоровье ЭРА", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Два сигнала. Одна картина." })).toBeVisible();
-  await expect(page.getByText("Показатели здоровья", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Показать все .* показателей/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "ЭРА одним взглядом" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Главное" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Все показатели" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Вовлечённость.*показателей/ })).toBeVisible();
 });
 
 test("overview KPI opens exact underlying rows", async ({ page }) => {
