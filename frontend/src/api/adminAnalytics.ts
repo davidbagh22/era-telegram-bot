@@ -128,8 +128,8 @@ async function adminBlob(path: string): Promise<Blob> {
 }
 
 /**
- * Analytics calculations keep stable internal English identifiers, but no
- * implementation vocabulary should leak into the Russian product interface.
+ * Calculations may keep stable internal English identifiers, but implementation
+ * vocabulary must never leak into the Russian product interface.
  */
 function russianAnalyticsText(value: string | null): string | null {
   if (value === null) return null;
@@ -137,16 +137,21 @@ function russianAnalyticsText(value: string | null): string | null {
     .replace(/Weekly Pulse/gi, "пульс недели")
     .replace(/Meaningful activity/gi, "реальная активность")
     .replace(/meaningful action/gi, "подтверждённая активность")
+    .replace(/meaningful/gi, "значимая")
     .replace(/digital engagement/gi, "цифровая активность")
     .replace(/operational activity/gi, "подтверждённое участие")
     .replace(/Active Base/gi, "активная база")
     .replace(/ACTIVE\/LIGHT участники/gi, "участники в активном или лёгком режиме")
     .replace(/PAUSED\/OBSERVER\/EXITED/gi, "пауза, наблюдение и выход")
     .replace(/Check-in['’]ов/gi, "ответов")
-    .replace(/Check-in/gi, "ответ")
-    .replace(/check-in/gi, "ответ")
+    .replace(/Check-ins?/gi, "ответы")
+    .replace(/check-ins?/gi, "ответы")
     .replace(/No-show/gi, "не пришли")
-    .replace(/Blocker/gi, "препятствие");
+    .replace(/Blocker/gi, "препятствие")
+    .replace(/Retention/gi, "удержание")
+    .replace(/Conversion/gi, "конверсия")
+    .replace(/Coverage/gi, "охват")
+    .replace(/Response rate/gi, "доля ответов");
 }
 
 function localizeEfficiency(snapshot: EfficiencySnapshot): EfficiencySnapshot {
