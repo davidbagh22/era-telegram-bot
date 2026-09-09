@@ -1,0 +1,1 @@
+telegram share spaces must use %20, never literal +
