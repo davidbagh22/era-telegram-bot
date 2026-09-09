@@ -38,17 +38,18 @@ from app.utils.constants import (
     TaskStatus,
 )
 
+# Only counters with a real admin flow that can resolve the item belong in
+# "Нужно решить" / attention_total. Raw metrics for reports, questions and
+# department applications stay available, but must not create dead-end tasks.
 ATTENTION_KEYS = (
     "users_pending",
     "projects_review",
     "events_pending",
+    "event_waitlist",
     "task_results",
     "activity_results",
     "rewards",
     "portfolio",
-    "reports",
-    "questions",
-    "departments",
 )
 
 
