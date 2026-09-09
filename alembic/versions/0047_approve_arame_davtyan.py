@@ -84,8 +84,8 @@ def upgrade() -> None:
             )
             VALUES (
                 10, 'user.approved', 'user', 34,
-                '{"application_status":"pending","is_archived":true}'::json,
-                '{"application_status":"approved","is_archived":false}'::json,
+                json_build_object('application_status', 'pending', 'is_archived', true),
+                json_build_object('application_status', 'approved', 'is_archived', false),
                 now()
             )
             """
