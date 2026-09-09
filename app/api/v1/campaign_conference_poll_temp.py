@@ -3,10 +3,10 @@ from __future__ import annotations
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from fastapi import APIRouter, HTTPException, Request
 
+from app.handlers.faq_start import CONFERENCE_SPEAKERS_PAYLOAD
 from app.services import survey_admin_service
 from app.services.notification_service import safe_send_once
 from app.services.survey_service import CONFERENCE_SURVEY_MARKER, CONFERENCE_SURVEY_TITLE
-from app.utils.deep_links import telegram_miniapp_start_url
 
 router = APIRouter(prefix="/ops/conference-speaker-poll-20260909")
 
@@ -40,9 +40,10 @@ async def run_conference_speaker_poll_once(bot, settings, session_factory) -> di
         survey_id = int(survey.id)
 
     me = await bot.get_me()
-    button_url = telegram_miniapp_start_url(me.username or settings.bot_username, "surveys")
-    if not button_url:
-        raise RuntimeError("miniapp_link_unavailable")
+    username = (me.username or settings.bot_username or "").lstrip("@").strip()
+    if not username:
+        raise RuntimeError("bot_username_unavailable")
+    button_url = f"https://t.me/{username}?start={CONFERENCE_SPEAKERS_PAYLOAD}"
 
     markup = InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="Выбрать спикеров", url=button_url)]]
