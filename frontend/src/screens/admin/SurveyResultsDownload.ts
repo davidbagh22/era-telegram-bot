@@ -6,19 +6,6 @@ export interface SurveyRankingItem {
   percent: number;
 }
 
-type CellValue = string | number;
-type SheetCell = { value: CellValue; style?: number };
-type SheetRow = SheetCell[];
-
-type ZipEntry = {
-  name: string;
-  data: Uint8Array;
-  crc: number;
-  offset: number;
-};
-
-const encoder = new TextEncoder();
-
 function escapeXml(value: unknown): string {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -41,7 +28,7 @@ function parseChoices(answer: string): string[] {
 
 function displayAnswer(answer: string): string {
   const choices = parseChoices(answer);
-  return choices.length > 0 ? choices.join(", ") : answer || "";
+  return choices.length > 0 ? choices.join(", ") : answer || "—";
 }
 
 function submittedAt(value: string | null): string {
@@ -50,124 +37,114 @@ function submittedAt(value: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("ru-RU");
 }
 
-function columnName(index: number): string {
-  let value = index + 1;
-  let result = "";
-  while (value > 0) {
-    const remainder = (value - 1) % 26;
-    result = String.fromCharCode(65 + remainder) + result;
-    value = Math.floor((value - 1) / 26);
+function cell(value: unknown, style = "Body", type: "String" | "Number" = "String"): string {
+  return `<Cell ss:StyleID="${style}"><Data ss:Type="${type}">${escapeXml(value)}</Data></Cell>`;
+}
+
+function row(cells: string[], height?: number): string {
+  const heightAttr = height ? ` ss:Height="${height}"` : "";
+  return `<Row${heightAttr}>${cells.join("")}</Row>`;
+}
+
+function column(width: number): string {
+  return `<Column ss:AutoFitWidth="0" ss:Width="${width}"/>`;
+}
+
+function buildSummarySheet(
+  survey: SurveyAdmin,
+  responses: SurveyResponseAdmin[],
+  ranking: SurveyRankingItem[],
+  isConference: boolean,
+): string {
+  const rows: string[] = [
+    row([cell("ЭРА · РЕЗУЛЬТАТЫ ОПРОСА", "Hero")], 30),
+    row([cell(survey.title, "Title")], 34),
+    row([]),
+    row([cell("Ответов", "Label"), cell(responses.length, "Metric", "Number")]),
+    row([cell("Сформировано", "Label"), cell(new Date().toLocaleString("ru-RU"), "Body")]),
+  ];
+
+  if (isConference) {
+    rows.push(
+      row([]),
+      row([cell("РЕЙТИНГ СПИКЕРОВ", "Section")], 26),
+      row([
+        cell("Место", "Header"),
+        cell("Спикер", "Header"),
+        cell("Голосов", "Header"),
+        cell("% участников", "Header"),
+      ]),
+    );
+    ranking.forEach((item, index) => {
+      const topStyle = index < 3 ? "Top" : "Body";
+      rows.push(row([
+        cell(index + 1, index < 3 ? "TopNumber" : "Center", "Number"),
+        cell(item.name, topStyle),
+        cell(item.votes, "Center", "Number"),
+        cell(`${item.percent}%`, "Center"),
+      ]));
+    });
   }
-  return result;
+
+  return `<Worksheet ss:Name="Сводка">
+<Table>
+${column(70)}${column(300)}${column(90)}${column(110)}
+${rows.join("\n")}
+</Table>
+<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><FreezePanes/><FrozenNoSplit/><SplitHorizontal>${isConference ? 8 : 5}</SplitHorizontal><TopRowBottomPane>${isConference ? 8 : 5}</TopRowBottomPane><ActivePane>2</ActivePane></WorksheetOptions>
+</Worksheet>`;
 }
 
-function cellXml(cell: SheetCell, row: number, column: number): string {
-  const ref = `${columnName(column)}${row}`;
-  const style = cell.style != null ? ` s="${cell.style}"` : "";
-  if (typeof cell.value === "number") {
-    return `<c r="${ref}"${style} t="n"><v>${cell.value}</v></c>`;
-  }
-  return `<c r="${ref}"${style} t="inlineStr"><is><t xml:space="preserve">${escapeXml(cell.value)}</t></is></c>`;
-}
+function buildAnswersSheet(
+  survey: SurveyAdmin,
+  responses: SurveyResponseAdmin[],
+  isConference: boolean,
+): string {
+  const questionLabels = responses[0]?.answers.map((answer) => answer.question) ?? survey.questions;
+  const headers = isConference
+    ? ["№", "Участник", "Дата ответа", "Выбранные спикеры", "Свой кандидат", "ID"]
+    : ["№", "Участник", "Дата ответа", ...questionLabels, "ID"];
 
-function sheetXml(rows: SheetRow[], widths: number[], merges: string[] = [], freezeRow = 0): string {
-  const cols = widths
-    .map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`)
-    .join("");
-  const rowXml = rows
-    .map((cells, rowIndex) => `<row r="${rowIndex + 1}">${cells.map((cell, columnIndex) => cellXml(cell, rowIndex + 1, columnIndex)).join("")}</row>`)
-    .join("");
-  const mergeXml = merges.length
-    ? `<mergeCells count="${merges.length}">${merges.map((ref) => `<mergeCell ref="${ref}"/>`).join("")}</mergeCells>`
-    : "";
-  const paneXml = freezeRow > 0
-    ? `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${freezeRow}" topLeftCell="A${freezeRow + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`
-    : `<sheetViews><sheetView workbookViewId="0"/></sheetViews>`;
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-${paneXml}
-<cols>${cols}</cols>
-<sheetData>${rowXml}</sheetData>
-${mergeXml}
-</worksheet>`;
-}
+  const rows: string[] = [
+    row([cell("ЭРА · КТО ЗА ЧТО ГОЛОСОВАЛ", "Hero")], 30),
+    row([cell(survey.title, "Title")], 34),
+    row([]),
+    row(headers.map((header) => cell(header, "Header")), 30),
+  ];
 
-function uint16(value: number): Uint8Array {
-  return new Uint8Array([value & 0xff, (value >>> 8) & 0xff]);
-}
-
-function uint32(value: number): Uint8Array {
-  return new Uint8Array([
-    value & 0xff,
-    (value >>> 8) & 0xff,
-    (value >>> 16) & 0xff,
-    (value >>> 24) & 0xff,
-  ]);
-}
-
-function concat(parts: Uint8Array[]): Uint8Array {
-  const total = parts.reduce((sum, part) => sum + part.length, 0);
-  const output = new Uint8Array(total);
-  let offset = 0;
-  for (const part of parts) {
-    output.set(part, offset);
-    offset += part.length;
-  }
-  return output;
-}
-
-const crcTable = (() => {
-  const table = new Uint32Array(256);
-  for (let index = 0; index < 256; index += 1) {
-    let value = index;
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = (value & 1) !== 0 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  responses.forEach((response, responseIndex) => {
+    if (isConference) {
+      rows.push(row([
+        cell(responseIndex + 1, "Center", "Number"),
+        cell(response.user_name, "Strong"),
+        cell(submittedAt(response.submitted_at), "Body"),
+        cell(displayAnswer(response.answers[0]?.answer ?? ""), "Wrap"),
+        cell(response.answers[1]?.answer?.trim() || "—", "Wrap"),
+        cell(response.user_id, "Center", "Number"),
+      ]));
+      return;
     }
-    table[index] = value >>> 0;
-  }
-  return table;
-})();
 
-function crc32(data: Uint8Array): number {
-  let crc = 0xffffffff;
-  for (const byte of data) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-function makeZip(files: { name: string; content: string }[]): Uint8Array {
-  const localParts: Uint8Array[] = [];
-  const entries: ZipEntry[] = [];
-  let offset = 0;
-
-  for (const file of files) {
-    const name = encoder.encode(file.name);
-    const data = encoder.encode(file.content);
-    const crc = crc32(data);
-    const header = concat([
-      uint32(0x04034b50), uint16(20), uint16(0), uint16(0), uint16(0), uint16(0),
-      uint32(crc), uint32(data.length), uint32(data.length), uint16(name.length), uint16(0), name,
-    ]);
-    localParts.push(header, data);
-    entries.push({ name: file.name, data, crc, offset });
-    offset += header.length + data.length;
-  }
-
-  const centralParts: Uint8Array[] = [];
-  for (const entry of entries) {
-    const name = encoder.encode(entry.name);
-    centralParts.push(concat([
-      uint32(0x02014b50), uint16(20), uint16(20), uint16(0), uint16(0), uint16(0), uint16(0),
-      uint32(entry.crc), uint32(entry.data.length), uint32(entry.data.length),
-      uint16(name.length), uint16(0), uint16(0), uint16(0), uint16(0), uint32(0), uint32(entry.offset), name,
+    rows.push(row([
+      cell(responseIndex + 1, "Center", "Number"),
+      cell(response.user_name, "Strong"),
+      cell(submittedAt(response.submitted_at), "Body"),
+      ...questionLabels.map((_, index) => cell(displayAnswer(response.answers[index]?.answer ?? ""), "Wrap")),
+      cell(response.user_id, "Center", "Number"),
     ]));
-  }
-  const central = concat(centralParts);
-  const local = concat(localParts);
-  const end = concat([
-    uint32(0x06054b50), uint16(0), uint16(0), uint16(entries.length), uint16(entries.length),
-    uint32(central.length), uint32(local.length), uint16(0),
-  ]);
-  return concat([local, central, end]);
+  });
+
+  const columns = isConference
+    ? [42, 170, 125, 330, 220, 60]
+    : [42, 170, 125, ...questionLabels.map(() => 250), 60];
+
+  return `<Worksheet ss:Name="Ответы участников">
+<Table>
+${columns.map(column).join("")}
+${rows.join("\n")}
+</Table>
+<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><FreezePanes/><FrozenNoSplit/><SplitHorizontal>4</SplitHorizontal><TopRowBottomPane>4</TopRowBottomPane><ActivePane>2</ActivePane></WorksheetOptions>
+</Worksheet>`;
 }
 
 function buildWorkbook(
@@ -175,148 +152,34 @@ function buildWorkbook(
   responses: SurveyResponseAdmin[],
   ranking: SurveyRankingItem[],
   isConference: boolean,
-): Uint8Array {
-  const generatedAt = new Date().toLocaleString("ru-RU");
-  const summaryRows: SheetRow[] = [
-    [{ value: "ЭРА · РЕЗУЛЬТАТЫ ОПРОСА", style: 1 }],
-    [{ value: survey.title, style: 2 }],
-    [],
-    [{ value: "Ответов", style: 3 }, { value: responses.length, style: 6 }],
-    [{ value: "Сформировано", style: 3 }, { value: generatedAt, style: 4 }],
-  ];
-
-  if (isConference) {
-    summaryRows.push(
-      [],
-      [{ value: "РЕЙТИНГ СПИКЕРОВ", style: 2 }],
-      [
-        { value: "Место", style: 3 },
-        { value: "Спикер", style: 3 },
-        { value: "Голосов", style: 3 },
-        { value: "% участников", style: 3 },
-      ],
-    );
-    ranking.forEach((item, index) => {
-      summaryRows.push([
-        { value: index + 1, style: index < 3 ? 6 : 5 },
-        { value: item.name, style: index < 3 ? 7 : 4 },
-        { value: item.votes, style: 5 },
-        { value: `${item.percent}%`, style: 5 },
-      ]);
-    });
-  }
-
-  const questionLabels = responses[0]?.answers.map((answer) => answer.question) ?? survey.questions;
-  const answerHeaders = isConference
-    ? ["№", "Участник", "Дата ответа", "Выбранные спикеры", "Свой кандидат", "ID"]
-    : ["№", "Участник", "Дата ответа", ...questionLabels, "ID"];
-  const answerRows: SheetRow[] = [
-    [{ value: "ЭРА · КТО ЗА ЧТО ГОЛОСОВАЛ", style: 1 }],
-    [{ value: survey.title, style: 2 }],
-    [],
-    answerHeaders.map((header) => ({ value: header, style: 3 })),
-  ];
-
-  responses.forEach((response, responseIndex) => {
-    if (isConference) {
-      answerRows.push([
-        { value: responseIndex + 1, style: 5 },
-        { value: response.user_name, style: 7 },
-        { value: submittedAt(response.submitted_at), style: 4 },
-        { value: displayAnswer(response.answers[0]?.answer ?? ""), style: 4 },
-        { value: response.answers[1]?.answer?.trim() || "—", style: 4 },
-        { value: response.user_id, style: 5 },
-      ]);
-    } else {
-      answerRows.push([
-        { value: responseIndex + 1, style: 5 },
-        { value: response.user_name, style: 7 },
-        { value: submittedAt(response.submitted_at), style: 4 },
-        ...questionLabels.map((_, index) => ({ value: displayAnswer(response.answers[index]?.answer ?? ""), style: 4 })),
-        { value: response.user_id, style: 5 },
-      ]);
-    }
-  });
-
-  const summarySheet = sheetXml(summaryRows, [12, 42, 14, 18], ["A1:D1", "A2:D2", ...(isConference ? ["A7:D7"] : [])], isConference ? 8 : 0);
-  const answerWidths = isConference
-    ? [7, 28, 22, 58, 36, 10]
-    : [7, 28, 22, ...questionLabels.map(() => 42), 10];
-  const lastAnswerColumn = columnName(answerHeaders.length - 1);
-  const answersSheet = sheetXml(answerRows, answerWidths, [`A1:${lastAnswerColumn}1`, `A2:${lastAnswerColumn}2`], 4);
-
-  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-<Default Extension="xml" ContentType="application/xml"/>
-<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
-<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-</Types>`;
-
-  const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
-</Relationships>`;
-
-  const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<sheets>
-<sheet name="Сводка" sheetId="1" r:id="rId1"/>
-<sheet name="Ответы участников" sheetId="2" r:id="rId2"/>
-</sheets>
-</workbook>`;
-
-  const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
-<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>`;
-
-  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<fonts count="4">
-<font><sz val="11"/><name val="Arial"/></font>
-<font><b/><sz val="18"/><color rgb="FFFFFFFF"/><name val="Arial"/></font>
-<font><b/><sz val="13"/><color rgb="FF201B2C"/><name val="Arial"/></font>
-<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Arial"/></font>
-</fonts>
-<fills count="5">
-<fill><patternFill patternType="none"/></fill>
-<fill><patternFill patternType="gray125"/></fill>
-<fill><patternFill patternType="solid"><fgColor rgb="FF6F2DBD"/><bgColor indexed="64"/></patternFill></fill>
-<fill><patternFill patternType="solid"><fgColor rgb="FFF2EDFF"/><bgColor indexed="64"/></patternFill></fill>
-<fill><patternFill patternType="solid"><fgColor rgb="FFFFF2E8"/><bgColor indexed="64"/></patternFill></fill>
-</fills>
-<borders count="2">
-<border><left/><right/><top/><bottom/><diagonal/></border>
-<border><left style="thin"><color rgb="FFE3DCEA"/></left><right style="thin"><color rgb="FFE3DCEA"/></right><top style="thin"><color rgb="FFE3DCEA"/></top><bottom style="thin"><color rgb="FFE3DCEA"/></bottom><diagonal/></border>
-</borders>
-<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="8">
-<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0"><alignment vertical="center"/></xf>
-<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0"><alignment vertical="center" wrapText="1"/></xf>
-<xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
-<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0"><alignment vertical="top" wrapText="1"/></xf>
-<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
-<xf numFmtId="0" fontId="2" fillId="4" borderId="1" xfId="0"><alignment horizontal="center" vertical="center"/></xf>
-<xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0"><alignment vertical="center" wrapText="1"/></xf>
-</cellXfs>
-<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
-</styleSheet>`;
-
-  return makeZip([
-    { name: "[Content_Types].xml", content: contentTypes },
-    { name: "_rels/.rels", content: rootRels },
-    { name: "xl/workbook.xml", content: workbook },
-    { name: "xl/_rels/workbook.xml.rels", content: workbookRels },
-    { name: "xl/styles.xml", content: styles },
-    { name: "xl/worksheets/sheet1.xml", content: summarySheet },
-    { name: "xl/worksheets/sheet2.xml", content: answersSheet },
-  ]);
+): string {
+  const summary = buildSummarySheet(survey, responses, ranking, isConference);
+  const answers = buildAnswersSheet(survey, responses, isConference);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+<Styles>
+<Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Center"/><Font ss:FontName="Arial" ss:Size="10"/></Style>
+<Style ss:ID="Hero"><Alignment ss:Vertical="Center"/><Font ss:FontName="Arial" ss:Size="16" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#6F2DBD" ss:Pattern="Solid"/></Style>
+<Style ss:ID="Title"><Alignment ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Arial" ss:Size="13" ss:Bold="1" ss:Color="#201B2C"/></Style>
+<Style ss:ID="Section"><Font ss:FontName="Arial" ss:Size="11" ss:Bold="1" ss:Color="#6F2DBD"/></Style>
+<Style ss:ID="Label"><Font ss:FontName="Arial" ss:Size="10" ss:Bold="1" ss:Color="#6F2DBD"/><Interior ss:Color="#F2EDFF" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E3DCEA"/></Borders></Style>
+<Style ss:ID="Metric"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Arial" ss:Size="12" ss:Bold="1"/><Interior ss:Color="#FFF2E8" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E3DCEA"/></Borders></Style>
+<Style ss:ID="Header"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Arial" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#6F2DBD" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#FFFFFF"/></Borders></Style>
+<Style ss:ID="Body"><Alignment ss:Vertical="Top"/><Font ss:FontName="Arial" ss:Size="10"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E8E2EC"/></Borders></Style>
+<Style ss:ID="Wrap"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Font ss:FontName="Arial" ss:Size="10"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E8E2EC"/></Borders></Style>
+<Style ss:ID="Center"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Arial" ss:Size="10"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E8E2EC"/></Borders></Style>
+<Style ss:ID="Strong"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Font ss:FontName="Arial" ss:Size="10" ss:Bold="1"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E8E2EC"/></Borders></Style>
+<Style ss:ID="Top"><Alignment ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Arial" ss:Size="10" ss:Bold="1"/><Interior ss:Color="#F2EDFF" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9CCF5"/></Borders></Style>
+<Style ss:ID="TopNumber"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Arial" ss:Size="10" ss:Bold="1" ss:Color="#6F2DBD"/><Interior ss:Color="#FFF2E8" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9CCF5"/></Borders></Style>
+</Styles>
+${summary}
+${answers}
+</Workbook>`;
 }
 
 export function downloadSurveyResultsExcel(
@@ -326,13 +189,11 @@ export function downloadSurveyResultsExcel(
   isConference: boolean,
 ): void {
   const workbook = buildWorkbook(survey, responses, ranking, isConference);
-  const blob = new Blob([workbook], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
+  const blob = new Blob(["\uFEFF", workbook], { type: "application/vnd.ms-excel;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `ERA_survey_${survey.id}_results.xlsx`;
+  anchor.download = `ERA_survey_${survey.id}_results.xml`;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
