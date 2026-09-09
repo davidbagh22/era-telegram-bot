@@ -75,11 +75,14 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     chat.router.message.outer_middleware(media_chat_activity)
 
     dispatcher.include_routers(
+        # Referral deep links are a specialised /start form and must be handled
+        # before the emergency catch-all /start router, otherwise ref_<code>
+        # is discarded before registration begins.
+        referrals.router,
         emergency.router,
         chat_unlock.router,
         start.router,
         registration.router,
-        referrals.router,
         admin_router,
         leader_event_photo.router,
         leader_router,
