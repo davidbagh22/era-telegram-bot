@@ -4,7 +4,7 @@ from datetime import date as date_, datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.database.base import Base, TimestampMixin
@@ -180,7 +180,7 @@ class MediaAttachment(TimestampMixin, Base):
     external_url: Mapped[str | None] = mapped_column(String(1000))
     filename: Mapped[str | None] = mapped_column(String(255))
     mime_type: Mapped[str | None] = mapped_column(String(160))
-    source_chat_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    source_chat_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     source_message_id: Mapped[int | None] = mapped_column(Integer, index=True)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
@@ -194,7 +194,7 @@ class MediaChatActivity(TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("chat_id", "activity_date", name="uq_media_chat_activity_chat_date"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    chat_id: Mapped[int] = mapped_column(Integer, index=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
     activity_date: Mapped[date_] = mapped_column(Date, index=True)
     human_messages: Mapped[int] = mapped_column(Integer, default=0)
     author_ids_json: Mapped[list[int]] = mapped_column(JSON, default=list)
