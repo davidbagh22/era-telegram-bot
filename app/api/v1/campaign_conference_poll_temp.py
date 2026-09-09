@@ -11,7 +11,7 @@ from app.services.survey_service import CONFERENCE_SURVEY_MARKER, CONFERENCE_SUR
 router = APIRouter(prefix="/ops/conference-speaker-poll-20260909")
 
 _RUN_TOKEN = "f4c8c1f7d54047aab0f4c1f47a838c62"
-_DELIVERY_KEY = "campaign:conference-speakers-20260909:general:v1"
+_DELIVERY_KEY = "campaign:conference-speakers-20260909:general:v2"
 
 CHAT_TEXT = """🔥 Кого ты реально хочешь услышать вживую?
 
