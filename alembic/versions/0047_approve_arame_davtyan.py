@@ -37,12 +37,8 @@ def upgrade() -> None:
 
     if row is None or row["application_status"] == "approved":
         return
-
     if row["application_status"] not in {"pending", "needs_info"}:
         return
-
-    old_status = row["application_status"]
-    old_archived = bool(row["is_archived"])
 
     bind.execute(
         sa.text(
@@ -55,10 +51,10 @@ def upgrade() -> None:
                 archived_at = NULL,
                 archived_by = NULL,
                 updated_at = now()
-            WHERE id = :user_id AND telegram_id = :telegram_id
+            WHERE id = 34 AND telegram_id = 1889433334
+              AND application_status IN ('pending', 'needs_info')
             """
-        ),
-        {"user_id": TARGET_USER_ID, "telegram_id": TARGET_TELEGRAM_ID},
+        )
     )
 
     bind.execute(
@@ -69,18 +65,14 @@ def upgrade() -> None:
                 source_type, source_id, idempotency_key, category
             )
             SELECT
-                :user_id, 100, 'Регистрация в боте', :actor_id, now(),
-                'registration_approval', :user_id, :idempotency_key, 'community'
+                34, 100, 'Регистрация в боте', 10, now(),
+                'registration_approval', 34, 'registration_approval:34', 'community'
             WHERE NOT EXISTS (
-                SELECT 1 FROM points WHERE idempotency_key = :idempotency_key
+                SELECT 1 FROM points
+                WHERE idempotency_key = 'registration_approval:34'
             )
             """
-        ),
-        {
-            "user_id": TARGET_USER_ID,
-            "actor_id": ACTOR_USER_ID,
-            "idempotency_key": f"registration_approval:{TARGET_USER_ID}",
-        },
+        )
     )
 
     bind.execute(
@@ -91,20 +83,13 @@ def upgrade() -> None:
                 old_value, new_value, created_at
             )
             VALUES (
-                :actor_id, 'user.approved', 'user', :user_id,
-                CAST(:old_value AS json), CAST(:new_value AS json), now()
+                10, 'user.approved', 'user', 34,
+                '{"application_status":"pending","is_archived":true}'::json,
+                '{"application_status":"approved","is_archived":false}'::json,
+                now()
             )
             """
-        ),
-        {
-            "actor_id": ACTOR_USER_ID,
-            "user_id": TARGET_USER_ID,
-            "old_value": (
-                '{"application_status":"%s","is_archived":%s}'
-                % (old_status, "true" if old_archived else "false")
-            ),
-            "new_value": '{"application_status":"approved","is_archived":false}',
-        },
+        )
     )
 
 
