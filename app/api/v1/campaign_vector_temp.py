@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import select
@@ -9,6 +11,7 @@ from app.services.notification_service import safe_send_once
 from app.utils.constants import ApplicationStatus
 from app.utils.deep_links import telegram_miniapp_start_url
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ops/vector-20260909")
 
 _RUN_TOKEN = "UV-r0sIsbWJE4KzaA-OuZ5B3kYc3CDtL"
@@ -52,18 +55,11 @@ def _count_result(result, counters: dict[str, int]) -> None:
         counters["failed"] += 1
 
 
-@router.get(f"/{_RUN_TOKEN}", include_in_schema=False)
-async def run_vector_campaign(request: Request) -> dict[str, object]:
-    bot = getattr(request.app.state, "bot", None)
-    settings = getattr(request.app.state, "settings", None)
-    session_factory = getattr(request.app.state, "session_factory", None)
-    if bot is None or settings is None or session_factory is None:
-        raise HTTPException(status_code=503, detail="service_not_ready")
-
+async def run_vector_campaign_once(bot, settings, session_factory) -> dict[str, object]:
     me = await bot.get_me()
     button_url = telegram_miniapp_start_url(me.username or settings.bot_username, "development")
     if not button_url:
-        raise HTTPException(status_code=503, detail="bot_username_unavailable")
+        raise RuntimeError("bot_username_unavailable")
 
     markup = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -132,12 +128,25 @@ async def run_vector_campaign(request: Request) -> dict[str, object]:
             )
             channel_status = "duplicate" if result.duplicate else result.status
         except Exception:
+            logger.exception("Vector campaign channel delivery failed")
             channel_status = "delivery_failed"
 
-    return {
+    result_payload = {
         "ok": True,
         "recipients": len(recipients),
         "personal": counters,
         "general": general_status,
         "channel": channel_status,
     }
+    logger.info("VECTOR_CAMPAIGN_RESULT %s", result_payload)
+    return result_payload
+
+
+@router.get(f"/{_RUN_TOKEN}", include_in_schema=False)
+async def run_vector_campaign(request: Request) -> dict[str, object]:
+    bot = getattr(request.app.state, "bot", None)
+    settings = getattr(request.app.state, "settings", None)
+    session_factory = getattr(request.app.state, "session_factory", None)
+    if bot is None or settings is None or session_factory is None:
+        raise HTTPException(status_code=503, detail="service_not_ready")
+    return await run_vector_campaign_once(bot, settings, session_factory)
