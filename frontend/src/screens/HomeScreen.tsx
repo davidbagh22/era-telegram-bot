@@ -77,12 +77,12 @@ export function HomeScreen({
 
   const shareReferral = useCallback(() => {
     if (referral.status !== "ready") return;
-    const shareUrl = new URL("https://t.me/share/url");
-    shareUrl.searchParams.set("url", referral.data.invite_url);
-    shareUrl.searchParams.set("text", referral.data.share_text);
+    // Telegram's share endpoint expects percent-encoded spaces. URLSearchParams
+    // serializes spaces as "+", which Telegram can preserve as literal plus signs.
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(referral.data.invite_url)}&text=${encodeURIComponent(referral.data.share_text)}`;
     const webApp = window.Telegram?.WebApp;
     if (webApp?.openTelegramLink) {
-      webApp.openTelegramLink(shareUrl.toString());
+      webApp.openTelegramLink(shareUrl);
       return;
     }
     if (navigator.share) {
