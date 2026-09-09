@@ -1,6 +1,6 @@
 import { useCallback, type ReactNode } from "react";
 import { fetchWeeklyLeaderboard } from "../api/client";
-import { fetchReferralSummary } from "../api/referrals";
+import { fetchReferralSummary, prepareReferralShareMessage } from "../api/referrals";
 import { Avatar } from "../components/Avatar";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
@@ -14,6 +14,7 @@ import { useHome } from "../hooks/useHome";
 import type { MiniAppUserSummary } from "../types/auth";
 
 const ERA_PRO_THRESHOLD = 8_000;
+const GENERAL_CHAT_URL = "https://t.me/+Q6MzTrnR21dmZjgy";
 
 interface HomeScreenProps {
   user: MiniAppUserSummary;
@@ -47,6 +48,18 @@ function formatPoints(value: number) {
   return new Intl.NumberFormat("ru-RU").format(value);
 }
 
+function fallbackReferralShareText(code: string, inviteUrl: string) {
+  return (
+    "🔥 Тебя пригласили в ЭРА.\n\n" +
+    "ЭРА — среда, где участие превращается в реальные проекты, роли, связи и возможности.\n\n" +
+    "Здесь не нужно ждать, пока тебя заметят. Можно включиться, взять ответственность и расти через дело.\n\n" +
+    `Войти в ЭРА: ${inviteUrl || "https://t.me/ERA_1bot"}\n` +
+    `Код приглашения: ${code}\n\n` +
+    `После регистрации — общий чат ЭРА: ${GENERAL_CHAT_URL}\n\n` +
+    "Вход открыт. Остаются те, кто действительно включается."
+  );
+}
+
 function IconBubble({ children, tone }: { children: ReactNode; tone: "violet" | "orange" | "magenta" }) {
   const styles = {
     violet: { background: "var(--era-tint-violet)", color: "var(--era-violet)" },
@@ -75,21 +88,37 @@ export function HomeScreen({
   const weeklyTop = useAsync(() => fetchWeeklyLeaderboard(), []);
   const referral = useAsync(() => fetchReferralSummary(), []);
 
-  const shareReferral = useCallback(() => {
+  const shareReferral = useCallback(async () => {
     if (referral.status !== "ready") return;
-    // Telegram's share endpoint expects percent-encoded spaces. URLSearchParams
-    // serializes spaces as "+", which Telegram can preserve as literal plus signs.
-    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(referral.data.invite_url)}&text=${encodeURIComponent(referral.data.share_text)}`;
     const webApp = window.Telegram?.WebApp;
+
+    // Modern Telegram clients can share a prepared message. This preserves
+    // real Telegram entities, so "Войти в ЭРА" and "общий чат ЭРА" are
+    // clickable words instead of raw URLs in the sent invitation.
+    if (webApp?.shareMessage) {
+      try {
+        const prepared = await prepareReferralShareMessage();
+        webApp.shareMessage(prepared.id);
+        return;
+      } catch {
+        // Fall through for older clients or a temporary Bot API failure.
+      }
+    }
+
+    const fallbackText = fallbackReferralShareText(
+      referral.data.code,
+      referral.data.invite_url,
+    );
+    const shareUrl = `https://t.me/share/url?text=${encodeURIComponent(fallbackText)}`;
     if (webApp?.openTelegramLink) {
       webApp.openTelegramLink(shareUrl);
       return;
     }
     if (navigator.share) {
-      void navigator.share({ title: "Присоединяйся к ЭРА", text: referral.data.share_text, url: referral.data.invite_url || undefined });
+      void navigator.share({ title: "Тебя пригласили в ЭРА", text: fallbackText });
       return;
     }
-    if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(referral.data.invite_url || referral.data.share_text);
+    if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(fallbackText);
   }, [referral]);
 
   if (home.status === "loading") {
@@ -230,7 +259,7 @@ export function HomeScreen({
         )) : <EmptyState text="Новых персональных возможностей пока нет." />}
       </section>
 
-      <Card onClick={referral.status === "ready" ? shareReferral : undefined} style={{ padding: "1rem" }}>
+      <Card onClick={referral.status === "ready" ? () => { void shareReferral(); } : undefined} style={{ padding: "1rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "0.9rem", alignItems: "center" }}>
           <div>
             <MonoLabel tone="violet">Пригласи в ЭРА</MonoLabel>
