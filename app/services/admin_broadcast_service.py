@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from aiogram import Bot
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +25,7 @@ from app.database.models import Broadcast, Department, Direction, User, UserDepa
 from app.services.audit_service import audit
 from app.services.notification_service import BroadcastResult, broadcast_detailed, safe_send
 from app.utils.constants import ApplicationStatus
+from app.utils.deep_links import telegram_miniapp_start_url
 
 AUDIENCE_TYPES = {"all", "role", "department", "direction", "age", "city"}
 ROLE_FILTER_VALUES = {"participant", "activist", "leader", "head", "council"}
@@ -35,6 +37,7 @@ AGE_RANGES: dict[str, tuple[int, int]] = {
 }
 CHAT_KEYS = {"general", "internal", "external", "leaders"}
 MAX_TEXT_LENGTH = 3500
+SURVEY_CHAT_MARKER = "[[era-survey]]"
 
 
 class BroadcastError(Exception):
@@ -144,6 +147,16 @@ async def send_personal_broadcast(
     return result
 
 
+async def _survey_chat_keyboard(bot: Bot) -> InlineKeyboardMarkup:
+    bot_user = await bot.get_me()
+    url = telegram_miniapp_start_url(bot_user.username or "", "surveys")
+    if not url:
+        raise BroadcastError("miniapp_link_unavailable")
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="Выбрать спикеров", url=url)]]
+    )
+
+
 async def send_chat_broadcast(
     bot: Bot,
     settings: Settings,
@@ -155,7 +168,8 @@ async def send_chat_broadcast(
 ) -> None:
     if chat_key not in CHAT_KEYS:
         raise BroadcastError("invalid_chat")
-    text = text.strip()[:MAX_TEXT_LENGTH]
+    with_survey_button = SURVEY_CHAT_MARKER in text
+    text = text.replace(SURVEY_CHAT_MARKER, "").strip()[:MAX_TEXT_LENGTH]
     if not text:
         raise BroadcastError("text_required")
     chat_ids = {
@@ -167,23 +181,16 @@ async def send_chat_broadcast(
     chat_id = chat_ids.get(chat_key)
     if not chat_id:
         raise BroadcastError("chat_not_bound")
-    ok = await safe_send(bot, chat_id, text)
+    reply_markup = await _survey_chat_keyboard(bot) if with_survey_button else None
+    ok = await safe_send(bot, chat_id, text, reply_markup)
     if not ok:
-        # Was silently dropped before (2026-08 chat infrastructure audit,
-        # docs/SYSTEM_FLOW_MATRIX.md) -- the registry's "last error" column
-        # needs a real audit trail to read from, not just the admin's own
-        # in-the-moment error toast. Staged here, not committed -- the
-        # caller (app/api/v1/admin.py's send_chat_broadcast_endpoint) must
-        # commit it explicitly before the BroadcastError propagates out of
-        # get_session's request scope, which would otherwise roll it back
-        # along with everything else in this failed request.
         await audit(
             session,
             actor_id=actor_id,
             action="chat.broadcast_failed",
             entity_type="chat",
             entity_id=None,
-            new_value={"chat": chat_key},
+            new_value={"chat": chat_key, "survey_button": with_survey_button},
         )
         raise BroadcastError("delivery_failed")
     await audit(
@@ -192,5 +199,5 @@ async def send_chat_broadcast(
         action="chat.broadcast_sent",
         entity_type="chat",
         entity_id=None,
-        new_value={"chat": chat_key},
+        new_value={"chat": chat_key, "survey_button": with_survey_button},
     )
