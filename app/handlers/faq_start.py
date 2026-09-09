@@ -12,10 +12,13 @@ from app.utils.constants import ApplicationStatus
 from app.utils.deep_links import (
     miniapp_events_url,
     miniapp_opportunities_url,
+    miniapp_path_url,
     miniapp_profile_url,
     miniapp_projects_url,
     miniapp_tasks_url,
 )
+
+CONFERENCE_SPEAKERS_PAYLOAD = "conference_speakers"
 
 _PAYLOADS = {
     "faq_events": ("faq:events", "Открыть события", miniapp_events_url),
@@ -28,7 +31,10 @@ _PAYLOADS = {
 
 
 def is_faq_payload(payload: str | None) -> bool:
-    return bool(payload and payload.startswith("faq_"))
+    return bool(
+        payload
+        and (payload.startswith("faq_") or payload == CONFERENCE_SPEAKERS_PAYLOAD)
+    )
 
 
 async def try_handle_faq_payload(
@@ -38,13 +44,7 @@ async def try_handle_faq_payload(
     state: FSMContext,
     payload: str | None,
 ) -> bool:
-    """Handle a pinned-chat /start payload inside the production start owner.
-
-    emergency.router intentionally remains the first dispatcher router. Keeping
-    FAQ handling as a helper here avoids breaking the global FSM recovery
-    invariant while still letting the pinned FAQ open a private, contextual
-    answer before the generic main menu fallback.
-    """
+    """Handle contextual /start payloads inside the production start owner."""
     if not is_faq_payload(payload):
         return False
     if (
@@ -57,6 +57,28 @@ async def try_handle_faq_payload(
         return True
 
     await state.clear()
+
+    if payload == CONFERENCE_SPEAKERS_PAYLOAD:
+        url = miniapp_path_url(settings.effective_miniapp_url, "surveys")
+        markup = None
+        if url:
+            markup = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🔥 Открыть опрос",
+                            web_app=WebAppInfo(url=url),
+                        )
+                    ]
+                ]
+            )
+        await message.answer(
+            "🔥 Выбор спикеров конференции ЭРА\n\n"
+            "Выбери до 7 человек, которых ты действительно хотел бы услышать вживую.",
+            reply_markup=markup,
+        )
+        return True
+
     if payload == "faq_contact":
         await message.answer(FAQ_ANSWERS["faq:contact"], parse_mode="HTML")
         await message.answer(texts.QUESTION_START)
