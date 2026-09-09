@@ -127,16 +127,81 @@ async function adminBlob(path: string): Promise<Blob> {
   return response.blob();
 }
 
+/**
+ * Analytics calculations keep stable internal English identifiers, but no
+ * implementation vocabulary should leak into the Russian product interface.
+ */
+function russianAnalyticsText(value: string | null): string | null {
+  if (value === null) return null;
+  return value
+    .replace(/Weekly Pulse/gi, "пульс недели")
+    .replace(/Meaningful activity/gi, "реальная активность")
+    .replace(/meaningful action/gi, "подтверждённая активность")
+    .replace(/digital engagement/gi, "цифровая активность")
+    .replace(/operational activity/gi, "подтверждённое участие")
+    .replace(/Active Base/gi, "активная база")
+    .replace(/ACTIVE\/LIGHT участники/gi, "участники в активном или лёгком режиме")
+    .replace(/PAUSED\/OBSERVER\/EXITED/gi, "пауза, наблюдение и выход")
+    .replace(/Check-in['’]ов/gi, "ответов")
+    .replace(/Check-in/gi, "ответ")
+    .replace(/check-in/gi, "ответ")
+    .replace(/No-show/gi, "не пришли")
+    .replace(/Blocker/gi, "препятствие");
+}
+
+function localizeEfficiency(snapshot: EfficiencySnapshot): EfficiencySnapshot {
+  return {
+    ...snapshot,
+    label: russianAnalyticsText(snapshot.label) ?? snapshot.label,
+    period_label: russianAnalyticsText(snapshot.period_label) ?? snapshot.period_label,
+    data_note: russianAnalyticsText(snapshot.data_note) ?? snapshot.data_note,
+    top_interest: russianAnalyticsText(snapshot.top_interest),
+    metrics: snapshot.metrics.map((metric) => ({
+      ...metric,
+      label: russianAnalyticsText(metric.label) ?? metric.label,
+      display: russianAnalyticsText(metric.display) ?? metric.display,
+      note: russianAnalyticsText(metric.note) ?? metric.note,
+    })),
+    recommendations: snapshot.recommendations.map((item) => ({
+      ...item,
+      title: russianAnalyticsText(item.title) ?? item.title,
+      reason: russianAnalyticsText(item.reason) ?? item.reason,
+      action: russianAnalyticsText(item.action) ?? item.action,
+    })),
+  };
+}
+
+function localizeHealth(snapshot: OrganizationHealthSnapshot): OrganizationHealthSnapshot {
+  return {
+    ...snapshot,
+    pulse_label: russianAnalyticsText(snapshot.pulse_label) ?? snapshot.pulse_label,
+    period_label: russianAnalyticsText(snapshot.period_label) ?? snapshot.period_label,
+    data_note: russianAnalyticsText(snapshot.data_note) ?? snapshot.data_note,
+    risks: snapshot.risks.map((risk) => russianAnalyticsText(risk) ?? risk),
+    vector_dimensions: snapshot.vector_dimensions.map((dimension) => ({
+      ...dimension,
+      label: russianAnalyticsText(dimension.label) ?? dimension.label,
+    })),
+    metrics: snapshot.metrics.map((metric) => ({
+      ...metric,
+      category: russianAnalyticsText(metric.category) ?? metric.category,
+      label: russianAnalyticsText(metric.label) ?? metric.label,
+      display: russianAnalyticsText(metric.display) ?? metric.display,
+      note: russianAnalyticsText(metric.note) ?? metric.note,
+    })),
+  };
+}
+
 export function fetchAdminAnalyticsDetails(section: AnalyticsDetailSection): Promise<AnalyticsDetails> {
   return adminGet<AnalyticsDetails>(`/api/v1/admin/analytics/details/${section}`);
 }
 
-export function fetchEraEfficiency(): Promise<EfficiencySnapshot> {
-  return adminGet<EfficiencySnapshot>("/api/v1/admin/analytics/weekly");
+export async function fetchEraEfficiency(): Promise<EfficiencySnapshot> {
+  return localizeEfficiency(await adminGet<EfficiencySnapshot>("/api/v1/admin/analytics/weekly"));
 }
 
-export function fetchOrganizationHealth(): Promise<OrganizationHealthSnapshot> {
-  return adminGet<OrganizationHealthSnapshot>("/api/v1/admin/analytics/health");
+export async function fetchOrganizationHealth(): Promise<OrganizationHealthSnapshot> {
+  return localizeHealth(await adminGet<OrganizationHealthSnapshot>("/api/v1/admin/analytics/health"));
 }
 
 export function downloadAnalyticsSectionTable(section: AnalyticsDetailSection): Promise<Blob> {
