@@ -18,6 +18,10 @@ export interface ReferralSummary {
   monthly_earned_points: number;
 }
 
+export interface PreparedReferralShare {
+  id: string;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 let referralToken: string | null = null;
 
@@ -43,4 +47,20 @@ export async function fetchReferralSummary(retry = true): Promise<ReferralSummar
     throw new Error(`referral_summary_${response.status}`);
   }
   return (await response.json()) as ReferralSummary;
+}
+
+export async function prepareReferralShareMessage(retry = true): Promise<PreparedReferralShare> {
+  const bearer = await token();
+  const response = await fetch(`${API_BASE_URL}/api/v1/referrals/share-message`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${bearer}` },
+  });
+  if (response.status === 401 && retry) {
+    referralToken = null;
+    return prepareReferralShareMessage(false);
+  }
+  if (!response.ok) {
+    throw new Error(`referral_share_${response.status}`);
+  }
+  return (await response.json()) as PreparedReferralShare;
 }
