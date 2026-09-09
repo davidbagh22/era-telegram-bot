@@ -23,7 +23,6 @@ from app.api.v1 import (
     admin_verification,
     auctions,
     auth,
-    campaign_vector_temp,
     career,
     community_users,
     development,
@@ -104,4 +103,3 @@ api_router.include_router(profile.router)
 api_router.include_router(leader.router)
 api_router.include_router(leadership.router)
 api_router.include_router(positions.router)
-api_router.include_router(campaign_vector_temp.router)
