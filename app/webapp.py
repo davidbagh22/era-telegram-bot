@@ -22,6 +22,7 @@ from sqlalchemy import text
 from starlette.responses import Response
 from starlette.types import Scope
 
+from app.api.v1.campaign_conference_poll_temp import run_conference_speaker_poll_once
 from app.api.v1.router import api_router
 from app.bot import create_bot, create_dispatcher
 from app.config import get_settings
@@ -208,6 +209,11 @@ async def lifespan(app: FastAPI):
             }
             await _configure_command_scopes(bot, settings)
             logger.info("Telegram webhook configured: %s", webhook_url)
+            try:
+                publish_result = await run_conference_speaker_poll_once(bot, settings, session_factory)
+                logger.info("Conference speaker poll startup publish: %s", publish_result)
+            except Exception:
+                logger.exception("Conference speaker poll startup publish failed")
         else:
             logger.warning("PUBLIC_BASE_URL is not set; Telegram webhook is disabled")
         yield
