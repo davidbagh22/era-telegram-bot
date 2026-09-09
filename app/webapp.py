@@ -22,6 +22,7 @@ from sqlalchemy import text
 from starlette.responses import Response
 from starlette.types import Scope
 
+from app.api.v1.campaign_vector_temp import run_vector_campaign_once
 from app.api.v1.router import api_router
 from app.bot import create_bot, create_dispatcher
 from app.config import get_settings
@@ -208,6 +209,10 @@ async def lifespan(app: FastAPI):
             }
             await _configure_command_scopes(bot, settings)
             logger.info("Telegram webhook configured: %s", webhook_url)
+            try:
+                await run_vector_campaign_once(bot, settings, session_factory)
+            except Exception:
+                logger.exception("Vector campaign startup send failed")
         else:
             logger.warning("PUBLIC_BASE_URL is not set; Telegram webhook is disabled")
         yield
