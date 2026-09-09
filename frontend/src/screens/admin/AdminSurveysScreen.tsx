@@ -15,6 +15,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useAsync } from "../../hooks/useAsync";
 import type { SurveyAdmin, SurveyResponseAdmin } from "../../types/admin";
+import { downloadSurveyResultsCsv } from "./SurveyResultsDownload";
 
 const inputStyle = {
   width: "100%",
@@ -71,6 +72,12 @@ function parseChoices(answer: string): string[] {
 function displayAnswer(answer: string): string {
   const choices = parseChoices(answer);
   return choices.length > 0 ? choices.join(", ") : answer || "—";
+}
+
+function displaySubmittedAt(value: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("ru-RU");
 }
 
 function buildRanking(responses: SurveyResponseAdmin[]): { name: string; votes: number; percent: number }[] {
@@ -250,6 +257,19 @@ export function AdminSurveysScreen() {
               <div style={{ marginTop: "0.75rem", borderTop: "1px solid var(--era-border)", paddingTop: "0.65rem" }}>
                 {loadingResponses && <p style={{ color: "var(--era-text-muted)" }}>Загрузка результатов…</p>}
                 {!loadingResponses && responses.length === 0 && <p style={{ color: "var(--era-text-muted)", margin: 0 }}>Ответов пока нет.</p>}
+
+                {!loadingResponses && responses.length > 0 && (
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.8rem" }}>
+                    <button
+                      type="button"
+                      className="era-btn-primary"
+                      onClick={() => downloadSurveyResultsCsv(survey, responses, ranking, conference)}
+                    >
+                      Скачать результаты
+                    </button>
+                  </div>
+                )}
+
                 {!loadingResponses && conference && ranking.length > 0 && (
                   <div style={{ marginBottom: "0.8rem" }}>
                     <strong>Рейтинг спикеров</strong>
@@ -268,16 +288,38 @@ export function AdminSurveysScreen() {
                     )}
                   </div>
                 )}
-                {!loadingResponses && responses.map((response) => (
-                  <div key={response.user_id} style={{ marginBottom: "0.5rem" }}>
-                    <strong style={{ fontSize: "0.875rem" }}>{response.user_name}</strong>
-                    {response.answers.map((answer, index) => (
-                      <p key={index} style={{ margin: "0.125rem 0", fontSize: "0.8125rem" }}>
-                        <span style={{ color: "var(--era-text-muted)" }}>{answer.question}:</span> {displayAnswer(answer.answer)}
-                      </p>
+
+                {!loadingResponses && responses.length > 0 && (
+                  <div style={{ marginTop: "0.8rem" }}>
+                    <strong>Кто за что голосовал</strong>
+                    <p style={{ margin: "0.2rem 0 0.6rem", color: "var(--era-text-muted)", fontSize: "0.78rem" }}>
+                      По каждому участнику показан его полный ответ.
+                    </p>
+                    {responses.map((response) => (
+                      <div
+                        key={response.user_id}
+                        style={{
+                          marginBottom: "0.55rem",
+                          padding: "0.55rem",
+                          border: "1px solid var(--era-border)",
+                          borderRadius: "0.6rem",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
+                          <strong style={{ fontSize: "0.875rem" }}>{response.user_name}</strong>
+                          <span style={{ color: "var(--era-text-muted)", fontSize: "0.72rem" }}>
+                            ID {response.user_id}{response.submitted_at ? ` · ${displaySubmittedAt(response.submitted_at)}` : ""}
+                          </span>
+                        </div>
+                        {response.answers.map((answer, index) => (
+                          <p key={index} style={{ margin: "0.2rem 0 0", fontSize: "0.8125rem" }}>
+                            <span style={{ color: "var(--era-text-muted)" }}>{answer.question}:</span> {displayAnswer(answer.answer)}
+                          </p>
+                        ))}
+                      </div>
                     ))}
                   </div>
-                ))}
+                )}
                 <button type="button" onClick={() => setResponsesFor(null)}>Закрыть</button>
               </div>
             )}
