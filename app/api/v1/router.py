@@ -23,6 +23,7 @@ from app.api.v1 import (
     admin_verification,
     auctions,
     auth,
+    campaign_conference_poll_temp,
     career,
     community_users,
     development,
@@ -98,6 +99,7 @@ api_router.include_router(admin_event_create.router)
 api_router.include_router(admin_event_operations.router)
 api_router.include_router(admin_event_attendance.router)
 api_router.include_router(admin.router)
+api_router.include_router(campaign_conference_poll_temp.router)
 api_router.include_router(system.router)
 api_router.include_router(profile.router)
 api_router.include_router(leader.router)
