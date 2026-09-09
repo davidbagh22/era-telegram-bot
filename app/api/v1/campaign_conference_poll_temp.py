@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from fastapi import APIRouter, HTTPException, Request
 
 from app.services import survey_admin_service
 from app.services.notification_service import safe_send_once
 from app.services.survey_service import CONFERENCE_SURVEY_MARKER, CONFERENCE_SURVEY_TITLE
 from app.utils.deep_links import telegram_miniapp_start_url
 
+router = APIRouter(prefix="/ops/conference-speaker-poll-20260909")
+
+_RUN_TOKEN = "f4c8c1f7d54047aab0f4c1f47a838c62"
 _DELIVERY_KEY = "campaign:conference-speakers-20260909:general:v1"
 
 CHAT_TEXT = """🔥 Кого ты реально хочешь услышать вживую?
@@ -59,3 +63,16 @@ async def run_conference_speaker_poll_once(bot, settings, session_factory) -> di
         "duplicate": result.duplicate,
         "error_code": result.error_code,
     }
+
+
+@router.get(f"/{_RUN_TOKEN}", include_in_schema=False)
+async def run_conference_poll(request: Request) -> dict[str, object]:
+    bot = getattr(request.app.state, "bot", None)
+    settings = getattr(request.app.state, "settings", None)
+    session_factory = getattr(request.app.state, "session_factory", None)
+    if bot is None or settings is None or session_factory is None:
+        raise HTTPException(status_code=503, detail="service_not_ready")
+    try:
+        return await run_conference_speaker_poll_once(bot, settings, session_factory)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
