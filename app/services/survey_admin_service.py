@@ -9,9 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.management_models import AdminSurvey, AdminSurveyResponse
 from app.database.models import User
 from app.services.survey_service import (
+    CONFERENCE_SURVEY_DESCRIPTION,
+    CONFERENCE_SURVEY_MARKER,
+    CONFERENCE_SURVEY_TITLE,
     MONTHLY_SURVEY_DESCRIPTION,
     MONTHLY_SURVEY_QUESTIONS,
     MONTHLY_SURVEY_TITLE,
+    conference_questions_payload,
     questions_payload,
 )
 from app.utils.constants import ApplicationStatus
@@ -68,9 +72,38 @@ async def get_or_create_monthly_survey(session: AsyncSession, *, created_by_id: 
     return survey
 
 
+async def _get_or_create_conference_survey(
+    session: AsyncSession, *, created_by_id: int | None
+) -> AdminSurvey:
+    existing = await session.scalar(
+        select(AdminSurvey)
+        .where(AdminSurvey.title == CONFERENCE_SURVEY_TITLE, AdminSurvey.status != "archived")
+        .order_by(AdminSurvey.created_at.desc(), AdminSurvey.id.desc())
+    )
+    if existing:
+        return existing
+    survey = AdminSurvey(
+        title=CONFERENCE_SURVEY_TITLE,
+        description=CONFERENCE_SURVEY_DESCRIPTION,
+        questions_json=conference_questions_payload(),
+        audience_type="approved",
+        audience_filter_json={},
+        # The conference poll is published in the common chat, not sent as a
+        # personal broadcast. Keep it participant-visible immediately.
+        status="active",
+        is_monthly=False,
+        created_by=created_by_id,
+    )
+    session.add(survey)
+    await session.flush()
+    return survey
+
+
 async def create_survey(
     session: AsyncSession, *, title: str, description: str | None, questions: list[str], created_by_id: int | None
 ) -> AdminSurvey:
+    if questions == [CONFERENCE_SURVEY_MARKER]:
+        return await _get_or_create_conference_survey(session, created_by_id=created_by_id)
     survey = AdminSurvey(
         title=title,
         description=description,

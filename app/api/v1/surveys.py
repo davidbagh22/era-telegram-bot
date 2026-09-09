@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +24,7 @@ class SurveyOut(BaseModel):
     title: str
     description: str | None
     questions: list[str]
+    question_specs: list[dict[str, Any]]
     completed: bool
 
 
@@ -32,6 +35,7 @@ async def _to_survey_out(session: AsyncSession, survey: AdminSurvey, user: User)
         title=survey.title,
         description=survey.description,
         questions=survey_service.survey_questions(survey),
+        question_specs=survey_service.survey_question_specs(survey),
         completed=response is not None,
     )
 
@@ -81,9 +85,9 @@ async def submit_survey(
     session: AsyncSession = Depends(get_session),
 ) -> SurveyOut:
     survey = await _get_visible_survey(session, survey_id)
-    questions = survey_service.survey_questions(survey)
-    answers = [a.strip() for a in payload.answers]
-    if len(answers) != len(questions) or any(not a for a in answers):
-        raise HTTPException(status_code=422, detail="all_answers_required")
+    try:
+        answers = survey_service.validate_answers(survey, payload.answers)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     await survey_service.submit_survey(session, survey, user, answers)
     return await _to_survey_out(session, survey, user)

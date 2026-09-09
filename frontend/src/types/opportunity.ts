@@ -59,11 +59,27 @@ export interface Auction {
   is_open: boolean;
 }
 
+export interface SurveyOption {
+  value: string;
+  label: string;
+  description: string;
+}
+
+export interface SurveyQuestionSpec {
+  text: string;
+  type: "text" | "multiple_choice";
+  options: SurveyOption[];
+  required: boolean;
+  max_selections: number | null;
+  searchable: boolean;
+}
+
 export interface Survey {
   id: number;
   title: string;
   description: string | null;
   questions: string[];
+  question_specs: SurveyQuestionSpec[];
   completed: boolean;
 }
 
