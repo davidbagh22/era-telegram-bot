@@ -7,6 +7,9 @@ import { useAsync } from "../../hooks/useAsync";
 import type { AdminMetricKey } from "../../types/adminMetrics";
 import { AdminDashboardScreen } from "./AdminDashboardScreen";
 
+// Every item shown in "Нужно решить" must open a screen where the admin can
+// actually complete the task. Do not add informational counters here without
+// a resolver flow — that creates dead-end cards on the command center.
 const ATTENTION_LABELS = {
   users_pending: "Новые регистрации",
   projects_review: "Проекты на проверке",
@@ -15,9 +18,6 @@ const ATTENTION_LABELS = {
   activity_results: "Результаты активностей",
   rewards: "Заявки на возможности",
   portfolio: "Портфолио на проверке",
-  reports: "Отчёты",
-  questions: "Вопросы участников",
-  departments: "Заявки по направлениям",
 } as const;
 
 type AttentionKey = keyof typeof ATTENTION_LABELS;
@@ -90,9 +90,6 @@ export function AdminOverviewScreen({
     activity_results: onOpenEvents,
     rewards: onOpenOffers,
     portfolio: onOpenCareer,
-    reports: () => setShowAnalytics(true),
-    questions: onOpenComms,
-    departments: onOpenPeople,
   };
   const attentionItems = ATTENTION_ORDER
     .map((key) => ({ key, label: ATTENTION_LABELS[key], value: metrics[key] ?? 0 }))
