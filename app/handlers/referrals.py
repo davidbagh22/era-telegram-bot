@@ -1,28 +1,165 @@
-from aiogram import F, Router
+from aiogram import Bot, F, Router
+from aiogram.filters import CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import Settings
+from app.handlers.registration import registration_start
 from app.keyboards.registration import consent_keyboard, referral_code_keyboard
-from app.services.referral_service import validate_referral_code
 from app.services.consent_policy import CONSENT_SUMMARY
+from app.services.referral_service import validate_referral_code
+from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.states.registration import RegistrationStates
+from app.utils import texts
 
 router = Router(name="referrals")
 router.message.filter(F.chat.type == "private")
 router.callback_query.filter(F.message.chat.type == "private")
 
 
+def _referral_registration_keyboard(code: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Начать регистрацию",
+                    callback_data=f"registration:ref:start:{code}",
+                )
+            ]
+        ]
+    )
+
+
+def _referral_subscription_keyboard(channel_url: str, code: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Подписаться на канал ЭРА", url=channel_url)],
+            [
+                InlineKeyboardButton(
+                    text="Проверить подписку",
+                    callback_data=f"registration:ref:start:{code}",
+                )
+            ],
+        ]
+    )
+
+
 async def _return_to_consent(message: Message, state: FSMContext, *, code: str | None) -> None:
     await state.set_state(RegistrationStates.consent)
     prefix = (
         f"🎁 Код друга {code} сохранён.\n\n"
-        "После одобрения регистрации и вступления в общий чат вы оба получите по 200 баллов. "
-        "После вашего первого подтверждённого мероприятия — ещё по 500 баллов каждому.\n\n"
+        "После одобрения вашей регистрации пригласивший получит +30 баллов, "
+        "а после вашего первого подтверждённого участия в ЭРА — ещё +70.\n\n"
         if code
         else ""
     )
     await message.answer(f"{prefix}{CONSENT_SUMMARY}", reply_markup=consent_keyboard())
+
+
+@router.message(
+    CommandStart(),
+    F.text.regexp(r"^/start(?:@\w+)?\s+ref_\d{6}\s*$"),
+)
+async def referral_deep_link(
+    message: Message,
+    command: CommandObject,
+    state: FSMContext,
+    session: AsyncSession,
+    user,
+) -> None:
+    raw = (command.args or "").strip()
+    code = raw.removeprefix("ref_")
+    try:
+        code_row, _ = await validate_referral_code(
+            session,
+            code,
+            telegram_id=message.from_user.id,
+        )
+    except ValueError:
+        await message.answer(
+            "Код приглашения не найден или больше не доступен. "
+            "Можно продолжить обычную регистрацию через /start."
+        )
+        return
+
+    if user is not None:
+        await message.answer(
+            "Вы уже зарегистрированы в ЭРА. Код приглашения применяется только при первой регистрации."
+        )
+        return
+
+    await state.clear()
+    await message.answer(
+        "🔥 Вас пригласили в ЭРА.\n\n"
+        f"Код приглашения {code_row.code} уже привязан к этой регистрации — "
+        "вручную вводить его не нужно. При желании позже его можно изменить на шаге согласия.\n\n"
+        "Нажмите кнопку ниже, чтобы начать.",
+        reply_markup=_referral_registration_keyboard(code_row.code),
+    )
+
+
+@router.callback_query(F.data.regexp(r"^registration:ref:start:\d{6}$"))
+async def registration_start_with_referral(
+    call: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    bot: Bot,
+    settings: Settings,
+    user,
+) -> None:
+    code = (call.data or "").rsplit(":", 1)[-1]
+    try:
+        code_row, _ = await validate_referral_code(
+            session,
+            code,
+            telegram_id=call.from_user.id,
+        )
+    except ValueError:
+        await call.answer()
+        await call.message.answer(
+            "Код приглашения больше не доступен. Начните обычную регистрацию через /start."
+        )
+        return
+
+    if user is not None:
+        await registration_start(call, state, bot, settings, user)
+        return
+
+    await call.answer()
+    try:
+        subscribed = await is_channel_member(bot, call.from_user.id, settings)
+    except SubscriptionCheckError:
+        await call.message.answer(
+            getattr(
+                texts,
+                "SUBSCRIPTION_CHECK_UNAVAILABLE",
+                "Проверка подписки временно недоступна. Попробуйте позже или напишите администратору.",
+            ),
+            reply_markup=_referral_subscription_keyboard(
+                settings.era_channel_url,
+                code_row.code,
+            ),
+        )
+        return
+
+    if not subscribed:
+        await call.message.answer(
+            texts.SUBSCRIPTION_REQUIRED,
+            reply_markup=_referral_subscription_keyboard(
+                settings.era_channel_url,
+                code_row.code,
+            ),
+        )
+        return
+
+    # registration_start() normally clears FSM data. For a referral deep link,
+    # start the same first registration step ourselves so the validated code
+    # survives all the way to user creation.
+    await state.clear()
+    await state.update_data(referral_code=code_row.code)
+    await state.set_state(RegistrationStates.first_name)
+    await call.message.answer(texts.REGISTRATION_INTRO)
 
 
 @router.callback_query(RegistrationStates.consent, F.data == "reg:ref:start")
@@ -32,9 +169,8 @@ async def start_referral_code(call: CallbackQuery, state: FSMContext) -> None:
     await call.message.answer(
         "🎁 Код друга\n\n"
         "Если вас пригласил участник ЭРА, отправьте его 6-значный код одним сообщением.\n\n"
-        "Что это даст: после одобрения вашей регистрации и вступления в общий чат — "
-        "+200 баллов вам и другу. После вашего первого подтверждённого мероприятия — "
-        "ещё +500 каждому.",
+        "После одобрения вашей регистрации пригласивший получит +30 баллов. "
+        "После вашего первого подтверждённого участия в ЭРА — ещё +70.",
         reply_markup=referral_code_keyboard(),
     )
 
