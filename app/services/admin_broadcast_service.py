@@ -25,7 +25,6 @@ from app.database.models import Broadcast, Department, Direction, User, UserDepa
 from app.services.audit_service import audit
 from app.services.notification_service import BroadcastResult, broadcast_detailed, safe_send
 from app.utils.constants import ApplicationStatus
-from app.utils.deep_links import telegram_miniapp_start_url
 
 AUDIENCE_TYPES = {"all", "role", "department", "direction", "age", "city"}
 ROLE_FILTER_VALUES = {"participant", "activist", "leader", "head", "council"}
@@ -38,6 +37,7 @@ AGE_RANGES: dict[str, tuple[int, int]] = {
 CHAT_KEYS = {"general", "internal", "external", "leaders"}
 MAX_TEXT_LENGTH = 3500
 SURVEY_CHAT_MARKER = "[[era-survey]]"
+CONFERENCE_SPEAKERS_PAYLOAD = "conference_speakers"
 
 
 class BroadcastError(Exception):
@@ -149,9 +149,10 @@ async def send_personal_broadcast(
 
 async def _survey_chat_keyboard(bot: Bot) -> InlineKeyboardMarkup:
     bot_user = await bot.get_me()
-    url = telegram_miniapp_start_url(bot_user.username or "", "surveys")
-    if not url:
-        raise BroadcastError("miniapp_link_unavailable")
+    username = (bot_user.username or "").lstrip("@").strip()
+    if not username:
+        raise BroadcastError("bot_username_unavailable")
+    url = f"https://t.me/{username}?start={CONFERENCE_SPEAKERS_PAYLOAD}"
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="Выбрать спикеров", url=url)]]
     )
