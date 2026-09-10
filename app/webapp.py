@@ -29,7 +29,6 @@ from app.database.session import create_engine_and_sessionmaker
 from app.request_context import RequestIDLogFilter, new_request_id, request_id_var
 from app.services.ai_service import AIService
 from app.services.chat_permissions_service import enforce_general_chat_writable
-from app.services.conference_survey_reminder_service import send_conference_survey_reminder
 from app.services.general_chat_menu_service import ensure_general_chat_miniapp_menu
 from app.services.scheduler_service import create_scheduler
 from app.services.seed_service import seed_reference_data
@@ -150,16 +149,6 @@ async def lifespan(app: FastAPI):
         await redis_client.flushdb()
         await redis_client.set(recovery_marker, "done")
         logger.warning("Redis FSM storage cleared during recovery deploy")
-
-    try:
-        reminder_summary = await send_conference_survey_reminder(
-            bot,
-            settings,
-            session_factory,
-        )
-        logger.info("Conference survey reminder startup run: %s", reminder_summary)
-    except Exception:
-        logger.exception("Conference survey reminder startup run failed")
 
     app.state.ai_service = AIService(settings)
     scheduler = create_scheduler(bot, settings, session_factory)
