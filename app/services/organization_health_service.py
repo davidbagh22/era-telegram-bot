@@ -85,7 +85,7 @@ def _pct(part: int | float, total: int | float) -> float:
 
 def _score_label(score: int | None, *, suppressed: bool = False) -> str:
     if suppressed or score is None:
-        return "Нужно больше Check-in"
+        return "Нужно больше отметок в «Моём векторе»"
     if score >= 80:
         return "Сообщество в сильном состоянии"
     if score >= 65:
@@ -436,31 +436,31 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
         HealthMetric("new_7d", "Люди", "Новые за 7 дней", new_7d, f"+{new_7d}", "новые в текущем составе за последнюю неделю"),
         HealthMetric("new_30d", "Люди", "Новые за 30 дней", new_30d, f"+{new_30d}", "новые в текущем составе за последний месяц"),
         HealthMetric("leaders", "Люди", "Лидеров и руководителей", leaders, str(leaders), f"{_pct(leaders, approved_total):.1f}% текущего состава"),
-        HealthMetric("activists", "Люди", "Роль «Активист»", activists, str(activists), "организационная роль, не Active Base"),
+        HealthMetric("activists", "Люди", "Роль «Активист»", activists, str(activists), "организационная роль, а не показатель активной базы"),
         HealthMetric("growth_conversion", "Люди", "Рост участник → активный/лидер", _pct(progressed, approved_total), f"{_pct(progressed, approved_total):.1f}%", "доля текущего состава, перешедшая из базовой роли", _cap(_pct(progressed, approved_total))),
         HealthMetric("department_coverage", "Люди", "Выбрали департамент", _pct(department_users, approved_total), f"{_pct(department_users, approved_total):.1f}%", "структурная включённость"),
         HealthMetric("direction_coverage", "Люди", "Выбрали направление", _pct(direction_users, approved_total), f"{_pct(direction_users, approved_total):.1f}%", "предметная включённость"),
-        HealthMetric("active_7d", "Вовлечённость", "Meaningful activity за 7 дней", active_7d, f"{active_7d} · {_pct(active_7d, active_denominator):.1f}%", "только подтверждённые реальные действия или текущая ответственность"),
-        HealthMetric("active_30d", "Вовлечённость", "Meaningful activity за 30 дней", active_30d, f"{active_30d} · {_pct(active_30d, active_denominator):.1f}%", "digital engagement не считается operational activity", _cap(_pct(active_30d, active_denominator))),
-        HealthMetric("active_90d", "Вовлечённость", "Meaningful activity за 90 дней", active_90d, f"{active_90d} · {_pct(active_90d, active_denominator):.1f}%", "широкий контур реальной активности"),
-        HealthMetric("retention_30d", "Вовлечённость", "30-дневное удержание", _pct(retained_30d, retention_denominator), f"{_pct(retained_30d, retention_denominator):.1f}%", "ACTIVE/LIGHT участники старше 30 дней с meaningful action или текущей ответственностью", _cap(_pct(retained_30d, retention_denominator))),
-        HealthMetric("dormant_30d", "Вовлечённость", "Без meaningful activity 30 дней", dormant_30d, str(dormant_30d), "PAUSED/OBSERVER/EXITED исключены из знаменателя"),
+        HealthMetric("active_7d", "Вовлечённость", "Активность за 7 дней", active_7d, f"{active_7d} · {_pct(active_7d, active_denominator):.1f}%", "только подтверждённые реальные действия или текущая ответственность"),
+        HealthMetric("active_30d", "Вовлечённость", "Активность за 30 дней", active_30d, f"{active_30d} · {_pct(active_30d, active_denominator):.1f}%", "цифровая активность не считается реальным действием", _cap(_pct(active_30d, active_denominator))),
+        HealthMetric("active_90d", "Вовлечённость", "Активность за 90 дней", active_90d, f"{active_90d} · {_pct(active_90d, active_denominator):.1f}%", "широкий контур реальной активности"),
+        HealthMetric("retention_30d", "Вовлечённость", "30-дневное удержание", _pct(retained_30d, retention_denominator), f"{_pct(retained_30d, retention_denominator):.1f}%", "участники в активном или лёгком режиме старше 30 дней с подтверждённым действием или текущей ответственностью", _cap(_pct(retained_30d, retention_denominator))),
+        HealthMetric("dormant_30d", "Вовлечённость", "Без активности 30 дней", dormant_30d, str(dormant_30d), "режимы «Пауза», «Наблюдатель» и «Вышел» исключены из знаменателя"),
         HealthMetric("events_30d", "События", "Мероприятий за 30 дней", events_30d, str(events_30d), "проведённые/живые события"),
         HealthMetric("upcoming_14d", "События", "Событий на 14 дней", upcoming_14d, str(upcoming_14d), "запланированный ритм"),
         HealthMetric("event_registrations", "События", "Регистраций за 30 дней", event_registrations_30d, str(event_registrations_30d), "по событиям последнего месяца"),
-        HealthMetric("attendance_rate", "События", "Явка", attendance_rate, f"{attendance_rate:.1f}%", f"пришли {attended_30d} · no-show {no_show_30d}", _cap(attendance_rate)),
+        HealthMetric("attendance_rate", "События", "Явка", attendance_rate, f"{attendance_rate:.1f}%", f"пришли {attended_30d} · не пришли {no_show_30d}", _cap(attendance_rate)),
         HealthMetric("feedback", "События", "Оценка мероприятий", feedback_avg, f"{feedback_avg:.1f}/5" if feedback_count else "Нет данных", f"{feedback_count} отзывов · охват {_pct(feedback_count, attended_30d):.1f}%", _cap((feedback_avg / 5) * 100) if feedback_count else None),
         HealthMetric("feedback_rate", "События", "Охват обратной связью", feedback_rate, f"{feedback_rate:.1f}%", "доля посетивших, оставивших отзыв"),
         HealthMetric("active_projects", "Проекты", "Проектов в работе", active_projects, str(active_projects), "одобрены или уже реализуются"),
         HealthMetric("new_projects_30d", "Проекты", "Новых проектов за 30 дней", new_projects_30d, str(new_projects_30d), "новый проектный поток"),
         HealthMetric("completed_projects", "Проекты", "Завершено проектов", completed_projects, str(completed_projects), "накопленный подтверждённый результат"),
-        HealthMetric("project_members", "Проекты", "Подтверждённых вкладов", project_members, str(project_members), "только ProjectMember с confirmed contribution"),
+        HealthMetric("project_members", "Проекты", "Подтверждённых вкладов", project_members, str(project_members), "учитывается только подтверждённый вклад участника в проект"),
         HealthMetric("open_tasks", "Исполнение", "Открытых заданий", open_tasks, str(open_tasks), "новые, опубликованные, в работе или на проверке"),
         HealthMetric("completed_tasks_30d", "Исполнение", "Заданий завершено за 30 дней", completed_tasks_30d, str(completed_tasks_30d), "реальный операционный выпуск"),
         HealthMetric("overdue_tasks", "Исполнение", "Просроченных заданий", overdue_tasks, str(overdue_tasks), "срок прошёл, задача не закрыта"),
         HealthMetric("task_acceptance", "Исполнение", "Принято результатов заданий", _pct(task_approved_30d, task_submissions_30d), f"{_pct(task_approved_30d, task_submissions_30d):.1f}%", f"{task_approved_30d} из {task_submissions_30d} отправок за 30 дней"),
         HealthMetric("activity_acceptance", "Исполнение", "Принято активностей событий", _pct(activity_approved_30d, activity_submissions_30d), f"{_pct(activity_approved_30d, activity_submissions_30d):.1f}%", f"{activity_approved_30d} из {activity_submissions_30d} отправок за 30 дней"),
-        HealthMetric("point_actions", "Исполнение", "Подтверждённых реальных действий", point_actions_30d, str(point_actions_30d), f"{points_30d:+d} баллов из operational activity за 30 дней"),
+        HealthMetric("point_actions", "Исполнение", "Подтверждённых реальных действий", point_actions_30d, str(point_actions_30d), f"{points_30d:+d} баллов за подтверждённые реальные действия за 30 дней"),
         HealthMetric("queue", "Операции", "На очереди решений", queues.attention_total, str(queues.attention_total), "заявки, модерация, результаты, вопросы и отчёты"),
         HealthMetric("department_apps", "Операции", "Заявок в департаменты", pending_department_apps, str(pending_department_apps), "ждут решения"),
         HealthMetric("data_rights", "Операции", "Запросов по данным", pending_data_rights, str(pending_data_rights), "запросы на удаление/анонимизацию ждут обработки"),
@@ -470,7 +470,7 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
 
     risks: list[str] = []
     if _pct(active_30d, active_denominator) < 35 and active_denominator:
-        risks.append("Низкая 30-дневная meaningful activity: нужен быстрый маршрут возвращения людей в реальное действие.")
+        risks.append("Низкая активность за 30 дней: нужен быстрый маршрут возвращения людей в реальное действие.")
     if retention_denominator and _pct(retained_30d, retention_denominator) < 35:
         risks.append("Слабое удержание старших участников: проверьте переход участник → активный → лидер.")
     if upcoming_14d == 0:
@@ -482,7 +482,7 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
     if queues.attention_total >= 10:
         risks.append(f"Очередь решений выросла до {queues.attention_total}: админ-процессы начинают тормозить участников.")
     if vector_suppressed:
-        risks.append("Пульс по «Моему вектору» пока скрыт: нужно минимум 5 безопасно агрегируемых Check-in.")
+        risks.append("Пульс по «Моему вектору» пока скрыт: нужно минимум 5 безопасно агрегируемых отметок.")
     elif pulse is not None and pulse < 50:
         risks.append("Пульс сообщества ниже 50/100: не увеличивайте нагрузку без разбора пяти областей состояния.")
 
@@ -497,9 +497,10 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
         risks=risks[:8],
         period_label="операционные показатели: последние 7/30/90 дней · Пульс: последние 30 дней",
         data_note=(
-            "Active Base и retention считают только verified meaningful activity или текущую ответственность; "
-            "digital engagement, app login и сам факт должности/департамента не создают activity. PAUSED, OBSERVER "
-            "и EXITED не искажают активный знаменатель. Пульс рассчитывается только по агрегированным пяти текущим "
-            "состояниям «Моего вектора» при безопасной выборке от 5 человек; raw ответы и личные заметки не используются."
+            "Активная база и удержание считают только подтверждённые реальные действия или текущую ответственность; "
+            "цифровая активность, вход в приложение и сам факт должности или департамента не создают активность. "
+            "Режимы «Пауза», «Наблюдатель» и «Вышел» не искажают активный знаменатель. Пульс рассчитывается только "
+            "по агрегированным пяти текущим состояниям «Моего вектора» при безопасной выборке от 5 человек; исходные "
+            "ответы и личные заметки не используются."
         ),
     )
