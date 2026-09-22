@@ -7,14 +7,18 @@ import {
 import { Card } from "./Card";
 import { MonoLabel } from "./MonoLabel";
 import { SkeletonCard } from "./Skeleton";
-import { welcomePhrase } from "../utils/welcomePhrase";
 
 interface OnboardingGateProps {
   children: ReactNode;
 }
 
+const STEPS = [
+  { number: "01", title: "Включайся", description: "События, задачи, проекты" },
+  { number: "02", title: "Делай", description: "Получай реальный результат" },
+  { number: "03", title: "Расти", description: "Новые роли и возможности" },
+];
+
 export function OnboardingGate({ children }: OnboardingGateProps) {
-  const [greeting] = useState(() => welcomePhrase());
   const [state, setState] = useState<ParticipationState | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -27,7 +31,6 @@ export function OnboardingGate({ children }: OnboardingGateProps) {
         if (mounted) setState(value);
       })
       .catch(() => {
-        // Onboarding must not turn a temporary API problem into a lockout.
         if (mounted) setFailed(true);
       })
       .finally(() => {
@@ -49,13 +52,11 @@ export function OnboardingGate({ children }: OnboardingGateProps) {
 
   if (failed || !state?.needs_onboarding) return <>{children}</>;
 
-  async function finish(route?: string) {
+  async function finish() {
     if (saving) return;
     setSaving(true);
     try {
-      const next = await completeParticipationOnboarding();
-      setState(next);
-      if (route) window.location.hash = `#/${route}`;
+      setState(await completeParticipationOnboarding());
     } finally {
       setSaving(false);
     }
@@ -66,44 +67,39 @@ export function OnboardingGate({ children }: OnboardingGateProps) {
       className="era-page era-stagger"
       style={{
         minHeight: "100dvh",
-        padding: "calc(1.25rem + env(safe-area-inset-top, 0px)) 1.15rem calc(1.5rem + env(safe-area-inset-bottom, 0px))",
+        padding: "calc(1.25rem + env(safe-area-inset-top, 0px)) 1rem calc(1.5rem + env(safe-area-inset-bottom, 0px))",
         display: "flex",
         flexDirection: "column",
-        gap: "1rem",
+        gap: "1.5rem",
       }}
     >
-      <Card gradient style={{ padding: "1.35rem" }}>
+      <header style={{ paddingTop: "1rem" }}>
         <MonoLabel tone="violet">ЭРА</MonoLabel>
-        <h1 style={{ margin: ".45rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "clamp(2rem,10vw,3rem)", lineHeight: .98 }}>
-          {greeting}
+        <h1 style={{ margin: ".55rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "clamp(1.8rem,8vw,2.35rem)", lineHeight: 1.05 }}>
+          Включайся. Делай. Расти.
         </h1>
-        <p style={{ margin: ".85rem 0 0", color: "var(--era-text-secondary)", lineHeight: 1.5 }}>
-          Участие. Опыт. Возможности.
+        <p style={{ margin: ".7rem 0 0", color: "var(--era-text-secondary)", fontSize: "1rem", lineHeight: 1.5 }}>
+          Здесь участие превращается в подтверждённый опыт, а опыт — в новые возможности.
         </p>
-      </Card>
+      </header>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: ".55rem" }}>
-        {[
-          ["01", "УЧАСТВУЙ", "Выбирай события, задачи и проекты"],
-          ["02", "ПОЛУЧАЙ ОПЫТ", "Результаты подтверждаются и сохраняются"],
-          ["03", "РАЗВИВАЙСЯ", "Открывай возможности и новые роли"],
-        ].map(([step, title, description]) => (
-          <Card key={step} style={{ padding: ".8rem", minWidth: 0 }}>
-            <MonoLabel>{step}</MonoLabel>
-            <strong style={{ display: "block", marginTop: ".35rem", fontSize: ".78rem", overflowWrap: "break-word" }}>{title}</strong>
-            <span style={{ display: "block", marginTop: ".3rem", color: "var(--era-text-muted)", fontSize: ".68rem", lineHeight: 1.35 }}>{description}</span>
+      <div style={{ display: "flex", flexDirection: "column", gap: ".75rem" }}>
+        {STEPS.map((step) => (
+          <Card key={step.number} style={{ padding: "1rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "2.5rem 1fr", gap: ".8rem", alignItems: "start" }}>
+              <MonoLabel tone="violet">{step.number} ●</MonoLabel>
+              <div>
+                <strong style={{ display: "block", fontSize: "1.1rem" }}>{step.title}</strong>
+                <span style={{ display: "block", marginTop: ".25rem", color: "var(--era-text-secondary)", fontSize: ".9rem", lineHeight: 1.45 }}>
+                  {step.description}
+                </span>
+              </div>
+            </div>
           </Card>
         ))}
       </div>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: ".55rem" }}>
-        <MonoLabel>С ЧЕГО НАЧАТЬ</MonoLabel>
-        <button type="button" className="era-btn-secondary" disabled={saving} onClick={() => void finish("events")}>Посмотреть ближайшие события →</button>
-        <button type="button" className="era-btn-secondary" disabled={saving} onClick={() => void finish("development")}>Открыть «Мой вектор» →</button>
-        <button type="button" className="era-btn-secondary" disabled={saving} onClick={() => void finish("opportunities")}>Посмотреть возможности →</button>
-      </section>
-
-      <button type="button" className="era-btn-primary" disabled={saving} onClick={() => void finish()} style={{ marginTop: "auto", width: "100%" }}>
+      <button type="button" className="era-btn-primary" disabled={saving} onClick={() => void finish()} style={{ marginTop: "auto", width: "100%", minHeight: 48 }}>
         {saving ? "Сохраняем…" : "Начать"}
       </button>
     </div>
