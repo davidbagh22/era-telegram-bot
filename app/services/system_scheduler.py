@@ -21,6 +21,7 @@ from app.services.media_service import process_media_chat_automation, publish_du
 from app.services.participation_lifecycle_service import run_reactivation_cycle
 from app.services.project_scoring_reconciliation_service import reconcile_project_scoring_job
 from app.services.system_health_service import run_system_diagnostics, send_daily_system_summary
+from app.services.vacancy_reconciliation_service import reconcile_vacancies_job
 
 
 def add_system_jobs(
@@ -32,9 +33,6 @@ def add_system_jobs(
     """Attach production-health jobs and durable infrastructure maintenance."""
     now = datetime.now(ZoneInfo(settings.timezone))
 
-    # The legacy two-slot general-chat editorial scheduler is kept available for
-    # manual/admin tooling, but it must not run as recurring production content.
-    # The single Moscow-day rhythm below is the only scheduled public-content path.
     for job_id in (
         "general-content-morning",
         "general-content-evening",
@@ -46,6 +44,7 @@ def add_system_jobs(
     scheduler.add_job(run_system_diagnostics, "interval", minutes=15, args=(bot, settings, session_factory), kwargs={"run_type": "heartbeat"}, id="system-heartbeat", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(run_system_diagnostics, "interval", hours=4, args=(bot, settings, session_factory), kwargs={"run_type": "full"}, id="system-full-diagnostic", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(send_daily_system_summary, "cron", hour=9, minute=30, args=(bot, settings, session_factory), id="system-daily-summary", replace_existing=True, max_instances=1, coalesce=True)
+    scheduler.add_job(reconcile_vacancies_job, "interval", minutes=30, args=(session_factory,), id="office-vacancy-reconciliation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(send_configured_event_reminders, "interval", minutes=1, args=(bot, settings, session_factory), id="configured-event-reminders", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(sync_event_wizard_tasks_job, "interval", minutes=1, args=(session_factory,), id="event-wizard-task-sync", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(reconcile_project_scoring_job, "interval", minutes=1, args=(session_factory,), id="project-scoring-reconciliation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
@@ -58,10 +57,6 @@ def add_system_jobs(
     scheduler.add_job(complete_verification_campaigns_job, "interval", minutes=5, args=(session_factory,), id="community-verification-expiry", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(send_monthly_development_reminders, "cron", hour=18, minute=0, args=(bot, settings, session_factory), id="my-vector-monthly-reminders", replace_existing=True, max_instances=1, coalesce=True)
 
-    # Daily public rhythm. This is independent of Media Desk's auto_enabled
-    # switch so the public channel never goes silent because an internal media
-    # automation toggle is off. Persistent delivery keys guarantee at most one
-    # chat quote and one channel post per Moscow calendar day.
     scheduler.add_job(
         run_daily_public_content,
         "interval",
@@ -74,7 +69,6 @@ def add_system_jobs(
         next_run_time=now,
     )
 
-    # This maintenance job has no send/edit/pin path by design.
     scheduler.add_job(
         enforce_general_chat_writable,
         "interval",
