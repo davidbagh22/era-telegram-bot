@@ -2,18 +2,16 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Office, User, UserOffice
 from app.services.audit_service import audit
 from app.utils.constants import AppointmentType
 
-# "Должности и ответственность" — the Mini App equivalent of
-# app/handlers/admin/offices_management.py (list/view/delete) and the
-# office_assign/office_remove/office_new handlers in panel.py. Split across
-# two bot files but one cohesive feature; kept together here as one
-# service.
+
+class OfficeCapacityReached(RuntimeError):
+    """Raised when a locked Office no longer has a free assignment slot."""
 
 
 async def list_offices(session: AsyncSession, *, include_inactive: bool = False) -> list[Office]:
@@ -76,9 +74,6 @@ async def update_office(
     probation_days: int | None = None,
     is_public: bool | None = None,
 ) -> Office:
-    """Additive companion to create_office -- every field here defaults to
-    "leave unchanged" (None) so partial updates from the admin UI don't
-    clobber fields they didn't touch."""
     if title is not None:
         office.title = title
     if description is not None:
@@ -109,10 +104,51 @@ async def list_assignments(session: AsyncSession, office_id: int) -> list[tuple[
     return list(result.all())
 
 
+async def active_assignment_count(session: AsyncSession, office_id: int) -> int:
+    return int(
+        await session.scalar(
+            select(func.count(UserOffice.id)).where(
+                UserOffice.office_id == office_id,
+                UserOffice.is_active.is_(True),
+            )
+        )
+        or 0
+    )
+
+
+async def reconcile_office_vacancy(session: AsyncSession, office: Office) -> bool:
+    """Keep auto vacancy visibility aligned with a real free slot.
+
+    Existing Office.max_holders is the capacity source of truth. Offices with
+    no capacity configured keep their explicit application_enabled value.
+    """
+
+    if office.max_holders is None:
+        return office.application_enabled
+    occupied = await active_assignment_count(session, office.id)
+    has_slot = occupied < max(0, office.max_holders)
+    should_open = bool(office.is_active and office.is_public and has_slot)
+    office.application_enabled = should_open
+    return should_open
+
+
+async def reconcile_all_vacancies(session: AsyncSession) -> dict[str, int]:
+    offices = list((await session.scalars(select(Office))).all())
+    opened = closed = unchanged = 0
+    for office in offices:
+        before = office.application_enabled
+        after = await reconcile_office_vacancy(session, office)
+        if after == before:
+            unchanged += 1
+        elif after:
+            opened += 1
+        else:
+            closed += 1
+    await session.flush()
+    return {"opened": opened, "closed": closed, "unchanged": unchanged, "total": len(offices)}
+
+
 async def search_assignable_users(session: AsyncSession, query: str, *, limit: int = 8) -> list[User]:
-    """Mirrors panel.py::office_assign_find's name/username/Telegram-ID
-    search exactly, so the Mini App picker finds the same people the bot
-    flow would."""
     stripped = query.strip().lstrip("@")
     conditions = [
         User.first_name.ilike(f"%{stripped}%"),
@@ -137,10 +173,19 @@ async def assign_office(
     scope_type: str | None = None,
     scope_id: int | None = None,
 ) -> UserOffice | None:
-    """Returns None (no-op) if the user already holds an active assignment
-    to this office — mirrors the bot's own de-duplication check. The
-    Leadership OS appointment flow (position_management_service.appoint)
-    reuses this for the same reason: one place owns the dedup rule."""
+    """Create one active assignment under an Office row lock.
+
+    Locking the Office serializes competing appointments for the last slot.
+    Capacity is then re-counted inside the same transaction, so two approvals
+    cannot both consume one remaining seat.
+    """
+
+    office = await session.scalar(
+        select(Office).where(Office.id == office_id).with_for_update()
+    )
+    if office is None or not office.is_active:
+        return None
+
     existing = await session.scalar(
         select(UserOffice).where(
             UserOffice.office_id == office_id,
@@ -150,6 +195,12 @@ async def assign_office(
     )
     if existing is not None:
         return None
+
+    occupied = await active_assignment_count(session, office_id)
+    if office.max_holders is not None and occupied >= max(0, office.max_holders):
+        office.application_enabled = False
+        raise OfficeCapacityReached("office_capacity_reached")
+
     assignment = UserOffice(
         office_id=office_id,
         user_id=user_id,
@@ -163,6 +214,9 @@ async def assign_office(
     )
     session.add(assignment)
     await session.flush()
+
+    if office.max_holders is not None and occupied + 1 >= max(0, office.max_holders):
+        office.application_enabled = False
     return assignment
 
 
@@ -178,9 +232,6 @@ def remove_assignment(
 
 
 async def delete_office(session: AsyncSession, office: Office, *, actor_id: int | None) -> int:
-    """Soft-deletes the office and ends every active assignment — mirrors
-    app/handlers/admin/offices_management.py::office_delete exactly,
-    including the audit entry. Returns the number of assignments ended."""
     active_assignments = list(
         (
             await session.scalars(
@@ -193,6 +244,7 @@ async def delete_office(session: AsyncSession, office: Office, *, actor_id: int 
     for assignment in active_assignments:
         remove_assignment(assignment)
     office.is_active = False
+    office.application_enabled = False
     await audit(
         session,
         actor_id=actor_id,
