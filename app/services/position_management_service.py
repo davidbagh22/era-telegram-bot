@@ -28,26 +28,17 @@ from app.utils.constants import (
     TaskStatus,
 )
 
-# Leadership OS ToR sections 18-23: vacancies -> applications -> decision ->
-# appoint. Reuses office_management_service.assign_office/remove_assignment
-# for the actual UserOffice mutation (section 23's "автоматически
-# создаёт/активирует UserOffice") rather than duplicating that logic.
-
 _OPEN_STATUSES = {
     PositionApplicationStatus.DRAFT,
     PositionApplicationStatus.SUBMITTED,
     PositionApplicationStatus.REVIEWING,
     PositionApplicationStatus.INTERVIEW,
     PositionApplicationStatus.RESERVE,
+    PositionApplicationStatus.APPROVED,
 }
 
 
 def _is_past(deadline: datetime | None, *, now: datetime) -> bool:
-    """SQLite (used in tests, and by aiosqlite generally) round-trips
-    DateTime(timezone=True) columns as naive UTC, so a value freshly
-    assigned in Python (tz-aware) and one just reloaded from the DB (naive)
-    aren't directly comparable -- strip tzinfo from both before comparing,
-    since everything in this codebase is UTC already."""
     if deadline is None:
         return False
     return deadline.replace(tzinfo=None) < now.replace(tzinfo=None)
@@ -69,8 +60,6 @@ class PositionError(ValueError):
 
 
 async def list_open_positions(session: AsyncSession) -> list[Office]:
-    """Public vacancy listing (ToR section 18) -- open for applications,
-    not just any office."""
     now = datetime.now(timezone.utc)
     rows = (
         await session.scalars(
@@ -88,9 +77,6 @@ async def list_open_positions(session: AsyncSession) -> list[Office]:
 
 
 async def list_public_offices(session: AsyncSession) -> list[Office]:
-    """"Команда" directory (ToR section 9): every publicly-listed office,
-    occupied or vacant, regardless of whether it's currently accepting
-    applications."""
     return list(
         (
             await session.scalars(
@@ -143,7 +129,6 @@ async def list_applications_for_office(
 
 
 async def list_all_applications(session: AsyncSession, *, limit: int = 1000) -> list[PositionApplication]:
-    """Org-wide listing for the Leadership OS export (ToR section 80)."""
     return list(
         (
             await session.scalars(
@@ -151,6 +136,22 @@ async def list_all_applications(session: AsyncSession, *, limit: int = 1000) -> 
             )
         ).all()
     )
+
+
+def _application_plan_text(
+    *,
+    relevant_experience: str | None,
+    plan: str | None,
+    extra: str | None,
+) -> str | None:
+    parts: list[str] = []
+    if relevant_experience and relevant_experience.strip():
+        parts.append("Релевантный опыт:\n" + relevant_experience.strip())
+    if plan and plan.strip():
+        parts.append("План на 1–2 месяца:\n" + plan.strip())
+    if extra and extra.strip():
+        parts.append("Дополнительно / ссылка:\n" + extra.strip())
+    return "\n\n".join(parts)[:4000] or None
 
 
 async def submit_application(
@@ -161,14 +162,27 @@ async def submit_application(
     motivation: str,
     plan: str | None,
     availability: str | None,
+    relevant_experience: str | None = None,
+    extra: str | None = None,
 ) -> PositionApplication:
-    if not office.is_active or not office.application_enabled:
+    # Serialize submissions for the same office so two concurrent requests
+    # from one user cannot both pass the duplicate check.
+    locked_office = await session.scalar(
+        select(Office).where(Office.id == office.id).with_for_update()
+    )
+    if locked_office is None or not locked_office.is_active or not locked_office.application_enabled:
         raise PositionError("applications_closed")
-    if _is_past(office.application_deadline, now=datetime.now(timezone.utc)):
+    if _is_past(locked_office.application_deadline, now=datetime.now(timezone.utc)):
         raise PositionError("deadline_passed")
+
+    occupied = await office_management_service.active_assignment_count(session, locked_office.id)
+    if locked_office.max_holders is not None and occupied >= max(0, locked_office.max_holders):
+        locked_office.application_enabled = False
+        raise PositionError("office_capacity_reached")
+
     existing = await session.scalar(
         select(PositionApplication).where(
-            PositionApplication.office_id == office.id,
+            PositionApplication.office_id == locked_office.id,
             PositionApplication.user_id == user.id,
             PositionApplication.status.in_(_OPEN_STATUSES),
         )
@@ -177,7 +191,7 @@ async def submit_application(
         raise PositionError("duplicate_application")
     already_holds = await session.scalar(
         select(UserOffice).where(
-            UserOffice.office_id == office.id,
+            UserOffice.office_id == locked_office.id,
             UserOffice.user_id == user.id,
             UserOffice.is_active.is_(True),
         )
@@ -187,15 +201,18 @@ async def submit_application(
     if not motivation.strip():
         raise PositionError("motivation_required")
 
-    now = datetime.now(timezone.utc)
     application = PositionApplication(
-        office_id=office.id,
+        office_id=locked_office.id,
         user_id=user.id,
         status=PositionApplicationStatus.SUBMITTED,
         motivation=motivation.strip()[:4000],
-        plan=(plan or "").strip()[:4000] or None,
+        plan=_application_plan_text(
+            relevant_experience=relevant_experience,
+            plan=plan,
+            extra=extra,
+        ),
         availability=(availability or "").strip()[:100] or None,
-        submitted_at=now,
+        submitted_at=datetime.now(timezone.utc),
     )
     session.add(application)
     await session.flush()
@@ -206,7 +223,7 @@ async def submit_application(
         entity_type="position_application",
         entity_id=application.id,
         old_value=None,
-        new_value={"office_id": office.id, "status": application.status},
+        new_value={"office_id": locked_office.id, "status": application.status},
     )
     return application
 
@@ -280,9 +297,6 @@ async def appoint_from_application(
     scope_type: str | None = None,
     scope_id: int | None = None,
 ) -> AppointmentResult:
-    """ToR section 23: approve + appoint in one action -- creates the
-    UserOffice, flips the application to 'appointed', and returns
-    non-blocking conflict warnings (section 28) for the caller to surface."""
     if application.office_id != office.id:
         raise PositionError("office_mismatch")
     if application.status == PositionApplicationStatus.APPOINTED:
@@ -296,18 +310,21 @@ async def appoint_from_application(
     if office.probation_days:
         probation_ends_at = resolved_starts_at + timedelta(days=office.probation_days)
 
-    assignment = await office_management_service.assign_office(
-        session,
-        office_id=office.id,
-        user_id=application.user_id,
-        appointed_by_id=appointed_by_id,
-        appointment_type=appointment_type,
-        starts_at=resolved_starts_at,
-        ends_at=resolved_ends_at,
-        probation_ends_at=probation_ends_at,
-        scope_type=scope_type,
-        scope_id=scope_id,
-    )
+    try:
+        assignment = await office_management_service.assign_office(
+            session,
+            office_id=office.id,
+            user_id=application.user_id,
+            appointed_by_id=appointed_by_id,
+            appointment_type=appointment_type,
+            starts_at=resolved_starts_at,
+            ends_at=resolved_ends_at,
+            probation_ends_at=probation_ends_at,
+            scope_type=scope_type,
+            scope_id=scope_id,
+        )
+    except office_management_service.OfficeCapacityReached as exc:
+        raise PositionError("office_capacity_reached") from exc
     if assignment is None:
         raise PositionError("already_appointed")
 
@@ -315,8 +332,6 @@ async def appoint_from_application(
     application.reviewed_by = appointed_by_id
     application.reviewed_at = datetime.now(timezone.utc)
 
-    # ToR section 23 item 9: appointment activates recurring responsibilities
-    # automatically -- one Task per active template for the current period.
     await sync_recurring_tasks(session, assignment, today=resolved_starts_at)
 
     await audit(
@@ -341,6 +356,11 @@ async def end_appointment(
     reason: str | None = None,
 ) -> None:
     office_management_service.remove_assignment(assignment, ended_by_id=ended_by_id, reason=reason)
+    office = await session.scalar(
+        select(Office).where(Office.id == assignment.office_id).with_for_update()
+    )
+    if office is not None:
+        await office_management_service.reconcile_office_vacancy(session, office)
     await audit(
         session,
         actor_id=ended_by_id,
@@ -365,11 +385,6 @@ async def extend_appointment(
         old_value=None,
         new_value={"ends_at": new_ends_at.isoformat()},
     )
-
-
-# --- Objective candidate summary (ToR section 21) ---------------------------
-# Deliberately excludes My Vector / any subjective assessment data (section
-# 22/50) -- every field here is a plain count from an existing source table.
 
 
 @dataclass(frozen=True, slots=True)
@@ -447,12 +462,6 @@ async def candidate_summary(session: AsyncSession, user_id: int) -> CandidateSum
     )
 
 
-# --- Progression / "Мой путь" / cadre reserve (ToR sections 76-78) ---------
-# Rule-based thresholds only -- no composite/psychological score (section
-# 105 explicitly forbids a "Candidate Score"). Each suggested role is a
-# plain checklist match the admin still has to act on manually (section 76:
-# "Не назначать автоматически").
-
 _CURATOR_MIN_TASKS = 5
 _CURATOR_MIN_ON_TIME_RATE = 70.0
 _PROJECT_LEAD_MIN_PROJECTS = 1
@@ -511,9 +520,6 @@ class CadreReserveEntry:
 
 
 async def list_cadre_reserve(session: AsyncSession, *, limit: int = 100) -> list[CadreReserveEntry]:
-    """Admin-facing reserve list (ToR section 76): every user who isn't
-    already holding an active leadership office, ranked by suggested-role
-    count. Kept simple on purpose -- not a scored ranking."""
     already_leading = {
         row[0]
         for row in (
