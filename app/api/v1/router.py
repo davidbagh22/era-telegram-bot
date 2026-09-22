@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.api.feature_gate import require_feature
 from app.api.v1 import (
     activity,
     admin,
@@ -52,6 +53,7 @@ from app.api.v1 import (
     system,
     tasks,
 )
+from app.services.feature_flags import Feature
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
@@ -60,10 +62,10 @@ api_router.include_router(features.router)
 api_router.include_router(home.router)
 api_router.include_router(participation.router)
 api_router.include_router(engagement.router)
-api_router.include_router(development.router)
+api_router.include_router(development.router, dependencies=[Depends(require_feature(Feature.VECTOR))])
 api_router.include_router(career.router)
-api_router.include_router(referrals.router)
-api_router.include_router(era_pro.router)
+api_router.include_router(referrals.router, dependencies=[Depends(require_feature(Feature.REFERRALS))])
+api_router.include_router(era_pro.router, dependencies=[Depends(require_feature(Feature.ERA_PRO))])
 api_router.include_router(leaderboard.router)
 api_router.include_router(community_users.router)
 api_router.include_router(event_posters.router)
@@ -80,9 +82,9 @@ api_router.include_router(opportunities.router)
 api_router.include_router(media_rich_publish.router)
 api_router.include_router(media.router)
 api_router.include_router(media_extras.router)
-api_router.include_router(auctions.router)
-api_router.include_router(rewards.router)
-api_router.include_router(surveys.router)
+api_router.include_router(auctions.router, dependencies=[Depends(require_feature(Feature.AUCTIONS))])
+api_router.include_router(rewards.router, dependencies=[Depends(require_feature(Feature.REWARDS))])
+api_router.include_router(surveys.router, dependencies=[Depends(require_feature(Feature.SURVEYS))])
 api_router.include_router(admin_applications.router)
 api_router.include_router(admin_application_decisions.router)
 api_router.include_router(admin_autocontent.router)
@@ -104,4 +106,4 @@ api_router.include_router(system.router)
 api_router.include_router(profile.router)
 api_router.include_router(leader.router)
 api_router.include_router(leadership.router)
-api_router.include_router(positions.router)
+api_router.include_router(positions.router, dependencies=[Depends(require_feature(Feature.ROLE_RECRUITMENT))])
