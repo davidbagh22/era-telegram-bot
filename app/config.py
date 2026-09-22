@@ -61,11 +61,22 @@ class Settings(BaseSettings):
     leaders_chat_url: str = "https://t.me/+V3OkO1PNwmhiY2Ni"
     media_chat_id: int | None = None
     media_chat_url: str = "https://t.me/+f03ksvhCMKc5NDBi"
-    # Telegram user IDs with explicit Media Desk management access. Admins
-    # and the active Media direction lead are authorized separately by the
-    # authorization service; this list is only an explicit operational grant.
     media_manager_ids: IdList = Field(default_factory=list)
     admin_ids: IdList = Field(default_factory=list)
+
+    # One feature-flag mechanism for participant-facing optional modules.
+    # Valid values: OFF / TESTERS / ALL. Testers are explicit and never
+    # inferred from administrator privileges.
+    feature_auctions: str = "ALL"
+    feature_rewards: str = "ALL"
+    feature_era_pro: str = "ALL"
+    feature_surveys: str = "ALL"
+    feature_vector: str = "ALL"
+    feature_referrals: str = "ALL"
+    feature_media: str = "ALL"
+    feature_role_recruitment: str = "ALL"
+    feature_tester_ids: IdList = Field(default_factory=list)
+
     timezone: str = "Asia/Yerevan"
     log_level: str = "INFO"
 
@@ -80,6 +91,24 @@ class Settings(BaseSettings):
     @classmethod
     def strip_secret_whitespace(cls, value: object) -> object:
         return value.strip() if isinstance(value, str) else value
+
+    @field_validator(
+        "feature_auctions",
+        "feature_rewards",
+        "feature_era_pro",
+        "feature_surveys",
+        "feature_vector",
+        "feature_referrals",
+        "feature_media",
+        "feature_role_recruitment",
+        mode="before",
+    )
+    @classmethod
+    def normalize_feature_mode(cls, value: object) -> str:
+        mode = str(value or "ALL").strip().upper()
+        if mode not in {"OFF", "TESTERS", "ALL"}:
+            raise ValueError("feature flag mode must be OFF, TESTERS or ALL")
+        return mode
 
     @property
     def chat_ids(self) -> set[int]:
