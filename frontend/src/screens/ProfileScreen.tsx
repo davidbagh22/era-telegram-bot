@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { downloadDataExport, fetchProfile, requestAccountDeletion } from "../api/client";
+import { fetchProfile, requestAccountDeletion } from "../api/client";
 import { ActionCell } from "../components/ActionCell";
 import { Avatar } from "../components/Avatar";
 import { BottomSheet } from "../components/BottomSheet";
@@ -31,7 +31,7 @@ function PortfolioSection({ title, entries }: { title: string; entries: Portfoli
   return (
     <section>
       <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>{title}</h2>
-      {entries.length === 0 ? <EmptyState text="Здесь пока нет записей." /> : (
+      {entries.length === 0 ? <EmptyState text="Здесь пока нет подтверждённых записей." /> : (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
           {entries.map((entry, index) => (
             <Card key={`${entry.title}-${index}`}>
@@ -59,30 +59,9 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
   const [showPortfolio, setShowPortfolio] = useState(false);
   const [showReferral, setShowReferral] = useState(false);
   const [activeCell, setActiveCell] = useState<DashboardCell | null>(null);
-  const [exporting, setExporting] = useState(false);
   const [deletionOpen, setDeletionOpen] = useState(false);
   const [requestingDeletion, setRequestingDeletion] = useState(false);
   const [deletionRequested, setDeletionRequested] = useState(false);
-
-  const handleExportData = useCallback(async () => {
-    setExporting(true);
-    try {
-      const blob = await downloadDataExport();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "ERA_data_export.json";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      toast.show("Данные выгружены", "success");
-    } catch {
-      toast.show("Не удалось выгрузить данные.", "error");
-    } finally {
-      setExporting(false);
-    }
-  }, [toast]);
 
   const handleRequestDeletion = useCallback(async () => {
     setRequestingDeletion(true);
@@ -110,7 +89,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
     );
   }
 
-  if (state.status === "error") return <StatusBanner title="Не удалось загрузить профиль" description="Откройте раздел ещё раз." />;
+  if (state.status === "error") return <StatusBanner title="Не удалось загрузить профиль" description="Открой раздел ещё раз." />;
 
   const { data } = state;
   const resultEntries = {
@@ -126,28 +105,28 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
   if (activeCell) {
     const config = DASHBOARD_CELLS.find((item) => item.key === activeCell);
     return (
-      <div className="era-page" style={{ padding: "1.25rem 1.25rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1rem" }}>
-        <button type="button" onClick={() => setActiveCell(null)} style={{ alignSelf: "flex-start" }}>← Назад</button>
+      <div className="era-page" style={{ padding: "1.25rem 1rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <button type="button" onClick={() => setActiveCell(null)} style={{ alignSelf: "flex-start", minHeight: 44 }}>← Назад</button>
         <PortfolioSection title={config?.title ?? "Результаты"} entries={resultEntries[activeCell]} />
       </div>
     );
   }
 
   return (
-    <div className="era-page era-stagger" style={{ padding: "1.25rem 1.25rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.15rem" }}>
+    <div className="era-page era-stagger" style={{ padding: "1.25rem 1rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       <Card gradient>
         <div style={{ display: "flex", gap: "0.9rem", alignItems: "center" }}>
           <Avatar firstName={data.first_name} lastName={data.last_name} size="lg" />
           <div style={{ minWidth: 0 }}>
             <MonoLabel tone="violet">Профиль</MonoLabel>
-            <h1 style={{ margin: "0.25rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.6rem", overflowWrap: "anywhere" }}>{data.full_name || data.first_name}</h1>
+            <h1 style={{ margin: "0.25rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.75rem", overflowWrap: "anywhere" }}>{data.full_name || data.first_name}</h1>
             <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-secondary)" }}>{data.growth.label}{data.city ? ` · ${data.city}` : ""}</p>
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "0.6rem", marginTop: "1rem" }}>
-          <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{data.stats.points ?? 0}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.72rem" }}>баллов</span></div>
-          <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{totalResults}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.72rem" }}>результатов</span></div>
-          <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{data.growth.level_index + 1}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.72rem" }}>уровень</span></div>
+          <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{data.stats.points ?? 0}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.75rem" }}>баллов</span></div>
+          <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{totalResults}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.75rem" }}>результатов</span></div>
+          <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{data.growth.level_index + 1}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.75rem" }}>этап пути</span></div>
         </div>
       </Card>
 
@@ -157,10 +136,10 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
       </section>
 
       <section>
-        <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Мои результаты</h2>
+        <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Мой вклад и опыт</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.6rem" }}>
           {DASHBOARD_CELLS.map((cell) => (
-            <button key={cell.key} type="button" onClick={() => setActiveCell(cell.key)} style={{ textAlign: "left", padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: "var(--era-surface)", border: "1px solid var(--era-border)" }}>
+            <button key={cell.key} type="button" onClick={() => setActiveCell(cell.key)} style={{ minHeight: 72, textAlign: "left", padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: "var(--era-surface)", border: "1px solid var(--era-border)" }}>
               <strong style={{ display: "block" }}>{cell.label}</strong>
               <span style={{ display: "block", marginTop: "0.22rem", color: "var(--era-text-muted)", fontSize: "0.78rem" }}>{resultEntries[cell.key].length} записей</span>
             </button>
@@ -169,20 +148,19 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
       </section>
 
       <section style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-        <h2 style={{ margin: "0 0 0.15rem", fontSize: "var(--era-text-xl)" }}>Аккаунт</h2>
+        <h2 style={{ margin: "0 0 0.15rem", fontSize: "var(--era-text-xl)" }}>Ещё</h2>
         <ActionCell title="Моё портфолио" description="Резюме, сертификаты и подтверждённые результаты" meta="Открыть" onClick={() => setShowPortfolio(true)} />
-        {onOpenDevelopment && <ActionCell title="Мой вектор" description="Цели, состояние и история развития" meta="Открыть" onClick={onOpenDevelopment} />}
-        <ActionCell title="Пригласить в ЭРА" description="Персональная ссылка · до +100 баллов за включившегося участника" meta="Открыть" onClick={() => setShowReferral(true)} />
+        {onOpenDevelopment && <ActionCell title="Мой вектор" description="Личные цели, состояние и история развития" meta="Открыть" onClick={onOpenDevelopment} />}
+        <ActionCell title="Пригласить в ЭРА" description="Персональная ссылка и история приглашений" meta="Открыть" onClick={() => setShowReferral(true)} />
         {(isAdmin || isLeader) && onEnterWorkspace && <ActionCell title={isAdmin ? "Управление ЭРА" : "Пространство лидера"} description="Рабочие инструменты и управление" meta="Открыть" onClick={onEnterWorkspace} />}
       </section>
 
       <section>
         <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Данные и конфиденциальность</h2>
         <Card>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-            <button type="button" disabled={exporting} onClick={handleExportData}>{exporting ? "Готовим файл…" : "Скачать мои данные (JSON)"}</button>
-            <button type="button" disabled={deletionRequested} onClick={() => setDeletionOpen(true)} style={{ color: "var(--era-error)" }}>{deletionRequested ? "Заявка на удаление отправлена" : "Запросить удаление аккаунта"}</button>
-          </div>
+          <button type="button" disabled={deletionRequested} onClick={() => setDeletionOpen(true)} style={{ color: "var(--era-error)", minHeight: 44 }}>
+            {deletionRequested ? "Заявка на удаление отправлена" : "Запросить удаление аккаунта"}
+          </button>
         </Card>
       </section>
 
