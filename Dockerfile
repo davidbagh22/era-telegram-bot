@@ -39,4 +39,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 COPY --from=miniapp-build /miniapp/dist ./frontend/dist
 
-CMD ["sh", "-c", "alembic upgrade heads && uvicorn app.webapp:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["python", "scripts/start_production.py"]
