@@ -66,7 +66,10 @@ api_router.include_router(engagement.router)
 api_router.include_router(development.router, dependencies=[Depends(require_feature(Feature.VECTOR))])
 api_router.include_router(career.router)
 api_router.include_router(referrals.router, dependencies=[Depends(require_feature(Feature.REFERRALS))])
-api_router.include_router(era_pro.router, dependencies=[Depends(require_feature(Feature.ERA_PRO))])
+# ERA PRO contains both participant and admin operations. Participant-only
+# endpoints enforce the flag inside era_pro.py so operational review remains
+# available during OFF/TESTERS rollouts.
+api_router.include_router(era_pro.router)
 api_router.include_router(leaderboard.router)
 api_router.include_router(community_users.router)
 api_router.include_router(event_posters.router)
@@ -77,8 +80,10 @@ api_router.include_router(activity.router)
 api_router.include_router(project_builder.router)
 api_router.include_router(projects.router)
 api_router.include_router(opportunities.router)
+# Media routers mix participant surfaces with team/desk operations. Participant
+# handlers enforce FEATURE_MEDIA locally; manager/admin operations stay online.
 api_router.include_router(media_rich_publish.router)
-api_router.include_router(media.router, dependencies=[Depends(require_feature(Feature.MEDIA))])
+api_router.include_router(media.router)
 api_router.include_router(media_extras.router)
 api_router.include_router(auctions.router, dependencies=[Depends(require_feature(Feature.AUCTIONS))])
 api_router.include_router(rewards.router, dependencies=[Depends(require_feature(Feature.REWARDS))])
