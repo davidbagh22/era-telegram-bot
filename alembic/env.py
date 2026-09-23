@@ -2,6 +2,7 @@ from logging.config import fileConfig
 
 import sqlalchemy as sa
 from alembic import context
+from alembic.script import ScriptDirectory
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -48,7 +49,7 @@ def _bootstrap_fresh_database(connection) -> bool:
         sa.Column("version_num", sa.String(length=32), nullable=False, primary_key=True),
     )
     version_table.create(bind=connection, checkfirst=True)
-    heads = list(context.script.get_heads())
+    heads = list(ScriptDirectory.from_config(config).get_heads())
     if heads:
         connection.execute(
             version_table.insert(),
