@@ -8,7 +8,6 @@ import { StatusBanner } from "../components/StatusBanner";
 import { useHome } from "../hooks/useHome";
 import type { DevelopmentHome, VectorDimension } from "../types/development";
 
-const ERA_PRO_THRESHOLD = 8_000;
 const DIMENSION_ORDER: VectorDimension[] = ["energy", "agency", "autonomy", "connection", "direction"];
 const DIMENSION_LABELS: Record<VectorDimension, string> = {
   energy: "Энергия",
@@ -97,8 +96,6 @@ export function VectorHomeScreen({
   }
 
   const data = growth.data;
-  const remaining = Math.max(0, ERA_PRO_THRESHOLD - data.points_balance);
-  const proPercent = Math.min(100, Math.round((data.points_balance / ERA_PRO_THRESHOLD) * 100));
   const nextAction = data.next_step;
 
   return (
@@ -127,7 +124,7 @@ export function VectorHomeScreen({
               : "Посмотрим, что изменилось?"}
           </strong>
           <span style={{ display: "block", marginTop: "0.25rem", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>
-            Короткий check-in · можно продолжить позже
+            Ежемесячная отметка · можно продолжить позже
           </span>
         </Card>
       </section>
@@ -150,17 +147,7 @@ export function VectorHomeScreen({
 
       <section style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "0.7rem", alignItems: "center" }}><MonoLabel>Моя история</MonoLabel><button type="button" className="era-btn-ghost" onClick={() => onNavigate("history")}>Открыть →</button></div>
-        <Card onClick={() => onNavigate("history")}><strong>История изменений</strong><p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", fontSize: "0.82rem" }}>Check-in, личные выводы, цели и динамика собираются в хронологию, чтобы сравнивать себя прежде всего с собой.</p></Card>
-      </section>
-
-      <section style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-        <MonoLabel>Следующий уровень</MonoLabel>
-        <Card style={{ borderColor: remaining === 0 ? "rgba(99,44,255,.3)" : undefined }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.7rem" }}><strong>ЭРА PRO</strong><strong>{proPercent}%</strong></div>
-          <div style={{ height: 7, marginTop: "0.5rem", background: "var(--era-ring-track)", borderRadius: 999, overflow: "hidden" }}><div style={{ width: `${proPercent}%`, height: "100%", background: "var(--era-gradient-signal)" }} /></div>
-          <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-secondary)", fontSize: "0.82rem" }}>{remaining > 0 ? `Не хватает ${formatPoints(remaining)} баллов до права подать заявку.` : "Порог достигнут. Можно подать заявку — баллы не списываются."}</p>
-          <button type="button" onClick={() => { window.location.hash = "#/era-pro"; }} style={{ marginTop: "0.65rem" }}>{remaining > 0 ? "Посмотреть ЭРА PRO" : "Подать заявку в ЭРА PRO"} →</button>
-        </Card>
+        <Card onClick={() => onNavigate("history")}><strong>История изменений</strong><p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", fontSize: "0.82rem" }}>Ежемесячные отметки, личные выводы, цели и динамика собираются в хронологию, чтобы сравнивать себя прежде всего с собой.</p></Card>
       </section>
 
       <section style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
