@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { fetchProfile, requestAccountDeletion } from "../api/client";
+import { downloadDataExport, fetchProfile, requestAccountDeletion } from "../api/client";
 import { ActionCell } from "../components/ActionCell";
 import { Avatar } from "../components/Avatar";
 import { BottomSheet } from "../components/BottomSheet";
@@ -51,9 +51,16 @@ interface ProfileScreenProps {
   isLeader?: boolean;
   onEnterWorkspace?: () => void;
   onOpenDevelopment?: () => void;
+  referralsEnabled?: boolean;
 }
 
-export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevelopment }: ProfileScreenProps = {}) {
+export function ProfileScreen({
+  isAdmin,
+  isLeader,
+  onEnterWorkspace,
+  onOpenDevelopment,
+  referralsEnabled = true,
+}: ProfileScreenProps = {}) {
   const state = useAsync(fetchProfile, []);
   const toast = useToast();
   const [showPortfolio, setShowPortfolio] = useState(false);
@@ -62,6 +69,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
   const [deletionOpen, setDeletionOpen] = useState(false);
   const [requestingDeletion, setRequestingDeletion] = useState(false);
   const [deletionRequested, setDeletionRequested] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const handleRequestDeletion = useCallback(async () => {
     setRequestingDeletion(true);
@@ -77,7 +85,28 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
     }
   }, [toast]);
 
-  if (showReferral) return <ReferralScreen onBack={() => setShowReferral(false)} />;
+  const handleDataExport = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const blob = await downloadDataExport();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `era-data-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast.show("Экспорт данных готов", "success");
+    } catch {
+      toast.show("Не удалось выгрузить данные.", "error");
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting, toast]);
+
+  if (showReferral && referralsEnabled) return <ReferralScreen onBack={() => setShowReferral(false)} />;
   if (showPortfolio) return <CareerPortfolioScreen onBack={() => setShowPortfolio(false)} />;
 
   if (state.status === "loading") {
@@ -151,16 +180,21 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
         <h2 style={{ margin: "0 0 0.15rem", fontSize: "var(--era-text-xl)" }}>Ещё</h2>
         <ActionCell title="Моё портфолио" description="Резюме, сертификаты и подтверждённые результаты" meta="Открыть" onClick={() => setShowPortfolio(true)} />
         {onOpenDevelopment && <ActionCell title="Мой вектор" description="Личные цели, состояние и история развития" meta="Открыть" onClick={onOpenDevelopment} />}
-        <ActionCell title="Пригласить в ЭРА" description="Персональная ссылка и история приглашений" meta="Открыть" onClick={() => setShowReferral(true)} />
+        {referralsEnabled && <ActionCell title="Пригласить в ЭРА" description="Персональная ссылка и история приглашений" meta="Открыть" onClick={() => setShowReferral(true)} />}
         {(isAdmin || isLeader) && onEnterWorkspace && <ActionCell title={isAdmin ? "Управление ЭРА" : "Пространство лидера"} description="Рабочие инструменты и управление" meta="Открыть" onClick={onEnterWorkspace} />}
       </section>
 
       <section>
         <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Данные и конфиденциальность</h2>
         <Card>
-          <button type="button" disabled={deletionRequested} onClick={() => setDeletionOpen(true)} style={{ color: "var(--era-error)", minHeight: 44 }}>
-            {deletionRequested ? "Заявка на удаление отправлена" : "Запросить удаление аккаунта"}
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+            <button type="button" disabled={exporting} onClick={() => void handleDataExport()} style={{ minHeight: 44, textAlign: "left" }}>
+              {exporting ? "Готовим выгрузку…" : "Скачать мои данные"}
+            </button>
+            <button type="button" disabled={deletionRequested} onClick={() => setDeletionOpen(true)} style={{ color: "var(--era-error)", minHeight: 44, textAlign: "left" }}>
+              {deletionRequested ? "Заявка на удаление отправлена" : "Запросить удаление аккаунта"}
+            </button>
+          </div>
         </Card>
       </section>
 
