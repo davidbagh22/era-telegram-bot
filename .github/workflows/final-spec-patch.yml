@@ -22,29 +22,38 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           vector = Path("frontend/src/screens/DevelopmentScreen.tsx")
           text = vector.read_text()
-          replacements = {
-              '"Пройди короткий Check-in, чтобы получить первый снимок состояния."': '"Сделай первую ежемесячную отметку, чтобы получить снимок состояния."',
-              '"ТВОЙ CHECK-IN"': '"ЕЖЕМЕСЯЧНАЯ ОТМЕТКА"',
-              '"Не удалось загрузить Check-in."': '"Не удалось загрузить ежемесячную отметку."',
-              '`Check-in · ${checkin.theme}`': '`Ежемесячная отметка · ${checkin.theme}`',
-              '"Не удалось завершить Check-in. Проверь, что все ответы сохранены."': '"Не удалось завершить ежемесячную отметку. Проверь, что все ответы сохранены."',
-              '"История начнётся после первого Check-in"': '"История начнётся после первой ежемесячной отметки"',
-          }
-          for old, new in replacements.items():
-              if old not in text:
-                  raise SystemExit(f"Expected Vector copy not found: {old}")
-              text = text.replace(old, new)
+          replacements = [
+              ("Пройди короткий Check-in, чтобы получить первый снимок состояния.", "Сделай первую ежемесячную отметку, чтобы получить снимок состояния."),
+              ("ТВОЙ CHECK-IN", "ЕЖЕМЕСЯЧНАЯ ОТМЕТКА"),
+              ("Не удалось загрузить Check-in.", "Не удалось загрузить ежемесячную отметку."),
+              ("Check-in · ${checkin.theme}", "Ежемесячная отметка · ${checkin.theme}"),
+              ("Не удалось завершить Check-in. Проверь, что все ответы сохранены.", "Не удалось завершить ежемесячную отметку. Проверь, что все ответы сохранены."),
+              ("История начнётся после первого Check-in", "История начнётся после первой ежемесячной отметки"),
+          ]
+          changed = 0
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new)
+                  changed += 1
+          if changed < 5:
+              raise SystemExit(f"Unexpected Vector copy shape; replaced only {changed} expected phrases")
+          visible_leftovers = [line for line in text.splitlines() if "Check-in" in line or "CHECK-IN" in line]
+          if visible_leftovers:
+              raise SystemExit("Participant-visible Check-in copy remains: " + " | ".join(visible_leftovers[:5]))
           vector.write_text(text)
 
           webapp = Path("app/webapp.py")
           web = webapp.read_text()
-          old = '''\n\n@app.get("/diag")\nasync def diag(request: Request) -> dict:\n    return {\n        "commit": DEPLOYED_COMMIT,\n        **getattr(request.app.state, "bot_diagnostics", {"error": "not_available"}),\n    }\n'''
-          if old not in web:
-              raise SystemExit("Expected public /diag endpoint block not found")
-          web = web.replace(old, "")
+          pattern = re.compile(r'\n\n@app\.get\("/diag"\)\nasync def diag\(request: Request\) -> dict:\n    return \{\n        "commit": DEPLOYED_COMMIT,\n        \*\*getattr\(request\.app\.state, "bot_diagnostics", \{"error": "not_available"\}\),\n    \}\n')
+          web, count = pattern.subn("", web)
+          if count != 1:
+              raise SystemExit(f"Expected exactly one public /diag endpoint, found {count}")
+          if '@app.get("/diag")' in web:
+              raise SystemExit("Public /diag endpoint still present")
           webapp.write_text(web)
           PY
           git diff --check
