@@ -72,6 +72,9 @@ USER_COMMANDS = [
 ]
 
 ADMIN_COMMANDS = USER_COMMANDS + [
+    BotCommand(command="status", description="Состояние системы"),
+    BotCommand(command="backup", description="Резервные копии"),
+    BotCommand(command="org", description="Состояние организации"),
     BotCommand(command="version", description="Версия запущенного бота"),
 ]
 
