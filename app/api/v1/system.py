@@ -25,7 +25,7 @@ from app.services.backup_runtime_service import (
     derive_backup_encryption_key,
 )
 from app.services.github_oidc_service import bearer_token, verify_backup_workflow_token
-from app.services.notification_service import notify_admins
+from app.services.notification_service import notify_admins_once
 from app.services.system_health_service import (
     current_commit_sha,
     run_system_diagnostics,
@@ -215,6 +215,7 @@ async def report_backup(
     incident = await session.scalar(
         select(SystemIncident).where(SystemIncident.dedupe_key == "backup:workflow")
     )
+    recovery_generation: int | None = None
     if payload.status == "failed":
         detail = row.error_detail or row.error_code or "Backup workflow завершился ошибкой"
         if incident is None:
@@ -227,13 +228,21 @@ async def report_backup(
                 detail=detail,
                 check_key="backup",
                 occurrence_count=1,
+                notification_generation=1,
                 first_seen_at=now,
                 last_seen_at=now,
                 current_commit=current_commit_sha(),
                 fix_prompt=_backup_fix_prompt(detail),
+                admin_notified=False,
+                recovery_notified=False,
             )
             session.add(incident)
         else:
+            if incident.status != "open":
+                incident.notification_generation = max(1, incident.notification_generation) + 1
+                incident.admin_notified = False
+                incident.recovery_notified = False
+                incident.first_seen_at = now
             incident.status = "open"
             incident.severity = "high"
             incident.detail = detail
@@ -242,37 +251,10 @@ async def report_backup(
             incident.occurrence_count += 1
             incident.current_commit = current_commit_sha()
             incident.fix_prompt = _backup_fix_prompt(detail)
-            incident.recovery_notified = False
-        await session.flush()
-        if bot is not None and not incident.admin_notified:
-            sent, _ = await notify_admins(
-                bot,
-                settings,
-                "🚨 ЭРА: backup завершился ошибкой\n\n"
-                f"Код: {row.error_code or 'backup_failed'}\n"
-                f"Диагностика: {detail}\n\n"
-                "Откройте Admin Mode → Коммуникации → Инструменты → Система.",
-            )
-            incident.admin_notified = sent > 0
-    else:
-        if incident is not None and incident.status == "open":
-            incident.status = "resolved"
-            incident.resolved_at = now
-            if bot is not None and incident.admin_notified and not incident.recovery_notified:
-                await notify_admins(
-                    bot,
-                    settings,
-                    "✅ ЭРА: backup снова выполняется и проходит restore verification.",
-                )
-                incident.recovery_notified = True
-        if bot is not None:
-            await notify_admins(
-                bot,
-                settings,
-                "💾 ЭРА: резервная копия готова\n\n"
-                f"Тип: {payload.backup_type}\n"
-                "Restore verification: пройден",
-            )
+    elif incident is not None and incident.status == "open":
+        recovery_generation = max(1, incident.notification_generation)
+        incident.status = "resolved"
+        incident.resolved_at = now
 
     await audit(
         session,
@@ -288,4 +270,48 @@ async def report_backup(
             "storage_provider": payload.storage_provider,
         },
     )
+
+    # Persist the backup result and incident state before any Telegram call.
+    # NotificationDelivery uses its own transactions, so Telegram/ledger errors
+    # can never roll back the verified BackupHistory row.
+    await session.commit()
+
+    if bot is not None:
+        if payload.status == "failed":
+            detail = row.error_detail or row.error_code or "Backup workflow завершился ошибкой"
+            sent, failed, duplicates = await notify_admins_once(
+                bot,
+                settings,
+                "🚨 ЭРА: backup завершился ошибкой\n\n"
+                f"Код: {row.error_code or 'backup_failed'}\n"
+                f"Диагностика: {detail}\n\n"
+                "Production-данные не изменены.",
+                delivery_key=f"admin:backup:{payload.backup_key}:failed",
+                notification_type="backup_failed",
+            )
+            if incident is not None:
+                incident.admin_notified = sent > 0 or duplicates > 0
+                await session.commit()
+        else:
+            await notify_admins_once(
+                bot,
+                settings,
+                "💾 ЭРА: резервная копия готова\n\n"
+                f"Тип: {payload.backup_type}\n"
+                "Restore verification: пройден",
+                delivery_key=f"admin:backup:{payload.backup_key}:success",
+                notification_type="backup_success",
+            )
+            if recovery_generation is not None:
+                sent, failed, duplicates = await notify_admins_once(
+                    bot,
+                    settings,
+                    "✅ ЭРА: backup снова выполняется и проходит restore verification.",
+                    delivery_key=f"health:backup:workflow:{recovery_generation}:recovered",
+                    notification_type="system_incident_recovery",
+                )
+                if incident is not None:
+                    incident.recovery_notified = sent > 0 or duplicates > 0
+                    await session.commit()
+
     return {"ok": True, "backup_key": payload.backup_key, "status": payload.status}
