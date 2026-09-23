@@ -26,19 +26,19 @@ type SectionOption<T extends string> = { value: T; label: string; description: s
 type MetricDetail = { metric: AdminMetricKey; total: number };
 
 type InitialAdminRoute = {
-  openApplications: boolean;
+  peopleSection: PeopleSection | null;
   applicationId: number | null;
 };
 
 const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
   { value: "participants", label: "Участники", description: "Люди, роли и состояние сообщества" },
   { value: "verification", label: "Проверка состава", description: "Community Verification, напоминания и ручные решения" },
-  { value: "development", label: "Состояние и развитие", description: "Добровольные Check-in, охват и потребности сообщества" },
+  { value: "development", label: "Состояние и развитие", description: "Добровольные ежемесячные отметки, охват и потребности сообщества" },
   { value: "career", label: "Портфолио и рекомендации", description: "Проверка достижений и утверждение официальных рекомендательных писем" },
   { value: "applications", label: "Заявки", description: "Новые регистрации и решения по ним" },
   { value: "era-pro", label: "Заявки ЭРА PRO", description: "Отбор участников, достигших порога 8 000 баллов" },
-  { value: "offices", label: "Должности", description: "Организационные роли и структура" },
-  { value: "data-rights", label: "Данные и права", description: "Запросы на экспорт и удаление персональных данных" },
+  { value: "offices", label: "Должности", description: "Роли, набор, заявки, назначения и ответственность" },
+  { value: "data-rights", label: "Данные и права", description: "Запросы на удаление персональных данных" },
 ];
 
 const WORK_SECTIONS: SectionOption<WorkSection>[] = [
@@ -53,17 +53,22 @@ const COMMS_SECTIONS: SectionOption<CommsSection>[] = [
   { value: "tools", label: "Центр связи", description: "Чаты, FAQ, приветствия, рассылки и автоконтент" },
 ];
 
+function positiveId(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 function initialAdminRoute(): InitialAdminRoute {
   const query = new URLSearchParams(window.location.search);
-  if (query.get("adminSection") !== "applications") {
-    return { openApplications: false, applicationId: null };
+  const section = query.get("adminSection");
+  if (section === "applications") {
+    return { peopleSection: "applications", applicationId: positiveId(query.get("applicationId")) };
   }
-  const rawId = query.get("applicationId");
-  const parsedId = rawId ? Number(rawId) : NaN;
-  return {
-    openApplications: true,
-    applicationId: Number.isInteger(parsedId) && parsedId > 0 ? parsedId : null,
-  };
+  if (section === "offices") {
+    return { peopleSection: "offices", applicationId: null };
+  }
+  return { peopleSection: null, applicationId: null };
 }
 
 function SectionMenu<T extends string>({ title, description, options, onOpen }: { title: string; description: string; options: SectionOption<T>[]; onOpen: (value: T) => void }) {
@@ -92,8 +97,8 @@ function SectionHeader({ title, onBack }: { title: string; onBack: () => void })
 
 export function AdminScreen() {
   const [launchRoute] = useState<InitialAdminRoute>(() => initialAdminRoute());
-  const [group, setGroup] = useState<AdminGroup>(launchRoute.openApplications ? "people" : "overview");
-  const [peopleSection, setPeopleSection] = useState<PeopleSection | null>(launchRoute.openApplications ? "applications" : null);
+  const [group, setGroup] = useState<AdminGroup>(launchRoute.peopleSection ? "people" : "overview");
+  const [peopleSection, setPeopleSection] = useState<PeopleSection | null>(launchRoute.peopleSection);
   const [workSection, setWorkSection] = useState<WorkSection | null>(null);
   const [offersInitialSection, setOffersInitialSection] = useState<OffersSection>("applications");
   const [commsSection, setCommsSection] = useState<CommsSection | null>(null);
@@ -143,14 +148,7 @@ export function AdminScreen() {
   return (
     <div className="era-page" style={{ minHeight: "100vh", display: "flex", flexDirection: "column", minWidth: 0 }}>
       <div style={{ flex: "1 1 auto", minWidth: 0, padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-        {group === "overview" && metricDetail && (
-          <AdminMetricDetailScreen
-            metric={metricDetail.metric}
-            expectedTotal={metricDetail.total}
-            onBack={() => setMetricDetail(null)}
-            onOpenEntity={(entityType) => openMetricEntity(entityType)}
-          />
-        )}
+        {group === "overview" && metricDetail && <AdminMetricDetailScreen metric={metricDetail.metric} expectedTotal={metricDetail.total} onBack={() => setMetricDetail(null)} onOpenEntity={(entityType) => openMetricEntity(entityType)} />}
         {group === "overview" && !metricDetail && (
           <AdminOverviewScreen
             onOpenPeople={() => openPeople("participants")}
