@@ -1,3 +1,14 @@
+export interface MiniAppFeatureFlags {
+  auctions: boolean;
+  rewards: boolean;
+  era_pro: boolean;
+  surveys: boolean;
+  vector: boolean;
+  referrals: boolean;
+  media: boolean;
+  role_recruitment: boolean;
+}
+
 export interface MiniAppUserSummary {
   id: number;
   telegram_id: number;
@@ -9,6 +20,7 @@ export interface MiniAppUserSummary {
   is_leader: boolean;
   is_admin: boolean;
   permissions: string[];
+  features: MiniAppFeatureFlags;
 }
 
 export interface MiniAppAuthResponse {
