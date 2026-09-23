@@ -21,6 +21,7 @@ from app.api.v1 import (
     admin_participation,
     admin_people_detail,
     admin_project_detail,
+    admin_recruitment,
     admin_verification,
     auctions,
     auth,
@@ -76,9 +77,6 @@ api_router.include_router(activity.router)
 api_router.include_router(project_builder.router)
 api_router.include_router(projects.router)
 api_router.include_router(opportunities.router)
-# Must precede media.router because it intentionally owns the same publish-now
-# path and adapts only the Telegram rendering step; the original Media Desk
-# router still owns every other endpoint.
 api_router.include_router(media_rich_publish.router)
 api_router.include_router(media.router, dependencies=[Depends(require_feature(Feature.MEDIA))])
 api_router.include_router(media_extras.router)
@@ -97,6 +95,7 @@ api_router.include_router(admin_partner_edit.router)
 api_router.include_router(admin_participation.router)
 api_router.include_router(admin_people_detail.router)
 api_router.include_router(admin_project_detail.router)
+api_router.include_router(admin_recruitment.router)
 api_router.include_router(admin_verification.router)
 api_router.include_router(admin_event_create.router)
 api_router.include_router(admin_event_operations.router)
