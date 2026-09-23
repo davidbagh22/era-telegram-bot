@@ -80,11 +80,12 @@ api_router.include_router(activity.router)
 api_router.include_router(project_builder.router)
 api_router.include_router(projects.router)
 api_router.include_router(opportunities.router)
-# Media routers mix participant surfaces with team/desk operations. Participant
-# handlers enforce FEATURE_MEDIA locally; manager/admin operations stay online.
+# require_feature deliberately exempts /media/team/* and /media/desk/*, so
+# participant Media Hub routes respect rollout flags without disabling the
+# operational desk used to manage enabled testers and content.
 api_router.include_router(media_rich_publish.router)
-api_router.include_router(media.router)
-api_router.include_router(media_extras.router)
+api_router.include_router(media.router, dependencies=[Depends(require_feature(Feature.MEDIA))])
+api_router.include_router(media_extras.router, dependencies=[Depends(require_feature(Feature.MEDIA))])
 api_router.include_router(auctions.router, dependencies=[Depends(require_feature(Feature.AUCTIONS))])
 api_router.include_router(rewards.router, dependencies=[Depends(require_feature(Feature.REWARDS))])
 api_router.include_router(surveys.router, dependencies=[Depends(require_feature(Feature.SURVEYS))])
