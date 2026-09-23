@@ -17,10 +17,16 @@ def require_feature(feature: Feature) -> Callable[..., Coroutine[Any, Any, None]
         user: User = Depends(get_current_user),
         settings: Settings = Depends(get_settings),
     ) -> None:
+        path = request.url.path
         # Feature flags control participant-facing rollout only. Operational
         # admin endpoints must stay available so enabled testers can still be
         # reviewed and managed while a module is OFF/TESTERS for participants.
-        if request.url.path.startswith("/api/v1/admin/"):
+        if path.startswith("/api/v1/admin/"):
+            return
+        if feature == Feature.MEDIA and (
+            path.startswith("/api/v1/media/team/")
+            or path.startswith("/api/v1/media/desk/")
+        ):
             return
         if not feature_enabled(settings, feature, user.telegram_id):
             # Treat disabled participant modules as absent instead of leaking
