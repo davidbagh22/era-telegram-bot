@@ -80,7 +80,7 @@ api_router.include_router(opportunities.router)
 # path and adapts only the Telegram rendering step; the original Media Desk
 # router still owns every other endpoint.
 api_router.include_router(media_rich_publish.router)
-api_router.include_router(media.router)
+api_router.include_router(media.router, dependencies=[Depends(require_feature(Feature.MEDIA))])
 api_router.include_router(media_extras.router)
 api_router.include_router(auctions.router, dependencies=[Depends(require_feature(Feature.AUCTIONS))])
 api_router.include_router(rewards.router, dependencies=[Depends(require_feature(Feature.REWARDS))])
