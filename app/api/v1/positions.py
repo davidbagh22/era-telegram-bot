@@ -13,6 +13,7 @@ from app.database.models import Office, PositionApplication, User
 from app.services import office_management_service, position_management_service
 from app.services.bot_notification_service import PrimaryAction, action_markup
 from app.services.notification_service import notify_admins_once
+from app.utils.deep_links import miniapp_admin_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["positions"])
@@ -122,13 +123,14 @@ async def _to_my_application_out(
     )
 
 
-def _admin_application_markup(settings: Settings, application_id: int):
-    if not settings.effective_miniapp_url:
+def _admin_application_markup(settings: Settings):
+    url = miniapp_admin_url(settings.effective_miniapp_url)
+    if not url:
         return None
     return action_markup(
         PrimaryAction(
             label="Открыть в управлении ЭРА",
-            web_app_url=f"{settings.effective_miniapp_url}#/admin?application={application_id}",
+            web_app_url=url,
         )
     )
 
@@ -172,7 +174,7 @@ async def submit_position_application(
                 f"Новая заявка на должность\n\n{office.title}\nЗаявка #{application.id}",
                 delivery_key=f"admin:position_application:{application.id}:submitted",
                 notification_type="position_application_submitted",
-                reply_markup=_admin_application_markup(settings, application.id),
+                reply_markup=_admin_application_markup(settings),
             )
         except Exception:
             logger.exception("Position application admin notification failed id=%s", application.id)
