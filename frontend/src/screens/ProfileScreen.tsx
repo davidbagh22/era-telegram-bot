@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { downloadDataExport, fetchMe, fetchProfile, requestAccountDeletion } from "../api/client";
+import { fetchMe, fetchProfile, requestAccountDeletion } from "../api/client";
 import { ActionCell } from "../components/ActionCell";
 import { Avatar } from "../components/Avatar";
 import { BottomSheet } from "../components/BottomSheet";
@@ -60,33 +60,12 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
   const [showPortfolio, setShowPortfolio] = useState(false);
   const [showReferral, setShowReferral] = useState(false);
   const [activeCell, setActiveCell] = useState<DashboardCell | null>(null);
-  const [exporting, setExporting] = useState(false);
   const [deletionOpen, setDeletionOpen] = useState(false);
   const [requestingDeletion, setRequestingDeletion] = useState(false);
   const [deletionRequested, setDeletionRequested] = useState(false);
 
   const referralsEnabled = me.status === "ready" && me.data.features.referrals;
   const vectorEnabled = me.status === "ready" && me.data.features.vector;
-
-  const handleExportData = useCallback(async () => {
-    setExporting(true);
-    try {
-      const blob = await downloadDataExport();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "ERA_data_export.json";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      toast.show("Данные выгружены", "success");
-    } catch {
-      toast.show("Не удалось выгрузить данные.", "error");
-    } finally {
-      setExporting(false);
-    }
-  }, [toast]);
 
   const handleRequestDeletion = useCallback(async () => {
     setRequestingDeletion(true);
@@ -183,12 +162,9 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
       <section>
         <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Данные и конфиденциальность</h2>
         <Card>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-            <button type="button" disabled={exporting} onClick={handleExportData} style={{ minHeight: 44, textAlign: "left" }}>{exporting ? "Готовим файл…" : "Скачать мои данные (JSON)"}</button>
-            <button type="button" disabled={deletionRequested} onClick={() => setDeletionOpen(true)} style={{ color: "var(--era-error)", minHeight: 44, textAlign: "left" }}>
-              {deletionRequested ? "Заявка на удаление отправлена" : "Запросить удаление аккаунта"}
-            </button>
-          </div>
+          <button type="button" disabled={deletionRequested} onClick={() => setDeletionOpen(true)} style={{ color: "var(--era-error)", minHeight: 44, textAlign: "left" }}>
+            {deletionRequested ? "Заявка на удаление отправлена" : "Запросить удаление аккаунта"}
+          </button>
         </Card>
       </section>
 
