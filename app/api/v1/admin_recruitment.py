@@ -18,7 +18,7 @@ from app.services import office_management_service, position_management_service
 from app.services.authorization_service import can_manage_people
 from app.services.notification_service import safe_send
 from app.services.points_service import total_points
-from app.utils.constants import PositionApplicationStatus, STATUS_LABELS
+from app.utils.constants import STATUS_LABELS
 
 router = APIRouter(prefix="/admin/recruitment", tags=["admin-recruitment"])
 
