@@ -8,9 +8,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import Office, PositionApplication, User, UserOffice
+from app.database.models import Office, PositionApplication, User
 from app.handlers.admin.access import guard_admin_bot as _guard
 from app.keyboards.participant import open_app_button
+from app.services.organization_health_service import build_organization_health
 from app.services.system_health_service import system_snapshot
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PositionApplicationStatus
@@ -47,17 +48,21 @@ def _status_text(snapshot: dict) -> str:
     failed_checks = [item for item in checks if item.get("status") != "ok"]
     check_lines = []
     for item in checks[:12]:
-        name = str(item.get("name") or item.get("check") or "check")
+        title = str(item.get("title") or item.get("name") or item.get("key") or "Проверка")
         status = str(item.get("status") or "unknown")
-        check_lines.append(f"{'✅' if status == 'ok' else '⚠️'} {name}: {status}")
+        check_lines.append(f"{'✅' if status == 'ok' else '⚠️'} {title}: {status}")
     details = "\n".join(check_lines) if check_lines else "Проверки: нет данных"
+    status_label = {
+        "healthy": "работает штатно",
+        "degraded": "есть проблемы",
+        "critical": "критическая проблема",
+    }.get(str(latest.get("status") or ""), "нет данных")
     return (
         "Система ЭРА\n\n"
-        f"Состояние: {latest.get('status', 'нет данных')}\n"
-        f"Health: {latest.get('score', '—')}/100\n"
+        f"Статус: {status_label}\n"
+        f"Найдено проблем: {len(failed_checks)}\n"
         f"Открытых инцидентов: {len(incidents)}\n"
         f"Высокой критичности: {len(critical)}\n"
-        f"Проверок с отклонением: {len(failed_checks)}\n"
         f"Commit: {(latest.get('commit_sha') or 'unknown')[:12]}\n\n"
         f"{details}"
     )
@@ -75,34 +80,63 @@ def _backup_text(snapshot: dict) -> str:
         f"Хранилище: {latest.get('storage_provider') or '—'}\n"
         f"Завершён: {latest.get('completed_at') or latest.get('created_at') or '—'}\n"
         f"Размер: {latest.get('size_bytes') or '—'}\n"
-        f"Commit: {(latest.get('commit_sha') or '—')[:12]}\n"
         f"Restore verification: {latest.get('restore_verified_at') or 'нет'}\n"
         f"История: {len(backups)} последних записей"
     )
 
 
 async def _org_text(session: AsyncSession) -> str:
-    users = int(await session.scalar(select(func.count(User.id))) or 0)
-    pending = int(await session.scalar(select(func.count(User.id)).where(User.application_status == ApplicationStatus.PENDING)) or 0)
-    offices = int(await session.scalar(select(func.count(Office.id)).where(Office.is_active.is_(True))) or 0)
-    assignments = int(await session.scalar(select(func.count(UserOffice.id)).where(UserOffice.is_active.is_(True))) or 0)
-    vacancies = int(await session.scalar(select(func.count(Office.id)).where(Office.is_active.is_(True), Office.is_public.is_(True), Office.application_enabled.is_(True))) or 0)
-    position_apps = int(await session.scalar(select(func.count(PositionApplication.id)).where(PositionApplication.status.in_([
-        PositionApplicationStatus.SUBMITTED,
-        PositionApplicationStatus.REVIEWING,
-        "needs_info",
-        PositionApplicationStatus.INTERVIEW,
-        PositionApplicationStatus.RESERVE,
-        PositionApplicationStatus.APPROVED,
-    ]))) or 0)
+    health = await build_organization_health(session)
+    metrics = {item.key: item for item in health.metrics}
+
+    def metric_value(key: str) -> int:
+        item = metrics.get(key)
+        return int(item.value) if item is not None else 0
+
+    pending = int(
+        await session.scalar(
+            select(func.count(User.id)).where(User.application_status == ApplicationStatus.PENDING)
+        )
+        or 0
+    )
+    vacancies = int(
+        await session.scalar(
+            select(func.count(Office.id)).where(
+                Office.is_active.is_(True),
+                Office.is_public.is_(True),
+                Office.application_enabled.is_(True),
+            )
+        )
+        or 0
+    )
+    position_apps = int(
+        await session.scalar(
+            select(func.count(PositionApplication.id)).where(
+                PositionApplication.status.in_([
+                    PositionApplicationStatus.SUBMITTED,
+                    PositionApplicationStatus.REVIEWING,
+                    "needs_info",
+                    PositionApplicationStatus.INTERVIEW,
+                    PositionApplicationStatus.RESERVE,
+                    PositionApplicationStatus.APPROVED,
+                ])
+            )
+        )
+        or 0
+    )
     return (
-        "Организация ЭРА\n\n"
-        f"Профилей: {users}\n"
-        f"Заявок на вступление: {pending}\n"
-        f"Активных должностей: {offices}\n"
-        f"Текущих назначений: {assignments}\n"
-        f"Открытых вакансий: {vacancies}\n"
-        f"Активных заявок на роли: {position_apps}"
+        "ЭРА сегодня\n\n"
+        f"Участники: {metric_value('approved')}\n"
+        f"Активные за 30 дней: {metric_value('active_30d')}\n"
+        f"Без активности 30 дней: {metric_value('dormant_30d')}\n"
+        f"Требуют решения: {metric_value('queue')}\n\n"
+        f"Заявки на вступление: {pending}\n"
+        f"Заявки на роли: {position_apps}\n"
+        f"Открытые роли: {vacancies}\n\n"
+        f"Активные проекты: {metric_value('active_projects')}\n"
+        f"События на 14 дней: {metric_value('upcoming_14d')}\n"
+        f"Просроченные задачи: {metric_value('overdue_tasks')}\n"
+        f"Проблемы данных/работы: {len(health.risks)}"
     )
 
 
