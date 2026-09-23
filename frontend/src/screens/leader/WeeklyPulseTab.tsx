@@ -81,7 +81,7 @@ export function WeeklyPulseTab() {
           setFeedback([]);
         }
       } catch {
-        if (active) setError("Не удалось открыть Weekly Pulse.");
+        if (active) setError("Не удалось открыть пульс недели.");
       } finally {
         if (active) setLoading(false);
       }
@@ -117,7 +117,7 @@ export function WeeklyPulseTab() {
       setReport(updated);
       setFeedback(await fetchLeadershipFeedback(updated.id));
     } catch {
-      setError("Не удалось сохранить Weekly Pulse. Проверьте данные и повторите.");
+      setError("Не удалось сохранить пульс недели. Проверьте данные и повторите.");
     } finally {
       setSaving(false);
     }
@@ -127,7 +127,7 @@ export function WeeklyPulseTab() {
     return <p style={{ color: "var(--era-text-muted)" }}>Собираем факты недели…</p>;
   }
   if (!report || !facts) {
-    return <EmptyState text={error ?? "Weekly Pulse пока недоступен."} />;
+    return <EmptyState text={error ?? "Пульс недели пока недоступен."} />;
   }
 
   return (
@@ -156,7 +156,7 @@ export function WeeklyPulseTab() {
           <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
             Ваша оценка
           </p>
-          <h2 style={{ margin: "0.35rem 0 0", fontSize: "var(--era-text-xl)" }}>Weekly Pulse</h2>
+          <h2 style={{ margin: "0.35rem 0 0", fontSize: "var(--era-text-xl)" }}>Пульс недели</h2>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.5rem" }}>
@@ -195,14 +195,14 @@ export function WeeklyPulseTab() {
         </label>
         {(needsHelp || status === "red") && (
           <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-            <strong>Блокер</strong>
+            <strong>Препятствие</strong>
             <textarea value={blocker} onChange={(event) => setBlocker(event.target.value)} maxLength={1000} rows={2} />
           </label>
         )}
 
         {error && <p role="alert" style={{ margin: 0 }}>{error}</p>}
         <button type="button" disabled={saving} onClick={() => void submit()} style={{ minHeight: 48, fontWeight: 900 }}>
-          {saving ? "Сохраняем…" : report.submitted_at ? "Обновить Weekly Pulse" : "Отправить Weekly Pulse"}
+          {saving ? "Сохраняем…" : report.submitted_at ? "Обновить пульс недели" : "Отправить пульс недели"}
         </button>
         {report.submitted_at && (
           <p style={{ margin: 0, color: "var(--era-text-muted)" }}>
@@ -216,7 +216,7 @@ export function WeeklyPulseTab() {
           Обратная связь
         </h2>
         {feedback.length === 0 ? (
-          <EmptyState text="Обратной связи по этому Pulse пока нет." />
+          <EmptyState text="Обратной связи по этому пульсу пока нет." />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             {feedback.map((item) => (
