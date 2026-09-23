@@ -54,7 +54,6 @@ function IconBubble({ children, tone }: { children: ReactNode; tone: "violet" | 
 export function HomeScreen({
   user,
   onOpenProfile,
-  onOpenDevelopment,
   onOpenEvents,
   onOpenEvent,
   onOpenProject,
@@ -91,7 +90,8 @@ export function HomeScreen({
     if (kind === "event" && entity_id != null && onOpenEvent) return () => onOpenEvent(entity_id);
     if (kind === "project" && entity_id != null && onOpenProject) return () => onOpenProject(entity_id);
     if (kind === "opportunity" && entity_id != null && onOpenOpportunity) return () => onOpenOpportunity(entity_id);
-    if (kind === "growth" && user.features.vector && onOpenDevelopment) return onOpenDevelopment;
+    if (kind === "role" && onOpenCommunity) return onOpenCommunity;
+    if (kind === "growth" && onOpenProfile) return onOpenProfile;
     return undefined;
   })();
 
@@ -136,14 +136,14 @@ export function HomeScreen({
         )}
       </section>
 
-      <Card onClick={user.features.vector ? onOpenDevelopment : undefined} style={{ padding: "1rem" }}>
+      <Card onClick={onOpenProfile} style={{ padding: "1rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: ".8rem", alignItems: "center" }}>
           <div>
             <MonoLabel>Мой путь</MonoLabel>
             <strong style={{ display: "block", marginTop: ".3rem", fontSize: "1.1rem" }}>{data.growth.label}</strong>
             <span style={{ display: "block", marginTop: ".2rem", color: "var(--era-text-secondary)", fontSize: ".85rem" }}>Участник → Активный → Лидер</span>
           </div>
-          {user.features.vector && <span aria-hidden="true" style={{ color: "var(--era-violet)" }}>→</span>}
+          {onOpenProfile && <span aria-hidden="true" style={{ color: "var(--era-violet)" }}>→</span>}
         </div>
       </Card>
 
