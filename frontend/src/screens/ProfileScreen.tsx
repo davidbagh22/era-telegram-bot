@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { downloadDataExport, fetchProfile, requestAccountDeletion } from "../api/client";
+import { downloadDataExport, fetchMe, fetchProfile, requestAccountDeletion } from "../api/client";
 import { ActionCell } from "../components/ActionCell";
 import { Avatar } from "../components/Avatar";
 import { BottomSheet } from "../components/BottomSheet";
@@ -51,17 +51,11 @@ interface ProfileScreenProps {
   isLeader?: boolean;
   onEnterWorkspace?: () => void;
   onOpenDevelopment?: () => void;
-  referralsEnabled?: boolean;
 }
 
-export function ProfileScreen({
-  isAdmin,
-  isLeader,
-  onEnterWorkspace,
-  onOpenDevelopment,
-  referralsEnabled = true,
-}: ProfileScreenProps = {}) {
+export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevelopment }: ProfileScreenProps = {}) {
   const state = useAsync(fetchProfile, []);
+  const me = useAsync(fetchMe, []);
   const toast = useToast();
   const [showPortfolio, setShowPortfolio] = useState(false);
   const [showReferral, setShowReferral] = useState(false);
@@ -70,6 +64,9 @@ export function ProfileScreen({
   const [requestingDeletion, setRequestingDeletion] = useState(false);
   const [deletionRequested, setDeletionRequested] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  const referralsEnabled = me.status === "ready" && me.data.features.referrals;
+  const vectorEnabled = me.status === "ready" && me.data.features.vector;
 
   const handleRequestDeletion = useCallback(async () => {
     setRequestingDeletion(true);
@@ -109,7 +106,7 @@ export function ProfileScreen({
   if (showReferral && referralsEnabled) return <ReferralScreen onBack={() => setShowReferral(false)} />;
   if (showPortfolio) return <CareerPortfolioScreen onBack={() => setShowPortfolio(false)} />;
 
-  if (state.status === "loading") {
+  if (state.status === "loading" || me.status === "loading") {
     return (
       <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
         <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}><Skeleton width={48} height={48} radius="50%" /><Skeleton height="1.1rem" width="50%" /></div>
@@ -179,7 +176,7 @@ export function ProfileScreen({
       <section style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
         <h2 style={{ margin: "0 0 0.15rem", fontSize: "var(--era-text-xl)" }}>Ещё</h2>
         <ActionCell title="Моё портфолио" description="Резюме, сертификаты и подтверждённые результаты" meta="Открыть" onClick={() => setShowPortfolio(true)} />
-        {onOpenDevelopment && <ActionCell title="Мой вектор" description="Личные цели, состояние и история развития" meta="Открыть" onClick={onOpenDevelopment} />}
+        {vectorEnabled && onOpenDevelopment && <ActionCell title="Мой вектор" description="Личные цели, состояние и история развития" meta="Открыть" onClick={onOpenDevelopment} />}
         {referralsEnabled && <ActionCell title="Пригласить в ЭРА" description="Персональная ссылка и история приглашений" meta="Открыть" onClick={() => setShowReferral(true)} />}
         {(isAdmin || isLeader) && onEnterWorkspace && <ActionCell title={isAdmin ? "Управление ЭРА" : "Пространство лидера"} description="Рабочие инструменты и управление" meta="Открыть" onClick={onEnterWorkspace} />}
       </section>
