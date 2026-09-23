@@ -1,0 +1,59 @@
+name: Final spec patch
+
+on:
+  push:
+    branches: [era-platform-unification-final]
+    paths:
+      - ".github/workflows/final-spec-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: era-platform-unification-final
+          fetch-depth: 0
+      - name: Apply approved ERA specification patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          vector = Path("frontend/src/screens/DevelopmentScreen.tsx")
+          text = vector.read_text()
+          replacements = {
+              '"Пройди короткий Check-in, чтобы получить первый снимок состояния."': '"Сделай первую ежемесячную отметку, чтобы получить снимок состояния."',
+              '"ТВОЙ CHECK-IN"': '"ЕЖЕМЕСЯЧНАЯ ОТМЕТКА"',
+              '"Не удалось загрузить Check-in."': '"Не удалось загрузить ежемесячную отметку."',
+              '`Check-in · ${checkin.theme}`': '`Ежемесячная отметка · ${checkin.theme}`',
+              '"Не удалось завершить Check-in. Проверь, что все ответы сохранены."': '"Не удалось завершить ежемесячную отметку. Проверь, что все ответы сохранены."',
+              '"История начнётся после первого Check-in"': '"История начнётся после первой ежемесячной отметки"',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f"Expected Vector copy not found: {old}")
+              text = text.replace(old, new)
+          vector.write_text(text)
+
+          webapp = Path("app/webapp.py")
+          web = webapp.read_text()
+          old = '''\n\n@app.get("/diag")\nasync def diag(request: Request) -> dict:\n    return {\n        "commit": DEPLOYED_COMMIT,\n        **getattr(request.app.state, "bot_diagnostics", {"error": "not_available"}),\n    }\n'''
+          if old not in web:
+              raise SystemExit("Expected public /diag endpoint block not found")
+          web = web.replace(old, "")
+          webapp.write_text(web)
+          PY
+          git diff --check
+      - name: Commit patch and remove one-off workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/final-spec-patch.yml
+          git add frontend/src/screens/DevelopmentScreen.tsx app/webapp.py
+          git commit -m "Finish Vector copy and disable public diagnostics"
+          git push origin HEAD:era-platform-unification-final
