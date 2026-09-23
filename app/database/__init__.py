@@ -1,5 +1,6 @@
 from app.database.base import Base
 from app.database.models import *  # noqa: F403
+import app.database.recruitment_model_extensions  # noqa: F401
 from app.database.development_models import (  # noqa: F401
     AdminVisibilitySetting,
     AnalyticsSnapshot,
