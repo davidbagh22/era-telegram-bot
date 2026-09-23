@@ -279,7 +279,7 @@ async def report_backup(
     if bot is not None:
         if payload.status == "failed":
             detail = row.error_detail or row.error_code or "Backup workflow завершился ошибкой"
-            sent, failed, duplicates = await notify_admins_once(
+            sent, _, duplicates = await notify_admins_once(
                 bot,
                 settings,
                 "🚨 ЭРА: backup завершился ошибкой\n\n"
@@ -303,7 +303,7 @@ async def report_backup(
                 notification_type="backup_success",
             )
             if recovery_generation is not None:
-                sent, failed, duplicates = await notify_admins_once(
+                sent, _, duplicates = await notify_admins_once(
                     bot,
                     settings,
                     "✅ ЭРА: backup снова выполняется и проходит restore verification.",
