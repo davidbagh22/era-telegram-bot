@@ -1,6 +1,4 @@
-import { useCallback, type ReactNode } from "react";
-import { fetchWeeklyLeaderboard } from "../api/client";
-import { fetchReferralSummary, prepareReferralShareMessage } from "../api/referrals";
+import type { ReactNode } from "react";
 import { Avatar } from "../components/Avatar";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
@@ -9,12 +7,8 @@ import { PosterCard } from "../components/PosterCard";
 import { Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { EventIcon, ProjectsIcon, TaskIcon } from "../components/icons";
-import { useAsync } from "../hooks/useAsync";
 import { useHome } from "../hooks/useHome";
 import type { MiniAppUserSummary } from "../types/auth";
-
-const ERA_PRO_THRESHOLD = 8_000;
-const GENERAL_CHAT_URL = "https://t.me/+Q6MzTrnR21dmZjgy";
 
 interface HomeScreenProps {
   user: MiniAppUserSummary;
@@ -44,22 +38,6 @@ function greeting() {
   return "Добрый вечер";
 }
 
-function formatPoints(value: number) {
-  return new Intl.NumberFormat("ru-RU").format(value);
-}
-
-function fallbackReferralShareText(code: string, inviteUrl: string) {
-  return (
-    "🔥 Тебя пригласили в ЭРА.\n\n" +
-    "ЭРА — среда, где участие превращается в реальные проекты, роли, связи и возможности.\n\n" +
-    "Здесь не нужно ждать, пока тебя заметят. Можно включиться, взять ответственность и расти через дело.\n\n" +
-    `Войти в ЭРА: ${inviteUrl || "https://t.me/ERA_1bot"}\n` +
-    `Код приглашения: ${code}\n\n` +
-    `После регистрации — общий чат ЭРА: ${GENERAL_CHAT_URL}\n\n` +
-    "Вход открыт. Остаются те, кто действительно включается."
-  );
-}
-
 function IconBubble({ children, tone }: { children: ReactNode; tone: "violet" | "orange" | "magenta" }) {
   const styles = {
     violet: { background: "var(--era-tint-violet)", color: "var(--era-violet)" },
@@ -85,50 +63,15 @@ export function HomeScreen({
   onOpenOpportunity,
 }: HomeScreenProps) {
   const home = useHome();
-  const weeklyTop = useAsync(() => fetchWeeklyLeaderboard(), []);
-  const referral = useAsync(() => fetchReferralSummary(), []);
-
-  const shareReferral = useCallback(async () => {
-    if (referral.status !== "ready") return;
-    const webApp = window.Telegram?.WebApp;
-
-    // Modern Telegram clients can share a prepared message. This preserves
-    // real Telegram entities, so "Войти в ЭРА" and "общий чат ЭРА" are
-    // clickable words instead of raw URLs in the sent invitation.
-    if (webApp?.shareMessage) {
-      try {
-        const prepared = await prepareReferralShareMessage();
-        webApp.shareMessage(prepared.id);
-        return;
-      } catch {
-        // Fall through for older clients or a temporary Bot API failure.
-      }
-    }
-
-    const fallbackText = fallbackReferralShareText(
-      referral.data.code,
-      referral.data.invite_url,
-    );
-    const shareUrl = `https://t.me/share/url?text=${encodeURIComponent(fallbackText)}`;
-    if (webApp?.openTelegramLink) {
-      webApp.openTelegramLink(shareUrl);
-      return;
-    }
-    if (navigator.share) {
-      void navigator.share({ title: "Тебя пригласили в ЭРА", text: fallbackText });
-      return;
-    }
-    if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(fallbackText);
-  }, [referral]);
 
   if (home.status === "loading") {
     return (
-      <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <div className="era-page" style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <Skeleton width={44} height={44} radius="50%" />
           <div style={{ flex: 1 }}><Skeleton height="1.1rem" width="58%" /></div>
         </div>
-        <Skeleton height="15rem" radius="var(--era-radius-xl)" />
+        <SkeletonCard />
         <SkeletonCard />
         <SkeletonCard />
       </div>
@@ -136,12 +79,10 @@ export function HomeScreen({
   }
 
   if (home.status === "error") {
-    return <StatusBanner title="Не получилось загрузить главную" description="Проверьте соединение и откройте экран ещё раз." />;
+    return <StatusBanner title="Не получилось загрузить главную" description="Проверь соединение и открой экран ещё раз." />;
   }
 
   const { data } = home;
-  const proRemaining = Math.max(0, ERA_PRO_THRESHOLD - data.points_balance);
-  const proPercent = Math.min(100, Math.round((data.points_balance / ERA_PRO_THRESHOLD) * 100));
 
   const nextStepClick = (() => {
     if (!data.next_step) return undefined;
@@ -150,27 +91,27 @@ export function HomeScreen({
     if (kind === "event" && entity_id != null && onOpenEvent) return () => onOpenEvent(entity_id);
     if (kind === "project" && entity_id != null && onOpenProject) return () => onOpenProject(entity_id);
     if (kind === "opportunity" && entity_id != null && onOpenOpportunity) return () => onOpenOpportunity(entity_id);
-    if (kind === "growth" && onOpenDevelopment) return onOpenDevelopment;
+    if (kind === "growth" && user.features.vector && onOpenDevelopment) return onOpenDevelopment;
     return undefined;
   })();
 
-  const contextual = data.next_step && nextStepClick
-    ? { title: data.next_step.title, description: data.next_step.description, onClick: nextStepClick }
-    : data.active_task && onOpenTask
-      ? { title: data.active_task.title, description: `До ${formatDate(data.active_task.deadline)} · ${data.active_task.points} баллов`, onClick: () => onOpenTask(data.active_task!.id) }
-      : data.active_project && onOpenProject
-        ? { title: data.active_project.title, description: data.active_project.status, onClick: () => onOpenProject(data.active_project!.id) }
-        : { title: "У тебя нет активного проекта", description: "Создать или выбрать проект", onClick: () => { window.location.hash = "#/projects"; } };
+  const confirmedResult = data.activity.completed_tasks > 0
+    ? `${data.activity.completed_tasks} завершённых задач`
+    : data.activity.projects > 0
+      ? `${data.activity.projects} проектов в опыте`
+      : data.activity.portfolio_items > 0
+        ? `${data.activity.portfolio_items} подтверждённых записей`
+        : null;
 
   return (
-    <div className="era-page era-stagger" style={{ padding: "1.15rem 1.15rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.35rem" }}>
+    <div className="era-page era-stagger" style={{ padding: "1rem 1rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
         <div>
           <MonoLabel tone="violet">ЭРА</MonoLabel>
           <h1 style={{ margin: "0.35rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.8rem", lineHeight: 1.05 }}>
             {greeting()}, {user.first_name}.
           </h1>
-          <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-secondary)", fontSize: "0.86rem" }}>
+          <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem" }}>
             Вот что сейчас важнее всего.
           </p>
         </div>
@@ -179,39 +120,34 @@ export function HomeScreen({
         </button>
       </header>
 
-      <Card gradient style={{ padding: "1.15rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "flex-start" }}>
+      <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+        <MonoLabel>Следующий шаг</MonoLabel>
+        {data.next_step ? (
+          <Card gradient onClick={nextStepClick} style={{ padding: "1.1rem" }}>
+            <strong style={{ display: "block", fontSize: "1.15rem" }}>{data.next_step.title}</strong>
+            <p style={{ margin: ".4rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem", lineHeight: 1.5 }}>{data.next_step.description}</p>
+            {nextStepClick && <span style={{ display: "block", marginTop: ".75rem", color: "var(--era-violet)", fontWeight: 800, fontSize: ".85rem" }}>{data.next_step.action_label} →</span>}
+          </Card>
+        ) : (
+          <Card>
+            <strong>Срочных действий нет</strong>
+            <p style={{ margin: ".35rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem" }}>Можно выбрать событие, задачу или возможность на свой темп.</p>
+          </Card>
+        )}
+      </section>
+
+      <Card onClick={user.features.vector ? onOpenDevelopment : undefined} style={{ padding: "1rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: ".8rem", alignItems: "center" }}>
           <div>
-            <MonoLabel tone="orange">МОЙ ВЕКТОР</MonoLabel>
-            <strong style={{ display: "block", marginTop: "0.35rem", fontSize: "1.25rem" }}>{data.growth.label}</strong>
-            <span style={{ display: "block", marginTop: "0.2rem", color: "var(--era-text-secondary)" }}>{formatPoints(data.points_balance)} баллов</span>
+            <MonoLabel>Мой путь</MonoLabel>
+            <strong style={{ display: "block", marginTop: ".3rem", fontSize: "1.1rem" }}>{data.growth.label}</strong>
+            <span style={{ display: "block", marginTop: ".2rem", color: "var(--era-text-secondary)", fontSize: ".85rem" }}>Участник → Активный → Лидер</span>
           </div>
-          <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1.55rem" }}>{proPercent}%</strong>
+          {user.features.vector && <span aria-hidden="true" style={{ color: "var(--era-violet)" }}>→</span>}
         </div>
-
-        <div>
-          <div style={{ height: 8, borderRadius: 999, overflow: "hidden", background: "var(--era-ring-track)" }}>
-            <div style={{ width: `${proPercent}%`, height: "100%", borderRadius: "inherit", background: "var(--era-gradient-signal)" }} />
-          </div>
-          <p style={{ margin: "0.55rem 0 0", color: "var(--era-text-secondary)", fontSize: "0.84rem", lineHeight: 1.45 }}>
-            {proRemaining > 0
-              ? `До права подать заявку в ЭРА PRO осталось ${formatPoints(proRemaining)} баллов.`
-              : "Порог ЭРА PRO достигнут. Право подать заявку открыто."}
-          </p>
-        </div>
-
-        <button type="button" className="era-btn-primary" onClick={onOpenDevelopment} disabled={!onOpenDevelopment}>
-          Открыть мой вектор
-        </button>
-
-        <button type="button" onClick={contextual.onClick} style={{ textAlign: "left", width: "100%", padding: "0.8rem", borderRadius: "var(--era-radius-md)", background: "var(--era-surface-2)", border: "1px solid var(--era-border)" }}>
-          <MonoLabel>СЛЕДУЮЩИЙ ШАГ</MonoLabel>
-          <strong style={{ display: "block", marginTop: "0.28rem" }}>{contextual.title}</strong>
-          <span style={{ display: "block", marginTop: "0.18rem", color: "var(--era-text-secondary)", fontSize: "0.8rem" }}>{contextual.description} →</span>
-        </button>
       </Card>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: "0.7rem" }}>
+      <section style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
         <MonoLabel>Ближайшее</MonoLabel>
         {data.nearest_event ? (
           <PosterCard
@@ -224,34 +160,34 @@ export function HomeScreen({
           />
         ) : data.active_task && onOpenTask ? (
           <Card onClick={() => onOpenTask(data.active_task!.id)}>
-            <div style={{ display: "flex", gap: "0.75rem" }}>
+            <div style={{ display: "flex", gap: ".75rem" }}>
               <IconBubble tone="violet"><TaskIcon width={18} height={18} /></IconBubble>
               <div><strong>{data.active_task.title}</strong><p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>До {formatDate(data.active_task.deadline)}</p></div>
             </div>
           </Card>
         ) : data.active_project && onOpenProject ? (
           <Card onClick={() => onOpenProject(data.active_project!.id)}>
-            <div style={{ display: "flex", gap: "0.75rem" }}>
+            <div style={{ display: "flex", gap: ".75rem" }}>
               <IconBubble tone="orange"><ProjectsIcon width={18} height={18} /></IconBubble>
               <div><strong>{data.active_project.title}</strong><p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>{data.active_project.status}</p></div>
             </div>
           </Card>
-        ) : <EmptyState text="Сейчас нет ближайшего события или активной задачи." />}
+        ) : <EmptyState text="На ближайшее время ничего не запланировано." />}
       </section>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: "0.7rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
+      <section style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
           <MonoLabel>Возможности для тебя</MonoLabel>
           {onOpenCommunity && <button type="button" className="era-btn-ghost" onClick={onOpenCommunity}>Все →</button>}
         </div>
         {data.opportunities.length ? data.opportunities.slice(0, 3).map((item) => (
           <Card key={item.id} onClick={onOpenOpportunity ? () => onOpenOpportunity(item.id) : onOpenCommunity}>
-            <div style={{ display: "flex", gap: "0.75rem" }}>
+            <div style={{ display: "flex", gap: ".75rem" }}>
               <IconBubble tone="magenta"><EventIcon width={18} height={18} /></IconBubble>
               <div style={{ minWidth: 0 }}>
                 <strong>{item.title}</strong>
-                <p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)", fontSize: "0.82rem" }}>
-                  {item.point_cost ? `От ${formatPoints(item.point_cost)} баллов` : "Доступно участникам"}{item.expires_at ? ` · до ${formatDate(item.expires_at)}` : ""}
+                <p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)", fontSize: ".82rem" }}>
+                  {item.expires_at ? `До ${formatDate(item.expires_at)}` : "Доступно сейчас"}
                 </p>
               </div>
             </div>
@@ -259,33 +195,19 @@ export function HomeScreen({
         )) : <EmptyState text="Новых персональных возможностей пока нет." />}
       </section>
 
-      <Card onClick={referral.status === "ready" ? () => { void shareReferral(); } : undefined} style={{ padding: "1rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "0.9rem", alignItems: "center" }}>
-          <div>
-            <MonoLabel tone="violet">Пригласи в ЭРА</MonoLabel>
-            <strong style={{ display: "block", marginTop: "0.3rem" }}>+100 баллов, если друг действительно включится</strong>
-            <p style={{ margin: "0.28rem 0 0", color: "var(--era-text-secondary)", fontSize: "0.8rem" }}>+30 после одобрения · +70 после первого подтверждённого участия</p>
-          </div>
-          <span aria-hidden="true" style={{ fontSize: "1.15rem" }}>→</span>
-        </div>
-      </Card>
-
-      {weeklyTop.status === "ready" && weeklyTop.data.entries.length > 0 && (
-        <section style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-          <MonoLabel>Топ участников недели</MonoLabel>
-          <Card style={{ padding: "0.85rem 1rem" }}>
-            {weeklyTop.data.entries.slice(0, 5).map((entry, index) => (
-              <div key={`${entry.rank}-${entry.display_name}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", padding: "0.45rem 0", borderBottom: index < Math.min(weeklyTop.data.entries.length, 5) - 1 ? "1px solid var(--era-border)" : "none" }}>
-                <div style={{ display: "flex", gap: "0.6rem", minWidth: 0 }}>
-                  <strong style={{ width: "1.25rem", color: index < 3 ? "var(--era-violet)" : "var(--era-text-secondary)" }}>{entry.rank}</strong>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: entry.is_you ? 800 : 600 }}>{entry.display_name}{entry.is_you ? " · ты" : ""}</span>
-                </div>
-                <strong style={{ color: "var(--era-violet)" }}>+{entry.points}</strong>
-              </div>
-            ))}
-          </Card>
-        </section>
-      )}
+      <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+        <MonoLabel>Подтверждённый результат</MonoLabel>
+        <Card>
+          {confirmedResult ? (
+            <>
+              <strong>{confirmedResult}</strong>
+              <p style={{ margin: ".3rem 0 0", color: "var(--era-text-secondary)", fontSize: ".85rem" }}>Опыт сохраняется в профиле и портфолио.</p>
+            </>
+          ) : (
+            <p style={{ margin: 0, color: "var(--era-text-secondary)", fontSize: ".9rem" }}>Первый подтверждённый результат появится после события, задачи или проекта.</p>
+          )}
+        </Card>
+      </section>
     </div>
   );
 }

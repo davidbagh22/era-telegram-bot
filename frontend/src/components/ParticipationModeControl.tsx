@@ -9,20 +9,11 @@ import { Card } from "./Card";
 import { MonoLabel } from "./MonoLabel";
 
 const MODE_LABELS: Record<ParticipationState["participation_mode"], string> = {
-  ACTIVE: "Активный",
+  ACTIVE: "Обычный",
   LIGHT: "Лёгкий",
   PAUSED: "Пауза",
-  OBSERVER: "Наблюдатель",
-  EXITED: "Вышел из текущего состава",
-};
-
-const STATE_LABELS: Record<ParticipationState["activity_state"], string> = {
-  ADAPTATION: "Адаптация",
-  ACTIVE: "В активной базе",
-  COOLING: "Снижение активности",
-  INACTIVE: "Неактивен",
-  DORMANT: "Давно без активности",
-  ARCHIVE_CANDIDATE: "Нужна сверка участия",
+  OBSERVER: "Наблюдаю",
+  EXITED: "Участие завершено",
 };
 
 export function ParticipationModeControl() {
@@ -70,28 +61,31 @@ export function ParticipationModeControl() {
 
   return (
     <>
-      <div style={{ padding: "0 1.25rem 1rem" }}>
+      <div style={{ padding: "0 1rem 1rem" }}>
         <Card onClick={() => setOpen(true)} style={{ padding: ".9rem 1rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: ".8rem", alignItems: "center" }}>
             <div>
-              <MonoLabel>РЕЖИМ УЧАСТИЯ</MonoLabel>
+              <MonoLabel>МОЙ ТЕМП</MonoLabel>
               <strong style={{ display: "block", marginTop: ".25rem" }}>{MODE_LABELS[state.participation_mode]}</strong>
-              <span style={{ display: "block", marginTop: ".2rem", color: "var(--era-text-muted)", fontSize: ".76rem" }}>
-                {STATE_LABELS[state.activity_state]}{pauseText ? ` · до ${pauseText}` : ""}
-              </span>
+              {pauseText && (
+                <span style={{ display: "block", marginTop: ".2rem", color: "var(--era-text-muted)", fontSize: ".75rem" }}>
+                  До {pauseText}
+                </span>
+              )}
             </div>
             <span aria-hidden="true">→</span>
           </div>
         </Card>
       </div>
 
-      <BottomSheet open={open} onClose={() => { setOpen(false); setConfirmExit(false); }} title="Режим участия">
+      <BottomSheet open={open} onClose={() => { setOpen(false); setConfirmExit(false); }} title="Мой темп">
         <div style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
-          <p style={{ margin: 0, color: "var(--era-text-secondary)", lineHeight: 1.45 }}>
-            Режим выбираете Вы. Состояние активности рассчитывает система по подтверждённым действиям — это две разные вещи.
+          <p style={{ margin: 0, color: "var(--era-text-secondary)", fontSize: ".9rem", lineHeight: 1.5 }}>
+            Выбери темп, который подходит тебе сейчас. История, баллы и подтверждённый опыт сохраняются.
           </p>
-          <button type="button" className="era-btn-secondary" disabled={saving} onClick={() => void change("ACTIVE")}>Активный · хочу включаться регулярно</button>
+          <button type="button" className="era-btn-secondary" disabled={saving} onClick={() => void change("ACTIVE")}>Обычный · включаюсь регулярно</button>
           <button type="button" className="era-btn-secondary" disabled={saving} onClick={() => void change("LIGHT")}>Лёгкий · без регулярной нагрузки</button>
+          <button type="button" className="era-btn-secondary" disabled={saving} onClick={() => void change("OBSERVER")}>Наблюдаю · без текущих задач</button>
           <button type="button" className="era-btn-secondary" disabled={saving} onClick={() => void change("PAUSED", { pauseMonths: 1 })}>Пауза на 1 месяц</button>
           <button type="button" className="era-btn-secondary" disabled={saving} onClick={() => void change("PAUSED", { pauseMonths: 3 })}>Пауза на 3 месяца</button>
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: ".5rem" }}>
@@ -101,26 +95,27 @@ export function ParticipationModeControl() {
               min={new Date(Date.now() + 86400000).toISOString().slice(0, 10)}
               onChange={(event) => setCustomDate(event.target.value)}
               aria-label="Дата окончания паузы"
-              style={{ minWidth: 0 }}
+              style={{ minWidth: 0, minHeight: 44 }}
             />
-            <button type="button" className="era-btn-secondary" disabled={saving || !customDate} onClick={() => void change("PAUSED", { pauseUntil: customDate })}>Поставить паузу</button>
+            <button type="button" className="era-btn-secondary" disabled={saving || !customDate} onClick={() => void change("PAUSED", { pauseUntil: customDate })}>Пауза до даты</button>
           </div>
-          <button type="button" className="era-btn-secondary" disabled={saving} onClick={() => void change("OBSERVER")}>Наблюдатель · без регулярных задач</button>
 
-          {!confirmExit ? (
-            <button type="button" className="era-btn-ghost" disabled={saving} onClick={() => setConfirmExit(true)}>Выйти из текущего состава</button>
-          ) : (
-            <Card style={{ padding: ".85rem" }}>
-              <strong>Подтвердить выход?</strong>
-              <p style={{ margin: ".35rem 0 .75rem", color: "var(--era-text-muted)", fontSize: ".8rem" }}>
-                Профиль, баллы, портфолио и история сохранятся. Удаление персональных данных — отдельный процесс.
-              </p>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem" }}>
-                <button type="button" className="era-btn-secondary" onClick={() => setConfirmExit(false)}>Отмена</button>
-                <button type="button" className="era-btn-primary" disabled={saving} onClick={() => void change("EXITED")}>Подтвердить</button>
-              </div>
-            </Card>
-          )}
+          <div style={{ borderTop: "1px solid var(--era-border)", marginTop: ".35rem", paddingTop: ".8rem" }}>
+            {!confirmExit ? (
+              <button type="button" className="era-btn-ghost" disabled={saving} onClick={() => setConfirmExit(true)}>Завершить участие</button>
+            ) : (
+              <Card style={{ padding: ".85rem" }}>
+                <strong>Завершить участие в текущем составе?</strong>
+                <p style={{ margin: ".35rem 0 .75rem", color: "var(--era-text-muted)", fontSize: ".8rem", lineHeight: 1.45 }}>
+                  Профиль, баллы, портфолио и история сохранятся. Вернуться можно отдельно через команду ЭРА.
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem" }}>
+                  <button type="button" className="era-btn-secondary" onClick={() => setConfirmExit(false)}>Отмена</button>
+                  <button type="button" className="era-btn-primary" disabled={saving} onClick={() => void change("EXITED")}>Завершить</button>
+                </div>
+              </Card>
+            )}
+          </div>
         </div>
       </BottomSheet>
     </>

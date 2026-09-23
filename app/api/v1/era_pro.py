@@ -10,11 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
+from app.api.feature_gate import require_feature
 from app.config import Settings
 from app.database.era_pro_models import EraProApplication
 from app.database.models import User
 from app.services.admin_dashboard_service import has_dashboard_access
 from app.services.audit_service import audit
+from app.services.feature_flags import Feature
 from app.services.notification_service import notify_admins
 from app.services.points_service import total_points
 
@@ -147,6 +149,7 @@ async def require_era_pro_admin(
 async def read_era_pro(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    _feature: None = Depends(require_feature(Feature.ERA_PRO)),
 ) -> EraProMeOut:
     return await _me_payload(session, user)
 
@@ -158,8 +161,8 @@ async def apply_era_pro(
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
     settings: Settings = Depends(get_settings),
+    _feature: None = Depends(require_feature(Feature.ERA_PRO)),
 ) -> EraProMeOut:
-    # Lock the user so simultaneous taps cannot create parallel applications.
     await session.scalar(select(User.id).where(User.id == user.id).with_for_update())
     points = await total_points(session, user.id)
     if points < ERA_PRO_THRESHOLD:
@@ -209,6 +212,7 @@ async def resubmit_era_pro(
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
     settings: Settings = Depends(get_settings),
+    _feature: None = Depends(require_feature(Feature.ERA_PRO)),
 ) -> EraProMeOut:
     application = await session.scalar(
         select(EraProApplication)
@@ -329,7 +333,6 @@ async def decide_era_pro_application(
         try:
             await bot.send_message(applicant.telegram_id, text)
         except Exception:
-            # The decision is authoritative even if Telegram delivery fails.
             pass
 
     points = await total_points(session, applicant.id)

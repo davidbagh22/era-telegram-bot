@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { Card } from "../components/Card";
-import { CalendarIcon, EventIcon, HistoryIcon, ProjectsIcon, TaskIcon } from "../components/icons";
 import { ProjectsSection } from "./projects/ProjectsSection";
 import { CalendarTab } from "./activity/CalendarTab";
 import { EventsTab } from "./activity/EventsTab";
@@ -8,108 +6,94 @@ import { HistoryTab } from "./activity/HistoryTab";
 import { TasksTab } from "./activity/TasksTab";
 
 type ActivitySection = "now" | "projects" | "events" | "tasks" | "calendar" | "history";
+type VisibleSection = "now" | "events" | "tasks" | "history";
 
-// 2026-08 redesign brief section 16: "Внутри Деятельности: Проекты,
-// Задачи, Мероприятия, Календарь. Но не tabs. Четыре красивые action
-// cards." "История" is a genuinely separate fifth area still worth its
-// own place here (past events/tasks the four "active" areas above don't
-// otherwise surface) -- kept rather than dropped outright, since the
-// brief's own list wasn't meant as "delete this feature."
-const SECTIONS: { value: ActivitySection; label: string; description: string; Icon: typeof ProjectsIcon }[] = [
-  { value: "now", label: "Сейчас", description: "Что требует вашего действия", Icon: CalendarIcon },
-  { value: "tasks", label: "Задачи", description: "Открытые и назначенные вам", Icon: TaskIcon },
-  { value: "events", label: "Мероприятия", description: "Афиша и регистрация", Icon: EventIcon },
-  { value: "history", label: "История", description: "Что вы уже прошли", Icon: HistoryIcon },
+const TABS: { value: VisibleSection; label: string }[] = [
+  { value: "now", label: "Сейчас" },
+  { value: "events", label: "События" },
+  { value: "tasks", label: "Задачи" },
+  { value: "history", label: "История" },
 ];
 
 interface ActivityScreenProps {
-  /** Lands the screen on a specific section instead of the landing menu —
-   * used by the bot's "📅 Ближайшее"/"✅ Мои задачи" deep links (PR 36)
-   * and by "#/projects/{id}" (App.tsx). */
   initialSection?: ActivitySection;
-  /** A specific task/event id from a per-notification deep link
-   * (`#/tasks/{id}`, `#/events/{id}`) — passed through to whichever
-   * section `initialSection` lands on so it can scroll to and highlight
-   * it. */
   initialItemId?: number | null;
-  /** A specific project id from `#/projects/{id}` (App.tsx) — passed
-   * through when `initialSection === "projects"`. */
   initialProjectId?: number | null;
 }
 
-export function ActivityScreen({ initialSection, initialItemId, initialProjectId }: ActivityScreenProps = {}) {
-  const [section, setSection] = useState<ActivitySection | null>(initialSection ?? null);
+function visibleInitial(section?: ActivitySection): VisibleSection | "projects" {
+  if (section === "projects") return "projects";
+  if (section === "events" || section === "tasks" || section === "history") return section;
+  return "now";
+}
 
-  if (section === null) {
+export function ActivityScreen({ initialSection, initialItemId, initialProjectId }: ActivityScreenProps = {}) {
+  const [section, setSection] = useState<VisibleSection | "projects">(() => visibleInitial(initialSection));
+
+  if (section === "projects") {
     return (
-      <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-        <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.375rem", margin: 0 }}>
-          Участие
-        </h1>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          {SECTIONS.map(({ value, label, description, Icon }) => (
-            <Card key={value}>
-              <button
-                type="button"
-                onClick={() => setSection(value)}
-                style={{
-                  all: "unset",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.875rem",
-                  width: "100%",
-                }}
-              >
-                <span
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: "2.75rem",
-                    height: "2.75rem",
-                    flexShrink: 0,
-                    borderRadius: "var(--era-radius-control)",
-                    background: "var(--era-gradient)",
-                    color: "#fff",
-                  }}
-                  aria-hidden="true"
-                >
-                  <Icon />
-                </span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <strong style={{ display: "block", fontSize: "var(--era-text-lg)" }}>{label}</strong>
-                  <span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-                    {description}
-                  </span>
-                </span>
-                <span aria-hidden="true" style={{ color: "var(--era-text-muted)" }}>
-                  →
-                </span>
-              </button>
-            </Card>
-          ))}
-        </div>
+      <div className="era-page" style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <button type="button" onClick={() => setSection("now")} style={{ alignSelf: "flex-start", minHeight: 44 }}>← Участие</button>
+        <ProjectsSection initialProjectId={initialProjectId} />
       </div>
     );
   }
 
-  const current = SECTIONS.find((item) => item.value === section);
-
   return (
-    <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <button type="button" onClick={() => setSection(null)}>
-        ← Участие
-      </button>
-      <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.375rem", margin: 0 }}>
-        {current?.label ?? (section === "calendar" ? "Сейчас" : "Участие")}
-      </h1>
-      {section === "now" && <CalendarTab />}
-      {section === "projects" && <ProjectsSection initialProjectId={initialProjectId} />}
-      {section === "tasks" && <TasksTab initialItemId={section === initialSection ? initialItemId ?? null : null} />}
-      {section === "events" && <EventsTab initialItemId={section === initialSection ? initialItemId ?? null : null} />}
-      {section === "calendar" && <CalendarTab />}
-      {section === "history" && <HistoryTab />}
+    <div className="era-page" style={{ padding: "1rem 1rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <header>
+        <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.8rem", lineHeight: 1.08, margin: 0 }}>Участие</h1>
+        <p style={{ margin: ".35rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem", lineHeight: 1.45 }}>
+          Всё, где ты сейчас включён: события, задачи и подтверждённый результат.
+        </p>
+      </header>
+
+      <div
+        role="tablist"
+        aria-label="Разделы участия"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          gap: ".35rem",
+          padding: ".3rem",
+          borderRadius: "var(--era-radius-pill)",
+          background: "var(--era-surface-2)",
+          border: "1px solid var(--era-border)",
+        }}
+      >
+        {TABS.map((tab) => {
+          const active = tab.value === section;
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setSection(tab.value)}
+              style={{
+                minHeight: 44,
+                padding: ".5rem .25rem",
+                border: 0,
+                borderRadius: "var(--era-radius-pill)",
+                background: active ? "rgba(99,44,255,.10)" : "transparent",
+                color: active ? "var(--era-violet)" : "var(--era-text-secondary)",
+                fontSize: ".75rem",
+                fontWeight: active ? 800 : 650,
+                boxShadow: "none",
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div role="tabpanel">
+        {section === "now" && <CalendarTab />}
+        {section === "tasks" && <TasksTab initialItemId={initialSection === "tasks" ? initialItemId ?? null : null} />}
+        {section === "events" && <EventsTab initialItemId={initialSection === "events" ? initialItemId ?? null : null} />}
+        {section === "history" && <HistoryTab />}
+      </div>
     </div>
   );
 }

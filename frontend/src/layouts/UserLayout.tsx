@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { FloatingNav, type TabKey } from "../components/FloatingNav";
-import { ContextHelp } from "../components/ContextHelp";
 import { OnboardingGate } from "../components/OnboardingGate";
 import { ParticipationModeControl } from "../components/ParticipationModeControl";
 
@@ -24,7 +23,6 @@ export function UserLayout({ children, activeTab, onTabChange }: UserLayoutProps
       >
         <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
         <ParticipationModeControl />
-        <ContextHelp mode="user" />
         <FloatingNav active={activeTab} onChange={onTabChange} />
       </div>
     </OnboardingGate>

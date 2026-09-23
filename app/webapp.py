@@ -72,6 +72,9 @@ USER_COMMANDS = [
 ]
 
 ADMIN_COMMANDS = USER_COMMANDS + [
+    BotCommand(command="status", description="Состояние системы"),
+    BotCommand(command="backup", description="Резервные копии"),
+    BotCommand(command="org", description="Состояние организации"),
     BotCommand(command="version", description="Версия запущенного бота"),
 ]
 
@@ -267,14 +270,6 @@ async def ready(request: Request) -> dict[str, str]:
         logger.exception("Readiness check failed: database unreachable")
         raise HTTPException(status_code=503, detail="database_unavailable")
     return {"status": "ready"}
-
-
-@app.get("/diag")
-async def diag(request: Request) -> dict:
-    return {
-        "commit": DEPLOYED_COMMIT,
-        **getattr(request.app.state, "bot_diagnostics", {"error": "not_available"}),
-    }
 
 
 app.include_router(api_router)

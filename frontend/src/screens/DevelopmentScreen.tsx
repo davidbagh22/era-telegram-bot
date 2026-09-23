@@ -122,11 +122,11 @@ export function DevelopmentScreen({
       <Card gradient>
         <SegmentedRing index={home.profile?.index ?? null} state={home.profile?.state ?? {}} labels={home.state_labels} />
         <p style={{ textAlign: "center", color: "var(--era-text-secondary)" }}>
-          {home.profile?.notice ?? "Пройди короткий Check-in, чтобы получить первый снимок состояния."}
+          {home.profile?.notice ?? "Сделай первую ежемесячную отметку, чтобы получить снимок состояния."}
         </p>
       </Card>
       <Card onClick={() => onNavigate?.("checkin")} style={{ borderLeft: "3px solid var(--era-red)" }}>
-        <small>{home.current_checkin?.theme ? home.current_checkin.theme.toUpperCase() : "ТВОЙ CHECK-IN"}</small>
+        <small>{home.current_checkin?.theme ? home.current_checkin.theme.toUpperCase() : "ЕЖЕМЕСЯЧНАЯ ОТМЕТКА"}</small>
         <strong style={{ display: "block", marginTop: 4 }}>
           {home.current_checkin?.status === "completed" ? "Посмотреть результат месяца" : "Посмотрим, что изменилось?"}
         </strong>
@@ -199,7 +199,7 @@ function CheckinScreen({
 
   useEffect(() => {
     if (!checkin) {
-      void fetchCurrentCheckin().then(setCheckin).catch(() => toast.show("Не удалось загрузить Check-in.", "error"));
+      void fetchCurrentCheckin().then(setCheckin).catch(() => toast.show("Не удалось загрузить ежемесячную отметку.", "error"));
     }
   }, [checkin, toast]);
 
@@ -347,7 +347,7 @@ function CheckinScreen({
     const selectedValue = checkin.answers[currentQuestion.code];
     return (
       <div className="era-page" style={{ padding: "1.2rem", display: "grid", gap: 10 }}>
-        <Header title={checkin.theme ? `Check-in · ${checkin.theme}` : "Как тебе сейчас?"} onBack={onBack} />
+        <Header title={checkin.theme ? `Ежемесячная отметка · ${checkin.theme}` : "Как тебе сейчас?"} onBack={onBack} />
         <div aria-label={`Прогресс ${progress}%`} style={{ display: "grid", gap: 5 }}>
           <div style={{ height: 6, borderRadius: 999, background: "var(--era-ring-track)", overflow: "hidden" }}>
             <div style={{ width: `${progress}%`, height: "100%", background: "var(--era-red)", transition: "width .2s ease" }} />
@@ -416,7 +416,7 @@ function CheckinScreen({
             setCheckin(await completeCheckin());
             await onDone();
           } catch {
-            toast.show("Не удалось завершить Check-in. Проверь, что все ответы сохранены.", "error");
+            toast.show("Не удалось завершить ежемесячную отметку. Проверь, что все ответы сохранены.", "error");
           } finally {
             setBusy(false);
           }
@@ -455,7 +455,7 @@ function HistoryScreen({ labels, onBack }: { labels: DevelopmentHome["state_labe
       {items === null ? (
         <SkeletonCard />
       ) : items.length === 0 ? (
-        <Card><strong>История начнётся после первого Check-in</strong><p style={{ marginBottom: 0 }}>Здесь не будет сравнения с другими людьми.</p></Card>
+        <Card><strong>История начнётся после первой ежемесячной отметки</strong><p style={{ marginBottom: 0 }}>Здесь не будет сравнения с другими людьми.</p></Card>
       ) : (
         <>
           {annual ? (

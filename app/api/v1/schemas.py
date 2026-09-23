@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from app.config import Settings
 from app.database.models import User
 from app.services.authorization_service import active_permissions, is_full_admin
+from app.services.feature_flags import visible_features
 from app.utils.constants import PRIVILEGED_ROLES
 
 
@@ -19,6 +20,7 @@ class MiniAppUserSummary(BaseModel):
     is_leader: bool
     is_admin: bool
     permissions: list[str]
+    features: dict[str, bool]
 
 
 def summarize_user(user: User, settings: Settings) -> MiniAppUserSummary:
@@ -33,4 +35,5 @@ def summarize_user(user: User, settings: Settings) -> MiniAppUserSummary:
         is_leader=user.role in PRIVILEGED_ROLES,
         is_admin=is_full_admin(user, settings, user.telegram_id),
         permissions=sorted(active_permissions(user)),
+        features=visible_features(settings, user.telegram_id),
     )

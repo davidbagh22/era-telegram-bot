@@ -1,17 +1,23 @@
 from __future__ import annotations
 
+import logging
+
+from aiogram import Bot
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_session
+import app.database.recruitment_model_extensions  # noqa: F401
+from app.api.deps import get_bot, get_current_user, get_session, get_settings
+from app.config import Settings
 from app.database.models import Office, PositionApplication, User
 from app.services import office_management_service, position_management_service
+from app.services.bot_notification_service import PrimaryAction, action_markup
+from app.services.notification_service import notify_admins_once
+from app.utils.constants import STATUS_LABELS
+from app.utils.deep_links import miniapp_path_url
 
-# Leadership OS ToR sections 9-10, 18-22, 78: participant-facing vacancies
-# ("Возможности → Должности"), "Мои заявки", and public "Команда" directory.
-# The admin half of the same workflow lives in app/api/v1/admin.py.
-
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["positions"])
 
 
@@ -19,23 +25,37 @@ class PositionOut(BaseModel):
     id: int
     title: str
     description: str | None
+    responsibilities: list[str]
     requirements: str | None
+    expected_result: str | None
+    workload: str | None
     application_deadline: str | None
     application_count: int
     default_term_days: int | None
+    capacity: int | None
+    occupied: int
+    free_slots: int | None
+    recruitment_mode: str
 
 
 async def _to_position_out(session: AsyncSession, office: Office) -> PositionOut:
+    occupied = await office_management_service.active_assignment_count(session, office.id)
+    capacity = office.max_holders
     return PositionOut(
         id=office.id,
         title=office.title,
         description=office.description,
+        responsibilities=list(office.responsibilities or []),
         requirements=office.requirements,
-        application_deadline=(
-            office.application_deadline.isoformat() if office.application_deadline else None
-        ),
+        expected_result=getattr(office, "expected_result", None),
+        workload=getattr(office, "workload", None),
+        application_deadline=(office.application_deadline.isoformat() if office.application_deadline else None),
         application_count=await position_management_service.application_count(session, office.id),
         default_term_days=office.default_term_days,
+        capacity=capacity,
+        occupied=occupied,
+        free_slots=None if capacity is None else max(0, capacity - occupied),
+        recruitment_mode=office_management_service.normalize_recruitment_mode(getattr(office, "recruitment_mode", None)),
     )
 
 
@@ -45,7 +65,7 @@ async def read_open_positions(
     session: AsyncSession = Depends(get_session),
 ) -> list[PositionOut]:
     offices = await position_management_service.list_open_positions(session)
-    return [await _to_position_out(session, o) for o in offices]
+    return [await _to_position_out(session, office) for office in offices]
 
 
 @router.get("/positions/{position_id}", response_model=PositionOut)
@@ -62,8 +82,10 @@ async def read_position(
 
 class ApplicationSubmitIn(BaseModel):
     motivation: str
+    relevant_experience: str = ""
     plan: str = ""
     availability: str = ""
+    extra: str = ""
 
 
 class MyApplicationOut(BaseModel):
@@ -72,15 +94,15 @@ class MyApplicationOut(BaseModel):
     office_title: str
     status: str
     motivation: str | None
+    relevant_experience: str | None
     plan: str | None
     availability: str | None
+    attachment_url: str | None
     submitted_at: str | None
     review_note: str | None
 
 
-async def _to_my_application_out(
-    session: AsyncSession, application: PositionApplication
-) -> MyApplicationOut:
+async def _to_my_application_out(session: AsyncSession, application: PositionApplication) -> MyApplicationOut:
     office = await session.get(Office, application.office_id)
     return MyApplicationOut(
         id=application.id,
@@ -88,11 +110,24 @@ async def _to_my_application_out(
         office_title=office.title if office else "",
         status=application.status,
         motivation=application.motivation,
+        relevant_experience=getattr(application, "relevant_experience", None),
         plan=application.plan,
         availability=application.availability,
+        attachment_url=getattr(application, "attachment_url", None),
         submitted_at=application.submitted_at.isoformat() if application.submitted_at else None,
         review_note=application.review_note,
     )
+
+
+def _admin_application_markup(settings: Settings, application_id: int):
+    url = miniapp_path_url(
+        settings.effective_miniapp_url,
+        "admin",
+        {"adminSection": "offices", "positionApplicationId": application_id},
+    )
+    if not url:
+        return None
+    return action_markup(PrimaryAction(label="Открыть заявку", web_app_url=url))
 
 
 @router.post("/positions/{position_id}/applications", response_model=MyApplicationOut)
@@ -101,6 +136,8 @@ async def submit_position_application(
     payload: ApplicationSubmitIn,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    settings: Settings = Depends(get_settings),
 ) -> MyApplicationOut:
     office = await session.get(Office, position_id)
     if office is None or not office.is_active:
@@ -111,11 +148,32 @@ async def submit_position_application(
             office=office,
             user=user,
             motivation=payload.motivation,
+            relevant_experience=payload.relevant_experience,
             plan=payload.plan,
             availability=payload.availability,
+            extra=payload.extra,
         )
     except position_management_service.PositionError as exc:
-        raise HTTPException(status_code=422, detail=exc.code) from exc
+        status_code = 409 if exc.code in {"duplicate_application", "office_capacity_reached", "applications_closed"} else 422
+        raise HTTPException(status_code=status_code, detail=exc.code) from exc
+
+    await session.commit()
+
+    if bot is not None:
+        try:
+            candidate = f"{user.first_name} {user.last_name or ''}".strip()
+            level = STATUS_LABELS.get(user.participation_status, str(user.participation_status))
+            await notify_admins_once(
+                bot,
+                settings,
+                f"Новая заявка на роль\n\nРоль: {office.title}\nКандидат: {candidate}\nТекущий уровень: {level}",
+                delivery_key=f"admin:position_application:{application.id}:submitted",
+                notification_type="position_application_submitted",
+                reply_markup=_admin_application_markup(settings, application.id),
+            )
+        except Exception:
+            logger.exception("Position application admin notification failed id=%s", application.id)
+
     return await _to_my_application_out(session, application)
 
 
@@ -125,7 +183,7 @@ async def read_my_position_applications(
     session: AsyncSession = Depends(get_session),
 ) -> list[MyApplicationOut]:
     applications = await position_management_service.list_my_applications(session, user.id)
-    return [await _to_my_application_out(session, a) for a in applications]
+    return [await _to_my_application_out(session, application) for application in applications]
 
 
 @router.post("/me/position-applications/{application_id}/withdraw", response_model=MyApplicationOut)
@@ -144,9 +202,6 @@ async def withdraw_my_position_application(
     except position_management_service.PositionError as exc:
         raise HTTPException(status_code=422, detail=exc.code) from exc
     return await _to_my_application_out(session, application)
-
-
-# --- Public "Команда" directory (ToR sections 9-10) -------------------------
 
 
 class TeamOfficeHolderOut(BaseModel):
@@ -182,22 +237,19 @@ async def read_team_directory(
                 description=office.description,
                 holders=[
                     TeamOfficeHolderOut(
-                        user_id=user.id,
-                        first_name=user.first_name,
-                        last_name=user.last_name,
+                        user_id=holder.id,
+                        first_name=holder.first_name,
+                        last_name=holder.last_name,
                         starts_at=assignment.starts_at.isoformat(),
                         ends_at=assignment.ends_at.isoformat() if assignment.ends_at else None,
                     )
-                    for assignment, user in rows
+                    for assignment, holder in rows
                 ],
-                is_vacant=len(rows) == 0,
+                is_vacant=(office.max_holders is not None and len(rows) < office.max_holders) or len(rows) == 0,
                 application_enabled=office.application_enabled,
             )
         )
     return out
-
-
-# --- "Мой путь" (ToR section 78) --------------------------------------------
 
 
 class PathCandidateSummaryOut(BaseModel):
@@ -243,12 +295,12 @@ async def read_my_path(
         ),
         history=[
             PathHistoryEntryOut(
-                office_title=h.office_title,
-                starts_at=h.starts_at.isoformat(),
-                ends_at=h.ends_at.isoformat() if h.ends_at else None,
-                is_active=h.is_active,
+                office_title=item.office_title,
+                starts_at=item.starts_at.isoformat(),
+                ends_at=item.ends_at.isoformat() if item.ends_at else None,
+                is_active=item.is_active,
             )
-            for h in history
+            for item in history
         ],
-        open_positions=[await _to_position_out(session, o) for o in open_positions],
+        open_positions=[await _to_position_out(session, office) for office in open_positions],
     )
