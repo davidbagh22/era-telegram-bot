@@ -147,6 +147,17 @@ async def _send_org(message: Message, session: AsyncSession) -> None:
     await message.answer(await _org_text(session), reply_markup=_ops_keyboard("org"))
 
 
+async def _edit_ops(call: CallbackQuery, text: str, active: str) -> None:
+    # Telegram rejects an edit when both text and markup are unchanged. A
+    # refresh of already-current operational data should be a successful no-op.
+    if call.message and call.message.text == text:
+        await call.answer("Данные актуальны")
+        return
+    if call.message:
+        await call.message.edit_text(text, reply_markup=_ops_keyboard(active))
+    await call.answer()
+
+
 @router.message(Command("status"))
 async def status_command(
     message: Message, user: User | None, settings: Settings, session: AsyncSession
@@ -177,9 +188,7 @@ async def status_callback(
 ) -> None:
     if not await _guard(call, user, settings):
         return
-    await call.message.edit_text(
-        _status_text(await system_snapshot(session)), reply_markup=_ops_keyboard("status")
-    )
+    await _edit_ops(call, _status_text(await system_snapshot(session)), "status")
 
 
 @router.callback_query(F.data.in_({"admin:ops:backup", "admin:ops:backup:refresh"}))
@@ -188,9 +197,7 @@ async def backup_callback(
 ) -> None:
     if not await _guard(call, user, settings):
         return
-    await call.message.edit_text(
-        _backup_text(await system_snapshot(session)), reply_markup=_ops_keyboard("backup")
-    )
+    await _edit_ops(call, _backup_text(await system_snapshot(session)), "backup")
 
 
 @router.callback_query(F.data.in_({"admin:ops:org", "admin:ops:org:refresh"}))
@@ -199,7 +206,7 @@ async def org_callback(
 ) -> None:
     if not await _guard(call, user, settings):
         return
-    await call.message.edit_text(await _org_text(session), reply_markup=_ops_keyboard("org"))
+    await _edit_ops(call, await _org_text(session), "org")
 
 
 @router.message(Command("admin_users"))
