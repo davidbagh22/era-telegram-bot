@@ -7,13 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.database.recruitment_model_extensions  # noqa: F401
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.config import Settings
 from app.database.models import Office, PositionApplication, User
 from app.services import office_management_service, position_management_service
 from app.services.bot_notification_service import PrimaryAction, action_markup
 from app.services.notification_service import notify_admins_once
-from app.utils.deep_links import miniapp_admin_url
+from app.utils.constants import STATUS_LABELS
+from app.utils.deep_links import miniapp_path_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["positions"])
@@ -39,29 +41,21 @@ class PositionOut(BaseModel):
 async def _to_position_out(session: AsyncSession, office: Office) -> PositionOut:
     occupied = await office_management_service.active_assignment_count(session, office.id)
     capacity = office.max_holders
-    free_slots = None if capacity is None else max(0, capacity - occupied)
-    kpi = office.kpi_template if isinstance(office.kpi_template, dict) else {}
-    if not office.application_enabled:
-        recruitment_mode = "closed"
-    elif capacity is None:
-        recruitment_mode = "manual"
-    else:
-        recruitment_mode = "auto"
     return PositionOut(
         id=office.id,
         title=office.title,
         description=office.description,
         responsibilities=list(office.responsibilities or []),
         requirements=office.requirements,
-        expected_result=str(kpi.get("expected_result")) if kpi.get("expected_result") else None,
-        workload=str(kpi.get("workload")) if kpi.get("workload") else None,
+        expected_result=getattr(office, "expected_result", None),
+        workload=getattr(office, "workload", None),
         application_deadline=(office.application_deadline.isoformat() if office.application_deadline else None),
         application_count=await position_management_service.application_count(session, office.id),
         default_term_days=office.default_term_days,
         capacity=capacity,
         occupied=occupied,
-        free_slots=free_slots,
-        recruitment_mode=recruitment_mode,
+        free_slots=None if capacity is None else max(0, capacity - occupied),
+        recruitment_mode=office_management_service.normalize_recruitment_mode(getattr(office, "recruitment_mode", None)),
     )
 
 
@@ -100,15 +94,15 @@ class MyApplicationOut(BaseModel):
     office_title: str
     status: str
     motivation: str | None
+    relevant_experience: str | None
     plan: str | None
     availability: str | None
+    attachment_url: str | None
     submitted_at: str | None
     review_note: str | None
 
 
-async def _to_my_application_out(
-    session: AsyncSession, application: PositionApplication
-) -> MyApplicationOut:
+async def _to_my_application_out(session: AsyncSession, application: PositionApplication) -> MyApplicationOut:
     office = await session.get(Office, application.office_id)
     return MyApplicationOut(
         id=application.id,
@@ -116,23 +110,24 @@ async def _to_my_application_out(
         office_title=office.title if office else "",
         status=application.status,
         motivation=application.motivation,
+        relevant_experience=getattr(application, "relevant_experience", None),
         plan=application.plan,
         availability=application.availability,
+        attachment_url=getattr(application, "attachment_url", None),
         submitted_at=application.submitted_at.isoformat() if application.submitted_at else None,
         review_note=application.review_note,
     )
 
 
-def _admin_application_markup(settings: Settings):
-    url = miniapp_admin_url(settings.effective_miniapp_url)
+def _admin_application_markup(settings: Settings, application_id: int):
+    url = miniapp_path_url(
+        settings.effective_miniapp_url,
+        "admin",
+        {"adminSection": "offices", "positionApplicationId": application_id},
+    )
     if not url:
         return None
-    return action_markup(
-        PrimaryAction(
-            label="Открыть в управлении ЭРА",
-            web_app_url=url,
-        )
-    )
+    return action_markup(PrimaryAction(label="Открыть заявку", web_app_url=url))
 
 
 @router.post("/positions/{position_id}/applications", response_model=MyApplicationOut)
@@ -162,19 +157,19 @@ async def submit_position_application(
         status_code = 409 if exc.code in {"duplicate_application", "office_capacity_reached", "applications_closed"} else 422
         raise HTTPException(status_code=status_code, detail=exc.code) from exc
 
-    # Commit business data before outbound delivery. The request-scoped
-    # dependency will commit again harmlessly when it exits.
     await session.commit()
 
     if bot is not None:
         try:
+            candidate = f"{user.first_name} {user.last_name or ''}".strip()
+            level = STATUS_LABELS.get(user.participation_status, str(user.participation_status))
             await notify_admins_once(
                 bot,
                 settings,
-                f"Новая заявка на должность\n\n{office.title}\nЗаявка #{application.id}",
+                f"Новая заявка на роль\n\nРоль: {office.title}\nКандидат: {candidate}\nТекущий уровень: {level}",
                 delivery_key=f"admin:position_application:{application.id}:submitted",
                 notification_type="position_application_submitted",
-                reply_markup=_admin_application_markup(settings),
+                reply_markup=_admin_application_markup(settings, application.id),
             )
         except Exception:
             logger.exception("Position application admin notification failed id=%s", application.id)
