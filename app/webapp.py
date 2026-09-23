@@ -272,14 +272,6 @@ async def ready(request: Request) -> dict[str, str]:
     return {"status": "ready"}
 
 
-@app.get("/diag")
-async def diag(request: Request) -> dict:
-    return {
-        "commit": DEPLOYED_COMMIT,
-        **getattr(request.app.state, "bot_diagnostics", {"error": "not_available"}),
-    }
-
-
 app.include_router(api_router)
 _mount_frontend(app, FRONTEND_DIST)
 
