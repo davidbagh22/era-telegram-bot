@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from fastapi import HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,8 +11,11 @@ from app.services.audit_service import audit
 from app.utils.constants import AppointmentType
 
 
-class OfficeCapacityReached(RuntimeError):
-    """Raised when a locked Office no longer has a free assignment slot."""
+class OfficeCapacityReached(HTTPException):
+    """409 raised when a locked Office no longer has a free assignment slot."""
+
+    def __init__(self) -> None:
+        super().__init__(status_code=409, detail="office_capacity_reached")
 
 
 async def list_offices(session: AsyncSession, *, include_inactive: bool = False) -> list[Office]:
@@ -199,7 +203,7 @@ async def assign_office(
     occupied = await active_assignment_count(session, office_id)
     if office.max_holders is not None and occupied >= max(0, office.max_holders):
         office.application_enabled = False
-        raise OfficeCapacityReached("office_capacity_reached")
+        raise OfficeCapacityReached()
 
     assignment = UserOffice(
         office_id=office_id,
