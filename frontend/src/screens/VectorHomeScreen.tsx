@@ -17,10 +17,6 @@ const DIMENSION_LABELS: Record<VectorDimension, string> = {
   direction: "Направление",
 };
 
-function formatPoints(value: number): string {
-  return new Intl.NumberFormat("ru-RU").format(value);
-}
-
 function monthLabel(value: string | null | undefined): string {
   if (!value) return "Пока нет данных";
   const date = new Date(value);
@@ -66,7 +62,7 @@ export function VectorHomeScreen({
     return <div className="era-page" style={{ padding: "1.2rem", display: "grid", gap: "0.8rem" }}>{onBack && <button type="button" onClick={onBack}>← Назад</button>}<SkeletonCard /><SkeletonCard /><SkeletonCard /></div>;
   }
   if (growth.status === "error" || error || !development) {
-    return <StatusBanner title="Не удалось открыть «Мой вектор»" description="Попробуйте открыть раздел ещё раз." />;
+    return <StatusBanner title="Не удалось открыть «Мой вектор»" description="Попробуй открыть раздел ещё раз." />;
   }
 
   if (development.consent_required) {
@@ -110,22 +106,23 @@ export function VectorHomeScreen({
       <section style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
         <MonoLabel>Сейчас</MonoLabel>
         <Card gradient>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.8rem", alignItems: "flex-start" }}>
-            <div><strong style={{ display: "block", fontSize: "1.2rem" }}>{data.growth.label}</strong><span style={{ display: "block", marginTop: "0.2rem", color: "var(--era-text-secondary)" }}>{formatPoints(data.points_balance)} баллов</span></div>
-            {development.profile?.index != null && <div style={{ textAlign: "right" }}><strong style={{ display: "block", fontSize: "1.2rem" }}>{Math.round(development.profile.index)}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.72rem" }}>индекс вектора</span></div>}
-          </div>
-          {dimensions.length > 0 && <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: "0.35rem", marginTop: "0.9rem" }}>{dimensions.map(({ key, value }) => <div key={key} style={{ textAlign: "center", minWidth: 0 }}><strong style={{ display: "block" }}>{Math.round(value)}</strong><span style={{ display: "block", marginTop: "0.12rem", color: "var(--era-text-muted)", fontSize: "0.62rem", overflow: "hidden", textOverflow: "ellipsis" }}>{DIMENSION_LABELS[key]}</span></div>)}</div>}
+          <strong style={{ display: "block", fontSize: "1.2rem" }}>{data.growth.label}</strong>
+          <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-secondary)" }}>Участник → Активный → Лидер</p>
+          {dimensions.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "0.55rem", marginTop: "0.9rem" }}>
+              {dimensions.map(({ key, value }) => (
+                <div key={key} style={{ minWidth: 0, padding: "0.65rem", borderRadius: "var(--era-radius-sm)", background: "var(--era-surface-soft)" }}>
+                  <strong style={{ display: "block", fontSize: "1rem" }}>{Math.round(value)}</strong>
+                  <span style={{ display: "block", marginTop: "0.15rem", color: "var(--era-text-muted)", fontSize: "0.75rem", overflowWrap: "anywhere" }}>{DIMENSION_LABELS[key]}</span>
+                </div>
+              ))}
+            </div>
+          )}
           <p style={{ margin: "0.8rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>Последний снимок: {monthLabel(development.profile?.last_checkin_at)}</p>
         </Card>
         <Card onClick={() => onNavigate("checkin")} style={{ borderLeft: "3px solid var(--era-red)" }}>
-          <strong>
-            {development.current_checkin?.status === "completed"
-              ? "Посмотреть результат месяца"
-              : "Посмотрим, что изменилось?"}
-          </strong>
-          <span style={{ display: "block", marginTop: "0.25rem", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>
-            Ежемесячная отметка · можно продолжить позже
-          </span>
+          <strong>{development.current_checkin?.status === "completed" ? "Посмотреть результат месяца" : "Посмотрим, что изменилось?"}</strong>
+          <span style={{ display: "block", marginTop: "0.25rem", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>Ежемесячная отметка · можно продолжить позже</span>
         </Card>
       </section>
 
