@@ -1,16 +1,26 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import ChatPermissions
 from sqlalchemy import select
 
 from app.config import Settings
 from app.database.models import User
+from app.database.system_models import SystemIncident
+from app.services.notification_service import notify_admins_once
 
 logger = logging.getLogger(__name__)
+
+_CHAT_PERMISSION_INCIDENT_KEY = "chat-permissions:general"
+_PERMANENT_RETRY_AFTER = timedelta(hours=6)
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def writable_permissions() -> ChatPermissions:
@@ -26,6 +36,93 @@ def writable_permissions() -> ChatPermissions:
         can_send_other_messages=True,
         can_add_web_page_previews=True,
     )
+
+
+def _is_permanent_configuration_error(exc: TelegramAPIError) -> bool:
+    return isinstance(exc, (TelegramBadRequest, TelegramForbiddenError))
+
+
+async def _open_permission_incident(session_factory, exc: TelegramAPIError) -> int:
+    now = _now()
+    async with session_factory() as session:
+        incident = await session.scalar(
+            select(SystemIncident).where(SystemIncident.dedupe_key == _CHAT_PERMISSION_INCIDENT_KEY)
+        )
+        detail = f"Не удалось применить права общего чата: {exc.__class__.__name__}. Проверьте права бота и конфигурацию чата."
+        if incident is None:
+            incident = SystemIncident(
+                dedupe_key=_CHAT_PERMISSION_INCIDENT_KEY,
+                category="telegram_configuration",
+                severity="high",
+                status="open",
+                title="Права общего чата",
+                detail=detail,
+                check_key="general_chat_permissions",
+                occurrence_count=1,
+                notification_generation=1,
+                first_seen_at=now,
+                last_seen_at=now,
+                resolved_at=None,
+                current_commit=None,
+                last_healthy_commit=None,
+                fix_prompt=None,
+                admin_notified=False,
+                recovery_notified=False,
+            )
+            session.add(incident)
+            await session.flush()
+        else:
+            was_open = incident.status == "open"
+            if not was_open:
+                incident.notification_generation = max(1, incident.notification_generation) + 1
+                incident.admin_notified = False
+                incident.recovery_notified = False
+                incident.first_seen_at = now
+            incident.status = "open"
+            incident.severity = "high"
+            incident.title = "Права общего чата"
+            incident.detail = detail
+            incident.last_seen_at = now
+            incident.resolved_at = None
+            incident.occurrence_count += 1
+        generation = max(1, incident.notification_generation)
+        await session.commit()
+        return generation
+
+
+async def _resolve_permission_incident(session_factory) -> int | None:
+    now = _now()
+    async with session_factory() as session:
+        incident = await session.scalar(
+            select(SystemIncident).where(
+                SystemIncident.dedupe_key == _CHAT_PERMISSION_INCIDENT_KEY,
+                SystemIncident.status == "open",
+            )
+        )
+        if incident is None:
+            return None
+        incident.status = "resolved"
+        incident.resolved_at = now
+        incident.last_seen_at = now
+        generation = max(1, incident.notification_generation)
+        await session.commit()
+        return generation
+
+
+async def _permission_backoff_active(session_factory) -> bool:
+    async with session_factory() as session:
+        incident = await session.scalar(
+            select(SystemIncident).where(
+                SystemIncident.dedupe_key == _CHAT_PERMISSION_INCIDENT_KEY,
+                SystemIncident.status == "open",
+            )
+        )
+        if incident is None:
+            return False
+        last_seen = incident.last_seen_at
+        if last_seen.tzinfo is None:
+            last_seen = last_seen.replace(tzinfo=timezone.utc)
+        return _now() - last_seen < _PERMANENT_RETRY_AFTER
 
 
 async def restore_general_chat_member(
@@ -77,18 +174,45 @@ async def restore_general_chat_member(
 
 
 async def enforce_general_chat_writable(bot: Bot, settings: Settings, session_factory) -> tuple[int, int]:
-    """Only restore Telegram write permissions. Never send/edit/pin a message."""
+    """Restore writable defaults with durable backoff for permanent Telegram errors."""
     chat_id = settings.general_chat_id
     if not chat_id:
         return 0, 0
+
+    if await _permission_backoff_active(session_factory):
+        return 0, 1
 
     fixed = failed = 0
     try:
         await bot.set_chat_permissions(chat_id=chat_id, permissions=writable_permissions())
         fixed += 1
-    except TelegramAPIError:
-        logger.exception("Could not set default writable permissions chat=%s", chat_id)
+        recovered_generation = await _resolve_permission_incident(session_factory)
+        if recovered_generation is not None:
+            await notify_admins_once(
+                bot,
+                settings,
+                "✅ ЭРА: права общего чата восстановлены. Проверка снова проходит успешно.",
+                delivery_key=f"health:general_chat_permissions:{recovered_generation}:recovered",
+                notification_type="system_incident_recovery",
+            )
+    except TelegramAPIError as exc:
         failed += 1
+        if _is_permanent_configuration_error(exc):
+            generation = await _open_permission_incident(session_factory, exc)
+            logger.warning(
+                "General-chat permissions have a permanent configuration error; retry backed off for %s hours",
+                int(_PERMANENT_RETRY_AFTER.total_seconds() // 3600),
+            )
+            await notify_admins_once(
+                bot,
+                settings,
+                "⚠️ ЭРА: не удалось применить права общего чата. Проверьте права бота и конфигурацию чата. Повторная проверка выполняется с backoff.",
+                delivery_key=f"health:general_chat_permissions:{generation}:open",
+                notification_type="system_incident",
+            )
+            return fixed, failed
+        logger.warning("Transient error while setting general-chat permissions", exc_info=True)
+        return fixed, failed
 
     async with session_factory() as session:
         telegram_ids = list((await session.scalars(select(User.telegram_id))).all())

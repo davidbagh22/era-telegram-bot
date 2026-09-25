@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import User
 from app.services.activity_metrics_service import get_all_metrics
 from app.services.audit_service import audit
+from app.services.growth_service import (
+    GROWTH_ACTIVE,
+    GROWTH_LEADER,
+    GROWTH_LEVEL_LABELS,
+    GROWTH_PARTICIPANT,
+    growth_level_for,
+)
 from app.utils.constants import ParticipationStatus
 
 # Automatic progression deliberately uses the existing ParticipationStatus
@@ -93,6 +102,109 @@ def target_participation_status(metrics: dict[str, int]) -> ParticipationStatus:
     if real_total >= 1:
         return ParticipationStatus.INVOLVED_MEMBER
     return ParticipationStatus.NEW_MEMBER
+
+
+@dataclass(frozen=True)
+class GrowthCriterion:
+    key: str
+    label: str
+    current: int
+    required: int
+    done: bool
+
+
+@dataclass(frozen=True)
+class GrowthCriteria:
+    current_level: str
+    next_level: str | None
+    next_label: str | None
+    mode: str
+    criteria: list[GrowthCriterion]
+
+
+async def growth_criteria_for(session: AsyncSession, user: User) -> GrowthCriteria:
+    """Expose the same verified-activity rules used by automatic progression.
+
+    Criteria are deliberately expressed as alternatives (``mode=any``), because
+    the progression engine accepts several truthful paths to the same major
+    growth level. The UI never invents a points threshold or a second ruleset.
+    """
+    metrics = await get_all_metrics(session, user_id=user.id)
+    current_level = growth_level_for(user.participation_status)
+
+    if current_level == GROWTH_PARTICIPANT:
+        real_total = _real_activity_total(metrics)
+        real_categories = _real_activity_categories(metrics)
+        criteria = [
+            GrowthCriterion(
+                key="events_attended",
+                label="3 подтверждённых участия в событиях",
+                current=_value(metrics, "events_attended"),
+                required=3,
+                done=_value(metrics, "events_attended") >= 3,
+            ),
+            GrowthCriterion(
+                key="tasks_completed",
+                label="2 принятые задачи",
+                current=_value(metrics, "tasks_completed"),
+                required=2,
+                done=_value(metrics, "tasks_completed") >= 2,
+            ),
+            GrowthCriterion(
+                key="real_activity",
+                label="4 подтверждённых действия минимум в 2 направлениях",
+                current=real_total,
+                required=4,
+                done=real_total >= 4 and real_categories >= 2,
+            ),
+        ]
+        return GrowthCriteria(
+            current_level=current_level,
+            next_level=GROWTH_ACTIVE,
+            next_label=GROWTH_LEVEL_LABELS[GROWTH_ACTIVE],
+            mode="any",
+            criteria=criteria,
+        )
+
+    if current_level == GROWTH_ACTIVE:
+        criteria = [
+            GrowthCriterion(
+                key="projects_led",
+                label="Руководить хотя бы 1 подтверждённым проектом",
+                current=_value(metrics, "projects_led"),
+                required=1,
+                done=_value(metrics, "projects_led") >= 1,
+            ),
+            GrowthCriterion(
+                key="project_milestones",
+                label="Закрыть 2 подтверждённых этапа проекта",
+                current=_value(metrics, "project_milestones"),
+                required=2,
+                done=_value(metrics, "project_milestones") >= 2,
+            ),
+            GrowthCriterion(
+                key="events_coordinated",
+                label="Координировать 2 события",
+                current=_value(metrics, "events_coordinated"),
+                required=2,
+                done=_value(metrics, "events_coordinated") >= 2,
+            ),
+        ]
+        return GrowthCriteria(
+            current_level=current_level,
+            next_level=GROWTH_LEADER,
+            next_label=GROWTH_LEVEL_LABELS[GROWTH_LEADER],
+            mode="any",
+            criteria=criteria,
+        )
+
+    return GrowthCriteria(
+        current_level=current_level,
+        next_level=None,
+        next_label=None,
+        mode="none",
+        criteria=[],
+    )
 
 
 def _rank_index(status: str) -> int:

@@ -1,6 +1,8 @@
 from logging.config import fileConfig
 
+import sqlalchemy as sa
 from alembic import context
+from alembic.script import ScriptDirectory
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -28,11 +30,41 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _bootstrap_fresh_database(connection) -> bool:
+    """Create and stamp a genuinely empty database at the current schema.
+
+    The historical initial migration intentionally used live ORM metadata, so
+    replaying every old migration on a brand-new database would try to add
+    columns that create_all() has already created. Existing databases must
+    still follow the normal Alembic chain; only a database with zero tables is
+    eligible for this bootstrap path.
+    """
+    if sa.inspect(connection).get_table_names():
+        return False
+
+    target_metadata.create_all(bind=connection)
+    version_table = sa.Table(
+        "alembic_version",
+        sa.MetaData(),
+        sa.Column("version_num", sa.String(length=32), nullable=False, primary_key=True),
+    )
+    version_table.create(bind=connection, checkfirst=True)
+    heads = list(ScriptDirectory.from_config(config).get_heads())
+    if heads:
+        connection.execute(
+            version_table.insert(),
+            [{"version_num": revision} for revision in heads],
+        )
+    return True
+
+
 def do_run_migrations(connection) -> None:
     context.configure(
         connection=connection, target_metadata=target_metadata, compare_type=True
     )
     with context.begin_transaction():
+        if _bootstrap_fresh_database(connection):
+            return
         context.run_migrations()
 
 
