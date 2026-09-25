@@ -90,7 +90,6 @@ export function HomeScreen({
     if (kind === "event" && entity_id != null && onOpenEvent) return () => onOpenEvent(entity_id);
     if (kind === "project" && entity_id != null && onOpenProject) return () => onOpenProject(entity_id);
     if (kind === "opportunity" && entity_id != null && onOpenOpportunity) return () => onOpenOpportunity(entity_id);
-    if (kind === "role" && onOpenCommunity) return onOpenCommunity;
     if (kind === "growth" && onOpenProfile) return onOpenProfile;
     return undefined;
   })();
@@ -115,7 +114,7 @@ export function HomeScreen({
             Вот что сейчас важнее всего.
           </p>
         </div>
-        <button type="button" onClick={onOpenProfile} aria-label="Открыть профиль" style={{ minWidth: 44, width: 44, height: 44, minHeight: 44, padding: 0, border: 0, borderRadius: "50%", background: "transparent", boxShadow: "none" }}>
+        <button type="button" onClick={onOpenProfile} aria-label="Открыть профиль" style={{ minWidth: 44, width: 44, height: 44, minHeight: 44, padding: 0, border: 0, borderRadius: "50%", background: "transparent", boxShadow: "none", display: "grid", placeItems: "center" }}>
           <Avatar firstName={user.first_name} lastName={user.last_name} />
         </button>
       </header>
