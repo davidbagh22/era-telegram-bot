@@ -1,0 +1,5 @@
+[lint.per-file-ignores]
+"app/api/v1/admin_recruitment.py" = ["F401"]
+"app/commission_bot_plus.py" = ["F401"]
+"app/commission_bot_plus_base.py" = ["F541"]
+"app/commission_bot_ultimate.py" = ["F401"]
