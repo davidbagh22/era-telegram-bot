@@ -48,12 +48,12 @@ class _CommissionCompatBot(AiogramBot):
         super().__init__(token=token, **kwargs)
 
 
-# aiogram >=3.7 removed Bot(parse_mode=...). The Commission module still uses
-# that constructor, so adapt it only while importing that isolated module.
+# aiogram >=3.7 removed Bot(parse_mode=...). Keep the Commission module isolated
+# without changing ERA's bot construction.
 _original_aiogram_bot = aiogram.Bot
 aiogram.Bot = _CommissionCompatBot
 try:
-    from app.commission_bot import run_commission_bot
+    from app.commission_bot_plus import run_commission_bot_plus as run_commission_bot
 finally:
     aiogram.Bot = _original_aiogram_bot
 
@@ -78,7 +78,7 @@ class _MiniAppStaticFiles(StaticFiles):
 
 
 def _mount_frontend(app: FastAPI, dist_dir: Path) -> None:
-    """Serve the built Mini App from the same service, when it was built."""
+    """Serve hashed assets and the Mini App when it was built."""
     if dist_dir.is_dir():
         app.mount("/app", _MiniAppStaticFiles(directory=str(dist_dir), html=True), name="miniapp")
     else:
