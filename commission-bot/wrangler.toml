@@ -1,0 +1,12 @@
+name = "commission-youth-info-bot"
+main = "src/index.js"
+compatibility_date = "2026-09-29"
+workers_dev = true
+
+[triggers]
+crons = ["* * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "commission_bot"
+database_id = "REPLACE_AFTER_D1_CREATE"
