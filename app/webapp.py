@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import aiogram
+from aiogram import Bot as AiogramBot
+from aiogram.client.default import DefaultBotProperties
 from aiogram.types import (
     BotCommand,
     BotCommandScopeAllGroupChats,
@@ -33,6 +37,26 @@ from app.services.general_chat_menu_service import ensure_general_chat_miniapp_m
 from app.services.scheduler_service import create_scheduler
 from app.services.seed_service import seed_reference_data
 from app.services.system_scheduler import add_system_jobs
+
+
+class _CommissionCompatBot(AiogramBot):
+    """Compatibility adapter for the isolated Commission bot."""
+
+    def __init__(self, token: str, parse_mode=None, **kwargs):
+        if parse_mode is not None and "default" not in kwargs:
+            kwargs["default"] = DefaultBotProperties(parse_mode=parse_mode)
+        super().__init__(token=token, **kwargs)
+
+
+# aiogram >=3.7 removed Bot(parse_mode=...). The Commission module still uses
+# that constructor, so adapt it only while importing that isolated module.
+_original_aiogram_bot = aiogram.Bot
+aiogram.Bot = _CommissionCompatBot
+try:
+    from app.commission_bot import run_commission_bot
+finally:
+    aiogram.Bot = _original_aiogram_bot
+
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +136,60 @@ async def _configure_command_scopes(bot, settings) -> None:
         await bot.set_my_commands(ADMIN_COMMANDS, scope=BotCommandScopeChat(chat_id=admin_id))
 
 
+async def _ensure_commission_owner(engine) -> None:
+    """Seed the configured owner after the Commission schema is initialized."""
+    raw_owner_id = os.environ.get("COMMISSION_OWNER_TELEGRAM_ID", "").strip()
+    if not raw_owner_id or not os.environ.get("COMMISSION_BOT_TOKEN", "").strip():
+        return
+    try:
+        owner_id = int(raw_owner_id)
+    except ValueError:
+        logger.error("COMMISSION_OWNER_TELEGRAM_ID is not a valid integer")
+        return
+
+    for attempt in range(30):
+        try:
+            async with engine.begin() as connection:
+                await connection.execute(
+                    text(
+                        """
+                        INSERT INTO commission.users(
+                            telegram_id, role, onboarding_complete,
+                            telegram_opt_in, updated_at
+                        )
+                        VALUES (:telegram_id, 'owner', FALSE, TRUE, NOW())
+                        ON CONFLICT (telegram_id)
+                        DO UPDATE SET role='owner', updated_at=NOW()
+                        """
+                    ),
+                    {"telegram_id": owner_id},
+                )
+            logger.info("Commission owner account ensured")
+            return
+        except Exception:
+            if attempt == 29:
+                logger.exception("Could not seed Commission owner account")
+                return
+            await asyncio.sleep(1)
+
+
+def _log_commission_task_result(task: asyncio.Task) -> None:
+    if task.cancelled():
+        return
+    try:
+        exc = task.exception()
+    except asyncio.CancelledError:
+        return
+    if exc is not None:
+        logger.error(
+            "Commission bot background task stopped unexpectedly: %s",
+            exc,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+    else:
+        logger.info("Commission bot background task exited")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -172,6 +250,16 @@ async def lifespan(app: FastAPI):
     app.state.scheduler = scheduler
     app.state.bot_diagnostics = {"error": "webhook_not_configured"}
 
+    commission_task = asyncio.create_task(
+        run_commission_bot(settings.database_url),
+        name="commission-bot",
+    )
+    commission_task.add_done_callback(_log_commission_task_result)
+    commission_owner_task = asyncio.create_task(
+        _ensure_commission_owner(engine),
+        name="commission-owner-seed",
+    )
+
     try:
         base_url = settings.effective_base_url
         if base_url:
@@ -215,6 +303,16 @@ async def lifespan(app: FastAPI):
             logger.warning("PUBLIC_BASE_URL is not set; Telegram webhook is disabled")
         yield
     finally:
+        for task in (commission_owner_task, commission_task):
+            if not task.done():
+                task.cancel()
+        for task in (commission_owner_task, commission_task):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception("Commission background task shutdown error")
         scheduler.shutdown(wait=False)
         await dispatcher.storage.close()
         await bot.session.close()
