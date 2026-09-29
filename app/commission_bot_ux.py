@@ -10,12 +10,11 @@ from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardM
 
 from app.commission_bot import _kb
 from app.commission_bot_region import (
-    COUNTRY_LABELS,
     REGION_COUNTRIES,
     REGION_LABELS,
-    REGIONS,
     WORLD_COUNTRIES,
     CommissionBotRegion,
+    _country_label,
 )
 
 log = logging.getLogger(__name__)
@@ -24,16 +23,16 @@ UX_BUTTONS = {
     "➕ Создать",
     "✅ Согласование",
     "📋 Участники",
-    "📋 Регистрации",  # compatibility with the previous keyboard
+    "📋 Регистрации",
     "⚙️ Управление",
     "📅 События",
-    "📅 Мероприятия",  # compatibility
+    "📅 Мероприятия",
     "🎟 Мои заявки",
-    "🎟 Мои регистрации",  # compatibility
+    "🎟 Мои регистрации",
     "👤 Профиль",
     "🔔 Уведомления",
     "❓ Помощь",
-    "❓ Что делать",  # compatibility
+    "❓ Что делать",
     "🏠 Меню",
     "⬅️ Назад",
     "✖️ Отмена",
@@ -106,9 +105,7 @@ class CommissionBotUX(CommissionBotRegion):
             await self.bot.send_message(chat_id, "Управление доступно администратору и владельцу.")
             return
 
-        rows = [
-            [("📣 Чаты и каналы", "ux:targets"), ("📊 Аналитика", "ux:analytics")],
-        ]
+        rows = [[("📣 Чаты и каналы", "ux:targets"), ("📊 Аналитика", "ux:analytics")]]
         if user["role"] == "owner":
             rows.append([("👥 Команда", "ux:team")])
         rows.extend(
@@ -170,7 +167,6 @@ class CommissionBotUX(CommissionBotRegion):
             await self._show_help(chat_id, user)
 
     def _region_kb(self, prefix: str):
-        # Long region names get a full-width row; short pairs remain compact.
         rows = [
             [(REGION_LABELS["russia"], f"{prefix}:russia"), (REGION_LABELS["europe"], f"{prefix}:europe")],
             [(REGION_LABELS["caucasus"], f"{prefix}:caucasus"), (REGION_LABELS["central_asia"], f"{prefix}:central_asia")],
@@ -189,7 +185,7 @@ class CommissionBotUX(CommissionBotRegion):
         page = max(0, min(page, total_pages - 1))
         chunk = codes[page * COUNTRIES_PER_PAGE : (page + 1) * COUNTRIES_PER_PAGE]
 
-        buttons = [(COUNTRY_LABELS[code], f"{prefix}:{code}") for code in chunk]
+        buttons = [(_country_label(code), f"{prefix}:{code}") for code in chunk]
         rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
 
         nav = []
@@ -197,7 +193,7 @@ class CommissionBotUX(CommissionBotRegion):
         if page > 0:
             nav.append(("◀️", f"{page_prefix}:{region}:{page - 1}"))
         if total_pages > 1:
-            nav.append((f"{page + 1}/{total_pages}", f"ux:nop"))
+            nav.append((f"{page + 1}/{total_pages}", "ux:nop"))
         if page < total_pages - 1:
             nav.append(("▶️", f"{page_prefix}:{region}:{page + 1}"))
         if nav:
@@ -211,7 +207,7 @@ class CommissionBotUX(CommissionBotRegion):
 
         if st and text not in {"❓ Помощь", "❓ Что делать", "⬅️ Назад", "✖️ Отмена", "🏠 Меню"}:
             await m.answer(
-                "Сейчас открыт пошаговый сценарий. Завершите текущий шаг или используйте кнопки «⬅️ Назад» / «✖️ Отмена» под ним.",
+                "Сейчас открыт пошаговый сценарий. Завершите текущий шаг или используйте кнопки «⬅️ Назад» / «✖️ Отмена» под ним."
             )
             return
 
