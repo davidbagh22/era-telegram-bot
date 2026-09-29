@@ -7,7 +7,7 @@ from aiogram import F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup
 
 from app.commission_bot import COUNTRIES, _kb
-from app.commission_bot_navigation import CommissionBotNavigation
+from app.commission_bot_navigation_safe import CommissionBotNavigationSafe
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ REGION_LABELS = dict(REGIONS)
 COUNTRY_LABELS = dict(COUNTRIES)
 
 
-class CommissionBotRegion(CommissionBotNavigation):
+class CommissionBotRegion(CommissionBotNavigationSafe):
     def _region_kb(self, prefix: str) -> InlineKeyboardMarkup:
         rows = []
         for i in range(0, len(REGIONS), 2):
