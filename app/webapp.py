@@ -155,11 +155,23 @@ async def _ensure_commission_owner(engine) -> None:
                         """
                         INSERT INTO commission.users(
                             telegram_id, role, onboarding_complete,
-                            telegram_opt_in, updated_at
+                            telegram_opt_in, country_code, country_name,
+                            consent_at, updated_at
                         )
-                        VALUES (:telegram_id, 'owner', FALSE, TRUE, NOW())
+                        VALUES (
+                            :telegram_id, 'owner', TRUE,
+                            TRUE, 'AM', '🇦🇲 Армения',
+                            NOW(), NOW()
+                        )
                         ON CONFLICT (telegram_id)
-                        DO UPDATE SET role='owner', updated_at=NOW()
+                        DO UPDATE SET
+                            role='owner',
+                            onboarding_complete=TRUE,
+                            telegram_opt_in=TRUE,
+                            country_code=COALESCE(commission.users.country_code, 'AM'),
+                            country_name=COALESCE(commission.users.country_name, '🇦🇲 Армения'),
+                            consent_at=COALESCE(commission.users.consent_at, NOW()),
+                            updated_at=NOW()
                         """
                     ),
                     {"telegram_id": owner_id},
