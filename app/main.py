@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from app.bot import create_bot, create_dispatcher
+from app.commission_bot import run_commission_bot
 from app.config import get_settings
 from app.database.session import create_engine_and_sessionmaker
 from app.services.channel_public_content_service import run_daily_channel_content
@@ -25,6 +26,11 @@ async def main() -> None:
     scheduler = create_scheduler(bot, settings, session_factory)
     add_system_jobs(scheduler, bot, settings, session_factory)
 
+    # Run the Commission youth-information bot as an isolated second Telegram bot
+    # in the same paid Render process/database. It uses PostgreSQL schema `commission`
+    # and does not share tables or Telegram updates with the ERA bot.
+    commission_task = asyncio.create_task(run_commission_bot(settings.database_url))
+
     # Replace the legacy daily public-content job: keep the ERA channel post,
     # but never send automatic quotes into the general chat.
     if scheduler.get_job("era-daily-public-content") is not None:
@@ -47,6 +53,11 @@ async def main() -> None:
             bot, allowed_updates=dispatcher.resolve_used_update_types()
         )
     finally:
+        commission_task.cancel()
+        try:
+            await commission_task
+        except asyncio.CancelledError:
+            pass
         scheduler.shutdown(wait=False)
         await dispatcher.storage.close()
         await bot.session.close()
