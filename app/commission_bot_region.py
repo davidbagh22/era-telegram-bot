@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 
@@ -32,6 +33,23 @@ COUNTRY_LABELS = dict(COUNTRIES)
 
 
 class CommissionBotRegion(CommissionBotNavigationSafe):
+    async def state_get(self, uid: int):
+        """Return state payload as a dict regardless of asyncpg JSON codec behavior."""
+        row = await super().state_get(uid)
+        if not row:
+            return None
+        data = dict(row)
+        payload = data.get("payload")
+        if isinstance(payload, str):
+            try:
+                decoded = json.loads(payload)
+                data["payload"] = decoded if isinstance(decoded, dict) else {}
+            except (TypeError, ValueError, json.JSONDecodeError):
+                data["payload"] = {}
+        elif payload is None:
+            data["payload"] = {}
+        return data
+
     def _region_kb(self, prefix: str) -> InlineKeyboardMarkup:
         rows = []
         for i in range(0, len(REGIONS), 2):
