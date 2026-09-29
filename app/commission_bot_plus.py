@@ -4,6 +4,6 @@ from app.commission_bot_plus_base import CommissionBotPlus, _role_label
 
 
 async def run_commission_bot_plus(database_url: str) -> None:
-    from app.commission_bot_ux import run_commission_bot_ux
+    from app.commission_bot_community import run_commission_bot_community
 
-    await run_commission_bot_ux(database_url)
+    await run_commission_bot_community(database_url)
