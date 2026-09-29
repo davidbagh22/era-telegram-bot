@@ -1,0 +1,1 @@
+Commission Plus: staff invitations, participant profiles, registration dashboard, CSV export, improved bot descriptions.
