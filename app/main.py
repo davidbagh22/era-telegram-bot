@@ -1,14 +1,36 @@
 import asyncio
 import logging
 
+import aiogram
+from aiogram import Bot as AiogramBot
+from aiogram.client.default import DefaultBotProperties
+
 from app.bot import create_bot, create_dispatcher
-from app.commission_bot import run_commission_bot
 from app.config import get_settings
 from app.database.session import create_engine_and_sessionmaker
 from app.services.channel_public_content_service import run_daily_channel_content
 from app.services.scheduler_service import create_scheduler
 from app.services.seed_service import seed_reference_data
 from app.services.system_scheduler import add_system_jobs
+
+
+class _CommissionCompatBot(AiogramBot):
+    """Compatibility only for the isolated Commission module."""
+
+    def __init__(self, token: str, parse_mode=None, **kwargs):
+        if parse_mode is not None and "default" not in kwargs:
+            kwargs["default"] = DefaultBotProperties(parse_mode=parse_mode)
+        super().__init__(token=token, **kwargs)
+
+
+# aiogram >=3.7 removed Bot(parse_mode=...). Keep the Commission module isolated
+# without changing ERA's bot construction.
+_original_bot = aiogram.Bot
+aiogram.Bot = _CommissionCompatBot
+try:
+    from app.commission_bot import run_commission_bot
+finally:
+    aiogram.Bot = _original_bot
 
 
 async def main() -> None:
@@ -26,13 +48,8 @@ async def main() -> None:
     scheduler = create_scheduler(bot, settings, session_factory)
     add_system_jobs(scheduler, bot, settings, session_factory)
 
-    # Run the Commission youth-information bot as an isolated second Telegram bot
-    # in the same paid Render process/database. It uses PostgreSQL schema `commission`
-    # and does not share tables or Telegram updates with the ERA bot.
     commission_task = asyncio.create_task(run_commission_bot(settings.database_url))
 
-    # Replace the legacy daily public-content job: keep the ERA channel post,
-    # but never send automatic quotes into the general chat.
     if scheduler.get_job("era-daily-public-content") is not None:
         scheduler.remove_job("era-daily-public-content")
     scheduler.add_job(
