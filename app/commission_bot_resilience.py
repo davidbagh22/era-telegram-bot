@@ -6,7 +6,7 @@ import os
 from aiogram import F
 from aiogram.dispatcher.event.bases import SkipHandler
 
-from app.commission_bot_analytics import CommissionBotAnalytics
+from app.commission_bot_engagement import CommissionBotEngagement
 
 log = logging.getLogger(__name__)
 
@@ -31,10 +31,14 @@ TOP_LEVEL_CALLBACKS = {
     "ux:team",
     "ux:notifications",
     "ux:profile",
+    "seg:menu",
+    "seg:new",
+    "tg:list",
+    "svadm:menu",
 }
 
 
-class CommissionBotResilient(CommissionBotAnalytics):
+class CommissionBotResilient(CommissionBotEngagement):
     def _register_handlers(self):
         r = self.router
 
