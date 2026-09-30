@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from aiogram import F
 from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.enums import ChatType
@@ -9,7 +7,7 @@ from aiogram.types import CallbackQuery, Message
 
 from app.commission_bot import _kb
 from app.commission_bot_admin_ops import CommissionBotAdminOps
-from app.commission_bot_ultimate import DEFAULT_TZ, TZ_LABELS, _parse_local
+from app.commission_bot_ultimate import DEFAULT_TZ, _parse_local
 
 
 class CommissionBotOnlineOnly(CommissionBotAdminOps):
