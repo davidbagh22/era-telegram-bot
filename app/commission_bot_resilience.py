@@ -409,7 +409,7 @@ class CommissionBotResilient(CommissionBotOnlineOnly):
                 chat_id,
                 self._preview(p)
                 + f"\n\n<b>Доставка</b>\n👤 {users_count} участников · 📣 {targets_count} площадок",
-                reply_markup=_kb([[('✅ Отправить на согласование', 'b:submit')], [('⬅️ Назад', 'nav:back'), ('✖️ Отмена', 'nav:cancel')]]),
+                reply_markup=_kb([[("✅ Отправить на согласование", "b:submit")], [("⬅️ Назад", "nav:back"), ("✖️ Отмена", "nav:cancel")]]),
             )
         p["reminders"] = p.get("reminders") or [4320, 1440, 180, 60]
         await self.state_set(uid, "b:reminders", p)
@@ -837,6 +837,10 @@ class CommissionBotResilient(CommissionBotOnlineOnly):
             await c.answer()
             st = await self.state_get(c.from_user.id)
             p = dict(st["payload"] or {}) if st else {}
+            if "ALL" in list(p.get("countries") or []):
+                p["countries"] = []
+                p["_aud_regions"] = []
+                await self.state_set(c.from_user.id, "b:countries", p)
             selected = set(p.get("_aud_regions") or [])
             rows = []
             items = list(REGION_LABELS.items())
@@ -892,6 +896,11 @@ class CommissionBotResilient(CommissionBotOnlineOnly):
         @r.callback_query(F.data == "aud:countries")
         async def audience_country_regions(c: CallbackQuery):
             await c.answer()
+            st = await self.state_get(c.from_user.id)
+            p = dict(st["payload"] or {}) if st else {}
+            if "ALL" in list(p.get("countries") or []):
+                p["countries"] = []
+                await self.state_set(c.from_user.id, "b:countries", p)
             items = list(REGION_LABELS.items())
             rows = []
             for i in range(0, len(items), 2):
