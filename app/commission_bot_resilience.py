@@ -6,7 +6,7 @@ import os
 from aiogram import F
 from aiogram.dispatcher.event.bases import SkipHandler
 
-from app.commission_bot_admin_ops import CommissionBotAdminOps
+from app.commission_bot_online_only import CommissionBotOnlineOnly
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ TOP_LEVEL_CALLBACKS = {
 }
 
 
-class CommissionBotResilient(CommissionBotAdminOps):
+class CommissionBotResilient(CommissionBotOnlineOnly):
     def _register_handlers(self):
         r = self.router
 
