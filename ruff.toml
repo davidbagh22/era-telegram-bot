@@ -4,3 +4,4 @@
 "app/commission_bot_plus_base.py" = ["F541"]
 "app/commission_bot_ultimate.py" = ["F401"]
 "app/commission_bot_navigation.py" = ["F401"]
+"app/commission_bot_online_ops.py" = ["F401", "F841"]
