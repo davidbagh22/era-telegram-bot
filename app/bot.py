@@ -1,7 +1,9 @@
 import logging
+import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import ErrorEvent, Message
 
@@ -35,6 +37,27 @@ from app.utils import texts
 logger = logging.getLogger(__name__)
 
 
+class _NoopRedisCompat:
+    """Minimal Redis-shaped adapter used by webapp recovery logic in memory mode."""
+
+    async def exists(self, *_args, **_kwargs):
+        return True
+
+    async def flushdb(self, *_args, **_kwargs):
+        return True
+
+    async def set(self, *_args, **_kwargs):
+        return True
+
+
+class _MemoryStorageCompat(MemoryStorage):
+    """In-memory FSM storage that keeps the legacy webapp Redis hook harmless."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.redis = _NoopRedisCompat()
+
+
 def create_bot(settings: Settings) -> Bot:
     return Bot(
         token=settings.bot_token,
@@ -43,7 +66,15 @@ def create_bot(settings: Settings) -> Bot:
 
 
 def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
-    storage = RedisStorage.from_url(settings.redis_url)
+    storage_mode = os.getenv("FSM_STORAGE_MODE", "redis").strip().lower()
+    if storage_mode == "memory":
+        storage = _MemoryStorageCompat()
+        logger.warning(
+            "FSM_STORAGE_MODE=memory: using in-memory FSM storage because external Redis is unavailable"
+        )
+    else:
+        storage = RedisStorage.from_url(settings.redis_url)
+
     dispatcher = Dispatcher(storage=storage)
     dispatcher["settings"] = settings
     dispatcher["ai_service"] = AIService(settings)
