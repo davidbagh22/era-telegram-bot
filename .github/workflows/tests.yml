@@ -30,5 +30,4 @@ jobs:
           name: system-audit-report
           path: system_audit_report.json
       - run: pip install pytest
-      - name: Run focused Commission regression tests
-        run: python -m pytest -q tests/test_commission_bot_analytics.py tests/test_commission_engagement.py
+      - run: python -m pytest -q
