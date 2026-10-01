@@ -74,16 +74,35 @@ class CommissionBotSimpleUX(CommissionBotHardened):
     async def _show_people_hub(self, chat_id: int, user) -> None:
         if user["role"] not in {"editor", "admin", "owner"}:
             return await self._show_profile(chat_id, user)
-        rows = [
-            [("👥 Участники", "simple:people:participants"), ("📋 Регистрации", "simple:people:regs")],
-        ]
+        rows = [[("👥 Участники", "simple:people:participants"), ("📋 Регистрации", "simple:people:regs")]]
         if user["role"] in {"admin", "owner"}:
-            rows.append([("💬 Обращения", "simple:people:support"), ("🏷 CRM и теги", "simple:people:crm")])
+            rows.append([("💬 Обращения", "simple:people:support")])
         rows.append([("⬅️ Назад", "menu")])
         await self.bot.send_message(
             chat_id,
-            "<b>👥 Люди</b>\n\nУчастники, заявки и обращения — в одном месте.",
+            "<b>👥 Люди</b>\n\nУчастники, регистрации и обращения — в одном месте.",
             reply_markup=_kb(rows),
+        )
+
+    async def _show_crm_hub(self, chat_id: int) -> None:
+        stats = await self.fetchrow(
+            """SELECT COUNT(*) total,
+            COUNT(*) FILTER(WHERE activity_level IN ('active','very_active','core')) active,
+            COUNT(*) FILTER(WHERE activity_level='inactive') inactive
+            FROM users WHERE onboarding_complete=TRUE"""
+        )
+        await self.bot.send_message(
+            chat_id,
+            f"<b>👥 Участники</b>\n\n"
+            f"Всего: <b>{stats['total']}</b> · активных: <b>{stats['active']}</b> · неактивных: {stats['inactive']}\n\n"
+            "Найди человека или открой готовую выборку.",
+            reply_markup=_kb(
+                [
+                    [("🔎 Найти", "crm:search")],
+                    [("⚡ Активные", "crm:list:active"), ("😴 Неактивные", "crm:list:inactive")],
+                    [("⬅️ К людям", "menu")],
+                ]
+            ),
         )
 
     async def _show_more_hub(self, chat_id: int, user) -> None:
@@ -325,7 +344,9 @@ class CommissionBotSimpleUX(CommissionBotHardened):
         async def simple_people_participants(c: CallbackQuery):
             await c.answer()
             user = await self.ensure_user(c.from_user)
-            await self._show_regadmin(c.message.chat.id, user)
+            if user["role"] not in {"editor", "admin", "owner"}:
+                return
+            await self._show_crm_hub(c.message.chat.id)
 
         @r.callback_query(F.data == "simple:people:regs")
         async def simple_people_regs(c: CallbackQuery):
@@ -338,13 +359,6 @@ class CommissionBotSimpleUX(CommissionBotHardened):
             await c.answer()
             user = await self.ensure_user(c.from_user)
             await self._show_support_inbox(c.message.chat.id, user)
-
-        @r.callback_query(F.data == "simple:people:crm")
-        async def simple_people_crm(c: CallbackQuery):
-            await c.answer()
-            await self.state_clear(c.from_user.id)
-            # Reuse the mature CRM handler through its public callback route.
-            await c.message.answer("Открываю CRM участников.", reply_markup=_kb([[("🏷 CRM и теги", "crm:menu")]]))
 
         @r.callback_query(F.data.startswith("simple:more:"))
         async def simple_more(c: CallbackQuery):
@@ -462,7 +476,7 @@ class CommissionBotSimpleUX(CommissionBotHardened):
                 return await c.message.answer("<b>Сети распространения</b>", reply_markup=self._networks(p))
             if action == "reminders":
                 if not p.get("event_at"):
-                    return await c.answer("У публикации без даты нет напоминаний", show_alert=True)
+                    return await c.message.answer("У публикации без даты напоминания не нужны.")
                 await self.state_set(c.from_user.id, "b:reminders", p)
                 return await c.message.answer("<b>Напоминания</b>", reply_markup=self._reminders(p))
             if action == "back":
