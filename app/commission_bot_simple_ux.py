@@ -490,6 +490,8 @@ class CommissionBotSimpleUX(CommissionBotHardened):
         async def simple_type_pick(c: CallbackQuery):
             await c.answer()
             code = c.data.split(":", 2)[2]
+            if code == "online":
+                code = "event"
             if code not in {"event", "opportunity", "contest", "announcement"}:
                 return
             await self.state_set(c.from_user.id, "b:title", {"content_type": code})
