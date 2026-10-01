@@ -216,6 +216,25 @@ class CommissionBotSimpleUX(CommissionBotHardened):
             ),
         )
 
+    async def _show_deadline_picker(self, chat_id: int, uid: int, p: dict) -> None:
+        await self.state_set(uid, "b:deadline", p)
+        if p.get("event_at"):
+            rows = [
+                [("За 24 часа", "dl:before:1440"), ("За 1 час", "dl:before:60")],
+                [("Без дедлайна", "dl:none"), ("Другая дата", "dl:manual")],
+            ]
+        else:
+            rows = [
+                [("Через 7 дней", "dl:after:10080"), ("Через 14 дней", "dl:after:20160")],
+                [("Без дедлайна", "dl:none"), ("Другая дата", "dl:manual")],
+            ]
+        rows.append([("⬅️ Назад", "nav:back")])
+        await self.bot.send_message(
+            chat_id,
+            "<b>До какого момента принимаем заявки?</b>\n\nЕсли ограничение не нужно — оставь без дедлайна.",
+            reply_markup=_kb(rows),
+        )
+
     async def _start_audience(self, chat_id: int, uid: int, p: dict) -> None:
         if not p.get("countries"):
             p["countries"] = ["ALL"]
@@ -432,6 +451,13 @@ class CommissionBotSimpleUX(CommissionBotHardened):
             p = dict(st["payload"] or {})
             text = (m.text or "").strip()
 
+            if state == "b:title" and text:
+                p["title"] = text[:180]
+                await self.state_set(user["telegram_id"], "b:description", p)
+                return await m.answer(
+                    "<b>О чём это?</b>\n\nНапиши текст так, как его должны увидеть участники."
+                )
+
             if state == "b:description" and text:
                 p["description"] = text[:3500]
                 await self.state_set(user["telegram_id"], "b:media", p)
@@ -459,6 +485,52 @@ class CommissionBotSimpleUX(CommissionBotHardened):
                 return await self._show_registration_choice(m.chat.id, user["telegram_id"], p)
 
             raise SkipHandler
+
+        @r.callback_query(F.data.startswith("b:type:"))
+        async def simple_type_pick(c: CallbackQuery):
+            await c.answer()
+            code = c.data.split(":", 2)[2]
+            if code not in {"event", "opportunity", "contest", "announcement"}:
+                return
+            await self.state_set(c.from_user.id, "b:title", {"content_type": code})
+            await c.message.answer("<b>Как назовём?</b>\n\nКоротко и понятно — лучше до 8 слов.")
+
+        @r.callback_query(F.data == "dt:none")
+        async def simple_no_date(c: CallbackQuery):
+            await c.answer()
+            st = await self.state_get(c.from_user.id)
+            if not st:
+                return
+            p = dict(st["payload"] or {})
+            p["event_at"] = None
+            p["event_format"] = None
+            p["event_location"] = None
+            p.pop("_chosen_date", None)
+            await self._show_registration_choice(c.message.chat.id, c.from_user.id, p)
+
+        @r.callback_query(F.data == "b:reg:external")
+        async def simple_external_registration(c: CallbackQuery):
+            await c.answer()
+            st = await self.state_get(c.from_user.id)
+            if not st:
+                return
+            p = dict(st["payload"] or {})
+            p["registration_mode"] = "external"
+            await self.state_set(c.from_user.id, "b:regurl", p)
+            await c.message.answer("<b>Ссылка на регистрацию</b>\n\nПришли полную ссылку https://…")
+
+        @r.callback_query(F.data == "b:reg:none")
+        async def simple_no_registration(c: CallbackQuery):
+            await c.answer()
+            st = await self.state_get(c.from_user.id)
+            if not st:
+                return
+            p = dict(st["payload"] or {})
+            p["registration_mode"] = "none"
+            p["registration_url"] = None
+            p["registration_deadline"] = None
+            p["capacity"] = None
+            await self._start_audience(c.message.chat.id, c.from_user.id, p)
 
         @r.callback_query(F.data == "simple:type:more")
         async def simple_type_more(c: CallbackQuery):
