@@ -3,7 +3,7 @@ from __future__ import annotations
 import html
 import logging
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from aiogram import F
 from aiogram.dispatcher.event.bases import SkipHandler
@@ -170,6 +170,33 @@ class CommissionBotSimpleUX(CommissionBotHardened):
             chat_id,
             f"<b>{chosen.day} {_MONTHS[chosen.month - 1]} · во сколько?</b>",
             reply_markup=_kb(rows),
+        )
+
+    async def _advance_after_event_datetime(self, chat_id: int, uid: int, p: dict, event_at: datetime) -> None:
+        if event_at <= datetime.now(timezone.utc):
+            return await self.bot.send_message(chat_id, "Это время уже прошло. Выбери другое.")
+        p["event_at"] = event_at.isoformat()
+        p["event_format"] = "online"
+        p.pop("_chosen_date", None)
+        await self.state_set(uid, "b:location", p)
+        await self.bot.send_message(
+            chat_id,
+            "<b>Ссылка на встречу</b>\n\n"
+            "Пришли Zoom / Teams / Meet. Если ссылки ещё нет — просто добавим её позже.",
+            reply_markup=_kb([[("Добавить позже", "simple:join:later")], [("⬅️ Назад", "nav:back")]]),
+        )
+
+    async def _show_registration_choice(self, chat_id: int, uid: int, p: dict) -> None:
+        await self.state_set(uid, "b:regmode", p)
+        await self.bot.send_message(
+            chat_id,
+            "<b>Нужна регистрация?</b>",
+            reply_markup=_kb(
+                [
+                    [("✅ В боте", "b:reg:internal"), ("🔗 По ссылке", "b:reg:external")],
+                    [("Не нужна", "b:reg:none")],
+                ]
+            ),
         )
 
     async def _start_audience(self, chat_id: int, uid: int, p: dict) -> None:
@@ -377,6 +404,68 @@ class CommissionBotSimpleUX(CommissionBotHardened):
                 return await c.message.answer("Точные рассылки и сохранённые сегменты.", reply_markup=_kb([[("🎯 Открыть сегменты", "seg:menu")]]))
             if action == "team":
                 return await self._show_team(c.message.chat.id, user)
+
+        @r.callback_query(F.data == "simple:join:later")
+        async def simple_join_later(c: CallbackQuery):
+            await c.answer()
+            st = await self.state_get(c.from_user.id)
+            if not st:
+                return
+            p = dict(st["payload"] or {})
+            p["event_location"] = None
+            await self._show_registration_choice(c.message.chat.id, c.from_user.id, p)
+
+        @r.callback_query(F.data == "b:reg:internal")
+        async def simple_internal_registration(c: CallbackQuery):
+            await c.answer()
+            st = await self.state_get(c.from_user.id)
+            if not st:
+                return
+            p = dict(st["payload"] or {})
+            p["registration_mode"] = "internal"
+            await self.state_set(c.from_user.id, "simple:reg", p)
+            await c.message.answer(
+                "<b>Регистрация в боте</b>\n\n"
+                "Обычный вариант использует уже заполненный профиль участника — ничего лишнего вводить повторно не придётся.",
+                reply_markup=_kb(
+                    [
+                        [("Продолжить", "simple:reg:default")],
+                        [("⚙️ Настроить анкету", "simple:reg:advanced")],
+                    ]
+                ),
+            )
+
+        @r.callback_query(F.data == "simple:reg:default")
+        async def simple_reg_default(c: CallbackQuery):
+            await c.answer()
+            st = await self.state_get(c.from_user.id)
+            if not st:
+                return
+            p = dict(st["payload"] or {})
+            p["registration_mode"] = "internal"
+            p["registration_form"] = "standard"
+            p["custom_questions"] = []
+            p["capacity"] = None
+            await self._show_deadline_picker(c.message.chat.id, c.from_user.id, p)
+
+        @r.callback_query(F.data == "simple:reg:advanced")
+        async def simple_reg_advanced(c: CallbackQuery):
+            await c.answer()
+            st = await self.state_get(c.from_user.id)
+            if not st:
+                return
+            p = dict(st["payload"] or {})
+            p["registration_mode"] = "internal"
+            await self.state_set(c.from_user.id, "b:regform", p)
+            await c.message.answer(
+                "<b>Точная настройка регистрации</b>",
+                reply_markup=_kb(
+                    [
+                        [("⚡ Быстрая — 1 клик", "b:regform:quick")],
+                        [("📝 Анкета участника", "b:regform:standard")],
+                    ]
+                ),
+            )
 
         @r.callback_query(F.data == "simple:date:more")
         async def simple_date_more(c: CallbackQuery):
