@@ -3,8 +3,7 @@ from __future__ import annotations
 import html
 import logging
 import os
-from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import date, datetime, timedelta
 
 from aiogram import F
 from aiogram.dispatcher.event.bases import SkipHandler
@@ -15,7 +14,6 @@ from app.commission_bot import TYPE_MAP, _kb
 from app.commission_bot_hardened import CommissionBotHardened
 from app.commission_bot_resilience import (
     _MONTHS,
-    _TIME_PRESETS,
     _date_label,
     _local_now,
 )
