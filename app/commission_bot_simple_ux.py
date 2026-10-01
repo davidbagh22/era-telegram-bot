@@ -120,6 +120,23 @@ class CommissionBotSimpleUX(CommissionBotHardened):
             reply_markup=_kb(rows),
         )
 
+    async def _render_wizard_step(self, chat_id: int, uid: int, state: str, payload: dict) -> None:
+        if state == "b:type":
+            await self.state_set(uid, "b:type", payload)
+            return await self.bot.send_message(
+                chat_id,
+                "<b>Что создаём?</b>",
+                reply_markup=_kb(
+                    [
+                        [("📅 Онлайн-событие", "b:type:event")],
+                        [("🚀 Возможность", "b:type:opportunity"), ("📢 Публикация", "b:type:announcement")],
+                        [("Ещё варианты", "simple:type:more")],
+                        [("✖️ Отмена", "nav:cancel")],
+                    ]
+                ),
+            )
+        await super()._render_wizard_step(chat_id, uid, state, payload)
+
     async def _show_event_date_picker(self, chat_id: int, uid: int, p: dict) -> None:
         user = await self.fetchrow("SELECT * FROM users WHERE telegram_id=$1", uid)
         tz_name = p.get("event_timezone") or (user["timezone_name"] if user else None) or DEFAULT_TZ
@@ -404,6 +421,67 @@ class CommissionBotSimpleUX(CommissionBotHardened):
                 return await c.message.answer("Точные рассылки и сохранённые сегменты.", reply_markup=_kb([[("🎯 Открыть сегменты", "seg:menu")]]))
             if action == "team":
                 return await self._show_team(c.message.chat.id, user)
+
+        @r.message(F.chat.type == ChatType.PRIVATE)
+        async def simple_creation_inputs(m: Message):
+            user = await self.ensure_user(m.from_user)
+            st = await self.state_get(user["telegram_id"])
+            if not st:
+                raise SkipHandler
+            state = str(st["state"])
+            p = dict(st["payload"] or {})
+            text = (m.text or "").strip()
+
+            if state == "b:description" and text:
+                p["description"] = text[:3500]
+                await self.state_set(user["telegram_id"], "b:media", p)
+                return await m.answer(
+                    "<b>Добавить афишу?</b>\n\nПришли изображение или продолжай без него.",
+                    reply_markup=_kb([[("Без афиши", "simple:media:none")]]),
+                )
+
+            if state == "b:media":
+                if m.photo:
+                    p["media_file_id"] = m.photo[-1].file_id
+                elif text == "/skip":
+                    p["media_file_id"] = None
+                else:
+                    return await m.answer("Пришли изображение или нажми «Без афиши».")
+                return await self._show_event_date_picker(m.chat.id, user["telegram_id"], p)
+
+            if state == "b:location":
+                if text == "/skip":
+                    p["event_location"] = None
+                elif text.startswith(("http://", "https://")):
+                    p["event_location"] = text[:1000]
+                else:
+                    return await m.answer("Пришли ссылку Zoom / Teams / Meet или нажми «Добавить позже».")
+                return await self._show_registration_choice(m.chat.id, user["telegram_id"], p)
+
+            raise SkipHandler
+
+        @r.callback_query(F.data == "simple:type:more")
+        async def simple_type_more(c: CallbackQuery):
+            await c.answer()
+            await c.message.answer(
+                "<b>Другой тип</b>",
+                reply_markup=_kb(
+                    [
+                        [("🏆 Конкурс", "b:type:contest")],
+                        [("⬅️ Назад", "b:new")],
+                    ]
+                ),
+            )
+
+        @r.callback_query(F.data == "simple:media:none")
+        async def simple_media_none(c: CallbackQuery):
+            await c.answer()
+            st = await self.state_get(c.from_user.id)
+            if not st:
+                return
+            p = dict(st["payload"] or {})
+            p["media_file_id"] = None
+            await self._show_event_date_picker(c.message.chat.id, c.from_user.id, p)
 
         @r.callback_query(F.data == "simple:join:later")
         async def simple_join_later(c: CallbackQuery):
