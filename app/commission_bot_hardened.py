@@ -13,7 +13,6 @@ from app.commission_bot import _kb
 from app.commission_bot_engagement import (
     TARGET_PURPOSES,
     TARGET_TAGS,
-    target_matches_segment,
     user_matches_segment,
 )
 from app.commission_bot_region import REGION_COUNTRIES, REGION_LABELS, WORLD_COUNTRIES, _country_label
