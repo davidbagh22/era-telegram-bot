@@ -468,10 +468,15 @@ class CommissionBotSimpleUX(CommissionBotHardened):
                 reply_markup=_kb(
                     [
                         [("🏆 Конкурс", "b:type:contest")],
-                        [("⬅️ Назад", "b:new")],
+                        [("⬅️ Назад", "simple:type:back")],
                     ]
                 ),
             )
+
+        @r.callback_query(F.data == "simple:type:back")
+        async def simple_type_back(c: CallbackQuery):
+            await c.answer()
+            await self._render_wizard_step(c.message.chat.id, c.from_user.id, "b:type", {})
 
         @r.callback_query(F.data == "simple:media:none")
         async def simple_media_none(c: CallbackQuery):
