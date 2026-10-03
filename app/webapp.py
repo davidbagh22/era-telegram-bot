@@ -227,7 +227,6 @@ async def _apply_commission_registration_reset(engine) -> None:
                         country_code=NULL,
                         country_name=NULL,
                         city=NULL,
-                        region_name=NULL,
                         participant_profile_complete=FALSE,
                         consent_at=NULL,
                         registration_consent_at=NULL,
