@@ -435,7 +435,7 @@ class CommissionBotSimpleUX(CommissionBotHardened):
             if action == "help":
                 return await self._show_help(c.message.chat.id, user)
             if action == "targets":
-                return await self._show_targets(c.message.chat.id, user)
+                return await self._show_targets(c)
             if action == "segments":
                 return await c.message.answer("Точные рассылки и сохранённые сегменты.", reply_markup=_kb([[("🎯 Открыть сегменты", "seg:menu")]]))
             if action == "team":
