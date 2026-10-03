@@ -172,7 +172,8 @@ async def build_admin_user_card(
         ("Дата рождения", _date_text(getattr(target, "birth_date", None))),
         ("Возраст", str(target.age) if target.age else None),
         ("Несовершеннолетний (по анкете)", _minor_label(target.age)),
-        ("Город", target.city),
+        ("Страна", getattr(target, "country", None)),
+        ("Регион / город", getattr(target, "region", None) or target.city),
         ("Телефон", target.phone),
         ("Email", target.email),
     ]
