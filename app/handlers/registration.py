@@ -397,9 +397,10 @@ async def registration_available_time(call: CallbackQuery, state: FSMContext) ->
 
 def _registration_review_text(data: dict) -> str:
     directions = ", ".join(data.get("directions") or []) or "Пока просто участвовать"
+    full_name = f"{data.get('first_name', '')} {data.get('last_name', '')}".strip()
     return (
         f"{texts.REG_REVIEW_TITLE}\n\n"
-        f"Имя: <b>{html.escape(f\"{data.get('first_name', '')} {data.get('last_name', '')}\".strip())}</b>\n"
+        f"Имя: <b>{html.escape(full_name)}</b>\n"
         f"Возраст: {html.escape(str(data.get('age') or '—'))}\n"
         f"Страна: {html.escape(str(data.get('country') or '—'))}\n"
         f"Регион / город: {html.escape(str(data.get('region') or '—'))}\n"
@@ -476,13 +477,6 @@ async def finish_registration(
 ) -> None:
     await call.answer()
     data = await state.get_data()
-    if not data.get("profile_photo_file_id") or not data.get("social_url"):
-        await call.message.answer(
-            "Для регистрации нужны фото профиля и ссылка на соцсеть. "
-            "Пройдите эти шаги заново."
-        )
-        await state.set_state(RegistrationStates.profile_photo)
-        return
     if data.get("consent_policy_version") != CURRENT_POLICY_VERSION:
         # A long-running Telegram FSM can survive a deploy. Never record
         # consent against a new policy version when the participant only
@@ -513,15 +507,16 @@ async def finish_registration(
                 updated_at=now,
             )
         )
-        session.add(
-            SocialLink(
-                user_id=user.id,
-                url=data["social_url"],
-                platform=_platform_from_url(data["social_url"]),
-                created_at=now,
-                updated_at=now,
+        if data.get("social_url"):
+            session.add(
+                SocialLink(
+                    user_id=user.id,
+                    url=data["social_url"],
+                    platform=_platform_from_url(data["social_url"]),
+                    created_at=now,
+                    updated_at=now,
+                )
             )
-        )
 
     auto_approved_admin = call.from_user.id in settings.admin_ids
     if auto_approved_admin:
