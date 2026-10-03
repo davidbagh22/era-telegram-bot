@@ -356,16 +356,15 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
 
       <section>
         <h2 style={{ margin: "0 0 0.75rem", fontSize: "var(--era-text-xl)" }}>Документы</h2>
-        <Card>
-          <strong>Резюме</strong>
-          <p style={{ margin: "0.35rem 0 0.75rem", color: "var(--era-text-muted)" }}>Система перестроит акценты под цель. Внешнее резюме не показывает внутренние баллы ЭРА.</p>
-          <select value={purpose} onChange={(event) => setPurpose(event.target.value as CareerPurpose)} style={{ width: "100%", minHeight: 44, marginBottom: "0.7rem" }}>
-            {PURPOSES.map((item) => <option key={item.value} value={item.value}>{item.label} — {item.description}</option>)}
-          </select>
-          <button type="button" className="era-btn-primary" disabled={downloading} onClick={() => void downloadResume()} style={{ width: "100%" }}>
-            {downloading ? "Формируем…" : "Собрать резюме PDF"}
-          </button>
-        </Card>
+        <button
+          type="button"
+          className="era-btn-primary"
+          disabled={downloading}
+          onClick={() => void downloadResume()}
+          style={{ width: "100%" }}
+        >
+          {downloading ? "Формируем…" : "Выгрузить резюме PDF"}
+        </button>
 
         <Card style={{ marginTop: "0.75rem" }}>
           <strong>Рекомендация ЭРА</strong>
