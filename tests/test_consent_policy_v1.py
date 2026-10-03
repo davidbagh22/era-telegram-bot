@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import unittest
 
-from app.handlers.registration import finish_registration, registration_social
+from app.handlers.registration import finish_registration, registration_review_ok
 from app.keyboards.registration import consent_keyboard
 from app.services.consent_policy import (
     CONSENT_FULL_TEXT,
@@ -30,7 +30,7 @@ class ConsentPolicyV1Tests(unittest.TestCase):
         # The live consent transition itself must not branch on age. Age is
         # collected earlier in registration, but approval of this form is
         # the same callback for every participant.
-        source = inspect.getsource(registration_social) + inspect.getsource(finish_registration)
+        source = inspect.getsource(registration_review_ok) + inspect.getsource(finish_registration)
         self.assertNotIn("is_minor", source)
         self.assertNotIn("birth_date", source)
         self.assertNotIn("age <", source)
@@ -65,9 +65,9 @@ class ConsentPolicyV1Tests(unittest.TestCase):
         self.assertIn("reg:consent:no", callbacks)
 
     def test_form_records_version_and_rejects_stale_display(self) -> None:
-        social_source = inspect.getsource(registration_social)
+        review_source = inspect.getsource(registration_review_ok)
         finish_source = inspect.getsource(finish_registration)
-        self.assertIn("consent_policy_version=CURRENT_POLICY_VERSION", social_source)
+        self.assertIn("consent_policy_version=CURRENT_POLICY_VERSION", review_source)
         stale_check = finish_source.index(
             'data.get("consent_policy_version") != CURRENT_POLICY_VERSION'
         )
