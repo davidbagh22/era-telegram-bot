@@ -191,6 +191,9 @@ class LeadershipApiTests(unittest.TestCase):
         with patch(
             "app.api.v1.leadership.leadership_weekly_service.submit_weekly_pulse",
             new=AsyncMock(return_value=result),
+        ), patch(
+            "app.api.v1.leadership._require_pulse_cycle_access",
+            new=AsyncMock(return_value=SimpleNamespace(id=7)),
         ):
             response = client.post(
                 "/api/v1/leadership/reports",
@@ -207,6 +210,9 @@ class LeadershipApiTests(unittest.TestCase):
         with patch(
             "app.api.v1.leadership.leadership_weekly_service.ensure_weekly_report",
             new=AsyncMock(return_value=_view()),
+        ), patch(
+            "app.api.v1.leadership._require_pulse_cycle_access",
+            new=AsyncMock(return_value=SimpleNamespace(id=7)),
         ):
             response = client.get("/api/v1/leadership/reports/current")
         self.assertEqual(response.status_code, 200)

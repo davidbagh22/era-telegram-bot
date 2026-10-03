@@ -53,6 +53,7 @@ from app.api.v1 import (
     surveys,
     system,
     tasks,
+    weekly_pulse_admin,
 )
 from app.services.feature_flags import Feature
 
@@ -97,6 +98,7 @@ api_router.include_router(admin_development.router)
 api_router.include_router(admin_analytics_details.router)
 api_router.include_router(admin_drilldown.router)
 api_router.include_router(admin_executive_export.router)
+api_router.include_router(weekly_pulse_admin.router)
 api_router.include_router(admin_partner_edit.router)
 api_router.include_router(admin_participation.router)
 api_router.include_router(admin_people_detail.router)

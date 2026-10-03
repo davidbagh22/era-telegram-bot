@@ -120,6 +120,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "system-heartbeat",
                 "system-full-diagnostic",
                 "system-daily-summary",
+                "office-vacancy-reconciliation",
                 "configured-event-reminders",
                 "event-wizard-task-sync",
                 "project-scoring-reconciliation",
@@ -135,6 +136,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "general-chat-writable-access",
                 "leadership-weekly-pulse-open",
                 "leadership-weekly-pulse-due",
+                "leaders-task-card-sync",
             ],
         )
         self.assertNotIn("general-chat-faq-pin", ids)

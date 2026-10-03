@@ -9,6 +9,14 @@ class TaskStates(StatesGroup):
     points = State()
 
 
+class LeadersChatTaskStates(StatesGroup):
+    assignee = State()
+    deadline = State()
+    result = State()
+    blocker = State()
+    review_comment = State()
+
+
 class ReportStates(StatesGroup):
     report_type = State()
     content = State()

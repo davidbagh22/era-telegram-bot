@@ -44,8 +44,12 @@ from app.database.community_verification_models import (  # noqa: F401
     CommunityVerificationDelivery,
 )
 from app.database.leadership_models import (  # noqa: F401
+    BroadcastAcknowledgement,
     LeadershipFeedback,
     LeadershipReportPulse,
+    LeaderChatMembership,
+    WeeklyPulseCycle,
+    WeeklyPulseSchedule,
 )
 import app.database.socials  # noqa: F401
 import app.database.partners  # noqa: F401
@@ -95,4 +99,8 @@ __all__ = [
     "CommunityVerificationDelivery",
     "LeadershipFeedback",
     "LeadershipReportPulse",
+    "WeeklyPulseCycle",
+    "WeeklyPulseSchedule",
+    "LeaderChatMembership",
+    "BroadcastAcknowledgement",
 ]

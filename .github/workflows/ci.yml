@@ -29,6 +29,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      BOT_TOKEN: "0000000000:CITESTTOKEN"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -133,6 +135,7 @@ jobs:
       MINIAPP_AUTH_SECRET: e2e-test-secret
       DEV_AUTH_ENABLED: "true"
       REDIS_URL: redis://127.0.0.1:6379/0
+      LEADERS_CHAT_ID: "-1009000000000"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

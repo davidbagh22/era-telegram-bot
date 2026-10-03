@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
@@ -10,6 +11,7 @@ from app.config import get_settings
 from app.database.base import Base
 from app.database.event_attendance import EventAttendanceSession  # noqa: F401
 from app.database.event_experience import EventExperience, EventReminderDelivery  # noqa: F401
+from app.database.leadership_models import LeaderChatMembership, WeeklyPulseCycle, WeeklyPulseSchedule
 from app.database.models import Badge, Event, EventActivity, EventActivitySubmission, PointTransaction, User, UserBadge
 from app.database.session import create_engine_and_sessionmaker
 from app.services.participation_lifecycle_service import complete_onboarding
@@ -40,6 +42,37 @@ async def seed() -> None:
         activity_submitter = User(telegram_id=ACTIVITY_SUBMITTER_TELEGRAM_ID, first_name="E2E Activity Submitter", role=Role.PARTICIPANT, application_status=ApplicationStatus.APPROVED)
         session.add_all([participant, leader, admin, pending, pending_sync, bidder, redeemer, activity_submitter])
         await session.flush()
+
+        if settings.leaders_chat_id:
+            local_now = datetime.now(ZoneInfo(settings.timezone))
+            local_today = local_now.date()
+            period_start = local_today - timedelta(days=local_today.weekday())
+            period_end = period_start + timedelta(days=6)
+            session.add_all(
+                [
+                    LeaderChatMembership(
+                        user_id=leader.id,
+                        leader_chat_id=settings.leaders_chat_id,
+                        telegram_user_id=leader.telegram_id,
+                        display_name=leader.first_name,
+                        membership_status="member",
+                        joined_at=local_now,
+                        is_weekly_pulse_eligible=True,
+                    ),
+                    WeeklyPulseSchedule(id=1),
+                    WeeklyPulseCycle(
+                        week_number=local_now.isocalendar().week,
+                        date_from=period_start,
+                        date_to=period_end,
+                        opens_at=local_now - timedelta(hours=1),
+                        deadline_at=local_now + timedelta(days=2),
+                        closes_at=local_now + timedelta(days=2),
+                        status="open",
+                        eligible_count=1,
+                        leader_chat_id=settings.leaders_chat_id,
+                    ),
+                ]
+            )
 
         e2e_telegram_ids = (PARTICIPANT_TELEGRAM_ID, LEADER_TELEGRAM_ID, ADMIN_TELEGRAM_ID, PENDING_APPLICANT_TELEGRAM_ID, PENDING_SYNC_APPLICANT_TELEGRAM_ID, AUCTION_BIDDER_TELEGRAM_ID, REWARD_REDEEMER_TELEGRAM_ID, ACTIVITY_SUBMITTER_TELEGRAM_ID)
         e2e_users = (await session.scalars(select(User).where(User.telegram_id.in_(e2e_telegram_ids)))).all()

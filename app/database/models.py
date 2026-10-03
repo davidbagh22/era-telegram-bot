@@ -549,15 +549,22 @@ class TaskDelivery(TimestampMixin, Base):
     "created but not delivered to X" and retry that one destination."""
 
     __tablename__ = "task_deliveries"
+    __table_args__ = (
+        Index("ix_task_deliveries_reminder_due", "chat_key", "status", "remind_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), index=True)
     chat_key: Mapped[str] = mapped_column(String(32))
     chat_id: Mapped[int] = mapped_column(BigInteger)
     telegram_message_id: Mapped[int | None] = mapped_column(Integer)
+    message_thread_id: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(16), default="failed", index=True)
     error: Mapped[str | None] = mapped_column(Text)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reminder_count: Mapped[int] = mapped_column(Integer, default=0)
+    remind_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_card_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
 class Report(TimestampMixin, Base):
@@ -783,6 +790,9 @@ class LeadershipReport(TimestampMixin, Base):
     scope_id: Mapped[int | None] = mapped_column(Integer)
     period_start: Mapped[date] = mapped_column(Date)
     period_end: Mapped[date] = mapped_column(Date)
+    pulse_cycle_id: Mapped[int | None] = mapped_column(
+        ForeignKey("weekly_pulse_cycles.id", ondelete="SET NULL"), index=True
+    )
     status: Mapped[str] = mapped_column(String(16), default=LeadershipReportStatus.ON_TRACK)
     main_result: Mapped[str | None] = mapped_column(Text)
     blocker_type: Mapped[str | None] = mapped_column(String(32))
