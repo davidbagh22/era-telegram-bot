@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from aiogram import F
 from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.enums import ChatType
-from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardMarkup
+from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 from app.commission_bot import TYPE_MAP, _kb
 from app.commission_bot_hardened import CommissionBotHardened
@@ -70,7 +70,8 @@ class CommissionBotSimpleUX(CommissionBotHardened):
             "<b>Имя и фамилия</b>\n"
             "Напиши их одним сообщением, например: <code>Анна Иванова</code>.\n\n"
             "Дальше попрошу только возраст, email, страну и регион. "
-            "Продолжая регистрацию, ты соглашаешься на обработку этих данных для работы бота."
+            "Продолжая регистрацию, ты соглашаешься на обработку этих данных для работы бота.",
+            reply_markup=ReplyKeyboardRemove(),
         )
 
     async def _finish_simple_onboarding(self, chat_id: int, user_id: int, payload: dict) -> None:
@@ -516,6 +517,8 @@ class CommissionBotSimpleUX(CommissionBotHardened):
             state = str(st["state"])
             payload = dict(st["payload"] or {})
             text = (m.text or "").strip()
+            if text in {"/start", "/menu", "/cancel"}:
+                raise SkipHandler
 
             if state == "onboard:name":
                 if len(text) < 2 or len(text) > 180:
