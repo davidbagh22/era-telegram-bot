@@ -52,6 +52,8 @@ class User(TimestampMixin, Base):
     age: Mapped[int | None] = mapped_column(Integer)
     phone: Mapped[str | None] = mapped_column(String(32))
     email: Mapped[str | None] = mapped_column(String(255), index=True)
+    country: Mapped[str | None] = mapped_column(String(100))
+    region: Mapped[str | None] = mapped_column(String(120))
     city: Mapped[str | None] = mapped_column(String(100))
     education_work: Mapped[str | None] = mapped_column(String(255))
     occupation: Mapped[str | None] = mapped_column(Text)
