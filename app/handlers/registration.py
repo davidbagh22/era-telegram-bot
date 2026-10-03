@@ -1,3 +1,4 @@
+import html
 import logging
 from datetime import datetime
 from urllib.parse import urlparse
@@ -11,13 +12,11 @@ from app.config import Settings
 from app.database.socials import SocialLink, SocialProfile
 from app.keyboards.common import subscription_keyboard
 from app.keyboards.registration import (
-    DEPARTMENT_OPTIONS,
     DIRECTION_OPTIONS,
     consent_keyboard,
-    department_keyboard,
-    desired_path_keyboard,
     directions_keyboard,
     pending_registration_keyboard,
+    registration_review_keyboard,
     time_keyboard,
 )
 from app.keyboards.participant import main_inline_keyboard
@@ -32,32 +31,16 @@ from app.services.subscription_service import SubscriptionCheckError, is_channel
 from app.states.registration import RegistrationStates
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
-from app.utils.validators import (
-    calculate_age,
-    clean_text,
-    normalize_email,
-    normalize_phone,
-    parse_birth_date,
-)
+from app.utils.validators import clean_text, normalize_email, parse_age
 
 router = Router(name="registration")
 router.message.filter(F.chat.type == "private")
 router.callback_query.filter(F.message.chat.type == "private")
 logger = logging.getLogger(__name__)
 
-PATHS = (
-    "Участник",
-    "Активист",
-    "Лидер",
-    "Руководитель",
-    "Совет",
-)
-
 TIME_VALUES = {
     "1-2": "1–2 часа в неделю",
     "3-5": "3–5 часов в неделю",
-    "daily1": "1 час в день",
-    "daily_more": "Несколько часов в день",
     "active": "Готов активно включаться",
 }
 
