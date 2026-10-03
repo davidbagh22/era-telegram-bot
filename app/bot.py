@@ -23,6 +23,7 @@ from app.handlers import (
 )
 from app.handlers.admin import router as admin_router
 from app.handlers.leader import router as leader_router
+from app.handlers.leader_chat_workcenter import router as leader_chat_workcenter_router
 from app.handlers.participant import router as participant_router
 from app.middlewares.auth import DatabaseAuthMiddleware
 from app.middlewares.community_identity import CommunityIdentityMiddleware
@@ -117,6 +118,7 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
         admin_router,
         leader_event_photo.router,
         leader_router,
+        leader_chat_workcenter_router,
         participant_router,
         chat_binding.router,
         media_chat_files.router,
