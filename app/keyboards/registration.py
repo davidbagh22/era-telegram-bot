@@ -167,12 +167,6 @@ def consent_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="🎁 Ввести код друга",
-                    callback_data="reg:ref:start",
-                )
-            ],
-            [
-                InlineKeyboardButton(
                     text="📄 Полные условия",
                     callback_data="reg:consent:full",
                 )
