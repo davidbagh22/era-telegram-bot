@@ -154,12 +154,12 @@ class CommissionBotSimpleUX(CommissionBotHardened):
         elif role == "editor":
             rows = [
                 [KeyboardButton(text="➕ Создать"), KeyboardButton(text="👥 Люди")],
-                [KeyboardButton(text="📅 События"), KeyboardButton(text="🎟 Мои заявки")],
+                [KeyboardButton(text="📅 Мероприятия"), KeyboardButton(text="🎟 Мои регистрации")],
                 [KeyboardButton(text="⚙️ Ещё")],
             ]
         else:
             rows = [
-                [KeyboardButton(text="📅 События"), KeyboardButton(text="🎟 Мои заявки")],
+                [KeyboardButton(text="📅 Мероприятия"), KeyboardButton(text="🎟 Мои регистрации")],
                 [KeyboardButton(text="💬 Связаться"), KeyboardButton(text="👤 Профиль")],
                 [KeyboardButton(text="⚙️ Ещё")],
             ]
@@ -225,7 +225,7 @@ class CommissionBotSimpleUX(CommissionBotHardened):
     async def _show_more_hub(self, chat_id: int, user) -> None:
         role = user["role"]
         rows = [
-            [("📅 События", "simple:more:events"), ("🎟 Мои заявки", "simple:more:regs")],
+            [("📅 Мероприятия", "simple:more:events"), ("🎟 Мои регистрации", "simple:more:regs")],
             [("👤 Профиль", "simple:more:profile"), ("❓ Помощь", "simple:more:help")],
         ]
         if role in {"admin", "owner"}:
