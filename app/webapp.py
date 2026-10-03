@@ -202,6 +202,50 @@ async def _apply_commission_user_reset(engine) -> None:
         logger.info("Commission user reset found no matching viewer profile")
 
 
+async def _apply_commission_registration_reset(engine) -> None:
+    """Reset one Commission viewer profile for a clean onboarding test; ERA data is untouched."""
+    raw_telegram_id = os.environ.get("COMMISSION_RESET_TELEGRAM_ID", "").strip()
+    if not raw_telegram_id:
+        return
+    try:
+        telegram_id = int(raw_telegram_id)
+    except ValueError:
+        logger.error("COMMISSION_RESET_TELEGRAM_ID is not a valid integer")
+        return
+
+    async with engine.begin() as connection:
+        row = (
+            await connection.execute(
+                text(
+                    """
+                    UPDATE commission.users
+                    SET onboarding_complete=FALSE,
+                        registration_name=NULL,
+                        last_name=NULL,
+                        age=NULL,
+                        email=NULL,
+                        country_code=NULL,
+                        country_name=NULL,
+                        city=NULL,
+                        participant_profile_complete=FALSE,
+                        consent_at=NULL,
+                        registration_consent_at=NULL,
+                        profile_updated_at=NULL,
+                        updated_at=NOW()
+                    WHERE telegram_id=:telegram_id
+                      AND role='viewer'
+                    RETURNING telegram_id
+                    """
+                ),
+                {"telegram_id": telegram_id},
+            )
+        ).first()
+    if row:
+        logger.warning("Commission viewer profile reset for fresh registration")
+    else:
+        logger.info("Commission registration reset found no matching viewer profile")
+
+
 async def _ensure_commission_owner(engine) -> None:
     """Seed the configured owner after the Commission schema is initialized."""
     raw_owner_id = os.environ.get("COMMISSION_OWNER_TELEGRAM_ID", "").strip()
@@ -331,6 +375,8 @@ async def lifespan(app: FastAPI):
 
     await _restore_era_user_after_reset(engine)
     await _apply_commission_user_reset(engine)
+
+    await _apply_commission_registration_reset(engine)
 
     commission_task = asyncio.create_task(
         run_commission_bot(settings.database_url),

@@ -3,12 +3,13 @@ from __future__ import annotations
 import html
 import logging
 import os
+import re
 from datetime import date, datetime, timedelta, timezone
 
 from aiogram import F
 from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.enums import ChatType
-from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardMarkup
+from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 from app.commission_bot import TYPE_MAP, _kb
 from app.commission_bot_hardened import CommissionBotHardened
@@ -17,13 +18,132 @@ from app.commission_bot_resilience import (
     _date_label,
     _local_now,
 )
+from app.commission_bot_region import WORLD_COUNTRIES, _country_label
 from app.commission_bot_ultimate import DEFAULT_TZ, TZ_LABELS, _localize, _safe
 
 log = logging.getLogger(__name__)
 
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_COUNTRY_ALIASES = {
+    "рф": "RU",
+    "российскаяфедерация": "RU",
+    "ра": "AM",
+    "республикаармения": "AM",
+    "белоруссия": "BY",
+    "кыргызстан": "KG",
+    "киргизия": "KG",
+    "молдавия": "MD",
+    "сша": "US",
+    "соединенныэштаты": "US",
+    "соединенныештаты": "US",
+    "оаэ": "AE",
+}
+
+
+def _plain(value: str) -> str:
+    return re.sub(r"[^0-9a-zа-я]+", "", value.casefold().replace("ё", "е"))
+
+
+def _country_code_from_text(value: str) -> str | None:
+    raw = value.strip()
+    if len(raw) == 2 and raw.upper() in WORLD_COUNTRIES:
+        return raw.upper()
+    key = _plain(raw)
+    if key in _COUNTRY_ALIASES:
+        return _COUNTRY_ALIASES[key]
+    for code, label in WORLD_COUNTRIES.items():
+        if _plain(label) == key:
+            return code
+    return None
+
 
 class CommissionBotSimpleUX(CommissionBotHardened):
     """Progressive-disclosure UX: simple defaults first, power controls on demand."""
+
+    async def start_onboarding(self, chat_id: int, user, pending: dict | None = None):
+        """Short, typed registration with only fields that are actually useful."""
+        payload = {"pending": pending}
+        await self.state_set(user["telegram_id"], "onboard:name", payload)
+        await self.bot.send_message(
+            chat_id,
+            "<b>Регистрация · 1/5</b>\n\n"
+            "<b>Имя и фамилия</b>\n"
+            "Напиши их одним сообщением, например: <code>Анна Иванова</code>.\n\n"
+            "Дальше попрошу только возраст, email, страну и регион. "
+            "Продолжая регистрацию, ты соглашаешься на обработку этих данных для работы бота.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+
+    async def _finish_simple_onboarding(self, chat_id: int, user_id: int, payload: dict) -> None:
+        user = await self.fetchrow("SELECT * FROM users WHERE telegram_id=$1", user_id)
+        if not user:
+            return
+        await self.execute(
+            """UPDATE users SET
+                onboarding_complete=TRUE,
+                telegram_opt_in=TRUE,
+                consent_at=COALESCE(consent_at,NOW()),
+                registration_consent_at=COALESCE(registration_consent_at,NOW()),
+                privacy_policy_version=COALESCE(privacy_policy_version,'2026-10'),
+                participant_profile_complete=TRUE,
+                profile_updated_at=NOW(),
+                updated_at=NOW()
+            WHERE telegram_id=$1""",
+            user_id,
+        )
+        await self.state_clear(user_id)
+        user = await self.fetchrow("SELECT * FROM users WHERE telegram_id=$1", user_id)
+        region = user["region_name"] or user["city"] or "—"
+        name = user["registration_name"] or " ".join(
+            x for x in [user["first_name"], user["last_name"]] if x
+        ).strip()
+        await self.bot.send_message(
+            chat_id,
+            "<b>Регистрация завершена ✅</b>\n\n"
+            f"👤 {_safe(name)}\n"
+            f"🎂 {user['age']}\n"
+            f"✉️ {_safe(user['email'])}\n"
+            f"🌍 {_safe(user['country_name'])}\n"
+            f"📍 {_safe(region)}\n\n"
+            "Личные уведомления включены. Их всегда можно отключить в профиле."
+        )
+        pending = payload.get("pending")
+        if pending and pending.get("type") == "register":
+            return await self.register(chat_id, user, int(pending["broadcast_id"]))
+        if pending and pending.get("type") == "profile":
+            return await self._show_profile10(chat_id, user)
+        await self.send_menu(chat_id, user, "Готово")
+
+    async def _show_profile10(self, chat_id: int, user) -> None:
+        name = user["registration_name"] or " ".join(
+            x for x in [user["first_name"], user["last_name"]] if x
+        ).strip() or "—"
+        region = user["region_name"] or user["city"] or "—"
+        role_line = ""
+        if user["role"] != "viewer":
+            role_line = f"\n🛡 Роль: {_safe(user['role'])}"
+        await self.bot.send_message(
+            chat_id,
+            "<b>👤 Профиль</b>\n\n"
+            f"Имя: <b>{_safe(name)}</b>\n"
+            f"Возраст: <b>{_safe(user['age'] or '—')}</b>\n"
+            f"Email: <b>{_safe(user['email'] or '—')}</b>\n"
+            f"Страна: <b>{_safe(user['country_name'] or '—')}</b>\n"
+            f"Регион: <b>{_safe(region)}</b>\n"
+            f"Уведомления: {'включены ✅' if user['telegram_opt_in'] else 'выключены'}"
+            + role_line,
+            reply_markup=_kb(
+                [
+                    [("✏️ Изменить данные", "simple:profile:edit")],
+                    [("🔔 Уведомления", "notify:view"), ("🕒 Часовой пояс", "profile:tz")],
+                    [("⚙️ Дополнительно", "profile10:edit")],
+                    [("⬅️ Меню", "menu")],
+                ]
+            ),
+        )
+
+    async def _show_profile(self, chat_id: int, user) -> None:
+        await self._show_profile10(chat_id, user)
 
     def _quick_keyboard(self, role: str) -> ReplyKeyboardMarkup:
         if role in {"admin", "owner"}:
@@ -35,12 +155,12 @@ class CommissionBotSimpleUX(CommissionBotHardened):
         elif role == "editor":
             rows = [
                 [KeyboardButton(text="➕ Создать"), KeyboardButton(text="👥 Люди")],
-                [KeyboardButton(text="📅 События"), KeyboardButton(text="🎟 Мои заявки")],
+                [KeyboardButton(text="📅 Мероприятия"), KeyboardButton(text="🎟 Мои регистрации")],
                 [KeyboardButton(text="⚙️ Ещё")],
             ]
         else:
             rows = [
-                [KeyboardButton(text="📅 События"), KeyboardButton(text="🎟 Мои заявки")],
+                [KeyboardButton(text="📅 Мероприятия"), KeyboardButton(text="🎟 Мои регистрации")],
                 [KeyboardButton(text="💬 Связаться"), KeyboardButton(text="👤 Профиль")],
                 [KeyboardButton(text="⚙️ Ещё")],
             ]
@@ -53,7 +173,14 @@ class CommissionBotSimpleUX(CommissionBotHardened):
 
     async def send_menu(self, chat_id: int, user, text: str = "Главное меню"):
         role = user["role"]
-        lines = [f"<b>{html.escape(text)}</b>"]
+        if role in {"admin", "owner"}:
+            lines = ["<b>Центр управления</b>", "Создание, согласование, участники и аналитика."]
+        elif role == "editor":
+            lines = ["<b>МОЛОДЁЖЬ ВКСРС</b>", "Публикации, мероприятия и работа с участниками."]
+        else:
+            lines = ["<b>МОЛОДЁЖЬ ВКСРС</b>", "Мероприятия, возможности и твои регистрации."]
+        if text not in {"Главное меню", "Выберите действие:"} and not text.startswith("Добро пожаловать"):
+            lines += ["", html.escape(text)]
         try:
             if role in {"admin", "owner"}:
                 pending = await self.fetchrow("SELECT COUNT(*) n FROM broadcasts WHERE status='pending'")
@@ -106,7 +233,7 @@ class CommissionBotSimpleUX(CommissionBotHardened):
     async def _show_more_hub(self, chat_id: int, user) -> None:
         role = user["role"]
         rows = [
-            [("📅 События", "simple:more:events"), ("🎟 Мои заявки", "simple:more:regs")],
+            [("📅 Мероприятия", "simple:more:events"), ("🎟 Мои регистрации", "simple:more:regs")],
             [("👤 Профиль", "simple:more:profile"), ("❓ Помощь", "simple:more:help")],
         ]
         if role in {"admin", "owner"}:
@@ -380,6 +507,116 @@ class CommissionBotSimpleUX(CommissionBotHardened):
 
     def _register_handlers(self):
         r = self.router
+
+        @r.message(F.chat.type == ChatType.PRIVATE)
+        async def simple_onboarding_inputs(m: Message):
+            user = await self.ensure_user(m.from_user)
+            st = await self.state_get(user["telegram_id"])
+            if not st or not str(st["state"]).startswith("onboard:"):
+                raise SkipHandler
+            state = str(st["state"])
+            payload = dict(st["payload"] or {})
+            text = (m.text or "").strip()
+            if text in {"/start", "/menu", "/cancel"}:
+                raise SkipHandler
+
+            if state == "onboard:name":
+                if len(text) < 2 or len(text) > 180:
+                    return await m.answer("Напиши имя и фамилию текстом, например: <code>Анна Иванова</code>.")
+                parts = text.split()
+                first_name = parts[0]
+                last_name = " ".join(parts[1:]) or None
+                await self.execute(
+                    """UPDATE users SET registration_name=$2,first_name=$3,last_name=$4,updated_at=NOW()
+                    WHERE telegram_id=$1""",
+                    user["telegram_id"],
+                    text,
+                    first_name,
+                    last_name,
+                )
+                await self.state_set(user["telegram_id"], "onboard:age", payload)
+                return await m.answer(
+                    "<b>Регистрация · 2/5</b>\n\n"
+                    "<b>Возраст</b>\nНапиши только число, например: <code>24</code>."
+                )
+
+            if state == "onboard:age":
+                try:
+                    age = int(text)
+                except ValueError:
+                    return await m.answer("Возраст нужен числом, например: <code>24</code>.")
+                if age < 12 or age > 100:
+                    return await m.answer("Проверь возраст и введи число от 12 до 100.")
+                await self.execute(
+                    "UPDATE users SET age=$2,updated_at=NOW() WHERE telegram_id=$1",
+                    user["telegram_id"],
+                    age,
+                )
+                await self.state_set(user["telegram_id"], "onboard:email", payload)
+                return await m.answer(
+                    "<b>Регистрация · 3/5</b>\n\n"
+                    "<b>Email</b>\nНапример: <code>name@example.com</code>."
+                )
+
+            if state == "onboard:email":
+                email = text.lower()
+                if len(email) > 180 or not _EMAIL_RE.fullmatch(email):
+                    return await m.answer("Похоже, в email есть ошибка. Проверь адрес и отправь ещё раз.")
+                await self.execute(
+                    "UPDATE users SET email=$2,updated_at=NOW() WHERE telegram_id=$1",
+                    user["telegram_id"],
+                    email,
+                )
+                await self.state_set(user["telegram_id"], "onboard:country_text", payload)
+                return await m.answer(
+                    "<b>Регистрация · 4/5</b>\n\n"
+                    "<b>Страна</b>\nНапиши свою страну текстом, например: <code>Армения</code>."
+                )
+
+            if state == "onboard:country_text":
+                code = _country_code_from_text(text)
+                if not code:
+                    return await m.answer(
+                        "Не смог точно определить страну. Напиши полное название, например: "
+                        "<code>Армения</code>, <code>Россия</code>, <code>Казахстан</code>."
+                    )
+                await self.execute(
+                    "UPDATE users SET country_code=$2,country_name=$3,updated_at=NOW() WHERE telegram_id=$1",
+                    user["telegram_id"],
+                    code,
+                    _country_label(code),
+                )
+                payload["country_code"] = code
+                await self.state_set(user["telegram_id"], "onboard:region_text", payload)
+                return await m.answer(
+                    "<b>Регистрация · 5/5</b>\n\n"
+                    f"Страна: <b>{_safe(_country_label(code))}</b> ✅\n\n"
+                    "<b>Регион / город</b>\n"
+                    "Напиши вручную, например: <code>Ереван</code> или <code>Московская область</code>."
+                )
+
+            if state == "onboard:region_text":
+                if len(text) < 2 or len(text) > 120:
+                    return await m.answer("Напиши регион или город текстом.")
+                await self.execute(
+                    """UPDATE users SET region_name=$2,city=$2,updated_at=NOW()
+                    WHERE telegram_id=$1""",
+                    user["telegram_id"],
+                    text,
+                )
+                return await self._finish_simple_onboarding(
+                    m.chat.id,
+                    user["telegram_id"],
+                    payload,
+                )
+
+            raise SkipHandler
+
+        @r.callback_query(F.data == "simple:profile:edit")
+        async def simple_profile_edit(c: CallbackQuery):
+            await c.answer()
+            user = await self.ensure_user(c.from_user)
+            await self.start_onboarding(c.message.chat.id, user, {"type": "profile"})
 
         @r.message(F.chat.type == ChatType.PRIVATE)
         async def simple_main_buttons(m: Message):

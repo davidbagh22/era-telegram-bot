@@ -28,6 +28,7 @@ ENGAGEMENT_DDL = r"""
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE users ADD COLUMN IF NOT EXISTS monthly_survey_opt_in BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS activity_level TEXT NOT NULL DEFAULT 'new';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS region_name TEXT;
 ALTER TABLE targets ADD COLUMN IF NOT EXISTS geography_scope TEXT NOT NULL DEFAULT 'country';
 ALTER TABLE targets ADD COLUMN IF NOT EXISTS region_code TEXT;
 ALTER TABLE targets ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'general';
@@ -929,7 +930,16 @@ class CommissionBotEngagement(CommissionBotAnalytics):
 
         @r.callback_query(F.data == "tg:guide")
         async def target_guide(c: CallbackQuery):
-            await c.answer(); await c.message.answer("<b>Как подключить чат или канал</b>\n\n1. Добавь @MVKSRS_bot в группу или канал.\n2. Выдай права администратора. Для канала обязательно разреши публикацию сообщений.\n3. Вернись сюда → 📣 Чаты и каналы.\n4. Новый объект будет отмечен 🟡.\n5. Укажи сеть, географию, назначение и при необходимости теги.\n6. Нажми «Подтвердить».\n\nПосле этого чат становится доступен для точной сегментированной рассылки.")
+            await c.answer()
+            await c.message.answer(
+                "<b>Как подключить площадку</b>\n\n"
+                "1. Добавь <b>@MVKSRS_bot</b> в группу или канал и выдай права администратора.\n"
+                "2. В канале обязательно разреши публикацию сообщений.\n"
+                "3. В личном чате открой <b>⚙️ Ещё → 📣 Площадки → Подключить площадку</b>.\n"
+                "4. Выбери группу или канал — бот сам проверит права и добавит площадку.\n"
+                "5. Укажи географию и назначение, затем нажми <b>«Подтвердить и включить»</b>.\n\n"
+                "Если автоопределение не сработало в группе, отправь там <code>/connect</code>."
+            )
 
         @r.callback_query(F.data.startswith("tg:open:"))
         async def target_open(c: CallbackQuery):
