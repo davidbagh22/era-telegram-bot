@@ -7,7 +7,16 @@ import logging
 import os
 
 from aiogram import F
-from aiogram.types import CallbackQuery
+from aiogram.enums import ChatMemberStatus, ChatType
+from aiogram.filters import Command
+from aiogram.types import (
+    CallbackQuery,
+    KeyboardButton,
+    KeyboardButtonRequestChat,
+    Message,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 
 from app.commission_bot import _kb
 from app.commission_bot_engagement import (
@@ -211,6 +220,98 @@ class CommissionBotHardened(CommissionBotResilient):
             _kb(rows),
         )
 
+    async def _sync_target(self, chat_id: int, actor_id: int | None = None):
+        """Verify a Telegram chat/channel directly and upsert it as a distribution target."""
+        try:
+            chat = await self.bot.get_chat(chat_id)
+            if chat.type not in {ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL}:
+                return None
+            me = await self.bot.get_me()
+            membership = await self.bot.get_chat_member(chat_id, me.id)
+            status = membership.status
+            if chat.type == ChatType.CHANNEL:
+                can_post = status == ChatMemberStatus.ADMINISTRATOR and bool(
+                    getattr(membership, "can_post_messages", False)
+                )
+            else:
+                can_post = status == ChatMemberStatus.ADMINISTRATOR
+
+            row = await self.fetchrow(
+                """INSERT INTO targets(
+                    chat_id,title,username,target_type,status,bot_can_post,added_by,updated_at
+                )
+                VALUES($1,$2,$3,$4,'pending',$5,$6,NOW())
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    title=EXCLUDED.title,
+                    username=EXCLUDED.username,
+                    target_type=EXCLUDED.target_type,
+                    bot_can_post=EXCLUDED.bot_can_post,
+                    status=CASE
+                        WHEN targets.status='approved' AND EXCLUDED.bot_can_post THEN 'approved'
+                        ELSE 'pending'
+                    END,
+                    updated_at=NOW()
+                RETURNING *""",
+                chat.id,
+                chat.title or str(chat.id),
+                chat.username,
+                chat.type.value,
+                can_post,
+                actor_id,
+            )
+            log.info(
+                "Commission target synced chat=%s type=%s can_post=%s status=%s",
+                chat.id,
+                chat.type.value,
+                can_post,
+                row["status"] if row else None,
+            )
+            return row
+        except Exception:
+            log.exception("Commission target sync failed chat=%s", chat_id)
+            return None
+
+    def _target_connect_keyboard(self) -> ReplyKeyboardMarkup:
+        return ReplyKeyboardMarkup(
+            keyboard=[
+                [
+                    KeyboardButton(
+                        text="➕ Выбрать группу",
+                        request_chat=KeyboardButtonRequestChat(
+                            request_id=884201,
+                            chat_is_channel=False,
+                            bot_is_member=True,
+                        ),
+                    )
+                ],
+                [
+                    KeyboardButton(
+                        text="➕ Выбрать канал",
+                        request_chat=KeyboardButtonRequestChat(
+                            request_id=884202,
+                            chat_is_channel=True,
+                            bot_is_member=True,
+                        ),
+                    )
+                ],
+                [KeyboardButton(text="⬅️ Отмена")],
+            ],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+            input_field_placeholder="Выбери площадку",
+        )
+
+    async def _show_target_connector(self, chat_id: int) -> None:
+        await self.bot.send_message(
+            chat_id,
+            "<b>Подключить площадку</b>\n\n"
+            "1. Добавь <b>@MVKSRS_bot</b> в нужную группу или канал.\n"
+            "2. Выдай боту права администратора. В канале обязательно разреши публикацию сообщений.\n"
+            "3. Нажми кнопку ниже и выбери уже добавленную площадку.\n\n"
+            "Бот проверит права напрямую и сразу добавит площадку в список.",
+            reply_markup=self._target_connect_keyboard(),
+        )
+
     async def _show_targets(self, c: CallbackQuery) -> None:
         user = await self.ensure_user(c.from_user)
         if user["role"] not in {"admin", "owner"}:
@@ -226,15 +327,18 @@ class CommissionBotHardened(CommissionBotResilient):
         for target in targets:
             icon = "🟡" if target["status"] == "pending" else "🟢" if target["status"] == "approved" and target["bot_can_post"] else "🔴"
             buttons.append([(f"{icon} {str(target['title'])[:44]}", f"tg:open:{target['chat_id']}")])
-        buttons += [[("🔄 Обновить", "tg:list"), ("➕ Как подключить", "tg:guide")], [("⬅️ Управление", "menu")]]
+        buttons += [
+            [("➕ Подключить площадку", "tg:connect"), ("🔄 Обновить", "tg:list")],
+            [("❓ Инструкция", "tg:guide"), ("⬅️ Меню", "menu")],
+        ]
         text = (
             "<b>📣 Площадки рассылки</b>\n\n"
             f"🟢 Готово: <b>{approved}</b> · 🟡 Настроить: <b>{pending}</b> · 🔴 Нет прав: <b>{blocked}</b>\n\n"
         )
         if not targets:
             text += (
-                "Пока ни одного чата или канала не обнаружено. Добавь <b>@MVKSRS_bot</b> администратором в нужную площадку, затем нажми «Обновить». "
-                "Личные рассылки участникам работают независимо от этого."
+                "Пока площадок нет. Нажми <b>«Подключить площадку»</b> и выбери группу или канал — "
+                "бот проверит права напрямую. Личные рассылки участникам работают независимо."
             )
         else:
             text += "Сначала настрой 🟡 площадки. В рассылку попадают только 🟢 подтверждённые площадки с правом публикации."
@@ -395,6 +499,87 @@ class CommissionBotHardened(CommissionBotResilient):
                 p.setdefault("segment", {}).setdefault("target_networks", ["commission"])
             await self._show_segment_builder(c.message.chat.id, c.from_user.id, p)
 
+        @r.my_chat_member()
+        async def target_membership_sync(up):
+            if up.chat.type not in {ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL}:
+                return
+            status = up.new_chat_member.status
+            if status in {ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER}:
+                row = await self._sync_target(
+                    up.chat.id,
+                    up.from_user.id if up.from_user else None,
+                )
+                if row:
+                    admins = await self.fetch("SELECT telegram_id FROM users WHERE role IN ('admin','owner')")
+                    for admin in admins:
+                        try:
+                            await self.bot.send_message(
+                                admin["telegram_id"],
+                                f"Новая площадка найдена: <b>{html.escape(str(row['title']))}</b>",
+                                reply_markup=_kb([[("Настроить", f"tg:open:{row['chat_id']}")]]),
+                            )
+                        except Exception:
+                            pass
+                return
+            if status in {ChatMemberStatus.LEFT, ChatMemberStatus.KICKED}:
+                await self.execute(
+                    "UPDATE targets SET status='disabled',bot_can_post=FALSE,updated_at=NOW() WHERE chat_id=$1",
+                    up.chat.id,
+                )
+                log.info("Commission target disabled chat=%s", up.chat.id)
+
+        @r.message(Command("connect"))
+        async def connect_current_chat(m: Message):
+            if m.chat.type == ChatType.PRIVATE:
+                user = await self.ensure_user(m.from_user)
+                if user["role"] not in {"admin", "owner"}:
+                    return await m.answer("Подключать площадки может администратор.")
+                return await self._show_target_connector(m.chat.id)
+            if m.chat.type not in {ChatType.GROUP, ChatType.SUPERGROUP}:
+                return
+            row = await self._sync_target(m.chat.id, m.from_user.id if m.from_user else None)
+            if not row:
+                return await m.answer("Не удалось проверить площадку. Проверь, что бот добавлен администратором.")
+            await m.answer(
+                "Площадка найдена ✅\n"
+                + ("Права публикации есть." if row["bot_can_post"] else "Нужно выдать боту права администратора.")
+                + "\nНастрой и подтверди её в личном чате с ботом → ⚙️ Ещё → 📣 Площадки."
+            )
+
+        @r.channel_post(F.text.startswith("/connect"))
+        async def connect_current_channel(m: Message):
+            row = await self._sync_target(m.chat.id, None)
+            if row:
+                log.info("Commission channel connected via /connect chat=%s", m.chat.id)
+
+        @r.message(F.chat.type == ChatType.PRIVATE, F.chat_shared)
+        async def target_chat_shared(m: Message):
+            user = await self.ensure_user(m.from_user)
+            if user["role"] not in {"admin", "owner"}:
+                return
+            shared = m.chat_shared
+            if not shared:
+                return
+            row = await self._sync_target(shared.chat_id, user["telegram_id"])
+            await m.answer("Проверяю площадку…", reply_markup=ReplyKeyboardRemove())
+            if not row:
+                return await m.answer(
+                    "Не удалось подключить площадку. Убедись, что <b>@MVKSRS_bot</b> уже добавлен туда администратором."
+                )
+            status = "права публикации есть ✅" if row["bot_can_post"] else "нет нужных прав 🔴"
+            await m.answer(
+                f"<b>{html.escape(str(row['title']))}</b>\n{status}",
+                reply_markup=_kb([[("Настроить площадку", f"tg:open:{row['chat_id']}")], [("📣 Все площадки", "tg:list")]]),
+            )
+
+        @r.callback_query(F.data == "tg:connect")
+        async def target_connect(c: CallbackQuery):
+            await c.answer()
+            user = await self.ensure_user(c.from_user)
+            if user["role"] not in {"admin", "owner"}:
+                return
+            await self._show_target_connector(c.message.chat.id)
+
         @r.callback_query(F.data == "tg:list")
         async def target_list(c: CallbackQuery):
             await c.answer()
@@ -474,10 +659,17 @@ class CommissionBotHardened(CommissionBotResilient):
             await self.bot.set_my_short_description("Мероприятия • регистрация • команда • аналитика")
             await self.bot.delete_webhook(drop_pending_updates=False)
             scheduler_task = asyncio.create_task(self.reminders_loop())
-            log.info("Commission singleton poller lock acquired; starting polling")
+            allowed_updates = sorted(
+                set(self.dp.resolve_used_update_types())
+                | {"message", "callback_query", "my_chat_member", "channel_post"}
+            )
+            log.info(
+                "Commission singleton poller lock acquired; starting polling updates=%s",
+                ",".join(allowed_updates),
+            )
             await self.dp.start_polling(
                 self.bot,
-                allowed_updates=self.dp.resolve_used_update_types(),
+                allowed_updates=allowed_updates,
             )
         finally:
             if scheduler_task is not None:
