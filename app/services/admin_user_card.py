@@ -169,14 +169,20 @@ async def build_admin_user_card(
     base = [
         ("Имя", _name(target)),
         ("Telegram", _telegram(target)),
-        ("Дата рождения", _date_text(getattr(target, "birth_date", None))),
-        ("Возраст", str(target.age) if target.age else None),
-        ("Несовершеннолетний (по анкете)", _minor_label(target.age)),
-        ("Страна", getattr(target, "country", None)),
-        ("Регион / город", getattr(target, "region", None) or target.city),
-        ("Телефон", target.phone),
-        ("Email", target.email),
     ]
+    if getattr(target, "birth_date", None):
+        base.append(("Дата рождения", _date_text(target.birth_date)))
+    base.extend(
+        [
+            ("Возраст", str(target.age) if target.age else None),
+            ("Несовершеннолетний (по анкете)", _minor_label(target.age)),
+            ("Страна", getattr(target, "country", None)),
+            ("Регион / город", getattr(target, "region", None) or target.city),
+            ("Email", target.email),
+        ]
+    )
+    if target.phone:
+        base.append(("Телефон", target.phone))
     structure = [
         ("Роль", _label(ROLE_LABELS, target.role)),
         ("Статус", _label(STATUS_LABELS, target.participation_status)),
@@ -221,9 +227,8 @@ async def build_admin_user_card(
         title = f"👤 Участник #{target.id}"
         extra = f"\n\nСоцсети\n{social_text}"
         reply_markup = admin_user_actions(target.id)
-    photo_note = "" if photo_file_id else "\nФото: не загружено"
     text = (
-        f"{title}{photo_note}\n\n"
+        f"{title}\n\n"
         + _lines("Профиль", base)
         + "\n\n"
         + _lines("ЭРА", structure)
