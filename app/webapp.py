@@ -136,6 +136,41 @@ async def _configure_command_scopes(bot, settings) -> None:
         await bot.set_my_commands(ADMIN_COMMANDS, scope=BotCommandScopeChat(chat_id=admin_id))
 
 
+async def _restore_era_user_after_reset(engine) -> None:
+    """Repair the ERA profile affected by the mistaken maintenance reset."""
+    raw_telegram_id = os.environ.get("ERA_RESTORE_TELEGRAM_ID", "").strip()
+    if not raw_telegram_id:
+        return
+    try:
+        telegram_id = int(raw_telegram_id)
+    except ValueError:
+        logger.error("ERA_RESTORE_TELEGRAM_ID is not a valid integer")
+        return
+    synthetic_id = -(telegram_id * 1000000 + 10)
+    async with engine.begin() as connection:
+        row = (
+            await connection.execute(
+                text(
+                    """
+                    UPDATE public.users
+                    SET telegram_id = :telegram_id,
+                        is_archived = FALSE,
+                        archived_at = NULL,
+                        archived_by = NULL,
+                        updated_at = NOW()
+                    WHERE id = 10
+                      AND telegram_id = :synthetic_id
+                      AND username = 'davidbs2'
+                    RETURNING id
+                    """
+                ),
+                {"telegram_id": telegram_id, "synthetic_id": synthetic_id},
+            )
+        ).first()
+    if row:
+        logger.warning("ERA user state restored after maintenance reset")
+
+
 async def _apply_commission_user_reset(engine) -> None:
     """Delete a Commission test profile so that Telegram account can onboard again."""
     raw_telegram_id = os.environ.get("COMMISSION_RESET_TELEGRAM_ID", "").strip()
@@ -294,6 +329,7 @@ async def lifespan(app: FastAPI):
     app.state.scheduler = scheduler
     app.state.bot_diagnostics = {"error": "webhook_not_configured"}
 
+    await _restore_era_user_after_reset(engine)
     await _apply_commission_user_reset(engine)
 
     commission_task = asyncio.create_task(
