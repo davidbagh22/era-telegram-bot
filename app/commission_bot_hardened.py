@@ -365,28 +365,24 @@ class CommissionBotHardened(CommissionBotResilient):
         rights_ok = bool(target["bot_can_post"])
         ready = network_ok and geo_ok and purpose_ok and rights_ok
         checklist = (
-            f"{'✅' if rights_ok else '❌'} право публикации\n"
-            f"{'✅' if network_ok else '❌'} сеть\n"
-            f"{'✅' if geo_ok else '❌'} география\n"
-            f"{'✅' if purpose_ok else '❌'} назначение"
+            f"{'✅' if rights_ok else '❌'} права бота\n"
+            f"{'✅' if geo_ok else '❌'} география"
         )
         text = (
             f"<b>{html.escape(str(target['title']))}</b>\n\n"
-            f"Статус: <b>{'готова 🟢' if target['status']=='approved' and ready else 'нужна настройка 🟡'}</b>\n"
-            f"Сеть: {_NETWORKS.get(target['network'], target['network'])}\n"
-            f"География: {geo}\n"
-            f"Назначение: {TARGET_PURPOSES.get(target['purpose'], target['purpose'])}\n"
-            f"Теги: {', '.join(TARGET_TAGS.get(x, x) for x in tags) or '—'}\n\n"
-            f"<b>Проверка готовности</b>\n{checklist}"
+            f"{checklist}\n\n"
+            f"🌍 {geo}\n"
+            f"🔗 {_NETWORKS.get(target['network'], target['network'])}\n"
+            f"🧭 {TARGET_PURPOSES.get(target['purpose'], target['purpose'])}"
         )
-        rows = [
-            [("1️⃣ Сеть", f"tg:nets:{target_id}"), ("2️⃣ География", f"tg:geo:{target_id}")],
-            [("3️⃣ Назначение", f"tg:purpose:{target_id}"), ("4️⃣ Теги", f"tg:tags:{target_id}")],
-        ]
+        if tags:
+            text += f"\n🏷 {', '.join(TARGET_TAGS.get(x, x) for x in tags)}"
+        rows = [[("🌍 Выбрать географию", f"tg:geo:{target_id}")]]
         if ready:
-            rows.append([("✅ Подтвердить и включить", f"tg:approve:{target_id}")])
-        else:
-            rows.append([("⚠️ Сначала завершить настройку", "seg:nop")])
+            rows.append([("✅ Включить площадку", f"tg:approve:{target_id}")])
+        elif not rights_ok:
+            rows.append([("🔄 Проверить права", f"tg:refresh:{target_id}")])
+        rows.append([("⚙️ Дополнительно", f"tg:advanced:{target_id}")])
         rows.append([("⬅️ К площадкам", "tg:list")])
         await self._edit_or_send(c, text, _kb(rows))
 
@@ -584,6 +580,38 @@ class CommissionBotHardened(CommissionBotResilient):
         async def target_list(c: CallbackQuery):
             await c.answer()
             await self._show_targets(c)
+
+        @r.callback_query(F.data.startswith("tg:advanced:"))
+        async def target_advanced(c: CallbackQuery):
+            await c.answer()
+            try:
+                target_id = int(c.data.split(":", 2)[2])
+            except Exception:
+                return
+            await self._edit_or_send(
+                c,
+                "<b>Дополнительные настройки</b>\n\n"
+                "Обычно их менять не нужно: сеть «Комиссия», назначение «Общее».",
+                _kb(
+                    [
+                        [("🔗 Сеть", f"tg:nets:{target_id}"), ("🧭 Назначение", f"tg:purpose:{target_id}")],
+                        [("🏷 Теги", f"tg:tags:{target_id}")],
+                        [("⬅️ К площадке", f"tg:open:{target_id}")],
+                    ]
+                ),
+            )
+
+        @r.callback_query(F.data.startswith("tg:refresh:"))
+        async def target_refresh_rights(c: CallbackQuery):
+            await c.answer()
+            try:
+                target_id = int(c.data.split(":", 2)[2])
+            except Exception:
+                return
+            row = await self._sync_target(target_id, c.from_user.id)
+            if not row:
+                return await c.message.answer("Не удалось проверить права. Убедись, что бот всё ещё находится в площадке.")
+            await self._show_target_card(c, target_id)
 
         @r.callback_query(F.data.startswith("tg:open:"))
         async def target_open(c: CallbackQuery):
