@@ -1,8 +1,10 @@
 import logging
 from datetime import datetime, timedelta
+from html import escape
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
@@ -15,6 +17,7 @@ from app.database.models import (
     EventRegistration,
     Project,
     Task,
+    TaskDelivery,
     TaskParticipant,
     User,
 )
@@ -372,6 +375,55 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
                     notification_type="task_reminder",
                 )
                 completed_recipients += int(sent)
+
+            # The Leaders workspace has one authoritative task card per
+            # group/topic. Keep its thread members in the same reminder loop
+            # as private recipients, with durable per-card stage tracking.
+            leader_deliveries = (
+                await session.scalars(
+                    select(TaskDelivery).where(
+                        TaskDelivery.task_id == task.id,
+                        TaskDelivery.chat_key == "leaders",
+                        TaskDelivery.status == "sent",
+                        TaskDelivery.remind_at.is_not(None),
+                        TaskDelivery.remind_at <= now,
+                        TaskDelivery.reminder_count < 5,
+                    )
+                )
+            ).all()
+            for delivery in leader_deliveries:
+                assignee = await session.get(User, task.assignee_id) if task.assignee_id else None
+                label = escape(
+                    f"{assignee.first_name} {assignee.last_name or ''}".strip()
+                    if assignee
+                    else "Исполнитель"
+                )
+                mention = (
+                    f"@{escape(assignee.username)}"
+                    if assignee and assignee.username
+                    else (
+                        f'<a href="tg://user?id={assignee.telegram_id}">{label}</a>'
+                        if assignee
+                        else label
+                    )
+                )
+                stage = delivery.reminder_count + 1
+                try:
+                    await bot.send_message(
+                        chat_id=delivery.chat_id,
+                        message_thread_id=delivery.message_thread_id,
+                        text=(
+                            f"⏳ <b>Напоминание по задаче #{task.id} · {stage}/5</b>\n"
+                            f"{mention}, срок: {task.deadline:%d.%m.%Y %H:%M}.\n"
+                            f"Задача: {escape(task.title)}"
+                        ),
+                        parse_mode="HTML",
+                    )
+                except TelegramAPIError as exc:
+                    logger.warning("Could not send Leaders reminder for task %s: %s", task.id, exc)
+                    continue
+                delivery.reminder_count = stage
+                delivery.remind_at = now + timedelta(days=1) if stage < 5 else None
 
             if expected_recipients and completed_recipients < expected_recipients:
                 continue
