@@ -185,46 +185,6 @@ async def _ensure_commission_owner(engine) -> None:
             await asyncio.sleep(1)
 
 
-async def _apply_one_time_reregistration_reset(engine) -> None:
-    """Detach one ERA Telegram identity so the same person can test registration again.
-
-    The historical user row is archived and assigned a synthetic Telegram ID instead
-    of being hard-deleted because production audit/content records reference its
-    internal user ID.
-    """
-    raw_telegram_id = os.environ.get("ERA_REREGISTRATION_RESET_TELEGRAM_ID", "").strip()
-    if not raw_telegram_id:
-        return
-    try:
-        telegram_id = int(raw_telegram_id)
-    except ValueError:
-        logger.error("ERA_REREGISTRATION_RESET_TELEGRAM_ID is not a valid integer")
-        return
-
-    async with engine.begin() as connection:
-        row = (
-            await connection.execute(
-                text(
-                    """
-                    UPDATE public.users
-                    SET telegram_id = -(telegram_id * 1000000 + id),
-                        is_archived = TRUE,
-                        archived_at = NOW(),
-                        archived_by = NULL,
-                        updated_at = NOW()
-                    WHERE telegram_id = :telegram_id
-                    RETURNING id
-                    """
-                ),
-                {"telegram_id": telegram_id},
-            )
-        ).first()
-    if row:
-        logger.warning("ERA user detached for re-registration: user_id=%s", row[0])
-    else:
-        logger.info("ERA re-registration reset found no active Telegram identity")
-
-
 def _log_commission_task_result(task: asyncio.Task) -> None:
     if task.cancelled():
         return
@@ -258,7 +218,6 @@ async def lifespan(app: FastAPI):
     async with session_factory() as session:
         await seed_reference_data(session, settings)
 
-    await _apply_one_time_reregistration_reset(engine)
 
     bot = create_bot(settings)
     dispatcher = create_dispatcher(settings, session_factory)
