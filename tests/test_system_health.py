@@ -120,6 +120,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "system-heartbeat",
                 "system-full-diagnostic",
                 "system-daily-summary",
+                "office-vacancy-reconciliation",
                 "configured-event-reminders",
                 "event-wizard-task-sync",
                 "project-scoring-reconciliation",
