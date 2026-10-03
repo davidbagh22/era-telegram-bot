@@ -40,15 +40,6 @@ const ITEM_TYPES: Array<{ value: string; label: string }> = [
   { value: "other", label: "Другое" },
 ];
 
-const PURPOSES: Array<{ value: CareerPurpose; label: string; description: string }> = [
-  { value: "universal", label: "Универсальное", description: "Сбалансированная версия" },
-  { value: "work", label: "Работа", description: "Опыт → проекты → навыки" },
-  { value: "internship", label: "Стажировка", description: "Образование → проекты → практика" },
-  { value: "university", label: "Университет", description: "Образование → достижения → проекты" },
-  { value: "grant", label: "Грант / конкурс", description: "Результаты → влияние → лидерство" },
-  { value: "volunteer", label: "Волонтёрская программа", description: "Социальный вклад → проекты" },
-];
-
 const STATUS_META: Record<string, { label: string; mark: string }> = {
   self_reported: { label: "Добавлено участником", mark: "•" },
   pending: { label: "На проверке", mark: "◌" },
@@ -170,7 +161,7 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [form, setForm] = useState<CareerItemPayload>(EMPTY_FORM);
   const [profileDraft, setProfileDraft] = useState({ headline: "", about: "", languages: "" });
-  const [purpose, setPurpose] = useState<CareerPurpose>("universal");
+  const purpose: CareerPurpose = "universal";
   const [busyId, setBusyId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
