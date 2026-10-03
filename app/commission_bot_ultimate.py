@@ -11,7 +11,10 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-import qrcode
+try:
+    import qrcode
+except ImportError:  # optional legacy QR renderer; links still work without it
+    qrcode = None
 from aiogram import F
 from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.enums import ChatType
@@ -545,7 +548,10 @@ class CommissionBotUltimate(CommissionBotPlus):
             if not b:return
             token=b["checkin_token"] or secrets.token_urlsafe(12)
             if not b["checkin_token"]:await self.execute("UPDATE broadcasts SET checkin_token=$2 WHERE id=$1",bid,token)
-            me=await self.bot.get_me(); url=f"https://t.me/{me.username}?start=checkin_{bid}_{token}"; img=qrcode.make(url); buf=io.BytesIO(); img.save(buf,format="PNG")
+            me=await self.bot.get_me(); url=f"https://t.me/{me.username}?start=checkin_{bid}_{token}"
+            if qrcode is None:
+                return await c.message.answer(f"QR недоступен в этой версии. Ссылка для check-in:\n{url}")
+            img=qrcode.make(url); buf=io.BytesIO(); img.save(buf,format="PNG")
             await self.bot.send_photo(c.message.chat.id,BufferedInputFile(buf.getvalue(),filename=f"checkin_{bid}.png"),caption=f"<b>QR check-in</b>\n{_safe(b['title'])}\n\nПокажите QR участникам на входе.")
 
         @r.callback_query(F.data.startswith("regadmin:event:"))
