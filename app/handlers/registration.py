@@ -250,278 +250,202 @@ async def registration_start(
         )
         return
     await state.clear()
-    await state.set_state(RegistrationStates.first_name)
+    await state.set_state(RegistrationStates.full_name)
     await call.message.answer(texts.REGISTRATION_INTRO)
 
 
-@router.message(RegistrationStates.first_name)
-async def first_name(message: Message, state: FSMContext) -> None:
+def _split_full_name(value: str) -> tuple[str, str] | None:
+    parts = [item for item in value.split() if item]
+    if len(parts) < 2:
+        return None
+    return parts[0], " ".join(parts[1:])
+
+
+@router.message(RegistrationStates.full_name)
+async def registration_full_name(message: Message, state: FSMContext) -> None:
+    value = clean_text(message.text or "", 180)
+    parsed = _split_full_name(value or "")
+    if parsed is None:
+        await message.answer(texts.REG_FULL_NAME_ERROR)
+        return
+    first_name, last_name = parsed
+    await state.update_data(first_name=first_name, last_name=last_name)
+    await state.set_state(RegistrationStates.age)
+    await message.answer(texts.REG_AGE)
+
+
+@router.message(RegistrationStates.age)
+async def registration_age(message: Message, state: FSMContext) -> None:
+    value = parse_age(message.text or "")
+    if value is None:
+        await message.answer(texts.REG_AGE_ERROR)
+        return
+    await state.update_data(age=value, birth_date=None)
+    await state.set_state(RegistrationStates.country)
+    await message.answer(texts.REG_COUNTRY)
+
+
+@router.message(RegistrationStates.country)
+async def registration_country(message: Message, state: FSMContext) -> None:
     value = clean_text(message.text or "", 100)
     if not value:
-        await message.answer(texts.INVALID_INPUT)
+        await message.answer("Напишите название страны текстом.")
         return
-    await state.update_data(first_name=value)
-    await state.set_state(RegistrationStates.last_name)
-    await message.answer(texts.REG_LAST_NAME)
+    await state.update_data(country=value)
+    await state.set_state(RegistrationStates.region)
+    await message.answer(texts.REG_REGION)
 
 
-@router.message(RegistrationStates.last_name)
-async def last_name(message: Message, state: FSMContext) -> None:
-    value = clean_text(message.text or "", 100)
+@router.message(RegistrationStates.region)
+async def registration_region(message: Message, state: FSMContext) -> None:
+    value = clean_text(message.text or "", 120)
     if not value:
-        await message.answer(texts.INVALID_INPUT)
+        await message.answer("Напишите регион или город текстом.")
         return
-    await state.update_data(last_name=value)
-    await state.set_state(RegistrationStates.birth_date)
-    await message.answer(texts.REG_BIRTH_DATE)
-
-
-@router.message(RegistrationStates.birth_date)
-async def birth_date(message: Message, state: FSMContext) -> None:
-    value = parse_birth_date(message.text or "")
-    if value is None:
-        await message.answer(texts.REG_BIRTH_DATE_ERROR)
-        return
-    await state.update_data(birth_date=value.isoformat(), age=calculate_age(value))
-    await state.set_state(RegistrationStates.phone)
-    await message.answer(texts.REG_PHONE)
-
-
-@router.message(RegistrationStates.phone)
-async def phone(message: Message, state: FSMContext) -> None:
-    raw = message.contact.phone_number if message.contact else (message.text or "")
-    value = normalize_phone(raw)
-    if value is None:
-        await message.answer(texts.REG_PHONE_ERROR)
-        return
-    await state.update_data(phone=value)
+    await state.update_data(region=value, city=value)
     await state.set_state(RegistrationStates.email)
     await message.answer(texts.REG_EMAIL)
 
 
 @router.message(RegistrationStates.email)
-async def email(message: Message, state: FSMContext) -> None:
+async def registration_email(message: Message, state: FSMContext) -> None:
     value = normalize_email(message.text or "")
     if value is None:
         await message.answer(texts.REG_EMAIL_ERROR)
         return
     await state.update_data(email=value)
-    await state.set_state(RegistrationStates.city)
-    await message.answer(texts.REG_CITY)
-
-
-async def _save_text_and_advance(
-    message: Message,
-    state: FSMContext,
-    key: str,
-    next_state,
-    prompt: str,
-    max_length: int = 1000,
-) -> None:
-    value = clean_text(message.text or "", max_length)
-    if not value:
-        await message.answer(texts.INVALID_INPUT)
-        return
-    await state.update_data(**{key: value})
-    await state.set_state(next_state)
-    await message.answer(prompt)
-
-
-@router.message(RegistrationStates.city)
-async def city(message: Message, state: FSMContext) -> None:
-    await _save_text_and_advance(
-        message,
-        state,
-        "city",
-        RegistrationStates.education_work,
-        texts.REG_EDUCATION,
-        100,
-    )
+    await state.set_state(RegistrationStates.education_work)
+    await message.answer(texts.REG_EDUCATION)
 
 
 @router.message(RegistrationStates.education_work)
-async def education(message: Message, state: FSMContext) -> None:
-    await _save_text_and_advance(
-        message,
-        state,
-        "education_work",
-        RegistrationStates.occupation,
-        texts.REG_OCCUPATION,
-        255,
-    )
-
-
-@router.message(RegistrationStates.occupation)
-async def occupation(message: Message, state: FSMContext) -> None:
-    value = clean_text(message.text or "", 1000)
+async def registration_education(message: Message, state: FSMContext) -> None:
+    value = clean_text(message.text or "", 255)
     if not value:
         await message.answer(texts.INVALID_INPUT)
         return
-    await state.update_data(occupation=value)
-    await state.set_state(RegistrationStates.skills)
-    await message.answer(texts.REG_SKILLS)
-
-
-@router.message(RegistrationStates.skills)
-async def skills(message: Message, state: FSMContext) -> None:
-    values = _parse_skills(message.text or "")
-    if not values:
-        await message.answer(texts.INVALID_INPUT)
-        return
-    await state.update_data(skills=values)
-    await state.set_state(RegistrationStates.experience)
-    await message.answer(texts.REG_EXPERIENCE)
-
-
-@router.message(RegistrationStates.experience)
-async def experience(message: Message, state: FSMContext) -> None:
-    value = clean_text(message.text or "", 1500)
-    if not value:
-        await message.answer(texts.INVALID_INPUT)
-        return
-    await state.update_data(experience=value)
-    await state.set_state(RegistrationStates.department)
-    await message.answer(texts.REG_DEPARTMENT, reply_markup=department_keyboard())
-
-
-@router.callback_query(RegistrationStates.department, F.data.startswith("reg:dept:"))
-async def department(call: CallbackQuery, state: FSMContext) -> None:
-    await call.answer()
-    key = call.data.rsplit(":", 1)[-1]
-    if key not in DEPARTMENT_OPTIONS:
-        return
-    departments = {
-        "internal": ["Внутренние связи"],
-        "external": ["Внешние связи"],
-        "both": ["Внутренние связи", "Внешние связи"],
-        "unsure": [],
-    }[key]
-    prompt = {
-        "internal": texts.REG_INTERNAL,
-        "external": texts.REG_EXTERNAL,
-        "both": texts.REG_BOTH,
-        "unsure": texts.REG_UNSURE,
-    }[key]
-    await state.update_data(
-        department_scope=key,
-        departments=departments,
-        selected_directions=[],
-    )
+    await state.update_data(education_work=value, occupation=value, selected_directions=[])
     await state.set_state(RegistrationStates.directions)
-    await call.message.answer(
-        f"{prompt}\n\n{texts.REG_DIRECTION_HINT}",
-        reply_markup=directions_keyboard(key),
+    await message.answer(
+        texts.REG_DIRECTION_SIMPLE,
+        reply_markup=directions_keyboard("both"),
     )
 
 
 @router.callback_query(RegistrationStates.directions, F.data.startswith("reg:dir:"))
-async def directions(call: CallbackQuery, state: FSMContext) -> None:
+async def registration_directions(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     key = call.data.rsplit(":", 1)[-1]
     data = await state.get_data()
     selected = set(data.get("selected_directions", []))
+
     if key == "done":
         if not selected:
             await call.message.answer(texts.REG_DIRECTION_REQUIRED)
             return
         names = [DIRECTION_OPTIONS[item] for item in selected if item != "participate"]
-        departments = list(data.get("departments", []))
-        if not departments:
-            if any(item in selected for item in ("leadership", "culture", "interactive")):
-                departments.append("Внутренние связи")
-            if any(item in selected for item in ("international", "media", "social")):
-                departments.append("Внешние связи")
+        departments: list[str] = []
+        if any(item in selected for item in ("leadership", "culture", "interactive")):
+            departments.append("Внутренние связи")
+        if any(item in selected for item in ("international", "media", "social")):
+            departments.append("Внешние связи")
         await state.update_data(directions=names, departments=departments)
-        await state.set_state(RegistrationStates.available_time)
-        await call.message.answer(texts.REG_TIME, reply_markup=time_keyboard())
+        await state.set_state(RegistrationStates.experience)
+        await call.message.answer(texts.REG_EXPERIENCE_SIMPLE)
         return
+
     if key not in DIRECTION_OPTIONS:
         return
-    if key in selected:
-        selected.remove(key)
+    if key == "participate":
+        selected = {"participate"} if "participate" not in selected else set()
     else:
-        selected.add(key)
+        selected.discard("participate")
+        if key in selected:
+            selected.remove(key)
+        else:
+            selected.add(key)
     await state.update_data(selected_directions=list(selected))
     await call.message.edit_reply_markup(
-        reply_markup=directions_keyboard(data.get("department_scope", "both"), selected)
+        reply_markup=directions_keyboard("both", selected)
     )
+
+
+@router.message(RegistrationStates.experience)
+async def registration_experience(message: Message, state: FSMContext) -> None:
+    value = clean_text(message.text or "", 1200)
+    if not value:
+        await message.answer(texts.INVALID_INPUT)
+        return
+    await state.update_data(experience=value, skills=[])
+    await state.set_state(RegistrationStates.available_time)
+    await message.answer(texts.REG_TIME, reply_markup=time_keyboard())
 
 
 @router.callback_query(
     RegistrationStates.available_time,
     F.data.startswith("reg:time:"),
 )
-async def available_time(call: CallbackQuery, state: FSMContext) -> None:
+async def registration_available_time(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     key = call.data.rsplit(":", 1)[-1]
     if key not in TIME_VALUES:
         return
-    await state.update_data(available_time=TIME_VALUES[key])
-    await state.set_state(RegistrationStates.desired_path)
-    await call.message.answer(texts.REG_DESIRED_PATH, reply_markup=desired_path_keyboard())
-
-
-@router.callback_query(
-    RegistrationStates.desired_path,
-    F.data.startswith("reg:path:"),
-)
-async def desired_path(call: CallbackQuery, state: FSMContext) -> None:
-    await call.answer()
-    try:
-        value = PATHS[int(call.data.rsplit(":", 1)[-1])]
-    except (ValueError, IndexError):
-        return
-    await state.update_data(desired_path=value)
+    await state.update_data(available_time=TIME_VALUES[key], desired_path="Участник")
     await state.set_state(RegistrationStates.motivation)
     await call.message.answer(texts.REG_MOTIVATION)
 
 
+def _registration_review_text(data: dict) -> str:
+    directions = ", ".join(data.get("directions") or []) or "Пока просто участвовать"
+    return (
+        f"{texts.REG_REVIEW_TITLE}\n\n"
+        f"Имя: <b>{html.escape(f\"{data.get('first_name', '')} {data.get('last_name', '')}\".strip())}</b>\n"
+        f"Возраст: {html.escape(str(data.get('age') or '—'))}\n"
+        f"Страна: {html.escape(str(data.get('country') or '—'))}\n"
+        f"Регион / город: {html.escape(str(data.get('region') or '—'))}\n"
+        f"Email: {html.escape(str(data.get('email') or '—'))}\n"
+        f"Учёба / работа: {html.escape(str(data.get('education_work') or '—'))}\n"
+        f"Интересы: {html.escape(directions)}\n"
+        f"Время: {html.escape(str(data.get('available_time') or '—'))}\n\n"
+        f"<b>Опыт / чем полезны</b>\n{html.escape(str(data.get('experience') or '—'))}\n\n"
+        f"<b>Почему ЭРА</b>\n{html.escape(str(data.get('motivation') or '—'))}"
+    )
+
+
 @router.message(RegistrationStates.motivation)
-async def motivation(message: Message, state: FSMContext) -> None:
-    value = clean_text(message.text or "", 1500)
+async def registration_motivation(message: Message, state: FSMContext) -> None:
+    value = clean_text(message.text or "", 1200)
     if not value:
         await message.answer(texts.INVALID_INPUT)
         return
-    await state.update_data(motivation=value)
-    await state.set_state(RegistrationStates.profile_photo)
-    await message.answer(
-        "Отправьте фото для профиля.\n\nФото обязательно для регистрации в ЭРА."
-    )
-
-
-@router.message(RegistrationStates.profile_photo, F.photo)
-async def registration_photo(message: Message, state: FSMContext) -> None:
-    await state.update_data(profile_photo_file_id=message.photo[-1].file_id)
-    await state.set_state(RegistrationStates.social_url)
-    await message.answer(
-        "Отправьте ссылку на соцсеть: Telegram, Instagram, LinkedIn или сайт.\n\n"
-        "Ссылка обязательна для регистрации в ЭРА."
-    )
-
-
-@router.message(RegistrationStates.profile_photo)
-async def registration_photo_required(message: Message, state: FSMContext) -> None:
-    await message.answer(
-        "Фото обязательно. Отправьте реальное фото одним сообщением, "
-        "чтобы продолжить регистрацию."
-    )
-
-
-@router.message(RegistrationStates.social_url)
-async def registration_social(message: Message, state: FSMContext) -> None:
-    url = _normalize_url(message.text or "")
-    if url is None:
-        await message.answer(
-            "Ссылка на соцсеть обязательна. "
-            "Пример: t.me/username или instagram.com/name."
-        )
-        return
     await state.update_data(
-        social_url=url,
-        consent_policy_version=CURRENT_POLICY_VERSION,
+        motivation=value,
+        phone=None,
+        profile_photo_file_id=None,
+        social_url=None,
     )
+    data = await state.get_data()
+    await state.set_state(RegistrationStates.review)
+    await message.answer(
+        _registration_review_text(data),
+        reply_markup=registration_review_keyboard(),
+    )
+
+
+@router.callback_query(RegistrationStates.review, F.data == "reg:review:restart")
+async def registration_review_restart(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    await state.clear()
+    await state.set_state(RegistrationStates.full_name)
+    await call.message.answer(texts.REGISTRATION_INTRO)
+
+
+@router.callback_query(RegistrationStates.review, F.data == "reg:review:ok")
+async def registration_review_ok(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    await state.update_data(consent_policy_version=CURRENT_POLICY_VERSION)
     await state.set_state(RegistrationStates.consent)
-    await message.answer(CONSENT_SUMMARY, reply_markup=consent_keyboard())
+    await call.message.answer(CONSENT_SUMMARY, reply_markup=consent_keyboard())
 
 
 @router.callback_query(RegistrationStates.consent, F.data == "reg:consent:full")
