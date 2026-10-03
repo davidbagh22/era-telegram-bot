@@ -193,12 +193,14 @@ async def _apply_one_time_reregistration_reset(engine) -> None:
     internal user ID.
     """
     raw_telegram_id = os.environ.get("ERA_REREGISTRATION_RESET_TELEGRAM_ID", "").strip()
-    if not raw_telegram_id:
+    raw_user_id = os.environ.get("ERA_REREGISTRATION_RESET_USER_ID", "").strip()
+    if not raw_telegram_id or not raw_user_id:
         return
     try:
         telegram_id = int(raw_telegram_id)
+        user_id = int(raw_user_id)
     except ValueError:
-        logger.error("ERA_REREGISTRATION_RESET_TELEGRAM_ID is not a valid integer")
+        logger.error("ERA re-registration reset identifiers are not valid integers")
         return
 
     async with engine.begin() as connection:
@@ -212,11 +214,11 @@ async def _apply_one_time_reregistration_reset(engine) -> None:
                         archived_at = NOW(),
                         archived_by = NULL,
                         updated_at = NOW()
-                    WHERE telegram_id = :telegram_id
+                    WHERE id = :user_id AND telegram_id = :telegram_id
                     RETURNING id
                     """
                 ),
-                {"telegram_id": telegram_id},
+                {"user_id": user_id, "telegram_id": telegram_id},
             )
         ).first()
     if row:
