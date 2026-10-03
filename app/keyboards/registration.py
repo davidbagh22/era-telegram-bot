@@ -73,8 +73,6 @@ def time_keyboard() -> InlineKeyboardMarkup:
     values = (
         ("1–2 часа в неделю", "1-2"),
         ("3–5 часов в неделю", "3-5"),
-        ("1 час в день", "daily1"),
-        ("Несколько часов в день", "daily_more"),
         ("Готов активно включаться", "active"),
     )
     return InlineKeyboardMarkup(
@@ -138,6 +136,25 @@ def referral_code_keyboard(prefill: str | None = None) -> InlineKeyboardMarkup:
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
+
+
+def registration_review_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Всё верно",
+                    callback_data="reg:review:ok",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="↩️ Заполнить заново",
+                    callback_data="reg:review:restart",
+                )
+            ],
+        ]
+    )
 
 def consent_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
