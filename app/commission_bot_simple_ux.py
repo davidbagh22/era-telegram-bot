@@ -172,7 +172,14 @@ class CommissionBotSimpleUX(CommissionBotHardened):
 
     async def send_menu(self, chat_id: int, user, text: str = "Главное меню"):
         role = user["role"]
-        lines = [f"<b>{html.escape(text)}</b>"]
+        if role in {"admin", "owner"}:
+            lines = ["<b>Центр управления</b>", "Создание, согласование, участники и аналитика."]
+        elif role == "editor":
+            lines = ["<b>МОЛОДЁЖЬ ВКСРС</b>", "Публикации, мероприятия и работа с участниками."]
+        else:
+            lines = ["<b>МОЛОДЁЖЬ ВКСРС</b>", "Мероприятия, возможности и твои регистрации."]
+        if text not in {"Главное меню", "Выберите действие:"} and not text.startswith("Добро пожаловать"):
+            lines += ["", html.escape(text)]
         try:
             if role in {"admin", "owner"}:
                 pending = await self.fetchrow("SELECT COUNT(*) n FROM broadcasts WHERE status='pending'")
