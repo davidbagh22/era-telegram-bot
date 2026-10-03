@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_bot, get_session, get_settings
 from app.api.v1.leader import require_leader
 from app.config import Settings
-from app.database.leadership_models import LeadershipFeedback
+from app.database.leadership_models import LeaderChatMembership, LeadershipFeedback, WeeklyPulseCycle
 from app.database.models import LeadershipAttentionItem, LeadershipGoal, LeadershipReport, Task, User
 from app.services import (
     leader_service,
@@ -24,6 +25,46 @@ from app.services.leadership_permission_service import active_office_assignments
 from app.utils.constants import TaskStatus
 
 router = APIRouter(prefix="/leadership", tags=["leadership"])
+
+
+async def _require_pulse_cycle_access(
+    *,
+    leader: User,
+    session: AsyncSession,
+    settings: Settings,
+    period_start: date,
+    require_open: bool = True,
+) -> WeeklyPulseCycle | None:
+    if not settings.leaders_chat_id:
+        raise HTTPException(status_code=503, detail="leaders_chat_not_configured")
+    member = await session.scalar(
+        select(LeaderChatMembership).where(
+            LeaderChatMembership.leader_chat_id == settings.leaders_chat_id,
+            LeaderChatMembership.user_id == leader.id,
+            LeaderChatMembership.is_weekly_pulse_eligible.is_(True),
+        )
+    )
+    if member is None:
+        raise HTTPException(status_code=403, detail="weekly_pulse_leaders_chat_membership_required")
+    cycle = await session.scalar(
+        select(WeeklyPulseCycle).where(
+            WeeklyPulseCycle.date_from == period_start,
+            WeeklyPulseCycle.leader_chat_id == settings.leaders_chat_id,
+        )
+    )
+    if require_open:
+        if cycle is None:
+            raise HTTPException(status_code=409, detail="weekly_pulse_not_open")
+        now = datetime.now(ZoneInfo(settings.timezone))
+        opens_at = cycle.opens_at
+        deadline_at = cycle.deadline_at
+        if opens_at.tzinfo is None:
+            opens_at = opens_at.replace(tzinfo=now.tzinfo)
+        if deadline_at.tzinfo is None:
+            deadline_at = deadline_at.replace(tzinfo=now.tzinfo)
+        if now < opens_at or now >= deadline_at or cycle.status != "open":
+            raise HTTPException(status_code=409, detail="weekly_pulse_window_closed")
+    return cycle
 
 
 class OfficeAssignmentSummaryOut(BaseModel):
@@ -296,14 +337,23 @@ def _to_report_out(view: leadership_weekly_service.WeeklyReportView) -> ReportOu
 async def read_current_report(
     leader: User = Depends(require_leader),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> ReportOut:
-    week_start, _ = leadership_weekly_service.week_bounds()
+    local_today = datetime.now(ZoneInfo(settings.timezone)).date()
+    week_start, _ = leadership_weekly_service.week_bounds(local_today)
+    cycle = await _require_pulse_cycle_access(
+        leader=leader,
+        session=session,
+        settings=settings,
+        period_start=week_start,
+    )
     try:
         view = await leadership_weekly_service.ensure_weekly_report(
             session, owner_id=leader.id, period_start=week_start
         )
     except ValueError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    view.report.pulse_cycle_id = cycle.id if cycle else None
     await session.commit()
     return _to_report_out(view)
 
@@ -312,7 +362,17 @@ async def read_current_report(
 async def read_report_history(
     leader: User = Depends(require_leader),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> list[ReportOut]:
+    local_today = datetime.now(ZoneInfo(settings.timezone)).date()
+    week_start, _ = leadership_weekly_service.week_bounds(local_today)
+    await _require_pulse_cycle_access(
+        leader=leader,
+        session=session,
+        settings=settings,
+        period_start=week_start,
+        require_open=False,
+    )
     reports = await leadership_report_service.list_reports(session, owner_id=leader.id)
     output: list[ReportOut] = []
     for report in reports:
@@ -350,7 +410,14 @@ async def submit_report(
     bot: Bot | None = Depends(get_bot),
     settings: Settings = Depends(get_settings),
 ) -> ReportOut:
-    week_start, _ = leadership_weekly_service.week_bounds()
+    local_today = datetime.now(ZoneInfo(settings.timezone)).date()
+    week_start, _ = leadership_weekly_service.week_bounds(local_today)
+    cycle = await _require_pulse_cycle_access(
+        leader=leader,
+        session=session,
+        settings=settings,
+        period_start=week_start,
+    )
     try:
         view = await leadership_weekly_service.submit_weekly_pulse(
             session,
@@ -372,6 +439,7 @@ async def submit_report(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    view.report.pulse_cycle_id = cycle.id if cycle else None
     await session.commit()
     return _to_report_out(view)
 
