@@ -29,6 +29,7 @@ from app.services.leaders_workcenter_service import (
     task_card_keyboard,
 )
 from app.services.weekly_pulse_cycle_service import upsert_leader_membership
+from app.services.leaders_topics_service import topic_id
 from app.states.task import LeadersChatTaskStates
 from app.keyboards.participant import open_app_button
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, TaskStatus
@@ -78,7 +79,7 @@ async def track_leaders_membership(
     )
 
 
-@router.message(CommandStart(deep_link=True), F.chat.type == "private")
+@router.message(CommandStart(deep_link=True, magic=F.args == "pulse_connect"), F.chat.type == "private")
 async def connect_pulse_from_deep_link(
     message: Message,
     command: CommandStart,
@@ -139,7 +140,7 @@ async def begin_group_task(
         task_title=title[:255],
         task_description=title[:2000],
         task_chat_id=message.chat.id,
-        task_thread_id=message.message_thread_id,
+        task_thread_id=await topic_id(session, message.chat.id, "tasks") or message.message_thread_id,
         task_reply_message_id=source.message_id,
         task_creator_id=user.id,
     )
@@ -176,7 +177,7 @@ async def _card_task(
     return await session.get(Task, task_id) if delivery else None
 
 
-@router.callback_query(F.data.startswith("leaders_task:"))
+@router.callback_query(F.data.regexp(r"^leaders_task:(start|submit|block|accept|return):\d+$"))
 async def handle_leaders_task_card_action(
     call: CallbackQuery,
     state: FSMContext,

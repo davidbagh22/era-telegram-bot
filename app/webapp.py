@@ -326,6 +326,7 @@ async def _apply_one_time_reregistration_reset(engine) -> None:
                         archived_by = NULL,
                         updated_at = NOW()
                     WHERE id = :user_id AND telegram_id = :telegram_id
+                      AND role <> 'admin'
                     RETURNING id
                     """
                 ),

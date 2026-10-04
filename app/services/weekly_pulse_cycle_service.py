@@ -142,6 +142,10 @@ async def create_or_get_cycle(
         )
     )
     if existing is not None:
+        if existing.leader_chat_id != leader_chat_id and existing.status not in {"completed", "archived"}:
+            existing.leader_chat_id = leader_chat_id
+            existing.announcement_message_id = None
+            await session.flush()
         return existing
     schedule = await get_schedule(session)
     if not schedule.enabled:
@@ -150,7 +154,10 @@ async def create_or_get_cycle(
     open_day = date_from + timedelta(days=(schedule.open_weekday - date_from.weekday()) % 7)
     opens_at = datetime.combine(open_day, schedule.open_time, tzinfo=tz)
     deadline_at = opens_at + timedelta(hours=schedule.deadline_hours)
-    report_at = datetime.combine(date_to, time(23, 59), tzinfo=tz)
+    report_day = deadline_at.date() + timedelta(
+        days=(schedule.report_weekday - deadline_at.weekday()) % 7
+    )
+    report_at = datetime.combine(report_day, time(23, 59), tzinfo=tz)
     cycle = WeeklyPulseCycle(
         week_number=date_from.isocalendar().week,
         date_from=date_from,

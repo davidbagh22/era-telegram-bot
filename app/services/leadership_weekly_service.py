@@ -30,6 +30,7 @@ from app.database.models import (
     UserOffice,
 )
 from app.services.audit_service import audit
+from app.services.leaders_topics_service import topic_id
 from app.services.bot_notification_service import PrimaryAction, send_bot_notification
 from app.services.leadership_permission_service import is_assignment_active
 from app.services import leadership_report_service
@@ -677,6 +678,7 @@ async def open_weekly_pulses_job(
             try:
                 announcement = await bot.send_message(
                     chat_id=settings.leaders_chat_id,
+                    message_thread_id=await topic_id(session, settings.leaders_chat_id, "pulse"),
                     text=(
                         f"📊 <b>Открылся Weekly Pulse · неделя {cycle.week_number}</b>\n\n"
                         f"Ответили: {cycle.submitted_count} / {cycle.eligible_count}\n"
@@ -745,6 +747,7 @@ async def open_weekly_pulses_job(
                         f"Ответили: {cycle.submitted_count} / {cycle.eligible_count}\n"
                         f"Срок: {cycle_deadline:%d.%m %H:%M}"
                     ),
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Подключить Пульс", url=f"https://t.me/{(await bot.get_me()).username}?start=pulse_connect")]]),
                     parse_mode="HTML",
                 )
             except TelegramAPIError:

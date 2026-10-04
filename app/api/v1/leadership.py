@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_bot, get_session, get_settings
+from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.v1.leader import require_leader
 from app.config import Settings
 from app.database.leadership_models import LeaderChatMembership, LeadershipFeedback, WeeklyPulseCycle
@@ -335,7 +335,7 @@ def _to_report_out(view: leadership_weekly_service.WeeklyReportView) -> ReportOu
 
 @router.get("/reports/current", response_model=ReportOut)
 async def read_current_report(
-    leader: User = Depends(require_leader),
+    leader: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> ReportOut:
@@ -360,7 +360,7 @@ async def read_current_report(
 
 @router.get("/reports/history", response_model=list[ReportOut])
 async def read_report_history(
-    leader: User = Depends(require_leader),
+    leader: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> list[ReportOut]:
@@ -405,7 +405,7 @@ class ReportSubmitIn(BaseModel):
 @router.post("/reports", response_model=ReportOut)
 async def submit_report(
     payload: ReportSubmitIn,
-    leader: User = Depends(require_leader),
+    leader: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
     settings: Settings = Depends(get_settings),
