@@ -49,7 +49,23 @@ async def get_user_by_telegram_id(
     identity = await session.get(CommunityMemberIdentity, telegram_id)
     if identity is None or identity.user_id is None:
         return None
-    return await session.get(User, identity.user_id)
+
+    linked_user = await session.get(User, identity.user_id)
+    if linked_user is None:
+        return None
+
+    # A legacy dedup/archive flow used negative synthetic Telegram ids to keep
+    # historical User rows without violating the unique constraint. If the
+    # verified identity map still points at that same canonical row, restore
+    # the real Telegram id and active state. This is narrowly scoped: normal
+    # archived users keep their archive status, and an existing exact match
+    # always won above.
+    if linked_user.telegram_id < 0 and linked_user.telegram_id != telegram_id:
+        linked_user.telegram_id = telegram_id
+        linked_user.is_archived = False
+        await session.flush()
+
+    return linked_user
 
 
 async def get_user(session: AsyncSession, user_id: int) -> User | None:
