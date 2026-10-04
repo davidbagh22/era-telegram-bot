@@ -34,9 +34,9 @@ async def get_user_by_telegram_id(
     This prevents a real, previously registered Telegram account from being
     presented as "not registered" by both the bot and Mini App.
 
-    We deliberately do not mutate/archive state here: identity resolution must
-    be safe on a read path, while blocked/archived policy is still enforced by
-    the caller.
+    Normal archived users remain archived. Only a verified legacy synthetic
+    identity is repaired in place so subsequent Bot and Mini App requests use
+    the canonical Telegram id again.
     """
     user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
     if user is not None:
