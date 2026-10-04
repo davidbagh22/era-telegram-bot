@@ -26,7 +26,30 @@ from app.utils.validators import calculate_age
 async def get_user_by_telegram_id(
     session: AsyncSession, telegram_id: int
 ) -> User | None:
-    return await session.scalar(select(User).where(User.telegram_id == telegram_id))
+    """Resolve the canonical ERA user for a Telegram identity.
+
+    The exact users.telegram_id match remains authoritative.  As a recovery
+    path, use the Community Verification identity map when an older cleanup or
+    import replaced the canonical user's Telegram id with a synthetic value.
+    This prevents a real, previously registered Telegram account from being
+    presented as "not registered" by both the bot and Mini App.
+
+    We deliberately do not mutate/archive state here: identity resolution must
+    be safe on a read path, while blocked/archived policy is still enforced by
+    the caller.
+    """
+    user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+    if user is not None:
+        return user
+
+    # Local import avoids coupling the base User model to the optional
+    # community-verification tables at module import time.
+    from app.database.community_verification_models import CommunityMemberIdentity
+
+    identity = await session.get(CommunityMemberIdentity, telegram_id)
+    if identity is None or identity.user_id is None:
+        return None
+    return await session.get(User, identity.user_id)
 
 
 async def get_user(session: AsyncSession, user_id: int) -> User | None:
