@@ -26,7 +26,46 @@ from app.utils.validators import calculate_age
 async def get_user_by_telegram_id(
     session: AsyncSession, telegram_id: int
 ) -> User | None:
-    return await session.scalar(select(User).where(User.telegram_id == telegram_id))
+    """Resolve the canonical ERA user for a Telegram identity.
+
+    The exact users.telegram_id match remains authoritative.  As a recovery
+    path, use the Community Verification identity map when an older cleanup or
+    import replaced the canonical user's Telegram id with a synthetic value.
+    This prevents a real, previously registered Telegram account from being
+    presented as "not registered" by both the bot and Mini App.
+
+    Normal archived users remain archived. Only a verified legacy synthetic
+    identity is repaired in place so subsequent Bot and Mini App requests use
+    the canonical Telegram id again.
+    """
+    user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+    if user is not None:
+        return user
+
+    # Local import avoids coupling the base User model to the optional
+    # community-verification tables at module import time.
+    from app.database.community_verification_models import CommunityMemberIdentity
+
+    identity = await session.get(CommunityMemberIdentity, telegram_id)
+    if identity is None or identity.user_id is None:
+        return None
+
+    linked_user = await session.get(User, identity.user_id)
+    if linked_user is None:
+        return None
+
+    # A legacy dedup/archive flow used negative synthetic Telegram ids to keep
+    # historical User rows without violating the unique constraint. If the
+    # verified identity map still points at that same canonical row, restore
+    # the real Telegram id and active state. This is narrowly scoped: normal
+    # archived users keep their archive status, and an existing exact match
+    # always won above.
+    if linked_user.telegram_id < 0 and linked_user.telegram_id != telegram_id:
+        linked_user.telegram_id = telegram_id
+        linked_user.is_archived = False
+        await session.flush()
+
+    return linked_user
 
 
 async def get_user(session: AsyncSession, user_id: int) -> User | None:
