@@ -111,6 +111,7 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
         # before the emergency catch-all /start router, otherwise ref_<code>
         # is discarded before registration begins.
         referrals.router,
+        leader_chat_workcenter_router,
         emergency.router,
         chat_unlock.router,
         start.router,
@@ -118,7 +119,6 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
         admin_router,
         leader_event_photo.router,
         leader_router,
-        leader_chat_workcenter_router,
         participant_router,
         chat_binding.router,
         media_chat_files.router,

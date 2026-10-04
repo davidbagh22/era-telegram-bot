@@ -137,6 +137,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "leadership-weekly-pulse-open",
                 "leadership-weekly-pulse-due",
                 "leaders-task-card-sync",
+                "leaders-forum-setup",
             ],
         )
         self.assertNotIn("general-chat-faq-pin", ids)

@@ -16,6 +16,7 @@ from app.services.event_custom_reminder_service import send_configured_event_rem
 from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
 from app.services.leadership_weekly_service import check_weekly_pulses_job, open_weekly_pulses_job
 from app.services.leaders_workcenter_service import sync_leaders_task_cards
+from app.services.leaders_topics_service import setup_leaders_topics
 from app.services.media_attachment_service import post_missing_media_task_cards
 from app.services.media_pipeline_service import reconcile_media_pipeline_job
 from app.services.media_service import process_media_chat_automation, publish_due_channel_content
@@ -85,3 +86,5 @@ def add_system_jobs(
     scheduler.add_job(open_weekly_pulses_job, "interval", minutes=5, args=(bot, settings, session_factory), id="leadership-weekly-pulse-open", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(check_weekly_pulses_job, "interval", minutes=5, args=(bot, settings, session_factory), id="leadership-weekly-pulse-due", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(sync_leaders_task_cards, "interval", minutes=1, args=(bot, settings, session_factory), id="leaders-task-card-sync", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+
+    scheduler.add_job(setup_leaders_topics, "interval", minutes=5, args=(bot, settings, session_factory), id="leaders-forum-setup", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
