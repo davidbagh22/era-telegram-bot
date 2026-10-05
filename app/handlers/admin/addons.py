@@ -1,3 +1,4 @@
+from app.services.leaders_workspace import deadline_label
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -660,7 +661,7 @@ async def admin_task_finish(
     await state.clear()
     notice = (
         f"✅ Новое задание ЭРА\n\n{task.title}\n\n{task.description}\n\n"
-        f"Дедлайн: {task.deadline:%d.%m.%Y %H:%M}\nБаллы: {task.points}\n\n"
+        f"Дедлайн: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}\nБаллы: {task.points}\n\n"
         "Откройте Личный кабинет → Мои задачи"
     )
     delivered = False

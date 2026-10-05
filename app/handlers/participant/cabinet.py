@@ -1,3 +1,4 @@
+from app.services.leaders_workspace import deadline_label
 from datetime import date
 
 from aiogram import F, Router
@@ -381,7 +382,7 @@ async def my_tasks(
     body = (
         "\n".join(
             f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, 'Открыто')}, "
-            f"до {task.deadline:%d.%m.%Y} · {task.points} баллов"
+            f"до {deadline_label(task.deadline, '%d.%m.%Y')} · {task.points} баллов"
             for task in tasks
         )
         or "Задач пока нет."

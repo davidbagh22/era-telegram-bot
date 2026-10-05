@@ -1,3 +1,4 @@
+from app.services.leaders_workspace import deadline_label
 import logging
 from datetime import datetime, timedelta
 from html import escape
@@ -346,7 +347,7 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
                     title="Дедлайн приближается",
                     body=(
                         f"{task.title}\n\n"
-                        f"До: {task.deadline:%d.%m.%Y %H:%M}"
+                        f"До: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}"
                     ),
                     footer="Если задача уже готова — отправьте результат из карточки задачи.",
                     action=action,
@@ -366,7 +367,7 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
                     title="По задаче приближается дедлайн",
                     body=(
                         f"{task.title}\n\n"
-                        f"До: {task.deadline:%d.%m.%Y %H:%M}"
+                        f"До: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}"
                     ),
                     footer="Откройте карточку, чтобы проверить состояние работы.",
                     action=action,
@@ -414,7 +415,7 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
                         message_thread_id=delivery.message_thread_id,
                         text=(
                             f"⏳ <b>Напоминание по задаче #{task.id} · {stage}/5</b>\n"
-                            f"{mention}, срок: {task.deadline:%d.%m.%Y %H:%M}.\n"
+                            f"{mention}, срок: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}.\n"
                             f"Задача: {escape(task.title)}"
                         ),
                         parse_mode="HTML",

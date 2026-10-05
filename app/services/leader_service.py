@@ -1,4 +1,5 @@
 from __future__ import annotations
+from app.services.leaders_workspace import deadline_label
 
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -229,7 +230,7 @@ async def create_assigned_task(
             bot,
             assignee.telegram_id,
             f"У Вас новая задача ЭРА.\n\n{task.title}\n{task.description}\n\n"
-            f"Дедлайн: {task.deadline:%d.%m.%Y %H:%M}",
+            f"Дедлайн: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}",
             keyboard,
         )
     await audit(

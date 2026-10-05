@@ -1,4 +1,5 @@
 from __future__ import annotations
+from app.api.v1 import leaders_workspace
 
 from fastapi import APIRouter, Depends
 
@@ -114,3 +115,5 @@ api_router.include_router(profile.router)
 api_router.include_router(leader.router)
 api_router.include_router(leadership.router)
 api_router.include_router(positions.router, dependencies=[Depends(require_feature(Feature.ROLE_RECRUITMENT))])
+
+api_router.include_router(leaders_workspace.router)

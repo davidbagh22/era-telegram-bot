@@ -13,3 +13,4 @@ class AuctionBidStates(StatesGroup):
 
 class TaskSubmissionStates(StatesGroup):
     result = State()
+    confirm = State()

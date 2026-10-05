@@ -4,6 +4,7 @@ from datetime import date, datetime, time
 
 from sqlalchemy import (
     BigInteger,
+    LargeBinary,
     Boolean,
     Date,
     DateTime,
@@ -138,3 +139,24 @@ class LeadershipFeedback(TimestampMixin, Base):
     reviewer_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     status: Mapped[str] = mapped_column(String(32), default="acknowledged", index=True)
     comment: Mapped[str | None] = mapped_column(Text)
+
+
+class WeeklyPulseArchive(TimestampMixin, Base):
+    """Frozen weekly data: downloads never query current organizational state."""
+    __tablename__ = "weekly_pulse_archives"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cycle_id: Mapped[int] = mapped_column(ForeignKey("weekly_pulse_cycles.id"), unique=True, index=True)
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    docx_data: Mapped[bytes | None] = mapped_column(LargeBinary)
+    pdf_data: Mapped[bytes | None] = mapped_column(LargeBinary)
+
+
+class WeeklyPulseParticipant(TimestampMixin, Base):
+    __tablename__ = 'weekly_pulse_participants'
+    __table_args__ = (UniqueConstraint('cycle_id','telegram_user_id',name='uq_pulse_participant_cycle_user'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cycle_id: Mapped[int] = mapped_column(ForeignKey('weekly_pulse_cycles.id'),index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger)
+    status: Mapped[str] = mapped_column(String(24),default='not_started')
+    override: Mapped[str | None] = mapped_column(String(24))

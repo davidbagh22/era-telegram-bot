@@ -22,6 +22,27 @@ async def topic_id(session, chat_id: int, key: str) -> int | None:
     return json.loads(row.value).get("thread_id") if row else None
 
 
+async def panel(session, chat_id, key, username):
+    from app.database.models import Task, TaskDelivery
+    from app.services.leaders_workspace import meta, TERMINAL
+    if key == "tasks":
+        tasks = (await session.scalars(select(Task).join(TaskDelivery,TaskDelivery.task_id == Task.id).where(
+            TaskDelivery.chat_key == "leaders",TaskDelivery.chat_id == chat_id))).unique().all()
+        active=[t for t in tasks if t.status not in TERMINAL]
+        text=(f"⚙️ РАБОЧИЙ ЦЕНТР ЭРА\n\nАктивных: {len(active)} · Свободных: {sum(t.assignee_id is None for t in active)}"
+              f"\nНа проверке: {sum(t.status == 'review' for t in active)} · Блокеров: {sum(bool(meta(t).get('blocked')) for t in active)}")
+        rows=[[('➕ Новая задача','wc:new'),('👤 Мои задачи','wc:list:mine')],
+              [('📋 Активные','wc:list:active'),('🟢 Свободные','wc:list:free')],
+              [('🔥 Срочные','wc:list:urgent'),('🚧 Блокеры','wc:list:block')]]
+    elif key == "important":
+        text="📢 ВАЖНЫЕ ОПОВЕЩЕНИЯ\nСообщения и решения для всей команды."
+        rows=[[('📣 Оповестить всех','leaders_broadcast:new')]]
+    else:
+        return TOPICS[key][1], InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text="Заполнить / подключить Пульс", url=f"https://t.me/{username}?start=pulse_connect")]]) if username else None
+    return text, InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t,callback_data=d) for t,d in row] for row in rows])
+
+
 async def setup_leaders_topics(bot, settings, session_factory) -> dict:
     chat_id = settings.leaders_chat_id
     if not chat_id or chat_id == settings.general_chat_id:
@@ -49,14 +70,21 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                     else:
                         row.value = json.dumps(data)
                     await session.commit()
+                text, keyboard = await panel(session, chat_id, key, me.username)
+                snapshot = {"text": text, "keyboard": keyboard.model_dump(mode="json") if keyboard else None}
                 if not data.get("message_id"):
-                    keyboard = None
-                    if key == "pulse" and me.username:
-                        keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
-                            text="Подключить Пульс ЭРА", url=f"https://t.me/{me.username}?start=pulse_connect"
-                        )]])
-                    message = await bot.send_message(chat_id, text=description, message_thread_id=data["thread_id"], reply_markup=keyboard)
+                    message = await bot.send_message(chat_id, text=text, message_thread_id=data["thread_id"], reply_markup=keyboard)
                     data["message_id"] = message.message_id
+                    data["panel"] = snapshot
+                    row.value = json.dumps(data)
+                    await session.commit()
+                elif data.get("panel") != snapshot:
+                    try:
+                        await bot.edit_message_text(chat_id=chat_id,message_id=data["message_id"],text=text,reply_markup=keyboard)
+                    except Exception as exc:
+                        if "message is not modified" not in str(exc).lower():
+                            raise
+                    data["panel"] = snapshot
                     row.value = json.dumps(data)
                     await session.commit()
                 if not data.get("pinned") and getattr(member, "can_pin_messages", False):

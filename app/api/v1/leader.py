@@ -118,7 +118,7 @@ async def read_overview(
                 id=t.id,
                 title=t.title,
                 status=t.status,
-                deadline=t.deadline.isoformat(),
+                deadline=(t.deadline.isoformat() if t.deadline else ""),
                 points=t.points,
                 assignee_id=t.assignee_id,
             )
@@ -165,7 +165,7 @@ async def create_assigned_task(
         id=task.id,
         title=task.title,
         status=task.status,
-        deadline=task.deadline.isoformat(),
+        deadline=(task.deadline.isoformat() if task.deadline else ""),
         points=task.points,
         assignee_id=task.assignee_id,
     )
@@ -214,7 +214,7 @@ def _to_open_task_out(result: leader_service.OpenTaskWithApplications) -> OpenTa
         id=task.id,
         title=task.title,
         description=task.description,
-        deadline=task.deadline.isoformat(),
+        deadline=(task.deadline.isoformat() if task.deadline else ""),
         points=task.points,
         max_participants=task.max_participants,
         applications=[

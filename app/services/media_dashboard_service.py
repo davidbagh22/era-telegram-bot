@@ -203,7 +203,7 @@ async def team_analytics(session: AsyncSession) -> list[MediaTeamMember]:
         deadlines_met = 0
         for row in approved:
             task = await session.get(Task, row.task_id)
-            if task is not None and row.created_at <= task.deadline:
+            if task is not None and (task.deadline is None or row.created_at <= task.deadline):
                 deadlines_met += 1
         published = 0
         points = 0

@@ -50,6 +50,8 @@ from app.database.leadership_models import (  # noqa: F401
     LeaderChatMembership,
     WeeklyPulseCycle,
     WeeklyPulseSchedule,
+    WeeklyPulseArchive,
+    WeeklyPulseParticipant,
 )
 import app.database.socials  # noqa: F401
 import app.database.partners  # noqa: F401

@@ -25,7 +25,7 @@ def event_is_visible(event: Event, today: date | None = None) -> bool:
 
 def task_is_active(task: Task, now: datetime | None = None) -> bool:
     now = now or datetime.now().astimezone()
-    return _value(task.status) in ACTIVE_TASK_STATUSES and task.deadline > now
+    return _value(task.status) in ACTIVE_TASK_STATUSES and (task.deadline is None or task.deadline > now)
 
 
 def reward_is_active(reward: RewardItem) -> bool:
