@@ -563,6 +563,7 @@ def create_scheduler(bot: Bot, settings: Settings, session_factory) -> AsyncIOSc
         minutes=15,
         args=(bot, settings, session_factory),
         id="trajectory-20261031-campaign",
+        next_run_time=datetime.now(ZoneInfo(settings.timezone)),
         replace_existing=True,
         max_instances=1,
         coalesce=True,
