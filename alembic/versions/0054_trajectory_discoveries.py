@@ -29,7 +29,7 @@ def upgrade():
             10, 10, 'standard', CAST('[]' AS json),
             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         WHERE NOT EXISTS (
-            SELECT 1 FROM events WHERE title = :title AND event_date = DATE '2026-10-31'
+            SELECT 1 FROM events WHERE title = CAST(:title AS VARCHAR) AND event_date = DATE '2026-10-31'
         )
     """), {
         "title": TITLE,
@@ -45,4 +45,4 @@ def upgrade():
 
 def downgrade():
     bind = op.get_bind()
-    bind.execute(sa.text("DELETE FROM events WHERE title=:title AND event_date=DATE '2026-10-31'"), {"title": TITLE})
+    bind.execute(sa.text("DELETE FROM events WHERE title=CAST(:title AS VARCHAR) AND event_date=DATE '2026-10-31'"), {"title": TITLE})
