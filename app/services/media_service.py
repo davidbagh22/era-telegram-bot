@@ -981,7 +981,7 @@ async def process_media_chat_automation(
                 session,
                 bot,
                 settings,
-                notice_key=f"task-24h:{task.id}:{task.deadline.isoformat()}",
+                notice_key=f"task-24h:{task.id}:{(task.deadline.isoformat() if task.deadline else "")}",
                 notice_kind="deadline_24h",
                 ref_type="task",
                 ref_id=task.id,

@@ -1200,3 +1200,31 @@ export function hasSession(): boolean {
 export function clearSession(): void {
   sessionToken = null;
 }
+
+export type PulseCycle = {id:number;week_number:number;date_from:string;date_to:string;status:string;eligible_count:number;submitted_count:number;deadline_at:string;archive_id:number|null};
+export type PulseSchedule = {enabled:boolean;open_weekday:number;open_time:string;deadline_hours:number;first_reminder_hours:number;final_reminder_hours:number;report_weekday:number;timezone:string};
+export const fetchPulseCycles = () => authorizedGet<PulseCycle[]>("/api/v1/admin/leadership/weekly-pulse/cycles");
+export const fetchPulseSchedule = () => authorizedGet<PulseSchedule>("/api/v1/admin/leadership/weekly-pulse/schedule");
+export const fetchPulseArchive = (id:number) => authorizedGet<{snapshot:Record<string,unknown>}>(`/api/v1/admin/leadership/weekly-pulse/archives/${id}`);
+export async function pulseWrite(path:string, method:string, payload?:unknown):Promise<void> {
+  const response=await fetch(`${API_BASE_URL}/api/v1/admin/leadership/weekly-pulse/${path}`,{method,headers:{Authorization:`Bearer ${sessionToken}`,"Content-Type":"application/json"},body:payload===undefined?undefined:JSON.stringify(payload)});
+  if(!response.ok)throw new ApiError(response.status,await parseErrorDetail(response));
+}
+export async function downloadPulseArchive(id:number,format:"docx"|"pdf"):Promise<Blob> {
+  const response=await fetch(`${API_BASE_URL}/api/v1/admin/leadership/weekly-pulse/archives/${id}/document?format=${format}`,{headers:{Authorization:`Bearer ${sessionToken}`}});
+  if(!response.ok)throw new ApiError(response.status,await parseErrorDetail(response));
+  return response.blob();
+}
+export type PulseQuestion = {key:string;text:string;required:boolean;audience?:string;is_active?:boolean;choices?:string[];condition_key?:string|null;condition_value?:string|null};
+export const fetchPulseQuestions = () => authorizedGet<PulseQuestion[]>("/api/v1/admin/leadership/weekly-pulse/questions");
+
+export type WorkTask={id:number;title:string;description:string;assignee_id:number|null;assignee_name:string;creator_id:number;deadline:string|null;status:string;priority:string;project_id:number|null;blocker:string|null;telegram_url:string|null;delivery_status:string|null;submissions:{id:number;text:string;has_file:boolean;status:string;comment:string|null}[];history:{action:string;at:string}[]};
+export const fetchWorkTasks=()=>authorizedGet<WorkTask[]>("/api/v1/workcenter/tasks");
+export const fetchWorkRoster=()=>authorizedGet<{id:number;name:string}[]>("/api/v1/workcenter/roster");
+export const fetchWorkDecisions=()=>authorizedGet<{id:number;text:string;status:string;owner_id:number|null;responsible_id:number|null;task_id:number|null}[]>("/api/v1/workcenter/decisions");
+export const fetchWorkAnnouncements=()=>authorizedGet<{id:number;text:string;status:string;kind:string;recipients:number;read:number}[]>("/api/v1/workcenter/announcements");
+export async function workWrite(path:string,payload:unknown){
+ const response=await fetch(`${API_BASE_URL}/api/v1/workcenter/${path}`,{method:"POST",headers:{Authorization:`Bearer ${sessionToken}`,"Content-Type":"application/json"},body:JSON.stringify(payload)});
+ if(!response.ok)throw new ApiError(response.status,await parseErrorDetail(response));
+ return response.json();
+}

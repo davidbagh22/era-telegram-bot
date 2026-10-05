@@ -328,7 +328,7 @@ def _to_project_task_out(task: Task) -> ProjectTaskOut:
         title=task.title,
         description=task.description,
         assignee_id=task.assignee_id,
-        deadline=task.deadline.isoformat(),
+        deadline=(task.deadline.isoformat() if task.deadline else ""),
         points=task.points,
         status=task.status,
         task_type=task.task_type,

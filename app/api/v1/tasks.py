@@ -124,7 +124,7 @@ async def _to_task_out(
         id=task.id,
         title=task.title,
         description=task.description,
-        deadline=task.deadline.isoformat(),
+        deadline=(task.deadline.isoformat() if task.deadline else ""),
         points=task.points,
         status=task.status,
         task_type=task.task_type,

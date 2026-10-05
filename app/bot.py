@@ -1,9 +1,13 @@
+from app.handlers.leaders_broadcast import router as leaders_broadcast_router
+from app.handlers.leaders_workspace import router as leaders_workspace_router
+from app.handlers.pulse_private import router as pulse_private_router
+from app.handlers.book_club import router as book_club_router
 import logging
 import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
-from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.storage.memory import MemoryStorage, SimpleEventIsolation
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import ErrorEvent, Message
 
@@ -76,7 +80,7 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     else:
         storage = RedisStorage.from_url(settings.redis_url)
 
-    dispatcher = Dispatcher(storage=storage)
+    dispatcher = Dispatcher(storage=storage, events_isolation=storage.create_isolation() if isinstance(storage, RedisStorage) else SimpleEventIsolation())
     dispatcher["settings"] = settings
     dispatcher["ai_service"] = AIService(settings)
     dispatcher.update.outer_middleware(DatabaseAuthMiddleware(session_factory))
@@ -111,6 +115,10 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
         # before the emergency catch-all /start router, otherwise ref_<code>
         # is discarded before registration begins.
         referrals.router,
+        leaders_broadcast_router,
+        leaders_workspace_router,
+        pulse_private_router,
+        book_club_router,
         leader_chat_workcenter_router,
         emergency.router,
         chat_unlock.router,

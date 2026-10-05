@@ -1,3 +1,4 @@
+from app.services.leaders_workspace import deadline_label
 from datetime import datetime
 
 from aiogram import F, Bot, Router
@@ -81,7 +82,7 @@ async def task_finish_serialized_deadline(
         await safe_send(
             bot,
             target.telegram_id,
-            f"У Вас новая задача ЭРА.\n\n{task.title}\n{task.description}\n\nДедлайн: {task.deadline:%d.%m.%Y %H:%M}",
+            f"У Вас новая задача ЭРА.\n\n{task.title}\n{task.description}\n\nДедлайн: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}",
         )
     await audit(
         session,

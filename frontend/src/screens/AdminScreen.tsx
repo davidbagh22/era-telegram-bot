@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AdminWorkcenterScreen } from "./admin/AdminWorkcenterScreen";
 import { ActionCell } from "../components/ActionCell";
 import { AdminBottomNav, type AdminGroup } from "../components/AdminBottomNav";
 import type { AdminMetricKey } from "../types/adminMetrics";
@@ -6,7 +7,6 @@ import { AdminApplicationsScreen } from "./admin/AdminApplicationsScreen";
 import { AdminCareerScreen } from "./admin/AdminCareerScreen";
 import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
 import { AdminDevelopmentScreen } from "./admin/AdminDevelopmentScreen";
-import { AdminEraProScreen } from "./admin/AdminEraProScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
 import { AdminMetricDetailScreen } from "./admin/AdminMetricDetailScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
@@ -19,8 +19,8 @@ import { AdminToolsScreen } from "./admin/AdminToolsScreen";
 import { AdminUsersScreen } from "./admin/AdminUsersScreen";
 import { AdminVerificationScreen } from "./admin/AdminVerificationScreen";
 
-type PeopleSection = "participants" | "verification" | "development" | "career" | "applications" | "era-pro" | "offices" | "data-rights";
-type WorkSection = "projects" | "events" | "tasks" | "offers";
+type PeopleSection = "participants" | "verification" | "development" | "career" | "applications" | "leaders-chat" | "offices" | "data-rights";
+type WorkSection = "pulse" | "projects" | "events" | "tasks" | "offers";
 type CommsSection = "surveys" | "tools";
 type SectionOption<T extends string> = { value: T; label: string; description: string };
 type MetricDetail = { metric: AdminMetricKey; total: number };
@@ -36,12 +36,13 @@ const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
   { value: "development", label: "Состояние и развитие", description: "Добровольные ежемесячные отметки, охват и потребности сообщества" },
   { value: "career", label: "Портфолио и рекомендации", description: "Проверка достижений и утверждение официальных рекомендательных писем" },
   { value: "applications", label: "Заявки", description: "Новые регистрации и решения по ним" },
-  { value: "era-pro", label: "Заявки ЭРА PRO", description: "Отбор участников, достигших порога 8 000 баллов" },
+  { value: "leaders-chat", label: "Чат лидеров", description: "Задачи, Пульс, решения и оповещения команды" },
   { value: "offices", label: "Должности", description: "Роли, набор, заявки, назначения и ответственность" },
   { value: "data-rights", label: "Данные и права", description: "Запросы на удаление персональных данных" },
 ];
 
 const WORK_SECTIONS: SectionOption<WorkSection>[] = [
+  { value: "pulse", label: "Рабочий центр", description: "Задачи ЛИДЕРОВ, Пульс, решения и оповещения" },
   { value: "projects", label: "Проекты", description: "Создание, модерация и команды проектов" },
   { value: "events", label: "Мероприятия", description: "Создание, публикация, участники и активности" },
   { value: "tasks", label: "Задания", description: "Создание задач и проверка результатов" },
@@ -164,7 +165,7 @@ export function AdminScreen() {
           />
         )}
 
-        {group === "people" && !peopleSection && <SectionMenu title="Люди" description="Участники, проверка состава, развитие, портфолио, регистрации, ЭРА PRO, роли и права на данные." options={PEOPLE_SECTIONS} onOpen={setPeopleSection} />}
+        {group === "people" && !peopleSection && <SectionMenu title="Люди" description="Участники, проверка состава, развитие, портфолио, регистрации, чат лидеров, роли и права на данные." options={PEOPLE_SECTIONS} onOpen={setPeopleSection} />}
         {group === "people" && peopleSection && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={PEOPLE_SECTIONS.find((item) => item.value === peopleSection)?.label ?? "Люди"} onBack={() => setPeopleSection(null)} />
@@ -173,7 +174,7 @@ export function AdminScreen() {
             {peopleSection === "development" && <AdminDevelopmentScreen />}
             {peopleSection === "career" && <AdminCareerScreen />}
             {peopleSection === "applications" && <AdminApplicationsScreen initialApplicationId={launchRoute.applicationId} />}
-            {peopleSection === "era-pro" && <AdminEraProScreen />}
+            {peopleSection === "leaders-chat" && <AdminWorkcenterScreen />}
             {peopleSection === "offices" && <AdminOfficesScreen />}
             {peopleSection === "data-rights" && <AdminDataRightsScreen />}
           </div>
@@ -183,6 +184,7 @@ export function AdminScreen() {
         {group === "work" && workSection && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={WORK_SECTIONS.find((item) => item.value === workSection)?.label ?? "Работа"} onBack={() => setWorkSection(null)} />
+            {workSection === "pulse" && <AdminWorkcenterScreen />}
             {workSection === "projects" && <AdminProjectsScreen />}
             {workSection === "events" && <AdminEventsScreen />}
             {workSection === "tasks" && <AdminTasksScreen />}

@@ -1,3 +1,4 @@
+from app.services.leaders_workspace import deadline_label
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -3526,7 +3527,7 @@ async def admin_task_finish(
                 bot,
                 target.telegram_id,
                 f"✅ Новое задание ЭРА\n\n{task.title}\n{task.description}\n\n"
-                f"Дедлайн: {task.deadline:%d.%m.%Y %H:%M}\n"
+                f"Дедлайн: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}\n"
                 f"Награда: {task.points} баллов\n\n"
                 "Откройте «Мой путь» → «Мои задания»",
             )

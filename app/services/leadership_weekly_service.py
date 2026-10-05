@@ -33,6 +33,7 @@ from app.services.audit_service import audit
 from app.services.leaders_topics_service import topic_id
 from app.services.bot_notification_service import PrimaryAction, send_bot_notification
 from app.services.leadership_permission_service import is_assignment_active
+from app.database.leadership_models import WeeklyPulseParticipant
 from app.services import leadership_report_service
 from app.services.weekly_pulse_cycle_service import (
     create_or_get_cycle,
@@ -619,6 +620,8 @@ async def open_weekly_pulses_job(
         now = datetime.now(tz)
         cycle_open = _local_datetime(cycle.opens_at, tz)
         cycle_deadline = _local_datetime(cycle.deadline_at, tz)
+        if cycle.status in {"completed", "archived"}:
+            return
         if now < cycle_open:
             await session.commit()
             return
@@ -659,8 +662,8 @@ async def open_weekly_pulses_job(
 
         cycle.status = "open"
         roster = await eligible_members(session, leader_chat_id=settings.leaders_chat_id)
-        eligible_user_ids = {member.user_id for member in roster if member.user_id is not None}
-        cycle.eligible_count = len(roster)
+        from app.services.weekly_pulse_cycle_service import sync_cycle_participants
+        await sync_cycle_participants(session,cycle)
 
         if cycle.announcement_message_id is None:
             buttons = []
@@ -696,9 +699,13 @@ async def open_weekly_pulses_job(
                 pass
 
         seen_users: set[int] = set()
-        for assignment, _office, user in assignments:
-            if user.id not in eligible_user_ids:
+        for member in roster:
+            user = await session.get(User, member.user_id) if member.user_id else None
+            if user is None or user.is_archived or user.is_blocked:
                 continue
+            override = await session.scalar(select(WeeklyPulseParticipant.override).where(WeeklyPulseParticipant.cycle_id==cycle.id,WeeklyPulseParticipant.user_id==user.id))
+            if override in {"excused","excluded"}: continue
+            assignment = next((a for a, _, u in assignments if u.id == user.id), None)
             if user.id in seen_users:
                 continue
             seen_users.add(user.id)
@@ -706,13 +713,13 @@ async def open_weekly_pulses_job(
                 session,
                 owner_id=user.id,
                 period_start=period_start,
-                office_assignment_id=assignment.id,
+                office_assignment_id=assignment.id if assignment else None,
             )
             view.report.pulse_cycle_id = cycle.id
             if view.report.submitted_at is not None:
                 continue
             action = (
-                PrimaryAction(label="Открыть ЭРА", web_app_url=settings.effective_miniapp_url)
+                PrimaryAction(label="Заполнить Пульс", url=f"https://t.me/{(await bot.get_me()).username}?start=pulse_connect")
                 if settings.effective_miniapp_url
                 else None
             )
@@ -755,26 +762,34 @@ async def open_weekly_pulses_job(
         await session.commit()
 
 
-async def check_weekly_pulses_job(
+async def check_weekly_pulses_job(bot: Bot, settings: Settings, session_factory) -> None:
+    if not settings.leaders_chat_id: return
+    async with session_factory() as session:
+        ids=list((await session.scalars(select(WeeklyPulseCycle.id).where(
+            WeeklyPulseCycle.leader_chat_id==settings.leaders_chat_id,
+            WeeklyPulseCycle.status.in_(["open","processing"])))) .all())
+    for cycle_id in ids:
+        await _check_weekly_cycle(bot,settings,session_factory,cycle_id)
+
+
+async def _check_weekly_cycle(
     bot: Bot,
     settings: Settings,
     session_factory,
+    cycle_id: int,
 ) -> None:
     async with session_factory() as session:
         schedule = await get_schedule(session)
         if not schedule.enabled or not settings.leaders_chat_id:
             return
-        local_today = datetime.now(ZoneInfo(schedule.timezone)).date()
-        period_start, period_end = week_bounds(local_today)
-        cycle = await create_or_get_cycle(
-            session,
-            date_from=period_start,
-            date_to=period_end,
-            leader_chat_id=settings.leaders_chat_id,
-        )
+        cycle = await session.get(WeeklyPulseCycle, cycle_id)
+        if cycle is None: return
+        period_start, period_end = cycle.date_from, cycle.date_to
         now = datetime.now(ZoneInfo(schedule.timezone))
         cycle_open = _local_datetime(cycle.opens_at, ZoneInfo(schedule.timezone))
         cycle_deadline = _local_datetime(cycle.deadline_at, ZoneInfo(schedule.timezone))
+        if cycle.status in {"completed", "archived"}:
+            return
         if now < cycle_open:
             await session.commit()
             return
@@ -786,7 +801,12 @@ async def check_weekly_pulses_job(
             if now >= cycle_deadline - timedelta(hours=schedule.final_reminder_hours):
                 stages.append("final")
             seen_users: set[int] = set()
-            for _assignment, _office, user in await _active_leader_assignments(session):
+            for roster_member in await eligible_members(session, leader_chat_id=settings.leaders_chat_id):
+                user = await session.get(User, roster_member.user_id) if roster_member.user_id else None
+                if user is None or user.is_archived or user.is_blocked:
+                    continue
+                override = await session.scalar(select(WeeklyPulseParticipant.override).where(WeeklyPulseParticipant.cycle_id==cycle.id,WeeklyPulseParticipant.user_id==user.id))
+                if override in {"excused","excluded"}: continue
                 if user.id in seen_users:
                     continue
                 seen_users.add(user.id)
@@ -816,8 +836,8 @@ async def check_weekly_pulses_job(
                         ),
                         action=(
                             PrimaryAction(
-                                label="Открыть Weekly Pulse",
-                                web_app_url=settings.effective_miniapp_url,
+                                label="Заполнить Пульс",
+                                url=f"https://t.me/{(await bot.get_me()).username}?start=pulse_connect",
                             )
                             if settings.effective_miniapp_url
                             else None
@@ -863,6 +883,8 @@ async def check_weekly_pulses_job(
                 notification_type="leadership_weekly_pulse_due",
             )
         cycle.status = "processing"
+        from app.services.weekly_pulse_cycle_service import sync_cycle_participants
+        await sync_cycle_participants(session,cycle)
         submitted = await session.scalar(
             select(func.count(func.distinct(LeadershipReport.owner_id))).where(
                 LeadershipReport.pulse_cycle_id == cycle.id,
@@ -878,7 +900,7 @@ async def check_weekly_pulses_job(
                     text=(
                         f"📊 Пульс ЭРА · неделя {cycle.week_number}\n\n"
                         f"Срок закрыт. Ответили: {cycle.submitted_count} / "
-                        f"{cycle.eligible_count}. Сводка передана администраторам."
+                        f"{cycle.eligible_count}. Готовится итоговый отчёт."
                     ),
                 )
             except TelegramAPIError:
@@ -895,9 +917,12 @@ async def check_weekly_pulses_job(
             ).all()
         )
         missing_names: list[str] = []
-        for _assignment, _office, user in await _active_leader_assignments(session):
-            if user.id in eligible_owner_ids and user.id not in submitted_owner_ids:
-                missing_names.append(f"{user.first_name} {user.last_name or ''}".strip())
+        for roster_member in await eligible_members(session,leader_chat_id=settings.leaders_chat_id):
+            if roster_member.user_id not in submitted_owner_ids:
+                missing_names.append(roster_member.display_name or str(roster_member.telegram_user_id))
+        if now < _local_datetime(cycle.closes_at, ZoneInfo(schedule.timezone)):
+            await session.commit()
+            return
         if missing_names:
             summary = (
                 f"Weekly Pulse · неделя {cycle.week_number}\n"

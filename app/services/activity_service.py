@@ -143,7 +143,7 @@ async def _for_you_tasks(
             matches += 2
         if task.department_id is not None and task.department_id in department_ids:
             matches += 1
-        return (-matches, task.deadline)
+        return (-matches, task.deadline.isoformat() if task.deadline else "9999")
 
     return sorted(available, key=score)[:limit]
 
@@ -223,6 +223,8 @@ async def calendar_items(
         )
 
     for task in await list_tasks(session, user, "mine"):
+        if task.deadline is None:
+            continue
         deadline_date = task.deadline.date()
         if deadline_date > horizon:
             continue
@@ -276,7 +278,7 @@ async def history_entries(session: AsyncSession, user: User, limit: int = 50) ->
             HistoryEntry(
                 kind="task_completed",
                 title=task.title,
-                date=task.deadline.date().isoformat(),
+                date=task.deadline.date().isoformat() if task.deadline else "",
                 detail=f"{task.points} баллов",
             )
         )

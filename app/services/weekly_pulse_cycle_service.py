@@ -183,3 +183,33 @@ async def eligible_members(session: AsyncSession, *, leader_chat_id: int) -> lis
         .order_by(LeaderChatMembership.display_name, LeaderChatMembership.telegram_user_id)
     )
     return list(rows.all())
+
+
+async def sync_cycle_participants(session, cycle):
+    from app.database.leadership_models import WeeklyPulseParticipant
+    from app.database.models import LeadershipReport
+    roster = await eligible_members(session,leader_chat_id=cycle.leader_chat_id)
+    members={m.telegram_user_id:m for m in roster}
+    rows=list((await session.scalars(select(WeeklyPulseParticipant).where(WeeklyPulseParticipant.cycle_id==cycle.id))).all())
+    existing={r.telegram_user_id:r for r in rows}
+    for member in roster:
+        if member.telegram_user_id not in existing:
+            row=WeeklyPulseParticipant(cycle_id=cycle.id,user_id=member.user_id,telegram_user_id=member.telegram_user_id,status='not_started')
+            session.add(row);rows.append(row)
+    for row in rows:
+        if row.telegram_user_id in members:
+            row.user_id=members[row.telegram_user_id].user_id
+        if row.override in {'excused','excluded'}:
+            row.status=row.override
+            continue
+        if row.telegram_user_id not in members and row.override!='included':
+            row.status='left_chat'
+            continue
+        report=await session.scalar(select(LeadershipReport).where(LeadershipReport.pulse_cycle_id==cycle.id,LeadershipReport.owner_id==row.user_id)) if row.user_id else None
+        if report and report.submitted_at: row.status='submitted'
+        elif cycle.status=='processing': row.status='overdue'
+        elif row.status in {'left_chat','overdue'}: row.status='not_started'
+    cycle.eligible_count=sum(r.status not in {'excused','excluded','left_chat'} for r in rows)
+    cycle.submitted_count=sum(r.status=='submitted' for r in rows)
+    await session.flush()
+    return rows

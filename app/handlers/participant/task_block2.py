@@ -1,3 +1,4 @@
+from app.services.leaders_workspace import deadline_label
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -33,6 +34,12 @@ def _task_menu() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🌐 Общие задачи", callback_data="tasks:list:open")],
         [InlineKeyboardButton(text="🗂 Архив задач", callback_data="tasks:list:archive")],
         [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
+    ])
+
+def _submission_confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Подтвердить отправку", callback_data="task_submit:confirm")],
+        [InlineKeyboardButton(text="✏️ Отправить заново", callback_data="task_submit:edit")],
     ])
 
 
@@ -94,7 +101,7 @@ async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSessi
         title = "🟢 Задачи в работе"
         empty = ux_texts.TASKS_EMPTY_ACTIVE
     body = "\n".join(
-        f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, task.status)}, до {task.deadline:%d.%m.%Y} · {task.points} баллов"
+        f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, task.status)}, до {deadline_label(task.deadline, '%d.%m.%Y')} · {task.points} баллов"
         for task in tasks
     ) or empty
     await call.message.answer(
@@ -152,7 +159,7 @@ async def task_view(call: CallbackQuery, user: User | None, session: AsyncSessio
         rows.append([InlineKeyboardButton(text="💬 Чат команды", url=task.chat_url)])
     rows.append([InlineKeyboardButton(text="← Мои задачи", callback_data="tasks:hub")])
     await call.message.answer(
-        f"✅ {task.title}\n\n{task.description}\n\nСрок: {task.deadline:%d.%m.%Y %H:%M}\nНаграда: {task.points} баллов\nСтатус: {TASK_STATUS_LABELS.get(task.status, task.status)}",
+        f"✅ {task.title}\n\n{task.description}\n\nСрок: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}\nНаграда: {task.points} баллов\nСтатус: {TASK_STATUS_LABELS.get(task.status, task.status)}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
     )
     await _send_task_file(call, task)
@@ -195,12 +202,26 @@ async def task_result_save(message: Message, user: User, session: AsyncSession, 
     if not text_value and not file_id:
         await message.answer("Добавьте текст или прикрепите материал")
         return
-    submission = TaskSubmission(task_id=task.id, user_id=user.id, text=text_value, file_id=file_id, status="pending")
-    session.add(submission)
-    task.status = "review"
-    await session.flush()
-    await state.clear()
-    await message.answer("Результат отправлен на проверку. После решения админа Вы получите уведомление.")
+    await state.update_data(draft_text=text_value, draft_file_id=file_id, draft_file_type=file_type)
+    await state.set_state(TaskSubmissionStates.confirm)
+    await message.answer("Проверьте результат перед отправкой администратору. После подтверждения его можно будет проверить и начислить баллы.", reply_markup=_submission_confirm_keyboard())
+
+@router.callback_query(F.data == "task_submit:edit")
+async def task_result_edit(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    await state.set_state(TaskSubmissionStates.result)
+    await call.message.answer("Отправьте исправленный текст, фото, видео или файл.")
+
+@router.callback_query(F.data == "task_submit:confirm")
+async def task_result_confirm(call: CallbackQuery, user: User, session: AsyncSession, state: FSMContext, bot: Bot, settings: Settings) -> None:
+    await call.answer()
+    data = await state.get_data()
+    task = await session.get(Task, int(data.get("task_id", 0)))
+    if task is None or not await task_service.can_submit(session, task, user):
+        await state.clear(); await call.message.answer(texts.NO_ACCESS); return
+    submission = TaskSubmission(task_id=task.id, user_id=user.id, text=data.get("draft_text"), file_id=data.get("draft_file_id"), status="pending")
+    session.add(submission); task.status = "review"; await session.flush(); await state.clear()
+    await call.message.answer("✅ Результат подтверждён и отправлен на проверку. После решения админа Вы получите уведомление.")
     telegram = f"@{user.username}" if user.username else str(user.telegram_id)
     await notify_admins(
         bot,
@@ -208,12 +229,13 @@ async def task_result_save(message: Message, user: User, session: AsyncSession, 
         f"📥 Новый результат задания\n\n{task.title}\nУчастник: {user.first_name} {user.last_name or ''}\nTelegram: {telegram}\n\n{submission.text or 'Материал прикреплён файлом'}\n\nПроверка — в приложении ЭРА.",
         reply_markup=open_app_button(settings.effective_miniapp_url),
     )
+    file_id = submission.file_id
     if file_id:
         media_sent = media_failed = 0
         for chat_id in set(settings.admin_ids):
-            if file_type == "photo":
+            if data.get("draft_file_type") == "photo":
                 ok = await safe_send_photo(bot, chat_id, file_id, caption="Файл результата")
-            elif file_type == "video":
+            elif data.get("draft_file_type") == "video":
                 ok = await safe_send_video(bot, chat_id, file_id, caption="Файл результата")
             else:
                 ok = await safe_send_document(bot, chat_id, file_id, caption="Файл результата")

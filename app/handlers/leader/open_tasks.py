@@ -1,3 +1,4 @@
+from app.services.leaders_workspace import deadline_label
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -311,7 +312,7 @@ async def open_task_applications(call: CallbackQuery, user: User | None, session
         found = True
         lines = [
             f"📢 #{task.id} {task.title}",
-            f"Дедлайн: {task.deadline:%d.%m.%Y %H:%M}",
+            f"Дедлайн: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}",
             f"Нужно помощников: {task.max_participants or 'без ограничения'}",
             "",
             "Отклики:",

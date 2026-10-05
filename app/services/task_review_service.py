@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import PointTransaction, Task, TaskParticipant, TaskSubmission, User
+from app.database.models import PointTransaction, PortfolioItem, Task, TaskParticipant, TaskSubmission, User
 from app.services.activity_scoring_service import score_task_completion
 from app.utils.constants import TaskStatus
 
@@ -83,6 +83,14 @@ async def decide_submission(
             approved_by_id=actor.id,
         )
         awarded_points = int(transaction.points)
+
+        # Verified public missions become a portfolio entry automatically;
+        # the unique task/user check keeps retries idempotent.
+        reward = task.reward_json or {}
+        if reward.get("public_task") or reward.get("portfolio_on_approval"):
+            portfolio = await session.scalar(select(PortfolioItem).where(PortfolioItem.user_id == participant.id, PortfolioItem.related_task_id == task.id))
+            if portfolio is None:
+                session.add(PortfolioItem(user_id=participant.id, title=task.title, item_type="task", description=submission.text or task.description, file_id=submission.file_id, related_task_id=task.id, issued_by=actor.id, verified_by=actor.id, admin_comment=submission.admin_comment, status="verified"))
 
         if task.task_type == "private":
             task.status = TaskStatus.COMPLETED
