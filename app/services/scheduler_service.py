@@ -434,6 +434,65 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
         await session.commit()
 
 
+TRAJECTORY_BROADCAST_DATES = (5, 12, 19, 26, 30)
+TRAJECTORY_CHAT_URL = "https://t.me/+Q6MzTrnR21dmZjgy"
+TRAJECTORY_TEXT = """📢 Приглашаем молодых соотечественников на образовательную программу Международного научно-просветительского форума «Траектория открытий»!
+
+📅 31 октября 2026 года · 10:00–13:30
+📍 Дом Москвы в Ереване
+⭐ За подтверждённое посещение — 150 баллов ЭРА
+
+В программе:
+10:00–10:15 — Открытие
+10:15–11:30 — «Как развивать критическое мышление в эпоху ИИ»
+11:30–12:00 — Кофе-брейк
+12:00–13:15 — «Историческая правда и фейки: как работать с источниками»
+13:15–13:30 — Завершение
+
+🎓 Все участники получат сертификаты.
+
+Для участия зарегистрируйтесь на мероприятие в ЭРА и обязательно присоединитесь к общему чату — там будет вся дальнейшая информация:
+https://t.me/+Q6MzTrnR21dmZjgy"""
+
+
+async def send_trajectory_campaign(bot: Bot, settings: Settings, session_factory) -> None:
+    """Five idempotent campaign waves before the 31 Oct 2026 event."""
+    now = datetime.now(ZoneInfo(settings.timezone))
+    if now.year != 2026 or now.month != 10 or now.day > 30:
+        return
+    due = [day for day in TRAJECTORY_BROADCAST_DATES if day <= now.day]
+    if not due:
+        return
+    stage = len(due)
+    async with session_factory() as session:
+        recipients = list((await session.scalars(
+            select(User).where(
+                User.application_status == ApplicationStatus.APPROVED,
+                User.is_blocked.is_(False),
+                User.is_archived.is_(False),
+            )
+        )).all())
+        await broadcast_detailed_once(
+            bot, settings, [u.telegram_id for u in recipients], TRAJECTORY_TEXT,
+            delivery_key=f"trajectory-20261031:personal:{stage}",
+            notification_type="event_campaign",
+        )
+        chat_ids = {
+            "general": settings.general_chat_id,
+            "internal": settings.internal_department_chat_id,
+            "external": settings.external_department_chat_id,
+            "leaders": settings.leaders_chat_id,
+        }
+        for chat_key, chat_id in chat_ids.items():
+            if chat_id:
+                await safe_send_once(
+                    bot, settings, int(chat_id), TRAJECTORY_TEXT,
+                    delivery_key=f"trajectory-20261031:{chat_key}:{stage}",
+                    notification_type="event_campaign",
+                )
+        await session.commit()
+
+
 async def send_general_content_morning(
     bot: Bot, settings: Settings, session_factory
 ) -> None:
@@ -494,6 +553,16 @@ def create_scheduler(bot: Bot, settings: Settings, session_factory) -> AsyncIOSc
         minutes=15,
         args=(bot, settings, session_factory),
         id="task-reminders",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        send_trajectory_campaign,
+        "interval",
+        minutes=15,
+        args=(bot, settings, session_factory),
+        id="trajectory-20261031-campaign",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
