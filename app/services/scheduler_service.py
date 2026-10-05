@@ -435,7 +435,7 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
 
 
 TRAJECTORY_BROADCAST_DATES = (5, 12, 19, 26, 30)
-TRAJECTORY_CHAT_URL = "https://t.me/+Q6MzTrnR21dmZjgy"
+TRAJECTORY_CHAT_URL = "https://t.me/+Vz588wqkyt82ZTRi"
 TRAJECTORY_TEXT = """📢 Приглашаем молодых соотечественников на образовательную программу Международного научно-просветительского форума «Траектория открытий»!
 
 📅 31 октября 2026 года · 10:00–13:30
@@ -452,7 +452,7 @@ TRAJECTORY_TEXT = """📢 Приглашаем молодых соотечест
 🎓 Все участники получат сертификаты.
 
 Для участия зарегистрируйтесь на мероприятие в ЭРА и обязательно присоединитесь к общему чату — там будет вся дальнейшая информация:
-https://t.me/+Q6MzTrnR21dmZjgy"""
+https://t.me/+Vz588wqkyt82ZTRi"""
 
 
 async def send_trajectory_campaign(bot: Bot, settings: Settings, session_factory) -> None:
@@ -487,7 +487,7 @@ async def send_trajectory_campaign(bot: Bot, settings: Settings, session_factory
             if chat_id:
                 await safe_send_once(
                     bot, settings, int(chat_id), TRAJECTORY_TEXT,
-                    delivery_key=f"trajectory-20261031:{chat_key}:{stage}",
+                    delivery_key=f"trajectory-20261031:v2:{chat_key}:{stage}",
                     notification_type="event_campaign",
                 )
         await session.commit()
