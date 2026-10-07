@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import User
-from app.keyboards.bot_shell import main_inline_keyboard
+from app.keyboards.bot_shell import main_reply_keyboard
 from app.keyboards.common import registration_keyboard, subscription_keyboard
 from app.keyboards.registration import pending_registration_keyboard
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
@@ -37,15 +37,7 @@ async def show_home(message: Message, user: User, settings: Settings) -> None:
         return
     await message.answer(
         ux_texts.MAIN_MENU,
-        reply_markup=main_inline_keyboard(
-            privileged=user.role in PRIVILEGED_ROLES,
-            admin=user.role == Role.ADMIN
-            or any(
-                grant.is_active
-                for grant in (getattr(user, "permission_grants", None) or [])
-            ),
-            miniapp_url=settings.effective_miniapp_url,
-        ),
+        reply_markup=main_reply_keyboard(settings.effective_miniapp_url),
     )
 
 
