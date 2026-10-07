@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    WebAppInfo,
+)
 
 from app.keyboards.participant import (
     main_inline_keyboard as legacy_main_inline_keyboard,
@@ -53,6 +59,35 @@ def main_inline_keyboard(
         rows.insert(max(0, len(rows) - 1), vector_row)
 
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def main_reply_keyboard(miniapp_url: str = "") -> ReplyKeyboardMarkup:
+    """Persistent quick-access menu shown above the Telegram input field."""
+    rows: list[list[KeyboardButton]] = []
+    if miniapp_url:
+        rows.append([
+            KeyboardButton(text="🔥 Открыть ЭРА", web_app=WebAppInfo(url=miniapp_url)),
+            KeyboardButton(text="🧭 Навигация"),
+        ])
+    else:
+        rows.append([
+            KeyboardButton(text="👤 Личный кабинет"),
+            KeyboardButton(text="📅 Афиша"),
+        ])
+        rows.append([
+            KeyboardButton(text="⭐ Возможности"),
+            KeyboardButton(text="🧭 Навигация"),
+        ])
+    rows.append([
+        KeyboardButton(text="❓ Вопросы об ЭРА"),
+        KeyboardButton(text="💬 Связь"),
+    ])
+    return ReplyKeyboardMarkup(
+        keyboard=rows,
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Выберите раздел ЭРА",
+    )
 
 
 def navigation_guide_keyboard(
