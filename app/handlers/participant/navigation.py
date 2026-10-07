@@ -210,12 +210,15 @@ async def navigation_command(message: Message, user: User | None, settings: Sett
 
 
 @router.callback_query(F.data == "contact:menu")
-async def contact_callback(call: CallbackQuery, user: User | None) -> None:
+async def contact_callback(call: CallbackQuery, user: User | None, state: FSMContext, faq_context: dict | None = None) -> None:
     await call.answer()
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    await call.message.answer(CONTACT_TEXT, parse_mode=ParseMode.HTML, reply_markup=contact_keyboard())
+    await state.clear()
+    if faq_context:
+        await state.update_data(faq_context=faq_context)
+    await call.message.answer(CONTACT_TEXT, parse_mode=ParseMode.HTML, reply_markup=contact_keyboard(faq_context["back"] if faq_context else None))
 
 
 @router.callback_query(F.data == "team:menu")

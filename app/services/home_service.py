@@ -486,7 +486,7 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
         active_task_summary = TaskSummary(
             id=active_task.id,
             title=active_task.title,
-            deadline=active_(task.deadline.isoformat() if task.deadline else ""),
+            deadline=active_task.deadline.isoformat() if active_task.deadline else "",
             points=active_task.points,
             status=active_task.status,
         )

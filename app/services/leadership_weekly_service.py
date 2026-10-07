@@ -33,7 +33,7 @@ from app.services.audit_service import audit
 from app.services.leaders_topics_service import topic_id
 from app.services.bot_notification_service import PrimaryAction, send_bot_notification
 from app.services.leadership_permission_service import is_assignment_active
-from app.database.leadership_models import WeeklyPulseParticipant
+from app.database.leadership_models import WeeklyPulseCycle, WeeklyPulseParticipant
 from app.services import leadership_report_service
 from app.services.weekly_pulse_cycle_service import (
     create_or_get_cycle,

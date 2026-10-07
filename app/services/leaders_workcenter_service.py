@@ -11,7 +11,6 @@ from sqlalchemy import select
 from app.config import Settings
 from app.database.models import Task, TaskDelivery, User
 from app.utils.constants import TaskStatus
-from app.utils.deep_links import miniapp_task_url
 from app.services.leaders_workspace import meta, deadline_label
 
 logger = logging.getLogger(__name__)

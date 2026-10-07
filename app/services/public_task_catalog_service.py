@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import Task, User
 from app.services.notification_service import safe_send
-from app.utils.constants import ApplicationStatus, Role
+from app.utils.constants import ApplicationStatus
 
 
 CATALOG: tuple[dict[str, object], ...] = (
