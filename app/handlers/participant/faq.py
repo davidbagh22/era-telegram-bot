@@ -2,7 +2,7 @@
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.content.era_faq import (
@@ -23,6 +23,24 @@ from app.utils import texts
 from app.utils.telegram import edit_text_or_answer
 
 router = Router(name="participant_faq")
+
+
+@router.message(F.text == "❓ Вопросы об ЭРА", F.chat.type == "private")
+async def faq_home_message(
+    message: Message, user: User | None, state: FSMContext, session: AsyncSession
+) -> None:
+    if not _approved(user):
+        await message.answer(texts.APPLICATION_PENDING)
+        return
+    await state.clear()
+    await message.answer(FAQ_HOME_TEXT, reply_markup=faq_home_keyboard())
+    await audit(
+        session,
+        actor_id=user.id,
+        action="faq_opened",
+        entity_type="faq",
+        new_value={"user_id": user.id, "category": None, "question": None, "action": None},
+    )
 
 
 @router.callback_query(F.data == "faq:home")
