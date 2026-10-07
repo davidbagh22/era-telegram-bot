@@ -10,6 +10,7 @@ from app.database.models import User
 from app.keyboards.bot_shell import (
     contact_keyboard,
     main_inline_keyboard,
+    main_reply_keyboard,
     navigation_guide_keyboard,
     team_keyboard,
 )
@@ -99,10 +100,8 @@ async def _send_main_menu(message: Message, user: User | None, settings: Setting
     await message.answer(
         ux_texts.MAIN_INLINE_MENU,
         parse_mode=ParseMode.HTML,
-        reply_markup=main_inline_keyboard(
-            miniapp_url=settings.effective_miniapp_url if settings else "",
-            privileged=user.role in PRIVILEGED_ROLES,
-            admin=_has_admin_access(user),
+        reply_markup=main_reply_keyboard(
+            settings.effective_miniapp_url if settings else ""
         ),
     )
 
@@ -203,6 +202,7 @@ async def nav_guide_callback(call: CallbackQuery, user: User | None, settings: S
     await _send_navigation_guide(call.message, user, settings)
 
 
+@router.message(F.text == "🧭 Навигация", F.chat.type == "private")
 @router.message(Command("navigation"), F.chat.type == "private")
 async def navigation_command(message: Message, user: User | None, settings: Settings, state: FSMContext) -> None:
     await state.clear()
