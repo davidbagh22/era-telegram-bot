@@ -70,9 +70,9 @@ def navigation_guide_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def contact_keyboard() -> InlineKeyboardMarkup:
+def contact_keyboard(back_callback: str | None = None) -> InlineKeyboardMarkup:
     """Compact service centre: every button has one clear destination."""
-    return InlineKeyboardMarkup(
+    markup = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="❓ Задать вопрос", callback_data="question:start")],
             [InlineKeyboardButton(text="👥 Кто за что отвечает", callback_data="team:menu")],
@@ -87,6 +87,10 @@ def contact_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
         ]
     )
+
+    if back_callback:
+        markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="← К вопросам", callback_data=back_callback)])
+    return markup
 
 
 def team_keyboard(general_chat_url: str | None = None) -> InlineKeyboardMarkup:

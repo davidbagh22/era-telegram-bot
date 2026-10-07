@@ -53,13 +53,13 @@ class MainInlineKeyboardMiniAppButtonTests(unittest.TestCase):
         self.assertIn("👤 Личный кабинет", without_miniapp)
         self.assertNotIn("👤 Личный кабинет", with_miniapp)
 
-    def test_miniapp_menu_has_the_three_gateway_buttons(self) -> None:
+    def test_miniapp_menu_has_gateway_buttons_and_faq(self) -> None:
         markup = main_inline_keyboard(
             privileged=True, admin=True, miniapp_url="https://era-app.example/"
         )
         self.assertEqual(
             _button_texts(markup),
-            ["🔥 Открыть ЭРА", "🧭 Навигация", "💬 Связь"],
+            ["🔥 Открыть ЭРА", "🧭 Навигация", "❓ Вопросы об ЭРА", "💬 Связь"],
         )
 
     def test_navigation_button_is_a_callback_not_a_web_app_button(self) -> None:

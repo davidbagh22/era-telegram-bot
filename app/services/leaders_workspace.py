@@ -1,7 +1,6 @@
 """Shared Leaders workflows. Task remains the single source of truth."""
 from __future__ import annotations
 from datetime import datetime, timedelta, timezone
-from html import escape
 from sqlalchemy import select, update
 from app.database.models import Task, TaskDelivery, TaskSubmission, User, LeadershipAttentionItem
 from app.database.leadership_models import LeaderChatMembership

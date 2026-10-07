@@ -4,7 +4,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from app.api.deps import get_session, get_settings, get_current_user, get_bot
+from app.api.deps import get_session, get_settings, get_bot
 from app.api.v1.admin_executive_export import require_admin
 from app.database.models import User, Task, TaskDelivery, TaskSubmission, LeadershipAttentionItem, AuditLog, Broadcast
 from app.services import leaders_workspace as service

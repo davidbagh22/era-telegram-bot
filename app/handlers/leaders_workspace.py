@@ -180,7 +180,6 @@ async def workspace_callback(call,state,user,settings,session,bot):
             kind=parts[2]
             tasks=list((await session.scalars(select(Task).join(TaskDelivery,TaskDelivery.task_id==Task.id).where(
                 TaskDelivery.chat_key=='leaders',TaskDelivery.chat_id==settings.leaders_chat_id).order_by(Task.id.desc()))).unique().all())
-            now=datetime.now(ZoneInfo(settings.timezone))
             if kind=='mine': tasks=[t for t in tasks if t.assignee_id==user.id and t.status not in service.TERMINAL]
             elif kind=='free': tasks=[t for t in tasks if t.assignee_id is None and t.status not in service.TERMINAL]
             elif kind=='urgent': tasks=[t for t in tasks if service.meta(t).get('priority')=='urgent' and t.status not in service.TERMINAL]
