@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.api.v1.admin_event_create import create_event_draft, save_event_draft_step, publish_event, EventDraftPatch, _publish_broadcast
+from app.api.v1.admin_event_create import create_event_draft, save_event_draft_step, publish_event, cancel_event, EventDraftPatch, _publish_broadcast
 from app.config import Settings
 from app.database.base import Base
 from app.database.models import Event, User
@@ -56,3 +56,68 @@ class EventWizardPublishTests(IsolatedAsyncioTestCase):
             button = send.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
             self.assertIsNone(button.web_app)
             self.assertIn("startapp=event_4", button.url)
+
+    async def test_changed_event_is_committed_before_notification_and_retry_is_quiet(self):
+        async with self.sessions() as session:
+            draft = await create_event_draft(self.admin, session)
+            await session.commit()
+        original = date.today() + timedelta(days=2)
+        changed = original + timedelta(days=1)
+        async with self.sessions() as session:
+            await save_event_draft_step(
+                draft.id, EventDraftPatch(title="Встреча ЭРА", short_description="Встречаемся",
+                                          location="Дом Москвы", event_date=original),
+                self.admin, session, self.settings, None,
+            )
+            await session.commit()
+        async with self.sessions() as session:
+            await publish_event(draft.id, self.admin, session, self.settings, None)
+
+        async def check_committed(*args):
+            async with self.sessions() as fresh:
+                saved = await fresh.get(Event, draft.id)
+                self.assertEqual(saved.event_date, changed)
+
+        with patch("app.api.v1.admin_event_create._notify_changed_event",
+                   new=AsyncMock(side_effect=check_committed)) as notify:
+            async with self.sessions() as session:
+                await save_event_draft_step(
+                    draft.id, EventDraftPatch(event_date=changed),
+                    self.admin, session, self.settings, object(),
+                )
+            async with self.sessions() as session:
+                await save_event_draft_step(
+                    draft.id, EventDraftPatch(event_date=changed),
+                    self.admin, session, self.settings, object(),
+                )
+            self.assertEqual(notify.await_count, 1)
+
+    async def test_cancel_is_committed_before_notice_and_double_cancel_is_idempotent(self):
+        async with self.sessions() as session:
+            draft = await create_event_draft(self.admin, session)
+            await session.commit()
+        async with self.sessions() as session:
+            await save_event_draft_step(
+                draft.id, EventDraftPatch(title="Встреча ЭРА", short_description="План",
+                                          location="Дом Москвы"),
+                self.admin, session, self.settings, None,
+            )
+            await session.commit()
+        async with self.sessions() as session:
+            await publish_event(draft.id, self.admin, session, self.settings, None)
+
+        async def check_then_fail(*args):
+            async with self.sessions() as fresh:
+                saved = await fresh.get(Event, draft.id)
+                self.assertEqual(saved.status, EventStatus.CANCELLED)
+            raise RuntimeError("telegram unavailable")
+
+        with patch("app.api.v1.admin_event_create._notify_changed_event",
+                   new=AsyncMock(side_effect=check_then_fail)) as notify:
+            async with self.sessions() as session:
+                first = await cancel_event(draft.id, self.admin, session, self.settings, object())
+                self.assertEqual(first.status, EventStatus.CANCELLED)
+            async with self.sessions() as session:
+                second = await cancel_event(draft.id, self.admin, session, self.settings, object())
+                self.assertEqual(second.status, EventStatus.CANCELLED)
+            self.assertEqual(notify.await_count, 1)
