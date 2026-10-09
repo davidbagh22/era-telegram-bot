@@ -470,12 +470,12 @@ https://t.me/+Vz588wqkyt82ZTRi"""
 async def send_trajectory_campaign(bot: Bot, settings: Settings, session_factory) -> None:
     """Five idempotent campaign waves before the 31 Oct 2026 event."""
     now = datetime.now(ZoneInfo(settings.timezone))
-    if now.year != 2026 or now.month != 10 or now.day > 30:
+    # Campaigns are tied to their advertised dates, not every subsequent
+    # quarter-hour. Replaying obsolete stages created payload-hash conflicts
+    # against already-sent notification keys and noisy production logs.
+    if now.year != 2026 or now.month != 10 or now.day not in TRAJECTORY_BROADCAST_DATES:
         return
-    due = [day for day in TRAJECTORY_BROADCAST_DATES if day <= now.day]
-    if not due:
-        return
-    stage = len(due)
+    stage = TRAJECTORY_BROADCAST_DATES.index(now.day) + 1
     async with session_factory() as session:
         recipients = list((await session.scalars(
             select(User).where(
