@@ -13,6 +13,7 @@ from app.database.models import User, Task, TaskDelivery, TaskSubmission
 from app.utils.constants import TaskStatus
 from app.services import leaders_workspace as service
 from app.services.leaders_workcenter_service import render_task_card, sync_one_card
+from app.services.notification_service import safe_answer_document, safe_answer_photo
 
 router = Router(name='leaders_workspace')
 
@@ -156,10 +157,9 @@ async def details(message,session,task):
     for sub in submissions:
         await message.answer(f'Результат: {sub.text or "Вложение"}')
         if sub.file_id:
-            try: await message.answer_document(sub.file_id)
-            except TelegramAPIError:
-                try: await message.answer_photo(sub.file_id)
-                except TelegramAPIError: await message.answer('Не удалось загрузить вложение. Оно сохранено у результата.')
+            if not await safe_answer_document(message, sub.file_id):
+                if not await safe_answer_photo(message, sub.file_id):
+                    await message.answer('Не удалось загрузить вложение. Оно сохранено у результата.')
 
 
 @router.callback_query(F.data.startswith('wc:'))
