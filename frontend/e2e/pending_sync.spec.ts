@@ -63,7 +63,7 @@ test("a pending applicant's Mini App updates itself after admin approval, withou
 
     // The approved user now lands in the redesigned light Home. The Vector
     // card is the stable landmark in the current simplified navigation.
-    await expect(applicantPage.getByText("МОЙ ВЕКТОР", { exact: true })).toBeVisible();
+    await expect(applicantPage.getByText("Вот что сейчас важнее всего.", { exact: true })).toBeVisible();
     await expect(
       applicantPage.getByRole("heading", { name: "Заявка на проверке" }),
     ).not.toBeVisible();
