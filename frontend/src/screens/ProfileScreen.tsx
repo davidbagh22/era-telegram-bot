@@ -46,6 +46,12 @@ function PortfolioSection({ title, entries }: { title: string; entries: Portfoli
   );
 }
 
+function dateOrder(value: string): number {
+  const [day, month, year] = value.split(".").map(Number);
+  if (!day || !month || !year) return 0;
+  return new Date(year, month - 1, day).getTime();
+}
+
 interface ProfileScreenProps {
   isAdmin?: boolean;
   isLeader?: boolean;
@@ -105,6 +111,11 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
     achievements: [...data.badges, ...data.certificates, ...data.recommendations],
   } satisfies Record<DashboardCell, PortfolioEntry[]>;
   const totalResults = Object.values(resultEntries).reduce((sum, entries) => sum + entries.length, 0);
+  const timeline = Object.entries(resultEntries)
+    .flatMap(([group, entries]) => entries.map((entry) => ({ ...entry, group })))
+    .filter((entry) => Boolean(entry.date_label))
+    .sort((a, b) => dateOrder(b.date_label) - dateOrder(a.date_label))
+    .slice(0, 8);
 
   if (activeCell) {
     const config = DASHBOARD_CELLS.find((item) => item.key === activeCell);
@@ -137,6 +148,23 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
       <section>
         <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Мой путь</h2>
         <ProgressBar currentIndex={data.growth.level_index} totalSteps={data.growth.level_count} labels={GROWTH_LABELS} />
+        {data.growth_criteria.next_label && data.growth_criteria.criteria.length > 0 && (
+          <Card style={{ marginTop: "0.75rem" }}>
+            <strong>До уровня «{data.growth_criteria.next_label}»</strong>
+            <p style={{ margin: "0.3rem 0 0.7rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>
+              Достаточно выполнить любой из подтверждённых вариантов. Баллы сами по себе уровень не меняют.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              {data.growth_criteria.criteria.map((criterion) => (
+                <div key={criterion.key} style={{ display: "grid", gridTemplateColumns: "1.4rem 1fr auto", gap: "0.5rem", alignItems: "start" }}>
+                  <span aria-hidden="true" style={{ color: criterion.done ? "var(--era-success)" : "var(--era-text-muted)", fontWeight: 800 }}>{criterion.done ? "✓" : "○"}</span>
+                  <span style={{ lineHeight: 1.4 }}>{criterion.label}</span>
+                  <span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)", whiteSpace: "nowrap" }}>{criterion.current}/{criterion.required}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
       </section>
 
       <section>
@@ -149,6 +177,27 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
             </button>
           ))}
         </div>
+      </section>
+
+      <section>
+        <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Лента пути</h2>
+        {timeline.length === 0 ? <EmptyState text="История появится после первых подтверждённых действий." /> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
+            {timeline.map((entry, index) => (
+              <div key={`${entry.group}-${entry.title}-${entry.date_label}-${index}`} style={{ display: "grid", gridTemplateColumns: "1.25rem 1fr", gap: "0.65rem", minWidth: 0 }}>
+                <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", marginTop: "0.45rem", background: "var(--era-violet)", zIndex: 1 }} />
+                  {index < timeline.length - 1 && <span style={{ position: "absolute", top: "0.9rem", bottom: "-0.15rem", width: 1, background: "var(--era-border)" }} />}
+                </div>
+                <div style={{ paddingBottom: "0.9rem", minWidth: 0 }}>
+                  <span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>{entry.date_label}</span>
+                  <strong style={{ display: "block", marginTop: "0.15rem", overflowWrap: "anywhere" }}>{entry.title}</strong>
+                  {entry.status && <span style={{ display: "block", marginTop: "0.15rem", color: "var(--era-text-secondary)", fontSize: "var(--era-text-sm)" }}>{entry.status}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
