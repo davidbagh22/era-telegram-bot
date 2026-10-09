@@ -35,6 +35,6 @@ test("admin opens a rich participant profile and awards points", async ({ page }
   // The Admin workspace itself also has an "Обзор" destination in its bottom
   // navigation. The first exact match is the local participant-profile tab.
   await expect(page.getByText("Роль и статус доступа")).toBeVisible();
-  await page.getByRole("button", { name: "Обзор", exact: true }).first().click();
+  await page.getByTestId("participant-profile-tabs").getByRole("button", { name: "Обзор", exact: true }).click();
   await expect(balanceCard.locator("strong")).toHaveText(String(pointsBefore + 15));
 });
