@@ -134,6 +134,7 @@ jobs:
       BOT_TOKEN: "0000000000:E2ETESTTOKEN"
       MINIAPP_AUTH_SECRET: e2e-test-secret
       DEV_AUTH_ENABLED: "true"
+      E2E_DISABLE_BACKGROUND_JOBS: "1"
       REDIS_URL: redis://127.0.0.1:6379/0
       LEADERS_CHAT_ID: "-1009000000000"
     steps:
