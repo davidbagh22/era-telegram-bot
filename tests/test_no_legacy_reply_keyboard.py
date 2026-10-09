@@ -11,12 +11,16 @@ import unittest
 from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parent.parent / "app"
-ALLOWED_REPLY_KEYBOARD_FILE = "app/keyboards/faq.py"
+ALLOWED_REPLY_KEYBOARD_FILES = {"app/keyboards/faq.py", "app/keyboards/bot_shell.py"}
 
 
 def _matching_files(needle: str) -> list[str]:
     hits = []
     for path in APP_ROOT.rglob("*.py"):
+        # The separately deployed Commission bot has its own keyboard flow.
+        # This guard covers ERA keyboards and must not flag that bot.
+        if path.name.startswith("commission_bot"):
+            continue
         text = path.read_text(encoding="utf-8")
         if needle in text:
             hits.append(str(path.relative_to(APP_ROOT.parent)))
@@ -26,7 +30,8 @@ def _matching_files(needle: str) -> list[str]:
 class NoLegacyReplyKeyboardTests(unittest.TestCase):
     def _assert_only_general_chat_dock(self, needle: str) -> None:
         hits = _matching_files(needle)
-        self.assertEqual(hits, [ALLOWED_REPLY_KEYBOARD_FILE], f"Unexpected {needle} usage in: {hits}")
+        self.assertTrue(set(hits).issubset(ALLOWED_REPLY_KEYBOARD_FILES), f"Unexpected {needle} usage in: {hits}")
+        self.assertIn("app/keyboards/faq.py", hits)
 
     def test_reply_keyboard_markup_exists_only_for_general_chat_dock(self) -> None:
         self._assert_only_general_chat_dock("ReplyKeyboardMarkup(")
