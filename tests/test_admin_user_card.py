@@ -109,7 +109,7 @@ def test_admin_user_card_marks_missing_photo_and_socials() -> None:
     card = asyncio.run(build_admin_user_card(session, _user(), mode="profile"))
 
     assert card.photo_file_id is None
-    assert "Фото: не загружено" in card.text
+    assert "Профиль" in card.text
     assert "Соцсети\nне указаны" in card.text
     assert "admin:user:points:7" in str(card.reply_markup)
 
@@ -136,8 +136,8 @@ def test_admin_user_card_media_uses_safe_delivery() -> None:
     source = (ROOT / "app/services/admin_user_card.py").read_text(encoding="utf-8")
 
     assert "safe_answer_photo" in source
-    assert "safe_send_photo" in source
-    assert "safe_send(bot, chat_id, card.text" in source
+    assert "notify_admins_once" in source
+    assert "delivery_key=" in source
     assert "bot.send_photo" not in source
     assert "bot.send_message" not in source
 
