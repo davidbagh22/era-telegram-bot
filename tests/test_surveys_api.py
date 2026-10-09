@@ -18,7 +18,7 @@ def _participant(**overrides) -> SimpleNamespace:
 
 
 def _survey(**overrides) -> SimpleNamespace:
-    defaults = dict(id=1, title="Опрос", description="d", status="active")
+    defaults = dict(id=1, title="Опрос", description="d", status="active", questions_json=[{"text": "Q1"}, {"text": "Q2"}])
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
