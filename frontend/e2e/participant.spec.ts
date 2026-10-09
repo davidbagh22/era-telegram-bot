@@ -17,7 +17,8 @@ test("participant gets light ERA UI, opens event details, and registers", async 
 
   const eventCard = page.getByText("E2E тестовое мероприятие");
   await expect(eventCard).toBeVisible();
-  await page.getByRole("button", { name: "Открыть событие" }).first().click();
+  const card = page.locator(".era-card", { hasText: "E2E тестовое мероприятие" }).first();
+  await card.getByRole("button", { name: "Открыть событие" }).click();
 
   await expect(page.getByRole("heading", { name: "E2E тестовое мероприятие" })).toBeVisible();
   await page.getByRole("button", { name: "Участвовать" }).click();
