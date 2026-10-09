@@ -519,6 +519,21 @@ async def remove_event_poster(
     return await _draft_out(session, event, experience)
 
 
+def _ensure_publish_description(event: Event, experience: EventExperience) -> None:
+    """Use the card description when the optional long description is empty.
+
+    The wizard asks for both fields, but a complete short description should
+    not prevent publication with an opaque missing:full_description error.
+    """
+    full = (experience.full_description or event.description or "").strip()
+    short = (experience.short_description or "").strip()
+    if not full and short:
+        full = short
+    if full:
+        experience.full_description = full
+        event.description = full
+
+
 def _validate_publish(event: Event, experience: EventExperience) -> list[str]:
     missing: list[str] = []
     if not event.title.strip() or event.title == "Новое мероприятие":
@@ -579,6 +594,7 @@ async def publish_event(
 ) -> EventDraftOut:
     event = await _managed_event(session, event_id)
     experience = await _experience(session, event)
+    _ensure_publish_description(event, experience)
     missing = _validate_publish(event, experience)
     if missing:
         raise HTTPException(status_code=422, detail="missing:" + ",".join(missing))
