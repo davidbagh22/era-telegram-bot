@@ -5,7 +5,7 @@ const PARTICIPANT_TELEGRAM_ID = 900001;
 test("cancelling a registration goes through a confirm sheet, not an immediate tap", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
   await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Участие" }).click();
-  await page.getByRole("button", { name: /Мероприятия/ }).click();
+  await page.getByRole("tab", { name: "События" }).click();
   await expect(page.getByText("E2E тестовое мероприятие")).toBeVisible();
   await page.getByRole("button", { name: "Открыть событие" }).first().click();
 
