@@ -1,6 +1,6 @@
 """One-time announcement for ERA's two existing team chats.
 
-Call publish_directions_announcement from an authorized admin action only.
+Publication is authorized by the release and scheduled through the existing worker.
 Delivery is idempotent and routed strictly to the Notifications forum topic.
 """
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -38,4 +38,5 @@ async def publish_directions_announcement(bot, settings) -> bool:
         bot, settings, "notifications", ANNOUNCEMENT,
         reply_markup=directions_keyboard(),
         delivery_key="era-directions-invite-v1",
+        parse_mode="HTML",
     )
