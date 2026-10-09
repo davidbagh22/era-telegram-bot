@@ -683,6 +683,7 @@ async def send_broadcast(
     payload: PersonalBroadcastIn,
     admin: User = Depends(require_dashboard_access),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
     bot: Bot | None = Depends(get_bot),
     _rate_limit: None = Depends(enforce_admin_action_rate_limit),
 ) -> PersonalBroadcastResultOut:
@@ -691,7 +692,7 @@ async def send_broadcast(
     try:
         result = await send_personal_broadcast(
             bot, session, audience=payload.audience, filter_value=payload.filter_value,
-            text=payload.text, author_id=admin.id,
+            text=payload.text, author_id=admin.id, settings=settings,
         )
     except BroadcastError as exc:
         raise HTTPException(status_code=422, detail=exc.code) from exc

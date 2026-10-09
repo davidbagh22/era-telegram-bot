@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, time
 from typing import Any, Literal
 
@@ -16,7 +17,9 @@ from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
 from app.services.audit_service import audit
 from app.services.authorization_service import can_manage_events
-from app.services.notification_service import broadcast_detailed, safe_send
+from app.services.notification_service import broadcast_detailed, broadcast_detailed_once
+from app.services.general_topics_service import send_general_topic
+from app.utils.deep_links import telegram_event_miniapp_url
 from app.utils.constants import (
     EVENT_SCORING_PRESET_LABELS,
     EVENT_SCORING_PRESET_METRICS,
@@ -26,6 +29,8 @@ from app.utils.constants import (
     RegistrationStatus,
 )
 from app.utils.deep_links import miniapp_event_url
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/events", tags=["admin-event-create"])
 
@@ -290,7 +295,7 @@ async def _draft_out(session: AsyncSession, event: Event, experience: EventExper
 
 
 async def _managed_event(session: AsyncSession, event_id: int) -> Event:
-    event = await session.get(Event, event_id)
+    event = await session.scalar(select(Event).where(Event.id == event_id).with_for_update())
     if event is None:
         raise HTTPException(status_code=404, detail="event_not_found")
     return event
@@ -380,8 +385,6 @@ async def _notify_changed_event(
         )
     )
     recipients = [int(value) for value in rows.scalars().all() if value]
-    if not recipients:
-        return
     url = miniapp_event_url(settings.effective_miniapp_url, event.id)
     markup = (
         InlineKeyboardMarkup(
@@ -391,6 +394,8 @@ async def _notify_changed_event(
         else None
     )
     text = "⚡ Изменились детали мероприятия\n\n" + event.title + "\n\n" + "\n".join(f"• {item}" for item in changes)
+    await send_general_topic(bot, settings, "announcements", text,
+                             reply_markup=await _public_keyboard(bot, settings, event))
     await broadcast_detailed(bot, recipients, text, reply_markup=markup)
 
 
@@ -519,11 +524,26 @@ async def remove_event_poster(
     return await _draft_out(session, event, experience)
 
 
+def _ensure_publish_description(event: Event, experience: EventExperience) -> None:
+    """Use the card description when the optional long description is empty.
+
+    The wizard asks for both fields, but a complete short description should
+    not prevent publication with an opaque missing:full_description error.
+    """
+    full = (experience.full_description or "").strip() or (event.description or "").strip()
+    short = (experience.short_description or "").strip()
+    if not full and short:
+        full = short
+    if full:
+        experience.full_description = full
+        event.description = full
+
+
 def _validate_publish(event: Event, experience: EventExperience) -> list[str]:
     missing: list[str] = []
     if not event.title.strip() or event.title == "Новое мероприятие":
         missing.append("title")
-    if not (experience.full_description or event.description).strip():
+    if not (experience.full_description or event.description or "").strip():
         missing.append("full_description")
     if not event.location.strip():
         missing.append("location")
@@ -532,41 +552,39 @@ def _validate_publish(event: Event, experience: EventExperience) -> list[str]:
     return missing
 
 
-async def _publish_broadcast(
-    bot: Bot | None,
-    settings: Settings,
-    session: AsyncSession,
-    event: Event,
-    experience: EventExperience,
-) -> None:
-    if bot is None or not experience.broadcast_enabled:
+async def _public_keyboard(bot: Bot, settings: Settings, event: Event):
+    username = (settings.bot_username or "").strip() or (await bot.get_me()).username
+    url = telegram_event_miniapp_url(username or "", event.id)
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Открыть мероприятие", url=url)
+    ]]) if url else None
+
+
+async def _publish_broadcast(bot, settings, session, event, experience) -> None:
+    if bot is None:
         return
     targets = set(experience.broadcast_targets or [])
-    url = miniapp_event_url(settings.effective_miniapp_url, event.id)
-    markup = (
-        InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="Открыть мероприятие", web_app=WebAppInfo(url=url))]]
-        )
-        if url
-        else None
-    )
+    markup = await _public_keyboard(bot, settings, event)
     text = (
         f"🔥 {event.title}\n\n"
         f"{experience.short_description or event.description}\n\n"
-        f"📅 {event.event_date.strftime('%d.%m.%Y')} · {event.event_time.strftime('%H:%M')}\n"
+        f"📅 {event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n"
         f"📍 {event.location}"
     )
-    if targets.intersection({"bot", "all", "bot_and_chat"}):
-        recipient_rows = await session.scalars(
-            select(User.telegram_id).where(
-                User.application_status == ApplicationStatus.APPROVED,
-                User.is_blocked.is_(False),
-                User.is_archived.is_(False),
-            )
+    # Publication always has one public event announcement. Personal delivery
+    # still respects the wizard's audience/broadcast switch.
+    await send_general_topic(bot, settings, "announcements", text,
+                             reply_markup=markup, delivery_key=f"event:{event.id}:published")
+    if experience.broadcast_enabled and targets.intersection({"bot", "all", "bot_and_chat"}):
+        recipient_rows = await session.scalars(select(User.telegram_id).where(
+            User.application_status == ApplicationStatus.APPROVED,
+            User.is_blocked.is_(False), User.is_archived.is_(False),
+        ))
+        await broadcast_detailed_once(
+            bot, settings, [int(value) for value in recipient_rows.all() if value], text,
+            reply_markup=markup, delivery_key=f"event:{event.id}:published",
+            notification_type="event_published",
         )
-        await broadcast_detailed(bot, [int(value) for value in recipient_rows.all() if value], text, reply_markup=markup)
-    if targets.intersection({"general", "all", "bot_and_chat"}) and settings.general_chat_id:
-        await safe_send(bot, int(settings.general_chat_id), text, reply_markup=markup)
 
 
 @router.post("/{event_id}/publish", response_model=EventDraftOut)
@@ -579,6 +597,11 @@ async def publish_event(
 ) -> EventDraftOut:
     event = await _managed_event(session, event_id)
     experience = await _experience(session, event)
+    if event.status in {EventStatus.CANCELLED, EventStatus.COMPLETED}:
+        raise HTTPException(status_code=409, detail="event_not_publishable")
+    if experience.is_complete and event.status != EventStatus.DRAFT:
+        return await _draft_out(session, event, experience)
+    _ensure_publish_description(event, experience)
     missing = _validate_publish(event, experience)
     if missing:
         raise HTTPException(status_code=422, detail="missing:" + ",".join(missing))
@@ -595,8 +618,15 @@ async def publish_event(
         entity_id=event.id,
         new_value={"status": str(event.status)},
     )
-    await _publish_broadcast(bot, settings, session, event, experience)
-    return await _draft_out(session, event, experience)
+    result = await _draft_out(session, event, experience)
+    # Persist the event before contacting Telegram: a transport error cannot
+    # discard the completed wizard or leave sent messages pointing to a draft.
+    await session.commit()
+    try:
+        await _publish_broadcast(bot, settings, session, event, experience)
+    except Exception:
+        logger.exception("Event %s saved; publication notification failed", event.id)
+    return result
 
 
 @router.post("/{event_id}/cancel", response_model=EventDraftOut)

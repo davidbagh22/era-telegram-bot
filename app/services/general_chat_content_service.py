@@ -612,6 +612,9 @@ async def deliver_planned_content(
     manual: bool = False,
 ) -> DeliveryOutcome:
     item = planned.item
+    # The retired editor/manual endpoint must not re-enable group quotes.
+    if item.content_type in {"morning_quote", "evening_quote"}:
+        return DeliveryOutcome("disabled", item.content_id)
     if not manual and now < planned.planned_at:
         return DeliveryOutcome("not_due", item.content_id)
     key = (

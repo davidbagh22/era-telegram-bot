@@ -404,8 +404,8 @@ async def lifespan(app: FastAPI):
 
     # Legacy editorial automation had a morning + evening slot and a recovery
     # loop. It is deliberately removed from the live scheduler. The only public
-    # general-chat editorial cadence is now run_daily_public_content: one quote
-    # per Moscow calendar day at a deterministic varying time in 09:00–22:00.
+    # editorial cadence is now run_daily_public_content: channel only.
+    # Quotes in the general chat are disabled, including legacy/manual delivery.
     for legacy_job_id in (
         "general-content-morning",
         "general-content-evening",

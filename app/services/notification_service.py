@@ -296,6 +296,7 @@ async def safe_send_once(
     reply_markup=None,
     parse_mode: str | None = None,
     max_attempts: int = 3,
+    message_thread_id: int | None = None,
 ) -> NotificationDeliveryResult:
     """Send one automatic notification durably and idempotently.
 
@@ -333,6 +334,8 @@ async def safe_send_once(
     while True:
         try:
             kwargs = {"reply_markup": reply_markup}
+            if message_thread_id is not None:
+                kwargs["message_thread_id"] = message_thread_id
             if parse_mode is not None:
                 kwargs["parse_mode"] = parse_mode
             await bot.send_message(chat_id, text, **kwargs)
@@ -421,6 +424,7 @@ async def safe_send(
     reply_markup=None,
     *,
     parse_mode: str | None = None,
+    message_thread_id: int | None = None,
 ) -> bool:
     """Best-effort transport for interactive replies and non-repeatable messages.
 
@@ -429,6 +433,8 @@ async def safe_send(
     """
     try:
         kwargs = {"reply_markup": reply_markup}
+        if message_thread_id is not None:
+            kwargs["message_thread_id"] = message_thread_id
         # Preserve the historical send_message call shape for every existing
         # plain-text caller; only FAQ/rich-text callers opt into parse_mode.
         if parse_mode is not None:
@@ -440,9 +446,10 @@ async def safe_send(
         return False
 
 
-async def safe_send_photo(bot: Bot, chat_id: int, photo, *, caption: str | None = None, reply_markup=None) -> bool:
+async def safe_send_photo(bot: Bot, chat_id: int, photo, *, caption: str | None = None, reply_markup=None, message_thread_id: int | None = None) -> bool:
     try:
-        await bot.send_photo(chat_id, photo, caption=caption, reply_markup=reply_markup)
+        kwargs = {"message_thread_id": message_thread_id} if message_thread_id is not None else {}
+        await bot.send_photo(chat_id, photo, caption=caption, reply_markup=reply_markup, **kwargs)
         return True
     except TelegramAPIError:
         logger.exception("Could not deliver photo notification to chat %s", chat_id)

@@ -31,10 +31,10 @@ def test_content_banks_are_human_and_varied():
     assert all("@ERA_1bot" not in item for item in CHANNEL_POSTS)
 
 
-def test_daily_public_content_targets_general_chat_once_and_channel_once():
+def test_daily_public_content_targets_channel_only():
     source = open("app/services/daily_public_content_service.py", encoding="utf-8").read()
     run_block = source.split("async def run_daily_public_content", 1)[1]
-    assert '("chat_quote", settings.general_chat_id)' in run_block
+    assert '("chat_quote", settings.general_chat_id)' not in run_block
     assert '("channel_post", _channel_target(settings))' in run_block
     assert "channel_quote" not in run_block
 

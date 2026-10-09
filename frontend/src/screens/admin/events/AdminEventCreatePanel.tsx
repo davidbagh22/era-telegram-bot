@@ -93,6 +93,7 @@ export function AdminEventCreatePanel() {
   const [dirty, setDirty] = useState(false);
   const [customReminder, setCustomReminder] = useState("");
   const versionRef = useRef(0);
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const projectsState = useAsync(() => fetchProjects("open"), []);
 
   useEffect(() => {
@@ -119,7 +120,10 @@ export function AdminEventCreatePanel() {
     setSaving(true);
     setError(null);
     try {
-      const result = await saveEventDraft(draft.id, patchFromDraft(draft, targetStep ?? draft.wizard_step));
+      const pending = saveQueue.current.catch(() => undefined).then(() =>
+        saveEventDraft(draft.id, patchFromDraft(draft, targetStep ?? draft.wizard_step)));
+      saveQueue.current = pending;
+      const result = await pending;
       if (capturedVersion === versionRef.current) {
         setDraft(result);
         setDirty(false);
@@ -170,7 +174,7 @@ export function AdminEventCreatePanel() {
   };
 
   const leaveDraft = async () => {
-    if (dirty) await saveNow();
+    if (dirty && !(await saveNow())) return;
     setDraft(null);
     setDrafts(await listEventDrafts());
   };
