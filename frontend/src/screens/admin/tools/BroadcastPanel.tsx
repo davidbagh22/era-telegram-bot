@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
   describeActionError,
@@ -141,11 +141,18 @@ export function BroadcastPanel() {
       ? filterValue
       : filterOptions.find((option) => option.value === filterValue)?.label ?? filterValue;
 
+  const personalCampaign = useRef<{ signature: string; key: string } | null>(null);
+
   const handlePersonalSend = useCallback(async () => {
+    const signature = JSON.stringify([audience, filterValue, personalText.trim()]);
+    if (!personalCampaign.current || personalCampaign.current.signature !== signature) {
+      personalCampaign.current = { signature, key: crypto.randomUUID() };
+    }
     setPersonalSending(true);
     setPersonalError(null);
     try {
       const result = await sendPersonalBroadcast({
+        campaign_key: personalCampaign.current.key,
         audience,
         filter_value: needsFilter ? filterValue || null : null,
         text: personalText.trim(),
