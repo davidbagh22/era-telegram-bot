@@ -138,6 +138,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "leadership-weekly-pulse-open",
                 "leadership-weekly-pulse-due",
                 "leaders-task-card-sync",
+                "general-forum-setup",
                 "leaders-forum-setup",
                 "pulse-weekly-archive",
             ],
