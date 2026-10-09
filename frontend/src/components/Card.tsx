@@ -9,11 +9,9 @@ interface CardProps {
   dark?: boolean;
   style?: CSSProperties;
   onClick?: () => void;
-  /** Accessible action label when visible card copy is not an explicit command. */
-  ariaLabel?: string;
 }
 
-export function Card({ children, gradient = false, dark = false, style, onClick, ariaLabel }: CardProps) {
+export function Card({ children, gradient = false, dark = false, style, onClick }: CardProps) {
   const interactive = Boolean(onClick);
   const sharedStyle: CSSProperties = {
     borderRadius: "var(--era-radius-card)",
@@ -31,7 +29,6 @@ export function Card({ children, gradient = false, dark = false, style, onClick,
       <button
         type="button"
         className={className}
-        aria-label={ariaLabel}
         onClick={onClick}
         style={{
           ...sharedStyle,
