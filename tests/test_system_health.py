@@ -132,6 +132,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "participation-reactivation",
                 "community-verification-expiry",
                 "my-vector-monthly-reminders",
+                "book-club-daily",
                 "era-daily-public-content",
                 "general-chat-writable-access",
                 "leadership-weekly-pulse-open",
