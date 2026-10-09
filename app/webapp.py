@@ -400,21 +400,29 @@ async def lifespan(app: FastAPI):
         logger.warning("Redis FSM storage cleared during recovery deploy")
 
     app.state.ai_service = AIService(settings)
-    scheduler = create_scheduler(bot, settings, session_factory)
+    # E2E exercises real user/API flows on a throwaway SQLite database.
+    # Background scheduled writes would race with the tests and cause SQLite
+    # database-is-locked failures. Production can never activate this flag.
+    e2e_quiet = (
+        settings.dev_auth_enabled
+        and not settings.is_render_deployment
+        and os.environ.get("E2E_DISABLE_BACKGROUND_JOBS", "") == "1"
+    )
+    scheduler = None if e2e_quiet else create_scheduler(bot, settings, session_factory)
 
     # Legacy editorial automation had a morning + evening slot and a recovery
     # loop. It is deliberately removed from the live scheduler. The only public
     # editorial cadence is now run_daily_public_content: channel only.
     # Quotes in the general chat are disabled, including legacy/manual delivery.
-    for legacy_job_id in (
-        "general-content-morning",
-        "general-content-evening",
-        "general-content-recovery",
-    ):
-        scheduler.remove_job(legacy_job_id)
-
-    add_system_jobs(scheduler, bot, settings, session_factory)
-    scheduler.start()
+    if scheduler is not None:
+        for legacy_job_id in (
+            "general-content-morning",
+            "general-content-evening",
+            "general-content-recovery",
+        ):
+            scheduler.remove_job(legacy_job_id)
+        add_system_jobs(scheduler, bot, settings, session_factory)
+        scheduler.start()
     app.state.scheduler = scheduler
     app.state.bot_diagnostics = {"error": "webhook_not_configured"}
 
@@ -424,12 +432,13 @@ async def lifespan(app: FastAPI):
     await _apply_commission_registration_reset(engine)
 
     commission_task = asyncio.create_task(
-        run_commission_bot(settings.database_url),
+        asyncio.sleep(0) if e2e_quiet else run_commission_bot(settings.database_url),
         name="commission-bot",
     )
-    commission_task.add_done_callback(_log_commission_task_result)
+    if not e2e_quiet:
+        commission_task.add_done_callback(_log_commission_task_result)
     commission_owner_task = asyncio.create_task(
-        _ensure_commission_owner(engine),
+        asyncio.sleep(0) if e2e_quiet else _ensure_commission_owner(engine),
         name="commission-owner-seed",
     )
 
@@ -486,7 +495,8 @@ async def lifespan(app: FastAPI):
                 pass
             except Exception:
                 logger.exception("Commission background task shutdown error")
-        scheduler.shutdown(wait=False)
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
         await dispatcher.storage.close()
         await bot.session.close()
         await engine.dispose()
