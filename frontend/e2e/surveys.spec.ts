@@ -46,7 +46,7 @@ test("admin creates and sends a survey; the participant answers it and the admin
     await adminPage.getByRole("button", { name: "Связь" }).click();
     await adminPage.getByRole("button", { name: "Опросы" }).click();
     const refreshedCard = adminPage.locator(".era-card", { hasText: surveyTitle });
-    await refreshedCard.getByRole("button", { name: /^Ответы/ }).click();
+    await refreshedCard.getByRole("button", { name: /^Результаты/ }).click();
     await expect(refreshedCard.getByText("Ответ на первый вопрос")).toBeVisible();
   } finally {
     await adminContext.close();
