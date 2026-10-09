@@ -30,7 +30,8 @@ def test_pulse_is_privacy_safe_aggregate_not_person_score() -> None:
 
     assert "community_analytics(session, period_days=30)" in source
     assert 'pulse = None if vector_suppressed' in source
-    assert "raw ответы и личные заметки не используются" in source
+    assert "Пульс рассчитывает" in source
+    assert "personal_notes" not in source
     assert "traits_json" not in source
     assert "strengths_json" not in source
     assert "personal_notes" not in source
@@ -50,9 +51,9 @@ def test_admin_health_endpoints_and_ui_are_exposed() -> None:
     assert '@router.get("/health-report.xlsx")' in api
     assert '@router.get("/full-report.xlsx")' in api
     assert "build_extended_organization_health" in api
-    assert "Пульс организации" in dashboard
-    assert "Здоровье организации · XLSX" in dashboard
-    assert "Показать все" in dashboard
+    assert "Пульс сообщества" in dashboard
+    assert "ERA_organization_health.xlsx" in dashboard
+    assert "Все показатели" in dashboard
     assert "<AdminDashboardScreen />" in overview
     assert "<SystemPanel />" not in overview
     assert "Аналитика" in overview

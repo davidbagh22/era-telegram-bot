@@ -163,8 +163,10 @@ class AdminBroadcastServiceTests(unittest.IsolatedAsyncioTestCase):
         async with self.session_factory() as session:
             settings = Settings(bot_token="1234567890:test-token", general_chat_id=-100123)
             bot = FakeBot()
-            await send_chat_broadcast(bot, settings, session, chat_key="general", text="Привет", actor_id=1)
-            self.assertEqual(bot.sent, [(-100123, "Привет")])
+            with patch("app.services.admin_broadcast_service.send_general_topic", new=AsyncMock(return_value=True)) as send:
+                await send_chat_broadcast(bot, settings, session, chat_key="general", text="Привет", actor_id=1)
+                send.assert_awaited_once_with(bot, settings, "notifications", "Привет", reply_markup=None)
+            self.assertEqual(bot.sent, [])
 
     async def test_send_chat_broadcast_rejects_unknown_chat_key(self) -> None:
         async with self.session_factory() as session:

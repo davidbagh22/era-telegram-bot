@@ -76,7 +76,8 @@ class FullBotFlowSmokeTests(unittest.TestCase):
 
     def test_core_safety_contracts(self) -> None:
         registration = source("app/handlers/registration.py")
-        self.assertIn("RegistrationStates.birth_date", registration)
+        self.assertIn("RegistrationStates.age", registration)
+        self.assertIn("RegistrationStates.email", registration)
         self.assertIn("photo_file_id", registration)
         self.assertIn("social_url", registration)
 

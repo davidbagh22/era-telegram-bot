@@ -7,17 +7,18 @@ test("participant gets light ERA UI, opens event details, and registers", async 
 
   // The Vector-first Home card is the stable landmark for every approved
   // participant after the growth-system redesign.
-  await expect(page.getByText("МОЙ ВЕКТОР", { exact: true })).toBeVisible();
+  await expect(page.getByText("Вот что сейчас важнее всего.", { exact: true })).toBeVisible();
   const bodyBackground = await page.locator("body").evaluate((node) => getComputedStyle(node).backgroundColor);
   expect(bodyBackground).not.toBe("rgb(17, 17, 24)");
 
   await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Участие" }).click();
-  await page.getByRole("button", { name: /Мероприятия/ }).click();
-  await expect(page.getByRole("heading", { name: "Мероприятия" })).toBeVisible();
+  await page.getByRole("tab", { name: "События" }).click();
+  await expect(page.getByRole("tab", { name: "События", selected: true })).toBeVisible();
 
   const eventCard = page.getByText("E2E тестовое мероприятие");
   await expect(eventCard).toBeVisible();
-  await page.getByRole("button", { name: "Открыть событие" }).first().click();
+  const card = page.locator(".era-card", { hasText: "E2E тестовое мероприятие" }).first();
+  await card.getByRole("button", { name: "Открыть событие" }).click();
 
   await expect(page.getByRole("heading", { name: "E2E тестовое мероприятие" })).toBeVisible();
   await page.getByRole("button", { name: "Участвовать" }).click();

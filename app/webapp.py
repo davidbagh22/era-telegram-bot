@@ -295,48 +295,6 @@ async def _ensure_commission_owner(engine) -> None:
             await asyncio.sleep(1)
 
 
-async def _apply_one_time_reregistration_reset(engine) -> None:
-    """Detach one ERA Telegram identity so the same person can test registration again.
-
-    The historical user row is archived and assigned a synthetic Telegram ID instead
-    of being hard-deleted because production audit/content records reference its
-    internal user ID. Both IDs are required so a later re-registration can never be
-    detached accidentally if the environment toggle is left behind.
-    """
-    raw_telegram_id = os.environ.get("ERA_REREGISTRATION_RESET_TELEGRAM_ID", "").strip()
-    raw_user_id = os.environ.get("ERA_REREGISTRATION_RESET_USER_ID", "").strip()
-    if not raw_telegram_id or not raw_user_id:
-        return
-    try:
-        telegram_id = int(raw_telegram_id)
-        user_id = int(raw_user_id)
-    except ValueError:
-        logger.error("ERA re-registration reset identifiers are not valid integers")
-        return
-
-    async with engine.begin() as connection:
-        row = (
-            await connection.execute(
-                text(
-                    """
-                    UPDATE public.users
-                    SET telegram_id = -(telegram_id * 1000000 + id),
-                        is_archived = TRUE,
-                        archived_at = NOW(),
-                        archived_by = NULL,
-                        updated_at = NOW()
-                    WHERE id = :user_id AND telegram_id = :telegram_id
-                    RETURNING id
-                    """
-                ),
-                {"user_id": user_id, "telegram_id": telegram_id},
-            )
-        ).first()
-    if row:
-        logger.warning("ERA user detached for re-registration: user_id=%s", row[0])
-    else:
-        logger.info("ERA re-registration reset found no matching active Telegram identity")
-
 
 def _log_commission_task_result(task: asyncio.Task) -> None:
     if task.cancelled():
@@ -371,7 +329,6 @@ async def lifespan(app: FastAPI):
     async with session_factory() as session:
         await seed_reference_data(session, settings)
 
-    await _apply_one_time_reregistration_reset(engine)
 
 
     bot = create_bot(settings)
@@ -400,21 +357,29 @@ async def lifespan(app: FastAPI):
         logger.warning("Redis FSM storage cleared during recovery deploy")
 
     app.state.ai_service = AIService(settings)
-    scheduler = create_scheduler(bot, settings, session_factory)
+    # E2E exercises real user/API flows on a throwaway SQLite database.
+    # Background scheduled writes would race with the tests and cause SQLite
+    # database-is-locked failures. Production can never activate this flag.
+    e2e_quiet = (
+        settings.dev_auth_enabled
+        and not settings.is_render_deployment
+        and os.environ.get("E2E_DISABLE_BACKGROUND_JOBS", "") == "1"
+    )
+    scheduler = None if e2e_quiet else create_scheduler(bot, settings, session_factory)
 
     # Legacy editorial automation had a morning + evening slot and a recovery
     # loop. It is deliberately removed from the live scheduler. The only public
-    # general-chat editorial cadence is now run_daily_public_content: one quote
-    # per Moscow calendar day at a deterministic varying time in 09:00–22:00.
-    for legacy_job_id in (
-        "general-content-morning",
-        "general-content-evening",
-        "general-content-recovery",
-    ):
-        scheduler.remove_job(legacy_job_id)
-
-    add_system_jobs(scheduler, bot, settings, session_factory)
-    scheduler.start()
+    # editorial cadence is now run_daily_public_content: channel only.
+    # Quotes in the general chat are disabled, including legacy/manual delivery.
+    if scheduler is not None:
+        for legacy_job_id in (
+            "general-content-morning",
+            "general-content-evening",
+            "general-content-recovery",
+        ):
+            scheduler.remove_job(legacy_job_id)
+        add_system_jobs(scheduler, bot, settings, session_factory)
+        scheduler.start()
     app.state.scheduler = scheduler
     app.state.bot_diagnostics = {"error": "webhook_not_configured"}
 
@@ -424,12 +389,13 @@ async def lifespan(app: FastAPI):
     await _apply_commission_registration_reset(engine)
 
     commission_task = asyncio.create_task(
-        run_commission_bot(settings.database_url),
+        asyncio.sleep(0) if e2e_quiet else run_commission_bot(settings.database_url),
         name="commission-bot",
     )
-    commission_task.add_done_callback(_log_commission_task_result)
+    if not e2e_quiet:
+        commission_task.add_done_callback(_log_commission_task_result)
     commission_owner_task = asyncio.create_task(
-        _ensure_commission_owner(engine),
+        asyncio.sleep(0) if e2e_quiet else _ensure_commission_owner(engine),
         name="commission-owner-seed",
     )
 
@@ -486,7 +452,8 @@ async def lifespan(app: FastAPI):
                 pass
             except Exception:
                 logger.exception("Commission background task shutdown error")
-        scheduler.shutdown(wait=False)
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
         await dispatcher.storage.close()
         await bot.session.close()
         await engine.dispose()

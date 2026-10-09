@@ -24,6 +24,7 @@ from app.config import Settings
 from app.database.models import Broadcast, Department, Direction, User, UserDepartment, UserDirection
 from app.services.audit_service import audit
 from app.services.notification_service import BroadcastResult, broadcast_detailed, safe_send
+from app.services.general_topics_service import send_general_topic
 from app.utils.constants import ApplicationStatus
 
 AUDIENCE_TYPES = {"all", "role", "department", "direction", "age", "city"}
@@ -112,6 +113,7 @@ async def send_personal_broadcast(
     filter_value: str | None,
     text: str,
     author_id: int | None,
+    settings: Settings | None = None,
 ) -> BroadcastResult:
     text = text.strip()[:MAX_TEXT_LENGTH]
     if not text:
@@ -128,6 +130,10 @@ async def send_personal_broadcast(
     session.add(item)
     await session.flush()
     result = await broadcast_detailed(bot, (u.telegram_id for u in recipients), text)
+    if settings is not None and audience == "all":
+        # Only organization-wide broadcasts have a public audience.
+        await send_general_topic(bot, settings, "notifications", text,
+                                 delivery_key=f"broadcast:{item.id}")
     item.status = "sent"
     item.sent_at = datetime.now().astimezone()
     await audit(
@@ -183,7 +189,10 @@ async def send_chat_broadcast(
     if not chat_id:
         raise BroadcastError("chat_not_bound")
     reply_markup = await _survey_chat_keyboard(bot) if with_survey_button else None
-    ok = await safe_send(bot, chat_id, text, reply_markup)
+    if chat_key == "general":
+        ok = await send_general_topic(bot, settings, "notifications", text, reply_markup=reply_markup)
+    else:
+        ok = await safe_send(bot, chat_id, text, reply_markup)
     if not ok:
         await audit(
             session,

@@ -28,7 +28,8 @@ def upgrade():
             :additional_info, 'registration_open',
             10, 10, 'standard', CAST('[]' AS json),
             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-        WHERE NOT EXISTS (
+        WHERE EXISTS (SELECT 1 FROM users WHERE id = 10)
+          AND NOT EXISTS (
             SELECT 1 FROM events WHERE title = CAST(:title AS VARCHAR) AND event_date = DATE '2026-10-31'
         )
     """), {

@@ -231,10 +231,10 @@ class GeneralChatDeliverySafetyTests(unittest.IsolatedAsyncioTestCase):
             outcome = await content.deliver_planned_content(
                 bot, settings, session, planned, now=now
             )
-        self.assertEqual(outcome.status, "failed")
-        self.assertEqual(delivery.error_code, "general_chat_unbound")
+        self.assertEqual(outcome.status, "disabled")
+        self.assertIsNone(delivery.error_code)
         bot.send_message.assert_not_awaited()
-        alert.assert_awaited_once()
+        alert.assert_not_awaited()
 
 
 class GeneralChatSchedulerTests(unittest.TestCase):

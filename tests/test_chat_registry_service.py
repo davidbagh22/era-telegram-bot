@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -75,7 +75,8 @@ class ChatRegistryServiceTests(unittest.IsolatedAsyncioTestCase):
         async with self.session_factory() as session:
             settings = Settings(bot_token="1234567890:test-token", general_chat_id=-100999)
             bot = FakeBot()
-            await send_chat_broadcast(bot, settings, session, chat_key="general", text="Привет", actor_id=1)
+            with patch("app.services.admin_broadcast_service.send_general_topic", new=AsyncMock(return_value=True)):
+                await send_chat_broadcast(bot, settings, session, chat_key="general", text="Привет", actor_id=1)
             await session.commit()
             entries = {e.chat_key: e for e in await list_chat_registry(session, settings)}
             self.assertIsNotNone(entries["general"].last_sent_at)

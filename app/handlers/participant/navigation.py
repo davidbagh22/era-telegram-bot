@@ -9,7 +9,6 @@ from app.config import Settings
 from app.database.models import User
 from app.keyboards.bot_shell import (
     contact_keyboard,
-    main_inline_keyboard,
     main_reply_keyboard,
     navigation_guide_keyboard,
     team_keyboard,

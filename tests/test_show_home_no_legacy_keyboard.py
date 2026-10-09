@@ -11,7 +11,7 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 
-from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardMarkup
+from aiogram.types import ReplyKeyboardMarkup
 
 from app.handlers.start import show_home
 from app.utils.constants import ApplicationStatus, Role
@@ -48,8 +48,9 @@ class ShowHomeNoLegacyKeyboardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(message.answers), 1)
         _, kwargs = message.answers[0]
         markup = kwargs["reply_markup"]
-        self.assertIsInstance(markup, InlineKeyboardMarkup)
-        self.assertNotIsInstance(markup, ReplyKeyboardMarkup)
+        self.assertIsInstance(markup, ReplyKeyboardMarkup)
+        self.assertTrue(markup.is_persistent)
+        self.assertTrue(markup.resize_keyboard)
 
     async def test_reply_carries_the_webapp_entry_point(self) -> None:
         message = FakeMessage()
@@ -61,7 +62,7 @@ class ShowHomeNoLegacyKeyboardTests(unittest.IsolatedAsyncioTestCase):
         await show_home(message, _approved_user(), settings)
 
         markup = message.answers[0][1]["reply_markup"]
-        buttons = [button for row in markup.inline_keyboard for button in row]
+        buttons = [button for row in markup.keyboard for button in row]
         entry_button = next((b for b in buttons if b.text == "🔥 Открыть ЭРА"), None)
         self.assertIsNotNone(entry_button, "🔥 Открыть ЭРА missing from /start's reply")
         self.assertEqual(entry_button.web_app.url, settings.effective_miniapp_url)

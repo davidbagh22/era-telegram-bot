@@ -7,6 +7,7 @@ from aiogram import Bot
 from sqlalchemy import select
 
 from app.config import Settings
+from app.services.general_topics_service import send_general_topic
 from app.database.event_experience import EventExperience, EventReminderDelivery
 from app.database.models import Event, EventRegistration, User
 from app.services.bot_notification_service import PrimaryAction, send_bot_notification
@@ -55,6 +56,12 @@ async def send_configured_event_reminders(bot: Bot, settings: Settings, session_
             if not eligible:
                 continue
             threshold = min(eligible)
+            await send_general_topic(
+                bot, settings, "announcements",
+                f"⏰ Напоминаем о мероприятии\n\n{event.title}\n"
+                f"📅 {event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n📍 {event.location}",
+                delivery_key=f"event:{event.id}:reminder:{threshold}:{event.event_date}:{event.event_time}",
+            )
             already = await session.scalar(
                 select(EventReminderDelivery.id).where(
                     EventReminderDelivery.registration_id == registration.id,
