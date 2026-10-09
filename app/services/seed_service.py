@@ -1,3 +1,5 @@
+from datetime import date, time
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,14 +10,16 @@ from app.database.models import (
     ChatGreeting,
     Department,
     Direction,
+    Event,
     Office,
+    User,
 )
 from app.services.chat_binding_recovery_service import recover_chat_bindings
 from app.services.community_mission_service import seed_community_missions
 from app.services.media_dashboard_service import seed_media_guide
 from app.services.media_service import seed_media_os
 from app.services.recognition_catalog import seed_recognition_catalog
-from app.utils.constants import BADGES, DEPARTMENTS
+from app.utils.constants import BADGES, DEPARTMENTS, EventStatus, Role
 
 
 DEPARTMENT_DESCRIPTIONS = {
@@ -150,4 +154,48 @@ async def seed_reference_data(session: AsyncSession, settings: Settings) -> None
     await seed_media_os(session, settings)
     await seed_media_guide(session, settings)
     await recover_chat_bindings(session, settings)
+    await seed_partner_events(session)
     await session.commit()
+
+
+async def seed_partner_events(session: AsyncSession) -> None:
+    """Publish partner events once; never overwrite editorial changes or attendance."""
+    author_id = await session.scalar(
+        select(User.id).where(User.role == Role.ADMIN).order_by(User.id).limit(1)
+    )
+    if author_id is None:
+        author_id = await session.scalar(select(User.id).order_by(User.id).limit(1))
+    if author_id is None:
+        return  # No valid author yet; retry on next startup.
+
+    events = (
+        dict(
+            title="История взятия Эривани: как разные источники формируют общую картину",
+            description="Открытая дискуссия для студентов и школьников о том, как исторические источники описывают одни события и формируют образы исторических деятелей.",
+            event_date=date(2026, 10, 13), event_time=time(16, 0),
+            location="Русский дом в Ереване", format="Дискуссия",
+            additional_info="Организатор: Русский дом в Ереване. Анонс и информация о регистрации: https://t.me/RSGOVArmenia/28880",
+        ),
+        dict(
+            title="Концерт, посвящённый Арно Бабаджаняну",
+            description="Музыкальный вечер, посвящённый творчеству композитора и пианиста Арно Бабаджаняна.",
+            event_date=date(2026, 11, 7), event_time=time(18, 0),
+            location="Дом Москвы в Ереване", format="Концерт",
+            additional_info="Информация организаторов: https://t.me/+JZoW20I_leBhMDdi",
+        ),
+    )
+    for details in events:
+        existing = await session.scalar(
+            select(Event.id).where(
+                Event.title == details["title"],
+                Event.event_date == details["event_date"],
+            ).limit(1)
+        )
+        if existing is not None:
+            continue
+        session.add(Event(
+            **details, created_by=author_id, points_for_visit=150,
+            status=EventStatus.REGISTRATION_OPEN,
+            selfie_required=True,
+        ))
+    await session.flush()
