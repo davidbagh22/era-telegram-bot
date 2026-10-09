@@ -27,7 +27,7 @@ test("admin creates and sends a survey; the participant answers it and the admin
 
     const surveyTitle = `E2E Survey ${Date.now()}`;
     await adminPage.getByPlaceholder("Название").fill(surveyTitle);
-    await adminPage.getByPlaceholder("Вопросы, каждый на новой строке").fill("Вопрос один?\nВопрос два?");
+    await adminPage.getByPlaceholder("Вопросы", { exact: true }).fill("Вопрос один?\nВопрос два?");
     await adminPage.getByRole("button", { name: "Создать опрос" }).click();
 
     const surveyCard = adminPage.locator(".era-card", { hasText: surveyTitle });
@@ -38,11 +38,11 @@ test("admin creates and sends a survey; the participant answers it and the admin
     await participantPage.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/surveys`);
     const participantCard = participantPage.locator(".era-card", { hasText: surveyTitle });
     await expect(participantCard).toBeVisible();
-    await participantCard.getByRole("button", { name: "Ответить" }).click();
+    await participantCard.getByRole("button", { name: "Выбрать", exact: true }).click();
     const textareas = participantCard.locator("textarea");
     await textareas.nth(0).fill("Ответ на первый вопрос");
     await textareas.nth(1).fill("Ответ на второй вопрос");
-    await participantCard.getByRole("button", { name: "Отправить" }).click();
+    await participantCard.getByRole("button", { name: "Сохранить выбор" }).click();
     await expect(participantCard.getByText("пройден")).toBeVisible();
 
     await enterAdminWorkspace(adminPage);
