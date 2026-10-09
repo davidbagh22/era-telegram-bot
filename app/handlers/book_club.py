@@ -5,19 +5,41 @@ from app.database.models import User
 
 router = Router(name="book_club")
 
-def _keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📖 Подписаться на 48 дней", callback_data="bookclub:subscribe")]])
 
-@router.message(F.text == "📖 Книжный клуб")
+def _keyboard(subscribed: bool = False) -> InlineKeyboardMarkup:
+    if subscribed:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔕 Отписаться от программы", callback_data="bookclub:unsubscribe")],
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📚 Вступить в программу на 48 дней", callback_data="bookclub:subscribe")],
+    ])
+
+
+@router.message(F.text.in_({"📖 Книжный клуб", "📚 Литература"}))
 async def book_club(message: Message, user: User | None) -> None:
-    await message.answer("📖 Книжный клуб ЭРА\n\n48 дней — 48 авторских пересказов идей книги «48 законов власти», практические вопросы и обсуждение. Полный текст книги не рассылаем: читайте её в своём экземпляре или легальном источнике.", reply_markup=_keyboard())
+    subscribed = bool(user and user.book_club_subscribed)
+    status = "Вы подписаны на ежедневные материалы." if subscribed else "Подписка добровольная."
+    await message.answer(
+        "📚 ЭРА | Литература\n\n48 дней. 48 законов. 48 решений. "
+        "Авторские разборы идей книги «48 законов власти», практические ситуации "
+        "и вопросы для обсуждения. Не текст книги.\n\n" + status,
+        reply_markup=_keyboard(subscribed),
+    )
 
-@router.callback_query(F.data == "bookclub:subscribe")
-async def subscribe(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
-    await call.answer()
+
+@router.callback_query(F.data.in_({"bookclub:subscribe", "bookclub:unsubscribe"}))
+async def change_subscription(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
     if user is None:
-        await call.message.answer("Сначала запустите бота и завершите регистрацию.")
+        await call.answer("Сначала завершите регистрацию в боте.", show_alert=True)
         return
-    user.book_club_subscribed = True
-    await session.commit()
-    await call.message.answer("Готово ✅ Вы получите один авторский разбор в день в течение 48 дней и сможете обсуждать его с участниками.")
+    subscribed = call.data == "bookclub:subscribe"
+    if user.book_club_subscribed != subscribed:
+        user.book_club_subscribed = subscribed
+        await session.commit()
+    await call.answer("Подписка включена" if subscribed else "Подписка отключена")
+    await call.message.answer(
+        "✅ Вы подписаны на ежедневные материалы." if subscribed
+        else "🔕 Подписка отключена. Ежедневные сообщения больше не будут отправляться.",
+        reply_markup=_keyboard(subscribed),
+    )
