@@ -65,7 +65,7 @@ async def setup_general_topics(bot, settings, session_factory) -> dict:
     return result
 
 
-async def send_general_topic(bot, settings, key, text, *, reply_markup=None, delivery_key=None) -> bool:
+async def send_general_topic(bot, settings, key, text, *, reply_markup=None, delivery_key=None, parse_mode=None) -> bool:
     thread_id = await ensure_topic(bot, settings, key)
     if thread_id is None:
         return False
@@ -74,8 +74,8 @@ async def send_general_topic(bot, settings, key, text, *, reply_markup=None, del
             bot, settings, settings.general_chat_id, text,
             delivery_key=f"general-topic:{key}:{delivery_key}",
             notification_type=f"general_{key}", reply_markup=reply_markup,
-            message_thread_id=thread_id,
+            message_thread_id=thread_id, parse_mode=parse_mode,
         )
         return result.sent
     return await safe_send(bot, settings.general_chat_id, text,
-                           reply_markup=reply_markup, message_thread_id=thread_id)
+                           reply_markup=reply_markup, message_thread_id=thread_id, parse_mode=parse_mode)

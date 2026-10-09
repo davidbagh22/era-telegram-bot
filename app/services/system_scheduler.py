@@ -27,6 +27,7 @@ from app.services.project_scoring_reconciliation_service import reconcile_projec
 from app.services.system_health_service import run_system_diagnostics, send_daily_system_summary
 from app.services.vacancy_reconciliation_service import reconcile_vacancies_job
 from app.services.book_club_service import daily_job as book_club_daily_job
+from app.services.directions_announcement import publish_directions_announcement
 
 
 def add_system_jobs(
@@ -92,6 +93,7 @@ def add_system_jobs(
     scheduler.add_job(sync_leaders_task_cards, "interval", minutes=1, args=(bot, settings, session_factory), id="leaders-task-card-sync", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
 
     scheduler.add_job(setup_general_topics, "interval", minutes=5, args=(bot, settings, session_factory), id="general-forum-setup", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    scheduler.add_job(publish_directions_announcement, "interval", minutes=5, args=(bot, settings), id="directions-one-time-announcement", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
 
     scheduler.add_job(setup_leaders_topics, "interval", minutes=5, args=(bot, settings, session_factory), id="leaders-forum-setup", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
 

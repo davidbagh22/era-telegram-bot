@@ -26,11 +26,10 @@ from app.utils.constants import Role
 
 logger = logging.getLogger(__name__)
 
-# A process that dies after claiming a delivery must not suppress it forever.
-# Five minutes is long enough to cover normal Telegram retries and short enough
-# for the scheduler to recover automatically on its next pass.
+# An expired claim has an uncertain outcome: Telegram may have accepted it.
+# Retain it for operator reconciliation instead of replaying the message.
 _DELIVERY_LEASE = timedelta(minutes=5)
-_TERMINAL_DELIVERY_STATUSES = {"sent", "blocked", "unreachable", "skipped"}
+_TERMINAL_DELIVERY_STATUSES = {"sent", "blocked", "unreachable", "skipped", "uncertain"}
 
 
 @dataclass
@@ -133,9 +132,9 @@ def _delivery_failure(exc: TelegramAPIError) -> tuple[str, str, bool]:
     if isinstance(exc, TelegramRetryAfter):
         return "failed", "telegram_retry_after", True
     if isinstance(exc, TelegramNetworkError):
-        return "failed", "telegram_network", True
+        return "uncertain", "telegram_network", False
     if isinstance(exc, TelegramServerError):
-        return "failed", "telegram_server", True
+        return "uncertain", "telegram_server", False
     return "failed", "telegram_api", False
 
 
@@ -223,6 +222,15 @@ async def _claim_delivery(
                     duplicate=True,
                     attempt_count=row.attempt_count,
                     error_code="delivery_in_flight",
+                )
+
+            if row.status == "pending" or row.error_code in {"telegram_network", "telegram_server"}:
+                row.status = "uncertain"
+                row.error_code = "delivery_outcome_unknown"
+                await session.commit()
+                return NotificationDeliveryResult(
+                    sent=False, status="uncertain", duplicate=True,
+                    attempt_count=row.attempt_count, error_code=row.error_code,
                 )
 
             row.status = "pending"
