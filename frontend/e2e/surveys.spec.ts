@@ -23,6 +23,7 @@ test("admin creates and sends a survey; the participant answers it and the admin
     await enterAdminWorkspace(adminPage);
     await adminPage.getByRole("button", { name: "Связь" }).click();
     await adminPage.getByRole("button", { name: "Опросы" }).click();
+    await adminPage.getByRole("button", { name: "+ Новый", exact: true }).click();
 
     const surveyTitle = `E2E Survey ${Date.now()}`;
     await adminPage.getByPlaceholder("Название").fill(surveyTitle);
