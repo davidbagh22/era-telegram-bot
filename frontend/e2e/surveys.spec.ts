@@ -50,6 +50,8 @@ test("admin creates and sends a survey; the participant answers it and the admin
     await adminPage.getByRole("button", { name: "Опросы" }).click();
     const refreshedCard = adminPage.locator(".era-card", { hasText: surveyTitle });
     await refreshedCard.getByRole("button", { name: /^Результаты/ }).click();
+    // Individual responses are intentionally private behind disclosure rows.
+    await refreshedCard.locator("details summary").first().click();
     await expect(refreshedCard.getByText("Ответ на первый вопрос")).toBeVisible();
   } finally {
     await adminContext.close().catch(() => {});
