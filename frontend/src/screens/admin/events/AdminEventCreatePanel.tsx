@@ -254,6 +254,7 @@ export function AdminEventCreatePanel() {
         {step === 1 && (
           <>
             <Question title="Что вы создаёте?" hint="Название и два уровня описания: короткий текст для карточки и полный — для страницы события." />
+            <Field label="📋 Быстро вставить готовый текст" hint="Вставьте анонс целиком. Он попадёт в полное описание, а остальные поля можно заполнить ниже. Публикация отправит объявление в тему «Объявления» автоматически."><textarea rows={7} value={draft.full_description} onChange={(event) => mutate((current) => ({ ...current, full_description: event.target.value, short_description: current.short_description || event.target.value.trim().slice(0, 300) }))} placeholder="Вставьте готовый текст мероприятия сюда…" /></Field>
             <Field label="Название"><input value={draft.title === "Новое мероприятие" ? "" : draft.title} onChange={(event) => mutate((current) => ({ ...current, title: event.target.value }))} placeholder="Например: Медиа без скуки" /></Field>
             <Field label="Короткое описание"><textarea rows={3} value={draft.short_description} onChange={(event) => mutate((current) => ({ ...current, short_description: event.target.value }))} placeholder="Одна сильная мысль для карточки" /></Field>
             <Field label="Полное описание"><textarea rows={6} value={draft.full_description} onChange={(event) => mutate((current) => ({ ...current, full_description: event.target.value }))} placeholder="Что будет происходить, для кого и зачем" /></Field>
