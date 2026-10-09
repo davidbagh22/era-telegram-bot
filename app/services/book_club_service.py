@@ -62,6 +62,6 @@ async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
         users = await session.scalars(select(User).where(User.book_club_subscribed.is_(True), User.is_blocked.is_(False), User.is_archived.is_(False)))
         for user in users.all():
             await safe_send_once(bot, settings, user.telegram_id, text, delivery_key=f"book-club:{start_day.isoformat()}:{day}:{user.id}", notification_type="book_club")
-        if settings.general_chat_id:
-            await bot.send_message(settings.general_chat_id, text)
+        # Public literature posts require a dedicated forum topic and reviewed content.
+        # Never leak daily messages into the general chat main thread.
         await session.commit()
