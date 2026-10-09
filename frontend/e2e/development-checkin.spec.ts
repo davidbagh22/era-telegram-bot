@@ -4,7 +4,7 @@ const PARTICIPANT_TELEGRAM_ID = 900001;
 
 async function openVector(page: Page) {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
-  await page.getByRole("button", { name: "Открыть мой вектор", exact: true }).click();
+  await page.getByRole("button", { name: /Мой путь/ }).click();
   const consent = page.getByRole("button", { name: "Понятно, продолжить" });
   const vectorHeading = page.getByRole("heading", { name: "Где ты сейчас и куда двигаться дальше" });
   await expect(consent.or(vectorHeading)).toBeVisible();
