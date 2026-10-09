@@ -11,7 +11,7 @@ from app.keyboards.common import registration_keyboard, subscription_keyboard
 from app.keyboards.registration import pending_registration_keyboard
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.utils import texts, ux_texts
-from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
+from app.utils.constants import ApplicationStatus
 
 router = Router(name="start")
 
