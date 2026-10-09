@@ -18,21 +18,21 @@ from app.utils.constants import EventStatus
 
 class AdminEventCreatorTests(unittest.TestCase):
     def test_publish_uses_short_description_when_long_description_missing(self) -> None:
-        event = SimpleNamespace(title="Что? Где? Когда?", description="", location="Дом Москвы")
-        experience = SimpleNamespace(short_description="Игра про космос", full_description="")
+        event = SimpleNamespace(title="Что? Где? Когда?", description="", location="Дом Москвы", participant_limit=None)
+        experience = SimpleNamespace(short_description="Игра про космос", full_description="", registration_required=False)
         _ensure_publish_description(event, experience)
         self.assertEqual(experience.full_description, "Игра про космос")
         self.assertEqual(event.description, "Игра про космос")
         self.assertEqual(_validate_publish(event, experience), [])
 
     def test_publish_rejects_event_without_any_description(self) -> None:
-        event = SimpleNamespace(title="Что? Где? Когда?", description="", location="Дом Москвы")
-        experience = SimpleNamespace(short_description="", full_description="")
+        event = SimpleNamespace(title="Что? Где? Когда?", description="", location="Дом Москвы", participant_limit=None)
+        experience = SimpleNamespace(short_description="", full_description="", registration_required=False)
         _ensure_publish_description(event, experience)
         self.assertIn("full_description", _validate_publish(event, experience))
 
     def test_publish_keeps_existing_long_description(self) -> None:
-        event = SimpleNamespace(title="Что? Где? Когда?", description="", location="Дом Москвы")
+        event = SimpleNamespace(title="Что? Где? Когда?", description="", location="Дом Москвы", participant_limit=None)
         experience = SimpleNamespace(short_description="Кратко", full_description="Полная программа игры")
         _ensure_publish_description(event, experience)
         self.assertEqual(event.description, "Полная программа игры")
