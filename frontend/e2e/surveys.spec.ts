@@ -11,11 +11,13 @@ async function enterAdminWorkspace(page: import("@playwright/test").Page) {
 }
 
 test("admin creates and sends a survey; the participant answers it and the admin sees the response", async ({ browser }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(65_000);
   const adminContext = await browser.newContext();
   const adminPage = await adminContext.newPage();
   const participantContext = await browser.newContext();
   const participantPage = await participantContext.newPage();
+  adminPage.setDefaultTimeout(8_000);
+  participantPage.setDefaultTimeout(8_000);
 
   try {
     await enterAdminWorkspace(adminPage);
@@ -49,7 +51,7 @@ test("admin creates and sends a survey; the participant answers it and the admin
     await refreshedCard.getByRole("button", { name: /^Результаты/ }).click();
     await expect(refreshedCard.getByText("Ответ на первый вопрос")).toBeVisible();
   } finally {
-    await adminContext.close();
-    await participantContext.close();
+    await adminContext.close().catch(() => {});
+    await participantContext.close().catch(() => {});
   }
 });
