@@ -50,12 +50,12 @@ services:
         value: INFO
 
   - type: keyvalue
-    name: era-redis
+    name: era-redis-persistent
     region: frankfurt
-    plan: free
+    plan: starter
     ipAllowList: []
     maxmemoryPolicy: noeviction
-    persistenceMode: off
+    persistenceMode: journal_snapshot
 
 databases:
   - name: era-postgres
