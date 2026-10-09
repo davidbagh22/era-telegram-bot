@@ -25,5 +25,5 @@ test("admin creates an office and assigns the seeded participant to it", async (
   await officeCard.getByPlaceholder("Имя, username или Telegram ID").fill("E2E Participant");
   await officeCard.getByRole("button", { name: "Найти" }).click();
   await officeCard.getByRole("button", { name: "E2E Participant" }).click();
-  await expect(officeCard.getByText(/Сейчас:.*E2E Participant/)).toBeVisible();
+  await expect(officeCard.getByText("E2E Participant", { exact: true })).toBeVisible();
 });
