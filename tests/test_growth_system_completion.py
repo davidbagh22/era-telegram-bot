@@ -33,7 +33,8 @@ def test_era_pro_is_reachable_from_opportunities_and_has_context_help() -> None:
     assert "era_pro:" in registry
     assert "8 000 — не цена" in registry
     assert "/era[-_]?pro|mentorship/" in registry
-    assert '<ContextHelp mode="user" />' in layout
+    assert "<FloatingNav" in layout
+    assert "<OnboardingGate" in layout
 
 
 def test_project_builder_is_learning_first_without_ai_autofill_controls() -> None:
