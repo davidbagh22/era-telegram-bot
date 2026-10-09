@@ -487,9 +487,16 @@ async def save_event_draft_step(
         experience.wizard_step = payload.wizard_step
 
     await session.flush()
+    result = await _draft_out(session, event, experience)
     if was_public and changes:
-        await _notify_changed_event(bot, settings, session, event, changes)
-    return await _draft_out(session, event, experience)
+        # Never announce details that have not been committed to the database.
+        # A repeated identical PATCH will have an empty changes list.
+        await session.commit()
+        try:
+            await _notify_changed_event(bot, settings, session, event, changes)
+        except Exception:
+            logger.exception("Event %s saved; change notification failed", event.id)
+    return result
 
 
 @router.post("/{event_id}/poster", response_model=EventDraftOut)
@@ -639,9 +646,11 @@ async def cancel_event(
 ) -> EventDraftOut:
     event = await _managed_event(session, event_id)
     experience = await _experience(session, event)
+    if event.status == EventStatus.CANCELLED:
+        return await _draft_out(session, event, experience)
+    was_public = event.status != EventStatus.DRAFT
     event.status = EventStatus.CANCELLED
     await session.flush()
-    await _notify_changed_event(bot, settings, session, event, ["Мероприятие отменено"])
     await audit(
         session,
         actor_id=admin.id,
@@ -649,4 +658,11 @@ async def cancel_event(
         entity_type="event",
         entity_id=event.id,
     )
-    return await _draft_out(session, event, experience)
+    result = await _draft_out(session, event, experience)
+    await session.commit()
+    if was_public:
+        try:
+            await _notify_changed_event(bot, settings, session, event, ["Мероприятие отменено"])
+        except Exception:
+            logger.exception("Event %s cancelled; notification failed", event.id)
+    return result
