@@ -33,80 +33,18 @@ async def restore_general_chat_member(
     settings: Settings,
     telegram_id: int,
 ) -> bool:
-    """Repair a legacy per-user Telegram restriction in the general chat.
+    """Do not lift restrictions that may have been set by moderators.
 
-    Older versions of ERA could apply a personal `restrictChatMember` mute to
-    people who had not completed registration yet. Changing the chat's default
-    permissions does not remove that stored per-user override, and Telegram's
-    Bot API cannot enumerate every historical member. This helper therefore
-    repairs the exact person whenever we learn their Telegram id from a private
-    interaction with the bot.
-
-    Deliberately only touches `restricted` members. It never unbans kicked or
-    banned users, so explicit moderation/admin decisions are not reversed.
+    Telegram does not expose reliable provenance for member restrictions.
+    Legacy repair therefore requires an explicit administrator decision.
     """
-    chat_id = settings.general_chat_id
-    if not chat_id:
-        return False
-
-    try:
-        member = await bot.get_chat_member(chat_id=chat_id, user_id=telegram_id)
-        raw_status = getattr(member, "status", "")
-        status = str(getattr(raw_status, "value", raw_status)).casefold()
-        if status != "restricted":
-            return False
-        await bot.restrict_chat_member(
-            chat_id=chat_id,
-            user_id=telegram_id,
-            permissions=writable_permissions(),
-        )
-        logger.info(
-            "Restored legacy general-chat write permissions telegram_id=%s chat=%s",
-            telegram_id,
-            chat_id,
-        )
-        return True
-    except TelegramAPIError:
-        logger.warning(
-            "Could not inspect/restore general-chat permissions telegram_id=%s chat=%s",
-            telegram_id,
-            chat_id,
-            exc_info=True,
-        )
-        return False
+    return False
 
 
-async def enforce_general_chat_writable(bot: Bot, settings: Settings, session_factory) -> tuple[int, int]:
-    """Only restore Telegram write permissions. Never send/edit/pin a message."""
-    chat_id = settings.general_chat_id
-    if not chat_id:
-        return 0, 0
-
-    fixed = failed = 0
-    try:
-        await bot.set_chat_permissions(chat_id=chat_id, permissions=writable_permissions())
-        fixed += 1
-    except TelegramAPIError:
-        logger.exception("Could not set default writable permissions chat=%s", chat_id)
-        failed += 1
-
-    async with session_factory() as session:
-        telegram_ids = list((await session.scalars(select(User.telegram_id))).all())
-
-    for telegram_id in telegram_ids:
-        try:
-            member = await bot.get_chat_member(chat_id=chat_id, user_id=telegram_id)
-            raw_status = getattr(member, "status", "")
-            status = str(getattr(raw_status, "value", raw_status)).casefold()
-            if status not in {"member", "administrator", "creator", "restricted"}:
-                continue
-            if status == "restricted":
-                await bot.restrict_chat_member(
-                    chat_id=chat_id,
-                    user_id=telegram_id,
-                    permissions=writable_permissions(),
-                )
-                fixed += 1
-        except TelegramAPIError:
-            continue
-    return fixed, failed
+async def enforce_general_chat_writable(
+    bot: Bot,
+    settings: Settings,
+    session_factory,
+) -> tuple[int, int]:
+    """Compatibility hook; never rewrite chat permissions automatically."""
+    return 0, 0
