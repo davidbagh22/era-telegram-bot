@@ -57,6 +57,23 @@ async def progress(session: AsyncSession, user: User) -> dict[str, int]:
             for kind in ('read', 'task')}
 
 
+async def save_reflection(session, user, number, answer):
+    get_issue(number)
+    if not eligible(user) or not answer.strip() or len(answer) > 3000:
+        raise ValueError('Invalid reflection')
+    key = f'book-reflection:{user.id}:{number}'
+    value = {'answer': answer.strip(), 'at': datetime.now(ZoneInfo('Asia/Yerevan')).isoformat()}
+    await _insert_setting(session, key=key, value=value, actor_id=user.id)
+    row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
+    row.value = value
+    await session.commit()
+
+
+async def reflection_summary(session, user):
+    rows = (await session.scalars(select(AppSetting).where(AppSetting.key.like(f'book-reflection:{user.id}:%')))).all()
+    return sorted([(int(row.key.rsplit(':', 1)[1]), row.value['answer']) for row in rows])
+
+
 async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
     async with session_factory() as session:
         start_day = await start(session)

@@ -29,6 +29,16 @@ async def start_book_club(admin:User=Depends(require_admin),session=Depends(get_
     return {'started': True, 'start_date': start_date.isoformat(), 'days': 48}
 
 
+@router.get('/book-club/analytics')
+async def book_analytics(admin:User=Depends(require_admin),session=Depends(get_session)):
+    from sqlalchemy import func
+    from app.database.models import AppSetting
+    # Only totals leave the private diary; never send personal answers to admins.
+    subscribed = await session.scalar(select(func.count()).select_from(User).where(User.book_club_subscribed.is_(True), User.is_blocked.is_(False), User.is_archived.is_(False)))
+    keys = (await session.scalars(select(AppSetting.key).where(AppSetting.key.like('book-reflection:%')))).all()
+    return {'subscribers': subscribed, 'responses': len(keys), 'respondents': len({k.split(':')[1] for k in keys})}
+
+
 async def output(session,task,settings):
     delivery=await session.scalar(select(TaskDelivery).where(TaskDelivery.task_id==task.id,TaskDelivery.chat_key=='leaders'))
     user=await session.get(User,task.assignee_id) if task.assignee_id else None

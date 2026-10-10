@@ -121,6 +121,7 @@ async def approve_submission(call: CallbackQuery, user: User | None, settings: S
     result = await task_review_service.decide_submission(
         session, submission, task, participant, action="approve", comment="", actor=user
     )
+    await session.commit()
     if result.participant_notice:
         await safe_send(bot, participant.telegram_id, result.participant_notice)
     await call.message.answer(result.admin_notice)
@@ -152,6 +153,7 @@ async def revision_finish(message: Message, user: User | None, settings: Setting
     result = await task_review_service.decide_submission(
         session, submission, task, participant, action="revision", comment=comment, actor=user
     )
+    await session.commit()
     if result.participant_notice:
         await safe_send(bot, participant.telegram_id, result.participant_notice)
     await state.clear()
@@ -184,6 +186,7 @@ async def reject_finish(message: Message, user: User | None, settings: Settings,
     result = await task_review_service.decide_submission(
         session, submission, task, participant, action="reject", comment=comment, actor=user
     )
+    await session.commit()
     if result.participant_notice:
         await safe_send(bot, participant.telegram_id, result.participant_notice)
     await state.clear()

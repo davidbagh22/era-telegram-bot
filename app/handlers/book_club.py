@@ -1,12 +1,21 @@
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
+from sqlalchemy import delete
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.content.literature_issues import ISSUES, render_issue
-from app.database.models import User
+from app.database.models import AppSetting, User
 from app.services.book_club_service import eligible, mark_progress, progress
+from app.services.book_club_service import save_reflection, reflection_summary
+from app.content.literature_issues import get_issue
+
+
+class ReflectionStates(StatesGroup):
+    answer = State()
 
 router = Router(name='book_club')
 router.message.filter(F.chat.type == 'private')
@@ -20,6 +29,7 @@ def button(text, callback):
 def _keyboard(subscribed: bool = False, discussion_url: str = '') -> InlineKeyboardMarkup:
     rows = [[button('📖 Читать · 48 законов власти', 'bookclub:list:0')],
             [button('📊 Мой прогресс', 'bookclub:progress')],
+            [button('📝 Мои ответы и итоги', 'bookclub:reflections')],
             [button('🔕 Отписаться' if subscribed else '🔔 Подписаться',
                     'bookclub:unsubscribe' if subscribed else 'bookclub:subscribe')]]
     if discussion_url:
@@ -36,6 +46,7 @@ def issue_keyboard(number: int) -> InlineKeyboardMarkup:
         nav.append(button('Следующий →', f'bookclub:issue:{number + 1}'))
     return InlineKeyboardMarkup(inline_keyboard=[
         [button('✅ Прочитано', f'bookclub:read:{number}'), button('📝 Задание выполнено', f'bookclub:task:{number}')],
+        [button('💭 Ответить для себя', f'bookclub:reflect:{number}')],
         nav, [button('← Все выпуски', f'bookclub:list:{(number - 1) // 8}')],
         [button('📚 Литература', 'bookclub:home'), button('🔕 Отписаться', 'bookclub:unsubscribe')],
         [button('🏠 Главное меню', 'menu:main')],
@@ -81,6 +92,71 @@ async def change_subscription(call: CallbackQuery, user: User | None, session: A
         else '🔕 Подписка отключена. Новых рассылок не будет. История чтения сохранена.',
         reply_markup=_keyboard(subscribed),
     )
+
+
+@router.callback_query(F.data.startswith('bookclub:reflect:'))
+async def begin_reflection(call: CallbackQuery, user: User | None, state: FSMContext):
+    if not eligible(user):
+        await call.answer('Сначала завершите регистрацию.', show_alert=True)
+        return
+    try:
+        issue = get_issue(int(call.data.rsplit(':', 1)[1]))
+    except (ValueError, IndexError):
+        await call.answer('Выпуск не найден.', show_alert=True)
+        return
+    await state.set_state(ReflectionStates.answer)
+    await state.update_data(reflection_number=issue.number)
+    await call.answer()
+    await call.message.answer(
+        f'💭 {issue.reflection_question}\n\nОтветьте одним сообщением (до 3000 символов). '
+        'Отправляя ответ, вы сохраняете его в своём дневнике бота. '
+        'В чате он не публикуется; администратор видит только число ответов. '
+        'Не указывайте чужие личные данные. Ответы можно удалить кнопкой «Удалить мои ответы». '
+        'Это саморефлексия, не психологическая диагностика.',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[button('Отмена', 'bookclub:reflect_cancel')]]))
+
+
+@router.callback_query(F.data == 'bookclub:reflect_cancel')
+async def cancel_reflection(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.answer('Отменено')
+
+
+@router.message(ReflectionStates.answer)
+async def receive_reflection(message: Message, user: User | None, state: FSMContext, session: AsyncSession):
+    if not eligible(user):
+        await state.clear()
+        return
+    data = await state.get_data()
+    answer = message.text or ''
+    if not answer.strip() or len(answer) > 3000:
+        await message.answer('Отправьте текст до 3000 символов.')
+        return
+    await save_reflection(session, user, data['reflection_number'], answer)
+    await state.clear()
+    await message.answer('Ответ сохранён. Изменения можно увидеть в «Мои ответы и итоги».', reply_markup=_keyboard(user.book_club_subscribed))
+
+
+@router.callback_query(F.data.in_({'bookclub:reflections', 'bookclub:delete_answers', 'bookclub:delete_confirm'}))
+async def my_reflections(call: CallbackQuery, user: User | None, session: AsyncSession, state: FSMContext):
+    if not eligible(user):
+        await call.answer('Сначала завершите регистрацию.', show_alert=True)
+        return
+    await state.clear()
+    await call.answer()
+    if call.data == 'bookclub:delete_answers':
+        await call.message.answer('Удалить все ваши личные ответы?', reply_markup=InlineKeyboardMarkup(inline_keyboard=[[button('Да, удалить', 'bookclub:delete_confirm'), button('Сохранить', 'bookclub:home')]]))
+        return
+    if call.data == 'bookclub:delete_confirm':
+        await session.execute(delete(AppSetting).where(AppSetting.key.like(f'book-reflection:{user.id}:%')))
+        await session.commit()
+        await call.message.answer('Все личные ответы удалены.', reply_markup=_keyboard(user.book_club_subscribed))
+        return
+    answers = await reflection_summary(session, user)
+    counts = await progress(session, user)
+    await call.message.answer(f'📊 Ваш путь чтения\nПрочитано: {counts["read"]}/48\nПрактических отметок: {counts["task"]}/48\nЛичных ответов: {len(answers)}/48\n\nСравните свои первые и последние ответы: что изменилось в решениях и общении? Это обзор вашей активности, не оценка личности.', reply_markup=InlineKeyboardMarkup(inline_keyboard=[[button('Удалить мои ответы', 'bookclub:delete_answers')], [button('📚 Литература', 'bookclub:home')]]))
+    for number, answer in answers[-5:]:
+        await call.message.answer(f'Выпуск {number} · {get_issue(number).title}\n\n{answer}')
 
 
 @router.callback_query(F.data.startswith('bookclub:'))

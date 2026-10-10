@@ -85,7 +85,7 @@ async def list_for_user(session: AsyncSession, user: User) -> list[Task]:
             task = await session.get(Task, membership.task_id)
             if task:
                 tasks_by_id[task.id] = task
-    tasks = sorted(tasks_by_id.values(), key=lambda item: item.deadline)
+    tasks = sorted(tasks_by_id.values(), key=lambda item: (item.deadline is None, item.deadline.isoformat() if item.deadline else '', item.id))
     return [
         task
         for task in tasks
@@ -130,7 +130,7 @@ def _is_media_task(task: Task) -> bool:
 def _is_self_service_task(task: Task) -> bool:
     # Only explicitly tagged system task types bypass the legacy application
     # review. All pre-existing public challenge tasks keep the old pending flow.
-    return _is_community_mission(task) or _is_media_task(task)
+    return _is_community_mission(task) or _is_media_task(task) or bool(_reward(task).get('public_task'))
 
 
 async def _sync_mission_squad(
@@ -159,6 +159,8 @@ async def claim(
     Existing membership is resolved before capacity so repeated opens/claims
     remain idempotent even for SOLO/max=1 work.
     """
+    if task is not None:
+        task = await session.scalar(select(Task).where(Task.id == task.id).with_for_update().execution_options(populate_existing=True))
     if (
         task is None
         or task.task_type != "challenge"

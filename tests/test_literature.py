@@ -114,3 +114,19 @@ class LiteratureTests(IsolatedAsyncioTestCase):
             clock.now.return_value = datetime(2026, 11, 27, 19, tzinfo=ZoneInfo('Asia/Yerevan'))
             await daily_job(self.bot, self.settings, self.sessions)
         self.bot.send_message.assert_not_awaited()
+
+class ReflectionTests(LiteratureTests):
+    async def test_private_answers_update_and_do_not_mix_users(self):
+        from app.services.book_club_service import save_reflection, reflection_summary
+        from app.handlers.book_club import my_reflections
+        async with self.sessions() as session:
+            user = await session.get(User, 1)
+            other = await session.get(User, 4)
+            await save_reflection(session, user, 1, 'First thought')
+            await save_reflection(session, user, 1, 'Changed thought')
+            await save_reflection(session, other, 1, 'Other participant')
+            assert await reflection_summary(session, user) == [(1, 'Changed thought')]
+            call = self.callback('bookclub:delete_confirm')
+            await my_reflections(call, user, session, SimpleNamespace(clear=AsyncMock()))
+            assert await reflection_summary(session, user) == []
+            assert await reflection_summary(session, other) == [(1, 'Other participant')]

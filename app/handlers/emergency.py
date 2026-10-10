@@ -283,6 +283,14 @@ async def rescue_start(
     if user is None:
         await message.answer(texts.WELCOME, reply_markup=registration_keyboard())
         return
+    if command and command.args == 'bookclub':
+        from app.handlers.book_club import show_home
+        await show_home(message, user, settings)
+        return
+    if command and command.args == 'tasks_catalog' and _approved(user):
+        from app.services.public_task_catalog_service import show_catalog
+        await show_catalog(message, session, user)
+        return
     if await try_handle_faq_payload(
         message,
         user,

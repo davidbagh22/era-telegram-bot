@@ -57,6 +57,10 @@ async def decide_submission(
     if action in ("revision", "reject") and not comment.strip():
         raise ValueError("comment_required")
 
+    # Serialize approvals for the same task before consulting the points ledger.
+    await session.scalar(select(Task).where(Task.id == task.id).with_for_update())
+    await session.refresh(submission)
+
     if action == "approve":
         if submission.status == "approved":
             return TaskReviewResult(
@@ -92,7 +96,10 @@ async def decide_submission(
             if portfolio is None:
                 session.add(PortfolioItem(user_id=participant.id, title=task.title, item_type="task", description=submission.text or task.description, file_id=submission.file_id, related_task_id=task.id, issued_by=actor.id, verified_by=actor.id, admin_comment=submission.admin_comment, status="verified"))
 
-        if task.task_type == "private":
+        if reward.get('public_task'):
+            # A participant's result never closes enrollment for everyone else.
+            task.status = 'published'
+        elif task.task_type == "private":
             task.status = TaskStatus.COMPLETED
         else:
             member_ids = set(
@@ -134,7 +141,7 @@ async def decide_submission(
         submission.status = "needs_revision"
         submission.admin_comment = comment
         submission.reviewed_by = actor.id
-        task.status = TaskStatus.IN_PROGRESS
+        task.status = 'published' if (task.reward_json or {}).get('public_task') else TaskStatus.IN_PROGRESS
         return TaskReviewResult(
             submission=submission,
             admin_notice="Комментарий отправлен. Задание возвращено на доработку.",
