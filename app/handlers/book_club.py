@@ -28,11 +28,7 @@ def _keyboard(subscribed: bool = False, discussion_url: str = '') -> InlineKeybo
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-AUDIOBOOK_PARTS = (
-    'https://www.litres.ru/audiobook/robert-grin/48-zakonov-vlasti-zakony-1-16-8337924/',
-    'https://www.litres.ru/audiobook/robert-grin/48-zakonov-vlasti-zakony-17-32-8486701/',
-    'https://www.litres.ru/audiobook/robert-grin/48-zakonov-vlasti-zakony-33-48-8645049/',
-)
+AUDIOBOOK_URL = 'https://t.me/audiobook900'
 
 
 def issue_keyboard(number: int) -> InlineKeyboardMarkup:
@@ -43,7 +39,7 @@ def issue_keyboard(number: int) -> InlineKeyboardMarkup:
         nav.append(button('Следующий →', f'bookclub:issue:{number + 1}'))
     return InlineKeyboardMarkup(inline_keyboard=[
         [button('✅ Прочитано', f'bookclub:read:{number}'), button('📝 Задание выполнено', f'bookclub:task:{number}')],
-        [InlineKeyboardButton(text='🎧 Аудиокнига · Литрес', url=AUDIOBOOK_PARTS[(number - 1) // 16])],
+        [InlineKeyboardButton(text='🎧 Слушать аудио', url=AUDIOBOOK_URL)],
         nav, [button('← Все выпуски', f'bookclub:list:{(number - 1) // 8}')],
         [button('📚 Литература', 'bookclub:home'), button('🔕 Отписаться', 'bookclub:unsubscribe')],
         [button('🏠 Главное меню', 'menu:main')],
