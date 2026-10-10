@@ -18,7 +18,7 @@ ANNOUNCEMENT = (
     "Дальше читаем ежедневно в 19:00 по Еревану.\n\n"
     "💬 Обсуждения — в теме <b>«Литература»</b> нашего общего чата. "
     "А в боте можно подписаться на выпуски и отмечать прогресс.\n\n"
-    "📖 Полная книга доступна для чтения в Российской государственной библиотеке.\n\n"
+    "📖 Ссылка на сторонний ресурс PDF/DJVU (Sci.ru); статус прав на файл не подтверждён.\n\n"
     "Начнём с этой книги. Если формат понравится, будем читать другие вместе!"
 )
 
@@ -26,7 +26,7 @@ ANNOUNCEMENT = (
 def launch_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📚 Открыть литературу в боте", url="https://t.me/ERA_1bot?start=literature")],
-        [InlineKeyboardButton(text="📖 Читать книгу в РГБ", url="https://search.rsl.ru/ru/record/02000010666")],
+        [InlineKeyboardButton(text="📖 PDF/DJVU · сторонний сайт", url="https://sci.ru/disk/file/19957")],
     ])
 
 
