@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 from app.services.chat_permissions_service import restore_general_chat_member
 
 
-def test_restore_general_chat_member_unrestricts_legacy_restricted_member() -> None:
+def test_restore_general_chat_member_preserves_moderator_restriction() -> None:
     async def scenario() -> None:
         bot = SimpleNamespace(
             get_chat_member=AsyncMock(
@@ -19,13 +19,8 @@ def test_restore_general_chat_member_unrestricts_legacy_restricted_member() -> N
 
         repaired = await restore_general_chat_member(bot, settings, 777)
 
-        assert repaired is True
-        bot.get_chat_member.assert_awaited_once_with(chat_id=-100123, user_id=777)
-        bot.restrict_chat_member.assert_awaited_once()
-        kwargs = bot.restrict_chat_member.await_args.kwargs
-        assert kwargs["chat_id"] == -100123
-        assert kwargs["user_id"] == 777
-        assert kwargs["permissions"].can_send_messages is True
+        assert repaired is False
+        bot.restrict_chat_member.assert_not_awaited()
 
     asyncio.run(scenario())
 
