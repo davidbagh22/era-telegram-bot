@@ -25,7 +25,7 @@ def _keyboard(subscribed: bool = False, discussion_url: str = '') -> InlineKeybo
                     'bookclub:unsubscribe' if subscribed else 'bookclub:subscribe')]]
     if discussion_url:
         rows.append([InlineKeyboardButton(text='💬 Обсуждение в сообществе', url=discussion_url)])
-    rows.append([InlineKeyboardButton(text='📖 PDF/DJVU · сторонний сайт', url=READ_BOOK_URL)])
+    rows.append([InlineKeyboardButton(text='📖 Прочитать онлайн', url=READ_BOOK_URL)])
     rows.append([button('🏠 Главное меню', 'menu:main')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -42,7 +42,7 @@ def issue_keyboard(number: int) -> InlineKeyboardMarkup:
         nav.append(button('Следующий →', f'bookclub:issue:{number + 1}'))
     return InlineKeyboardMarkup(inline_keyboard=[
         [button('✅ Прочитано', f'bookclub:read:{number}'), button('📝 Задание выполнено', f'bookclub:task:{number}')],
-        [InlineKeyboardButton(text='📖 PDF/DJVU · сторонний сайт', url=READ_BOOK_URL)],
+        [InlineKeyboardButton(text='📖 Прочитать онлайн', url=READ_BOOK_URL)],
         [InlineKeyboardButton(text='🎧 Слушать аудио', url=AUDIOBOOK_URL)],
         nav, [button('← Все выпуски', f'bookclub:list:{(number - 1) // 8}')],
         [button('📚 Литература', 'bookclub:home'), button('🔕 Отписаться', 'bookclub:unsubscribe')],
