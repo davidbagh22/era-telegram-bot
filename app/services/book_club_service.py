@@ -19,19 +19,9 @@ from app.utils.constants import ApplicationStatus
 
 PROGRAM_START = date(2026, 10, 10)
 SPECIAL_OPENING_DATE = date(2026, 10, 10)
-REGULAR_START = date(2026, 10, 12)
-PUBLICATION_WEEKDAYS = (0, 2, 4)  # Monday, Wednesday, Friday, Asia/Yerevan
-
-
 def publication_number(on_date: date, start_date: date = PROGRAM_START) -> int | None:
-    """Exceptional Saturday launch, then M/W/F releases starting with issue 2."""
-    if on_date < start_date:
-        return None
-    if on_date == SPECIAL_OPENING_DATE:
-        return 1
-    if on_date < REGULAR_START or on_date.weekday() not in PUBLICATION_WEEKDAYS:
-        return None
-    number = ((on_date - REGULAR_START).days // 7) * 3 + PUBLICATION_WEEKDAYS.index(on_date.weekday()) + 2
+    """One issue every calendar day for 48 days from the program start."""
+    number = (on_date - start_date).days + 1
     return number if 1 <= number <= 48 else None
 
 

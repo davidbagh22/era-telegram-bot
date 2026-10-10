@@ -28,6 +28,7 @@ from app.services.system_health_service import run_system_diagnostics, send_dail
 from app.services.vacancy_reconciliation_service import reconcile_vacancies_job
 from app.services.admin_broadcast_service import resume_broadcasts
 from app.services.book_club_service import daily_job as book_club_daily_job
+from app.services.literature_launch_service import publish_literature_launch
 from app.services.directions_announcement import publish_directions_announcement
 
 
@@ -64,6 +65,7 @@ def add_system_jobs(
     scheduler.add_job(complete_verification_campaigns_job, "interval", minutes=5, args=(session_factory,), id="community-verification-expiry", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(send_monthly_development_reminders, "cron", hour=18, minute=0, args=(bot, settings, session_factory), id="my-vector-monthly-reminders", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(book_club_daily_job, "cron", hour=19, minute=0, args=(bot, settings, session_factory), id="book-club-daily", replace_existing=True, max_instances=1, coalesce=True)
+    scheduler.add_job(publish_literature_launch, "interval", minutes=5, args=(bot, settings, session_factory), id="literature-opening-recovery", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(resume_broadcasts, "interval", minutes=1, args=(bot, settings, session_factory), id="admin-broadcast-resume", replace_existing=True, max_instances=1, coalesce=True)
 
     scheduler.add_job(
