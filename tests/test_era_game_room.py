@@ -70,3 +70,12 @@ def test_leisure_hides_game_link_until_public_launch():
     assert any("Литература" in label for label in labels)
     assert not any("Игровая" in label for label in labels)
     bot.create_forum_topic.assert_not_awaited()
+
+
+def test_general_chat_topic_routing_preserves_existing_topic_keys():
+    from app.services.general_topics_service import TOPICS, SETUP_TOPICS
+    assert TOPICS["announcements"] == "Мероприятия"
+    assert TOPICS["notifications"] == "Оповещения"
+    assert TOPICS["games"] == "🎮 Интерактив"
+    assert "announcements" in SETUP_TOPICS
+    assert "notifications" in SETUP_TOPICS
