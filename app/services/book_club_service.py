@@ -6,7 +6,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -103,3 +103,39 @@ async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
             )
             await session.commit()
         await asyncio.sleep(0.05)
+
+
+async def literature_stats(session: AsyncSession) -> dict[str, int]:
+    """Count distinct participants using durable progress markers, not message views."""
+    subscribed = await session.scalar(select(func.count(User.id)).where(
+        User.book_club_subscribed.is_(True), User.is_blocked.is_(False),
+        User.is_archived.is_(False), User.application_status == ApplicationStatus.APPROVED))
+    keys = (await session.scalars(select(AppSetting.key).where(AppSetting.key.like('bookclub:%')))).all()
+    readers, performers = set(), set()
+    read_marks = task_marks = 0
+    for key in keys:
+        parts = key.split(':')
+        if len(parts) != 4 or parts[2] not in {'read', 'task'}:
+            continue
+        if parts[2] == 'read':
+            readers.add(parts[1]); read_marks += 1
+        else:
+            performers.add(parts[1]); task_marks += 1
+    return {
+        'subscribed': subscribed or 0, 'readers': len(readers),
+        'performers': len(performers), 'active': len(readers | performers),
+        'read_marks': read_marks, 'task_marks': task_marks,
+    }
+
+
+def format_literature_stats(stats: dict[str, int]) -> str:
+    return (
+        '📊 <b>ЭРА · Литературный клуб</b>\\n\\n'
+        f'🔔 Подписаны: {stats["subscribed"]}\\n'
+        f'👥 Активны (отметили чтение или задание): {stats["active"]}\\n'
+        f'📖 Отметили чтение: {stats["readers"]}\\n'
+        f'📝 Выполнили задания: {stats["performers"]}\\n'
+        f'✅ Всего отметок чтения: {stats["read_marks"]}\\n'
+        f'⭐ Всего выполненных заданий: {stats["task_marks"]}\\n\\n'
+        'Данные по отметкам участников в боте; просмотры постов и обсуждения не учитываются.'
+    )
