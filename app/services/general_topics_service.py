@@ -77,6 +77,6 @@ async def send_general_topic(bot, settings, key, text, *, reply_markup=None, del
             notification_type=f"general_{key}", reply_markup=reply_markup,
             message_thread_id=thread_id, parse_mode=parse_mode,
         )
-        return result.sent
+        return result.sent or (result.duplicate and result.status == 'sent')
     return await safe_send(bot, settings.general_chat_id, text,
                            reply_markup=reply_markup, message_thread_id=thread_id, parse_mode=parse_mode)
