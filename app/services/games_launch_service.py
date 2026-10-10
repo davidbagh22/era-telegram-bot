@@ -21,7 +21,7 @@ async def publish_games_launch(bot, settings, session_factory) -> None:
 
     menu_ok = await send_general_topic(
         bot, settings, "games",
-        "🎮 <b>ЭРА | Игровая</b>\n\n"
+        "🎮 <b>ЭРА | Интерактив</b>\n\n"
         "Небольшая компания — уже повод поиграть. Можно пройти короткий квиз "
         "или собрать команду. Игры доступны здесь в любое время.\n\n"
         "Выбирай формат ниже 👇",
@@ -47,7 +47,7 @@ async def publish_games_launch(bot, settings, session_factory) -> None:
         "🎮 <b>В ЭРА появилась Игровая!</b>\n\n"
         "Теперь в общем чате можно пройти быстрый квиз или собрать команду. "
         "Не нужно ждать большой компании: выбирай удобный формат и играй, когда захочешь.\n\n"
-        "Игры и все обсуждения проходят только в теме «Игровая».",
+        "Игры и все обсуждения проходят только в теме «Интерактив».",
         parse_mode="HTML", reply_markup=keyboard,
         delivery_key="games-notification-v1",
     )
