@@ -58,46 +58,61 @@ class ChatAccessAuditTests(unittest.IsolatedAsyncioTestCase):
         await session.flush()
         return user
 
-    async def test_sync_writes_audit_summary_row(self) -> None:
+    async def test_sync_preserves_moderator_restrictions(self) -> None:
         async with self.session_factory() as session:
             user = await self._make_user(session)
             bot = AsyncMock()
+            bot.get_chat_member.return_value = SimpleNamespace(
+                status="restricted", is_member=True
+            )
 
-            fixed, failed = await sync_user_chat_access(bot, _settings(), session, user)
+            fixed, failed = await sync_user_chat_access(
+                bot, _settings(), session, user
+            )
 
-            self.assertEqual(fixed, 1)
-            self.assertEqual(failed, 0)
+            self.assertEqual((fixed, failed), (0, 1))
+            bot.restrict_chat_member.assert_not_awaited()
             rows = (
                 await session.scalars(
                     select(AuditLog).where(AuditLog.action == "chat_access.synced")
                 )
             ).all()
             self.assertEqual(len(rows), 1)
-            self.assertEqual(rows[0].actor_id, user.id)
-            self.assertEqual(rows[0].new_value["fixed"], 1)
-            self.assertEqual(rows[0].new_value["failed"], 0)
+            self.assertEqual(rows[0].new_value["failed"], 1)
 
-    async def test_sync_records_failures_for_visibility(self) -> None:
+    async def test_restricted_pending_user_is_not_unmuted(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._make_user(
+                session, application_status=ApplicationStatus.PENDING
+            )
+            bot = AsyncMock()
+            bot.get_chat_member.return_value = SimpleNamespace(
+                status="restricted", is_member=True
+            )
+            fixed, failed = await sync_user_chat_access(
+                bot, _settings(), session, user
+            )
+            self.assertEqual((fixed, failed), (0, 1))
+            bot.restrict_chat_member.assert_not_awaited()
+
+
+    async def test_regular_member_is_not_modified(self) -> None:
         async with self.session_factory() as session:
             user = await self._make_user(session)
             bot = AsyncMock()
-            bot.restrict_chat_member = AsyncMock(
-                side_effect=TelegramAPIError(method=object(), message="telegram down")
-            )
-            # An unapproved user forces a restrict_member call, which will
-            # fail via the mocked exception above.
-            user.application_status = ApplicationStatus.PENDING
-
+            bot.get_chat_member.return_value = SimpleNamespace(status="member")
             fixed, failed = await sync_user_chat_access(bot, _settings(), session, user)
+            self.assertEqual((fixed, failed), (1, 0))
+            bot.restrict_chat_member.assert_not_awaited()
 
-            self.assertEqual(failed, 1)
-            rows = (
-                await session.scalars(
-                    select(AuditLog).where(AuditLog.action == "chat_access.synced")
-                )
-            ).all()
-            self.assertEqual(rows[0].new_value["failed"], 1)
-
+    async def test_absent_member_is_not_modified(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            bot = AsyncMock()
+            bot.get_chat_member.return_value = SimpleNamespace(status="left")
+            fixed, failed = await sync_user_chat_access(bot, _settings(), session, user)
+            self.assertEqual((fixed, failed), (0, 1))
+            bot.restrict_chat_member.assert_not_awaited()
 
 class ChatJoinRequestAuditTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
