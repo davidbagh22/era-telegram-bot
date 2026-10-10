@@ -13,6 +13,7 @@ from app.config import Settings
 from app.content.literature_issues import LAW_TITLES as LAW_TITLES, get_issue, render_issue
 from app.database.models import AppSetting, User
 from app.services.notification_service import safe_send_once
+from app.services.points_service import add_points, make_idempotency_key
 from app.utils.constants import ApplicationStatus
 
 PROGRAM_START = date(2026, 10, 10)
@@ -62,6 +63,13 @@ async def mark_progress(session: AsyncSession, user: User, number: int, kind: st
         raise ValueError('Progress not allowed')
     await _insert_setting(session, key=f'bookclub:{user.id}:{kind}:{number}',
                           value={'at': datetime.now(ZoneInfo('Asia/Yerevan')).isoformat()}, actor_id=user.id)
+    if kind == 'task':
+        await add_points(
+            session, user_id=user.id, points=5,
+            reason=f'Литература ЭРА: задание к закону №{number}',
+            approved_by=None, source_type='literature', source_id=number,
+            idempotency_key=make_idempotency_key('literature', 'task', user.id, number),
+        )
     await session.commit()
 
 
