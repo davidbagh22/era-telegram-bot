@@ -20,7 +20,7 @@ async def _markup(bot, settings: Settings) -> InlineKeyboardMarkup:
         chat_id = str(settings.general_chat_id)
         if thread_id and chat_id.startswith("-100"):
             rows.append([InlineKeyboardButton(
-                text="🎮 Игровая · квизы и команды",
+                text="🎮 Интерактив · квизы и команды",
                 url=f"https://t.me/c/{chat_id[4:]}/{thread_id}",
             )])
     rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu:main")])
