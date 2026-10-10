@@ -16,7 +16,7 @@ from sqlalchemy import select, text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import AppSetting, User
+from app.database.models import AppSetting
 from app.services.general_topics_service import ensure_topic
 
 logger = logging.getLogger(__name__)
