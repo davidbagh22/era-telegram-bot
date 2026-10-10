@@ -15,7 +15,7 @@ CHANNEL_POST = (
     "Выполняешь задание в боте — получаешь 5 баллов.\n\n"
     "Первый выпуск уже сегодня. Присоединяйся, даже если раньше не читал эту книгу. "
     "Если формат понравится, продолжим с другими произведениями.\n\n"
-    "📖 Полную книгу можно читать через Российскую государственную библиотеку. "
+    "📖 PDF/DJVU доступен на стороннем сайте Sci.ru; статус прав на файл не подтверждён. "
     "В боте также есть ссылка на аудио.\n\n"
     "<b>ЭРА — это возможности, которыми делятся.</b>"
 )
@@ -24,7 +24,7 @@ CHANNEL_POST = (
 def channel_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📚 Читать и участвовать", url="https://t.me/ERA_1bot?start=literature")],
-        [InlineKeyboardButton(text="📖 Книга в библиотеке", url="https://search.rsl.ru/ru/record/02000010666")],
+        [InlineKeyboardButton(text="📖 PDF/DJVU · Sci.ru", url="https://sci.ru/disk/file/19957")],
     ])
 
 
