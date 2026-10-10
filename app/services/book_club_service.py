@@ -13,9 +13,26 @@ from app.config import Settings
 from app.content.literature_issues import LAW_TITLES as LAW_TITLES, get_issue, render_issue
 from app.database.models import AppSetting, User
 from app.services.notification_service import safe_send_once
+from app.services.general_topics_service import send_general_topic
+from app.services.points_service import add_points, make_idempotency_key
 from app.utils.constants import ApplicationStatus
 
 PROGRAM_START = date(2026, 10, 10)
+SPECIAL_OPENING_DATE = date(2026, 10, 10)
+REGULAR_START = date(2026, 10, 12)
+PUBLICATION_WEEKDAYS = (0, 2, 4)  # Monday, Wednesday, Friday, Asia/Yerevan
+
+
+def publication_number(on_date: date, start_date: date = PROGRAM_START) -> int | None:
+    """Exceptional Saturday launch, then M/W/F releases starting with issue 2."""
+    if on_date < start_date:
+        return None
+    if on_date == SPECIAL_OPENING_DATE:
+        return 1
+    if on_date < REGULAR_START or on_date.weekday() not in PUBLICATION_WEEKDAYS:
+        return None
+    number = ((on_date - REGULAR_START).days // 7) * 3 + PUBLICATION_WEEKDAYS.index(on_date.weekday()) + 2
+    return number if 1 <= number <= 48 else None
 
 
 def eligible(user: User | None) -> bool:
@@ -47,6 +64,13 @@ async def mark_progress(session: AsyncSession, user: User, number: int, kind: st
         raise ValueError('Progress not allowed')
     await _insert_setting(session, key=f'bookclub:{user.id}:{kind}:{number}',
                           value={'at': datetime.now(ZoneInfo('Asia/Yerevan')).isoformat()}, actor_id=user.id)
+    if kind == 'task':
+        await add_points(
+            session, user_id=user.id, points=5,
+            reason=f'Литература ЭРА: задание к закону №{number}',
+            approved_by=None, source_type='literature', source_id=number,
+            idempotency_key=make_idempotency_key('literature', 'task', user.id, number),
+        )
     await session.commit()
 
 
@@ -61,13 +85,18 @@ async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
     async with session_factory() as session:
         start_day = await start(session)
         await session.commit()
-        day = (datetime.now(ZoneInfo('Asia/Yerevan')).date() - start_day).days
-        if not 0 <= day < 48:
+        number = publication_number(datetime.now(ZoneInfo('Asia/Yerevan')).date(), start_day)
+        if number is None:
             return
         ids = (await session.scalars(select(User.id).where(
             User.book_club_subscribed.is_(True), User.is_blocked.is_(False),
             User.is_archived.is_(False), User.application_status == ApplicationStatus.APPROVED,
         ))).all()
+    await send_general_topic(
+        bot, settings, 'literature', render_issue(number),
+        delivery_key=f'issue:{start_day.isoformat()}:{number}',
+        parse_mode='HTML',
+    )
     for user_id in ids:
         async with session_factory() as session:
             # Serialize against unsubscribe; no stale audience snapshot may send
@@ -77,10 +106,10 @@ async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
                 continue
             from app.handlers.book_club import issue_keyboard
             await safe_send_once(
-                bot, settings, user.telegram_id, render_issue(day + 1),
-                delivery_key=f'book-club:{start_day.isoformat()}:{day}:{user.id}',
+                bot, settings, user.telegram_id, render_issue(number),
+                delivery_key=f'book-club:{start_day.isoformat()}:{number}:{user.id}',
                 notification_type='book_club', parse_mode='HTML',
-                reply_markup=issue_keyboard(day + 1),
+                reply_markup=issue_keyboard(number),
             )
             await session.commit()
         await asyncio.sleep(0.05)
