@@ -36,18 +36,7 @@ async def ensure_topic(bot, settings, key: str, *, session_factory=None) -> int 
             row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
             data = json.loads(row.value) if row else {}
             if data.get("thread_id"):
-                thread_id = int(data["thread_id"])
-                if key == "announcements" and data.get("name") != name:
-                    me = await bot.get_me()
-                    member = await bot.get_chat_member(chat_id, me.id)
-                    if member.status == "creator" or getattr(member, "can_manage_topics", False):
-                        await bot.edit_forum_topic(chat_id, thread_id, name=name)
-                        data["name"] = name
-                        row.value = json.dumps(data)
-                        await session.commit()
-                    else:
-                        logger.warning("Cannot rename announcements topic: missing_manage_topics")
-                return thread_id
+                return int(data["thread_id"])
             chat = await bot.get_chat(chat_id)
             if not chat.is_forum:
                 logger.warning("General topics unavailable: forum_disabled")
