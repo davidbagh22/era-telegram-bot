@@ -219,6 +219,13 @@ async def decline_join_request(bot: Bot, chat_id: int, user_id: int) -> bool:
 
 async def unrestrict_member(bot: Bot, chat_id: int, user_id: int) -> bool:
     try:
+        member = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
+        raw_status = getattr(member, "status", "")
+        status = str(getattr(raw_status, "value", raw_status)).casefold()
+        if status in {"member", "administrator", "creator"}:
+            return True
+        if status != "restricted" or not getattr(member, "is_member", False):
+            return False
         await bot.restrict_chat_member(
             chat_id=chat_id,
             user_id=user_id,
@@ -410,7 +417,7 @@ async def ensure_general_chat_writable(
             )
             raw_status = getattr(member, "status", "")
             status = str(getattr(raw_status, "value", raw_status)).casefold()
-            if status not in {"member", "administrator", "creator", "restricted"}:
+            if status != "restricted" or not getattr(member, "is_member", False):
                 continue
             if await unrestrict_member(bot, chat_id, user.telegram_id):
                 fixed += 1
