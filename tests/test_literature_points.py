@@ -12,6 +12,7 @@ def test_literature_points_use_durable_idempotency():
 def test_law_title_is_labeled_not_fabricated_body_quote():
     from app.content.literature_issues import render_issue
     text = render_issue(1)
-    assert 'Из книги · название закона' in text
+    assert 'Из книги · название закона' not in text
+    assert '<b>Пересказ основной идеи закона</b>' in text
     assert 'Роберт Грин' in text
     assert 'авторский разбор ЭРА' in text
