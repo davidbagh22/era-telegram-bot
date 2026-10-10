@@ -67,7 +67,8 @@ class Settings(BaseSettings):
     # One feature-flag mechanism for participant-facing optional modules.
     # Valid values: OFF / TESTERS / ALL. Testers are explicit and never
     # inferred from administrator privileges.
-    feature_games: str = "OFF"  # OFF until production smoke test and content review\n    feature_auctions: str = "ALL"
+    feature_games: str = "OFF"  # OFF until production smoke test and content review 
+    feature_auctions: str = "ALL"
     feature_rewards: str = "ALL"
     feature_era_pro: str = "ALL"
     feature_surveys: str = "ALL"
@@ -93,7 +94,8 @@ class Settings(BaseSettings):
         return value.strip() if isinstance(value, str) else value
 
     @field_validator(
-        "feature_games",\n        "feature_auctions",
+        "feature_games", 
+        "feature_auctions",
         "feature_rewards",
         "feature_era_pro",
         "feature_surveys",
