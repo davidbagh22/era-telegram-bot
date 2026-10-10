@@ -3,6 +3,7 @@ from app.handlers.leaders_workspace import router as leaders_workspace_router
 from app.handlers.pulse_private import router as pulse_private_router
 from app.handlers.book_club import router as book_club_router 
 from app.handlers.era_game_room import router as era_game_room_router
+from app.handlers.era_leisure import router as era_leisure_router
 import logging
 import os
 
@@ -130,6 +131,7 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
         pulse_private_router,
         book_club_router, 
         era_game_room_router,
+        era_leisure_router,
         leader_chat_workcenter_router,
         emergency.router,
         chat_unlock.router,
