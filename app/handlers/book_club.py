@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.content.literature_issues import ISSUES, render_issue
 from app.database.models import User
-from app.services.book_club_service import eligible, mark_progress, progress
+from app.services.book_club_service import eligible, mark_progress, progress, literature_stats, format_literature_stats
+from app.services.authorization_service import is_full_admin
 
 router = Router(name='book_club')
 router.message.filter(F.chat.type == 'private')
@@ -85,7 +86,7 @@ async def change_subscription(call: CallbackQuery, user: User | None, session: A
     await session.commit()
     await call.answer('Подписка включена' if subscribed else 'Подписка отключена')
     await call.message.answer(
-        '✅ Подписка включена. Выпуски приходят по понедельникам, средам и пятницам в 19:00 по Еревану.' if subscribed
+        '✅ Подписка включена. Выпуски приходят ежедневно в 19:00 по Еревану.' if subscribed
         else '🔕 Подписка отключена. Новых рассылок не будет. История чтения сохранена.',
         reply_markup=_keyboard(subscribed),
     )
@@ -131,3 +132,11 @@ async def navigate(call: CallbackQuery, user: User | None, session: AsyncSession
             raise ValueError
     except (ValueError, IndexError):
         await call.answer('Откройте актуальный каталог литературы.', show_alert=True)
+
+
+@router.message(F.text == '/literature_stats')
+async def admin_literature_stats(message: Message, user: User | None, settings: Settings, session: AsyncSession):
+    if not is_full_admin(user, settings, message.from_user.id):
+        return
+    stats = await literature_stats(session)
+    await message.answer(format_literature_stats(stats), parse_mode='HTML')
