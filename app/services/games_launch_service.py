@@ -40,11 +40,11 @@ async def publish_games_launch(bot, settings, session_factory) -> None:
         return
     topic_url = f"https://t.me/c/{chat_id[4:]}/{thread_id}"
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🎮 Перейти в Игровую", url=topic_url)
+        InlineKeyboardButton(text="🎮 Перейти в Интерактив", url=topic_url)
     ]])
     await send_general_topic(
         bot, settings, "notifications",
-        "🎮 <b>В ЭРА появилась Игровая!</b>\n\n"
+        "🎮 <b>В ЭРА появился Интерактив!</b>\n\n"
         "Теперь в общем чате можно пройти быстрый квиз или собрать команду. "
         "Не нужно ждать большой компании: выбирай удобный формат и играй, когда захочешь.\n\n"
         "Игры и все обсуждения проходят только в теме «Интерактив».",
