@@ -135,6 +135,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "book-club-daily",
                 "literature-opening-recovery",
                 "literature-channel-opening",
+                "literature-admin-digest",
                 "admin-broadcast-resume",
                 "era-daily-public-content",
                 "general-chat-writable-access",
