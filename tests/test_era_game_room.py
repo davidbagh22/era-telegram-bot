@@ -45,3 +45,28 @@ def test_room_limits_and_question_bank():
     for question, choices, correct in QUESTIONS:
         assert question and len(choices) >= 2
         assert 0 <= correct < len(choices)
+
+
+def test_leisure_is_accessible_from_both_bot_keyboards():
+    from app.keyboards.bot_shell import main_inline_keyboard, main_reply_keyboard
+    reply_labels = [button.text for row in main_reply_keyboard().keyboard for button in row]
+    assert "🎲 Досуг" in reply_labels
+    assert "📚 Литература" not in reply_labels
+    inline_buttons = [button for row in main_inline_keyboard().inline_keyboard for button in row]
+    assert any(button.callback_data == "leisure:home" for button in inline_buttons)
+
+
+def test_leisure_hides_game_link_until_public_launch():
+    import asyncio
+    from unittest.mock import AsyncMock, Mock
+    from app.handlers.era_leisure import _markup
+
+    settings = SettingsStub()
+    settings.general_chat_id = -1001234567890
+    bot = Mock()
+    bot.create_forum_topic = AsyncMock()
+    keyboard = asyncio.run(_markup(bot, settings))
+    labels = [button.text for row in keyboard.inline_keyboard for button in row]
+    assert any("Литература" in label for label in labels)
+    assert not any("Игровая" in label for label in labels)
+    bot.create_forum_topic.assert_not_awaited()
