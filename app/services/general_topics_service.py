@@ -12,6 +12,7 @@ from app.services.notification_service import _session_factory, safe_send, safe_
 
 logger = logging.getLogger(__name__)
 TOPICS = {"announcements": "Объявления", "notifications": "Оповещения", "literature": "Литература"}
+SETUP_TOPICS = ("announcements", "notifications")  # Existing bootstrapping contract
 
 
 async def ensure_topic(bot, settings, key: str, *, session_factory=None) -> int | None:
@@ -60,7 +61,7 @@ async def ensure_topic(bot, settings, key: str, *, session_factory=None) -> int 
 
 async def setup_general_topics(bot, settings, session_factory) -> dict:
     result = {}
-    for key in TOPICS:
+    for key in SETUP_TOPICS:
         result[key] = await ensure_topic(bot, settings, key, session_factory=session_factory)
     return result
 
