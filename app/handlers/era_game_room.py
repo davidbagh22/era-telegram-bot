@@ -152,7 +152,10 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
         await query.answer("Игры доступны только в теме «Интерактив».", show_alert=True)
         return
     action = (query.data or "").split(":")
-    if len(action) < 2:\n        await query.answer()\n        return\n    if action[1] == "rules":
+    if len(action) < 2:
+        await query.answer()
+        return
+    if action[1] == "rules":
         await query.answer("Играй честно. За ожидание баллы не начисляются. В пилоте — короткие квизы.", show_alert=True)
         return
     if action[1] in {"solo", "team"}:
