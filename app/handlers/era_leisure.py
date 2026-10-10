@@ -28,11 +28,12 @@ async def _markup(bot, settings: Settings) -> InlineKeyboardMarkup:
 
 
 async def show_leisure(message: Message, settings: Settings) -> None:
+    games_line = ("🎮 <b>Игровая</b> — быстрые квизы и командные игры в общем чате.\n"
+                  if settings.feature_games == "ALL" else "🎮 <b>Игровая</b> — скоро откроется.\n")
     await message.answer(
         "🎲 <b>ЭРА | Досуг</b>\n\n"
         "📚 <b>Литература</b> — ежедневные разборы, обсуждения и задания.\n"
-        "🎮 <b>Игровая</b> — быстрые квизы и командные игры в общем чате.\n\n"
-        "Выбирай, чем заняться!",
+        + games_line + "\nВыбирай, чем заняться!",
         reply_markup=await _markup(message.bot, settings),
         parse_mode="HTML",
     )
