@@ -3,12 +3,9 @@ from __future__ import annotations
 import logging
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
 from aiogram.types import ChatPermissions
-from sqlalchemy import select
 
 from app.config import Settings
-from app.database.models import User
 
 logger = logging.getLogger(__name__)
 
