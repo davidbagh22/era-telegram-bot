@@ -134,6 +134,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "my-vector-monthly-reminders",
                 "book-club-daily",
                 "literature-opening-recovery",
+                "literature-channel-opening",
                 "admin-broadcast-resume",
                 "era-daily-public-content",
                 "general-chat-writable-access",
