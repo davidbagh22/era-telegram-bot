@@ -13,6 +13,7 @@ from app.config import Settings
 from app.content.literature_issues import LAW_TITLES as LAW_TITLES, get_issue, render_issue
 from app.database.models import AppSetting, User
 from app.services.notification_service import safe_send_once
+from app.services.general_topics_service import send_general_topic
 from app.services.points_service import add_points, make_idempotency_key
 from app.utils.constants import ApplicationStatus
 
@@ -91,6 +92,11 @@ async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
             User.book_club_subscribed.is_(True), User.is_blocked.is_(False),
             User.is_archived.is_(False), User.application_status == ApplicationStatus.APPROVED,
         ))).all()
+    await send_general_topic(
+        bot, settings, 'literature', render_issue(number),
+        delivery_key=f'issue:{start_day.isoformat()}:{number}',
+        parse_mode='HTML',
+    )
     for user_id in ids:
         async with session_factory() as session:
             # Serialize against unsubscribe; no stale audience snapshot may send
