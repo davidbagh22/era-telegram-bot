@@ -146,9 +146,10 @@ def get_issue(number: int) -> LiteratureIssue:
 
 def render_issue(number: int) -> str:
     issue = get_issue(number)
-    sections = [('Простыми словами', issue.summary), ('Ситуация для обсуждения', issue.example),
+    sections = [('Пересказ основной идеи закона', issue.summary), ('Пример из жизни', issue.example),
                 ('Критический взгляд', issue.critical_view), ('Вопрос себе', issue.reflection_question),
                 ('Практика', issue.practical_task)]
     text = f'📚 ЭРА · «48 законов власти»\n<b>Выпуск {number}/48 · {escape(issue.title)}</b>\n\n'
+    text += f'<b>📖 Из книги · название закона</b>\n«{escape(issue.title)}»\n\n'
     text += '\n\n'.join(f'<b>{label}</b>\n{escape(value)}' for label, value in sections)
-    return text + '\n\nАвторский критический разбор ЭРА по мотивам идеи закона. Ситуация вымышленная. Не текст книги и не инструкция по манипуляции.'
+    return text + '\n\n📚 Источник: Роберт Грин, «48 законов власти», закон №' + str(number) + '. Цитируется название закона; остальное — авторский разбор ЭРА, а не дословный текст книги. Пример вымышленный.'
