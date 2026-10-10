@@ -102,7 +102,7 @@ async def navigate(call: CallbackQuery, user: User | None, session: AsyncSession
             return
         counts = await progress(session, user)
         await call.answer()
-        await call.message.answer(f'📊 Ваши отметки\nПрочитано: {counts["read"]}/48\nЗаданий выполнено: {counts["task"]}/48\n\nЭто самостоятельные отметки, не проверка знаний и не начисление баллов.', reply_markup=_keyboard(user.book_club_subscribed))
+        await call.message.answer(f'📊 Ваши отметки\nПрочитано: {counts["read"]}/48\nЗаданий выполнено: {counts["task"]}/48\n\nЗадание: +5 баллов за первую отметку выполнения каждого закона. Отметка самостоятельная, без проверки содержания.', reply_markup=_keyboard(user.book_club_subscribed))
         return
     try:
         number = int(parts[2])
@@ -127,7 +127,7 @@ async def navigate(call: CallbackQuery, user: User | None, session: AsyncSession
                 await call.answer('Сначала завершите регистрацию.', show_alert=True)
                 return
             await mark_progress(session, user, number, action)
-            await call.answer('Отметка сохранена')
+            await call.answer('Отметка сохранена · за первое выполнение задания +5 баллов' if action == 'task' else 'Отметка сохранена')
         else:
             raise ValueError
     except (ValueError, IndexError):
