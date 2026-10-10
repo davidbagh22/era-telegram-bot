@@ -92,13 +92,11 @@ async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
             User.book_club_subscribed.is_(True), User.is_blocked.is_(False),
             User.is_archived.is_(False), User.application_status == ApplicationStatus.APPROVED,
         ))).all()
-    published = await send_general_topic(
+    await send_general_topic(
         bot, settings, 'literature', render_issue(number),
         delivery_key=f'issue:{start_day.isoformat()}:{number}',
         parse_mode='HTML',
     )
-    if not published:
-        return  # Do not start private rollout until public discussion is available.
     for user_id in ids:
         async with session_factory() as session:
             # Serialize against unsubscribe; no stale audience snapshot may send
