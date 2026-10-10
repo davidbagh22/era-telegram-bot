@@ -130,12 +130,12 @@ async def literature_stats(session: AsyncSession) -> dict[str, int]:
 
 def format_literature_stats(stats: dict[str, int]) -> str:
     return (
-        '📊 <b>ЭРА · Литературный клуб</b>\\n\\n'
-        f'🔔 Подписаны: {stats["subscribed"]}\\n'
-        f'👥 Активны (отметили чтение или задание): {stats["active"]}\\n'
-        f'📖 Отметили чтение: {stats["readers"]}\\n'
-        f'📝 Выполнили задания: {stats["performers"]}\\n'
-        f'✅ Всего отметок чтения: {stats["read_marks"]}\\n'
-        f'⭐ Всего выполненных заданий: {stats["task_marks"]}\\n\\n'
+        '📊 <b>ЭРА · Литературный клуб</b>\n\n'
+        f'🔔 Подписаны: {stats["subscribed"]}\n'
+        f'👥 Активны (отметили чтение или задание): {stats["active"]}\n'
+        f'📖 Отметили чтение: {stats["readers"]}\n'
+        f'📝 Выполнили задания: {stats["performers"]}\n'
+        f'✅ Всего отметок чтения: {stats["read_marks"]}\n'
+        f'⭐ Всего выполненных заданий: {stats["task_marks"]}\n\n'
         'Данные по отметкам участников в боте; просмотры постов и обсуждения не учитываются.'
     )
