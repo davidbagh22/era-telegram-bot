@@ -28,6 +28,13 @@ def _keyboard(subscribed: bool = False, discussion_url: str = '') -> InlineKeybo
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+AUDIOBOOK_PARTS = (
+    'https://www.litres.ru/audiobook/robert-grin/48-zakonov-vlasti-zakony-1-16-8337924/',
+    'https://www.litres.ru/audiobook/robert-grin/48-zakonov-vlasti-zakony-17-32-8486701/',
+    'https://www.litres.ru/audiobook/robert-grin/48-zakonov-vlasti-zakony-33-48-8645049/',
+)
+
+
 def issue_keyboard(number: int) -> InlineKeyboardMarkup:
     nav = []
     if number > 1:
@@ -36,6 +43,7 @@ def issue_keyboard(number: int) -> InlineKeyboardMarkup:
         nav.append(button('Следующий →', f'bookclub:issue:{number + 1}'))
     return InlineKeyboardMarkup(inline_keyboard=[
         [button('✅ Прочитано', f'bookclub:read:{number}'), button('📝 Задание выполнено', f'bookclub:task:{number}')],
+        [InlineKeyboardButton(text='🎧 Аудиокнига · Литрес', url=AUDIOBOOK_PARTS[(number - 1) // 16])],
         nav, [button('← Все выпуски', f'bookclub:list:{(number - 1) // 8}')],
         [button('📚 Литература', 'bookclub:home'), button('🔕 Отписаться', 'bookclub:unsubscribe')],
         [button('🏠 Главное меню', 'menu:main')],
@@ -47,8 +55,9 @@ async def show_home(message: Message, user: User | None, settings: Settings):
         '📚 ЭРА | Литература\n\nНачинаем с книги Роберта Грина «48 законов власти». '
         'Все 48 авторских критических разборов доступны для чтения. '
         'Это не текст книги и не безусловные советы по манипуляции.\n\n'
-        'Рассылка по подписке: один выпуск в день в 19:00 по Еревану, '
-        'с 10 октября по 26 ноября 2026 года. Пропущенные выпуски можно открыть в каталоге. '
+        'Рассылка по подписке: три выпуска в неделю (понедельник, среда, пятница) '
+        'в 19:00 по Еревану, начиная с 12 октября 2026 года. '
+        'Пропущенные выпуски можно открыть в каталоге. '
         'Отписаться можно в любой момент; отметки прогресса сохранятся.\n\n'
         'Если формат будет интересен участникам, продолжим программу с другими книгами.',
         reply_markup=_keyboard(bool(user and user.book_club_subscribed), settings.general_chat_url),
@@ -77,7 +86,7 @@ async def change_subscription(call: CallbackQuery, user: User | None, session: A
     await session.commit()
     await call.answer('Подписка включена' if subscribed else 'Подписка отключена')
     await call.message.answer(
-        '✅ Подписка включена. Новые выпуски приходят в 19:00 по Еревану в дни программы.' if subscribed
+        '✅ Подписка включена. Выпуски приходят по понедельникам, средам и пятницам в 19:00 по Еревану.' if subscribed
         else '🔕 Подписка отключена. Новых рассылок не будет. История чтения сохранена.',
         reply_markup=_keyboard(subscribed),
     )
