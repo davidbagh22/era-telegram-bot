@@ -218,24 +218,18 @@ async def decline_join_request(bot: Bot, chat_id: int, user_id: int) -> bool:
 
 
 async def unrestrict_member(bot: Bot, chat_id: int, user_id: int) -> bool:
+    """Do not override per-user Telegram moderation decisions.
+
+    Only moderators can lift restrictions. This compatibility helper is
+    intentionally read-only; join-request approval is handled separately.
+    """
     try:
         member = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
         raw_status = getattr(member, "status", "")
         status = str(getattr(raw_status, "value", raw_status)).casefold()
-        if status in {"member", "administrator", "creator"}:
-            return True
-        if status != "restricted" or not getattr(member, "is_member", False):
-            return False
-        await bot.restrict_chat_member(
-            chat_id=chat_id,
-            user_id=user_id,
-            permissions=writable_permissions(),
-        )
-        return True
+        return status in {"member", "administrator", "creator"}
     except TelegramAPIError:
-        logger.exception(
-            "Could not restore write permissions chat=%s user=%s", chat_id, user_id
-        )
+        logger.exception("Could not inspect chat member chat=%s user=%s", chat_id, user_id)
         return False
 
 
@@ -386,47 +380,11 @@ async def ensure_general_chat_writable(
     settings: Settings,
     session_factory,
 ) -> tuple[int, int]:
-    """Keep the general chat writable for everyone.
+    """Legacy scheduled hook: do not modify chat or member permissions.
 
-    This recurring maintenance job changes Telegram permissions only. It must
-    never publish, edit or pin messages in the public chat.
+    Telegram moderation settings are managed explicitly by chat admins.
     """
-    chat_id = getattr(settings, "general_chat_id", None)
-    if not chat_id:
-        return 0, 0
-
-    fixed = failed = 0
-    try:
-        await bot.set_chat_permissions(
-            chat_id=chat_id,
-            permissions=writable_permissions(),
-        )
-        fixed += 1
-    except TelegramAPIError:
-        logger.exception("Could not set default writable permissions chat=%s", chat_id)
-        failed += 1
-
-    async with session_factory() as session:
-        users = (await session.scalars(select(User))).all()
-
-    for user in users:
-        try:
-            member = await bot.get_chat_member(
-                chat_id=chat_id,
-                user_id=user.telegram_id,
-            )
-            raw_status = getattr(member, "status", "")
-            status = str(getattr(raw_status, "value", raw_status)).casefold()
-            if status != "restricted" or not getattr(member, "is_member", False):
-                continue
-            if await unrestrict_member(bot, chat_id, user.telegram_id):
-                fixed += 1
-            else:
-                failed += 1
-        except TelegramAPIError:
-            continue
-
-    return fixed, failed
+    return 0, 0
 
 
 async def notify_user(bot: Bot, user_id: int, text: str) -> None:
