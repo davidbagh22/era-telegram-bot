@@ -28,6 +28,7 @@ def main_inline_keyboard(
     )
     rows = [list(row) for row in base.inline_keyboard]
     vector_row = [InlineKeyboardButton(text="🧭 Мой вектор", callback_data="vector:home")]
+    rows.insert(1 if rows else 0, [InlineKeyboardButton(text="🎲 Досуг", callback_data="leisure:home")])
 
     if miniapp_url:
         insert_at = 1 if rows else 0
