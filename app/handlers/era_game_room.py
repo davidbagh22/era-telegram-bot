@@ -139,7 +139,7 @@ async def _new_room(session: AsyncSession, *, chat_id: int, thread_id: int,
 async def game_menu(message: Message, settings: Settings):
     if not message.from_user or not await _allowed(settings, message, message.from_user.id):
         return
-    await message.answer("🎮 <b>ЭРА | Игровая</b>\n\nВыбирай игру. Можно начать одному или собрать небольшую команду.", reply_markup=menu_markup(), parse_mode="HTML")
+    await message.answer("🎮 <b>ЭРА | Интерактив</b>\n\nВыбирай игру. Можно начать одному или собрать небольшую команду.", reply_markup=menu_markup(), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("era_game:"))
@@ -149,7 +149,7 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
         return
     message = query.message
     if not await _allowed(settings, message, query.from_user.id):
-        await query.answer("Игры доступны только в теме «Игровая».", show_alert=True)
+        await query.answer("Игры доступны только в теме «Интерактив».", show_alert=True)
         return
     action = (query.data or "").split(":")
     if action[1] == "rules":
