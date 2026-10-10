@@ -1,19 +1,21 @@
+"""General-chat permissions are managed by human Telegram moderators.
+
+Older ERA builds attempted to grant write permissions to every restricted
+member on a timer or private interaction. Telegram does not expose whether
+a restriction came from ERA or a human moderator, so automated restoration
+could silently undo a moderation decision. Keep these public call points
+for existing handlers/jobs, but never mutate permissions automatically.
+"""
 from __future__ import annotations
 
-import logging
-
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
 from aiogram.types import ChatPermissions
-from sqlalchemy import select
 
 from app.config import Settings
-from app.database.models import User
-
-logger = logging.getLogger(__name__)
 
 
 def writable_permissions() -> ChatPermissions:
+    """Permission template for a future explicit, audited moderator action."""
     return ChatPermissions(
         can_send_messages=True,
         can_send_audios=True,
@@ -33,80 +35,23 @@ async def restore_general_chat_member(
     settings: Settings,
     telegram_id: int,
 ) -> bool:
-    """Repair a legacy per-user Telegram restriction in the general chat.
+    """Do not remove individual restrictions without verified provenance.
 
-    Older versions of ERA could apply a personal `restrictChatMember` mute to
-    people who had not completed registration yet. Changing the chat's default
-    permissions does not remove that stored per-user override, and Telegram's
-    Bot API cannot enumerate every historical member. This helper therefore
-    repairs the exact person whenever we learn their Telegram id from a private
-    interaction with the bot.
-
-    Deliberately only touches `restricted` members. It never unbans kicked or
-    banned users, so explicit moderation/admin decisions are not reversed.
+    A `restricted` status is not proof that ERA applied the restriction.
+    Restoration requires an explicit, authenticated moderator workflow.
     """
-    chat_id = settings.general_chat_id
-    if not chat_id:
-        return False
-
-    try:
-        member = await bot.get_chat_member(chat_id=chat_id, user_id=telegram_id)
-        raw_status = getattr(member, "status", "")
-        status = str(getattr(raw_status, "value", raw_status)).casefold()
-        if status != "restricted":
-            return False
-        await bot.restrict_chat_member(
-            chat_id=chat_id,
-            user_id=telegram_id,
-            permissions=writable_permissions(),
-        )
-        logger.info(
-            "Restored legacy general-chat write permissions telegram_id=%s chat=%s",
-            telegram_id,
-            chat_id,
-        )
-        return True
-    except TelegramAPIError:
-        logger.warning(
-            "Could not inspect/restore general-chat permissions telegram_id=%s chat=%s",
-            telegram_id,
-            chat_id,
-            exc_info=True,
-        )
-        return False
+    return False
 
 
-async def enforce_general_chat_writable(bot: Bot, settings: Settings, session_factory) -> tuple[int, int]:
-    """Only restore Telegram write permissions. Never send/edit/pin a message."""
-    chat_id = settings.general_chat_id
-    if not chat_id:
-        return 0, 0
+async def enforce_general_chat_writable(
+    bot: Bot,
+    settings: Settings,
+    session_factory,
+) -> tuple[int, int]:
+    """Deprecated scheduled job: intentionally perform no Telegram writes.
 
-    fixed = failed = 0
-    try:
-        await bot.set_chat_permissions(chat_id=chat_id, permissions=writable_permissions())
-        fixed += 1
-    except TelegramAPIError:
-        logger.exception("Could not set default writable permissions chat=%s", chat_id)
-        failed += 1
-
-    async with session_factory() as session:
-        telegram_ids = list((await session.scalars(select(User.telegram_id))).all())
-
-    for telegram_id in telegram_ids:
-        try:
-            member = await bot.get_chat_member(chat_id=chat_id, user_id=telegram_id)
-            raw_status = getattr(member, "status", "")
-            status = str(getattr(raw_status, "value", raw_status)).casefold()
-            if status not in {"member", "administrator", "creator", "restricted"}:
-                continue
-            if status == "restricted":
-                await bot.restrict_chat_member(
-                    chat_id=chat_id,
-                    user_id=telegram_id,
-                    permissions=writable_permissions(),
-                )
-                fixed += 1
-        except TelegramAPIError:
-            continue
-    return fixed, failed
+    This preserves the scheduler's return contract without calling
+    set_chat_permissions or restrict_chat_member, even if the bot has
+    administrator rights. Telegram chat defaults are moderator-owned.
+    """
+    return 0, 0
