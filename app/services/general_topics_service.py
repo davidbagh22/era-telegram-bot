@@ -11,7 +11,7 @@ from app.database.models import AppSetting
 from app.services.notification_service import _session_factory, safe_send, safe_send_once
 
 logger = logging.getLogger(__name__)
-TOPICS = {"announcements": "Объявления", "notifications": "Оповещения"}
+TOPICS = {"announcements": "Объявления", "notifications": "Оповещения", "literature": "Литература"}
 
 
 async def ensure_topic(bot, settings, key: str, *, session_factory=None) -> int | None:
