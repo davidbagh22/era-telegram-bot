@@ -24,7 +24,7 @@ CHANNEL_POST = (
 def channel_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📚 Читать и участвовать", url="https://t.me/ERA_1bot?start=literature")],
-        [InlineKeyboardButton(text="📖 PDF/DJVU · Sci.ru", url="https://sci.ru/disk/file/19957")],
+        [InlineKeyboardButton(text="📖 Прочитать онлайн", url="https://sci.ru/disk/file/19957")],
     ])
 
 
