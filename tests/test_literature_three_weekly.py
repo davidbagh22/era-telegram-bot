@@ -2,7 +2,7 @@
 from datetime import date
 
 from app.services.book_club_service import publication_number
-from app.handlers.book_club import AUDIOBOOK_PARTS, issue_keyboard
+from app.handlers.book_club import AUDIOBOOK_URL, issue_keyboard
 
 
 def test_three_weekly_releases_and_no_weekend_delivery():
@@ -22,8 +22,8 @@ def test_last_issue_and_program_end():
     assert publication_number(date(2027, 2, 1)) is None
 
 
-def test_audiobook_link_per_volume():
-    for number, expected_part in ((1, 0), (16, 0), (17, 1), (32, 1), (33, 2), (48, 2)):
+def test_audiobook_link_for_every_issue():
+    for number in (1, 16, 17, 32, 33, 48):
         keyboard = issue_keyboard(number)
         links = [button.url for row in keyboard.inline_keyboard for button in row if button.url]
-        assert AUDIOBOOK_PARTS[expected_part] in links
+        assert AUDIOBOOK_URL in links
