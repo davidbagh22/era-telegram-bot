@@ -27,7 +27,7 @@ MIN_PLAYERS = 2
 MAX_PLAYERS = 8
 WAIT_SECONDS = 180
 
-# Curated examples only. Not a six-month content bank.
+# Curated general-knowledge examples, supplemented by generated arithmetic.
 QUESTIONS = (
     ("Какой город является столицей Армении?", ("Ереван", "Гюмри", "Ванадзор"), 0),
     ("Сколько минут в одном часе?", ("50", "60", "100"), 1),
@@ -38,6 +38,31 @@ QUESTIONS = (
     ("Что измеряют термометром?", ("Давление", "Температуру", "Скорость"), 1),
     ("Что означает QR в QR-коде?", ("Quick Response", "Quality Read", "Query Route"), 0),
 )
+
+
+def _arithmetic_questions() -> tuple[tuple[str, tuple[str, ...], int], ...]:
+    """180 distinct, deterministic arithmetic questions with validated distractors.
+
+    This is supplementary content, not a substitute for 11 distinct game formats.
+    """
+    questions = []
+    for index in range(180):
+        a = 12 + index
+        b = 3 + index % 17
+        if index % 3 == 0:
+            prompt, answer = f"Сколько будет {a} + {b}?", a + b
+        elif index % 3 == 1:
+            prompt, answer = f"Сколько будет {a + b} − {b}?", a
+        else:
+            prompt, answer = f"Сколько будет {a} × {b}?", a * b
+        correct = index % 3
+        options = [str(answer + 1), str(answer + 2), str(answer + 3)]
+        options[correct] = str(answer)
+        questions.append((prompt, tuple(options), correct))
+    return tuple(questions)
+
+
+QUESTIONS += _arithmetic_questions()
 
 
 def menu_markup() -> InlineKeyboardMarkup:
