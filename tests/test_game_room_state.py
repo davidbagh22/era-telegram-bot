@@ -107,6 +107,25 @@ class GameStateTests(IsolatedAsyncioTestCase):
             await session.flush()
             assert await award_game_points(session, telegram_id=11, round_id='month', amount=3, now=now+timedelta(days=7)) == 0
 
+    async def test_full_lobby_rejects_new_member_without_mutation(self):
+        room = await self.new_room('team')
+        key = _key(-1001, 10, room['id'])
+        async with self.sessions() as session:
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
+            data = _data(row)
+            data['participants'] = list(range(11, 19))
+            row.value = json.dumps(data)
+            await session.commit()
+        query = self.query(room, uid=99)
+        query.data = f"era_game:join:{room['id']}~{room['token']}"
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)):
+            async with self.sessions() as session:
+                await game_callback(query, self.settings, session)
+        query.answer.assert_awaited()
+        async with self.sessions() as session:
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
+            assert _data(row)['participants'] == list(range(11, 19))
+
     async def test_abandoned_lobby_does_not_consume_content(self):
         await self.new_room('team')
         async with self.sessions() as session:
