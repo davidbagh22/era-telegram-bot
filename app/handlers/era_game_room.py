@@ -12,6 +12,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
+from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select, text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -170,7 +171,7 @@ async def _new_room(session: AsyncSession, *, chat_id: int, thread_id: int,
     return data
 
 
-@router.message(F.text.in_({"/games", "/game"}))
+@router.message(Command("games", "game"))
 async def game_menu(message: Message, settings: Settings):
     if not message.from_user or not await _allowed(settings, message, message.from_user.id):
         return

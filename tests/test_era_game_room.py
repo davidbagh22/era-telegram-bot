@@ -106,3 +106,19 @@ def test_no_public_launch_during_off_or_testers():
             settings.feature_games = mode
             asyncio.run(publish_games_launch(Mock(), settings, Mock()))
         topic.assert_not_awaited()
+
+
+def test_group_commands_accept_bot_mention():
+    import asyncio
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from aiogram.types import Chat, Message
+    from app.handlers.era_game_room import router
+    command_filter = router.message.handlers[0].filters[0].callback
+    bot = SimpleNamespace(me=AsyncMock(return_value=SimpleNamespace(username='ERA_1bot')))
+    for text in ('/games', '/game@ERA_1bot', '/games@ERA_1bot'):
+        message = Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=-100123, type='supergroup'), text=text)
+        assert asyncio.run(command_filter(message, bot))
+    other = Message(message_id=2, date=datetime.now(timezone.utc), chat=Chat(id=-100123, type='supergroup'), text='/games@other_bot')
+    assert not asyncio.run(command_filter(other, bot))

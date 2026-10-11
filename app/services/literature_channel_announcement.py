@@ -1,10 +1,11 @@
 """One-time editorial announcement for ERA's public channel."""
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.services.notification_service import safe_send_once
+from app.services.book_club_service import PROGRAM_START
 
 CHANNEL_POST = (
     "📚 <b>48 дней. 48 законов. Один книжный клуб.</b>\n\n"
@@ -13,7 +14,7 @@ CHANNEL_POST = (
     "что он означает, как проявляется в жизни и стоит ли с ним соглашаться.\n\n"
     "Без длинных лекций: короткий разбор, вопрос для обсуждения и задание. "
     "Выполняешь задание в боте — получаешь 5 баллов.\n\n"
-    "Первый выпуск уже сегодня. Присоединяйся, даже если раньше не читал эту книгу. "
+    "Выпуски доступны в боте. Присоединяйся, даже если раньше не читал эту книгу. "
     "Если формат понравится, продолжим с другими произведениями.\n\n"
     "📖 Издание книги можно найти в каталоге Российской государственной библиотеки. "
     "В боте также есть ссылка на аудио.\n\n"
@@ -28,8 +29,12 @@ def channel_keyboard():
     ])
 
 
+def launch_window_open(day: date) -> bool:
+    return PROGRAM_START <= day < PROGRAM_START + timedelta(days=48)
+
+
 async def publish_literature_channel_launch(bot, settings):
-    if datetime.now(ZoneInfo("Asia/Yerevan")).date().isoformat() != "2026-10-10":
+    if not launch_window_open(datetime.now(ZoneInfo("Asia/Yerevan")).date()):
         return
     target = settings.era_channel_id or settings.era_channel_username
     if not target:
