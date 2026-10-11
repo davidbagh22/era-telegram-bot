@@ -70,6 +70,51 @@ class QuestionReservationTests(GameFixture, IsolatedAsyncioTestCase):
         assert '0' in usage
 
 
+class QuestionHistoryScopeTests(GameFixture, IsolatedAsyncioTestCase):
+    async def test_history_is_scoped_to_player_and_format(self):
+        async with self.sessions() as session:
+            first = await _reserve_questions(
+                session, datetime.now(timezone.utc), 1, user_ids=(11,), mode='solo_quiz'
+            )
+            second = await _reserve_questions(
+                session, datetime.now(timezone.utc), 1, user_ids=(11,), mode='solo_quiz'
+            )
+            another_player = await _reserve_questions(
+                session, datetime.now(timezone.utc), 1, user_ids=(99,), mode='solo_quiz'
+            )
+            another_format = await _reserve_questions(
+                session, datetime.now(timezone.utc), 1, user_ids=(11,), mode='culture'
+            )
+            await session.commit()
+
+        assert first == [0]
+        assert second == [1]
+        assert another_player == [0]
+        assert another_format == [0]
+
+    async def test_team_pack_is_reserved_for_each_player(self):
+        async with self.sessions() as session:
+            selected = await _reserve_questions(
+                session,
+                datetime.now(timezone.utc),
+                2,
+                user_ids=(11, 12),
+                mode='team_quiz',
+            )
+            await session.commit()
+        assert selected == [0, 1]
+        async with self.sessions() as session:
+            for user_id in (11, 12):
+                next_pack = await _reserve_questions(
+                    session,
+                    datetime.now(timezone.utc),
+                    1,
+                    user_ids=(user_id,),
+                    mode='team_quiz',
+                )
+                assert next_pack == [2]
+
+
 class GameStateTests(GameFixture, IsolatedAsyncioTestCase):
     async def test_old_round_button_cannot_answer_new_round(self):
         old = await self.new_room()
@@ -176,7 +221,7 @@ class GameStateTests(GameFixture, IsolatedAsyncioTestCase):
     async def test_question_exhaustion_never_silently_repeats(self):
         from app.handlers.era_game_room import QUESTIONS
         async with self.sessions() as session:
-            session.add(AppSetting(key='era_game:question_usage', value=json.dumps({str(i):datetime.now(timezone.utc).isoformat() for i in range(len(QUESTIONS))})))
+            session.add(AppSetting(key='era_game:question_usage:solo_quiz:11', value=json.dumps({str(i):datetime.now(timezone.utc).isoformat() for i in range(len(QUESTIONS))})))
             await session.commit()
         assert (await self.new_room())['status'] == 'exhausted'
 

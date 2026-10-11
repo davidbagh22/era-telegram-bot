@@ -17,6 +17,9 @@ def test_games_disabled_by_default():
     settings.feature_games = "TESTERS"
     assert _enabled(settings, 11)
     assert not _enabled(settings, 99)
+    settings.feature_games = "ALL"
+    assert _enabled(settings, 11)
+    assert _enabled(settings, 99)
 
 
 def test_room_bound_to_chat_and_thread():

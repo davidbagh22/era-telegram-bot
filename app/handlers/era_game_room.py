@@ -136,37 +136,69 @@ def _data(row: AppSetting | None) -> dict:
     return json.loads(row.value) if isinstance(row.value, str) else row.value
 
 
-async def _reserve_questions(session: AsyncSession, now: datetime, count: int) -> list[int]:
-    # Global question reservation prevents repeat questions, even across users.
-    used_key = "era_game:question_usage"
-    await _lock(session, used_key)
-    usage_row = await session.scalar(select(AppSetting).where(AppSetting.key == used_key).with_for_update())
-    used = _data(usage_row)
+async def _reserve_questions(
+    session: AsyncSession,
+    now: datetime,
+    count: int,
+    *,
+    user_ids: tuple[int, ...] | list[int] = (),
+    mode: str = "solo_quiz",
+) -> list[int]:
+    """Reserve a question pack without repeating it for any participant.
+
+    History is scoped to both user and format. For a team, the selected pack
+    must be available to every member, then the same reservation is written to
+    each member's history. The legacy global key is read only by old call sites
+    and migration-era tests that do not identify a player.
+    """
+    usage_keys = (
+        [f"era_game:question_usage:{mode}:{user_id}" for user_id in sorted(set(user_ids))]
+        if user_ids
+        else ["era_game:question_usage"]
+    )
+    for used_key in usage_keys:
+        await _lock(session, used_key)
+    rows = await session.scalars(
+        select(AppSetting).where(AppSetting.key.in_(usage_keys)).with_for_update()
+    )
+    usage_by_key = {key: {} for key in usage_keys}
+    usage_by_key.update({row.key: _data(row) for row in rows})
     cutoff = now - timedelta(days=180)
-    active = {}
-    for key, timestamp in used.items():
-        try:
-            when = datetime.fromisoformat(timestamp)
-            if when.tzinfo is None:
-                when = when.replace(tzinfo=timezone.utc)
-            if when > cutoff:
-                active[str(int(key))] = when.isoformat()
-        except (TypeError, ValueError):
-            logger.warning('Invalid game reservation entry %s', key)
-    used = active
-    unavailable = {int(key) for key in used}
+    active_by_key: dict[str, dict[str, str]] = {}
+    for used_key, used in usage_by_key.items():
+        active: dict[str, str] = {}
+        for question_id, timestamp in used.items():
+            try:
+                when = datetime.fromisoformat(timestamp)
+                if when.tzinfo is None:
+                    when = when.replace(tzinfo=timezone.utc)
+                if when > cutoff:
+                    active[str(int(question_id))] = when.isoformat()
+            except (TypeError, ValueError):
+                logger.warning("Invalid game reservation entry %s", question_id)
+        active_by_key[used_key] = active
+    unavailable = {
+        int(question_id)
+        for active in active_by_key.values()
+        for question_id in active
+    }
     available = [i for i in range(len(QUESTIONS)) if i not in unavailable]
     if len(available) < count:
         return []
     chosen = available[:count]
-    for index in chosen:
-        used[str(index)] = now.isoformat()
-    await _save(session, used_key, used)
+    for used_key, used in active_by_key.items():
+        for index in chosen:
+            used[str(index)] = now.isoformat()
+        await _save(session, used_key, used)
     return chosen
 
 
-async def _reserve_question(session: AsyncSession, now: datetime) -> int | None:
-    questions = await _reserve_questions(session, now, 1)
+async def _reserve_question(
+    session: AsyncSession, now: datetime, *, user_id: int | None = None, mode: str = "solo_quiz"
+) -> int | None:
+    questions = await _reserve_questions(
+        session, now, 1, user_ids=() if user_id is None else (user_id,), mode=mode
+    )
     return questions[0] if questions else None
 
 
@@ -184,7 +216,13 @@ async def _new_room(session: AsyncSession, *, chat_id: int, thread_id: int,
     if current.get("status") in {"waiting", "ready_check", "playing"}:
         if current.get("expires_at") and datetime.fromisoformat(current["expires_at"]) > now:
             return None
-    questions = await _reserve_questions(session, now, questions_per_game) if kind == "solo" else []
+    questions = (
+        await _reserve_questions(
+            session, now, questions_per_game, user_ids=(user_id,), mode="solo_quiz"
+        )
+        if kind == "solo"
+        else []
+    )
     if kind == "solo" and not questions:
         return {"status": "exhausted"}
     token = secrets.token_hex(6)
@@ -330,7 +368,13 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
             return
         ready.append(uid)
         if len(ready) >= MIN_PLAYERS and len(ready) == len(room["participants"]):
-            room["questions"] = await _reserve_questions(session, datetime.now(timezone.utc), room.get("question_count", 1))
+            room["questions"] = await _reserve_questions(
+                session,
+                datetime.now(timezone.utc),
+                room.get("question_count", 1),
+                user_ids=room["participants"],
+                mode="team_quiz",
+            )
             if not room["questions"]:
                 room["status"] = "exhausted"
                 await _save(session, key, room)
