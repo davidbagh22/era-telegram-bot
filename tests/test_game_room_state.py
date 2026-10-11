@@ -107,6 +107,23 @@ class GameStateTests(IsolatedAsyncioTestCase):
             await session.flush()
             assert await award_game_points(session, telegram_id=11, round_id='month', amount=3, now=now+timedelta(days=7)) == 0
 
+    async def test_duplicate_lobby_join_does_not_start_round(self):
+        room = await self.new_room('team')
+        query = self.query(room, uid=11)
+        query.data = f"era_game:join:{room['id']}~{room['token']}"
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(
+            Message, 'answer', new=AsyncMock()
+        ) as send:
+            async with self.sessions() as session:
+                await game_callback(query, self.settings, session)
+            send.assert_not_awaited()
+        async with self.sessions() as session:
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == _key(-1001, 10, room['id'])))
+            state = _data(row)
+            assert state['status'] == 'waiting'
+            assert state['participants'] == [11]
+            assert state['question'] is None
+
     async def test_full_lobby_rejects_new_member_without_mutation(self):
         room = await self.new_room('team')
         key = _key(-1001, 10, room['id'])
