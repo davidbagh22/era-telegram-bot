@@ -11,7 +11,7 @@ from app.database.models import AppSetting
 from app.services.notification_service import _session_factory, safe_send, safe_send_once
 
 logger = logging.getLogger(__name__)
-TOPICS = {"announcements": "Объявления", "notifications": "Оповещения", "literature": "Литература"}
+TOPICS = {"announcements": "Мероприятия", "notifications": "Оповещения", "literature": "Литература", "games": "🎮 Интерактив"}
 SETUP_TOPICS = ("announcements", "notifications")  # Existing bootstrapping contract
 
 
@@ -37,6 +37,9 @@ async def ensure_topic(bot, settings, key: str, *, session_factory=None) -> int 
             data = json.loads(row.value) if row else {}
             if data.get("thread_id"):
                 return int(data["thread_id"])
+            if key == "announcements":
+                logger.warning("Existing events topic is not configured; refusing to create a replacement")
+                return None
             chat = await bot.get_chat(chat_id)
             if not chat.is_forum:
                 logger.warning("General topics unavailable: forum_disabled")
@@ -47,7 +50,7 @@ async def ensure_topic(bot, settings, key: str, *, session_factory=None) -> int 
                 logger.warning("General topics unavailable: missing_manage_topics")
                 return None
             topic = await bot.create_forum_topic(chat_id, name=name)
-            value = json.dumps({"thread_id": topic.message_thread_id})
+            value = json.dumps({"thread_id": topic.message_thread_id, "name": name})
             if row is None:
                 session.add(AppSetting(key=setting_key, value=value))
             else:
@@ -77,6 +80,6 @@ async def send_general_topic(bot, settings, key, text, *, reply_markup=None, del
             notification_type=f"general_{key}", reply_markup=reply_markup,
             message_thread_id=thread_id, parse_mode=parse_mode,
         )
-        return result.sent
+        return result.sent or (result.duplicate and result.status == 'sent')
     return await safe_send(bot, settings.general_chat_id, text,
                            reply_markup=reply_markup, message_thread_id=thread_id, parse_mode=parse_mode)
