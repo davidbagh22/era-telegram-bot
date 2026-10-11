@@ -213,7 +213,10 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
         return
     uid = query.from_user.id
     if operation == "join" and room["status"] == "waiting":
-        if uid not in room["participants"] and len(room["participants"]) < MAX_PLAYERS:
+        if uid not in room["participants"] and len(room["participants"]) >= MAX_PLAYERS:
+            await query.answer("Команда уже заполнена.", show_alert=True)
+            return
+        if uid not in room["participants"]:
             room["participants"].append(uid)
         if len(room["participants"]) >= MIN_PLAYERS:
             room["question"] = await _reserve_question(session, datetime.now(timezone.utc))
