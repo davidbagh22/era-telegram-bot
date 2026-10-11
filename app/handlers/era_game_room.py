@@ -213,6 +213,9 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
         return
     uid = query.from_user.id
     if operation == "join" and room["status"] == "waiting":
+        if uid in room["participants"]:
+            await query.answer("Ты уже в команде.")
+            return
         if uid not in room["participants"] and len(room["participants"]) >= MAX_PLAYERS:
             await query.answer("Команда уже заполнена.", show_alert=True)
             return
