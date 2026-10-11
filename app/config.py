@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     # One feature-flag mechanism for participant-facing optional modules.
     # Valid values: OFF / TESTERS / ALL. Testers are explicit and never
     # inferred from administrator privileges.
+    games_rewards_enabled: bool = False  # Enable only after ledger QA
     feature_games: str = "OFF"  # OFF until production smoke test and content review 
     feature_auctions: str = "ALL"
     feature_rewards: str = "ALL"

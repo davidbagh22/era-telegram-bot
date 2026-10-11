@@ -68,7 +68,7 @@ def test_leisure_hides_game_link_until_public_launch():
     keyboard = asyncio.run(_markup(bot, settings))
     labels = [button.text for row in keyboard.inline_keyboard for button in row]
     assert any("Литература" in label for label in labels)
-    assert not any("Игровая" in label for label in labels)
+    assert not any("Интерактив" in label for label in labels)
     bot.create_forum_topic.assert_not_awaited()
 
 
@@ -79,3 +79,30 @@ def test_general_chat_topic_routing_preserves_existing_topic_keys():
     assert TOPICS["games"] == "🎮 Интерактив"
     assert "announcements" in SETUP_TOPICS
     assert "notifications" in SETUP_TOPICS
+
+
+def test_testers_can_navigate_without_public_launch():
+    import asyncio
+    from unittest.mock import AsyncMock, Mock, patch
+    from app.handlers.era_leisure import _markup
+    settings = SettingsStub()
+    settings.feature_games = 'TESTERS'
+    settings.general_chat_id = -1001234567890
+    with patch('app.handlers.era_leisure.ensure_topic', new=AsyncMock(return_value=10)):
+        tester = asyncio.run(_markup(Mock(), settings, 11))
+        public = asyncio.run(_markup(Mock(), settings, 22))
+    assert any('Интерактив' in b.text for row in tester.inline_keyboard for b in row)
+    assert not any('Интерактив' in b.text for row in public.inline_keyboard for b in row)
+
+
+def test_no_public_launch_during_off_or_testers():
+    import asyncio
+    from unittest.mock import AsyncMock, Mock, patch
+    from app.services.games_launch_service import publish_games_launch
+    settings = SettingsStub()
+    settings.general_chat_id = -1001234567890
+    with patch('app.services.games_launch_service.ensure_topic', new=AsyncMock()) as topic:
+        for mode in ('OFF', 'TESTERS'):
+            settings.feature_games = mode
+            asyncio.run(publish_games_launch(Mock(), settings, Mock()))
+        topic.assert_not_awaited()

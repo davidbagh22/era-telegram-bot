@@ -7,15 +7,16 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.config import Settings
 from app.services.general_topics_service import ensure_topic
+from app.handlers.era_game_room import _enabled
 
 router = Router(name="era_leisure")
 router.message.filter(F.chat.type == "private")
 router.callback_query.filter(F.message.chat.type == "private")
 
 
-async def _markup(bot, settings: Settings) -> InlineKeyboardMarkup:
+async def _markup(bot, settings: Settings, telegram_id: int = 0) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text="📚 Литература · 48 законов", callback_data="bookclub:home")]]
-    if settings.feature_games == "ALL" and settings.general_chat_id:
+    if _enabled(settings, telegram_id) and settings.general_chat_id:
         thread_id = await ensure_topic(bot, settings, "games")
         chat_id = str(settings.general_chat_id)
         if thread_id and chat_id.startswith("-100"):
@@ -27,24 +28,24 @@ async def _markup(bot, settings: Settings) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def show_leisure(message: Message, settings: Settings) -> None:
-    games_line = ("🎮 <b>Игровая</b> — быстрые квизы и командные игры в общем чате.\n"
-                  if settings.feature_games == "ALL" else "🎮 <b>Игровая</b> — скоро откроется.\n")
+async def show_leisure(message: Message, settings: Settings, telegram_id: int = 0) -> None:
+    games_line = ("🎮 <b>Интерактив</b> — быстрые квизы и командные игры в общем чате.\n"
+                  if _enabled(settings, telegram_id) else "🎮 <b>Интерактив</b> — скоро откроется.\n")
     await message.answer(
         "🎲 <b>ЭРА | Досуг</b>\n\n"
         "📚 <b>Литература</b> — ежедневные разборы, обсуждения и задания.\n"
         + games_line + "\nВыбирай, чем заняться!",
-        reply_markup=await _markup(message.bot, settings),
+        reply_markup=await _markup(message.bot, settings, telegram_id),
         parse_mode="HTML",
     )
 
 
 @router.message(F.text.in_({"🎲 Досуг", "🎭 Развлечения"}))
 async def leisure_message(message: Message, settings: Settings):
-    await show_leisure(message, settings)
+    await show_leisure(message, settings, message.from_user.id if message.from_user else 0)
 
 
 @router.callback_query(F.data == "leisure:home")
 async def leisure_callback(call: CallbackQuery, settings: Settings):
     await call.answer()
-    await show_leisure(call.message, settings)
+    await show_leisure(call.message, settings, call.from_user.id)

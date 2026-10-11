@@ -37,6 +37,9 @@ async def ensure_topic(bot, settings, key: str, *, session_factory=None) -> int 
             data = json.loads(row.value) if row else {}
             if data.get("thread_id"):
                 return int(data["thread_id"])
+            if key == "announcements":
+                logger.warning("Existing events topic is not configured; refusing to create a replacement")
+                return None
             chat = await bot.get_chat(chat_id)
             if not chat.is_forum:
                 logger.warning("General topics unavailable: forum_disabled")

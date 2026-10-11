@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import AppSetting
 from app.services.general_topics_service import ensure_topic
+from app.services.game_rewards_service import award_game_points
 
 logger = logging.getLogger(__name__)
 router = Router(name="era_game_room")
@@ -100,6 +102,23 @@ def _data(row: AppSetting | None) -> dict:
     return json.loads(row.value) if isinstance(row.value, str) else row.value
 
 
+async def _reserve_question(session: AsyncSession, now: datetime) -> int | None:
+    # Global question reservation prevents repeat questions, even across users.
+    used_key = "era_game:question_usage"
+    await _lock(session, used_key)
+    usage_row = await session.scalar(select(AppSetting).where(AppSetting.key == used_key).with_for_update())
+    used = _data(usage_row)
+    available = [i for i in range(len(QUESTIONS))
+                 if i not in {int(k) for k, v in used.items()
+                              if datetime.fromisoformat(v) > now - timedelta(days=180)}]
+    if not available:
+        return None
+    index = available[0]
+    used[str(index)] = now.isoformat()
+    await _save(session, used_key, used)
+    return index
+
+
 async def _new_room(session: AsyncSession, *, chat_id: int, thread_id: int,
                     user_id: int, kind: str) -> dict | None:
     # One public lobby per topic; solo rounds have a per-user key.
@@ -112,20 +131,11 @@ async def _new_room(session: AsyncSession, *, chat_id: int, thread_id: int,
     if current.get("status") in {"waiting", "playing"}:
         if current.get("expires_at") and datetime.fromisoformat(current["expires_at"]) > now:
             return None
-    # Global question reservation prevents repeat questions, even across users.
-    used_key = "era_game:question_usage"
-    await _lock(session, used_key)
-    usage_row = await session.scalar(select(AppSetting).where(AppSetting.key == used_key).with_for_update())
-    used = _data(usage_row)
-    available = [i for i in range(len(QUESTIONS))
-                 if i not in {int(k) for k, v in used.items()
-                              if datetime.fromisoformat(v) > now - timedelta(days=180)}]
-    if not available:
+    index = await _reserve_question(session, now) if kind == "solo" else None
+    if kind == "solo" and index is None:
         return {"status": "exhausted"}
-    index = available[0]
-    used[str(index)] = now.isoformat()
-    await _save(session, used_key, used)
     data = {
+        "token": secrets.token_hex(6),
         "id": room_id, "kind": kind, "status": "waiting" if kind == "team" else "playing",
         "participants": [user_id], "answers": {}, "question": index,
         "created_at": now.isoformat(),
@@ -173,22 +183,26 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
             await message.answer(
                 "🤝 <b>Командный квиз ЭРА</b>\nКомната открыта. Нажми «Присоединиться». "
                 "Старт после набора минимум двух игроков. Если группа не соберётся, игра просто закроется.",
-                parse_mode="HTML", reply_markup=lobby_markup(room["id"]))
+                parse_mode="HTML", reply_markup=lobby_markup(room["id"] + "~" + room["token"]))
         else:
             question, options, _ = QUESTIONS[room["question"]]
             await message.answer(f"⚡ <b>Быстрый квиз</b>\n\n{question}",
-                                 parse_mode="HTML", reply_markup=quiz_markup(room["id"], options))
+                                 parse_mode="HTML", reply_markup=quiz_markup(room["id"] + "~" + room["token"], options))
         await query.answer()
         return
     if len(action) < 3:
         await query.answer()
         return
-    operation, room_id = action[1], action[2]
+    operation, reference = action[1], action[2]
+    room_id, separator, token = reference.partition("~")
+    if not separator or not token:
+        await query.answer("Эта кнопка устарела. Открой новую игру.")
+        return
     key = _key(message.chat.id, message.message_thread_id, room_id)
     await _lock(session, key)
     row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update())
     room = _data(row)
-    if not room or room.get("status") not in {"waiting", "playing"}:
+    if not room or room.get("token") != token or room.get("status") not in {"waiting", "playing"}:
         await query.answer("Раунд завершён.")
         return
     if datetime.fromisoformat(room["expires_at"]) <= datetime.now(timezone.utc):
@@ -202,13 +216,20 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
         if uid not in room["participants"] and len(room["participants"]) < MAX_PLAYERS:
             room["participants"].append(uid)
         if len(room["participants"]) >= MIN_PLAYERS:
+            room["question"] = await _reserve_question(session, datetime.now(timezone.utc))
+            if room["question"] is None:
+                room["status"] = "exhausted"
+                await _save(session, key, room)
+                await session.commit()
+                await query.answer("Новые вопросы готовятся. Выбери игру позже.", show_alert=True)
+                return
             room["status"] = "playing"
             room["expires_at"] = (datetime.now(timezone.utc) + timedelta(seconds=120)).isoformat()
             await _save(session, key, room)
             await session.commit()
             question, options, _ = QUESTIONS[room["question"]]
             await message.answer(f"🎯 <b>Команда собралась! Вопрос:</b>\n\n{question}",
-                                 parse_mode="HTML", reply_markup=quiz_markup(room_id, options))
+                                 parse_mode="HTML", reply_markup=quiz_markup(room_id + "~" + room["token"], options))
             await query.answer("Игра началась!")
             return
         await _save(session, key, room)
@@ -239,6 +260,8 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
             await query.answer()
             return
         room["answers"][str(uid)] = choice
+        if settings.games_rewards_enabled and not query.from_user.is_bot and choice == QUESTIONS[room["question"]][2]:
+            await award_game_points(session, telegram_id=uid, round_id=room["token"], amount=3)
         complete = len(room["answers"]) >= len(room["participants"])
         if complete:
             room["status"] = "finished"

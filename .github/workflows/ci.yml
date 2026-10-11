@@ -94,6 +94,8 @@ jobs:
         run: python scripts/postgres_migration_smoke.py
       - name: Prove concurrent point idempotency on PostgreSQL
         run: python scripts/postgres_points_race.py
+      - name: Prove game room and reward concurrency on PostgreSQL
+        run: python scripts/postgres_games_race.py
 
   frontend:
     runs-on: ubuntu-latest
