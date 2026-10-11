@@ -20,8 +20,8 @@ def test_participant_navigation_is_viewport_fixed_and_safe_area_aware() -> None:
     assert 'left: "50%"' in source
     assert 'transform: "translateX(-50%)"' in source
     assert 'className="era-bottom-nav"' in source
-    assert 'className="era-bottom-nav__active-mark"' in source
-    assert 'boxShadow: isActive ? "0 0 8px rgba(99,44,255,.55)"' in source
+    assert 'aria-current={isActive ? "page" : undefined}' in source
+    assert 'background: isActive ? "rgba(99,44,255,.10)" : "transparent"' in source
     assert "--era-bottom-nav-clearance" in layout
 
 

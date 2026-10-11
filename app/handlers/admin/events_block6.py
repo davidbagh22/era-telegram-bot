@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.services.general_topics_service import ensure_topic
 from app.database.models import Event, User
 from app.services import event_moderation_service
 from app.services.audit_service import audit
@@ -181,17 +182,18 @@ async def broadcast_publish(call: CallbackQuery, user: User | None, settings: Se
     # exact event screen rather than a generic Mini App/home link.
     event.status = EventStatus.REGISTRATION_OPEN
     event.additional_info = (event.additional_info or "").replace(PREPARED_MARK, "").strip()
-    if settings.general_chat_id:
-        await send_event_card_to_chat(
-            bot,
-            settings.general_chat_id,
-            event,
-            header="🔥 Новое событие ЭРА",
-            extra_text="Регистрация открыта.",
+    await session.commit()
+    thread_id = await ensure_topic(bot, settings, "announcements")
+    delivered = False
+    if thread_id is not None:
+        delivered = await send_event_card_to_chat(
+            bot, settings.general_chat_id, event,
+            header="🔥 Новое событие ЭРА", extra_text="Регистрация открыта.",
             keyboard=await public_event_keyboard(bot, settings, event),
+            message_thread_id=thread_id,
         )
     await audit(session, actor_id=user.id if user else None, action="event.broadcast_published", entity_type="event", entity_id=event.id)
-    await call.message.answer("Рассылка отправлена, регистрация открыта.", reply_markup=event_kb(event))
+    await call.message.answer("Регистрация открыта. Анонс отправлен в «Объявления»." if delivered else "Регистрация открыта, но анонс не доставлен. Проверьте темы и права бота в общем чате.", reply_markup=event_kb(event))
 
 
 @router.callback_query(F.data.regexp(r"^admin:event:(revise|reject):\d+$"))

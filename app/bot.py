@@ -79,7 +79,14 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
             "FSM_STORAGE_MODE=memory: using in-memory FSM storage because external Redis is unavailable"
         )
     else:
-        storage = RedisStorage.from_url(settings.redis_url)
+        storage = RedisStorage.from_url(
+            settings.redis_url,
+            connection_kwargs={
+                "socket_connect_timeout": 5,
+                "socket_timeout": 5,
+                "health_check_interval": 30,
+            },
+        )
 
     dispatcher = Dispatcher(storage=storage, events_isolation=storage.create_isolation() if isinstance(storage, RedisStorage) else SimpleEventIsolation())
     dispatcher["settings"] = settings

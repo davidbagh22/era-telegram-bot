@@ -199,7 +199,7 @@ async def _deliver_once(
 
 
 async def run_daily_public_content(bot: Bot, settings: Settings, session_factory) -> None:
-    """Publish one general-chat quote and one ERA-channel post per Moscow day."""
+    """Publish one ERA-channel post per Moscow day; never post quotes to the group."""
     local = datetime.now(MOSCOW)
     minute = local.hour * 60 + local.minute
     if minute < WINDOW_START or minute >= WINDOW_END:
@@ -207,7 +207,6 @@ async def run_daily_public_content(bot: Bot, settings: Settings, session_factory
 
     day = local.date().isoformat()
     targets: tuple[tuple[str, int | str | None], ...] = (
-        ("chat_quote", settings.general_chat_id),
         ("channel_post", _channel_target(settings)),
     )
     for kind, target in targets:

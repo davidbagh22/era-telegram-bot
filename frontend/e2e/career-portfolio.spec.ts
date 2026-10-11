@@ -11,6 +11,6 @@ test("participant can open professional portfolio and CV tools", async ({ page }
   await expect(page.getByText("Всё, что ты сделал. Всё, что можешь показать.")).toBeVisible();
   await expect(page.getByRole("button", { name: "＋ Добавить результат" })).toBeVisible();
   await expect(page.getByText("Рекомендация ЭРА", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Собрать резюме PDF" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Выгрузить резюме PDF" })).toBeVisible();
   await expect(page.getByText(/Моего вектора/)).toBeVisible();
 });

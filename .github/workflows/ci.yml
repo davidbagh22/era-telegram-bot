@@ -134,6 +134,7 @@ jobs:
       BOT_TOKEN: "0000000000:E2ETESTTOKEN"
       MINIAPP_AUTH_SECRET: e2e-test-secret
       DEV_AUTH_ENABLED: "true"
+      E2E_DISABLE_BACKGROUND_JOBS: "1"
       REDIS_URL: redis://127.0.0.1:6379/0
       LEADERS_CHAT_ID: "-1009000000000"
     steps:
@@ -158,6 +159,12 @@ jobs:
       - name: Install Playwright browsers
         working-directory: frontend
         run: npx playwright install --with-deps chromium
+      - name: Verify FSM survives client restart on real Redis
+        env:
+          FSM_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+        run: |
+          pip install pytest
+          python -m pytest -q tests/test_fsm_persistence.py
       - name: Seed E2E fixtures (participant/leader/admin/pending applicant)
         run: python scripts/e2e_seed.py
       - name: Start backend

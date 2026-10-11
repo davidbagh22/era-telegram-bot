@@ -18,7 +18,7 @@ def _settings():
     return SimpleNamespace(effective_miniapp_url="")
 
 def test_total_application_delivery_failure_triggers_registration_fallback() -> None:
-    with patch("app.services.admin_user_card.build_admin_user_card", new=AsyncMock(return_value=_card())), patch("app.services.admin_user_card.admin_notification_recipients", new=AsyncMock(return_value=[1001, 1002])), patch("app.services.admin_user_card.safe_send", new=AsyncMock(return_value=False)):
+    with patch("app.services.admin_user_card.build_admin_user_card", new=AsyncMock(return_value=_card())), patch("app.services.admin_user_card.notify_admins_once", new=AsyncMock(return_value=(0, 2, 0))):
         try:
             asyncio.run(send_admin_application_cards(object(), _settings(), AsyncMock(), SimpleNamespace(id=7)))
         except RuntimeError as exc:
@@ -27,7 +27,7 @@ def test_total_application_delivery_failure_triggers_registration_fallback() -> 
             raise AssertionError("Total notification failure must not be silent")
 
 def test_successful_application_delivery_remains_non_failing() -> None:
-    with patch("app.services.admin_user_card.build_admin_user_card", new=AsyncMock(return_value=_card())), patch("app.services.admin_user_card.admin_notification_recipients", new=AsyncMock(return_value=[1001])), patch("app.services.admin_user_card.safe_send", new=AsyncMock(return_value=True)):
+    with patch("app.services.admin_user_card.build_admin_user_card", new=AsyncMock(return_value=_card())), patch("app.services.admin_user_card.notify_admins_once", new=AsyncMock(return_value=(1, 0, 0))):
         result = asyncio.run(send_admin_application_cards(object(), _settings(), AsyncMock(), SimpleNamespace(id=7)))
     assert result == (1, 0)
 

@@ -79,8 +79,8 @@ def main_reply_keyboard(miniapp_url: str = "") -> ReplyKeyboardMarkup:
             KeyboardButton(text="🧭 Навигация"),
         ])
     rows.append([
-        KeyboardButton(text="❓ Вопросы об ЭРА"),
-        KeyboardButton(text="💬 Связь"),
+        KeyboardButton(text="❓ Вопросы и связь"),
+        KeyboardButton(text="📚 Литература"),
     ])
     return ReplyKeyboardMarkup(
         keyboard=rows,

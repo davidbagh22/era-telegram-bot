@@ -13,7 +13,7 @@ from app.services.position_management_service import PositionError
 
 
 def _user(**overrides) -> SimpleNamespace:
-    defaults = dict(id=2, telegram_id=777, role="participant", is_blocked=False, is_archived=False)
+    defaults = dict(id=2, telegram_id=777, role="participant", first_name="Test", last_name="", participation_status="new_member", is_blocked=False, is_archived=False)
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
@@ -29,6 +29,11 @@ def _office(**overrides) -> SimpleNamespace:
         application_deadline=None,
         requirements="req",
         default_term_days=180,
+        max_holders=None,
+        recruitment_mode="manual",
+        responsibilities=[],
+        expected_result=None,
+        workload=None,
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -65,7 +70,7 @@ def _build_app(user, session: SimpleNamespace) -> FastAPI:
 class PositionsApiTests(unittest.TestCase):
     def test_read_open_positions(self) -> None:
         office = _office()
-        session = SimpleNamespace()
+        session = SimpleNamespace(scalar=AsyncMock(return_value=0))
         app = _build_app(_user(), session)
         client = TestClient(app)
         with (
@@ -94,7 +99,7 @@ class PositionsApiTests(unittest.TestCase):
     def test_submit_application_success(self) -> None:
         office = _office()
         application = _application()
-        session = SimpleNamespace(get=AsyncMock(side_effect=[office, office]))
+        session = SimpleNamespace(get=AsyncMock(side_effect=[office, office]), commit=AsyncMock())
         app = _build_app(_user(), session)
         client = TestClient(app)
         with patch(
@@ -115,7 +120,7 @@ class PositionsApiTests(unittest.TestCase):
             new=AsyncMock(side_effect=PositionError("duplicate_application")),
         ):
             response = client.post("/api/v1/positions/1/applications", json={"motivation": "x"})
-        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["detail"], "duplicate_application")
 
     def test_read_my_applications(self) -> None:

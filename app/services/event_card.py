@@ -106,7 +106,8 @@ async def send_event_card_to_chat(
     available: str | None = None,
     registered: int | None = None,
     extra_text: str | None = None,
-) -> None:
+    message_thread_id: int | None = None,
+) -> bool:
     text = format_event_text(
         event,
         header=header,
@@ -114,13 +115,13 @@ async def send_event_card_to_chat(
         registered=registered,
         extra_text=extra_text,
     )
+    thread_kwargs = {"message_thread_id": message_thread_id} if message_thread_id is not None else {}
     poster_file_id = getattr(event, "poster_file_id", None)
     if poster_file_id:
         if len(text) <= PHOTO_CAPTION_LIMIT:
-            if await safe_send_photo(bot, chat_id, poster_file_id, caption=text, reply_markup=keyboard):
-                return
+            if await safe_send_photo(bot, chat_id, poster_file_id, caption=text, reply_markup=keyboard, **thread_kwargs):
+                return True
         else:
-            if await safe_send_photo(bot, chat_id, poster_file_id, caption=event.title):
-                await safe_send(bot, chat_id, text, reply_markup=keyboard)
-                return
-    await safe_send(bot, chat_id, text, reply_markup=keyboard)
+            if await safe_send_photo(bot, chat_id, poster_file_id, caption=event.title, **thread_kwargs):
+                return await safe_send(bot, chat_id, text, reply_markup=keyboard, **thread_kwargs)
+    return await safe_send(bot, chat_id, text, reply_markup=keyboard, **thread_kwargs)

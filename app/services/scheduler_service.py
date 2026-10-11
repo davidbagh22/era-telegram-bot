@@ -11,6 +11,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 
 from app.config import Settings
+from app.services.general_topics_service import send_general_topic
 from app.database.event_experience import EventExperience
 from app.database.management_models import AdminSurvey
 from app.database.models import (
@@ -116,6 +117,13 @@ async def send_event_reminders(bot: Bot, settings: Settings, session_factory) ->
                 target_stage = 4
             else:
                 continue
+            if target_stage <= 3:
+                await send_general_topic(
+                    bot, settings, "announcements",
+                    f"⏰ {_reminder_lead(target_stage)}\n\n{event.title}\n"
+                    f"📅 {event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n📍 {event.location}",
+                    delivery_key=f"event:{event.id}:legacy-reminder:{target_stage}:{event.event_date}:{event.event_time}",
+                )
             if registration.reminder_stage >= target_stage:
                 continue
 
@@ -165,6 +173,9 @@ async def send_weekly_message(
 ) -> None:
     now = datetime.now(ZoneInfo(settings.timezone))
     iso_year, iso_week, _ = now.isocalendar()
+    if chat_key == "general":
+        await send_general_topic(bot, settings, "notifications", text, delivery_key=f"weekly:{iso_year}-W{iso_week:02d}")
+        return
     await safe_send_once(
         bot,
         settings,
@@ -459,12 +470,12 @@ https://t.me/+Vz588wqkyt82ZTRi"""
 async def send_trajectory_campaign(bot: Bot, settings: Settings, session_factory) -> None:
     """Five idempotent campaign waves before the 31 Oct 2026 event."""
     now = datetime.now(ZoneInfo(settings.timezone))
-    if now.year != 2026 or now.month != 10 or now.day > 30:
+    # Campaigns are tied to their advertised dates, not every subsequent
+    # quarter-hour. Replaying obsolete stages created payload-hash conflicts
+    # against already-sent notification keys and noisy production logs.
+    if now.year != 2026 or now.month != 10 or now.day not in TRAJECTORY_BROADCAST_DATES:
         return
-    due = [day for day in TRAJECTORY_BROADCAST_DATES if day <= now.day]
-    if not due:
-        return
-    stage = len(due)
+    stage = TRAJECTORY_BROADCAST_DATES.index(now.day) + 1
     async with session_factory() as session:
         recipients = list((await session.scalars(
             select(User).where(
@@ -485,6 +496,9 @@ async def send_trajectory_campaign(bot: Bot, settings: Settings, session_factory
             "leaders": settings.leaders_chat_id,
         }
         for chat_key, chat_id in chat_ids.items():
+            if chat_key == "general":
+                await send_general_topic(bot, settings, "announcements", TRAJECTORY_TEXT, delivery_key=f"trajectory:{stage}")
+                continue
             if chat_id:
                 await safe_send_once(
                     bot, settings, int(chat_id), TRAJECTORY_TEXT,

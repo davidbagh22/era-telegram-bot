@@ -26,11 +26,10 @@ from app.utils.constants import Role
 
 logger = logging.getLogger(__name__)
 
-# A process that dies after claiming a delivery must not suppress it forever.
-# Five minutes is long enough to cover normal Telegram retries and short enough
-# for the scheduler to recover automatically on its next pass.
+# An expired claim has an uncertain outcome: Telegram may have accepted it.
+# Retain it for operator reconciliation instead of replaying the message.
 _DELIVERY_LEASE = timedelta(minutes=5)
-_TERMINAL_DELIVERY_STATUSES = {"sent", "blocked", "unreachable", "skipped"}
+_TERMINAL_DELIVERY_STATUSES = {"sent", "blocked", "unreachable", "skipped", "uncertain"}
 
 
 @dataclass
@@ -133,9 +132,9 @@ def _delivery_failure(exc: TelegramAPIError) -> tuple[str, str, bool]:
     if isinstance(exc, TelegramRetryAfter):
         return "failed", "telegram_retry_after", True
     if isinstance(exc, TelegramNetworkError):
-        return "failed", "telegram_network", True
+        return "uncertain", "telegram_network", False
     if isinstance(exc, TelegramServerError):
-        return "failed", "telegram_server", True
+        return "uncertain", "telegram_server", False
     return "failed", "telegram_api", False
 
 
@@ -225,6 +224,15 @@ async def _claim_delivery(
                     error_code="delivery_in_flight",
                 )
 
+            if row.status == "pending" or row.error_code in {"telegram_network", "telegram_server"}:
+                row.status = "uncertain"
+                row.error_code = "delivery_outcome_unknown"
+                await session.commit()
+                return NotificationDeliveryResult(
+                    sent=False, status="uncertain", duplicate=True,
+                    attempt_count=row.attempt_count, error_code=row.error_code,
+                )
+
             row.status = "pending"
             row.error_code = None
             row.attempt_count += 1
@@ -296,6 +304,7 @@ async def safe_send_once(
     reply_markup=None,
     parse_mode: str | None = None,
     max_attempts: int = 3,
+    message_thread_id: int | None = None,
 ) -> NotificationDeliveryResult:
     """Send one automatic notification durably and idempotently.
 
@@ -333,6 +342,8 @@ async def safe_send_once(
     while True:
         try:
             kwargs = {"reply_markup": reply_markup}
+            if message_thread_id is not None:
+                kwargs["message_thread_id"] = message_thread_id
             if parse_mode is not None:
                 kwargs["parse_mode"] = parse_mode
             await bot.send_message(chat_id, text, **kwargs)
@@ -421,6 +432,7 @@ async def safe_send(
     reply_markup=None,
     *,
     parse_mode: str | None = None,
+    message_thread_id: int | None = None,
 ) -> bool:
     """Best-effort transport for interactive replies and non-repeatable messages.
 
@@ -429,6 +441,8 @@ async def safe_send(
     """
     try:
         kwargs = {"reply_markup": reply_markup}
+        if message_thread_id is not None:
+            kwargs["message_thread_id"] = message_thread_id
         # Preserve the historical send_message call shape for every existing
         # plain-text caller; only FAQ/rich-text callers opt into parse_mode.
         if parse_mode is not None:
@@ -440,9 +454,10 @@ async def safe_send(
         return False
 
 
-async def safe_send_photo(bot: Bot, chat_id: int, photo, *, caption: str | None = None, reply_markup=None) -> bool:
+async def safe_send_photo(bot: Bot, chat_id: int, photo, *, caption: str | None = None, reply_markup=None, message_thread_id: int | None = None) -> bool:
     try:
-        await bot.send_photo(chat_id, photo, caption=caption, reply_markup=reply_markup)
+        kwargs = {"message_thread_id": message_thread_id} if message_thread_id is not None else {}
+        await bot.send_photo(chat_id, photo, caption=caption, reply_markup=reply_markup, **kwargs)
         return True
     except TelegramAPIError:
         logger.exception("Could not deliver photo notification to chat %s", chat_id)

@@ -1,67 +1,141 @@
-"""Opt-in daily reading club; summaries are original and do not reproduce the book."""
+"""Existing opt-in club: durable progress, explicit consent, Yerevan schedule."""
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+import asyncio
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
+
 from aiogram import Bot
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.content.literature_issues import LAW_TITLES as LAW_TITLES, get_issue, render_issue
 from app.database.models import AppSetting, User
 from app.services.notification_service import safe_send_once
+from app.services.general_topics_service import send_general_topic
+from app.services.points_service import add_points, make_idempotency_key
+from app.utils.constants import ApplicationStatus
 
-LAW_TITLES = (
-    "Никогда не затмевай господина", "Не доверяй слишком друзьям; учись использовать врагов",
-    "Скрывай свои намерения", "Всегда говори меньше, чем кажется необходимым",
-    "Так много зависит от репутации — береги её ценой жизни", "Добивайся внимания любой ценой",
-    "Заставь других работать на себя, а себе оставь заслуги", "Заставь людей приходить к тебе — при необходимости используй приманку",
-    "Побеждай действиями, а не спорами", "Заражение: избегай несчастливых и невезучих",
-    "Учись держать людей в зависимости от себя", "Используй избирательную честность и щедрость, чтобы обезоружить жертву",
-    "Прося о помощи, взывай к корысти людей", "Выступай как друг, работай как шпион",
-    "Разгроми врага полностью", "Используй отсутствие, чтобы усилить уважение и почёт",
-    "Держи других в подвешенном состоянии: культивируй атмосферу непредсказуемости",
-    "Не строй крепость, чтобы защитить себя — изоляция опасна", "Знай, с кем имеешь дело — не оскорбляй не того человека",
-    "Не связывайся ни с кем", "Выгляди глупее своего объекта, чтобы он чувствовал себя умным",
-    "Используй капитуляцию как инструмент власти", "Сосредоточь силы", "Будь королевским в манере — веди себя как король, чтобы с тобой обращались соответственно",
-    "Воссоздай себя", "Держи руки чистыми", "Играя на вере людей в необходимость, создавай культ последователей",
-    "Вступай в действие смело", "Планируй всё до конца", "Сделай свои достижения лёгкими",
-    "Управляй вариантами: пусть другие играют картами, которые ты раздаёшь", "Играй на фантазиях людей",
-    "Открой слабости каждого", "Будь по-королевски пренебрежителен к тому, чего не можешь иметь",
-    "Создавай убедительные зрелища", "Думай как хочешь, но веди себя как другие",
-    "Взбаламучивай воду, чтобы поймать рыбу", "Презирай бесплатный обед",
-    "Избегай следов: не ступай в чужую обувь", "Бей пастуха — и овцы разбегутся",
-    "Работай на сердца и умы других", "Обезоружь и разозли зеркальным эффектом",
-    "Проповедуй необходимость перемен, но никогда не меняй слишком много сразу",
-    "Никогда не выгляди слишком совершенным", "Не переходи намеченную цель — в победе умей остановиться",
-    "Будь изменчив, как вода", "Научись находить точку опоры для влияния", "Будь бесформенным",
-)
+PROGRAM_START = date(2026, 10, 10)
+SPECIAL_OPENING_DATE = date(2026, 10, 10)
+def publication_number(on_date: date, start_date: date = PROGRAM_START) -> int | None:
+    """One issue every calendar day for 48 days from the program start."""
+    number = (on_date - start_date).days + 1
+    return number if 1 <= number <= 48 else None
 
-def _summary(title: str) -> str:
-    return f"Идея дня: {title}. Рассмотрите этот принцип критически: где он может помочь понять динамику людей, а где его применение разрушает доверие. Это авторский пересказ для обсуждения, не текст книги."
 
-async def start(session: AsyncSession, *, actor: User) -> date:
-    row = await session.scalar(select(AppSetting).where(AppSetting.key == "book_club_start_date"))
-    today = datetime.now(timezone.utc).date()
-    if row is None:
-        row = AppSetting(key="book_club_start_date", value={"date": today.isoformat()}, updated_by=actor.id)
-        session.add(row)
-    return date.fromisoformat(row.value_json["date"])
+def eligible(user: User | None) -> bool:
+    return bool(user and not user.is_blocked and not user.is_archived
+                and user.application_status == ApplicationStatus.APPROVED)
+
+
+async def _insert_setting(session: AsyncSession, *, key: str, value: dict, actor_id=None):
+    # Reuse the existing JSON setting store and unique key; concurrent clicks
+    # and workers cannot create duplicate progress/start records.
+    if session.bind.dialect.name == 'postgresql':
+        from sqlalchemy.dialects.postgresql import insert
+    else:
+        from sqlalchemy.dialects.sqlite import insert
+    await session.execute(insert(AppSetting).values(key=key, value=value, updated_by=actor_id)
+                          .on_conflict_do_nothing(index_elements=['key']))
+
+
+async def start(session: AsyncSession, *, actor: User | None = None) -> date:
+    await _insert_setting(session, key='book_club_start_date',
+                          value={'date': PROGRAM_START.isoformat()}, actor_id=actor.id if actor else None)
+    row = await session.scalar(select(AppSetting).where(AppSetting.key == 'book_club_start_date'))
+    return date.fromisoformat(row.value['date'])
+
+
+async def mark_progress(session: AsyncSession, user: User, number: int, kind: str) -> None:
+    get_issue(number)
+    if not eligible(user) or kind not in {'read', 'task'}:
+        raise ValueError('Progress not allowed')
+    await _insert_setting(session, key=f'bookclub:{user.id}:{kind}:{number}',
+                          value={'at': datetime.now(ZoneInfo('Asia/Yerevan')).isoformat()}, actor_id=user.id)
+    if kind == 'task':
+        await add_points(
+            session, user_id=user.id, points=5,
+            reason=f'Литература ЭРА: задание к закону №{number}',
+            approved_by=None, source_type='literature', source_id=number,
+            idempotency_key=make_idempotency_key('literature', 'task', user.id, number),
+        )
+    await session.commit()
+
+
+async def progress(session: AsyncSession, user: User) -> dict[str, int]:
+    keys = (await session.scalars(select(AppSetting.key).where(
+        AppSetting.key.like(f'bookclub:{user.id}:%')))).all()
+    return {kind: sum(key.startswith(f'bookclub:{user.id}:{kind}:') for key in keys)
+            for kind in ('read', 'task')}
+
 
 async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
     async with session_factory() as session:
-        row = await session.scalar(select(AppSetting).where(AppSetting.key == "book_club_start_date"))
-        if row is None:
-            return
-        start_day = date.fromisoformat(row.value["date"])
-        day = (datetime.now(timezone.utc).date() - start_day).days
-        if day < 0 or day >= len(LAW_TITLES):
-            return
-        title = LAW_TITLES[day]
-        text = (f"📖 Книжный клуб ЭРА — день {day + 1}/48\n\n<b>{title}</b>\n\n"
-                f"{_summary(title)}\n\nВопросы для себя:\n1) Где я уже сталкивался с такой динамикой?\n2) Как применить идею этично — без манипуляции?\n3) Какой вывод возьму в работу сегодня?")
-        users = await session.scalars(select(User).where(User.book_club_subscribed.is_(True), User.is_blocked.is_(False), User.is_archived.is_(False)))
-        for user in users.all():
-            await safe_send_once(bot, settings, user.telegram_id, text, delivery_key=f"book-club:{start_day.isoformat()}:{day}:{user.id}", notification_type="book_club")
-        if settings.general_chat_id:
-            await bot.send_message(settings.general_chat_id, text)
+        start_day = await start(session)
         await session.commit()
+        number = publication_number(datetime.now(ZoneInfo('Asia/Yerevan')).date(), start_day)
+        if number is None:
+            return
+        ids = (await session.scalars(select(User.id).where(
+            User.book_club_subscribed.is_(True), User.is_blocked.is_(False),
+            User.is_archived.is_(False), User.application_status == ApplicationStatus.APPROVED,
+        ))).all()
+    await send_general_topic(
+        bot, settings, 'literature', render_issue(number),
+        delivery_key=f'issue:{start_day.isoformat()}:{number}',
+        parse_mode='HTML',
+    )
+    for user_id in ids:
+        async with session_factory() as session:
+            # Serialize against unsubscribe; no stale audience snapshot may send
+            # after the opt-out transaction has completed.
+            user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
+            if not eligible(user) or not user.book_club_subscribed:
+                continue
+            from app.handlers.book_club import issue_keyboard
+            await safe_send_once(
+                bot, settings, user.telegram_id, render_issue(number),
+                delivery_key=f'book-club:{start_day.isoformat()}:{number}:{user.id}',
+                notification_type='book_club', parse_mode='HTML',
+                reply_markup=issue_keyboard(number),
+            )
+            await session.commit()
+        await asyncio.sleep(0.05)
+
+
+async def literature_stats(session: AsyncSession) -> dict[str, int]:
+    """Count distinct participants using durable progress markers, not message views."""
+    subscribed = await session.scalar(select(func.count(User.id)).where(
+        User.book_club_subscribed.is_(True), User.is_blocked.is_(False),
+        User.is_archived.is_(False), User.application_status == ApplicationStatus.APPROVED))
+    keys = (await session.scalars(select(AppSetting.key).where(AppSetting.key.like('bookclub:%')))).all()
+    readers, performers = set(), set()
+    read_marks = task_marks = 0
+    for key in keys:
+        parts = key.split(':')
+        if len(parts) != 4 or parts[2] not in {'read', 'task'}:
+            continue
+        if parts[2] == 'read':
+            readers.add(parts[1]); read_marks += 1
+        else:
+            performers.add(parts[1]); task_marks += 1
+    return {
+        'subscribed': subscribed or 0, 'readers': len(readers),
+        'performers': len(performers), 'active': len(readers | performers),
+        'read_marks': read_marks, 'task_marks': task_marks,
+    }
+
+
+def format_literature_stats(stats: dict[str, int]) -> str:
+    return (
+        '📊 <b>ЭРА · Литературный клуб</b>\n\n'
+        f'🔔 Подписаны: {stats["subscribed"]}\n'
+        f'👥 Активны (отметили чтение или задание): {stats["active"]}\n'
+        f'📖 Отметили чтение: {stats["readers"]}\n'
+        f'📝 Выполнили задания: {stats["performers"]}\n'
+        f'✅ Всего отметок чтения: {stats["read_marks"]}\n'
+        f'⭐ Всего выполненных заданий: {stats["task_marks"]}\n\n'
+        'Данные по отметкам участников в боте; просмотры постов и обсуждения не учитываются.'
+    )

@@ -11,45 +11,50 @@ async function enterAdminWorkspace(page: import("@playwright/test").Page) {
 }
 
 test("admin creates and sends a survey; the participant answers it and the admin sees the response", async ({ browser }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(65_000);
   const adminContext = await browser.newContext();
   const adminPage = await adminContext.newPage();
   const participantContext = await browser.newContext();
   const participantPage = await participantContext.newPage();
+  adminPage.setDefaultTimeout(8_000);
+  participantPage.setDefaultTimeout(8_000);
 
   try {
     await enterAdminWorkspace(adminPage);
     await adminPage.getByRole("button", { name: "Связь" }).click();
     await adminPage.getByRole("button", { name: "Опросы" }).click();
+    await adminPage.getByRole("button", { name: "+ Новый", exact: true }).click();
 
     const surveyTitle = `E2E Survey ${Date.now()}`;
     await adminPage.getByPlaceholder("Название").fill(surveyTitle);
-    await adminPage.getByPlaceholder("Вопросы, каждый на новой строке").fill("Вопрос один?\nВопрос два?");
+    await adminPage.getByPlaceholder("Вопросы", { exact: true }).fill("Вопрос один?\nВопрос два?");
     await adminPage.getByRole("button", { name: "Создать опрос" }).click();
 
     const surveyCard = adminPage.locator(".era-card", { hasText: surveyTitle });
     await expect(surveyCard).toBeVisible();
     await surveyCard.getByRole("button", { name: "Отправить" }).click();
-    await expect(surveyCard.getByText("отправлен", { exact: true })).toBeVisible();
+    await expect(surveyCard.getByText("Отправлен", { exact: true })).toBeVisible();
 
     await participantPage.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/surveys`);
     const participantCard = participantPage.locator(".era-card", { hasText: surveyTitle });
     await expect(participantCard).toBeVisible();
-    await participantCard.getByRole("button", { name: "Ответить" }).click();
+    await participantCard.getByRole("button", { name: "Выбрать", exact: true }).click();
     const textareas = participantCard.locator("textarea");
     await textareas.nth(0).fill("Ответ на первый вопрос");
     await textareas.nth(1).fill("Ответ на второй вопрос");
-    await participantCard.getByRole("button", { name: "Отправить" }).click();
+    await participantCard.getByRole("button", { name: "Сохранить выбор" }).click();
     await expect(participantCard.getByText("пройден")).toBeVisible();
 
     await enterAdminWorkspace(adminPage);
     await adminPage.getByRole("button", { name: "Связь" }).click();
     await adminPage.getByRole("button", { name: "Опросы" }).click();
     const refreshedCard = adminPage.locator(".era-card", { hasText: surveyTitle });
-    await refreshedCard.getByRole("button", { name: /^Ответы/ }).click();
+    await refreshedCard.getByRole("button", { name: /^Результаты/ }).click();
+    // Individual responses are intentionally private behind disclosure rows.
+    await refreshedCard.locator("details summary").first().click();
     await expect(refreshedCard.getByText("Ответ на первый вопрос")).toBeVisible();
   } finally {
-    await adminContext.close();
-    await participantContext.close();
+    await adminContext.close().catch(() => {});
+    await participantContext.close().catch(() => {});
   }
 });

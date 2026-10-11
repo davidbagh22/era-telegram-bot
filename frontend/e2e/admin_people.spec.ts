@@ -20,6 +20,10 @@ test("admin opens a rich participant profile and awards points", async ({ page }
   await expect(page.getByText("Анкета при регистрации")).toBeVisible();
   await expect(page.getByText("Показатели участника")).toBeVisible();
 
+  const balanceCard = page.getByText("Баллов сейчас").locator("..");
+  const pointsBefore = Number((await balanceCard.locator("strong").textContent())?.trim());
+  expect(Number.isFinite(pointsBefore)).toBeTruthy();
+
   await page.getByRole("button", { name: "Управление", exact: true }).click();
   await expect(page.getByText("Роль и статус доступа")).toBeVisible();
   await expect(page.getByText("Баллы", { exact: true })).toBeVisible();
@@ -30,7 +34,7 @@ test("admin opens a rich participant profile and awards points", async ({ page }
 
   // The Admin workspace itself also has an "Обзор" destination in its bottom
   // navigation. The first exact match is the local participant-profile tab.
-  await page.getByRole("button", { name: "Обзор", exact: true }).first().click();
-  const balanceCard = page.getByText("Баллов сейчас").locator("..");
-  await expect(balanceCard).toContainText("15");
+  await expect(page.getByText("Роль и статус доступа")).toBeVisible();
+  await page.getByTestId("participant-profile-tabs").getByRole("button", { name: "Обзор", exact: true }).click();
+  await expect(balanceCard.locator("strong")).toHaveText(String(pointsBefore + 15));
 });

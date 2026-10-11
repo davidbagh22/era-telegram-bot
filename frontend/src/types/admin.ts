@@ -386,6 +386,7 @@ export interface BroadcastAudienceOptions {
 }
 
 export interface PersonalBroadcastPayload {
+  campaign_key?: string;
   audience: BroadcastAudience;
   filter_value?: string | null;
   text: string;

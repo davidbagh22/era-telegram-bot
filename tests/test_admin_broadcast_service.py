@@ -69,7 +69,7 @@ class AdminBroadcastServiceTests(unittest.IsolatedAsyncioTestCase):
         blocked = User(
             telegram_id=4, first_name="D", application_status=ApplicationStatus.APPROVED, is_blocked=True
         )
-        session.add_all([approved_media, approved_leader, pending, blocked])
+        session.add_all([approved_media, approved_leader, pending, blocked, User(telegram_id=5, first_name="Archived", application_status=ApplicationStatus.APPROVED, is_archived=True)])
         await session.flush()
         session.add(UserDepartment(user_id=approved_media.id, department_id=department.id))
         session.add(UserDirection(user_id=approved_media.id, direction_id=direction.id))
@@ -126,9 +126,16 @@ class AdminBroadcastServiceTests(unittest.IsolatedAsyncioTestCase):
         async with self.session_factory() as session:
             await self._seed_users(session)
             bot = FakeBot()
-            result = await send_personal_broadcast(
-                bot, session, audience="all", filter_value=None, text="Привет!", author_id=1,
-            )
+            with patch("app.services.notification_service._session_factory", return_value=self.session_factory):
+                result = await send_personal_broadcast(
+                    bot, session, audience="all", filter_value=None, text="Привет!", author_id=1,
+                    settings=Settings(bot_token="1234567890:test-token"), campaign_key="test-confirmation",
+                )
+                repeated = await send_personal_broadcast(
+                    bot, session, audience="all", filter_value=None, text="Привет!", author_id=1,
+                    settings=Settings(bot_token="1234567890:test-token"), campaign_key="test-confirmation",
+                )
+                self.assertEqual(repeated.duplicates, 2)
             self.assertEqual(result.total, 2)
             self.assertEqual(result.sent, 2)
             self.assertEqual(len(bot.sent), 2)
@@ -163,8 +170,10 @@ class AdminBroadcastServiceTests(unittest.IsolatedAsyncioTestCase):
         async with self.session_factory() as session:
             settings = Settings(bot_token="1234567890:test-token", general_chat_id=-100123)
             bot = FakeBot()
-            await send_chat_broadcast(bot, settings, session, chat_key="general", text="Привет", actor_id=1)
-            self.assertEqual(bot.sent, [(-100123, "Привет")])
+            with patch("app.services.admin_broadcast_service.send_general_topic", new=AsyncMock(return_value=True)) as send:
+                await send_chat_broadcast(bot, settings, session, chat_key="general", text="Привет", actor_id=1)
+                send.assert_awaited_once_with(bot, settings, "notifications", "Привет", reply_markup=None)
+            self.assertEqual(bot.sent, [])
 
     async def test_send_chat_broadcast_rejects_unknown_chat_key(self) -> None:
         async with self.session_factory() as session:
@@ -316,3 +325,45 @@ class AdminBroadcastPreviewCountRealDbTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class DurableCampaignTests(AdminBroadcastServiceTests):
+    async def test_campaign_persisted_before_transport_and_worker_resumes(self):
+        from sqlalchemy import select
+        from app.database.models import Broadcast
+        from app.services.admin_broadcast_service import resume_broadcasts
+        settings = Settings(bot_token='1234567890:test-token')
+        async with self.session_factory() as session:
+            await self._seed_users(session)
+            # Crash at the first delivery boundary, after durable campaign commit.
+            with patch('app.services.admin_broadcast_service.safe_send_once', side_effect=RuntimeError('worker stopped')):
+                with self.assertRaises(RuntimeError):
+                    await send_personal_broadcast(FakeBot(), session, audience='all', filter_value=None,
+                                                  text='Resume me', author_id=1, settings=settings,
+                                                  campaign_key='crash-resume')
+        async with self.session_factory() as session:
+            campaign = await session.scalar(select(Broadcast))
+            self.assertEqual(campaign.status, 'sending')
+            self.assertEqual(len(campaign.audience_filter_json['recipient_ids']), 2)
+            # A queued member archived before the worker runs must be excluded.
+            user = await session.scalar(select(User).where(User.telegram_id == 2))
+            user.is_archived = True
+            await session.commit()
+        bot = FakeBot()
+        with patch('app.services.notification_service._session_factory', return_value=self.session_factory):
+            await resume_broadcasts(bot, settings, self.session_factory)
+            await resume_broadcasts(bot, settings, self.session_factory)
+        self.assertEqual(bot.sent, [(1, 'Resume me')])
+
+    async def test_reusing_confirmation_key_with_changed_text_rejected(self):
+        settings = Settings(bot_token='1234567890:test-token')
+        async with self.session_factory() as session:
+            await self._seed_users(session)
+            bot = FakeBot()
+            with patch('app.services.notification_service._session_factory', return_value=self.session_factory):
+                await send_personal_broadcast(bot, session, audience='all', filter_value=None,
+                                              text='First', author_id=1, settings=settings, campaign_key='same-key')
+                with self.assertRaises(BroadcastError) as error:
+                    await send_personal_broadcast(bot, session, audience='all', filter_value=None,
+                                                  text='Changed', author_id=1, settings=settings, campaign_key='same-key')
+            self.assertEqual(error.exception.code, 'campaign_key_conflict')
+            self.assertEqual(len(bot.sent), 2)

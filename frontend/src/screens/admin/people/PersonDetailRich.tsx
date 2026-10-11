@@ -357,7 +357,7 @@ export function PersonDetail({ userId, onBack }: PersonDetailProps) {
         </div>
       </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "0.4rem" }}>
+      <div data-testid="participant-profile-tabs" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "0.4rem" }}>
         {tabs.map((tab) => (
           <button
             key={tab.key}

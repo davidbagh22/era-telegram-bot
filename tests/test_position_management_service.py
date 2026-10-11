@@ -30,7 +30,7 @@ class PositionManagementServiceTests(unittest.IsolatedAsyncioTestCase):
         return user
 
     async def _open_office(self, session, **overrides) -> Office:
-        defaults = dict(title="Лидер Медиа", is_public=True, application_enabled=True)
+        defaults = dict(title="Лидер Медиа", is_public=True, application_enabled=True, recruitment_mode="manual")
         defaults.update(overrides)
         office = Office(**defaults)
         session.add(office)

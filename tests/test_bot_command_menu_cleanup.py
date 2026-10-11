@@ -50,7 +50,7 @@ class CommandMenuShapeTests(unittest.TestCase):
     def test_admin_commands_add_only_hidden_version(self) -> None:
         self.assertEqual(
             [c.command for c in ADMIN_COMMANDS],
-            ["start", "navigation", "contact", "version"],
+            ["start", "navigation", "contact", "status", "backup", "org", "version"],
         )
         admin_advertised = {c.command for c in ADMIN_COMMANDS}
         self.assertNotIn("panel", admin_advertised)

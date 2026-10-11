@@ -240,7 +240,7 @@ class FsmRecoveryTests(unittest.IsolatedAsyncioTestCase):
                 message, FakeBot(), approved_user(), settings, state, SimpleNamespace()
             )
         markup = message.answers[-1][1]["reply_markup"]
-        buttons = [button for row in markup.inline_keyboard for button in row]
+        buttons = [button for row in markup.keyboard for button in row]
         miniapp_button = next((b for b in buttons if b.text == "🔥 Открыть ЭРА"), None)
         self.assertIsNotNone(miniapp_button, "Mini App button missing from the real /start reply")
         self.assertEqual(miniapp_button.web_app.url, settings.effective_miniapp_url)

@@ -144,8 +144,7 @@ def test_admin_cards_tasks_and_exports_use_safe_media_layer() -> None:
     admin_panel_source = (ROOT / "app/handlers/admin/panel.py").read_text(encoding="utf-8")
 
     assert "safe_answer_photo" in admin_card_source
-    assert "safe_send_photo" in admin_card_source
-    assert "safe_send(bot, chat_id, card.text" in admin_card_source
+    assert "notify_admins_once" in admin_card_source
     assert "bot.send_photo" not in admin_card_source
     assert "bot.send_message" not in admin_card_source
 

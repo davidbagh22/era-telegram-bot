@@ -67,6 +67,7 @@ class DomainTests(unittest.TestCase):
         session = AsyncMock()
         session.add = Mock()
         session.scalar.return_value = None
+        session.get.return_value = None  # no legacy identity to restore
         data = {
             "first_name": "Тест",
             "last_name": "Участник",
