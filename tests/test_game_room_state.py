@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.config import Settings
 from app.database.base import Base
 from app.database.models import AppSetting, PointTransaction, User
-from app.handlers.era_game_room import _data, _key, _new_room, game_callback, quiz_markup
+from app.handlers.era_game_room import _data, _key, _new_room, _reserve_questions, game_callback, quiz_markup
 from app.services.game_rewards_service import award_game_points
 from app.services.game_room_expiry_service import expire_game_rooms
 from app.utils.constants import ApplicationStatus
@@ -46,6 +46,28 @@ class GameFixture:
             data=f'era_game:answer:{room["id"]}~{token or room["token"]}:{choice}',
             answer=AsyncMock(),
         )
+
+
+class QuestionReservationTests(GameFixture, IsolatedAsyncioTestCase):
+    async def test_expired_and_invalid_reservations_are_pruned(self):
+        now = datetime.now(timezone.utc)
+        old = (now - timedelta(days=181)).isoformat()
+        recent = (now - timedelta(days=1)).isoformat()
+        async with self.sessions() as session:
+            session.add(AppSetting(key='era_game:question_usage', value=json.dumps({
+                '0': old, '1': recent, 'bad': 'not-a-date',
+            })))
+            await session.commit()
+        async with self.sessions() as session:
+            chosen = await _reserve_questions(session, now, 1)
+            await session.commit()
+        assert chosen == [0]
+        async with self.sessions() as session:
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == 'era_game:question_usage'))
+            usage = _data(row)
+        assert 'bad' not in usage
+        assert '1' in usage
+        assert '0' in usage
 
 
 class GameStateTests(GameFixture, IsolatedAsyncioTestCase):
