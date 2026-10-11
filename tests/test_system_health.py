@@ -143,6 +143,8 @@ class SystemSchedulerTests(unittest.TestCase):
                 "leadership-weekly-pulse-due",
                 "leaders-task-card-sync",
                 "general-forum-setup",
+                "era-games-expiry",
+                "era-games-launch",
                 "directions-one-time-announcement",
                 "leaders-forum-setup",
                 "pulse-weekly-archive",

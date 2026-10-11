@@ -32,6 +32,8 @@ from app.services.literature_launch_service import publish_literature_launch
 from app.services.literature_channel_announcement import publish_literature_channel_launch
 from app.services.literature_analytics_service import send_literature_admin_digest
 from app.services.directions_announcement import publish_directions_announcement
+from app.services.games_launch_service import publish_games_launch
+from app.services.game_room_expiry_service import expire_game_rooms
 
 
 def add_system_jobs(
@@ -101,6 +103,8 @@ def add_system_jobs(
     scheduler.add_job(sync_leaders_task_cards, "interval", minutes=1, args=(bot, settings, session_factory), id="leaders-task-card-sync", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
 
     scheduler.add_job(setup_general_topics, "interval", minutes=5, args=(bot, settings, session_factory), id="general-forum-setup", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    scheduler.add_job(expire_game_rooms, "interval", minutes=1, args=(session_factory,), id="era-games-expiry", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    scheduler.add_job(publish_games_launch, "interval", minutes=5, args=(bot, settings, session_factory), id="era-games-launch", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(publish_directions_announcement, "interval", minutes=5, args=(bot, settings), id="directions-one-time-announcement", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
 
     scheduler.add_job(setup_leaders_topics, "interval", minutes=5, args=(bot, settings, session_factory), id="leaders-forum-setup", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
