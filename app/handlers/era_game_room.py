@@ -142,9 +142,20 @@ async def _reserve_questions(session: AsyncSession, now: datetime, count: int) -
     await _lock(session, used_key)
     usage_row = await session.scalar(select(AppSetting).where(AppSetting.key == used_key).with_for_update())
     used = _data(usage_row)
-    available = [i for i in range(len(QUESTIONS))
-                 if i not in {int(k) for k, v in used.items()
-                              if datetime.fromisoformat(v) > now - timedelta(days=180)}]
+    cutoff = now - timedelta(days=180)
+    active = {}
+    for key, timestamp in used.items():
+        try:
+            when = datetime.fromisoformat(timestamp)
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            if when > cutoff:
+                active[str(int(key))] = when.isoformat()
+        except (TypeError, ValueError):
+            logger.warning('Invalid game reservation entry %s', key)
+    used = active
+    unavailable = {int(key) for key in used}
+    available = [i for i in range(len(QUESTIONS)) if i not in unavailable]
     if len(available) < count:
         return []
     chosen = available[:count]
