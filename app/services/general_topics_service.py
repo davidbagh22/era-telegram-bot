@@ -11,7 +11,7 @@ from app.database.models import AppSetting
 from app.services.notification_service import _session_factory, safe_send, safe_send_once
 
 logger = logging.getLogger(__name__)
-TOPICS = {"announcements": "Объявления", "notifications": "Оповещения", "literature": "Литература"}
+TOPICS = {"announcements": "Мероприятия", "notifications": "Оповещения", "literature": "Литература"}
 SETUP_TOPICS = ("announcements", "notifications")  # Existing bootstrapping contract
 
 
@@ -37,6 +37,9 @@ async def ensure_topic(bot, settings, key: str, *, session_factory=None) -> int 
             data = json.loads(row.value) if row else {}
             if data.get("thread_id"):
                 return int(data["thread_id"])
+            if key == "announcements":
+                logger.warning("Existing events topic is not configured; refusing to create a replacement")
+                return None
             chat = await bot.get_chat(chat_id)
             if not chat.is_forum:
                 logger.warning("General topics unavailable: forum_disabled")
