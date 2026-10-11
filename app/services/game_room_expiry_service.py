@@ -21,7 +21,7 @@ async def expire_game_rooms(session_factory, *, now=None) -> int:
             await _lock(session, key)
             row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update())
             room = _data(row)
-            if room.get('status') not in {'waiting', 'playing'}:
+            if room.get('status') not in {'waiting', 'ready_check', 'playing'}:
                 continue
             if datetime.fromisoformat(room['expires_at']) > now:
                 continue

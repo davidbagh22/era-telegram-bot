@@ -35,7 +35,7 @@ async def award_game_points(session, *, telegram_id, round_id, amount, now=None)
     if not amount:
         return 0
     transaction = await add_points(session, user_id=user.id, points=amount,
-                     reason='Интерактив ЭРА: верный ответ', approved_by=None,
+                     reason='Интерактив ЭРА: результат игры', approved_by=None,
                      source_type='game', idempotency_key=key)
     transaction.created_at = now
     await session.flush()
