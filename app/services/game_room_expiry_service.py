@@ -12,7 +12,8 @@ async def expire_game_rooms(session_factory, *, now=None) -> int:
     async with session_factory() as session:
         keys = (await session.scalars(select(AppSetting.key).where(
             AppSetting.key.like('era_game:%'),
-            AppSetting.key != 'era_game:question_usage',
+            AppSetting.key.not_like('era_game:question_usage%'),
+            AppSetting.key.not_like('era_game:content_usage:%'),
         ))).all()
     closed = 0
     for key in keys:

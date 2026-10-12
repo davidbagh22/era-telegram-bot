@@ -406,3 +406,199 @@ class MultiRoundGamesTests(GameFixture, IsolatedAsyncioTestCase):
             await click('ready', 11)
             await click('ready', 22)
             assert (await self.current_room('team'))['status'] == 'playing'
+
+
+class AdditionalFormatHandlerTests(GameFixture, IsolatedAsyncioTestCase):
+    async def _format_room(self):
+        async with self.sessions() as session:
+            row = await session.scalar(select(AppSetting).where(AppSetting.key.like('era_game:-1001:10:f%')))
+            return _data(row)
+
+    def query_data(self, data, uid=11):
+        query = self.query({"id": "unused", "token": "unused"}, uid=uid)
+        query.data = data
+        return query
+
+    async def test_binary_format_is_playable_idempotent_and_explains(self):
+        start = self.query_data('era_game:play:true_or_myth')
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(
+            Message, 'answer', new=AsyncMock()
+        ) as send:
+            async with self.sessions() as session:
+                await game_callback(start, self.settings, session)
+            room = await self._format_room()
+            reference = room['id'] + '~' + room['token']
+            answer = self.query_data(f'era_game:format_answer:{reference}:0')
+            async with self.sessions() as session:
+                await game_callback(answer, self.settings, session)
+            async with self.sessions() as session:
+                await game_callback(answer, self.settings, session)
+            assert send.await_count == 2
+        room = await self._format_room()
+        assert room['status'] == 'finished'
+        assert room['scores']['11'] == 1
+        async with self.sessions() as session:
+            rewards = (await session.scalars(select(PointTransaction))).all()
+        assert len(rewards) == 1
+
+    async def test_each_single_player_format_completes_through_telegram_callback(self):
+        from app.services.game_content import items_for_mode
+        from app.services.game_formats import GameMode, check_answer
+
+        modes = (
+            GameMode.TRUE_OR_MYTH, GameMode.GUESS_COUNTRY, GameMode.CHRONOLOGY,
+            GameMode.WORD_CHAIN, GameMode.ASSOCIATIONS, GameMode.LOGIC,
+            GameMode.CULTURE, GameMode.MEMORY,
+        )
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(
+            Message, 'answer', new=AsyncMock()
+        ):
+            for mode in modes:
+                start = self.query_data(f'era_game:play:{mode.value}')
+                async with self.sessions() as session:
+                    await game_callback(start, self.settings, session)
+                room = await self._format_room()
+                item = items_for_mode(mode)[0]
+                correct = next(
+                    index for index, option in enumerate(item.challenge.options)
+                    if check_answer(item.challenge, option, previous_word=item.previous_word)
+                )
+                answer = self.query_data(
+                    f"era_game:format_answer:{room['id']}~{room['token']}:{correct}"
+                )
+                async with self.sessions() as session:
+                    await game_callback(answer, self.settings, session)
+                room = await self._format_room()
+                assert room['status'] == 'finished', mode
+                assert room['scores']['11'] > 0, mode
+                # This fixture has one game mode per test run; delete state so
+                # the helper selects the next player's room on the next loop.
+                if mode != modes[-1]:
+                    async with self.sessions() as session:
+                        state = await session.scalar(select(AppSetting).where(
+                            AppSetting.key == _key(-1001, 10, room['id'])
+                        ))
+                        await session.delete(state)
+                        await session.commit()
+
+    async def test_hint_is_persisted_and_reduces_score(self):
+        start = self.query_data('era_game:play:guess_country')
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(
+            Message, 'answer', new=AsyncMock()
+        ), patch.object(Message, 'edit_reply_markup', new=AsyncMock()):
+            async with self.sessions() as session:
+                await game_callback(start, self.settings, session)
+            room = await self._format_room()
+            reference = room['id'] + '~' + room['token']
+            hint = self.query_data(f'era_game:hint:{reference}')
+            async with self.sessions() as session:
+                await game_callback(hint, self.settings, session)
+            answer = self.query_data(f'era_game:format_answer:{reference}:0')
+            async with self.sessions() as session:
+                await game_callback(answer, self.settings, session)
+        room = await self._format_room()
+        assert room['hints_used'] == 1
+        assert room['scores']['11'] == 3
+
+    async def test_memory_restart_recovery_hides_sequence_and_resumes_recall(self):
+        from app.handlers.era_game_room import _format_prompt
+
+        start = self.query_data('era_game:play:memory')
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(
+            Message, 'answer', new=AsyncMock()
+        ), patch('app.handlers.era_game_room.asyncio.sleep', new=AsyncMock()):
+            async with self.sessions() as session:
+                await game_callback(start, self.settings, session)
+        room = await self._format_room()
+        assert room['memory_revealed'] is True
+        text, markup = _format_prompt(room)
+        assert 'Последовательность скрыта' in text
+        assert '🔴 🔵 🟡' not in text
+        assert markup is not None
+
+    async def test_memory_initial_phase_has_no_answer_buttons(self):
+        from app.handlers.era_game_room import _format_prompt
+
+        start = self.query_data('era_game:play:memory')
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(
+            Message, 'answer', new=AsyncMock()
+        ), patch('app.handlers.era_game_room.asyncio.sleep', new=AsyncMock()):
+            async with self.sessions() as session:
+                await game_callback(start, self.settings, session)
+        room = await self._format_room()
+        room['memory_revealed'] = False
+        text, markup = _format_prompt(room)
+        assert 'Запомни порядок' in text and ' → ' in text
+        assert markup is None
+
+    async def test_content_reservation_is_per_user_and_exhaustion_is_explicit(self):
+        from app.handlers.era_game_room import _reserve_format_item
+        from app.services.game_content import items_for_mode
+        from app.services.game_formats import GameMode
+
+        now = datetime.now(timezone.utc)
+        async with self.sessions() as session:
+            first = await _reserve_format_item(session, mode=GameMode.TRUE_OR_MYTH, user_id=11, now=now)
+            second = await _reserve_format_item(session, mode=GameMode.TRUE_OR_MYTH, user_id=11, now=now)
+            another_player = await _reserve_format_item(session, mode=GameMode.TRUE_OR_MYTH, user_id=12, now=now)
+            after_window = await _reserve_format_item(
+                session, mode=GameMode.TRUE_OR_MYTH, user_id=11, now=now + timedelta(days=181)
+            )
+            await session.commit()
+        usage_key = f"era_game:content_usage:{GameMode.TRUE_OR_MYTH.value}:11"
+        async with self.sessions() as session:
+            usage = {item.id: now.isoformat() for item in items_for_mode(GameMode.TRUE_OR_MYTH)}
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == usage_key))
+            row.value = json.dumps(usage)
+            await session.commit()
+        async with self.sessions() as session:
+            exhausted = await _reserve_format_item(
+                session, mode=GameMode.TRUE_OR_MYTH, user_id=11, now=now
+            )
+            await session.commit()
+        assert first and second and first.id != second.id
+        assert exhausted is None
+        assert another_player and another_player.id == first.id
+        assert after_window and after_window.id == first.id
+
+    async def test_team_duel_starts_and_keeps_team_scores_separate(self):
+        from app.handlers.era_game_room import QUESTIONS
+
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(
+            Message, 'answer', new=AsyncMock()
+        ):
+            async with self.sessions() as session:
+                await game_callback(self.query_data('era_game:duel'), self.settings, session)
+            room = await self._read_room('duel')
+            reference = 'duel~' + room['token']
+            async with self.sessions() as session:
+                await game_callback(self.query_data(f'era_game:duel_join:{reference}:A'), self.settings, session)
+            async with self.sessions() as session:
+                await game_callback(self.query_data(f'era_game:duel_join:{reference}:B', uid=12), self.settings, session)
+            for uid in (11, 12):
+                async with self.sessions() as session:
+                    await game_callback(self.query_data(f'era_game:ready:{reference}', uid=uid), self.settings, session)
+            room = await self._read_room('duel')
+            assert room['status'] == 'playing'
+            for _ in range(5):
+                question = room['question']
+                correct = QUESTIONS[question][2]
+                reference = 'duel~' + room['token']
+                for uid, choice in ((11, correct), (12, (correct + 1) % len(QUESTIONS[question][1]))):
+                    answer = self.query_data(f'era_game:answer:{reference}:{choice}', uid=uid)
+                    async with self.sessions() as session:
+                        await game_callback(answer, self.settings, session)
+                    room = await self._read_room('duel')
+                    if room['status'] == 'finished':
+                        break
+                if room['status'] == 'finished':
+                    break
+            assert room['status'] == 'finished'
+            assert room['team_scores'] == {'A': 5, 'B': 0}
+
+    async def _read_room(self, room_id):
+        async with self.sessions() as session:
+            row = await session.scalar(select(AppSetting).where(
+                AppSetting.key == _key(-1001, 10, room_id)
+            ))
+            return _data(row)

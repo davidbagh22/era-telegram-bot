@@ -49,3 +49,10 @@ class GameLaunchTests(IsolatedAsyncioTestCase):
         assert args[2] == "notifications"
         assert kwargs["delivery_key"] == "games-notification-v1"
         assert kwargs["reply_markup"].inline_keyboard[0][0].url == "https://t.me/c/123456/99"
+        announcement = args[3]
+        for format_name in (
+            "быстрый и командный квиз", "Правда или миф", "угадай страну", "хронология",
+            "словесная цепочка", "ассоциации", "логика", "культурный блиц", "память",
+            "командная дуэль",
+        ):
+            assert format_name in announcement

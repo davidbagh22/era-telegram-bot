@@ -1,7 +1,7 @@
 """Eleven explicit game formats, each with its own scoring and answer rules.
 
 This module is deliberately independent of Telegram so its behavior can be tested.
-The Telegram room handler must integrate these mechanics before public release.
+The room handlers use these rules while managing persisted Telegram sessions.
 """
 from dataclasses import dataclass
 from enum import StrEnum
@@ -44,11 +44,14 @@ def check_answer(challenge: Challenge, answer: str, *, previous_word: str = "") 
     if challenge.mode == GameMode.WORD_CHAIN:
         if not previous_word:
             return value == expected
-        previous = normalize(previous_word).rstrip("ьъы")
-        return bool(previous) and value.startswith(previous[-1]) and value == expected
+        previous_letters = [character for character in normalize(previous_word) if character.isalpha()]
+        while previous_letters and previous_letters[-1] in "ьъы":
+            previous_letters.pop()
+        return bool(previous_letters) and value.startswith(previous_letters[-1]) and value == expected
     if challenge.mode == GameMode.CHRONOLOGY:
-        return tuple(part.strip() for part in value.split(",")) == tuple(
-            part.strip() for part in expected.split(",")
+        separator = "→" if "→" in value or "→" in expected else ","
+        return tuple(normalize(part) for part in value.split(separator)) == tuple(
+            normalize(part) for part in expected.split(separator)
         )
     if challenge.mode == GameMode.MEMORY:
         return value.replace(" ", "") == expected.replace(" ", "")
@@ -70,8 +73,10 @@ def validate_challenge(challenge: Challenge) -> None:
     if not challenge.prompt.strip() or not challenge.answer.strip():
         raise ValueError("Prompt and answer are required")
     if challenge.mode in (GameMode.SOLO_QUIZ, GameMode.TEAM_QUIZ,
-                          GameMode.TRUE_OR_MYTH, GameMode.CULTURE,
-                          GameMode.TEAM_DUEL):
+                          GameMode.TRUE_OR_MYTH, GameMode.GUESS_COUNTRY,
+                          GameMode.CHRONOLOGY, GameMode.WORD_CHAIN,
+                          GameMode.ASSOCIATIONS, GameMode.LOGIC,
+                          GameMode.CULTURE, GameMode.MEMORY, GameMode.TEAM_DUEL):
         if len(challenge.options) < 2:
             raise ValueError("Choice-based format needs at least two options")
         if len({normalize(item) for item in challenge.options}) != len(challenge.options):

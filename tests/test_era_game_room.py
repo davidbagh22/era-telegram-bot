@@ -40,6 +40,21 @@ def test_game_menu_callbacks_are_short_and_in_namespace():
             assert len(button.callback_data.encode()) <= 64
 
 
+def test_menu_exposes_all_eleven_distinct_playable_modes():
+    from app.services.game_formats import GameMode
+    from app.handlers.era_game_room import menu_markup
+
+    callbacks = [button.callback_data for row in menu_markup().inline_keyboard for button in row]
+    game_callbacks = [callback for callback in callbacks if callback in {
+        "era_game:solo", "era_game:team", "era_game:duel"
+    } or callback.startswith("era_game:play:")]
+    modes = {callback.rsplit(":", 1)[-1] for callback in game_callbacks}
+    assert len(game_callbacks) == len(GameMode)
+    assert modes == {"solo", "team", "duel", *{mode.value for mode in GameMode if mode not in {
+        GameMode.SOLO_QUIZ, GameMode.TEAM_QUIZ, GameMode.TEAM_DUEL
+    }}}
+
+
 def test_room_limits_and_question_bank():
     assert MIN_PLAYERS == 2
     assert MAX_PLAYERS >= MIN_PLAYERS
