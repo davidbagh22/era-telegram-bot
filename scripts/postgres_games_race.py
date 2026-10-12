@@ -2,12 +2,19 @@
 import asyncio
 import os
 import uuid
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
+from aiogram.types import Chat, Message, User as TelegramUser
+from sqlalchemy import func, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.database.models import User
-from app.handlers.era_game_room import _new_room
+from app.database.models import AppSetting, PointTransaction, User
+from app.handlers.era_game_room import _data, _key, _new_room, game_callback
+from app.services.game_content import items_for_mode
+from app.services.game_formats import GameMode
 from app.services.game_rewards_service import award_game_points
 from app.utils.constants import ApplicationStatus
 
@@ -19,8 +26,10 @@ async def main():
     engine = create_async_engine(url)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     uid = 7_000_000_000 + int(uuid.uuid4().hex[:7], 16)
+    format_uid = uid + 1
     async with sessions() as session:
         session.add(User(telegram_id=uid, first_name='CI Games', application_status=ApplicationStatus.APPROVED))
+        session.add(User(telegram_id=format_uid, first_name='CI Format', application_status=ApplicationStatus.APPROVED))
         await session.commit()
 
     async def room_worker(user_id):
@@ -35,18 +44,70 @@ async def main():
             await session.commit()
             return amount
 
+    async def count_awards(telegram_id):
+        async with sessions() as session:
+            return int(await session.scalar(
+                select(func.count(PointTransaction.id))
+                .join(User, User.id == PointTransaction.user_id)
+                .where(User.telegram_id == telegram_id, PointTransaction.source_type == 'game')
+            ) or 0)
+
+    async def answer_worker(answer_data, settings):
+        message = Message(message_id=3, date=datetime.now(timezone.utc),
+                          chat=Chat(id=-format_uid, type='supergroup'), message_thread_id=1)
+        query = SimpleNamespace(
+            message=message,
+            from_user=TelegramUser(id=format_uid, first_name='CI Format', is_bot=False),
+            data=answer_data,
+            answer=AsyncMock(),
+        )
+        async with sessions() as session:
+            await game_callback(query, settings, session)
+
     try:
         rooms = await asyncio.wait_for(asyncio.gather(*(room_worker(uid) for _ in range(8))), 30)
         assert sum(room is not None for room in rooms) == 1, rooms
         another = await room_worker(uid+1)
-        assert another['question'] != next(room for room in rooms if room)['question']
+        # Question history is intentionally scoped to each player and format;
+        # another player may receive the same first question.
+        assert another is not None
+        assert another['question'] == next(room for room in rooms if room)['question']
         duplicate = await asyncio.wait_for(asyncio.gather(*(award_worker(str(uid)) for _ in range(8))), 30)
         assert sum(duplicate) == 3, duplicate
         capped = await asyncio.wait_for(asyncio.gather(*(award_worker(f'{uid}:{i}') for i in range(12))), 30)
         assert sum(capped) + sum(duplicate) == 20, capped
+
+        settings = SimpleNamespace(feature_games='ALL', feature_tester_ids=[],
+                                   general_chat_id=-format_uid, games_rewards_enabled=True)
+        start_message = Message(message_id=2, date=datetime.now(timezone.utc),
+                                chat=Chat(id=-format_uid, type='supergroup'), message_thread_id=1)
+        start_query = SimpleNamespace(
+            message=start_message,
+            from_user=TelegramUser(id=format_uid, first_name='CI Format', is_bot=False),
+            data='era_game:play:true_or_myth',
+            answer=AsyncMock(),
+        )
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), \
+             patch.object(Message, 'answer', new=AsyncMock()):
+            async with sessions() as session:
+                await game_callback(start_query, settings, session)
+            room_id = f'f{list(GameMode).index(GameMode.TRUE_OR_MYTH)}-{format_uid}'
+            room_key = _key(-format_uid, 1, room_id)
+            async with sessions() as session:
+                room = _data(await session.scalar(select(AppSetting).where(AppSetting.key == room_key)))
+            item = next(item for item in items_for_mode(GameMode.TRUE_OR_MYTH)
+                         if item.id == room['item_id'])
+            correct = item.challenge.options.index(item.challenge.answer)
+            callback_data = f"era_game:format_answer:{room['id']}~{room['token']}:{correct}"
+            before = await count_awards(format_uid)
+            await asyncio.wait_for(asyncio.gather(*(
+                answer_worker(callback_data, settings) for _ in range(8)
+            )), 30)
+            after = await count_awards(format_uid)
+            assert after - before == 1, (before, after)
     finally:
         await engine.dispose()
-    print('PostgreSQL games: one room, unique questions, one award, daily cap 20')
+    print('PostgreSQL games: rooms, player-scoped history, caps, concurrent answer idempotency')
 
 
 if __name__ == '__main__':

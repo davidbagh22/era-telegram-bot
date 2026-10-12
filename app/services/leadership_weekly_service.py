@@ -354,9 +354,15 @@ async def _period_attention_exists(
     type_: str,
     owner_id: int,
     period_start: date,
+    period_timezone: str = "Asia/Yerevan",
 ) -> bool:
-    start_dt = datetime.combine(period_start, time.min, tzinfo=timezone.utc)
-    end_dt = start_dt + timedelta(days=7)
+    zone = ZoneInfo(period_timezone)
+    start_dt = datetime.combine(period_start, time.min, tzinfo=zone).astimezone(
+        timezone.utc
+    )
+    end_dt = (datetime.combine(period_start + timedelta(days=7), time.min, tzinfo=zone)).astimezone(
+        timezone.utc
+    )
     return bool(
         await session.scalar(
             select(func.count())
@@ -558,6 +564,7 @@ async def run_missed_report_signals(
     *,
     period_start: date | None = None,
     eligible_owner_ids: set[int] | None = None,
+    period_timezone: str = "Asia/Yerevan",
 ) -> list[LeadershipAttentionItem]:
     period_start, _ = week_bounds(period_start)
     created: list[LeadershipAttentionItem] = []
@@ -578,6 +585,7 @@ async def run_missed_report_signals(
             type_=MISSED_REPORT_TYPE,
             owner_id=user.id,
             period_start=period_start,
+            period_timezone=period_timezone,
         ):
             continue
         scope_type, scope_id = _assignment_scope(assignment, office)
@@ -860,6 +868,7 @@ async def _check_weekly_cycle(
             session,
             period_start=period_start,
             eligible_owner_ids=eligible_owner_ids,
+            period_timezone=schedule.timezone,
         )
         await leadership_report_service.run_attention_rules(session, today=date.today())
         for item in created:

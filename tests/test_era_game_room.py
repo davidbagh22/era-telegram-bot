@@ -17,6 +17,9 @@ def test_games_disabled_by_default():
     settings.feature_games = "TESTERS"
     assert _enabled(settings, 11)
     assert not _enabled(settings, 99)
+    settings.feature_games = "ALL"
+    assert _enabled(settings, 11)
+    assert _enabled(settings, 99)
 
 
 def test_room_bound_to_chat_and_thread():
@@ -35,6 +38,21 @@ def test_game_menu_callbacks_are_short_and_in_namespace():
     for row in quiz_markup("team", ("One", "Two", "Three")).inline_keyboard:
         for button in row:
             assert len(button.callback_data.encode()) <= 64
+
+
+def test_menu_exposes_all_eleven_distinct_playable_modes():
+    from app.services.game_formats import GameMode
+    from app.handlers.era_game_room import menu_markup
+
+    callbacks = [button.callback_data for row in menu_markup().inline_keyboard for button in row]
+    game_callbacks = [callback for callback in callbacks if callback in {
+        "era_game:solo", "era_game:team", "era_game:duel"
+    } or callback.startswith("era_game:play:")]
+    modes = {callback.rsplit(":", 1)[-1] for callback in game_callbacks}
+    assert len(game_callbacks) == len(GameMode)
+    assert modes == {"solo", "team", "duel", *{mode.value for mode in GameMode if mode not in {
+        GameMode.SOLO_QUIZ, GameMode.TEAM_QUIZ, GameMode.TEAM_DUEL
+    }}}
 
 
 def test_room_limits_and_question_bank():

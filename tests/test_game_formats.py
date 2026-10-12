@@ -7,10 +7,7 @@ from app.services.game_formats import (
 
 @pytest.mark.parametrize("mode", list(GameMode))
 def test_all_eleven_modes_have_answer_rules(mode):
-    kwargs = {}
-    if mode in {GameMode.SOLO_QUIZ, GameMode.TEAM_QUIZ,
-                GameMode.TRUE_OR_MYTH, GameMode.CULTURE, GameMode.TEAM_DUEL}:
-        kwargs["options"] = ("Ереван", "Гюмри")
+    kwargs = {"options": ("Ереван", "Гюмри")}
     if mode in {GameMode.GUESS_COUNTRY, GameMode.ASSOCIATIONS}:
         kwargs["hints"] = ("Подсказка",)
     challenge = Challenge(mode, "Назови ответ", "Ереван", **kwargs)
