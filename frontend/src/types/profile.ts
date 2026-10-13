@@ -5,6 +5,22 @@ export interface GrowthProgress {
   level_count: number;
 }
 
+export interface GrowthCriterion {
+  key: string;
+  label: string;
+  current: number;
+  required: number;
+  done: boolean;
+}
+
+export interface GrowthCriteria {
+  current_level: string;
+  next_level: string | null;
+  next_label: string | null;
+  mode: "any" | "none" | string;
+  criteria: GrowthCriterion[];
+}
+
 export interface PortfolioEntry {
   title: string;
   description: string;
@@ -22,6 +38,7 @@ export interface Profile {
   last_name: string | null;
   role: string;
   growth: GrowthProgress;
+  growth_criteria: GrowthCriteria;
   full_name: string;
   participation_status: string;
   departments: string[];

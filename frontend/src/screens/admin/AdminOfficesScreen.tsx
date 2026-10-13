@@ -176,7 +176,7 @@ function OfficeSettings({ office, onSaved }: { office: RecruitmentOffice; onSave
         expected_result: expectedResult.trim() || null,
         workload: workload.trim() || null,
         application_deadline: deadline ? new Date(deadline).toISOString() : null,
-        is_public: true,
+        is_public: office.is_public,
       });
       onSaved();
     } catch (err) {
