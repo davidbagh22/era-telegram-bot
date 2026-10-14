@@ -21,15 +21,6 @@ def writable_permissions() -> ChatPermissions:
     )
 
 
-async def restore_general_chat_member(
-    bot: Bot,
-    settings: Settings,
-    telegram_id: int,
-) -> bool:
-    """Never lift a restriction whose moderation provenance is unknown."""
-    return False
-
-
 async def enforce_general_chat_writable(
     bot: Bot,
     settings: Settings,
