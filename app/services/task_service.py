@@ -85,7 +85,7 @@ async def list_for_user(session: AsyncSession, user: User) -> list[Task]:
             task = await session.get(Task, membership.task_id)
             if task:
                 tasks_by_id[task.id] = task
-    tasks = sorted(tasks_by_id.values(), key=lambda item: item.deadline)
+    tasks = sorted(tasks_by_id.values(), key=lambda item: (item.deadline is None, item.deadline.isoformat() if item.deadline else '', item.id))
     return [
         task
         for task in tasks
@@ -115,6 +115,26 @@ async def joined_task_ids(
     return joined
 
 
+async def completed_task_ids(
+    session: AsyncSession, user: User, tasks: list[Task]
+) -> set[int]:
+    public_ids = [
+        task.id for task in tasks if (_reward(task).get("public_task"))
+    ]
+    if not public_ids:
+        return set()
+    completed = (
+        await session.scalars(
+            select(TaskParticipant.task_id).where(
+                TaskParticipant.user_id == user.id,
+                TaskParticipant.task_id.in_(public_ids),
+                TaskParticipant.status == "completed",
+            )
+        )
+    ).all()
+    return set(completed)
+
+
 def _reward(task: Task) -> dict:
     return getattr(task, "reward_json", None) or {}
 
@@ -130,7 +150,7 @@ def _is_media_task(task: Task) -> bool:
 def _is_self_service_task(task: Task) -> bool:
     # Only explicitly tagged system task types bypass the legacy application
     # review. All pre-existing public challenge tasks keep the old pending flow.
-    return _is_community_mission(task) or _is_media_task(task)
+    return _is_community_mission(task) or _is_media_task(task) or bool(_reward(task).get('public_task'))
 
 
 async def _sync_mission_squad(
@@ -159,6 +179,8 @@ async def claim(
     Existing membership is resolved before capacity so repeated opens/claims
     remain idempotent even for SOLO/max=1 work.
     """
+    if task is not None:
+        task = await session.scalar(select(Task).where(Task.id == task.id).with_for_update().execution_options(populate_existing=True))
     if (
         task is None
         or task.task_type != "challenge"
@@ -176,6 +198,8 @@ async def claim(
     existing = next((item for item in current if item.user_id == user.id), None)
 
     if existing:
+        if existing.status == "completed":
+            return existing, "completed"
         if existing.status == "rejected":
             accepted = [
                 item

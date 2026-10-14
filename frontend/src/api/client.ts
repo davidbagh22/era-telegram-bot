@@ -1228,3 +1228,5 @@ export async function workWrite(path:string,payload:unknown){
  if(!response.ok)throw new ApiError(response.status,await parseErrorDetail(response));
  return response.json();
 }
+
+export const fetchBookAnalytics=()=>authorizedGet<{subscribers:number;responses:number;respondents:number}>("/api/v1/workcenter/book-club/analytics");
