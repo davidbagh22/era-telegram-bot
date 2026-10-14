@@ -63,6 +63,7 @@ def main_inline_keyboard(
         )
         if privileged or admin:
             rows.append([InlineKeyboardButton(text="⚙️ Панель", callback_data="panel:open")])
+    rows.append([InlineKeyboardButton(text="📚 Литература", callback_data="bookclub:home")])
     rows.append([InlineKeyboardButton(text="❓ Вопросы об ЭРА", callback_data="faq:home")])
     rows.append([InlineKeyboardButton(text="💬 Связь", callback_data="contact:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)

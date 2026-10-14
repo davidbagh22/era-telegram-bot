@@ -664,6 +664,7 @@ async def read_broadcast_preview_count(
 
 
 class PersonalBroadcastIn(BaseModel):
+    campaign_key: str | None = Field(default=None, min_length=1, max_length=100)
     audience: Literal["all", "role", "department", "direction", "age", "city"]
     filter_value: str | None = None
     text: str
@@ -692,7 +693,7 @@ async def send_broadcast(
     try:
         result = await send_personal_broadcast(
             bot, session, audience=payload.audience, filter_value=payload.filter_value,
-            text=payload.text, author_id=admin.id, settings=settings,
+            text=payload.text, author_id=admin.id, settings=settings, campaign_key=payload.campaign_key,
         )
     except BroadcastError as exc:
         raise HTTPException(status_code=422, detail=exc.code) from exc

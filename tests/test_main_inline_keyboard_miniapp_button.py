@@ -59,7 +59,7 @@ class MainInlineKeyboardMiniAppButtonTests(unittest.TestCase):
         )
         self.assertEqual(
             _button_texts(markup),
-            ["🔥 Открыть ЭРА", "🧭 Навигация", "❓ Вопросы об ЭРА", "💬 Связь"],
+            ["🔥 Открыть ЭРА", "🧭 Навигация", "📚 Литература", "❓ Вопросы об ЭРА", "💬 Связь"],
         )
 
     def test_navigation_button_is_a_callback_not_a_web_app_button(self) -> None:

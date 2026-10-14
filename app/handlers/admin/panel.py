@@ -3151,6 +3151,7 @@ async def broadcast_finish(
         result = await send_personal_broadcast(
             bot, session, audience=audience, filter_value=filter_value,
             text=data["broadcast_text"], author_id=user.id, settings=settings,
+            campaign_key=f"telegram:{call.message.chat.id}:{call.message.message_id}",
         )
     except BroadcastError:
         await state.clear()

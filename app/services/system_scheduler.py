@@ -26,7 +26,14 @@ from app.services.participation_lifecycle_service import run_reactivation_cycle
 from app.services.project_scoring_reconciliation_service import reconcile_project_scoring_job
 from app.services.system_health_service import run_system_diagnostics, send_daily_system_summary
 from app.services.vacancy_reconciliation_service import reconcile_vacancies_job
+from app.services.admin_broadcast_service import resume_broadcasts
 from app.services.book_club_service import daily_job as book_club_daily_job
+from app.services.literature_launch_service import publish_literature_launch
+from app.services.literature_channel_announcement import publish_literature_channel_launch
+from app.services.literature_analytics_service import send_literature_admin_digest
+from app.services.directions_announcement import publish_directions_announcement
+from app.services.games_launch_service import publish_games_launch
+from app.services.game_room_expiry_service import expire_game_rooms
 
 
 def add_system_jobs(
@@ -62,6 +69,10 @@ def add_system_jobs(
     scheduler.add_job(complete_verification_campaigns_job, "interval", minutes=5, args=(session_factory,), id="community-verification-expiry", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(send_monthly_development_reminders, "cron", hour=18, minute=0, args=(bot, settings, session_factory), id="my-vector-monthly-reminders", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(book_club_daily_job, "cron", hour=19, minute=0, args=(bot, settings, session_factory), id="book-club-daily", replace_existing=True, max_instances=1, coalesce=True)
+    scheduler.add_job(publish_literature_launch, "interval", minutes=5, args=(bot, settings, session_factory), id="literature-opening-recovery", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    scheduler.add_job(publish_literature_channel_launch, "interval", minutes=5, args=(bot, settings), id="literature-channel-opening", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    scheduler.add_job(send_literature_admin_digest, "cron", hour=20, minute=0, args=(bot, settings, session_factory), id="literature-admin-digest", replace_existing=True, max_instances=1, coalesce=True)
+    scheduler.add_job(resume_broadcasts, "interval", minutes=1, args=(bot, settings, session_factory), id="admin-broadcast-resume", replace_existing=True, max_instances=1, coalesce=True)
 
     scheduler.add_job(
         run_daily_public_content,
@@ -92,6 +103,9 @@ def add_system_jobs(
     scheduler.add_job(sync_leaders_task_cards, "interval", minutes=1, args=(bot, settings, session_factory), id="leaders-task-card-sync", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
 
     scheduler.add_job(setup_general_topics, "interval", minutes=5, args=(bot, settings, session_factory), id="general-forum-setup", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    scheduler.add_job(expire_game_rooms, "interval", minutes=1, args=(session_factory,), id="era-games-expiry", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    scheduler.add_job(publish_games_launch, "interval", minutes=5, args=(bot, settings, session_factory), id="era-games-launch", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    scheduler.add_job(publish_directions_announcement, "interval", minutes=5, args=(bot, settings), id="directions-one-time-announcement", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
 
     scheduler.add_job(setup_leaders_topics, "interval", minutes=5, args=(bot, settings, session_factory), id="leaders-forum-setup", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
 

@@ -349,12 +349,7 @@ async def lifespan(app: FastAPI):
     )
     logger.info("General chat direct Mini App menu enforced: ok=%s", menu_ok)
 
-    recovery_marker = "era:recovery:fsm-global-v2"
-    redis_client = dispatcher.storage.redis
-    if not await redis_client.exists(recovery_marker):
-        await redis_client.flushdb()
-        await redis_client.set(recovery_marker, "done")
-        logger.warning("Redis FSM storage cleared during recovery deploy")
+    # FSM is durable user data. Never clear Redis during application startup.
 
     app.state.ai_service = AIService(settings)
     # E2E exercises real user/API flows on a throwaway SQLite database.
