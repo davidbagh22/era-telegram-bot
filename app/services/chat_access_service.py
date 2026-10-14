@@ -218,18 +218,8 @@ async def decline_join_request(bot: Bot, chat_id: int, user_id: int) -> bool:
 
 
 async def unrestrict_member(bot: Bot, chat_id: int, user_id: int) -> bool:
-    try:
-        await bot.restrict_chat_member(
-            chat_id=chat_id,
-            user_id=user_id,
-            permissions=writable_permissions(),
-        )
-        return True
-    except TelegramAPIError:
-        logger.exception(
-            "Could not restore write permissions chat=%s user=%s", chat_id, user_id
-        )
-        return False
+    """Compatibility hook: restrictions are managed only by chat moderators."""
+    return False
 
 
 async def remove_rejected_member(bot: Bot, chat_id: int, user_id: int) -> bool:
@@ -379,47 +369,8 @@ async def ensure_general_chat_writable(
     settings: Settings,
     session_factory,
 ) -> tuple[int, int]:
-    """Keep the general chat writable for everyone.
-
-    This recurring maintenance job changes Telegram permissions only. It must
-    never publish, edit or pin messages in the public chat.
-    """
-    chat_id = getattr(settings, "general_chat_id", None)
-    if not chat_id:
-        return 0, 0
-
-    fixed = failed = 0
-    try:
-        await bot.set_chat_permissions(
-            chat_id=chat_id,
-            permissions=writable_permissions(),
-        )
-        fixed += 1
-    except TelegramAPIError:
-        logger.exception("Could not set default writable permissions chat=%s", chat_id)
-        failed += 1
-
-    async with session_factory() as session:
-        users = (await session.scalars(select(User))).all()
-
-    for user in users:
-        try:
-            member = await bot.get_chat_member(
-                chat_id=chat_id,
-                user_id=user.telegram_id,
-            )
-            raw_status = getattr(member, "status", "")
-            status = str(getattr(raw_status, "value", raw_status)).casefold()
-            if status not in {"member", "administrator", "creator", "restricted"}:
-                continue
-            if await unrestrict_member(bot, chat_id, user.telegram_id):
-                fixed += 1
-            else:
-                failed += 1
-        except TelegramAPIError:
-            continue
-
-    return fixed, failed
+    """Compatibility hook; automated Telegram permission writes are disabled."""
+    return 0, 0
 
 
 async def notify_user(bot: Bot, user_id: int, text: str) -> None:
@@ -466,16 +417,12 @@ async def sync_user_chat_access(
         else:
             failed += 1
 
-    # Once a person is in a chat, registration/application/role/department
-    # status never controls their ability to write. Join-request checks remain
-    # intact for entry to managed chats.
+    # Existing member permissions belong to Telegram moderators. Keep the
+    # referral award path, but never rewrite a member's restriction state.
     for chat_id in settings.chat_ids:
         chat_key = chat_key_for_id(settings, chat_id)
         decision = check_chat_access(user, chat_key)
-        ok = await unrestrict_member(bot, chat_id, user.telegram_id)
-        fixed += int(ok)
-        failed += int(not ok)
-        if ok and decision.allowed and chat_key == "general":
+        if decision.allowed and chat_key == "general":
             await award_registration_referral(session, invitee_user_id=user.id)
 
     if fixed or failed:
