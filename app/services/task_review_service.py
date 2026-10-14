@@ -42,6 +42,24 @@ async def _already_awarded(session: AsyncSession, user_id: int, task_id: int) ->
     return previous is not None
 
 
+async def _complete_public_participation(
+    session: AsyncSession, task: Task, participant: User
+) -> None:
+    if not (task.reward_json or {}).get("public_task"):
+        return
+    task.status = "published"
+    membership = await session.scalar(
+        select(TaskParticipant)
+        .where(
+            TaskParticipant.task_id == task.id,
+            TaskParticipant.user_id == participant.id,
+        )
+        .with_for_update()
+    )
+    if membership is not None:
+        membership.status = "completed"
+
+
 async def decide_submission(
     session: AsyncSession,
     submission: TaskSubmission,
@@ -57,8 +75,13 @@ async def decide_submission(
     if action in ("revision", "reject") and not comment.strip():
         raise ValueError("comment_required")
 
+    # Serialize approvals for the same task before consulting the points ledger.
+    await session.scalar(select(Task).where(Task.id == task.id).with_for_update())
+    await session.refresh(submission)
+
     if action == "approve":
         if submission.status == "approved":
+            await _complete_public_participation(session, task, participant)
             return TaskReviewResult(
                 submission=submission,
                 admin_notice="Этот результат уже одобрен. Повторно баллы не начисляются.",
@@ -67,6 +90,7 @@ async def decide_submission(
             )
         submission.status = "approved"
         submission.reviewed_by = actor.id
+        await _complete_public_participation(session, task, participant)
         if await _already_awarded(session, participant.id, task.id):
             return TaskReviewResult(
                 submission=submission,
@@ -92,7 +116,10 @@ async def decide_submission(
             if portfolio is None:
                 session.add(PortfolioItem(user_id=participant.id, title=task.title, item_type="task", description=submission.text or task.description, file_id=submission.file_id, related_task_id=task.id, issued_by=actor.id, verified_by=actor.id, admin_comment=submission.admin_comment, status="verified"))
 
-        if task.task_type == "private":
+        if reward.get('public_task'):
+            # A participant's result never closes enrollment for everyone else.
+            task.status = 'published'
+        elif task.task_type == "private":
             task.status = TaskStatus.COMPLETED
         else:
             member_ids = set(
@@ -134,7 +161,7 @@ async def decide_submission(
         submission.status = "needs_revision"
         submission.admin_comment = comment
         submission.reviewed_by = actor.id
-        task.status = TaskStatus.IN_PROGRESS
+        task.status = 'published' if (task.reward_json or {}).get('public_task') else TaskStatus.IN_PROGRESS
         return TaskReviewResult(
             submission=submission,
             admin_notice="Комментарий отправлен. Задание возвращено на доработку.",

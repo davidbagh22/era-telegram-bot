@@ -156,19 +156,21 @@ def _claim_mode(task: Task) -> str | None:
 async def list_tasks(session: AsyncSession, user: User, scope: TaskScope) -> list[Task]:
     all_tasks = await task_service.list_for_user(session, user)
     joined_ids = await task_service.joined_task_ids(session, user, all_tasks)
+    completed_ids = await task_service.completed_task_ids(session, user, all_tasks)
+    participated_ids = joined_ids | completed_ids
 
     if scope == "available":
         return [
-            task for task in all_tasks if task_service.is_open_public_task(task, joined_ids, user)
+            task for task in all_tasks if task_service.is_open_public_task(task, participated_ids, user)
         ]
     if scope == "for_you":
         available = [
-            task for task in all_tasks if task_service.is_open_public_task(task, joined_ids, user)
+            task for task in all_tasks if task_service.is_open_public_task(task, participated_ids, user)
         ]
         return await _for_you_tasks(session, user, available)
     if scope == "team":
         available = [
-            task for task in all_tasks if task_service.is_open_public_task(task, joined_ids, user)
+            task for task in all_tasks if task_service.is_open_public_task(task, participated_ids, user)
         ]
         return [task for task in available if _claim_mode(task) in ("TEAM", "SOLO_OR_TEAM")]
     if scope == "mine":
@@ -188,8 +190,13 @@ async def list_tasks(session: AsyncSession, user: User, scope: TaskScope) -> lis
     return [
         task
         for task in all_tasks
-        if task.status == TaskStatus.COMPLETED
-        and task_service.is_joined_or_assigned(task, joined_ids, user)
+        if (
+            task.id in completed_ids
+            or (
+                task.status == TaskStatus.COMPLETED
+                and task_service.is_joined_or_assigned(task, joined_ids, user)
+            )
+        )
     ]
 
 

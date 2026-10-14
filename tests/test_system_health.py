@@ -133,6 +133,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "community-verification-expiry",
                 "my-vector-monthly-reminders",
                 "book-club-daily",
+                "public-catalog-launch",
                 "literature-opening-recovery",
                 "literature-channel-opening",
                 "literature-admin-digest",

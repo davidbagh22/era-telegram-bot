@@ -19,7 +19,7 @@ from app.services.community_mission_service import (
     launched_template_ids,
     list_mission_templates,
 )
-from app.utils.constants import PRIVILEGED_ROLES
+from app.utils.constants import PRIVILEGED_ROLES, TaskStatus
 from app.utils.deep_links import task_submit_deep_link
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -99,6 +99,7 @@ async def _to_task_out(
     session: AsyncSession, task: Task, user: User, settings: Settings
 ) -> TaskOut:
     joined_ids = await task_service.joined_task_ids(session, user, [task])
+    completed = task.id in await task_service.completed_task_ids(session, user, [task])
     can_submit = await task_service.can_submit(session, task, user)
     meta = _mission_meta(task)
     squad = (
@@ -126,9 +127,9 @@ async def _to_task_out(
         description=task.description,
         deadline=(task.deadline.isoformat() if task.deadline else ""),
         points=task.points,
-        status=task.status,
+        status=TaskStatus.COMPLETED if completed else task.status,
         task_type=task.task_type,
-        is_joined_or_assigned=task_service.is_joined_or_assigned(task, joined_ids, user),
+        is_joined_or_assigned=completed or task_service.is_joined_or_assigned(task, joined_ids, user),
         can_submit=can_submit,
         submit_deep_link=(
             task_submit_deep_link(settings.bot_username, task.id)

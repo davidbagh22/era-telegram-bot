@@ -1471,6 +1471,7 @@ async def decide_task_submission_endpoint(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await session.commit()
     if bot is not None and result.participant_notice:
         keyboard = open_app_button(miniapp_task_url(settings.effective_miniapp_url, task.id))
         await safe_send(bot, participant.telegram_id, result.participant_notice, keyboard)
