@@ -3,7 +3,7 @@ services:
     name: era-telegram-bot
     runtime: docker
     region: frankfurt
-    plan: free
+    plan: starter
     dockerfilePath: ./Dockerfile
     dockerContext: .
     autoDeployTrigger: checksPass
@@ -22,7 +22,7 @@ services:
       - key: REDIS_URL
         fromService:
           type: keyvalue
-          name: era-redis
+          name: era-redis-persistent
           property: connectionString
       - key: OPENAI_MODEL
         value: gpt-5.5
