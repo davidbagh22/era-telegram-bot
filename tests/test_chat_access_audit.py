@@ -58,45 +58,55 @@ class ChatAccessAuditTests(unittest.IsolatedAsyncioTestCase):
         await session.flush()
         return user
 
-    async def test_sync_writes_audit_summary_row(self) -> None:
+    async def test_sync_does_not_override_member_permissions(self) -> None:
         async with self.session_factory() as session:
             user = await self._make_user(session)
             bot = AsyncMock()
 
             fixed, failed = await sync_user_chat_access(bot, _settings(), session, user)
 
-            self.assertEqual(fixed, 1)
+            self.assertEqual(fixed, 0)
             self.assertEqual(failed, 0)
+            bot.restrict_chat_member.assert_not_awaited()
+            bot.set_chat_permissions.assert_not_awaited()
             rows = (
                 await session.scalars(
                     select(AuditLog).where(AuditLog.action == "chat_access.synced")
                 )
             ).all()
-            self.assertEqual(len(rows), 1)
-            self.assertEqual(rows[0].actor_id, user.id)
-            self.assertEqual(rows[0].new_value["fixed"], 1)
-            self.assertEqual(rows[0].new_value["failed"], 0)
+            self.assertEqual(rows, [])
 
-    async def test_sync_records_failures_for_visibility(self) -> None:
+    async def test_application_status_does_not_write_chat_permissions(self) -> None:
         async with self.session_factory() as session:
             user = await self._make_user(session)
             bot = AsyncMock()
-            bot.restrict_chat_member = AsyncMock(
-                side_effect=TelegramAPIError(method=object(), message="telegram down")
-            )
-            # An unapproved user forces a restrict_member call, which will
-            # fail via the mocked exception above.
             user.application_status = ApplicationStatus.PENDING
 
             fixed, failed = await sync_user_chat_access(bot, _settings(), session, user)
 
-            self.assertEqual(failed, 1)
+            self.assertEqual((fixed, failed), (0, 0))
+            bot.restrict_chat_member.assert_not_awaited()
+            bot.set_chat_permissions.assert_not_awaited()
             rows = (
                 await session.scalars(
                     select(AuditLog).where(AuditLog.action == "chat_access.synced")
                 )
             ).all()
-            self.assertEqual(rows[0].new_value["failed"], 1)
+            self.assertEqual(rows, [])
+
+    async def test_legacy_permission_maintenance_hooks_are_noops(self) -> None:
+        from app.services.chat_access_service import ensure_general_chat_writable, unrestrict_member
+
+        bot = AsyncMock()
+
+        result = await ensure_general_chat_writable(bot, _settings(), AsyncMock())
+        restored = await unrestrict_member(bot, -1001, 10)
+
+        self.assertEqual(result, (0, 0))
+        self.assertFalse(restored)
+        bot.set_chat_permissions.assert_not_awaited()
+        bot.get_chat_member.assert_not_awaited()
+        bot.restrict_chat_member.assert_not_awaited()
 
 
 class ChatJoinRequestAuditTests(unittest.IsolatedAsyncioTestCase):
