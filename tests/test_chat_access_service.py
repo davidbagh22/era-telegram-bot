@@ -118,8 +118,8 @@ def test_chat_handlers_keep_join_access_without_write_restrictions() -> None:
     assert "restrict_member(bot, message.chat.id" not in chat_source
     assert "await remove_rejected_member(bot" not in service_source
     assert "else await restrict_member" not in service_source
-    assert "await unrestrict_member(bot, chat_id, user.telegram_id)" in service_source
-    assert "await bot.set_chat_permissions" in service_source
+    assert "await unrestrict_member(bot, chat_id, user.telegram_id)" not in service_source
+    assert "await bot.set_chat_permissions" not in service_source
     assert "Право писать остаётся у всех." in chat_source
     assert "ban_chat_member" not in chat_source
     assert "approve_chat_join_request" in service_source
