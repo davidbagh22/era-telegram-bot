@@ -27,7 +27,7 @@ class DirectionsAnnouncementTests(GeneralTopicsTests):
         replacement.assert_not_awaited()
         args, kwargs = previous.call_args
         self.assertEqual(args, (-100123, ANNOUNCEMENT))
-        self.assertEqual(kwargs['message_thread_id'], 101)
+        self.assertEqual(kwargs['message_thread_id'], 102)
         self.assertEqual(kwargs['parse_mode'], 'HTML')
         self.assertEqual([r[0].url for r in kwargs['reply_markup'].inline_keyboard], ['https://t.me/+PsEYN685g1w5ZmEy', 'https://t.me/+zV8olVtkdc8yMWVi'])
         async with self.sessions() as session:

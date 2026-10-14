@@ -42,6 +42,24 @@ async def _already_awarded(session: AsyncSession, user_id: int, task_id: int) ->
     return previous is not None
 
 
+async def _complete_public_participation(
+    session: AsyncSession, task: Task, participant: User
+) -> None:
+    if not (task.reward_json or {}).get("public_task"):
+        return
+    task.status = "published"
+    membership = await session.scalar(
+        select(TaskParticipant)
+        .where(
+            TaskParticipant.task_id == task.id,
+            TaskParticipant.user_id == participant.id,
+        )
+        .with_for_update()
+    )
+    if membership is not None:
+        membership.status = "completed"
+
+
 async def decide_submission(
     session: AsyncSession,
     submission: TaskSubmission,
@@ -63,6 +81,7 @@ async def decide_submission(
 
     if action == "approve":
         if submission.status == "approved":
+            await _complete_public_participation(session, task, participant)
             return TaskReviewResult(
                 submission=submission,
                 admin_notice="Этот результат уже одобрен. Повторно баллы не начисляются.",
@@ -71,6 +90,7 @@ async def decide_submission(
             )
         submission.status = "approved"
         submission.reviewed_by = actor.id
+        await _complete_public_participation(session, task, participant)
         if await _already_awarded(session, participant.id, task.id):
             return TaskReviewResult(
                 submission=submission,

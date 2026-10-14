@@ -7,11 +7,18 @@ from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.content.literature_issues import ISSUES, render_issue
 from app.database.models import AppSetting, User
-from app.services.book_club_service import eligible, mark_progress, progress
-from app.services.book_club_service import save_reflection, reflection_summary
-from app.content.literature_issues import get_issue
+from app.content.literature_issues import ISSUES, get_issue, render_issue
+from app.services.book_club_service import (
+    eligible,
+    format_literature_stats,
+    literature_stats,
+    mark_progress,
+    progress,
+    reflection_summary,
+    save_reflection,
+)
+from app.services.authorization_service import is_full_admin
 
 
 class ReflectionStates(StatesGroup):
@@ -34,8 +41,13 @@ def _keyboard(subscribed: bool = False, discussion_url: str = '') -> InlineKeybo
                     'bookclub:unsubscribe' if subscribed else 'bookclub:subscribe')]]
     if discussion_url:
         rows.append([InlineKeyboardButton(text='💬 Обсуждение в сообществе', url=discussion_url)])
+    rows.append([InlineKeyboardButton(text='📖 Найти книгу в РГБ', url=READ_BOOK_URL)])
     rows.append([button('🏠 Главное меню', 'menu:main')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+AUDIOBOOK_URL = 'https://t.me/audiobook900'
+READ_BOOK_URL = 'https://search.rsl.ru/ru/record/02000010666'
 
 
 def issue_keyboard(number: int) -> InlineKeyboardMarkup:
@@ -47,6 +59,8 @@ def issue_keyboard(number: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [button('✅ Прочитано', f'bookclub:read:{number}'), button('📝 Задание выполнено', f'bookclub:task:{number}')],
         [button('💭 Ответить для себя', f'bookclub:reflect:{number}')],
+        [InlineKeyboardButton(text='📖 Найти книгу в РГБ', url=READ_BOOK_URL)],
+        [InlineKeyboardButton(text='🎧 Слушать аудио', url=AUDIOBOOK_URL)],
         nav, [button('← Все выпуски', f'bookclub:list:{(number - 1) // 8}')],
         [button('📚 Литература', 'bookclub:home'), button('🔕 Отписаться', 'bookclub:unsubscribe')],
         [button('🏠 Главное меню', 'menu:main')],
@@ -58,8 +72,9 @@ async def show_home(message: Message, user: User | None, settings: Settings):
         '📚 ЭРА | Литература\n\nНачинаем с книги Роберта Грина «48 законов власти». '
         'Все 48 авторских критических разборов доступны для чтения. '
         'Это не текст книги и не безусловные советы по манипуляции.\n\n'
-        'Рассылка по подписке: один выпуск в день в 19:00 по Еревану, '
-        'с 10 октября по 26 ноября 2026 года. Пропущенные выпуски можно открыть в каталоге. '
+        'Рассылка по подписке: один закон ежедневно '
+        'в 19:00 по Еревану, начиная с 10 октября 2026 года. '
+        'Пропущенные выпуски можно открыть в каталоге. '
         'Отписаться можно в любой момент; отметки прогресса сохранятся.\n\n'
         'Если формат будет интересен участникам, продолжим программу с другими книгами.',
         reply_markup=_keyboard(bool(user and user.book_club_subscribed), settings.general_chat_url),
@@ -88,7 +103,7 @@ async def change_subscription(call: CallbackQuery, user: User | None, session: A
     await session.commit()
     await call.answer('Подписка включена' if subscribed else 'Подписка отключена')
     await call.message.answer(
-        '✅ Подписка включена. Новые выпуски приходят в 19:00 по Еревану в дни программы.' if subscribed
+        '✅ Подписка включена. Выпуски приходят ежедневно в 19:00 по Еревану.' if subscribed
         else '🔕 Подписка отключена. Новых рассылок не будет. История чтения сохранена.',
         reply_markup=_keyboard(subscribed),
     )
@@ -169,7 +184,7 @@ async def navigate(call: CallbackQuery, user: User | None, session: AsyncSession
             return
         counts = await progress(session, user)
         await call.answer()
-        await call.message.answer(f'📊 Ваши отметки\nПрочитано: {counts["read"]}/48\nЗаданий выполнено: {counts["task"]}/48\n\nЭто самостоятельные отметки, не проверка знаний и не начисление баллов.', reply_markup=_keyboard(user.book_club_subscribed))
+        await call.message.answer(f'📊 Ваши отметки\nПрочитано: {counts["read"]}/48\nЗаданий выполнено: {counts["task"]}/48\n\nЗадание: +5 баллов за первую отметку выполнения каждого закона. Отметка самостоятельная, без проверки содержания.', reply_markup=_keyboard(user.book_club_subscribed))
         return
     try:
         number = int(parts[2])
@@ -194,8 +209,16 @@ async def navigate(call: CallbackQuery, user: User | None, session: AsyncSession
                 await call.answer('Сначала завершите регистрацию.', show_alert=True)
                 return
             await mark_progress(session, user, number, action)
-            await call.answer('Отметка сохранена')
+            await call.answer('Отметка сохранена · за первое выполнение задания +5 баллов' if action == 'task' else 'Отметка сохранена')
         else:
             raise ValueError
     except (ValueError, IndexError):
         await call.answer('Откройте актуальный каталог литературы.', show_alert=True)
+
+
+@router.message(F.text == '/literature_stats')
+async def admin_literature_stats(message: Message, user: User | None, settings: Settings, session: AsyncSession):
+    if not is_full_admin(user, settings, message.from_user.id):
+        return
+    stats = await literature_stats(session)
+    await message.answer(format_literature_stats(stats), parse_mode='HTML')

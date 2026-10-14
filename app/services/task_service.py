@@ -115,6 +115,26 @@ async def joined_task_ids(
     return joined
 
 
+async def completed_task_ids(
+    session: AsyncSession, user: User, tasks: list[Task]
+) -> set[int]:
+    public_ids = [
+        task.id for task in tasks if (_reward(task).get("public_task"))
+    ]
+    if not public_ids:
+        return set()
+    completed = (
+        await session.scalars(
+            select(TaskParticipant.task_id).where(
+                TaskParticipant.user_id == user.id,
+                TaskParticipant.task_id.in_(public_ids),
+                TaskParticipant.status == "completed",
+            )
+        )
+    ).all()
+    return set(completed)
+
+
 def _reward(task: Task) -> dict:
     return getattr(task, "reward_json", None) or {}
 
@@ -178,6 +198,8 @@ async def claim(
     existing = next((item for item in current if item.user_id == user.id), None)
 
     if existing:
+        if existing.status == "completed":
+            return existing, "completed"
         if existing.status == "rejected":
             accepted = [
                 item

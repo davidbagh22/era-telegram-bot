@@ -46,7 +46,7 @@ def _fake_session(get_results: dict) -> SimpleNamespace:
     async def _get(model, obj_id):
         return get_results.get((model, obj_id))
 
-    return SimpleNamespace(get=AsyncMock(side_effect=_get))
+    return SimpleNamespace(get=AsyncMock(side_effect=_get), commit=AsyncMock())
 
 
 class AdminTaskSubmissionsApiTests(unittest.TestCase):

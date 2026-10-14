@@ -33,8 +33,12 @@ async def start_book_club(admin:User=Depends(require_admin),session=Depends(get_
 async def book_analytics(admin:User=Depends(require_admin),session=Depends(get_session)):
     from sqlalchemy import func
     from app.database.models import AppSetting
+    from app.utils.constants import ApplicationStatus
     # Only totals leave the private diary; never send personal answers to admins.
-    subscribed = await session.scalar(select(func.count()).select_from(User).where(User.book_club_subscribed.is_(True), User.is_blocked.is_(False), User.is_archived.is_(False)))
+    subscribed = await session.scalar(select(func.count()).select_from(User).where(
+        User.book_club_subscribed.is_(True), User.is_blocked.is_(False),
+        User.is_archived.is_(False), User.application_status == ApplicationStatus.APPROVED,
+    ))
     keys = (await session.scalars(select(AppSetting.key).where(AppSetting.key.like('book-reflection:%')))).all()
     return {'subscribers': subscribed, 'responses': len(keys), 'respondents': len({k.split(':')[1] for k in keys})}
 

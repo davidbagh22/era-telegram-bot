@@ -11,16 +11,14 @@ from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-import asyncio
 import logging
 from sqlalchemy import select, text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import AppSetting, Task, User
-from app.services.notification_service import safe_send_once
+from app.database.models import Task, User
 from app.services.general_topics_service import send_general_topic
-from app.utils.constants import ApplicationStatus, Role
+from app.utils.constants import Role
 
 
 CATALOG: tuple[dict[str, object], ...] = (
@@ -66,20 +64,22 @@ async def publish_catalog(session: AsyncSession, *, creator: User, bot: Bot | No
             session.add(task)
             await session.flush()
             created += 1
+        else:
+            # Older catalog rows were seeded with a 50-person cap and without
+            # the self-service marker. Normalize them on every idempotent run.
+            reward = dict(task.reward_json or {})
+            reward.update({"catalog_key": key, "public_task": True, "counts_toward": list(item["counts"])})
+            if item.get("project_competition"):
+                reward.update({"project_competition": True, "portfolio_on_approval": True})
+            task.reward_json = reward
+            task.status = "published"
+            task.max_participants = None
         tasks.append(task)
 
-    # Persist tasks before transport, snapshot the audience once, then retry
-    # individual durable deliveries without creating another campaign.
-    row = await session.scalar(select(AppSetting).where(AppSetting.key == 'public_catalog_launch_v2'))
-    if row is None:
-        ids = list((await session.scalars(select(User.id).where(
-            User.application_status == ApplicationStatus.APPROVED,
-            User.is_blocked.is_(False), User.is_archived.is_(False)))).all())
-        row = AppSetting(key='public_catalog_launch_v2', value={'recipient_ids': ids}, updated_by=creator.id)
-        session.add(row)
-    recipient_ids = row.value['recipient_ids']
+    # The catalog must be durable before its single public announcement. The
+    # public topic helper owns delivery idempotency; participants are not DM'd.
     await session.commit()
-    sent = failed = 0
+    group_sent = False
     if bot is not None:
         username = settings.bot_username.strip('@') or (await bot.get_me()).username
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -100,20 +100,15 @@ async def publish_catalog(session: AsyncSession, *, creator: User, bot: Bot | No
             'Если формат понравится, продолжим с другими книгами.\n\n'
             'Выбирайте кнопку. Новым участникам сначала нужно пройти регистрацию в боте.'
         )
-        for user_id in recipient_ids:
-            user = await session.get(User, user_id)
-            if not user or user.is_blocked or user.is_archived or user.application_status != ApplicationStatus.APPROVED:
-                continue
-            result = await safe_send_once(bot, settings, user.telegram_id, message,
-                delivery_key=f'public-catalog-v2:{user.id}', notification_type='public_catalog', reply_markup=keyboard)
-            sent += int(result.sent)
-            failed += int(not result.sent)
-            await asyncio.sleep(0.05)
         group_sent = await send_general_topic(bot, settings, 'notifications', message,
             reply_markup=keyboard, delivery_key='public-catalog-v2')
-    else:
-        group_sent = False
-    return {'created': created, 'total': len(tasks), 'sent': sent, 'failed': failed, 'group_sent': group_sent}
+    return {
+        'created': created,
+        'total': len(tasks),
+        'sent': int(group_sent),
+        'failed': int(bot is not None and not group_sent),
+        'group_sent': group_sent,
+    }
 
 
 async def show_catalog(message, session, user):
