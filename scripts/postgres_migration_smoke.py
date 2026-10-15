@@ -66,6 +66,25 @@ async def main() -> None:
         if failures:
             raise RuntimeError("PostgreSQL timestamp schema drift: " + "; ".join(failures))
 
+        chat_types = dict((await connection.execute(text("""
+            SELECT table_name, data_type FROM information_schema.columns
+            WHERE table_schema = 'public' AND (
+                (table_name = 'media_chat_activity' AND column_name = 'chat_id') OR
+                (table_name = 'media_attachments' AND column_name = 'source_chat_id'))
+        """))).all())
+        if chat_types != {"media_chat_activity": "bigint", "media_attachments": "bigint"}:
+            raise RuntimeError(f"Telegram chat IDs must use bigint: {chat_types}")
+        # The connection's transaction is rolled back on exit. This proves a
+        # real supergroup ID is accepted without leaving a synthetic activity.
+        chat_id = -1002973371133
+        saved_chat_id = await connection.scalar(text("""
+            INSERT INTO media_chat_activity
+                (chat_id, activity_date, human_messages, author_ids_json, created_at, updated_at)
+            VALUES (:chat_id, CURRENT_DATE, 1, '[]', NOW(), NOW()) RETURNING chat_id
+        """), {"chat_id": chat_id})
+        if saved_chat_id != chat_id:
+            raise RuntimeError("Telegram supergroup ID was not preserved")
+
         mission_count = int(
             await connection.scalar(text("SELECT count(*) FROM community_mission_templates")) or 0
         )
