@@ -13,6 +13,7 @@ from app.services.community_verification_jobs import complete_verification_campa
 from app.services.daily_public_content_service import run_daily_public_content
 from app.services.development_notification_service import send_monthly_development_reminders
 from app.services.event_custom_reminder_service import send_configured_event_reminders
+from app.services.event_publication_service import deliver_pending_event_announcements
 from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
 from app.services.leadership_weekly_service import check_weekly_pulses_job, open_weekly_pulses_job
 from app.services.leaders_workcenter_service import sync_leaders_task_cards
@@ -59,6 +60,7 @@ def add_system_jobs(
     scheduler.add_job(send_daily_system_summary, "cron", hour=9, minute=30, args=(bot, settings, session_factory), id="system-daily-summary", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(reconcile_vacancies_job, "interval", minutes=30, args=(session_factory,), id="office-vacancy-reconciliation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(send_configured_event_reminders, "interval", minutes=1, args=(bot, settings, session_factory), id="configured-event-reminders", replace_existing=True, max_instances=1, coalesce=True)
+    scheduler.add_job(deliver_pending_event_announcements, "interval", minutes=1, args=(bot, settings, session_factory), id="event-announcement-recovery", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(sync_event_wizard_tasks_job, "interval", minutes=1, args=(session_factory,), id="event-wizard-task-sync", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(reconcile_project_scoring_job, "interval", minutes=1, args=(session_factory,), id="project-scoring-reconciliation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(process_task_squad_notifications, "interval", minutes=1, args=(bot, settings, session_factory), id="task-squad-notifications", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)

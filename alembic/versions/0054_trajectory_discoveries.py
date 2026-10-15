@@ -1,4 +1,5 @@
 """Create Trajectory of Discoveries event for 31 October 2026."""
+from datetime import date, time
 from alembic import op
 import sqlalchemy as sa
 
@@ -22,17 +23,19 @@ def upgrade():
         SELECT
             :title,
             :description,
-            DATE '2026-10-31', TIME '10:00:00',
+            :event_date, :event_time,
             'Дом Москвы в Ереване', 'Образовательная программа',
             10, NULL, 'all', FALSE, 150, FALSE,
             :additional_info, 'registration_open',
-            10, 10, 'standard', CAST('[]' AS json),
+            10, 10, 'standard', :scoring_metrics,
             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         WHERE EXISTS (SELECT 1 FROM users WHERE id = 10)
           AND NOT EXISTS (
-            SELECT 1 FROM events WHERE title = CAST(:title AS VARCHAR) AND event_date = DATE '2026-10-31'
+            SELECT 1 FROM events WHERE title = CAST(:title AS VARCHAR) AND event_date = :event_date
         )
-    """), {
+    """).bindparams(sa.bindparam("event_date", type_=sa.Date()), sa.bindparam("event_time", type_=sa.Time()),
+                     sa.bindparam("scoring_metrics", type_=sa.JSON())), {
+        "event_date": date(2026, 10, 31), "event_time": time(10), "scoring_metrics": [],
         "title": TITLE,
         "description": """10:00–10:15 — Открытие мероприятия
 10:15–11:30 — Лекция «Как развивать критическое мышление в эпоху ИИ: практические инструменты для молодёжи»
@@ -46,4 +49,5 @@ def upgrade():
 
 def downgrade():
     bind = op.get_bind()
-    bind.execute(sa.text("DELETE FROM events WHERE title=CAST(:title AS VARCHAR) AND event_date=DATE '2026-10-31'"), {"title": TITLE})
+    bind.execute(sa.text("DELETE FROM events WHERE title=CAST(:title AS VARCHAR) AND event_date=:event_date")
+                 .bindparams(sa.bindparam("event_date", type_=sa.Date())), {"title": TITLE, "event_date": date(2026, 10, 31)})

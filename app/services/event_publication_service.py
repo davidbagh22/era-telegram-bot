@@ -1,0 +1,133 @@
+"""Durable event announcements, including uploaded posters and full quick text."""
+from __future__ import annotations
+
+import logging
+
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from sqlalchemy import select
+
+from app.database.event_experience import EventExperience
+from app.database.models import Event, User
+from app.database.system_models import NotificationDelivery
+from app.services.general_topics_service import send_general_topic
+from app.services.notification_service import broadcast_detailed_once
+from app.utils.constants import ApplicationStatus, EventStatus
+from app.utils.deep_links import telegram_event_miniapp_url
+
+logger = logging.getLogger(__name__)
+PUBLIC_STATUSES = {EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN}
+
+
+def text_parts(text: str, first_limit: int = 4000) -> list[str]:
+    """Preserve every character while respecting Telegram's UTF-16 limits."""
+    parts: list[str] = []
+    start = 0
+    units = 0
+    limit = first_limit
+    for index, char in enumerate(text):
+        size = 2 if ord(char) > 0xFFFF else 1
+        if units + size > limit:
+            parts.append(text[start:index])
+            start, units, limit = index, 0, 4000
+        units += size
+    parts.append(text[start:])
+    return parts
+
+
+async def public_event_keyboard(bot, settings, event):
+    username = (settings.bot_username or "").strip() or (await bot.get_me()).username
+    url = telegram_event_miniapp_url(username or "", event.id)
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Открыть мероприятие", url=url)
+    ]]) if url else None
+
+
+def announcement_text(event, experience) -> str:
+    if getattr(experience, "creation_mode", "wizard") == "quick":
+        return experience.full_description or event.description
+    return (
+        f"🔥 {event.title}\n\n{experience.short_description or event.description}\n\n"
+        f"📅 {event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n📍 {event.location}"
+    )
+
+
+async def publish_event_announcement(bot, settings, session, event, experience) -> bool:
+    if bot is None:
+        return False
+    markup = await public_event_keyboard(bot, settings, event)
+    text = announcement_text(event, experience)
+    poster = getattr(experience, "poster_bytes", None)
+    parts = text_parts(text, 1000 if poster else 4000)
+    for index, part in enumerate(parts):
+        media = {}
+        if index == 0 and poster:
+            content_type = experience.poster_content_type or "image/jpeg"
+            extension = {"image/png": "png", "image/webp": "webp"}.get(content_type, "jpg")
+            media["photo"] = BufferedInputFile(poster, filename=f"event-{event.id}.{extension}")
+        delivered = await send_general_topic(
+            bot, settings, "announcements", part,
+            reply_markup=markup if index == len(parts) - 1 else None,
+            delivery_key=f"event:{event.id}:published" + (f":part:{index}" if index else ""),
+            **media,
+        )
+        if not delivered:
+            return False
+    targets = set(experience.broadcast_targets or [])
+    if experience.broadcast_enabled and targets.intersection({"bot", "all", "bot_and_chat"}):
+        # An explicit wizard choice is the only way to request personal delivery.
+        recipients = await session.scalars(select(User.telegram_id).where(
+            User.application_status == ApplicationStatus.APPROVED,
+            User.is_blocked.is_(False), User.is_archived.is_(False),
+        ))
+        summary = f"{event.title}\n\n{experience.short_description or event.description}"
+        await broadcast_detailed_once(
+            bot, settings, [int(value) for value in recipients.all() if value], summary[:3500],
+            reply_markup=markup, delivery_key=f"event:{event.id}:published",
+            notification_type="event_published",
+        )
+    return True
+
+
+async def record_announcement_status(session, event_id: int, delivered: bool) -> None:
+    experience = await session.scalar(select(EventExperience).where(
+        EventExperience.event_id == event_id,
+    ).with_for_update().execution_options(populate_existing=True))
+    if experience.announcement_status == "sent":
+        return
+    if delivered:
+        experience.announcement_status = "sent"
+    else:
+        rows = list((await session.scalars(select(NotificationDelivery).where(
+            NotificationDelivery.delivery_key.like(f"general-topic:announcements:event:{event_id}:published%"),
+        ))).all())
+        attention = any(row.status in {"uncertain", "blocked", "unreachable", "conflict"}
+                        or row.error_code == "telegram_bad_request" for row in rows)
+        # A rejected call with only sent rows indicates a changed payload/key
+        # conflict. Do not keep retrying it or create a replacement message.
+        attention = attention or (bool(rows) and all(row.status == "sent" for row in rows))
+        experience.announcement_status = "needs_attention" if attention else "pending"
+
+
+async def deliver_pending_event_announcements(bot, settings, session_factory) -> None:
+    async with session_factory() as session:
+        ids = list((await session.scalars(select(EventExperience.event_id).join(
+            Event, Event.id == EventExperience.event_id,
+        ).where(EventExperience.announcement_status == "pending", Event.status.in_(PUBLIC_STATUSES))
+            .order_by(EventExperience.event_id).limit(20))).all())
+        for event_id in ids:
+            try:
+                experience = await session.scalar(select(EventExperience).where(
+                    EventExperience.event_id == event_id,
+                    EventExperience.announcement_status == "pending",
+                ).with_for_update(skip_locked=True))
+                if experience is None:
+                    continue
+                event = await session.get(Event, event_id)
+                if event.status not in PUBLIC_STATUSES:
+                    continue
+                delivered = await publish_event_announcement(bot, settings, session, event, experience)
+                await record_announcement_status(session, event_id, delivered)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                logger.exception("Event announcement retry failed event_id=%s", event_id)

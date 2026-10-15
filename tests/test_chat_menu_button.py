@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import ast
 import unittest
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 from pathlib import Path
 
 from aiogram.types import MenuButtonCommands, MenuButtonDefault, MenuButtonWebApp, WebAppInfo
 
-from app.webapp import _chat_menu_button, _menu_button_matches
+from app.webapp import _chat_menu_button, _menu_button_matches, _set_and_verify_menu_button
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 GUARDED_CALLS = {"set_chat_menu_button", "set_my_commands", "delete_my_commands"}
@@ -67,6 +69,26 @@ class MenuButtonVerificationTests(unittest.TestCase):
     def test_web_app_expected_but_default_returned_is_still_a_real_mismatch(self) -> None:
         expected = MenuButtonWebApp(text="Открыть ЭРА", web_app=WebAppInfo(url="https://era.example/app/"))
         self.assertFalse(_menu_button_matches(expected, MenuButtonCommands()))
+
+
+class MenuButtonReadBackTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stale_read_back_is_retried_without_rewriting_configuration(self):
+        old = _chat_menu_button("https://era.example/app/?v=old")
+        current = _chat_menu_button("https://era.example/app/?v=new")
+        bot = SimpleNamespace(set_chat_menu_button=AsyncMock(), get_chat_menu_button=AsyncMock(side_effect=[old, current]))
+        with patch("app.webapp.asyncio.sleep", new=AsyncMock()):
+            actual, verified = await _set_and_verify_menu_button(bot, current)
+        self.assertTrue(verified)
+        self.assertEqual(actual.web_app.url, current.web_app.url)
+        bot.set_chat_menu_button.assert_awaited_once()
+
+    async def test_persistent_mismatch_is_still_reported(self):
+        current = _chat_menu_button("https://era.example/app/?v=new")
+        bot = SimpleNamespace(set_chat_menu_button=AsyncMock(), get_chat_menu_button=AsyncMock(return_value=MenuButtonDefault()))
+        with patch("app.webapp.asyncio.sleep", new=AsyncMock()):
+            _, verified = await _set_and_verify_menu_button(bot, current)
+        self.assertFalse(verified)
+        self.assertEqual(bot.get_chat_menu_button.await_count, 3)
 
 
 class SingleSourceOfTruthTests(unittest.TestCase):

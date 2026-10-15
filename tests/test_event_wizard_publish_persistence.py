@@ -45,12 +45,13 @@ class EventWizardPublishTests(IsolatedAsyncioTestCase):
                 self.assertEqual(saved.status, EventStatus.REGISTRATION_OPEN)
                 again = await publish_event(draft.id, self.admin, session, self.settings, object())
                 self.assertEqual(again.id, draft.id)
-            self.assertEqual(notify.await_count, 1)
+            self.assertEqual(notify.await_count, 2)
+            self.assertEqual(again.announcement_status, "pending")
 
     async def test_publication_uses_group_safe_button_and_announcements_topic(self):
         event = SimpleNamespace(id=4, title="Event", description="Description", event_date=date.today(), event_time=__import__('datetime').time(18), location="Hall")
         experience = SimpleNamespace(broadcast_enabled=False, broadcast_targets=[], short_description="Short")
-        with patch("app.api.v1.admin_event_create.send_general_topic", new=AsyncMock(return_value=True)) as send:
+        with patch("app.services.event_publication_service.send_general_topic", new=AsyncMock(return_value=True)) as send:
             await _publish_broadcast(object(), self.settings, None, event, experience)
             self.assertEqual(send.call_args.args[2], "announcements")
             button = send.call_args.kwargs["reply_markup"].inline_keyboard[0][0]

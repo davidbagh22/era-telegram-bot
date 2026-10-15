@@ -1,4 +1,5 @@
 """Polish Trajectory event in production."""
+from datetime import date, time
 from alembic import op
 import sqlalchemy as sa
 
@@ -20,11 +21,12 @@ def upgrade():
             status = 'registration_open',
             points_for_visit = 150,
             location = 'Дом Москвы в Ереване',
-            event_time = TIME '10:00:00',
+            event_time = :event_time,
             updated_at = CURRENT_TIMESTAMP
-        WHERE event_date = DATE '2026-10-31'
+        WHERE event_date = :event_date
           AND title = CAST(:title AS VARCHAR)
-    """), {
+    """).bindparams(sa.bindparam("event_date", type_=sa.Date()), sa.bindparam("event_time", type_=sa.Time())), {
+        "event_date": date(2026, 10, 31), "event_time": time(10),
         "title": TITLE,
         "description": """Образовательная программа для молодых соотечественников.\n\n🕙 ПРОГРАММА\n10:00–10:15 — Открытие\n10:15–11:30 — Лекция «Как развивать критическое мышление в эпоху ИИ: практические инструменты для молодёжи»\n11:30–12:00 — Кофе-брейк\n12:00–13:15 — Мастер-класс «Историческая правда и фейки: как работать с источниками при изучении российской истории»\n13:15–13:30 — Завершение\n\n🎓 Все участники получат сертификаты.\n⭐ За подтверждённое посещение — 150 баллов ЭРА.""",
         "additional_info": "Регистрация проходит через ЭРА. Для участия также необходимо присоединиться к чату мероприятия: https://t.me/+Vz588wqkyt82ZTRi",

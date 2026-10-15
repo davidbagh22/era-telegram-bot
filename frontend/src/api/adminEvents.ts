@@ -45,6 +45,8 @@ export interface EventTaskDraftItem {
 }
 
 export interface AdminEventDraft {
+  creation_mode: "wizard" | "quick";
+  announcement_status: "not_requested" | "pending" | "sent" | "needs_attention";
   id: number;
   status: string;
   wizard_step: number;
@@ -80,6 +82,7 @@ export interface AdminEventDraft {
 }
 
 export type AdminEventDraftPatch = Partial<{
+  creation_mode: "wizard" | "quick";
   wizard_step: number;
   title: string;
   short_description: string;
@@ -159,8 +162,8 @@ export async function createAdminEvent(payload: AdminEventCreatePayload): Promis
   });
 }
 
-export function createEventDraft(): Promise<AdminEventDraft> {
-  return requestJson<AdminEventDraft>("/api/v1/admin/events/drafts", { method: "POST" });
+export function createEventDraft(creationMode: "wizard" | "quick" = "wizard"): Promise<AdminEventDraft> {
+  return requestJson<AdminEventDraft>("/api/v1/admin/events/drafts", { method: "POST", body: JSON.stringify({ creation_mode: creationMode }) });
 }
 
 export function listEventDrafts(): Promise<AdminEventDraft[]> {

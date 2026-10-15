@@ -21,24 +21,17 @@ _COLUMNS = ("created_at", "updated_at")
 
 
 def upgrade() -> None:
+    default = sa.text("CURRENT_TIMESTAMP" if op.get_bind().dialect.name == "sqlite" else "now()")
     for table_name in _TABLES:
-        for column_name in _COLUMNS:
-            op.alter_column(
-                table_name,
-                column_name,
-                existing_type=sa.DateTime(timezone=True),
-                existing_nullable=False,
-                server_default=sa.text("now()"),
-            )
+        with op.batch_alter_table(table_name) as batch:
+            for column_name in _COLUMNS:
+                batch.alter_column(column_name, existing_type=sa.DateTime(timezone=True),
+                                   existing_nullable=False, server_default=default)
 
 
 def downgrade() -> None:
     for table_name in _TABLES:
-        for column_name in _COLUMNS:
-            op.alter_column(
-                table_name,
-                column_name,
-                existing_type=sa.DateTime(timezone=True),
-                existing_nullable=False,
-                server_default=None,
-            )
+        with op.batch_alter_table(table_name) as batch:
+            for column_name in _COLUMNS:
+                batch.alter_column(column_name, existing_type=sa.DateTime(timezone=True),
+                                   existing_nullable=False, server_default=None)

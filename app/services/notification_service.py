@@ -305,6 +305,7 @@ async def safe_send_once(
     parse_mode: str | None = None,
     max_attempts: int = 3,
     message_thread_id: int | None = None,
+    photo=None,
 ) -> NotificationDeliveryResult:
     """Send one automatic notification durably and idempotently.
 
@@ -317,6 +318,10 @@ async def safe_send_once(
     contract. Message text and reply markup are never stored.
     """
     content_hash = _payload_hash(text)
+    if photo is not None:
+        photo_data = getattr(photo, "data", None)
+        photo_hash = hashlib.sha256(photo_data).hexdigest() if isinstance(photo_data, bytes) else _payload_hash(str(photo))
+        content_hash = _payload_hash(f"{text}\0photo:{photo_hash}")
     try:
         claimed = await _claim_delivery(
             settings,
@@ -346,7 +351,10 @@ async def safe_send_once(
                 kwargs["message_thread_id"] = message_thread_id
             if parse_mode is not None:
                 kwargs["parse_mode"] = parse_mode
-            await bot.send_message(chat_id, text, **kwargs)
+            if photo is None:
+                await bot.send_message(chat_id, text, **kwargs)
+            else:
+                await bot.send_photo(chat_id, photo, caption=text, **kwargs)
             try:
                 attempt_count = await _record_delivery_outcome(
                     settings,

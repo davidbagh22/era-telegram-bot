@@ -1,4 +1,5 @@
 """Remove erroneous Trajectory events and stop their campaign."""
+from datetime import date
 from alembic import op
 import sqlalchemy as sa
 
@@ -10,11 +11,9 @@ depends_on = None
 
 def upgrade():
     bind = op.get_bind()
-    bind.execute(sa.text("""
-        DELETE FROM events
-        WHERE event_date = DATE '2026-10-31'
-          AND title ILIKE '%Траектория открытий%'
-    """))
+    events = sa.table("events", sa.column("event_date", sa.Date()), sa.column("title", sa.String()))
+    bind.execute(events.delete().where(events.c.event_date == date(2026, 10, 31),
+                                       events.c.title.ilike("%Траектория открытий%")))
 
 
 def downgrade():

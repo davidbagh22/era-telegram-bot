@@ -17,6 +17,7 @@ import type {
 import { describeActionError, fetchProjects } from "../../../api/client";
 import { Card } from "../../../components/Card";
 import { useAsync } from "../../../hooks/useAsync";
+import { QuickEventCreateDialog } from "./QuickEventCreateDialog";
 
 const STEP_TITLES = [
   "Основное",
@@ -40,6 +41,7 @@ const REMINDERS = [
 function patchFromDraft(draft: AdminEventDraft, wizardStep = draft.wizard_step): AdminEventDraftPatch {
   return {
     wizard_step: wizardStep,
+    creation_mode: draft.creation_mode,
     title: draft.title,
     short_description: draft.short_description,
     full_description: draft.full_description,
@@ -92,21 +94,6 @@ export function AdminEventCreatePanel() {
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [customReminder, setCustomReminder] = useState("");
-  const [quickOpen, setQuickOpen] = useState(false);
-  const [quickPreview, setQuickPreview] = useState(false);
-  const [quickText, setQuickText] = useState("");
-  const [quickTitle, setQuickTitle] = useState("");
-  const [quickDate, setQuickDate] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  });
-  const [quickTime, setQuickTime] = useState("12:00");
-  const [quickLocation, setQuickLocation] = useState("");
-  const [quickPhoto, setQuickPhoto] = useState<File | null>(null);
-  const [quickPublishing, setQuickPublishing] = useState(false);
-  const [quickError, setQuickError] = useState<string | null>(null);
-  const [quickPublishedTitle, setQuickPublishedTitle] = useState<string | null>(null);
-  const [quickDraftId, setQuickDraftId] = useState<number | null>(null);
   const versionRef = useRef(0);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const projectsState = useAsync(() => fetchProjects("open"), []);
@@ -160,11 +147,11 @@ export function AdminEventCreatePanel() {
     return () => window.clearTimeout(timer);
   }, [dirty, draft, saveNow]);
 
-  const begin = async () => {
+  const begin = async (mode: "wizard" | "quick" = "wizard") => {
     setBusy(true);
     setError(null);
     try {
-      const item = await createEventDraft();
+      const item = await createEventDraft(mode);
       setDraft(item);
       setSaveLabel("Черновик создан ✓");
     } catch (reason) {
@@ -189,9 +176,18 @@ export function AdminEventCreatePanel() {
   };
 
   const leaveDraft = async () => {
+    if (busy) return;
     if (dirty && !(await saveNow())) return;
-    setDraft(null);
-    setDrafts(await listEventDrafts());
+    setBusy(true);
+    try {
+      setDrafts(await listEventDrafts());
+      setDraft(null);
+      setError(null);
+    } catch (reason) {
+      setError(describeActionError(reason));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const publish = async () => {
@@ -213,40 +209,19 @@ export function AdminEventCreatePanel() {
     }
   };
 
-  const publishQuickEvent = async () => {
-    setQuickPublishing(true);
-    setQuickError(null);
+  const changePoster = async (file: File | null) => {
+    if (!draft || busy) return;
+    setBusy(true);
+    setError(null);
     try {
-      const title = quickTitle.trim() || quickText.split("\n").find((line) => line.trim())?.trim().slice(0, 255) || "Мероприятие";
-      const fullText = quickText.trim().slice(0, 10000);
-      const lines = fullText.split("\n");
-      const bodyText = lines[0]?.trim() === title ? lines.slice(1).join("\n").trim() : fullText;
-      const id = quickDraftId ?? (await createEventDraft()).id;
-      setQuickDraftId(id);
-      await saveEventDraft(id, {
-        wizard_step: 10,
-        title,
-        short_description: (bodyText || fullText).slice(0, 1000),
-        full_description: fullText,
-        category: "Мероприятие",
-        event_date: quickDate,
-        event_time: quickTime,
-        location: quickLocation.trim(),
-        attendance_mode: "offline",
-        registration_required: false,
-        points_for_visit: 0,
-        reminders: [],
-        broadcast_enabled: false,
-        broadcast_targets: [],
-      });
-      if (quickPhoto) await uploadEventPoster(id, quickPhoto);
-      const published = await publishEventDraft(id);
-      setQuickDraftId(null);
-      setQuickPublishedTitle(published.title);
+      if (dirty && !(await saveNow())) return;
+      const result = file ? await uploadEventPoster(draft.id, file) : await removeEventPoster(draft.id);
+      // A poster response must never overwrite text typed during upload.
+      setDraft((current) => current ? { ...current, has_poster: result.has_poster } : current);
     } catch (reason) {
-      setQuickError(describeActionError(reason));
+      setError(describeActionError(reason));
     } finally {
-      setQuickPublishing(false);
+      setBusy(false);
     }
   };
 
@@ -262,8 +237,8 @@ export function AdminEventCreatePanel() {
           <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>Как создаём мероприятие?</h2>
           <p style={{ margin: ".5rem 0 0", color: "var(--era-text-secondary)" }}>Можно вставить готовый анонс и прикрепить фото или заполнить подробный конструктор.</p>
         </Card>
-        <button type="button" className="era-btn-primary" disabled={busy} onClick={() => { setQuickOpen(true); setQuickPreview(false); setQuickError(null); }} style={{ width: "100%" }}>
-          {"⚡ Быстро: текст и фото"}
+        <button type="button" className="era-btn-primary" disabled={busy} onClick={() => void begin("quick")} style={{ width: "100%" }}>
+          {busy ? "Создаём…" : "⚡ Быстро: текст и фото"}
         </button>
         <button type="button" disabled={busy} onClick={() => void begin()} style={{ width: "100%" }}>
           {busy ? "Создаём…" : "＋ Создать мероприятие"}
@@ -275,54 +250,22 @@ export function AdminEventCreatePanel() {
               {(drafts ?? []).map((item) => (
                 <button key={item.id} type="button" onClick={() => { setDraft(item); setSaveLabel("Черновик восстановлен ✓"); }} style={{ textAlign: "left", padding: ".85rem" }}>
                   <strong>{item.title || "Новое мероприятие"}</strong>
-                  <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: ".8rem" }}>Шаг {item.wizard_step} из 10 · {STEP_TITLES[item.wizard_step - 1]}</span>
+                  <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: ".8rem" }}>{item.creation_mode === "quick" ? "Быстрый ввод · текст и фото" : `Шаг ${item.wizard_step} из 10 · ${STEP_TITLES[item.wizard_step - 1]}`}</span>
                 </button>
               ))}
             </div>
           </section>
         )}
-        {quickOpen && (
-          <div role="dialog" aria-modal="true" aria-labelledby="quick-event-title" style={{ position: "fixed", inset: 0, zIndex: 1000, display: "grid", placeItems: "center", padding: "1rem", background: "rgba(12, 10, 20, .72)" }}>
-            <Card style={{ width: "min(100%, 34rem)", maxHeight: "90vh", overflowY: "auto", padding: "1rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: ".5rem", alignItems: "center" }}>
-                <h2 id="quick-event-title" style={{ margin: 0 }}>{quickPublishedTitle ? "Мероприятие опубликовано" : quickPreview ? "Проверьте анонс" : "Быстрое создание"}</h2>
-                <button type="button" aria-label="Закрыть" onClick={() => { setQuickOpen(false); setQuickPublishedTitle(null); }}>✕</button>
-              </div>
-              {quickPublishedTitle ? (
-                <><p>{quickPublishedTitle}</p><p style={{ color: "var(--era-text-muted)" }}>Мероприятие опубликовано и появится в разделе мероприятий.</p><button type="button" className="era-btn-primary" onClick={() => { setQuickOpen(false); setQuickPublishedTitle(null); void listEventDrafts().then(setDrafts); }}>Готово</button></>
-              ) : quickPreview ? (
-                <>
-                  {quickPhoto && <p style={{ color: "var(--era-text-muted)" }}>Фото: {quickPhoto.name}</p>}
-                  <h3>{quickTitle.trim() || quickText.split("\n").find((line) => line.trim()) || "Мероприятие"}</h3>
-                  <p style={{ whiteSpace: "pre-wrap" }}>{quickText}</p>
-                  <p>📅 {quickDate} · {quickTime}<br />📍 {quickLocation}</p>
-                  {quickError && <p role="alert" style={{ color: "var(--era-error)" }}>{quickError}</p>}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem" }}>
-                    <button type="button" disabled={quickPublishing} onClick={() => setQuickPreview(false)}>Изменить</button>
-                    <button type="button" className="era-btn-primary" disabled={quickPublishing} onClick={() => void publishQuickEvent()}>{quickPublishing ? "Публикуем…" : "Опубликовать"}</button>
-                  </div>
-                </>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: ".65rem", marginTop: ".8rem" }}>
-                  <p style={{ margin: 0, color: "var(--era-text-muted)" }}>Вставьте готовый анонс целиком. Заголовок можно поправить отдельно.</p>
-                  <label><strong>Текст анонса</strong><textarea value={quickText} onChange={(event) => setQuickText(event.target.value)} maxLength={10000} rows={8} placeholder="Вставьте текст мероприятия…" style={{ display: "block", width: "100%", marginTop: ".3rem" }} /></label>
-                  <label><strong>Заголовок</strong><input value={quickTitle} onChange={(event) => setQuickTitle(event.target.value)} maxLength={255} placeholder="Если пусто, возьмём первую строку текста" style={{ display: "block", width: "100%", marginTop: ".3rem" }} /></label>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem" }}>
-                    <label><strong>Дата</strong><input type="date" value={quickDate} onChange={(event) => setQuickDate(event.target.value)} style={{ display: "block", width: "100%", marginTop: ".3rem" }} /></label>
-                    <label><strong>Время</strong><input type="time" value={quickTime} onChange={(event) => setQuickTime(event.target.value)} style={{ display: "block", width: "100%", marginTop: ".3rem" }} /></label>
-                  </div>
-                  <label><strong>Место или ссылка</strong><input value={quickLocation} onChange={(event) => setQuickLocation(event.target.value)} placeholder="Адрес или онлайн" style={{ display: "block", width: "100%", marginTop: ".3rem" }} /></label>
-                  <label><strong>Фото (до 5 МБ)</strong><input type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0] ?? null; setQuickError(file && file.size > 5 * 1024 * 1024 ? "Фото должно быть не больше 5 МБ." : null); setQuickPhoto(file && file.size <= 5 * 1024 * 1024 ? file : null); }} style={{ display: "block", width: "100%", marginTop: ".3rem" }} /></label>
-                  {quickPhoto && <span style={{ color: "var(--era-text-muted)", fontSize: ".85rem" }}>{quickPhoto.name}</span>}
-                  {quickError && <p role="alert" style={{ margin: 0, color: "var(--era-error)" }}>{quickError}</p>}
-                  <button type="button" className="era-btn-primary" disabled={!quickText.trim() || !quickLocation.trim() || !quickDate || !quickTime || Boolean(quickError)} onClick={() => { setQuickTitle((value) => value.trim() || quickText.split("\n").find((line) => line.trim())?.trim().slice(0, 255) || "Мероприятие"); setQuickPreview(true); }}>Проверить публикацию</button>
-                </div>
-              )}
-            </Card>
-          </div>
-        )}
+        {error && <p role="alert" style={{ color: "var(--era-error)" }}>{error}</p>}
+
       </div>
     );
+  }
+
+  if (draft.creation_mode === "quick") {
+    return <QuickEventCreateDialog draft={draft} busy={busy} saving={saving} saveLabel={saveLabel} error={error}
+      onChange={mutate} onClose={leaveDraft} onPublish={publish} onPoster={changePoster}
+      onWizard={() => mutate((current) => ({ ...current, creation_mode: "wizard" }))} />;
   }
 
   if (draft.is_complete && draft.status !== "draft") {
@@ -330,6 +273,8 @@ export function AdminEventCreatePanel() {
       <div style={{ display: "flex", flexDirection: "column", gap: ".75rem" }}>
         <Card gradient><p style={{ margin: 0, fontSize: ".8rem", fontWeight: 800 }}>ОПУБЛИКОВАНО</p><h2 style={{ margin: ".35rem 0 0" }}>{draft.title}</h2></Card>
         <Card><strong>Событие уже в системе ✓</strong><p style={{ margin: ".35rem 0 0", color: "var(--era-text-muted)" }}>Регистрация, напоминания и выбранная рассылка работают из данных этого события.</p></Card>
+        {draft.announcement_status === "pending" && <Card>Анонс ожидает отправки. Создавать мероприятие повторно не нужно.</Card>}
+        {draft.announcement_status === "needs_attention" && <Card>Отправка анонса не подтверждена. Проверьте тему «Мероприятия» перед повторной отправкой.</Card>}
         <button type="button" onClick={() => void leaveDraft()}>Создать ещё одно мероприятие</button>
       </div>
     );
@@ -340,6 +285,7 @@ export function AdminEventCreatePanel() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: ".75rem", paddingBottom: "1rem" }}>
       <StepHeader step={step} />
+      <button type="button" disabled={busy || saving} onClick={() => mutate((current) => ({ ...current, creation_mode: "quick" }))}>⚡ Перейти в быстрый ввод</button>
       <div style={{ display: "flex", justifyContent: "space-between", gap: ".5rem", alignItems: "center" }}>
         <button type="button" onClick={() => void leaveDraft()} style={{ padding: ".45rem .65rem" }}>← Черновики</button>
         <span style={{ color: saveLabel.includes("Не удалось") ? "var(--era-error)" : "var(--era-text-muted)", fontSize: ".75rem", textAlign: "right" }}>{saving ? "Сохраняем…" : saveLabel}</span>
@@ -387,13 +333,13 @@ export function AdminEventCreatePanel() {
             {draft.has_poster ? (
               <div style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
                 <div style={{ minHeight: 150, borderRadius: "1rem", background: "linear-gradient(135deg,#632CFF,#D71978,#FF6400)", display: "grid", placeItems: "center", fontWeight: 900 }}>Афиша загружена ✓</div>
-                <label className="era-btn-primary" style={{ textAlign: "center", cursor: "pointer" }}>Заменить афишу<input hidden type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadEventPoster(draft.id, file).then(setDraft).catch((reason) => setError(describeActionError(reason))); }} /></label>
-                <button type="button" onClick={() => void removeEventPoster(draft.id).then(setDraft).catch((reason) => setError(describeActionError(reason)))}>Удалить</button>
+                <label className="era-btn-primary" style={{ textAlign: "center", cursor: "pointer" }}>Заменить афишу<input hidden disabled={busy} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void changePoster(file); }} /></label>
+                <button type="button" disabled={busy} onClick={() => void changePoster(null)}>Удалить</button>
               </div>
             ) : (
               <label style={{ display: "grid", placeItems: "center", minHeight: 180, border: "1px dashed var(--era-border)", borderRadius: "1rem", cursor: "pointer", textAlign: "center", padding: "1rem" }}>
                 <span><strong>＋ Загрузить афишу</strong><span style={{ display: "block", color: "var(--era-text-muted)", marginTop: 4, fontSize: ".82rem" }}>JPG, PNG, WEBP · до 5 МБ</span></span>
-                <input hidden type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadEventPoster(draft.id, file).then(setDraft).catch((reason) => setError(describeActionError(reason))); }} />
+                <input hidden disabled={busy} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void changePoster(file); }} />
               </label>
             )}
           </>
