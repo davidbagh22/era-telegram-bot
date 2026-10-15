@@ -71,9 +71,9 @@ export function QuickEventCreateDialog({ draft, busy, saving, saveLabel, error, 
             {preview ? (
               <>
                 {draft.has_poster && <img alt="Афиша мероприятия" src={`/api/v1/event-posters/${draft.id}?v=${posterVersion}`} style={{ width: "100%", maxHeight: 300, objectFit: "contain", borderRadius: ".8rem" }} />}
-                <h3>{draft.title}</h3>
+                {draft.full_description.split("\n")[0].trim() !== draft.title.trim() && <h3>{draft.title}</h3>}
                 <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{draft.full_description}</p>
-                <p>📅 {draft.event_date} · {draft.event_time}<br />📍 {draft.location}</p>
+                <p>📅 {draft.event_date.split("-").reverse().join(".")} · {draft.event_time.slice(0, 5)}<br />📍 {draft.location}</p>
                 <p style={{ color: "var(--era-text-muted)" }}>{draft.registration_required ? "Регистрация открывается после публикации." : "Без регистрации."} Анонс отправится в тему «Мероприятия».</p>
               </>
             ) : (

@@ -76,7 +76,8 @@ class QuickPublicationTests(IsolatedAsyncioTestCase):
         self.assertEqual(call.kwargs["message_thread_id"], 101)
         self.assertLessEqual(len(call.kwargs["caption"].encode("utf-16-le")) // 2, 1024)
         actual = call.kwargs["caption"] + "".join(item.args[1] for item in self.bot.send_message.await_args_list)
-        self.assertEqual(actual, text.strip())
+        self.assertTrue(actual.startswith(text.strip() + "\n\n📅 07.11.2026 · "))
+        self.assertTrue(actual.endswith("\n📍 Дом Москвы"))
         self.assertIsNotNone(self.bot.send_message.await_args.kwargs["reply_markup"])
 
     async def test_missing_existing_topic_queues_delivery_and_recovers_after_restart(self):
@@ -117,6 +118,37 @@ class QuickPublicationTests(IsolatedAsyncioTestCase):
         async with self.sessions() as session:
             delivery = await session.scalar(select(NotificationDelivery))
             self.assertEqual(delivery.status, "uncertain")
+
+    async def test_changed_title_is_included_with_full_text_and_schedule(self):
+        event_id = await self.draft("Готовый текст без названия и даты")
+        await self.topic()
+        await self.publish(event_id)
+        caption = self.bot.send_photo.await_args.kwargs["caption"]
+        self.assertTrue(caption.startswith("Встреча ЭРА\n\nГотовый текст без названия и даты\n\n"))
+        self.assertIn("📅 07.11.2026", caption)
+        self.assertIn("📍 Дом Москвы", caption)
+
+    async def test_changed_partial_payload_stops_retries_without_erasing_receipts(self):
+        event_id = await self.draft("Длинный анонс\n" + "текст " * 300)
+        await self.topic()
+        self.bot.send_message.side_effect = TelegramRetryAfter(method=SendMessage(chat_id=-100123, text="x"), message="retry", retry_after=0)
+        published = await self.publish(event_id)
+        self.assertEqual(published.announcement_status, "pending")
+        async with self.sessions() as session:
+            experience = await session.get(EventExperience, event_id)
+            experience.full_description = "Изменённый анонс\n" + "новый текст " * 300
+            await session.commit()
+        self.bot.send_message.side_effect = None
+        calls_before = self.bot.send_message.await_count
+        await deliver_pending_event_announcements(self.bot, self.settings, self.sessions)
+        await deliver_pending_event_announcements(self.bot, self.settings, self.sessions)
+        async with self.sessions() as session:
+            experience = await session.get(EventExperience, event_id)
+            self.assertEqual(experience.announcement_status, "needs_attention")
+            rows = list((await session.scalars(select(NotificationDelivery))).all())
+            self.assertEqual({row.status for row in rows}, {"sent", "failed"})
+        self.bot.send_photo.assert_awaited_once()
+        self.assertEqual(self.bot.send_message.await_count, calls_before)
 
 
 def test_text_parts_preserve_unicode_and_telegram_limits():

@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.database.event_experience import EventExperience
 from app.database.models import Event, User
 from app.database.system_models import NotificationDelivery
-from app.services.general_topics_service import send_general_topic
+from app.services.general_topics_service import send_general_topic_once
 from app.services.notification_service import broadcast_detailed_once
 from app.utils.constants import ApplicationStatus, EventStatus
 from app.utils.deep_links import telegram_event_miniapp_url
@@ -43,11 +43,14 @@ async def public_event_keyboard(bot, settings, event):
 
 
 def announcement_text(event, experience) -> str:
+    schedule = f"📅 {event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n📍 {event.location}"
     if getattr(experience, "creation_mode", "wizard") == "quick":
-        return experience.full_description or event.description
+        text = experience.full_description or event.description
+        title = "" if text.split("\n", 1)[0].strip() == event.title.strip() else f"{event.title}\n\n"
+        return f"{title}{text}\n\n{schedule}"
     return (
         f"🔥 {event.title}\n\n{experience.short_description or event.description}\n\n"
-        f"📅 {event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n📍 {event.location}"
+        f"{schedule}"
     )
 
 
@@ -64,13 +67,17 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
             content_type = experience.poster_content_type or "image/jpeg"
             extension = {"image/png": "png", "image/webp": "webp"}.get(content_type, "jpg")
             media["photo"] = BufferedInputFile(poster, filename=f"event-{event.id}.{extension}")
-        delivered = await send_general_topic(
+        result = await send_general_topic_once(
             bot, settings, "announcements", part,
             reply_markup=markup if index == len(parts) - 1 else None,
             delivery_key=f"event:{event.id}:published" + (f":part:{index}" if index else ""),
             **media,
         )
-        if not delivered:
+        if result.status == "conflict":
+            # Keep already-sent ledger receipts intact, but stop the outbox even
+            # when another part still has a retryable failure.
+            experience.announcement_status = "needs_attention"
+        if not result.sent:
             return False
     targets = set(experience.broadcast_targets or [])
     if experience.broadcast_enabled and targets.intersection({"bot", "all", "bot_and_chat"}):
@@ -92,7 +99,7 @@ async def record_announcement_status(session, event_id: int, delivered: bool) ->
     experience = await session.scalar(select(EventExperience).where(
         EventExperience.event_id == event_id,
     ).with_for_update().execution_options(populate_existing=True))
-    if experience.announcement_status == "sent":
+    if experience.announcement_status in {"sent", "needs_attention"}:
         return
     if delivered:
         experience.announcement_status = "sent"
