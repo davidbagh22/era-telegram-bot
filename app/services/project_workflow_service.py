@@ -49,6 +49,7 @@ _COLUMN_BY_QUESTION_KEY: dict[str, str] = {
     "expected_result": "expected_result",
     "risks": "risks",
 }
+_COLUMN_MAX_LENGTH = {"title": 255, "format": 100}
 
 QUESTION_KEYS: tuple[str, ...] = tuple(question.key for question in PROJECT_QUESTIONS)
 TEAM_POST_PENDING_STATUSES = {"pending", "edited"}
@@ -221,7 +222,8 @@ def update_answers(project: Project, answers: dict[str, str]) -> None:
         form_data[key] = value
         column = _COLUMN_BY_QUESTION_KEY.get(key)
         if column:
-            setattr(project, column, value[:255] if column in {"title", "format"} else value)
+            max_length = _COLUMN_MAX_LENGTH.get(column)
+            setattr(project, column, value[:max_length] if max_length else value)
     project.form_data = form_data
 
 
