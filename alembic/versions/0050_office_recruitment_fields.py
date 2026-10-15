@@ -46,11 +46,8 @@ def upgrade() -> None:
     if not _has_column("offices", "workload"):
         op.add_column("offices", sa.Column("workload", sa.String(length=255), nullable=True))
     if not _has_check("offices", "ck_offices_recruitment_mode"):
-        op.create_check_constraint(
-            "ck_offices_recruitment_mode",
-            "offices",
-            "recruitment_mode IN ('auto', 'manual', 'closed')",
-        )
+        with op.batch_alter_table("offices") as batch:
+            batch.create_check_constraint("ck_offices_recruitment_mode", "recruitment_mode IN ('auto', 'manual', 'closed')")
 
     # Preserve admin intent: only offices already accepting applications are
     # migrated to an accepting mode; disabled offices stay closed.
@@ -83,7 +80,8 @@ def downgrade() -> None:
     if _has_column("position_applications", "relevant_experience"):
         op.drop_column("position_applications", "relevant_experience")
     if _has_check("offices", "ck_offices_recruitment_mode"):
-        op.drop_constraint("ck_offices_recruitment_mode", "offices", type_="check")
+        with op.batch_alter_table("offices") as batch:
+            batch.drop_constraint("ck_offices_recruitment_mode", type_="check")
     if _has_column("offices", "workload"):
         op.drop_column("offices", "workload")
     if _has_column("offices", "expected_result"):

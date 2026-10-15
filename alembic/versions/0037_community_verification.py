@@ -121,6 +121,7 @@ def upgrade() -> None:
                 (telegram_id, user_id, first_seen_at, last_seen_at, is_current_member, retained_by_admin, created_at, updated_at)
             SELECT telegram_id, id, created_at, CURRENT_TIMESTAMP, TRUE, FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             FROM users
+            WHERE 1 = 1
             ON CONFLICT (telegram_id) DO UPDATE SET user_id = EXCLUDED.user_id
             """
         )

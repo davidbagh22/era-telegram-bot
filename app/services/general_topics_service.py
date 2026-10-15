@@ -8,7 +8,7 @@ import logging
 from sqlalchemy import select, text as sql_text
 
 from app.database.models import AppSetting
-from app.services.notification_service import _session_factory, safe_send, safe_send_once
+from app.services.notification_service import NotificationDeliveryResult, _session_factory, safe_send, safe_send_once
 
 logger = logging.getLogger(__name__)
 TOPICS = {"announcements": "Мероприятия", "notifications": "Оповещения", "literature": "Литература", "games": "🎮 Интерактив"}
@@ -69,17 +69,32 @@ async def setup_general_topics(bot, settings, session_factory) -> dict:
     return result
 
 
-async def send_general_topic(bot, settings, key, text, *, reply_markup=None, delivery_key=None, parse_mode=None) -> bool:
+async def send_general_topic_once(bot, settings, key, text, *, delivery_key, reply_markup=None, parse_mode=None, photo=None) -> NotificationDeliveryResult:
+    """Expose the durable outcome so callers can stop on payload conflicts."""
+    thread_id = await ensure_topic(bot, settings, key)
+    if thread_id is None:
+        return NotificationDeliveryResult(False, "failed", False, 0, "topic_unavailable")
+    media_kwargs = {"photo": photo} if photo is not None else {}
+    return await safe_send_once(
+        bot, settings, settings.general_chat_id, text,
+        delivery_key=f"general-topic:{key}:{delivery_key}",
+        notification_type=f"general_{key}", reply_markup=reply_markup,
+        message_thread_id=thread_id, parse_mode=parse_mode,
+        **media_kwargs,
+    )
+
+
+async def send_general_topic(bot, settings, key, text, *, reply_markup=None, delivery_key=None, parse_mode=None, photo=None) -> bool:
+    if delivery_key:
+        result = await send_general_topic_once(
+            bot, settings, key, text, delivery_key=delivery_key,
+            reply_markup=reply_markup, parse_mode=parse_mode, photo=photo,
+        )
+        return result.sent or (result.duplicate and result.status == 'sent')
+    if photo is not None:
+        raise ValueError("Public media requires a durable delivery_key")
     thread_id = await ensure_topic(bot, settings, key)
     if thread_id is None:
         return False
-    if delivery_key:
-        result = await safe_send_once(
-            bot, settings, settings.general_chat_id, text,
-            delivery_key=f"general-topic:{key}:{delivery_key}",
-            notification_type=f"general_{key}", reply_markup=reply_markup,
-            message_thread_id=thread_id, parse_mode=parse_mode,
-        )
-        return result.sent or (result.duplicate and result.status == 'sent')
     return await safe_send(bot, settings.general_chat_id, text,
                            reply_markup=reply_markup, message_thread_id=thread_id, parse_mode=parse_mode)

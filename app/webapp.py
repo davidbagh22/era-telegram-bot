@@ -116,6 +116,18 @@ def _menu_button_matches(expected, actual) -> bool:
     return actual.type in ("default", "commands")
 
 
+async def _set_and_verify_menu_button(bot, expected):
+    """Telegram's read-back can briefly return the previous release URL."""
+    await bot.set_chat_menu_button(menu_button=expected)
+    actual = await bot.get_chat_menu_button()
+    for delay in (0.2, 0.5):
+        if _menu_button_matches(expected, actual):
+            break
+        await asyncio.sleep(delay)
+        actual = await bot.get_chat_menu_button()
+    return actual, _menu_button_matches(expected, actual)
+
+
 async def _configure_command_scopes(bot, settings) -> None:
     """Keep slash autocomplete private and remove it from every group scope."""
     await bot.set_my_commands([])
@@ -405,9 +417,7 @@ async def lifespan(app: FastAPI):
                 drop_pending_updates=False,
             )
             expected_menu_button = _chat_menu_button(settings.effective_miniapp_url)
-            await bot.set_chat_menu_button(menu_button=expected_menu_button)
-            actual_menu_button = await bot.get_chat_menu_button()
-            menu_button_verified = _menu_button_matches(expected_menu_button, actual_menu_button)
+            actual_menu_button, menu_button_verified = await _set_and_verify_menu_button(bot, expected_menu_button)
             me = await bot.get_me()
             if menu_button_verified:
                 logger.info(

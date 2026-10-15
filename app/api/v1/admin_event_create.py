@@ -17,9 +17,9 @@ from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
 from app.services.audit_service import audit
 from app.services.authorization_service import can_manage_events
-from app.services.notification_service import broadcast_detailed, broadcast_detailed_once
+from app.services.notification_service import broadcast_detailed
+from app.services.event_publication_service import public_event_keyboard, publish_event_announcement, record_announcement_status
 from app.services.general_topics_service import send_general_topic
-from app.utils.deep_links import telegram_event_miniapp_url
 from app.utils.constants import (
     EVENT_SCORING_PRESET_LABELS,
     EVENT_SCORING_PRESET_METRICS,
@@ -156,6 +156,7 @@ async def create_event_from_admin(
 
 
 class EventDraftPatch(BaseModel):
+    creation_mode: Literal["wizard", "quick"] | None = None
     wizard_step: int | None = Field(default=None, ge=1, le=10)
     title: str | None = Field(default=None, max_length=255)
     short_description: str | None = Field(default=None, max_length=1000)
@@ -192,6 +193,8 @@ class EventDraftPatch(BaseModel):
 
 
 class EventDraftOut(BaseModel):
+    creation_mode: str = "wizard"
+    announcement_status: str = "not_requested"
     id: int
     status: str
     wizard_step: int
@@ -257,6 +260,8 @@ async def _broadcast_estimate(session: AsyncSession, experience: EventExperience
 
 async def _draft_out(session: AsyncSession, event: Event, experience: EventExperience) -> EventDraftOut:
     return EventDraftOut(
+        creation_mode=experience.creation_mode,
+        announcement_status=experience.announcement_status,
         id=event.id,
         status=event.status,
         wizard_step=experience.wizard_step,
@@ -301,10 +306,15 @@ async def _managed_event(session: AsyncSession, event_id: int) -> Event:
     return event
 
 
+class EventDraftCreateIn(BaseModel):
+    creation_mode: Literal["wizard", "quick"] = "wizard"
+
+
 @router.post("/drafts", response_model=EventDraftOut)
 async def create_event_draft(
     admin: User = Depends(require_event_manager),
     session: AsyncSession = Depends(get_session),
+    payload: EventDraftCreateIn | None = None,
 ) -> EventDraftOut:
     today = date.today()
     event = Event(
@@ -322,7 +332,9 @@ async def create_event_draft(
     )
     session.add(event)
     await session.flush()
-    experience = EventExperience(event_id=event.id, wizard_step=1, is_complete=False)
+    mode = payload.creation_mode if payload else "wizard"
+    experience = EventExperience(event_id=event.id, wizard_step=1, is_complete=False,
+                                 creation_mode=mode, registration_required=mode != "quick")
     session.add(experience)
     await session.flush()
     await audit(
@@ -412,6 +424,9 @@ async def save_event_draft_step(
     experience = await _experience(session, event)
     was_public = event.status != EventStatus.DRAFT
     changes: list[str] = []
+
+    if payload.creation_mode is not None and not was_public:
+        experience.creation_mode = payload.creation_mode
 
     if payload.title is not None:
         event.title = payload.title.strip() or event.title
@@ -507,11 +522,18 @@ async def upload_event_poster(
     session: AsyncSession = Depends(get_session),
 ) -> EventDraftOut:
     event = await _managed_event(session, event_id)
-    if not file.content_type or not file.content_type.startswith("image/"):
+    if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
         raise HTTPException(status_code=422, detail="poster_must_be_image")
     content = await file.read(5 * 1024 * 1024 + 1)
     if len(content) > 5 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="poster_too_large")
+    valid_image = (
+        (file.content_type == "image/jpeg" and content.startswith(b"\xff\xd8\xff"))
+        or (file.content_type == "image/png" and content.startswith(b"\x89PNG\r\n\x1a\n"))
+        or (file.content_type == "image/webp" and content.startswith(b"RIFF") and content[8:12] == b"WEBP")
+    )
+    if not valid_image:
+        raise HTTPException(status_code=422, detail="poster_invalid_image")
     experience = await _experience(session, event)
     experience.poster_bytes = content
     experience.poster_content_type = file.content_type
@@ -560,38 +582,24 @@ def _validate_publish(event: Event, experience: EventExperience) -> list[str]:
 
 
 async def _public_keyboard(bot: Bot, settings: Settings, event: Event):
-    username = (settings.bot_username or "").strip() or (await bot.get_me()).username
-    url = telegram_event_miniapp_url(username or "", event.id)
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Открыть мероприятие", url=url)
-    ]]) if url else None
+    return await public_event_keyboard(bot, settings, event)
 
 
-async def _publish_broadcast(bot, settings, session, event, experience) -> None:
-    if bot is None:
-        return
-    targets = set(experience.broadcast_targets or [])
-    markup = await _public_keyboard(bot, settings, event)
-    text = (
-        f"🔥 {event.title}\n\n"
-        f"{experience.short_description or event.description}\n\n"
-        f"📅 {event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n"
-        f"📍 {event.location}"
-    )
-    # Publication always has one public event announcement. Personal delivery
-    # still respects the wizard's audience/broadcast switch.
-    await send_general_topic(bot, settings, "announcements", text,
-                             reply_markup=markup, delivery_key=f"event:{event.id}:published")
-    if experience.broadcast_enabled and targets.intersection({"bot", "all", "bot_and_chat"}):
-        recipient_rows = await session.scalars(select(User.telegram_id).where(
-            User.application_status == ApplicationStatus.APPROVED,
-            User.is_blocked.is_(False), User.is_archived.is_(False),
-        ))
-        await broadcast_detailed_once(
-            bot, settings, [int(value) for value in recipient_rows.all() if value], text,
-            reply_markup=markup, delivery_key=f"event:{event.id}:published",
-            notification_type="event_published",
-        )
+async def _publish_broadcast(bot, settings, session, event, experience) -> bool:
+    return await publish_event_announcement(bot, settings, session, event, experience)
+
+
+async def _deliver_publication(bot, settings, session, event, experience) -> None:
+    event_id = event.id
+    try:
+        delivered = await _publish_broadcast(bot, settings, session, event, experience)
+        await record_announcement_status(session, event.id, bool(delivered))
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        logger.exception("Event %s saved; public announcement awaits retry", event_id)
+    await session.refresh(event)
+    await session.refresh(experience)
 
 
 @router.post("/{event_id}/publish", response_model=EventDraftOut)
@@ -607,6 +615,9 @@ async def publish_event(
     if event.status in {EventStatus.CANCELLED, EventStatus.COMPLETED}:
         raise HTTPException(status_code=409, detail="event_not_publishable")
     if experience.is_complete and event.status != EventStatus.DRAFT:
+        if experience.announcement_status == "pending":
+            await session.commit()
+            await _deliver_publication(bot, settings, session, event, experience)
         return await _draft_out(session, event, experience)
     _ensure_publish_description(event, experience)
     missing = _validate_publish(event, experience)
@@ -616,6 +627,7 @@ async def publish_event(
     event.approved_by = admin.id
     experience.wizard_step = 10
     experience.is_complete = True
+    experience.announcement_status = "pending"
     await session.flush()
     await audit(
         session,
@@ -625,15 +637,10 @@ async def publish_event(
         entity_id=event.id,
         new_value={"status": str(event.status)},
     )
-    result = await _draft_out(session, event, experience)
-    # Persist the event before contacting Telegram: a transport error cannot
-    # discard the completed wizard or leave sent messages pointing to a draft.
+    # The outbox and event become durable before contacting Telegram.
     await session.commit()
-    try:
-        await _publish_broadcast(bot, settings, session, event, experience)
-    except Exception:
-        logger.exception("Event %s saved; publication notification failed", event.id)
-    return result
+    await _deliver_publication(bot, settings, session, event, experience)
+    return await _draft_out(session, event, experience)
 
 
 @router.post("/{event_id}/cancel", response_model=EventDraftOut)

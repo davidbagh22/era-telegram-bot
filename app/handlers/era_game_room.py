@@ -20,7 +20,7 @@ from sqlalchemy import select, text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import AppSetting
+from app.database.models import AppSetting, User
 from app.services.game_content import GameItem, QUIZ_QUESTIONS, items_for_mode
 from app.services.game_formats import GameMode, check_answer, score_answer
 from app.services.general_topics_service import ensure_topic
@@ -472,14 +472,19 @@ async def _new_room(session: AsyncSession, *, chat_id: int, thread_id: int,
 
 
 @router.message(Command("games", "game"))
-async def game_menu(message: Message, settings: Settings):
+async def game_menu(message: Message, settings: Settings, user: User | None = None):
+    if user and (user.is_blocked or user.is_archived):
+        return
     if not message.from_user or not await _allowed(settings, message, message.from_user.id):
         return
     await message.answer("🎮 <b>ЭРА | Интерактив</b>\n\nВыбирай игру. Можно начать одному или собрать небольшую команду.", reply_markup=menu_markup(), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("era_game:"))
-async def game_callback(query: CallbackQuery, settings: Settings, session: AsyncSession):
+async def game_callback(query: CallbackQuery, settings: Settings, session: AsyncSession, user: User | None = None):
+    if user and (user.is_blocked or user.is_archived):
+        await query.answer("Доступ к играм для этого профиля приостановлен.", show_alert=True)
+        return
     if not isinstance(query.message, Message) or not query.from_user or query.from_user.is_bot:
         await query.answer()
         return

@@ -118,6 +118,11 @@ export class ApiError extends Error {
 // Not exhaustive by design: an unmapped code still shows a readable
 // message with the raw code attached, rather than nothing at all.
 const ACTION_ERROR_MESSAGES: Record<string, string> = {
+  poster_must_be_image: "Выберите фото в формате JPG, PNG или WEBP.",
+  poster_invalid_image: "Файл не похож на изображение. Выберите другое фото.",
+  poster_too_large: "Фото должно быть не больше 5 МБ.",
+  event_not_publishable: "Это мероприятие уже завершено или отменено.",
+
   user_not_found: "Пользователь не найден — возможно, запись уже изменилась.",
   already_approved: "Заявка уже была одобрена ранее.",
   already_rejected: "Заявка уже была отклонена ранее.",
@@ -157,6 +162,10 @@ const ACTION_ERROR_MESSAGES: Record<string, string> = {
 
 export function describeActionError(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.message.startsWith("missing:")) {
+      const labels: Record<string, string> = { title: "название", full_description: "описание", location: "место", participant_limit: "количество мест" };
+      return `Заполните: ${error.message.slice(8).split(",").map((key) => labels[key] ?? key).join(", ")}.`;
+    }
     return (
       ACTION_ERROR_MESSAGES[error.message] ??
       `Не удалось выполнить действие (код: ${error.message}).`

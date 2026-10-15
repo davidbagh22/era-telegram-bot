@@ -29,6 +29,9 @@ def _has_foreign_key(table_name: str, name: str) -> bool:
         return False
     return any(
         constraint.get("name") == name
+        or (constraint.get("constrained_columns") == ["pulse_cycle_id"]
+            and constraint.get("referred_table") == "weekly_pulse_cycles"
+            and constraint.get("referred_columns") == ["id"])
         for constraint in sa.inspect(op.get_bind()).get_foreign_keys(table_name)
     )
 
@@ -105,14 +108,9 @@ def upgrade() -> None:
     if "leadership_reports" in _tables() and not _has_foreign_key(
         "leadership_reports", "fk_leadership_reports_pulse_cycle_id_weekly_pulse_cycles"
     ):
-        op.create_foreign_key(
-            "fk_leadership_reports_pulse_cycle_id_weekly_pulse_cycles",
-            "leadership_reports",
-            "weekly_pulse_cycles",
-            ["pulse_cycle_id"],
-            ["id"],
-            ondelete="SET NULL",
-        )
+        with op.batch_alter_table("leadership_reports") as batch:
+            batch.create_foreign_key("fk_leadership_reports_pulse_cycle_id_weekly_pulse_cycles",
+                                     "weekly_pulse_cycles", ["pulse_cycle_id"], ["id"], ondelete="SET NULL")
 
     if "weekly_pulse_schedules" not in tables:
         op.create_table(

@@ -22,7 +22,10 @@ def _index_names(table: str) -> set[str]:
 
 
 def upgrade():
-    op.alter_column("tasks", "deadline", existing_type=sa.DateTime(timezone=True), nullable=True)
+    deadline = next(column for column in sa.inspect(op.get_bind()).get_columns("tasks") if column["name"] == "deadline")
+    if not deadline["nullable"]:
+        with op.batch_alter_table("tasks") as batch:
+            batch.alter_column("deadline", existing_type=sa.DateTime(timezone=True), nullable=True)
     tables = _table_names()
     if "weekly_pulse_archives" not in tables:
         op.create_table(

@@ -119,6 +119,20 @@ class ProjectWorkflowServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(project_workflow_service.can_edit(rejected))
         self.assertTrue(project_workflow_service.can_delete(rejected))
 
+    async def test_long_format_keeps_full_answer_and_fits_production_column(self) -> None:
+        answer = "Мастерская с обсуждением и практической работой. " * 20
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            project = self._project(author_id=user.id, form_data={"idea": "Исходная идея"})
+            session.add(project)
+            project_workflow_service.update_answers(project, {"format": answer})
+            await session.commit()
+            await session.refresh(project)
+            limit = Project.__table__.c.format.type.length
+            self.assertEqual(project.format, answer[:limit])
+            self.assertEqual(project.form_data["format"], answer)
+            self.assertEqual(project.form_data["idea"], "Исходная идея")
+
     async def test_submit_for_review_transitions_status_and_generates_document(self) -> None:
         async with self.session_factory() as session:
             user = await self._make_user(session)

@@ -48,6 +48,10 @@ services:
         value: Asia/Yerevan
       - key: LOG_LEVEL
         value: INFO
+      - key: FEATURE_GAMES
+        value: ALL
+      - key: GAMES_REWARDS_ENABLED
+        value: "true"
 
   - type: keyvalue
     name: era-redis-persistent
@@ -55,11 +59,11 @@ services:
     plan: starter
     ipAllowList: []
     maxmemoryPolicy: noeviction
-    persistenceMode: journal_snapshot
+    persistenceMode: journal-snapshot
 
 databases:
   - name: era-postgres
     region: frankfurt
-    plan: free
-    databaseName: era
+    plan: basic-256mb
+    databaseName: era_nfvd
     user: era

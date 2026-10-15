@@ -50,6 +50,8 @@ class EventExperience(Base):
 
     wizard_step: Mapped[int] = mapped_column(Integer, default=1)
     is_complete: Mapped[bool] = mapped_column(Boolean, default=False)
+    creation_mode: Mapped[str] = mapped_column(String(16), default="wizard", server_default="wizard")
+    announcement_status: Mapped[str] = mapped_column(String(24), default="not_requested", server_default="not_requested", index=True)
 
     poster_content_type: Mapped[str | None] = mapped_column(String(100))
     poster_bytes: Mapped[bytes | None] = mapped_column(LargeBinary)

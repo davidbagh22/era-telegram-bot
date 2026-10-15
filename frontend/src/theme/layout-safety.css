@@ -70,3 +70,10 @@ svg {
     background: var(--era-surface) !important;
   }
 }
+/* Native modal keeps focus and scrolling inside the event composer on mobile. */
+.era-event-dialog::backdrop {
+  background: rgba(12, 10, 20, 0.75);
+}
+.era-event-dialog {
+  overscroll-behavior: contain;
+}

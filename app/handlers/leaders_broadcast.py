@@ -34,8 +34,8 @@ async def text_and_keyboard(session,broadcast):
     meta=broadcast.audience_filter_json
     read=int(await session.scalar(select(func.count()).select_from(BroadcastAcknowledgement).where(BroadcastAcknowledgement.broadcast_id==broadcast.id)) or 0)
     text=escape(broadcast.text)
-    if meta['kind']!='normal': text+='\n\nОзнакомились: '+str(read)+' / '+str(len(meta['recipients']))
-    keyboard=kb([[('✅ Ознакомился',f'leaders_broadcast:read:{broadcast.id}')],[('Кто ещё не подтвердил',f'leaders_broadcast:pending:{broadcast.id}')]]) if meta['kind']!='normal' else None
+    if meta.get('kind', 'normal')!='normal': text+='\n\nОзнакомились: '+str(read)+' / '+str(len(meta.get('recipients', [])))
+    keyboard=kb([[('✅ Ознакомился',f'leaders_broadcast:read:{broadcast.id}')],[('Кто ещё не подтвердил',f'leaders_broadcast:pending:{broadcast.id}')]]) if meta.get('kind', 'normal')!='normal' else None
     return text,keyboard
 
 
@@ -60,7 +60,10 @@ async def announcement_text(message,state,user,settings,session):
 async def announcement_action(call,state,user,settings,session,bot):
     await call.answer()
     if not call.message or call.message.chat.id!=settings.leaders_chat_id or not user: return
-    parts=call.data.split(':');action=parts[1]
+    parts=(call.data or '').split(':')
+    if len(parts)<2: return
+    action=parts[1]
+    if action!='new' and (len(parts)!=3 or not parts[2].isdigit()): return
     try:
         if not await verify_member(session,bot,settings,user): return
         if action=='new':
@@ -70,12 +73,15 @@ async def announcement_action(call,state,user,settings,session,bot):
         if not b or b.audience_filter_json.get('chat_id')!=settings.leaders_chat_id: return
         meta=dict(b.audience_filter_json)
         if action=='read':
-            if b.status!='sent' or user.id not in meta['recipients']: return
+            if b.status!='sent' or user.id not in meta.get('recipients', []): return
             previous=await session.scalar(select(BroadcastAcknowledgement).where(BroadcastAcknowledgement.broadcast_id==b.id,BroadcastAcknowledgement.user_id==user.id))
             if not previous: session.add(BroadcastAcknowledgement(broadcast_id=b.id,user_id=user.id,read_at=datetime.now(timezone.utc)))
             await session.flush()
             text,keyboard=await text_and_keyboard(session,b)
-            try: await bot.edit_message_text(chat_id=settings.leaders_chat_id,message_id=meta['message_id'],text=text,reply_markup=keyboard,parse_mode='HTML')
+            message_id=meta.get('message_id') or call.message.message_id
+            if not meta.get('message_id'):
+                b.audience_filter_json={**meta, 'message_id': message_id}
+            try: await bot.edit_message_text(chat_id=settings.leaders_chat_id,message_id=message_id,text=text,reply_markup=keyboard,parse_mode='HTML')
             except TelegramAPIError: pass
             return
         if not await permitted(session,user,settings): return
@@ -92,7 +98,7 @@ async def announcement_action(call,state,user,settings,session,bot):
         # Refresh recipients before dispatch; departed members must not receive announcements.
         recipients=await roster(session,settings.leaders_chat_id)
         meta.update(kind=action,recipients=[u.id for u in recipients])
-        b.audience_filter_json=meta
+        b.audience_filter_json=dict(meta)
         thread=await topic_id(session,settings.leaders_chat_id,'important')
         if not thread: await call.message.answer('Раздел Важно ещё не настроен.');return
         b.status='sending';await session.commit()
@@ -101,7 +107,7 @@ async def announcement_action(call,state,user,settings,session,bot):
             sent=await bot.send_message(settings.leaders_chat_id,text,parse_mode='HTML',message_thread_id=thread,reply_markup=keyboard)
         except TelegramAPIError:
             b.status='failed';await session.commit();await call.message.answer('Не удалось отправить. Текст сохранён; автоматических повторных рассылок не будет.');return
-        meta['message_id']=sent.message_id;b.audience_filter_json=meta;b.status='sent';b.sent_at=datetime.now(timezone.utc)
+        meta['message_id']=sent.message_id;b.audience_filter_json=dict(meta);b.status='sent';b.sent_at=datetime.now(timezone.utc)
         await audit(session,actor_id=user.id,action='leaders.broadcast_sent',entity_type='broadcast',entity_id=b.id,new_value={'kind':action,'count':len(recipients)})
         await session.commit()
         if action!='normal':

@@ -122,6 +122,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "system-daily-summary",
                 "office-vacancy-reconciliation",
                 "configured-event-reminders",
+                "event-announcement-recovery",
                 "event-wizard-task-sync",
                 "project-scoring-reconciliation",
                 "task-squad-notifications",

@@ -166,6 +166,32 @@ class GameStateTests(GameFixture, IsolatedAsyncioTestCase):
             assert await award_game_points(session, telegram_id=99, round_id='absent', amount=3, now=now) == 0
             await session.commit()
 
+    async def test_blocked_archived_and_unapproved_profiles_receive_no_rewards(self):
+        async with self.sessions() as session:
+            user = await session.get(User, self.user_id)
+            for attribute, value in (("is_blocked", True), ("is_archived", True),
+                                     ("application_status", ApplicationStatus.PENDING)):
+                old = getattr(user, attribute)
+                setattr(user, attribute, value)
+                await session.flush()
+                assert await award_game_points(session, telegram_id=11, round_id=attribute, amount=3) == 0
+                setattr(user, attribute, old)
+            await session.commit()
+
+    async def test_blocked_profile_cannot_change_a_game_room(self):
+        room = await self.new_room()
+        query = self.query(room)
+        with patch("app.handlers.era_game_room._allowed", new=AsyncMock(return_value=True)) as allowed:
+            async with self.sessions() as session:
+                user = await session.get(User, self.user_id)
+                user.is_blocked = True
+                await game_callback(query, self.settings, session, user=user)
+            allowed.assert_not_awaited()
+        query.answer.assert_awaited_once()
+        async with self.sessions() as session:
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == _key(-1001, 10, room["id"])))
+            assert _data(row).get("answers", {}) == {}
+
     async def test_weekly_and_monthly_limits(self):
         now = datetime(2026, 10, 15, 12, tzinfo=timezone.utc)
         async with self.sessions() as session:

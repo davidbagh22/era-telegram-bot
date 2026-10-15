@@ -123,6 +123,7 @@ def upgrade() -> None:
                 (user_id, participation_mode, activity_state, state_since, onboarding_version, created_at, updated_at)
             SELECT id, 'ACTIVE', 'ADAPTATION', CURRENT_TIMESTAMP, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             FROM users
+            WHERE 1 = 1
             ON CONFLICT (user_id) DO NOTHING
             """
         )
