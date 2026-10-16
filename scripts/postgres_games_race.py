@@ -52,9 +52,11 @@ async def main():
                 .where(User.telegram_id == telegram_id, PointTransaction.source_type == 'game')
             ) or 0)
 
+    delivery_bot = SimpleNamespace(edit_message_text=AsyncMock(return_value=True))
+
     async def answer_worker(answer_data, settings):
         message = Message(message_id=3, date=datetime.now(timezone.utc),
-                          chat=Chat(id=-format_uid, type='supergroup'), message_thread_id=1)
+                          chat=Chat(id=format_uid, type='private')).as_(delivery_bot)
         query = SimpleNamespace(
             message=message,
             from_user=TelegramUser(id=format_uid, first_name='CI Format', is_bot=False),
@@ -78,9 +80,9 @@ async def main():
         assert sum(capped) + sum(duplicate) == 20, capped
 
         settings = SimpleNamespace(feature_games='ALL', feature_tester_ids=[],
-                                   general_chat_id=-format_uid, games_rewards_enabled=True)
+                                   general_chat_id=-format_uid, games_rewards_enabled=True, bot_username="ERA_1bot")
         start_message = Message(message_id=2, date=datetime.now(timezone.utc),
-                                chat=Chat(id=-format_uid, type='supergroup'), message_thread_id=1)
+                                chat=Chat(id=format_uid, type='private')).as_(delivery_bot)
         start_query = SimpleNamespace(
             message=start_message,
             from_user=TelegramUser(id=format_uid, first_name='CI Format', is_bot=False),
@@ -88,11 +90,12 @@ async def main():
             answer=AsyncMock(),
         )
         with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), \
-             patch.object(Message, 'answer', new=AsyncMock()):
+             patch.object(Message, 'answer', new=AsyncMock(return_value=Message(
+                 message_id=20, date=datetime.now(timezone.utc), chat=Chat(id=format_uid, type='private')).as_(delivery_bot))) as send:
             async with sessions() as session:
                 await game_callback(start_query, settings, session)
             room_id = f'f{list(GameMode).index(GameMode.TRUE_OR_MYTH)}-{format_uid}'
-            room_key = _key(-format_uid, 1, room_id)
+            room_key = _key(format_uid, None, room_id)
             async with sessions() as session:
                 room = _data(await session.scalar(select(AppSetting).where(AppSetting.key == room_key)))
             item = next(item for item in items_for_mode(GameMode.TRUE_OR_MYTH)
@@ -105,6 +108,11 @@ async def main():
             )), 30)
             after = await count_awards(format_uid)
             assert after - before == 1, (before, after)
+            assert send.await_count == 1
+            assert delivery_bot.edit_message_text.await_count == 1
+            async with sessions() as session:
+                result = _data(await session.scalar(select(AppSetting).where(AppSetting.key == room_key)))
+                assert result['status'] == 'finished' and result['message_id'] == 20
     finally:
         await engine.dispose()
     print('PostgreSQL games: rooms, player-scoped history, caps, concurrent answer idempotency')

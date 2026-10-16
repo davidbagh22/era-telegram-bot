@@ -284,6 +284,11 @@ async def rescue_start(
     if user is None:
         await message.answer(texts.WELCOME, reply_markup=registration_keyboard())
         return
+    if command and command.args and (command.args == "games" or command.args.startswith("game_")):
+        from app.handlers.era_game_room import show_game_cabinet
+        mode = command.args[5:] if command.args.startswith("game_") else None
+        await show_game_cabinet(message, settings, session, user, mode=mode)
+        return
     if command and command.args == 'bookclub':
         from app.handlers.book_club import show_home
         await show_home(message, user, settings)

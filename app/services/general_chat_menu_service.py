@@ -50,6 +50,7 @@ async def _restore_registration_pin(bot: Bot, chat_id: int) -> bool:
             pinned is None
             or getattr(pinned, "from_user", None) is None
             or pinned.from_user.id != me.id
+            or not (getattr(pinned, "text", "") or "").startswith("ЭРА теперь в одном боте.")
         ):
             logger.info("Registration pin not bot-owned; startup will not publish a replacement")
             return True

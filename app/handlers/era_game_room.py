@@ -1,6 +1,6 @@
 """Telegram-only game-room pilot: no public empty-room counters or fake players.
 
-All gameplay is restricted to the configured general-chat forum topic.
+Solo games run privately; shared games use the configured forum topic.
 Feature is OFF by default until end-to-end validation and content expansion.
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramNetworkError, TelegramServerError
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select, text as sql_text
@@ -25,19 +25,30 @@ from app.services.game_content import GameItem, QUIZ_QUESTIONS, items_for_mode
 from app.services.game_formats import GameMode, check_answer, score_answer
 from app.services.general_topics_service import ensure_topic
 from app.services.game_rewards_service import award_game_points
+from app.services.game_room_presenter import deadline, player_label, remember_player, result_summary, room_heading, roster
+from app.keyboards.common import registration_keyboard
+from app.utils.constants import ApplicationStatus
 
 logger = logging.getLogger(__name__)
 router = Router(name="era_game_room")
 MIN_PLAYERS = 2
 MAX_PLAYERS = 8
 WAIT_SECONDS = 180
-READY_SECONDS = 20
+READY_SECONDS = 90
 
 QUESTIONS = QUIZ_QUESTIONS
+PUBLIC_MENU_TEXT = (
+        "🎮 <b>ЭРА | Интерактив</b>\n\n"
+        "👥 Командные игры — здесь. Бот распределит игроков по командам, покажет имена и результаты.\n"
+        "👤 Одиночные игры — в личном боте.\n\n"
+        "Для участия нужна одобренная регистрация в ЭРА. "
+        "При вступлении в команду имя из Telegram и Telegram ID видны участникам."
+)
 
 
-def menu_markup() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
+
+def menu_markup(*, public: bool = False, bot_username: str = "ERA_1bot") -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⚡ Быстрый квиз", callback_data="era_game:solo")],
         [InlineKeyboardButton(text="🤝 Собрать команду", callback_data="era_game:team")],
         [InlineKeyboardButton(text="✅ Правда или миф", callback_data="era_game:play:true_or_myth")],
@@ -52,6 +63,27 @@ def menu_markup() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="↩️ Продолжить игру", callback_data="era_game:resume")],
         [InlineKeyboardButton(text="📚 Правила", callback_data="era_game:rules")],
     ])
+    if public:
+        for row in keyboard.inline_keyboard:
+            button = row[0]
+            data = button.callback_data
+            if data == "era_game:solo" or data.startswith("era_game:play:"):
+                mode = "solo" if data == "era_game:solo" else data.split(":")[-1]
+                button.callback_data = None
+                button.url = f"https://t.me/{bot_username}?start=game_{mode}"
+        keyboard.inline_keyboard.insert(0, [InlineKeyboardButton(
+            text="👤 Мои игры · регистрация", url=f"https://t.me/{bot_username}?start=games"
+        )])
+    # Keep the existing eleven agreed formats, with compact pairs of solo buttons.
+    rows = keyboard.inline_keyboard
+    compact = []
+    for row in rows:
+        if compact and len(compact[-1]) == 1 and row[0].url and compact[-1][0].url and "game_" in row[0].url and "game_" in compact[-1][0].url:
+            compact[-1].extend(row)
+        else:
+            compact.append(row)
+    keyboard.inline_keyboard = compact
+    return keyboard
 
 
 def lobby_markup(room_id: str) -> InlineKeyboardMarkup:
@@ -68,15 +100,8 @@ def ready_markup(reference: str) -> InlineKeyboardMarkup:
 
 
 def duel_markup(reference: str, *, ready: bool = False) -> InlineKeyboardMarkup:
-    if ready:
-        return InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Готов играть", callback_data=f"era_game:ready:{reference}")
-        ], [InlineKeyboardButton(text="🚪 Выйти", callback_data=f"era_game:leave:{reference}")]])
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔴 В команду А", callback_data=f"era_game:duel_join:{reference}:A")],
-        [InlineKeyboardButton(text="🔵 В команду Б", callback_data=f"era_game:duel_join:{reference}:B")],
-        [InlineKeyboardButton(text="🚪 Выйти", callback_data=f"era_game:leave:{reference}")],
-    ])
+    # The server chooses the smaller team; old side-selection callbacks remain supported.
+    return ready_markup(reference) if ready else lobby_markup(reference)
 
 
 def quiz_markup(room_id: str, options: tuple[str, ...]) -> InlineKeyboardMarkup:
@@ -142,17 +167,18 @@ def _format_prompt(room: dict) -> tuple[str, InlineKeyboardMarkup | None] | None
     if item is None:
         return None
     challenge = item.challenge
+    heading = room_heading(room) + "\n" + roster(room) + "\n\n"
     text = f"{challenge.prompt}\n\n<i>Тема: {item.category}</i>"
     if challenge.mode == GameMode.MEMORY:
         if not room.get("memory_revealed"):
             return (
-                f"{challenge.prompt}\n\n<i>Запомни последовательность: она будет показана 5 секунд.</i>",
+                heading + f"{challenge.prompt}\n\n<i>Запомни последовательность: она будет показана 5 секунд.</i>",
                 None,
             )
         instruction = challenge.prompt.split(":", 1)[0].rstrip()
         text = f"🧩 <b>Память</b>\n{instruction}\n\nПоследовательность скрыта. Какой она была?"
     reference = f"{room['id']}~{room['token']}"
-    return text, format_markup(reference, item, hints_used=room.get("hints_used", 0))
+    return heading + text + "\n\n" + deadline(room), format_markup(reference, item, hints_used=room.get("hints_used", 0))
 
 
 async def _reveal_memory(
@@ -176,11 +202,7 @@ async def _reveal_memory(
     rendered = _format_prompt(room)
     if rendered is None:
         return False
-    text, markup = rendered
-    if sent is not None:
-        await sent.edit_text(text, reply_markup=markup, parse_mode="HTML")
-    else:
-        await message.answer(text, reply_markup=markup, parse_mode="HTML")
+    await _publish_room(session, key, message)
     return True
 
 
@@ -216,6 +238,7 @@ async def _start_format(query: CallbackQuery, settings: Settings, session: Async
         "participants": [uid], "answers": {}, "scores": {}, "hints_used": 0,
         "created_at": now.isoformat(), "expires_at": (now + timedelta(minutes=5)).isoformat(),
     }
+    remember_player(room, query.from_user)
     if mode == GameMode.MEMORY:
         room["memory_revealed"] = False
         room["memory_ready_at"] = (now + timedelta(seconds=5)).isoformat()
@@ -225,15 +248,13 @@ async def _start_format(query: CallbackQuery, settings: Settings, session: Async
     if rendered is None:
         await query.answer("Материал игры недоступен.", show_alert=True)
         return
-    text, markup = rendered
-    if mode == GameMode.MEMORY:
-        sent = await message.answer(text, parse_mode="HTML")
-        await query.answer("Запоминай последовательность.")
-        await asyncio.sleep(5)
-        await _reveal_memory(session, key=key, token=token, message=message, sent=sent)
+    await query.answer("Запоминай последовательность." if mode == GameMode.MEMORY else None)
+    if not await _publish_room(session, key, message):
         return
-    await message.answer(text, reply_markup=markup, parse_mode="HTML")
-    await query.answer()
+    if mode == GameMode.MEMORY:
+        await asyncio.sleep(5)
+        await _reveal_memory(session, key=key, token=token, message=message)
+
 
 
 async def _format_action(query: CallbackQuery, settings: Settings, session: AsyncSession, message: Message,
@@ -262,6 +283,7 @@ async def _format_action(query: CallbackQuery, settings: Settings, session: Asyn
         room["status"] = "expired"
         await _save(session, key, room)
         await session.commit()
+        await _publish_room(session, key, message)
         await query.answer("Время раунда истекло.", show_alert=True)
         return True
     uid = query.from_user.id
@@ -286,12 +308,7 @@ async def _format_action(query: CallbackQuery, settings: Settings, session: Asyn
         await _save(session, key, room)
         await session.commit()
         await query.answer(f"Подсказка {hints_used + 1}: {hint}", show_alert=True)
-        try:
-            await message.edit_reply_markup(
-                reply_markup=format_markup(reference, item, hints_used=room["hints_used"])
-            )
-        except TelegramAPIError:
-            logger.info("Could not refresh the game hint button for %s", room_id)
+        await _publish_room(session, key, message)
         return True
     if room.get("answers", {}).get(str(uid)) is not None:
         await query.answer("Ответ уже принят.", show_alert=True)
@@ -312,16 +329,19 @@ async def _format_action(query: CallbackQuery, settings: Settings, session: Asyn
     room.setdefault("scores", {})[str(uid)] = score
     room["status"] = "finished"
     room["finished_at"] = now.isoformat()
+    awarded = 0
     if correct and settings.games_rewards_enabled:
-        await award_game_points(session, telegram_id=uid, round_id=room["session_token"], amount=score)
-    await _save(session, key, room)
-    await session.commit()
+        awarded = await award_game_points(session, telegram_id=uid, round_id=room["session_token"], amount=score)
+    room["rewards"] = {str(uid): awarded}
     result = "✅ Верно!" if correct else f"❌ Пока неверно. Ответ: <b>{item.challenge.answer}</b>."
     if item.challenge.explanation:
         result += f"\n\nℹ️ {item.challenge.explanation}"
-    result += f"\n\nОчки за раунд: {score}."
+    result += f"\n\nОчки за раунд: {score}. Баллы ЭРА: +{awarded}."
+    room["result_text"] = result
+    await _save(session, key, room)
+    await session.commit()
     await query.answer("Ответ принят.")
-    await message.answer(result, parse_mode="HTML")
+    await _publish_room(session, key, message)
     return True
 
 
@@ -333,6 +353,8 @@ def _enabled(settings: Settings, telegram_id: int) -> bool:
 async def _allowed(settings: Settings, message: Message, telegram_id: int) -> bool:
     if not _enabled(settings, telegram_id) or not settings.general_chat_id:
         return False
+    if message.chat.type == "private":
+        return True
     if message.chat.id != settings.general_chat_id:
         return False
     thread_id = await ensure_topic(message.bot, settings, "games")
@@ -465,19 +487,230 @@ async def _new_room(session: AsyncSession, *, chat_id: int, thread_id: int,
         "team_scores": {"A": 0, "B": 0} if kind == "duel" else {},
         "answers": {}, "question": questions[0] if questions else None,
         "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(seconds=WAIT_SECONDS if kind == "team" else 120)).isoformat(),
+        "expires_at": (now + timedelta(seconds=WAIT_SECONDS if kind in {"team", "duel"} else 120)).isoformat(),
     }
     await _save(session, key, data)
     return data
 
 
+def _registered(user: User | None, telegram_id: int) -> bool:
+    return bool(user and user.telegram_id == telegram_id
+                and user.application_status == ApplicationStatus.APPROVED
+                and not user.is_blocked and not user.is_archived)
+
+
+def _bot_link(settings: Settings, payload: str = "games") -> str:
+    return f"https://t.me/{settings.bot_username or 'ERA_1bot'}?start={payload}"
+
+
+def _room_view(room: dict) -> tuple[str, InlineKeyboardMarkup | None]:
+    header = room_heading(room) + "\n\n"
+    status = room.get("status")
+    if status in {"expired", "cancelled", "exhausted"}:
+        title = {"expired": "⏱ Время игры истекло. Баллы не начислены.",
+                 "cancelled": "Комната закрыта: все игроки вышли.",
+                 "exhausted": "Новые задания готовятся. Комната закрыта."}[status]
+        return header + title + "\n\n" + roster(room, result=True), None
+    if status == "finished":
+        summary = room.get("result_text") or result_summary(room)
+        rewards = room.get("rewards", {})
+        reward_line = ""
+        if not room.get("mode"):
+            reward_line = "\n\n<b>Баллы ЭРА</b>\n" + "\n".join(
+                f"{player_label(room, uid)}: +{rewards.get(str(uid), 0)}"
+                for uid in room.get("participants", [])
+            )
+        return header + "🏁 Игра завершена\n\n" + summary + "\n\n" + roster(room, result=True) + reward_line, None
+    if room.get("mode"):
+        return _format_prompt(room) or (header + "Материал недоступен.", None)
+    reference = room["id"] + "~" + room["token"]
+    if status in {"waiting", "ready_check"}:
+        info = ("Набор игроков · до 8 участников. Минимум двое.\n"
+                "Нажмите «Присоединиться», затем подтвердите готовность.\n"
+                "Имена и Telegram ID участников будут видны в этой карточке.")
+        if room.get("kind") == "duel":
+            info += "\nБот автоматически распределяет игроков поровну в команды А и Б."
+        if status == "ready_check":
+            info += "\n\n✅ Все присоединившиеся должны нажать «Готов играть»."
+        return (header + info + "\n\n" + roster(room) + "\n\n" + deadline(room),
+                ready_markup(reference) if status == "ready_check" else lobby_markup(reference))
+    question, options, _ = QUESTIONS[room["question"]]
+    position = room.get("position", 0) + 1
+    count = len(room.get("questions", [room["question"]]))
+    return (header + f"<b>Вопрос {position}/{count}</b>\n{question}\n\n"
+            + roster(room) + "\n\nВсе отвечают одновременно. Следующий вопрос — после ответов всех игроков.\n"
+            + deadline(room), quiz_markup(reference, options))
+
+
+async def _publish_room(session: AsyncSession, key: str, message: Message) -> bool:
+    """Refresh one canonical card from the latest locked state, including after a restart.
+
+    A send with an unknown outcome is never automatically replayed. Existing
+    cards can always be edited again. The row lock serializes concurrent edits.
+    """
+    await _lock(session, key)
+    row = await session.scalar(select(AppSetting).where(AppSetting.key == key)
+                               .with_for_update().execution_options(populate_existing=True))
+    room = _data(row)
+    if not room:
+        return False
+    text, markup = _room_view(room)
+    message_id = room.get("message_id")
+    if message_id:
+        try:
+            await message.bot.edit_message_text(text=text, chat_id=message.chat.id,
+                                               message_id=message_id, reply_markup=markup,
+                                               parse_mode="HTML")
+        except TelegramBadRequest as exc:
+            if "not modified" not in str(exc).lower():
+                if "message to edit not found" in str(exc).lower():
+                    room.pop("message_id", None)
+                    room["card_delivery"] = "missing"
+                    await _save(session, key, room)
+                    await session.commit()
+                    return await _publish_room(session, key, message)
+                logger.warning("Game card edit rejected type=%s", type(exc).__name__)
+                await session.commit()
+                return False
+        except TelegramAPIError as exc:
+            logger.warning("Game card edit postponed type=%s", type(exc).__name__)
+            await session.commit()
+            return False
+        room["card_delivery"] = "sent"
+        room["card_status"] = room.get("status")
+        await _save(session, key, room)
+        await session.commit()
+        return True
+    if room.get("card_delivery") in {"pending", "uncertain"}:
+        await session.commit()
+        return False
+    room["card_delivery"] = "pending"
+    incarnation = room["session_token"]
+    await _save(session, key, room)
+    await session.commit()
+    try:
+        sent = await message.answer(text, reply_markup=markup, parse_mode="HTML")
+    except TelegramAPIError as exc:
+        await _lock(session, key)
+        row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update()
+                                   .execution_options(populate_existing=True))
+        current = _data(row)
+        if current.get("session_token") == incarnation:
+            current["card_delivery"] = ("uncertain" if isinstance(exc, (TelegramNetworkError, TelegramServerError)) else "failed")
+            await _save(session, key, current)
+        await session.commit()
+        logger.warning("Game card publication postponed type=%s", type(exc).__name__)
+        return False
+    await _lock(session, key)
+    row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update()
+                               .execution_options(populate_existing=True))
+    current = _data(row)
+    if current.get("session_token") != incarnation:
+        await session.commit()
+        return False
+    current["message_id"] = sent.message_id
+    current["card_delivery"] = "sent"
+    current["card_status"] = room.get("status")
+    await _save(session, key, current)
+    await session.commit()
+    if _room_view(current) != (text, markup):
+        return await _publish_room(session, key, message)
+    return True
+
+
+async def _join_lobby(session: AsyncSession, key: str, room: dict, telegram_user) -> bool:
+    uid = telegram_user.id
+    if uid in room["participants"] or len(room["participants"]) >= MAX_PLAYERS:
+        return False
+    room["participants"].append(uid)
+    remember_player(room, telegram_user)
+    if room.get("kind") == "duel":
+        teams = room.setdefault("teams", {})
+        team = min(("A", "B"), key=lambda side: sum(value == side for value in teams.values()))
+        teams[str(uid)] = team
+    room["ready"] = []
+    room["status"] = "ready_check" if len(room["participants"]) >= MIN_PLAYERS else "waiting"
+    room["expires_at"] = min(
+        datetime.now(timezone.utc) + timedelta(seconds=READY_SECONDS if room["status"] == "ready_check" else WAIT_SECONDS),
+        datetime.fromisoformat(room["lobby_deadline"]),
+    ).isoformat()
+    await _save(session, key, room)
+    return True
+
+
+async def show_game_cabinet(message: Message, settings: Settings, session: AsyncSession,
+                            user: User | None, *, mode: str | None = None) -> None:
+    uid = message.chat.id
+    if not _enabled(settings, uid):
+        await message.answer("Игры пока недоступны для этого профиля.")
+        return
+    if not _registered(user, uid):
+        await message.answer("Для игры зарегистрируйтесь в ЭРА и дождитесь одобрения заявки.",
+                             reply_markup=registration_keyboard() if user is None else None)
+        return
+    if mode:
+        # Deep links use the same server-side callback logic, permissions and ledger.
+        from types import SimpleNamespace
+        async def answer_private(text=None, show_alert=False, **kwargs):
+            if text and show_alert:
+                await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="↩️ Продолжить игру", callback_data="era_game:resume"),
+                    InlineKeyboardButton(text="👤 Мои игры", callback_data="era_game:cabinet"),
+                ]]))
+        query = SimpleNamespace(message=message, from_user=message.from_user,
+                                data="era_game:solo" if mode == "solo" else f"era_game:play:{mode}",
+                                answer=answer_private)
+        await game_callback(query, settings, session, user=user)
+        return
+    thread_id = await ensure_topic(message.bot, settings, "games") if settings.general_chat_id else None
+    text = "🎮 <b>Мои игры · ЭРА</b>\n\nОдиночные игры проходят здесь, командные — в теме «Интерактив».\n"
+    personal_rooms = (await session.scalars(select(AppSetting).where(
+        AppSetting.key.like(f"era_game:{uid}:None:%")))).all()
+    recent = sorted((_data(row) for row in personal_rooms), key=lambda room: room.get("created_at", ""), reverse=True)[:3]
+    if recent:
+        text += "\n<b>Последние игры</b>\n"
+        for room in recent:
+            status = {"playing": "в процессе", "finished": "завершена", "expired": "время истекло"}.get(room.get("status"), "закрыта")
+            score = room.get("scores", {}).get(str(uid), 0)
+            text += f"{room_heading(room)} · {status} · {score} очк.\n"
+    links = []
+    if thread_id:
+        for kind in ("team", "duel"):
+            room = _data(await session.scalar(select(AppSetting).where(
+                AppSetting.key == _key(settings.general_chat_id, thread_id, kind))))
+            if uid in room.get("participants", []):
+                text += "\n" + room_heading(room) + "\n" + roster(room, result=room.get("status") == "finished") + "\n"
+                if room.get("message_id"):
+                    links.append([InlineKeyboardButton(text="👥 Открыть мою команду", url=_topic_link(settings, thread_id, room["message_id"]))])
+        links.append([InlineKeyboardButton(text="👥 Командные игры в чате", url=_topic_link(settings, thread_id))])
+    keyboard = menu_markup()
+    # A private menu never creates a separate team lobby.
+    keyboard.inline_keyboard = [row for row in keyboard.inline_keyboard if all(
+        b.callback_data not in {"era_game:team", "era_game:duel"} for b in row)]
+    keyboard.inline_keyboard.extend(links)
+    keyboard.inline_keyboard.append([InlineKeyboardButton(text="🔄 Обновить мои игры", callback_data="era_game:cabinet")])
+    await message.answer(text + "\nВыберите игру ниже. /games возвращает в этот раздел.",
+                         reply_markup=keyboard, parse_mode="HTML")
+
+
+def _topic_link(settings: Settings, thread_id: int, message_id: int | None = None) -> str:
+    return f"https://t.me/c/{str(settings.general_chat_id)[4:]}/{thread_id}" + (f"/{message_id}" if message_id else "")
+
+
 @router.message(Command("games", "game"))
-async def game_menu(message: Message, settings: Settings, user: User | None = None):
+async def game_menu(message: Message, settings: Settings, session: AsyncSession, user: User | None = None):
+    if not message.from_user:
+        return
+    if message.chat.type == "private":
+        await show_game_cabinet(message, settings, session, user)
+        return
     if user and (user.is_blocked or user.is_archived):
         return
-    if not message.from_user or not await _allowed(settings, message, message.from_user.id):
+    if not await _allowed(settings, message, message.from_user.id):
         return
-    await message.answer("🎮 <b>ЭРА | Интерактив</b>\n\nВыбирай игру. Можно начать одному или собрать небольшую команду.", reply_markup=menu_markup(), parse_mode="HTML")
+    await message.answer(
+        PUBLIC_MENU_TEXT,
+        reply_markup=menu_markup(public=True, bot_username=settings.bot_username or "ERA_1bot"), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("era_game:"))
@@ -490,30 +723,33 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
         return
     message = query.message
     if not await _allowed(settings, message, query.from_user.id):
-        await query.answer("Игры доступны только в теме «Интерактив».", show_alert=True)
+        await query.answer("Командные игры доступны только в теме «Интерактив».", show_alert=True)
         return
     action = (query.data or "").split(":")
     if len(action) < 2:
         await query.answer()
         return
+    if user is None:
+        user = await session.scalar(select(User).where(User.telegram_id == query.from_user.id))
+    if not _registered(user, query.from_user.id):
+        if message.chat.type != "private":
+            await query.answer(url=_bot_link(settings))
+        else:
+            await query.answer("Для игры нужна одобренная регистрация в ЭРА.", show_alert=True)
+        return
+    if action[1] == "cabinet" and message.chat.type == "private":
+        await query.answer()
+        await show_game_cabinet(message, settings, session, user)
+        return
+    if message.chat.type != "private" and (action[1] == "solo" or action[1] == "play"):
+        mode = "solo" if action[1] == "solo" else action[2] if len(action) == 3 else "solo"
+        await query.answer(url=_bot_link(settings, "game_" + mode))
+        return
+    if message.chat.type == "private" and action[1] in {"team", "duel", "join", "duel_join", "ready", "leave"}:
+        await query.answer("Откройте командные игры из раздела «Мои игры».", show_alert=True)
+        return
     if action[1] == "play" and len(action) == 3:
         await _start_format(query, settings, session, message, action[2])
-        return
-    if action[1] == "duel" and len(action) == 2:
-        room = await _new_room(
-            session, chat_id=message.chat.id, thread_id=message.message_thread_id,
-            user_id=query.from_user.id, kind="duel", questions_per_game=5,
-        )
-        await session.commit()
-        if room is None:
-            await query.answer("Командная дуэль уже собирается.", show_alert=True)
-            return
-        await message.answer(
-            "🏆 <b>Командная дуэль</b>\nСоберите две команды. В каждой — от 1 до 4 игроков. "
-            "Обе команды выбирают сторону и подтверждают готовность.",
-            parse_mode="HTML", reply_markup=duel_markup("duel~" + room["token"]),
-        )
-        await query.answer()
         return
     if await _format_action(query, settings, session, message, action):
         return
@@ -522,9 +758,12 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
         await query.answer("Квиз: 5 вопросов. За ожидание и незавершённую игру баллы не начисляются. " + rewards, show_alert=True)
         return
     if action[1] == "resume":
-        for room_id in (f"solo-{query.from_user.id}", "team", "duel"):
-            key = _key(message.chat.id, message.message_thread_id, room_id)
-            row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
+        keys = [_key(message.chat.id, message.message_thread_id, rid)
+                for rid in (f"solo-{query.from_user.id}", "team", "duel")]
+        prefix = f"era_game:{message.chat.id}:{message.message_thread_id}:f%"
+        rows = (await session.scalars(select(AppSetting).where(
+            AppSetting.key.in_(keys) | AppSetting.key.like(prefix)))).all()
+        for row in rows:
             room = _data(row)
             if query.from_user.id not in room.get("participants", []):
                 continue
@@ -532,72 +771,44 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
                 continue
             if datetime.fromisoformat(room["expires_at"]) <= datetime.now(timezone.utc):
                 continue
-            reference = room_id + "~" + room["token"]
-            if room["status"] == "playing":
-                question, options, _ = QUESTIONS[room["question"]]
-                await message.answer(f"🎯 Вопрос {room.get('position', 0)+1}/{len(room.get('questions', [room['question']]))}\n\n{question}",
-                                     reply_markup=quiz_markup(reference, options))
-            elif room.get("kind") == "duel":
-                await message.answer("🏆 Твоя командная дуэль", reply_markup=duel_markup(
-                    reference, ready=room["status"] == "ready_check"))
-            else:
-                markup = ready_markup(reference) if room["status"] == "ready_check" else lobby_markup(reference)
-                await message.answer("🤝 Твоя командная игра", reply_markup=markup)
-            await query.answer("Игра открыта.")
-            return
-        prefix = f"era_game:{message.chat.id}:{message.message_thread_id}:f%"
-        rows = await session.scalars(select(AppSetting).where(AppSetting.key.like(prefix)))
-        for row in rows:
-            room = _data(row)
-            if query.from_user.id not in room.get("participants", []) or room.get("status") != "playing":
-                continue
-            if datetime.fromisoformat(room["expires_at"]) <= datetime.now(timezone.utc):
-                continue
-            item = _format_item(room)
-            if item is not None and item.challenge.mode == GameMode.MEMORY and not room.get("memory_revealed"):
-                ready_at = datetime.fromisoformat(room.get("memory_ready_at", datetime.now(timezone.utc).isoformat()))
+            if room.get("mode") == "memory" and not room.get("memory_revealed"):
+                ready_at = datetime.fromisoformat(room["memory_ready_at"])
                 remaining = max(0.0, (ready_at - datetime.now(timezone.utc)).total_seconds())
+                await query.answer("Игра восстановлена.")
                 if remaining:
-                    sent = await message.answer(
-                        f"{item.challenge.prompt}\n\n<i>Запомни последовательность: она будет показана 5 секунд.</i>",
-                        parse_mode="HTML",
-                    )
-                    await query.answer("Запоминай последовательность.")
-                    await asyncio.sleep(remaining)
-                    await _reveal_memory(session, key=row.key, token=room["token"], message=message, sent=sent)
-                else:
-                    await _reveal_memory(session, key=row.key, token=room["token"], message=message)
-                    await query.answer("Игра открыта.")
-                return
-            rendered = _format_prompt(room)
-            if rendered is None:
-                continue
-            await message.answer(*rendered, parse_mode="HTML")
-            await query.answer("Игра открыта.")
+                    await asyncio.sleep(min(remaining, 5))
+                await _reveal_memory(session, key=row.key, token=room["token"], message=message)
+            else:
+                await query.answer("Игра восстановлена в её карточке.")
+                await _publish_room(session, row.key, message)
             return
-        await query.answer("Открытой игры нет. Выбери новый формат.", show_alert=True)
+        await query.answer("Открытой игры нет. Выберите новый формат.", show_alert=True)
         return
-    if action[1] in {"solo", "team"}:
+    if action[1] in {"solo", "team", "duel"} and len(action) == 2:
         kind = action[1]
         room = await _new_room(session, chat_id=message.chat.id, thread_id=message.message_thread_id,
                                user_id=query.from_user.id, kind=kind, questions_per_game=5)
-        await session.commit()
+        room_id = kind if kind in {"team", "duel"} else f"solo-{query.from_user.id}"
+        key = _key(message.chat.id, message.message_thread_id, room_id)
         if room is None:
-            await query.answer("Игра уже открыта. Присоединяйся к существующей комнате.", show_alert=True)
+            room = _data(await session.scalar(select(AppSetting).where(AppSetting.key == key)))
+            if kind in {"team", "duel"} and room.get("status") in {"waiting", "ready_check"}:
+                joined = await _join_lobby(session, key, room, query.from_user)
+                await session.commit()
+                await query.answer("Вы в команде. Состав — в карточке игры." if joined else "Вы уже участвуете или комната заполнена.")
+                await _publish_room(session, key, message)
+            else:
+                await query.answer("Игра уже открыта. Нажмите «Продолжить игру».", show_alert=True)
             return
         if room["status"] == "exhausted":
-            await query.answer("Новые вопросы готовятся. Выбери игру позже.", show_alert=True)
+            await session.commit()
+            await query.answer("Новые вопросы готовятся. Выберите игру позже.", show_alert=True)
             return
-        if kind == "team":
-            await message.answer(
-                "🤝 <b>Командный квиз ЭРА</b>\nКомната открыта. Нажми «Присоединиться». "
-                "Нужно минимум два игрока; готовность подтверждают все участники. Если группа не соберётся, игра просто закроется.",
-                parse_mode="HTML", reply_markup=lobby_markup(room["id"] + "~" + room["token"]))
-        else:
-            question, options, _ = QUESTIONS[room["question"]]
-            await message.answer(f"⚡ <b>Быстрый квиз</b>\n\n{question}",
-                                 parse_mode="HTML", reply_markup=quiz_markup(room["id"] + "~" + room["token"], options))
+        remember_player(room, query.from_user)
+        await _save(session, key, room)
+        await session.commit()
         await query.answer()
+        await _publish_room(session, key, message)
         return
     if len(action) < 3:
         await query.answer()
@@ -618,68 +829,23 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
         room["status"] = "expired"
         await _save(session, key, room)
         await session.commit()
+        await _publish_room(session, key, message)
         await query.answer("Время раунда истекло.")
         return
     uid = query.from_user.id
-    if operation == "duel_join" and room.get("kind") == "duel" and room["status"] in {"waiting", "ready_check"}:
-        if len(action) != 4 or action[3] not in {"A", "B"}:
-            await query.answer("Выбери одну из двух команд.", show_alert=True)
-            return
-        team = action[3]
-        teams = room.setdefault("teams", {})
-        previous_team = teams.get(str(uid))
-        if uid not in room["participants"] and len(room["participants"]) >= MAX_PLAYERS:
-            await query.answer("В дуэли уже восемь игроков.", show_alert=True)
-            return
-        if sum(value == team for value in teams.values()) >= MAX_PLAYERS // 2 and previous_team != team:
-            await query.answer("Эта команда уже заполнена.", show_alert=True)
-            return
-        if uid not in room["participants"]:
-            room["participants"].append(uid)
-        teams[str(uid)] = team
-        room["ready"] = []
-        teams_present = set(teams.values())
-        if teams_present == {"A", "B"}:
-            room["status"] = "ready_check"
-            room["expires_at"] = min(
-                datetime.now(timezone.utc) + timedelta(seconds=READY_SECONDS),
-                datetime.fromisoformat(room["lobby_deadline"]),
-            ).isoformat()
-        else:
-            room["status"] = "waiting"
-            room["expires_at"] = room["lobby_deadline"]
-        await _save(session, key, room)
-        await session.commit()
-        markup = duel_markup(room_id + "~" + room["token"], ready=room["status"] == "ready_check")
-        await message.answer("Состав команд обновлён. Подтвердите готовность." if room["status"] == "ready_check" else "Игрок добавлен в команду.", reply_markup=markup)
-        await query.answer("Ты в команде " + team + ".")
-        return
-    if operation == "join" and room["status"] in {"waiting", "ready_check"}:
+    remember_player(room, query.from_user)
+    if operation in {"join", "duel_join"} and room["status"] in {"waiting", "ready_check"}:
         if uid in room["participants"]:
-            await query.answer("Ты уже в команде.")
+            await query.answer("Вы уже в команде.")
             return
-        if uid not in room["participants"] and len(room["participants"]) >= MAX_PLAYERS:
-            await query.answer("Команда уже заполнена.", show_alert=True)
+        if len(room["participants"]) >= MAX_PLAYERS:
+            await query.answer("Комната уже заполнена.", show_alert=True)
             return
-        if uid not in room["participants"]:
-            room["participants"].append(uid)
-        if len(room["participants"]) >= MIN_PLAYERS:
-            if room["status"] != "ready_check":
-                room["status"] = "ready_check"
-                room["ready"] = []
-                room["expires_at"] = min(
-                    datetime.now(timezone.utc) + timedelta(seconds=READY_SECONDS),
-                    datetime.fromisoformat(room["lobby_deadline"]),
-                ).isoformat()
-            await _save(session, key, room)
-            await session.commit()
-            await message.answer("✅ Подтвердите готовность. Стартуем, когда все участники подтвердят готовность.",
-                                 reply_markup=ready_markup(room_id + "~" + room["token"]))
-            await query.answer("Ты в команде. Подтверди готовность.")
-            return
-        await _save(session, key, room)
+        await _join_lobby(session, key, room, query.from_user)
         await session.commit()
-        await query.answer("Ты в команде. Ожидаем остальных.")
+        team = room.get("teams", {}).get(str(uid))
+        await query.answer("Вы в команде " + ("А" if team == "A" else "Б") + "." if team else "Вы в команде. Подтвердите готовность.")
+        await _publish_room(session, key, message)
         return
     if operation == "ready" and room["status"] == "ready_check":
         if uid not in room["participants"]:
@@ -696,6 +862,13 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
             else len(ready) == len(room["participants"])
             and {room.get("teams", {}).get(str(player)) for player in ready} == {"A", "B"}
         )
+        if enough_players:
+            eligible = set((await session.scalars(select(User.telegram_id).where(
+                User.telegram_id.in_(room["participants"]), User.application_status == ApplicationStatus.APPROVED,
+                User.is_blocked.is_(False), User.is_archived.is_(False)))).all())
+            if eligible != set(room["participants"]):
+                await query.answer("Один из игроков больше не имеет доступа. Обновите состав комнаты.", show_alert=True)
+                return
         if enough_players:
             room["questions"] = await _reserve_questions(
                 session,
@@ -717,11 +890,7 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
         await _save(session, key, room)
         await session.commit()
         await query.answer("Готовность принята.")
-        if room["status"] == "playing":
-            question, options, _ = QUESTIONS[room["question"]]
-            title = "🏆 Дуэль началась" if room.get("kind") == "duel" else "🤝 Команда готова"
-            await message.answer(f"{title}. Вопрос 1/{len(room['questions'])}\n\n{question}",
-                                 reply_markup=quiz_markup(room_id + "~" + room["token"], options))
+        await _publish_room(session, key, message)
         return
     if operation == "leave" and room["status"] in {"waiting", "ready_check"}:
         if uid not in room["participants"]:
@@ -729,6 +898,9 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
             return
         room["participants"] = [p for p in room["participants"] if p != uid]
         room.get("teams", {}).pop(str(uid), None)
+        if room.get("kind") == "duel":
+            room["teams"] = {str(player): "A" if index % 2 == 0 else "B"
+                             for index, player in enumerate(room["participants"])}
         # Reconfirm after the roster changes; otherwise remaining ready players
         # could be stuck with no callback able to start the room.
         room["ready"] = []
@@ -743,9 +915,7 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
         await _save(session, key, room)
         await session.commit()
         await query.answer("Ты вышел из комнаты.")
-        if room["status"] == "ready_check":
-            await message.answer("Состав изменился. Подтвердите готовность ещё раз.",
-                                 reply_markup=ready_markup(room_id + "~" + room["token"]))
+        await _publish_room(session, key, message)
         return
     if operation == "answer" and room["status"] == "playing" and len(action) == 4:
         if uid not in room["participants"]:
@@ -775,6 +945,8 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
         finished = complete and room.get("position", 0) + 1 >= len(questions)
         if finished:
             room["status"] = "finished"
+            room["finished_at"] = datetime.now(timezone.utc).isoformat()
+            room["rewards"] = {}
             if settings.games_rewards_enabled:
                 # Sort locks by user ID to avoid cross-room reward deadlocks.
                 best = max(scores.values(), default=0)
@@ -791,8 +963,8 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
                     if room.get("kind") == "duel" and room.get("teams", {}).get(str(player)) != duel_team_winner:
                         continue
                     bonus = 2 if room.get("kind") != "duel" and len(room["participants"]) >= 2 and winners == [player] else 0
-                    await award_game_points(session, telegram_id=player,
-                                            round_id=room.get("session_token", room["token"]), amount=3 + bonus)
+                    room["rewards"][str(player)] = await award_game_points(
+                        session, telegram_id=player, round_id=room.get("session_token", room["token"]), amount=3 + bonus)
         elif complete:
             room["position"] = room.get("position", 0) + 1
             room["question"] = questions[room["position"]]
@@ -802,21 +974,6 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
         await _save(session, key, room)
         await session.commit()
         await query.answer("Ответ принят!")
-        if finished:
-            if len(room["participants"]) == 1:
-                summary = f"Твой результат: {scores.get(str(uid), 0)} из {len(questions)}."
-            elif room.get("kind") == "duel":
-                team_scores = room.get("team_scores", {"A": 0, "B": 0})
-                winner = "Ничья" if team_scores["A"] == team_scores["B"] else (
-                    "Команда А" if team_scores["A"] > team_scores["B"] else "Команда Б"
-                )
-                summary = f"Команда А: {team_scores['A']} · Команда Б: {team_scores['B']}. Победитель: {winner}."
-            else:
-                summary = f"Вопросов: {len(questions)}. Верных ответов команды: {sum(scores.values())}."
-            await message.answer("🏁 Квиз завершён. " + summary)
-        elif complete:
-            question, options, _ = QUESTIONS[room["question"]]
-            await message.answer(f"🎯 Вопрос {room['position'] + 1}/{len(questions)}\n\n{question}",
-                                 reply_markup=quiz_markup(room_id + "~" + room["token"], options))
+        await _publish_room(session, key, message)
         return
     await query.answer("Сейчас это действие недоступно.")

@@ -37,6 +37,8 @@ def _imported_handler_files(path: Path) -> set[Path]:
         if not node.module.startswith("app.handlers"):
             continue
         base = ROOT / node.module.replace(".", "/")
+        if base.with_suffix(".py").is_file():
+            result.add(base.with_suffix(".py"))
         for alias in node.names:
             candidate = base / f"{alias.name}.py"
             if candidate.exists():
