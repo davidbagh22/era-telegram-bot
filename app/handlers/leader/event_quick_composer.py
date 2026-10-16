@@ -43,12 +43,23 @@ class QuickEventStates(StatesGroup):
 
 FIELDS = {'title': 'Название', 'date': 'Дата · ДД.ММ.ГГГГ', 'time': 'Время · ЧЧ:ММ',
           'location': 'Место', 'limit': 'Лимит · 0 без лимита', 'points': 'Баллы · 0–200'}
+INTEGER_LIMITS = {'limit': 5000, 'points': 200}
 
 
 def enabled(settings, telegram_id):
     mode = getattr(settings, 'feature_native_event_composer', 'OFF')
     return mode == 'ALL' or (mode == 'TESTERS' and telegram_id in
-        (settings.native_event_composer_tester_ids or settings.feature_tester_ids))
+        settings.native_event_composer_tester_ids)
+
+
+def parse_integer_field(field, raw):
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if not 0 <= value <= INTEGER_LIMITS[field]:
+        return None
+    return (value or None) if field == 'limit' else value
 
 
 async def guard(call, user, settings):
@@ -209,12 +220,7 @@ async def quick_input(message: Message, user: User | None, settings: Settings, s
             parsed = parse_time(raw)
             value = parsed.isoformat(timespec='minutes') if parsed else None
         elif field in {'limit', 'points'}:
-            try:
-                value = int(raw)
-                if not 0 <= value <= (200 if field == 'points' else 2147483647):
-                    raise ValueError
-            except ValueError:
-                value = None
+            value = parse_integer_field(field, raw)
             if field == 'limit' and value == 0:
                 value = None
                 form[field] = None
@@ -263,15 +269,17 @@ async def quick_drafts(call: CallbackQuery, user: User | None, settings: Setting
     if not await guard(call, user, settings):
         return
     await call.answer()
-    rows = (await session.scalars(select(AppSetting).where(AppSetting.key.like(f'native-event-draft:{user.id}:%')).limit(20))).all()
-    buttons = []
+    rows = (await session.scalars(select(AppSetting).where(AppSetting.key.like(f'native-event-draft:{user.id}:%')))).all()
+    resumable = []
     for row in rows:
         item = json.loads(row.value)
         event = await session.get(Event, item['event_id'])
         experience = await session.get(EventExperience, item['event_id'])
         if event and (event.status == EventStatus.DRAFT or (experience and experience.announcement_status in {'pending', 'uncertain', 'needs_attention'})):
-            buttons.append([InlineKeyboardButton(text=(item['form'].get('title') or 'Черновик с фото')[:50],
-                            callback_data='leader:eventq:resume:'+row.key.rsplit(':', 1)[-1])])
+            resumable.append((event.updated_at, [InlineKeyboardButton(
+                text=(item['form'].get('title') or 'Черновик с фото')[:50],
+                callback_data='leader:eventq:resume:'+row.key.rsplit(':', 1)[-1])]))
+    buttons = [button for _, button in sorted(resumable, key=lambda pair: str(pair[0] or ''), reverse=True)[:20]]
     await call.message.answer('Выберите сохранённый черновик.' if buttons else 'Сохранённых черновиков нет.',
                               reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None)
 
@@ -369,6 +377,8 @@ async def quick_action(call: CallbackQuery, user: User | None, settings: Setting
             await call.message.answer('Публикация не подтверждена. Черновик сохранён; проверьте поля формы.')
             return
         if outcome.announcement_status == 'sent':
+            await session.delete(row)
+            await session.commit()
             await state.clear()
             await call.message.answer(f'✅ Мероприятие #{event.id} опубликовано. Регистрация открыта.')
         else:

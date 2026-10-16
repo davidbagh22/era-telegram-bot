@@ -1,7 +1,9 @@
 import json
 from datetime import date, time
 from html import unescape
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock
 
 from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy import func, select
@@ -16,6 +18,8 @@ from app.handlers.leader.event_quick_composer import (
     enabled,
     missing,
     parse_announcement,
+    parse_integer_field,
+    quick_drafts,
     save_form,
     signature,
 )
@@ -50,13 +54,29 @@ def test_ambiguous_or_invalid_schedule_is_left_for_explicit_editing():
 
 
 def test_composer_flag_is_off_by_default_and_testers_are_explicit():
-    settings = Settings(bot_token="1234567890:test-token")
+    settings = Settings(bot_token="1234567890:test-token", feature_tester_ids=[1593868942])
     assert not enabled(settings, 1593868942)
 
     settings.feature_native_event_composer = "TESTERS"
     settings.native_event_composer_tester_ids = [1593868942]
     assert enabled(settings, 1593868942)
     assert not enabled(settings, 1593868943)
+
+
+def test_quick_composer_uses_only_its_allowlist_and_matches_api_numeric_bounds():
+    settings = Settings(
+        bot_token="1234567890:test-token",
+        feature_native_event_composer="TESTERS",
+        feature_tester_ids=[1593868942],
+        native_event_composer_tester_ids=[],
+    )
+    assert not enabled(settings, 1593868942)
+    assert parse_integer_field("limit", "5000") == 5000
+    assert parse_integer_field("limit", "5001") is None
+    assert parse_integer_field("points", "200") == 200
+    assert parse_integer_field("points", "201") is None
+    assert parse_integer_field("limit", "0") is None
+    assert parse_integer_field("points", "0") == 0
 
 
 def test_enabled_manager_menu_offers_quick_and_advanced_modes():
@@ -153,3 +173,50 @@ class QuickDraftPersistenceTests(IsolatedAsyncioTestCase):
             assert event_count == 1
             assert event.title == form["title"]
             assert event.participant_limit is None
+
+    async def test_draft_list_skips_old_published_records_before_its_display_limit(self):
+        settings = Settings(
+            bot_token="1234567890:test-token",
+            feature_native_event_composer="TESTERS",
+            native_event_composer_tester_ids=[1593868942],
+        )
+        async with self.sessions() as session:
+            for index in range(20):
+                event = Event(
+                    title=f"Опубликованное {index}", description="Текст", event_date=date(2026, 11, 7),
+                    event_time=time(18, 0), location="Дом Москвы", format="Событие",
+                    status="published", created_by=self.manager.id,
+                )
+                session.add(event)
+                await session.flush()
+                session.add(EventExperience(event_id=event.id, announcement_status="sent"))
+                session.add(AppSetting(
+                    key=f"native-event-draft:{self.manager.id}:{index:016x}",
+                    value=json.dumps({"event_id": event.id, "form": {"title": event.title}}),
+                ))
+            draft = Event(
+                title="Новый черновик", description="", event_date=date(2026, 11, 7),
+                event_time=time(18, 0), location="", format="Событие", status="draft",
+                created_by=self.manager.id,
+            )
+            session.add(draft)
+            await session.flush()
+            session.add(EventExperience(event_id=draft.id))
+            session.add(AppSetting(
+                key=f"native-event-draft:{self.manager.id}:ffffffffffffffff",
+                value=json.dumps({"event_id": draft.id, "form": {"title": draft.title}}),
+            ))
+            await session.commit()
+            call = SimpleNamespace(
+                data="leader:eventq:drafts",
+                from_user=SimpleNamespace(id=1593868942),
+                answer=AsyncMock(),
+                message=SimpleNamespace(answer=AsyncMock()),
+            )
+
+            await quick_drafts(call, self.manager, settings, session)
+
+            markup = call.message.answer.await_args.kwargs["reply_markup"]
+            assert [button.callback_data for row in markup.inline_keyboard for button in row] == [
+                "leader:eventq:resume:ffffffffffffffff"
+            ]
