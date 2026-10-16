@@ -10,9 +10,10 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import Settings
-from app.database.models import AppSetting, User
+from app.database.models import AppSetting, AuditLog, PointTransaction, User
 from app.database.system_models import NotificationDelivery
 from app.services.admin_analytics_service import send_management_reports
+from app.services.application_review_service import approve_application, reject_application
 from app.utils.constants import ApplicationStatus, Role
 
 
@@ -49,9 +50,34 @@ async def main():
             receipts = (await session.scalars(select(NotificationDelivery).where(NotificationDelivery.delivery_key.in_(keys)))).all()
             assert len(receipts) == 3 and all(row.status == 'sent' and row.attempt_count == 1 for row in receipts)
             assert await session.scalar(select(func.count()).select_from(AppSetting).where(AppSetting.key == 'management-report:daily:2026-10-16')) == 1
+            applicant = User(telegram_id=uid+1, first_name='CI Applicant', application_status=ApplicationStatus.PENDING)
+            session.add(applicant)
+            await session.commit()
+            applicant_id = applicant.id
+        barrier = asyncio.Barrier(8)
+        async def review(index):
+            async with sessions() as session:
+                target = await session.get(User, applicant_id)
+                await barrier.wait()
+                if index % 2:
+                    result = await approve_application(session, target, actor_id=None)
+                else:
+                    result = await reject_application(session, target, actor_id=None, comment='CI only')
+                await session.commit()
+                return result.changed
+        changed = await asyncio.wait_for(asyncio.gather(*(review(i) for i in range(8))), 60)
+        assert sum(changed) == 1, changed
+        async with sessions() as session:
+            target = await session.get(User, applicant_id)
+            awards = await session.scalar(select(func.count()).select_from(PointTransaction).where(
+                PointTransaction.idempotency_key == f'registration_approval:{applicant_id}'))
+            assert awards == int(target.application_status == ApplicationStatus.APPROVED)
+            assert await session.scalar(select(func.count()).select_from(AuditLog).where(
+                AuditLog.entity_type == 'user', AuditLog.entity_id == applicant_id,
+                AuditLog.action.in_(('user.approved', 'user.rejected')))) == 1
     finally:
         await engine.dispose()
-    print('PostgreSQL management summary: 8 concurrent schedulers, one snapshot and delivery per period')
+    print('PostgreSQL: one report per period; 8 concurrent approve/reject decisions produce one audit and reward')
 
 
 if __name__ == '__main__':

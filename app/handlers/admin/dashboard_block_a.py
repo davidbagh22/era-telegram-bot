@@ -1,19 +1,21 @@
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
-from sqlalchemy import select
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import User
-from app.keyboards.participant import open_app_button
+from app.keyboards.admin import admin_home_keyboard
+from app.services.application_review_service import application_review_version
 from app.services.admin_dashboard_service import has_dashboard_access
 from app.services.admin_user_card import send_admin_user_card
 from app.utils import texts
 from app.utils.constants import ApplicationStatus
 
 router = Router(name="admin_dashboard_block_a")
+PAGE_SIZE = 8
 
 
 async def _guard(event: Message | CallbackQuery, user: User | None, settings: Settings) -> bool:
@@ -55,19 +57,57 @@ async def admin_dashboard(
     if not await _guard(message, user, settings):
         return
     await state.clear()
-    pending = await _pending_applications(session, limit=26) if session is not None else []
-    count = len(pending)
-    if count:
-        visible_count = min(count, 25)
-        suffix = "+" if count > 25 else ""
-        await message.answer(
-            f"📥 Заявки на рассмотрении: {visible_count}{suffix}.\n"
-            "Команда /applications покажет карточки прямо в боте."
-        )
-    await message.answer(texts.ADMIN_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
+    await message.answer(
+        "⚙️ <b>Управление ЭРА</b>\n\n"
+        "Сводка, заявки и основные действия доступны прямо здесь.\n"
+        "Выберите раздел или откройте приложение ЭРА.",
+        parse_mode="HTML", reply_markup=admin_home_keyboard(settings.effective_miniapp_url),
+    )
+
+
+async def _show_application_list(message: Message, session: AsyncSession, *, page: int = 0, edit: bool = False) -> None:
+    conditions = (
+        User.application_status.in_([ApplicationStatus.PENDING, ApplicationStatus.NEEDS_INFO]),
+        User.is_archived.is_not(True),
+    )
+    total = int(await session.scalar(select(func.count()).select_from(User).where(*conditions)) or 0)
+    page = min(max(0, page), max(0, (total - 1) // PAGE_SIZE))
+    pending = list((await session.scalars(select(User).where(*conditions)
+        .order_by(User.created_at, User.id).offset(page * PAGE_SIZE).limit(PAGE_SIZE))).all())
+    rows = [[InlineKeyboardButton(
+        text=("💬 " if target.application_status == ApplicationStatus.NEEDS_INFO else "📝 ")
+             + f"#{target.id} · {target.first_name} {target.last_name or ''}"[:52],
+        callback_data=f"admin:application:{target.id}",
+    )] for target in pending]
+    navigation = []
+    if page:
+        navigation.append(InlineKeyboardButton(text="← Назад", callback_data=f"admin:applications:page:{page-1}"))
+    if (page + 1) * PAGE_SIZE < total:
+        navigation.append(InlineKeyboardButton(text="Далее →", callback_data=f"admin:applications:page:{page+1}"))
+    if navigation:
+        rows.append(navigation)
+    rows.append([InlineKeyboardButton(text="🔄 Обновить", callback_data=f"admin:applications:page:{page}"),
+                 InlineKeyboardButton(text="📊 Сводка", callback_data="admin:management:open")])
+    rows.append([InlineKeyboardButton(text="← Управление", callback_data="admin:panel")])
+    text = (f"📥 <b>Заявки ЭРА · {total}</b>\n\n"
+            + (f"Страница {page+1} из {(total+PAGE_SIZE-1)//PAGE_SIZE}. Сначала самые ранние заявки.\n"
+               "📝 Ожидает решения · 💬 Запрошено уточнение\n\nВыберите человека, чтобы открыть анкету и принять решение."
+               if pending else "✅ Заявок на рассмотрении нет."))
+    markup = InlineKeyboardMarkup(inline_keyboard=rows)
+    if edit:
+        from aiogram.exceptions import TelegramBadRequest
+        try:
+            await message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+            return
+        except TelegramBadRequest as exc:
+            if "not modified" in str(exc).lower():
+                return
+            # A removed/old menu should not make the queue inaccessible.
+    await message.answer(text, parse_mode="HTML", reply_markup=markup)
 
 
 @router.message(Command("applications"))
+@router.message(F.text == "📥 Заявки")
 async def applications_queue(
     message: Message,
     user: User | None,
@@ -76,27 +116,28 @@ async def applications_queue(
 ) -> None:
     if not await _guard(message, user, settings):
         return
-    pending = await _pending_applications(session, limit=26)
-    if not pending:
-        await message.answer("✅ Новых заявок на рассмотрении нет.")
-        return
+    await _show_application_list(message, session)
 
-    has_more = len(pending) > 25
-    visible = pending[:25]
-    await message.answer(
-        f"📥 Заявок на рассмотрении: {len(visible)}" + ("+" if has_more else "") + ". Показываю последние прямо из базы."
-    )
-    delivered = 0
-    for target in visible:
-        try:
-            await send_admin_user_card(message, session, target, mode="application")
-            delivered += 1
-        except Exception:
-            await message.answer(f"⚠️ Не удалось показать заявку #{target.id}.")
-    if delivered < len(visible):
-        await message.answer(f"Показано карточек: {delivered} из {len(visible)}. Остальные остаются в очереди и не потеряны.")
-    if has_more:
-        await message.answer("В очереди есть ещё заявки. Полный список доступен в Admin Mode.")
+
+@router.callback_query(F.data == "admin:applications")
+@router.callback_query(F.data.regexp(r"^admin:applications:page:\d{1,6}$"))
+async def applications_callback(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
+    if not await _guard(call, user, settings):
+        return
+    page = int(call.data.rsplit(":", 1)[-1]) if ":page:" in call.data else 0
+    await _show_application_list(call.message, session, page=page, edit=":page:" in call.data)
+
+
+@router.callback_query(F.data.regexp(r"^admin:application:\d+$"))
+async def application_detail(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
+    if not await _guard(call, user, settings):
+        return
+    target = await session.get(User, int(call.data.rsplit(":", 1)[-1]))
+    if target is None or target.is_archived:
+        await call.message.answer("Эта заявка недоступна. Обновите список заявок.")
+        return
+    revision = await application_review_version(session, target.id)
+    await send_admin_user_card(call.message, session, target, mode="application", review_version=revision)
 
 
 @router.callback_query(F.data == "admin:panel")
@@ -109,8 +150,8 @@ async def admin_dashboard_callback(
     if not await _guard(call, user, settings):
         return
     await state.clear()
-    await call.message.answer(texts.ADMIN_PANEL_MOVED, reply_markup=open_app_button(settings.effective_miniapp_url))
+    await call.message.answer("⚙️ Управление ЭРА\n\nВыберите нужный раздел.",
+                              reply_markup=admin_home_keyboard(settings.effective_miniapp_url))
 
 
-# The Mini App AdminOverviewScreen owns the dashboard; the bot only exposes
-# compatibility routing and database-backed application recovery.
+# Both surfaces share services and permissions; Telegram owns these native actions.

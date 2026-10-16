@@ -7,6 +7,7 @@ from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import Settings
+from app.services.application_review_service import deliver_application_notices
 from app.services.chat_permissions_service import enforce_general_chat_writable
 from app.services.community_mission_service import process_task_squad_notifications
 from app.services.community_verification_jobs import complete_verification_campaigns_job
@@ -63,6 +64,7 @@ def add_system_jobs(
         scheduler.add_job(send_daily_system_summary, "interval", minutes=5, args=(bot, settings, session_factory), id="system-summary-recovery", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     else:
         scheduler.add_job(send_daily_system_summary, "cron", hour=9, minute=30, args=(bot, settings, session_factory), id="system-daily-summary", replace_existing=True, max_instances=1, coalesce=True)
+    scheduler.add_job(deliver_application_notices, "interval", minutes=1, args=(bot, settings, session_factory), id="application-notices", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(reconcile_vacancies_job, "interval", minutes=30, args=(session_factory,), id="office-vacancy-reconciliation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(send_configured_event_reminders, "interval", minutes=1, args=(bot, settings, session_factory), id="configured-event-reminders", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(deliver_attendance_notifications, "interval", minutes=1, args=(bot, settings, session_factory), id="event-lifecycle-notifications", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)

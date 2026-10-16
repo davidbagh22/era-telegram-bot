@@ -11,7 +11,7 @@ from app.keyboards.common import registration_keyboard, subscription_keyboard
 from app.keyboards.registration import pending_registration_keyboard
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.utils import texts, ux_texts
-from app.utils.constants import ApplicationStatus
+from app.utils.constants import ApplicationStatus, Role
 
 router = Router(name="start")
 
@@ -37,7 +37,10 @@ async def show_home(message: Message, user: User, settings: Settings) -> None:
         return
     await message.answer(
         ux_texts.MAIN_MENU,
-        reply_markup=main_reply_keyboard(settings.effective_miniapp_url),
+        reply_markup=main_reply_keyboard(
+            settings.effective_miniapp_url,
+            admin=user.role == Role.ADMIN or message.from_user.id in settings.admin_ids,
+        ),
     )
 
 

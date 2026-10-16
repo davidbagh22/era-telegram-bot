@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import User
+from app.database.models import AppSetting, AuditLog, User
 from app.services.audit_service import audit
 from app.services.digital_engagement_service import award_profile_completion
 from app.services.points_service import add_points
@@ -20,12 +21,73 @@ class ApplicationDecision:
     new_status: str | None
 
 
+APPLICATION_REVIEW_ACTIONS = ('user.registered', 'user.resubmitted', 'user.approved', 'user.rejected', 'user.needs_info')
+
+
+async def application_review_version(session: AsyncSession, user_id: int) -> int:
+    await session.flush()
+    return int(await session.scalar(select(func.max(AuditLog.id)).where(
+        AuditLog.entity_type == 'user', AuditLog.entity_id == user_id,
+        AuditLog.action.in_(APPLICATION_REVIEW_ACTIONS))) or 0)
+
+
+async def stage_application_notice(session: AsyncSession, target: User, *, text: str) -> str:
+    """Same-transaction pending intent; Telegram uses the shared delivery ledger."""
+    import json
+    revision = await application_review_version(session, target.id)
+    key = f'application-notice:{target.id}:{revision}'
+    row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
+    if row is None:
+        session.add(AppSetting(key=key, value=json.dumps({
+            'user_id': target.id, 'telegram_id': target.telegram_id,
+            'status': target.application_status, 'text': text,
+        }, ensure_ascii=False)))
+    return key
+
+
+async def deliver_application_notices(bot, settings, session_factory, *, only_key: str | None = None) -> None:
+    """Retry definite failures; uncertain deliveries remain for operator review."""
+    import json
+    from app.keyboards.participant import main_inline_keyboard
+    from app.services.notification_service import safe_send_once
+    async with session_factory() as session:
+        query = select(AppSetting.key).where(AppSetting.key.like('application-notice:%')).order_by(AppSetting.key).limit(50)
+        if only_key:
+            query = select(AppSetting.key).where(AppSetting.key == only_key)
+        keys = list((await session.scalars(query)).all())
+    for key in keys:
+        async with session_factory() as session:
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update())
+            if row is None:
+                continue
+            payload = json.loads(row.value) if isinstance(row.value, str) else row.value
+            target = await session.scalar(select(User).where(User.id == payload['user_id']).with_for_update())
+            if (not target or target.is_archived or target.is_blocked
+                or target.telegram_id != payload['telegram_id'] or target.application_status != payload['status']
+                or await application_review_version(session, target.id) != int(key.rsplit(':', 1)[-1])):
+                await session.delete(row)
+                await session.commit()
+                continue
+            result = await safe_send_once(bot, settings, target.telegram_id, payload['text'],
+                delivery_key=key, notification_type='application_decision', parse_mode=None,
+                reply_markup=main_inline_keyboard(miniapp_url=settings.effective_miniapp_url)
+                    if payload['status'] == ApplicationStatus.APPROVED else None)
+            permanent_failure = result.status == 'failed' and (
+                result.error_code not in {'telegram_retry_after', 'delivery_ledger_unavailable', 'delivery_in_flight', 'delivery_retry_ledger_failed'}
+                or result.attempt_count >= 3)
+            if permanent_failure or result.status in {'sent', 'blocked', 'unreachable', 'uncertain', 'skipped'}:
+                await session.delete(row)
+                await session.commit()
+
+
 async def approve_application(
     session: AsyncSession,
     target: User,
     *,
     actor_id: int | None,
 ) -> ApplicationDecision:
+    await session.flush()
+    await session.refresh(target, attribute_names=['application_status'], with_for_update=True)
     if target.application_status == ApplicationStatus.APPROVED:
         return ApplicationDecision(False, "already_approved", target.application_status, target.application_status)
     if target.application_status == ApplicationStatus.REJECTED:
@@ -76,6 +138,8 @@ async def reject_application(
     actor_id: int | None,
     comment: str,
 ) -> ApplicationDecision:
+    await session.flush()
+    await session.refresh(target, attribute_names=['application_status'], with_for_update=True)
     if target.application_status == ApplicationStatus.APPROVED:
         return ApplicationDecision(False, "already_approved", target.application_status, target.application_status)
     if target.application_status == ApplicationStatus.REJECTED:
@@ -102,6 +166,8 @@ async def request_more_info(
     actor_id: int | None,
     comment: str,
 ) -> ApplicationDecision:
+    await session.flush()
+    await session.refresh(target, attribute_names=['application_status'], with_for_update=True)
     if target.application_status == ApplicationStatus.APPROVED:
         return ApplicationDecision(False, "already_approved", target.application_status, target.application_status)
     if target.application_status == ApplicationStatus.REJECTED:

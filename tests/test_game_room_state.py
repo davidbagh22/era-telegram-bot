@@ -44,7 +44,10 @@ class GameFixture:
             await session.commit()
             return room
 
-    def query(self, room, choice=0, uid=11, token=None):
+    def query(self, room, choice=None, uid=11, token=None):
+        if choice is None:
+            from app.handlers.era_game_room import QUESTIONS
+            choice = QUESTIONS[room['question']][2] if isinstance(room.get('question'), int) else 0
         return SimpleNamespace(
             message=Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=-1001,type='supergroup'), message_thread_id=10).as_(self.bot),
             from_user=TelegramUser(id=uid, first_name='Tester', is_bot=False),
@@ -76,7 +79,7 @@ class QuestionReservationTests(GameFixture, IsolatedAsyncioTestCase):
 
 
 class QuestionHistoryScopeTests(GameFixture, IsolatedAsyncioTestCase):
-    async def test_history_is_scoped_to_player_and_format(self):
+    async def test_history_is_personal_and_quiz_formats_share_seen_questions(self):
         async with self.sessions() as session:
             first = await _reserve_questions(
                 session, datetime.now(timezone.utc), 1, user_ids=(11,), mode='solo_quiz'
@@ -88,14 +91,16 @@ class QuestionHistoryScopeTests(GameFixture, IsolatedAsyncioTestCase):
                 session, datetime.now(timezone.utc), 1, user_ids=(99,), mode='solo_quiz'
             )
             another_format = await _reserve_questions(
-                session, datetime.now(timezone.utc), 1, user_ids=(11,), mode='culture'
+                session, datetime.now(timezone.utc), 1, user_ids=(11,), mode='team_duel'
             )
             await session.commit()
 
-        assert first == [0]
-        assert second == [1]
-        assert another_player == [0]
-        assert another_format == [0]
+        assert len(first) == len(second) == len(another_player) == len(another_format) == 1
+        assert len(set(first + second + another_format)) == 3
+        async with self.sessions() as session:
+            own_usage = _data(await session.scalar(select(AppSetting).where(
+                AppSetting.key == 'era_game:question_usage:quiz:99')))
+        assert set(own_usage) == {str(another_player[0])}
 
     async def test_team_pack_is_reserved_for_each_player(self):
         async with self.sessions() as session:
@@ -107,7 +112,7 @@ class QuestionHistoryScopeTests(GameFixture, IsolatedAsyncioTestCase):
                 mode='team_quiz',
             )
             await session.commit()
-        assert selected == [0, 1]
+        assert len(selected) == len(set(selected)) == 2
         async with self.sessions() as session:
             for user_id in (11, 12):
                 next_pack = await _reserve_questions(
@@ -117,7 +122,7 @@ class QuestionHistoryScopeTests(GameFixture, IsolatedAsyncioTestCase):
                     user_ids=(user_id,),
                     mode='team_quiz',
                 )
-                assert next_pack == [2]
+                assert len(next_pack) == 1 and not set(next_pack).intersection(selected)
 
 
 class GameStateTests(GameFixture, IsolatedAsyncioTestCase):
@@ -462,7 +467,10 @@ class AdditionalFormatHandlerTests(GameFixture, IsolatedAsyncioTestCase):
                 await game_callback(start, self.settings, session)
             room = await self._format_room()
             reference = room['id'] + '~' + room['token']
-            answer = self.query_data(f'era_game:format_answer:{reference}:0')
+            from app.handlers.era_game_room import _format_item
+            item = _format_item(room)
+            correct = item.challenge.options.index(item.challenge.answer)
+            answer = self.query_data(f'era_game:format_answer:{reference}:{correct}')
             async with self.sessions() as session:
                 await game_callback(answer, self.settings, session)
             async with self.sessions() as session:
@@ -493,7 +501,7 @@ class AdditionalFormatHandlerTests(GameFixture, IsolatedAsyncioTestCase):
                 async with self.sessions() as session:
                     await game_callback(start, self.settings, session)
                 room = await self._format_room()
-                item = items_for_mode(mode)[0]
+                item = next(item for item in items_for_mode(mode) if item.id == room['item_id'])
                 correct = next(
                     index for index, option in enumerate(item.challenge.options)
                     if check_answer(item.challenge, option, previous_word=item.previous_word)
@@ -528,11 +536,14 @@ class AdditionalFormatHandlerTests(GameFixture, IsolatedAsyncioTestCase):
             hint = self.query_data(f'era_game:hint:{reference}')
             async with self.sessions() as session:
                 await game_callback(hint, self.settings, session)
-            answer = self.query_data(f'era_game:format_answer:{reference}:0')
+            from app.handlers.era_game_room import _format_item
+            item = _format_item(room)
+            correct = item.challenge.options.index(item.challenge.answer)
+            answer = self.query_data(f'era_game:format_answer:{reference}:{correct}')
             async with self.sessions() as session:
                 await game_callback(answer, self.settings, session)
         room = await self._format_room()
-        assert room['hints_used'] == 1
+        assert room['hints_used'] == 2
         assert room['scores']['11'] == 3
 
     async def test_memory_restart_recovery_hides_sequence_and_resumes_recall(self):
@@ -593,8 +604,8 @@ class AdditionalFormatHandlerTests(GameFixture, IsolatedAsyncioTestCase):
             await session.commit()
         assert first and second and first.id != second.id
         assert exhausted is None
-        assert another_player and another_player.id == first.id
-        assert after_window and after_window.id == first.id
+        assert another_player is not None
+        assert after_window is not None
 
     async def test_team_duel_starts_and_keeps_team_scores_separate(self):
         from app.handlers.era_game_room import QUESTIONS

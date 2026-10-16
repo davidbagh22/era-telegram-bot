@@ -617,6 +617,27 @@ def _quiz_items(mode: GameMode) -> tuple[GameItem, ...]:
 ITEMS[GameMode.SOLO_QUIZ] = _quiz_items(GameMode.SOLO_QUIZ)
 ITEMS[GameMode.TEAM_QUIZ] = _quiz_items(GameMode.TEAM_QUIZ)
 ITEMS[GameMode.TEAM_DUEL] = _quiz_items(GameMode.TEAM_DUEL)
+
+
+def choose_quiz_pack(available: list[int], count: int, *, rng=None) -> list[int]:
+    """Mix themes and randomize starts using the existing reviewed bank."""
+    rng = rng or random.SystemRandom()
+    categories: dict[str, list[int]] = {}
+    for index in available:
+        categories.setdefault(ITEMS[GameMode.SOLO_QUIZ][index].category, []).append(index)
+    chosen = []
+    while categories and len(chosen) < count:
+        themes = list(categories)
+        rng.shuffle(themes)
+        for theme in themes:
+            index = rng.choice(categories[theme])
+            categories[theme].remove(index)
+            chosen.append(index)
+            if not categories[theme]:
+                del categories[theme]
+            if len(chosen) == count:
+                break
+    return chosen
 ITEMS[GameMode.GUESS_COUNTRY] = _country_items()
 ITEMS[GameMode.TRUE_OR_MYTH] = _truth_items()
 ITEMS[GameMode.CULTURE] = _culture_items()

@@ -53,8 +53,12 @@ services:
       - key: NATIVE_EVENT_COMPOSER_TESTER_IDS
         value: "1593868942"
       - key: FEATURE_MANAGEMENT_REPORTS
-        value: TESTERS
+        value: ALL
       - key: MANAGEMENT_REPORT_RECIPIENT_IDS
+        value: ""
+      - key: FEATURE_QUICK_REGISTRATION
+        value: TESTERS
+      - key: QUICK_REGISTRATION_TESTER_IDS
         value: "1593868942"
       - key: FEATURE_ATTENDANCE_QR
         value: TESTERS

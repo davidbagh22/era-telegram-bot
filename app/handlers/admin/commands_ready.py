@@ -199,12 +199,17 @@ async def admin_rights_command(message: Message, user: User | None, settings: Se
 
 async def _management_report_access(user, telegram_id, settings, session) -> bool:
     from app.services.admin_analytics_service import management_report_recipients
+    from app.services.authorization_service import is_full_admin
     if settings.feature_management_reports == 'OFF' or not user or user.is_blocked or user.is_archived:
         return False
-    return telegram_id == user.telegram_id and telegram_id in await management_report_recipients(session, settings)
+    return telegram_id == user.telegram_id and (
+        is_full_admin(user, settings, telegram_id)
+        or telegram_id in await management_report_recipients(session, settings)
+    )
 
 
 @router.message(Command('report'))
+@router.message(F.text == '📊 Админ-сводка')
 async def management_report_command(message: Message, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await _management_report_access(user, message.from_user.id, settings, session):
         await message.answer('Управленческий отчёт недоступен для этого профиля.')
@@ -212,10 +217,12 @@ async def management_report_command(message: Message, user: User | None, setting
     from datetime import datetime, timezone
     from app.services.admin_analytics_service import build_management_report, management_report_text, management_report_markup
     metrics = await build_management_report(session, now=datetime.now(timezone.utc))
-    await message.answer(management_report_text(metrics), reply_markup=management_report_markup())
+    await message.answer(management_report_text(metrics, title='Админ-сводка'), parse_mode='HTML',
+                         reply_markup=management_report_markup(settings.effective_miniapp_url))
 
 
-@router.callback_query(F.data.in_({'admin:management:refresh', 'admin:management:excel'}), F.message.chat.type == 'private')
+@router.callback_query(F.data.in_({'admin:management:open', 'admin:management:refresh', 'admin:management:excel',
+                                  'admin:management:period:weekly', 'admin:management:period:monthly'}), F.message.chat.type == 'private')
 async def management_report_action(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await _management_report_access(user, call.from_user.id, settings, session):
         await call.answer('Доступ к отчёту отсутствует.', show_alert=True)
@@ -225,13 +232,20 @@ async def management_report_action(call: CallbackQuery, user: User | None, setti
     from aiogram.exceptions import TelegramBadRequest
     from aiogram.types import BufferedInputFile
     from app.services.admin_analytics_service import build_management_report, management_report_text, management_report_markup
-    metrics = await build_management_report(session, now=datetime.now(timezone.utc))
+    days, title = {'weekly': (7, 'Сводка за неделю'), 'monthly': (30, 'Сводка за 30 дней')}.get(
+        call.data.rsplit(':', 1)[-1], (1, 'Админ-сводка'))
+    metrics = await build_management_report(session, now=datetime.now(timezone.utc), days=days)
     if call.data.endswith(':excel'):
         from app.services.excel_report_service import management_summary_workbook
         await safe_answer_document(call.message, BufferedInputFile(management_summary_workbook(metrics), filename='ERA-management-report.xlsx'))
         return
+    text = management_report_text(metrics, title=title)
+    markup = management_report_markup(settings.effective_miniapp_url)
+    if call.data.endswith(':open'):
+        await call.message.answer(text, parse_mode='HTML', reply_markup=markup)
+        return
     try:
-        await call.message.edit_text(management_report_text(metrics), reply_markup=management_report_markup())
+        await call.message.edit_text(text, parse_mode='HTML', reply_markup=markup)
     except TelegramBadRequest as exc:
         if 'not modified' not in str(exc).lower():
             raise

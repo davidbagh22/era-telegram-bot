@@ -65,6 +65,7 @@ class DomainTests(unittest.TestCase):
 
     def test_registration_creates_loaded_relationship_collections(self) -> None:
         session = AsyncMock()
+        session.begin_nested = Mock(return_value=AsyncMock())
         session.add = Mock()
         session.scalar.return_value = None
         session.get.return_value = None  # no legacy identity to restore

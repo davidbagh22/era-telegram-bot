@@ -3,6 +3,22 @@ from collections.abc import Iterable
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
+def admin_home_keyboard(miniapp_url: str = "") -> InlineKeyboardMarkup:
+    from aiogram.types import WebAppInfo
+
+    rows = [
+        [InlineKeyboardButton(text="📊 Админ-сводка", callback_data="admin:management:open")],
+        [InlineKeyboardButton(text="📥 Заявки", callback_data="admin:applications"),
+         InlineKeyboardButton(text="📅 Мероприятия", callback_data="admin:events")],
+        [InlineKeyboardButton(text="✅ Задачи", callback_data="admin:tasks"),
+         InlineKeyboardButton(text="💡 Проекты", callback_data="admin:projects")],
+    ]
+    if miniapp_url:
+        rows.append([InlineKeyboardButton(text="🔥 Открыть ЭРА", web_app=WebAppInfo(url=miniapp_url))])
+    rows.append([InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -110,21 +126,24 @@ def applications_keyboard(users: Iterable) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def application_actions(user_id: int) -> InlineKeyboardMarkup:
+def application_actions(user_id: int, *, review_version: int | None = None) -> InlineKeyboardMarkup:
+    def action(value: str, legacy: str) -> str:
+        return (f"admin:application_action:{value}:{user_id}:{review_version}"
+                if review_version is not None else f"admin:{legacy}:{user_id}")
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="✅ Одобрить", callback_data=f"admin:approve_user:{user_id}"
+                    text="✅ Одобрить", callback_data=action("approve", "approve_user")
                 ),
                 InlineKeyboardButton(
-                    text="❌ Отклонить", callback_data=f"admin:reject_user:{user_id}"
+                    text="❌ Отклонить", callback_data=action("reject", "reject_user")
                 ),
             ],
             [
                 InlineKeyboardButton(
                     text="💬 Задать уточняющий вопрос",
-                    callback_data=f"admin:info_user:{user_id}",
+                    callback_data=action("info", "info_user"),
                 )
             ],
             [InlineKeyboardButton(text="Открыть заявку", callback_data=f"admin:application:{user_id}")],
