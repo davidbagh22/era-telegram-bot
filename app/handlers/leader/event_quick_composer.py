@@ -28,7 +28,11 @@ from app.config import Settings
 from app.database.event_experience import EventExperience
 from app.database.models import AppSetting, Event, User
 from app.services.authorization_service import can_manage_events
-from app.services.event_publication_service import announcement_text, escaped_text_parts
+from app.services.event_publication_service import (
+    announcement_text,
+    text_parts,
+)
+from app.services.notification_service import safe_answer_photo
 from app.utils.constants import EventStatus
 from app.utils.validators import parse_date, parse_time
 
@@ -360,11 +364,14 @@ async def quick_action(call: CallbackQuery, user: User | None, settings: Setting
     if action == 'preview':
         from aiogram.types import BufferedInputFile
         poster = BufferedInputFile(experience.poster_bytes, filename='poster') if experience.poster_bytes else None
-        for index, part in enumerate(escaped_text_parts(announcement_text(event, experience), 1000 if poster else 4000)):
+        for index, part in enumerate(text_parts(announcement_text(event, experience), 1000 if poster else 4000)):
             if index == 0 and poster:
-                await call.message.answer_photo(poster, caption=part, parse_mode='HTML')
+                sent = await safe_answer_photo(call.message, poster, caption=part)
+                if not sent:
+                    await call.message.answer('Предпросмотр с фото не отправлен. Проверьте доступность изображения и попробуйте ещё раз.')
+                    return
             else:
-                await call.message.answer(part, parse_mode='HTML')
+                await call.message.answer(part)
         await session.commit()
         await state.update_data(quick_previewed=signature(form))
         await show_card(call.message, state)
