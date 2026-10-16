@@ -24,6 +24,8 @@ async def _markup(bot, settings: Settings, telegram_id: int = 0) -> InlineKeyboa
                 text="🎮 Интерактив · квизы и команды",
                 url=f"https://t.me/c/{chat_id[4:]}/{thread_id}",
             )])
+    if _enabled(settings, telegram_id):
+        rows.insert(0, [InlineKeyboardButton(text="👤 Мои игры", callback_data="era_game:cabinet")])
     rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu:main")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

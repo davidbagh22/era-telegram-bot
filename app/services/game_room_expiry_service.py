@@ -2,12 +2,13 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import select
+from aiogram.types import Chat, Message
 
 from app.database.models import AppSetting
-from app.handlers.era_game_room import _data, _lock, _save
+from app.handlers.era_game_room import _data, _lock, _save, _publish_room
 
 
-async def expire_game_rooms(session_factory, *, now=None) -> int:
+async def expire_game_rooms(session_factory, bot=None, *, now=None) -> int:
     now = now or datetime.now(timezone.utc)
     async with session_factory() as session:
         keys = (await session.scalars(select(AppSetting.key).where(
@@ -23,6 +24,13 @@ async def expire_game_rooms(session_factory, *, now=None) -> int:
             row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update())
             room = _data(row)
             if room.get('status') not in {'waiting', 'ready_check', 'playing'}:
+                if bot is not None and room.get('message_id') and room.get('status') in {'expired', 'finished', 'cancelled', 'exhausted'} and room.get('card_status') != room.get('status'):
+                    parts = key.split(':')
+                    chat_id, thread = int(parts[1]), parts[2]
+                    message = Message(message_id=room['message_id'], date=now,
+                                      chat=Chat(id=chat_id, type='private' if chat_id > 0 else 'supergroup'),
+                                      message_thread_id=int(thread) if thread != 'None' else None).as_(bot)
+                    await _publish_room(session, key, message)
                 continue
             if datetime.fromisoformat(room['expires_at']) > now:
                 continue
@@ -30,4 +38,11 @@ async def expire_game_rooms(session_factory, *, now=None) -> int:
             await _save(session, key, room)
             await session.commit()
             closed += 1
+            if bot is not None and room.get('message_id'):
+                parts = key.split(':')
+                chat_id, thread = int(parts[1]), parts[2]
+                message = Message(message_id=room['message_id'], date=now,
+                                  chat=Chat(id=chat_id, type='private' if chat_id > 0 else 'supergroup'),
+                                  message_thread_id=int(thread) if thread != 'None' else None).as_(bot)
+                await _publish_room(session, key, message)
     return closed

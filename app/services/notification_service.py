@@ -65,6 +65,9 @@ class NotificationDeliveryResult:
     duplicate: bool
     attempt_count: int
     error_code: str | None = None
+    # Returned only when this process observed Telegram accept this exact send.
+    # Historical receipts intentionally do not fabricate a message identifier.
+    message_id: int | None = None
 
 
 @lru_cache(maxsize=8)
@@ -352,9 +355,11 @@ async def safe_send_once(
             if parse_mode is not None:
                 kwargs["parse_mode"] = parse_mode
             if photo is None:
-                await bot.send_message(chat_id, text, **kwargs)
+                sent_message = await bot.send_message(chat_id, text, **kwargs)
             else:
-                await bot.send_photo(chat_id, photo, caption=text, **kwargs)
+                sent_message = await bot.send_photo(chat_id, photo, caption=text, **kwargs)
+            observed_id = getattr(sent_message, "message_id", None)
+            message_id = observed_id if isinstance(observed_id, int) else None
             try:
                 attempt_count = await _record_delivery_outcome(
                     settings,
@@ -376,12 +381,14 @@ async def safe_send_once(
                     duplicate=False,
                     attempt_count=attempt_count,
                     error_code="delivery_ack_failed",
+                    message_id=message_id,
                 )
             return NotificationDeliveryResult(
                 sent=True,
                 status="sent",
                 duplicate=False,
                 attempt_count=attempt_count,
+                message_id=message_id,
             )
         except TelegramAPIError as exc:
             status, error_code, temporary = _delivery_failure(exc)

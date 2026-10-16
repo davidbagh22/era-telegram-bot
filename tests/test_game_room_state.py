@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from aiogram.types import Chat, Message, User as TelegramUser
 from sqlalchemy import select
@@ -23,10 +23,15 @@ class GameFixture:
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
+        self.bot = Mock()
+        self.bot.edit_message_text = AsyncMock(return_value=True)
+        sent = Message(message_id=66, date=datetime.now(timezone.utc), chat=Chat(id=-1001, type='supergroup'), message_thread_id=10).as_(self.bot)
+        self.send = AsyncMock(return_value=sent)
         self.settings = Settings(bot_token='1234567890:test-token', feature_games='TESTERS', feature_tester_ids=[11], games_rewards_enabled=True)
         async with self.sessions() as session:
             user = User(telegram_id=11, first_name='Tester', application_status=ApplicationStatus.APPROVED)
             session.add(user)
+            session.add_all(User(telegram_id=uid, first_name=f'Player {uid}', application_status=ApplicationStatus.APPROVED) for uid in (12, 22, 33))
             await session.commit()
             self.user_id = user.id
 
@@ -41,7 +46,7 @@ class GameFixture:
 
     def query(self, room, choice=0, uid=11, token=None):
         return SimpleNamespace(
-            message=Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=-1001,type='supergroup'), message_thread_id=10),
+            message=Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=-1001,type='supergroup'), message_thread_id=10).as_(self.bot),
             from_user=TelegramUser(id=uid, first_name='Tester', is_bot=False),
             data=f'era_game:answer:{room["id"]}~{token or room["token"]}:{choice}',
             answer=AsyncMock(),
@@ -131,7 +136,7 @@ class GameStateTests(GameFixture, IsolatedAsyncioTestCase):
 
     async def test_double_answer_awards_only_once_and_nonparticipant_rejected(self):
         room = await self.new_room()
-        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=AsyncMock()) as send:
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=self.send) as send:
             async with self.sessions() as session:
                 await game_callback(self.query(room, uid=22), self.settings, session)
             async with self.sessions() as session:
@@ -207,7 +212,7 @@ class GameStateTests(GameFixture, IsolatedAsyncioTestCase):
         query = self.query(room, uid=11)
         query.data = f"era_game:join:{room['id']}~{room['token']}"
         with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(
-            Message, 'answer', new=AsyncMock()
+            Message, 'answer', new=self.send
         ) as send:
             async with self.sessions() as session:
                 await game_callback(query, self.settings, session)
@@ -269,7 +274,7 @@ class MultiRoundGamesTests(GameFixture, IsolatedAsyncioTestCase):
             room = await _new_room(session, chat_id=-1001, thread_id=10, user_id=11, kind='solo', questions_per_game=5)
             await session.commit()
         old = dict(room)
-        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=AsyncMock()):
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=self.send):
             for position in range(5):
                 query = self.query(room, choice=QUESTIONS[room['question']][2])
                 async with self.sessions() as session:
@@ -293,7 +298,7 @@ class MultiRoundGamesTests(GameFixture, IsolatedAsyncioTestCase):
         async with self.sessions() as session:
             room = await _new_room(session, chat_id=-1001, thread_id=10, user_id=11, kind='solo', questions_per_game=5)
             await session.commit()
-        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=AsyncMock()):
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=self.send):
             for position in range(5):
                 correct = QUESTIONS[room['question']][2]
                 choice = correct if position < 2 else (correct+1) % 3
@@ -312,7 +317,7 @@ class MultiRoundGamesTests(GameFixture, IsolatedAsyncioTestCase):
             query.data = f"era_game:{operation}:{room['id']}~{room['token']}"
             async with self.sessions() as session:
                 await game_callback(query, self.settings, session)
-        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=AsyncMock()):
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=self.send):
             await click('join', 22)
             assert (await self.current_room('team'))['status'] == 'ready_check'
             await click('ready', 99)
@@ -342,11 +347,13 @@ class MultiRoundGamesTests(GameFixture, IsolatedAsyncioTestCase):
         query.data = 'era_game:resume'
         async with self.sessions() as session:
             usage_before = _data(await session.scalar(select(AppSetting).where(AppSetting.key == 'era_game:question_usage')))
-        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=AsyncMock()) as send:
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=self.send) as send:
             async with self.sessions() as session:
                 await game_callback(query, self.settings, session)
             send.assert_awaited_once()
-        assert await self.current_room(room['id']) == room
+        current = await self.current_room(room['id'])
+        assert all(current[k] == v for k, v in room.items())
+        assert current['message_id'] == 66
         async with self.sessions() as session:
             assert _data(await session.scalar(select(AppSetting).where(AppSetting.key == 'era_game:question_usage'))) == usage_before
             assert (await session.scalars(select(PointTransaction))).all() == []
@@ -355,11 +362,11 @@ class MultiRoundGamesTests(GameFixture, IsolatedAsyncioTestCase):
         room = await self.new_room('team')
         query = self.query(room, uid=22)
         query.data = f"era_game:join:{room['id']}~{room['token']}"
-        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=AsyncMock()):
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=self.send):
             async with self.sessions() as session:
                 await game_callback(query, self.settings, session)
         assert (await self.current_room('team'))['status'] == 'ready_check'
-        assert await expire_game_rooms(self.sessions, now=datetime.now(timezone.utc)+timedelta(seconds=30)) == 1
+        assert await expire_game_rooms(self.sessions, now=datetime.now(timezone.utc)+timedelta(seconds=100)) == 1
         assert (await self.current_room('team'))['status'] == 'expired'
         async with self.sessions() as session:
             assert await session.scalar(select(AppSetting).where(AppSetting.key == 'era_game:question_usage')) is None
@@ -368,10 +375,9 @@ class MultiRoundGamesTests(GameFixture, IsolatedAsyncioTestCase):
     async def test_team_unique_winner_bonus_and_duplicate_final_callback(self):
         from app.handlers.era_game_room import QUESTIONS
         async with self.sessions() as session:
-            session.add(User(telegram_id=22, first_name='Second', application_status=ApplicationStatus.APPROVED))
             room = await _new_room(session, chat_id=-1001, thread_id=10, user_id=11, kind='team', questions_per_game=5)
             await session.commit()
-        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=AsyncMock()):
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=self.send):
             for operation, uid in [('join', 22), ('ready', 11), ('ready', 22)]:
                 query = self.query(room, uid=uid)
                 query.data = f"era_game:{operation}:{room['id']}~{room['token']}"
@@ -397,7 +403,7 @@ class MultiRoundGamesTests(GameFixture, IsolatedAsyncioTestCase):
 
     async def test_team_waits_for_all_three_joined_players(self):
         room = await self.new_room('team')
-        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=AsyncMock()):
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=self.send):
             for operation, uid in [('join', 22), ('join', 33), ('ready', 11), ('ready', 22)]:
                 query = self.query(room, uid=uid)
                 query.data = f"era_game:{operation}:{room['id']}~{room['token']}"
@@ -420,7 +426,7 @@ class MultiRoundGamesTests(GameFixture, IsolatedAsyncioTestCase):
             query.data = f"era_game:{operation}:{room['id']}~{room['token']}"
             async with self.sessions() as session:
                 await game_callback(query, self.settings, session)
-        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=AsyncMock()):
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=self.send):
             for operation, uid in [('join', 22), ('join', 33), ('ready', 11), ('ready', 22)]:
                 await click(operation, uid)
             before = await self.current_room('team')
@@ -437,18 +443,20 @@ class MultiRoundGamesTests(GameFixture, IsolatedAsyncioTestCase):
 class AdditionalFormatHandlerTests(GameFixture, IsolatedAsyncioTestCase):
     async def _format_room(self):
         async with self.sessions() as session:
-            row = await session.scalar(select(AppSetting).where(AppSetting.key.like('era_game:-1001:10:f%')))
+            row = await session.scalar(select(AppSetting).where(AppSetting.key.like('era_game:11:None:f%')))
             return _data(row)
 
     def query_data(self, data, uid=11):
         query = self.query({"id": "unused", "token": "unused"}, uid=uid)
         query.data = data
+        if data == 'era_game:solo' or data.startswith(('era_game:play:', 'era_game:format_answer:', 'era_game:hint:')):
+            query.message = Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=uid, type='private'), from_user=query.from_user).as_(self.bot)
         return query
 
     async def test_binary_format_is_playable_idempotent_and_explains(self):
         start = self.query_data('era_game:play:true_or_myth')
         with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(
-            Message, 'answer', new=AsyncMock()
+            Message, 'answer', new=self.send
         ) as send:
             async with self.sessions() as session:
                 await game_callback(start, self.settings, session)
@@ -459,7 +467,8 @@ class AdditionalFormatHandlerTests(GameFixture, IsolatedAsyncioTestCase):
                 await game_callback(answer, self.settings, session)
             async with self.sessions() as session:
                 await game_callback(answer, self.settings, session)
-            assert send.await_count == 2
+            assert send.await_count == 1
+            self.bot.edit_message_text.assert_awaited()
         room = await self._format_room()
         assert room['status'] == 'finished'
         assert room['scores']['11'] == 1
@@ -477,7 +486,7 @@ class AdditionalFormatHandlerTests(GameFixture, IsolatedAsyncioTestCase):
             GameMode.CULTURE, GameMode.MEMORY,
         )
         with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(
-            Message, 'answer', new=AsyncMock()
+            Message, 'answer', new=self.send
         ):
             for mode in modes:
                 start = self.query_data(f'era_game:play:{mode.value}')
@@ -502,7 +511,7 @@ class AdditionalFormatHandlerTests(GameFixture, IsolatedAsyncioTestCase):
                 if mode != modes[-1]:
                     async with self.sessions() as session:
                         state = await session.scalar(select(AppSetting).where(
-                            AppSetting.key == _key(-1001, 10, room['id'])
+                            AppSetting.key == _key(11, None, room['id'])
                         ))
                         await session.delete(state)
                         await session.commit()
@@ -510,7 +519,7 @@ class AdditionalFormatHandlerTests(GameFixture, IsolatedAsyncioTestCase):
     async def test_hint_is_persisted_and_reduces_score(self):
         start = self.query_data('era_game:play:guess_country')
         with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(
-            Message, 'answer', new=AsyncMock()
+            Message, 'answer', new=self.send
         ), patch.object(Message, 'edit_reply_markup', new=AsyncMock()):
             async with self.sessions() as session:
                 await game_callback(start, self.settings, session)
@@ -531,7 +540,7 @@ class AdditionalFormatHandlerTests(GameFixture, IsolatedAsyncioTestCase):
 
         start = self.query_data('era_game:play:memory')
         with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(
-            Message, 'answer', new=AsyncMock()
+            Message, 'answer', new=self.send
         ), patch('app.handlers.era_game_room.asyncio.sleep', new=AsyncMock()):
             async with self.sessions() as session:
                 await game_callback(start, self.settings, session)
@@ -547,7 +556,7 @@ class AdditionalFormatHandlerTests(GameFixture, IsolatedAsyncioTestCase):
 
         start = self.query_data('era_game:play:memory')
         with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(
-            Message, 'answer', new=AsyncMock()
+            Message, 'answer', new=self.send
         ), patch('app.handlers.era_game_room.asyncio.sleep', new=AsyncMock()):
             async with self.sessions() as session:
                 await game_callback(start, self.settings, session)
@@ -591,7 +600,7 @@ class AdditionalFormatHandlerTests(GameFixture, IsolatedAsyncioTestCase):
         from app.handlers.era_game_room import QUESTIONS
 
         with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(
-            Message, 'answer', new=AsyncMock()
+            Message, 'answer', new=self.send
         ):
             async with self.sessions() as session:
                 await game_callback(self.query_data('era_game:duel'), self.settings, session)
@@ -628,3 +637,180 @@ class AdditionalFormatHandlerTests(GameFixture, IsolatedAsyncioTestCase):
                 AppSetting.key == _key(-1001, 10, room_id)
             ))
             return _data(row)
+
+
+class IdentifiedRoomTests(GameFixture, IsolatedAsyncioTestCase):
+    async def click(self, data, uid=11, *, private=False, name=None):
+        query = self.query({'id': 'unused', 'token': 'unused'}, uid=uid)
+        query.data = data
+        if name:
+            query.from_user = TelegramUser(id=uid, first_name=name, is_bot=False)
+        if private:
+            query.message = Message(message_id=1, date=datetime.now(timezone.utc),
+                                    chat=Chat(id=uid, type='private'), from_user=query.from_user).as_(self.bot)
+        with patch('app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)), patch.object(Message, 'answer', new=self.send):
+            async with self.sessions() as session:
+                await game_callback(query, self.settings, session)
+        return query
+
+    async def room(self, kind='duel', *, private=False):
+        key = _key(11 if private else -1001, None if private else 10, kind)
+        async with self.sessions() as session:
+            return _data(await session.scalar(select(AppSetting).where(AppSetting.key == key)))
+
+    async def test_start_game_deep_link_reaches_the_live_private_handler(self):
+        from aiogram.filters import CommandObject
+        from app.handlers.emergency import rescue_start
+        actor = TelegramUser(id=11, first_name='Анна', is_bot=False)
+        message = Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=11, type='private'), from_user=actor).as_(self.bot)
+        self.settings.general_chat_id = -1001
+        with patch('app.handlers.emergency._subscription_ok', new=AsyncMock(return_value=True)), patch(
+            'app.handlers.era_game_room._allowed', new=AsyncMock(return_value=True)
+        ), patch.object(Message, 'answer', new=self.send):
+            async with self.sessions() as session:
+                user = await session.get(User, self.user_id)
+                await rescue_start(message, self.bot, user, self.settings, SimpleNamespace(clear=AsyncMock()), session,
+                                   command=CommandObject(prefix='/', command='start', args='game_logic'))
+        async with self.sessions() as session:
+            rooms = [_data(r) for r in (await session.scalars(select(AppSetting).where(AppSetting.key.like('era_game:11:None:f%')))).all()]
+        assert len(rooms) == 1 and rooms[0]['mode'] == 'logic'
+        assert rooms[0]['players'] == {'11': 'Анна'}
+        assert self.send.await_count == 1
+
+    async def test_unregistered_and_pending_clicks_do_not_create_or_join_rooms(self):
+        await self.click('era_game:duel', 99)
+        assert await self.room() == {}
+        await self.click('era_game:duel')
+        initial = await self.room()
+        async with self.sessions() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == 22))
+            user.application_status = ApplicationStatus.PENDING
+            await session.commit()
+        query = await self.click(f"era_game:join:duel~{initial['token']}", 22)
+        assert (await self.room())['participants'] == [11]
+        assert query.answer.await_args.kwargs['url'].endswith('?start=games')
+        assert self.send.await_count == 1
+
+    async def test_menu_auto_joins_balanced_teams_and_one_card_shows_actual_names(self):
+        for uid, name in ((11, 'Анна'), (22, 'Борис'), (33, 'Вера'), (12, 'Глеб')):
+            await self.click('era_game:duel', uid, name=name)
+        state = await self.room()
+        assert state['teams'] == {'11': 'A', '22': 'B', '33': 'A', '12': 'B'}
+        assert self.send.await_count == 1
+        assert self.bot.edit_message_text.await_count == 3
+        card = self.bot.edit_message_text.await_args.kwargs
+        assert card['message_id'] == 66
+        for uid, name in state['players'].items():
+            assert name in card['text'] and f'<code>{uid}</code>' in card['text']
+        assert '🔴 Команда А' in card['text'] and '🔵 Команда Б' in card['text']
+        assert all('duel_join' not in (b.callback_data or '') for row in card['reply_markup'].inline_keyboard for b in row)
+
+    async def test_duplicate_legacy_side_choice_never_moves_player_or_spams(self):
+        await self.click('era_game:duel')
+        state = await self.room()
+        ref = f"duel~{state['token']}"
+        await self.click(f'era_game:duel_join:{ref}:A', 22)
+        before = await self.room()
+        await self.click(f'era_game:duel_join:{ref}:B', 22)
+        assert await self.room() == before
+        assert before['teams']['22'] == 'B'
+        assert self.send.await_count == 1
+
+    async def test_leaving_rebalances_and_card_shows_remaining_people(self):
+        for uid in (11, 22, 33):
+            await self.click('era_game:duel', uid)
+        state = await self.room()
+        await self.click(f"era_game:leave:duel~{state['token']}", 22)
+        state = await self.room()
+        assert state['teams'] == {'11': 'A', '33': 'B'}
+        assert state['ready'] == []
+        assert '<code>22</code>' not in self.bot.edit_message_text.await_args.kwargs['text']
+
+    async def test_ready_answer_and_result_all_edit_same_card_with_named_winners(self):
+        from app.handlers.era_game_room import QUESTIONS
+        await self.click('era_game:duel', name='Анна')
+        await self.click('era_game:duel', 22, name='Борис')
+        state = await self.room()
+        for uid in (11, 22):
+            await self.click(f"era_game:ready:duel~{state['token']}", uid)
+        for _ in range(5):
+            state = await self.room()
+            correct = QUESTIONS[state['question']][2]
+            await self.click(f"era_game:answer:duel~{state['token']}:{correct}", 11)
+            partial = self.bot.edit_message_text.await_args.kwargs['text']
+            assert '✅ ответ принят' in partial and '⏳ отвечает' in partial
+            await self.click(f"era_game:answer:duel~{state['token']}:{(correct+1)%3}", 22)
+        result = self.bot.edit_message_text.await_args.kwargs
+        assert 'Победила 🔴 Команда А' in result['text']
+        assert '<code>11</code>' in result['text'] and '<code>22</code>' in result['text']
+        assert result['reply_markup'] is None and result['message_id'] == 66
+        assert self.send.await_count == 1
+        assert (await self.room())['rewards'] == {'11': 3}
+
+    async def test_solo_public_button_redirects_and_private_game_stays_private(self):
+        call = await self.click('era_game:solo')
+        assert call.answer.await_args.kwargs['url'].endswith('?start=game_solo')
+        assert self.send.await_count == 0
+        await self.click('era_game:solo', private=True)
+        private = await self.room('solo-11', private=True)
+        assert private['participants'] == [11] and private['message_id'] == 66
+        assert await self.room('solo-11') == {}
+
+    async def test_private_solo_cannot_be_answered_by_a_different_registered_player(self):
+        await self.click('era_game:solo', private=True)
+        state = await self.room('solo-11', private=True)
+        query = await self.click(f"era_game:answer:solo-11~{state['token']}:0", 22, private=True)
+        assert (await self.room('solo-11', private=True))['answers'] == {}
+        query.answer.assert_awaited()
+
+    async def test_resume_after_new_session_edits_existing_card_without_consuming_question(self):
+        await self.click('era_game:solo', private=True)
+        state = await self.room('solo-11', private=True)
+        await self.click('era_game:resume', private=True)
+        assert await self.room('solo-11', private=True) == state
+        assert self.send.await_count == 1
+        assert self.bot.edit_message_text.await_args.kwargs['message_id'] == 66
+
+    async def test_expiry_clears_buttons_and_does_not_post_another_message_after_restart(self):
+        await self.click('era_game:duel')
+        now = datetime.now(timezone.utc) + timedelta(minutes=5)
+        assert await expire_game_rooms(self.sessions, self.bot, now=now) == 1
+        assert await expire_game_rooms(self.sessions, self.bot, now=now) == 0
+        card = self.bot.edit_message_text.await_args.kwargs
+        assert card['reply_markup'] is None and 'Время игры истекло' in card['text']
+        assert self.send.await_count == 1
+
+    async def test_unknown_initial_send_outcome_never_posts_a_second_card(self):
+        from aiogram.exceptions import TelegramNetworkError
+        from aiogram.methods import SendMessage
+        self.send.side_effect = TelegramNetworkError(method=SendMessage(chat_id=-1001, text='x'), message='timeout')
+        await self.click('era_game:duel')
+        assert (await self.room())['card_delivery'] == 'uncertain'
+        await self.click('era_game:duel')
+        assert self.send.await_count == 1
+
+    async def test_private_cabinet_shows_only_own_team_and_latest_solo_results(self):
+        from app.handlers.era_game_room import show_game_cabinet
+        await self.click('era_game:duel', name='Анна')
+        await self.click('era_game:duel', 22, name='Борис')
+        await self.click('era_game:solo', private=True)
+        message = Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=11, type='private')).as_(self.bot)
+        with patch('app.handlers.era_game_room.ensure_topic', new=AsyncMock(return_value=10)), patch.object(Message, 'answer', new=self.send):
+            self.settings.general_chat_id = -1001
+            async with self.sessions() as session:
+                user = await session.get(User, self.user_id)
+                await show_game_cabinet(message, self.settings, session, user)
+        text = self.send.await_args.args[0]
+        assert 'Последние игры' in text and 'Команда А' in text and 'Команда Б' in text
+        assert '<code>11</code>' in text and '<code>22</code>' in text
+
+
+def test_game_name_escaping_does_not_leak_questionnaire_fields():
+    from app.services.game_room_presenter import remember_player, roster
+    room = {'participants': [11], 'status': 'waiting'}
+    person = TelegramUser(id=11, first_name='<b>Имя & тест</b>', is_bot=False)
+    remember_player(room, person)
+    text = roster(room)
+    assert '&lt;b&gt;Имя &amp; тест&lt;/b&gt;' in text
+    assert '<b>Имя & тест</b>' not in text
+    assert set(room['players']) == {'11'}
