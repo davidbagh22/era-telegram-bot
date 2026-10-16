@@ -54,5 +54,9 @@
 ## Короткий native ввод мероприятия — PR #339
 
 - Изменение: один редактор готового текста с фотографией, распознавание только однозначных даты/времени/места/лимита, редактирование в одной карточке, полный предпросмотр, публикация через существующий API и возобновляемый черновик. Расширенный мастер остаётся.
-- До CI и merge это ожидающее изменение. Включение по отдельному `FEATURE_NATIVE_EVENT_COMPOSER=TESTERS`, tester whitelist в Blueprint; значения по умолчанию OFF.
-- Локальные targeted проверки: 20 тестов прошли, Ruff и compileall прошли; SQLite также подтвердил повторное редактирование одного Event draft без дубля, пропуск старых публикаций в списке черновиков и снятие лимита мест. После длинного HTML-текста выявлен и исправлен предел caption: HTML entities теперь остаются целыми при разбиении, полный отображаемый текст сохраняется.
+- Merge SHA: `50de3c7a39d0a90ad91ae98eff1bdccfde96b468`. PR #339 оба обязательных CI workflow завершились success; каждый: 1700 passed, 1 skipped, 1 xfailed, 58 subtests. E2E, PostgreSQL migration/races, frontend, dependency audit и secret scan успешны.
+- Render deploy `dep-db93lqvavr4c73ctug6g` live. `/health`: HTTP 200, commit `50de3c7`; `/ready`: HTTP 200. После старта `system_diagnostic_runs` записал heartbeat `healthy`, score 100; PostgreSQL остаётся на migration `0061_notification_message`.
+- Rollout ограничен `FEATURE_NATIVE_EVENT_COMPOSER=TESTERS`, собственным `NATIVE_EVENT_COMPOSER_TESTER_IDS` (администратор 1593868942); default OFF, пустой список не наследует общие feature testers. Расширенный мастер сохранён, личные рассылки выключены.
+- Локальные targeted проверки: 28 тестов вместе с безопасным медиа sender прошли, Ruff и compileall прошли; SQLite проверил повторное редактирование одного Event draft без дубля, пропуск старых публикаций и снятие лимита. Caption режется после HTML escaping с сохранением целых entity.
+- Реальный пользовательский smoke в Telegram владельцем ещё не выполнен. ИИ не входил в Telegram и не создавал тестовых мероприятий или регистраций в production. До проверки владельцем флаг остаётся в TESTERS.
+- Последняя подтверждённая копия/изолированное восстановление: 16.10 09:26:44 UTC до серии релизов. В #339 схемных миграций нет; новой копии непосредственно перед ним не создавали.
