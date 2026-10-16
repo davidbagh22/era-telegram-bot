@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import Settings
 from app.database.base import Base
-from app.database.models import AuditLog, ConsentLog, User
+from app.database.models import AuditLog, ConsentLog, Department, Direction, User, UserDepartment, UserDirection
 from app.handlers import emergency, registration
 from app.services.application_review_service import reject_application
 from app.services.consent_service import CURRENT_POLICY_VERSION
@@ -124,6 +124,25 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
             await session.commit()
             _, changed = await resubmit_user_registration(session, telegram_id=22, username='other', data={})
             assert not changed
+
+    async def test_quick_resubmission_preserves_uncollected_interests_and_membership_status(self):
+        from app.repositories.users import resubmit_user_registration
+        async with self.sessions() as session:
+            department = Department(name='Test department')
+            direction = Direction(name='Test direction', department=department)
+            target = User(telegram_id=22, first_name='Original', application_status=ApplicationStatus.REJECTED,
+                          departments=[UserDepartment(department=department, status='active')],
+                          directions=[UserDirection(direction=direction, status='active')])
+            session.add(target)
+            await session.commit()
+            old_department_id, old_direction_id = target.departments[0].id, target.directions[0].id
+            await resubmit_user_registration(session, telegram_id=22, username='same',
+                data={'first_name': 'Changed', 'consent_policy_version': CURRENT_POLICY_VERSION})
+            await session.commit()
+        async with self.sessions() as session:
+            result = await session.get(User, target.id)
+            assert result.departments[0].id == old_department_id and result.departments[0].status == 'active'
+            assert result.directions[0].id == old_direction_id and result.directions[0].status == 'active'
 
     async def test_quick_mode_is_flagged_and_empty_tester_list_never_uses_other_feature_ids(self):
         self.settings.feature_quick_registration = 'TESTERS'

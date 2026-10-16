@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import Settings
 from app.database.base import Base
+from app.database.chat_moderation import PendingChatJoinRequest
 from app.database.models import AppSetting, AuditLog, PointTransaction, User
 from app.handlers.admin.application_review_bot import application_action, application_comment
 from app.handlers.admin.dashboard_block_a import _show_application_list
@@ -112,6 +113,37 @@ class NativeAdminTests(IsolatedAsyncioTestCase):
             assert decision.new_value['comment'] == message.text
         assert message.text in self.bot.send_message.await_args.args[1]
         assert await self.state.get_state() is None
+
+    async def test_native_approval_accepts_pending_chat_request_and_persists_access(self):
+        self.bot.approve_chat_join_request = AsyncMock(return_value=True)
+        async with self.sessions() as session:
+            session.add(PendingChatJoinRequest(chat_id=-100123, user_id=22, chat_key='general'))
+            await session.commit()
+            await application_action(self.call(), await session.get(User, self.admin.id),
+                                     self.settings, session, self.state, self.bot)
+        async with self.sessions() as session:
+            request = await session.scalar(select(PendingChatJoinRequest))
+            assert request.status == 'approved'
+        self.bot.approve_chat_join_request.assert_awaited_once_with(chat_id=-100123, user_id=22)
+        self.bot.send_message.assert_awaited_once()
+
+    async def test_access_failure_is_retried_after_restart_with_a_bound(self):
+        from aiogram.exceptions import TelegramForbiddenError
+        from aiogram.methods import ApproveChatJoinRequest
+        self.bot.approve_chat_join_request = AsyncMock(side_effect=TelegramForbiddenError(
+            method=ApproveChatJoinRequest(chat_id=-100123, user_id=22), message='not enough rights'))
+        async with self.sessions() as session:
+            session.add(PendingChatJoinRequest(chat_id=-100123, user_id=22, chat_key='general'))
+            await session.commit()
+            await application_action(self.call(), await session.get(User, self.admin.id),
+                                     self.settings, session, self.state, self.bot)
+        for _ in range(4):
+            await deliver_application_notices(self.bot, self.settings, self.sessions)
+        assert self.bot.approve_chat_join_request.await_count == 3
+        self.bot.send_message.assert_awaited_once()
+        async with self.sessions() as session:
+            assert (await session.get(User, self.applicant.id)).application_status == ApplicationStatus.APPROVED
+            assert (await session.scalar(select(PendingChatJoinRequest))).status == 'pending'
 
     async def test_restarted_worker_delivers_committed_notice_once(self):
         from app.services.application_review_service import request_more_info, stage_application_notice

@@ -49,6 +49,7 @@ async def deliver_application_notices(bot, settings, session_factory, *, only_ke
     """Retry definite failures; uncertain deliveries remain for operator review."""
     import json
     from app.keyboards.participant import main_inline_keyboard
+    from app.services.chat_access_service import sync_user_chat_access
     from app.services.notification_service import safe_send_once
     async with session_factory() as session:
         query = select(AppSetting.key).where(AppSetting.key.like('application-notice:%')).order_by(AppSetting.key).limit(50)
@@ -68,6 +69,17 @@ async def deliver_application_notices(bot, settings, session_factory, *, only_ke
                 await session.delete(row)
                 await session.commit()
                 continue
+            if payload['status'] in {ApplicationStatus.APPROVED, ApplicationStatus.REJECTED}:
+                attempts = int(payload.get('access_attempts', 0))
+                if attempts < 3:
+                    _, failed = await sync_user_chat_access(bot, settings, session, target)
+                    payload['access_attempts'] = attempts + 1
+                    row.value = json.dumps(payload, ensure_ascii=False)
+                    if failed and attempts + 1 < 3:
+                        # The committed decision survives transport failure. The
+                        # same notice worker resumes access synchronization.
+                        await session.commit()
+                        continue
             result = await safe_send_once(bot, settings, target.telegram_id, payload['text'],
                 delivery_key=key, notification_type='application_decision', parse_mode=None,
                 reply_markup=main_inline_keyboard(miniapp_url=settings.effective_miniapp_url)
