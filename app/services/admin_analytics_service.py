@@ -554,7 +554,8 @@ def management_report_text(metrics: dict, *, title: str = 'Ежедневный 
     def value(key):
         return 'не измеряется' if metrics.get(key) is None else str(metrics[key])
     as_of = datetime.fromisoformat(metrics['as_of']).astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m.%Y %H:%M МСК')
-    text = (f'ЭРА | {title}\nСрез: {as_of}\n\n'
+    window = ' — '.join(datetime.fromisoformat(metrics[k]).astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m %H:%M') for k in ('period_start', 'period_end'))
+    text = (f'ЭРА | {title}\nСрез: {as_of}\nОперации за {window} МСК\n\n'
         f"Участников: {value('users_total')} · новых профилей: {value('profiles_new')}\n"
         f"Заявки: ожидают {value('users_pending')} · одобрено {value('applications_approved')} · отклонено {value('applications_rejected')}\n"
         f"Подтверждённая активность, 24 ч / 7 д / 30 д: {value('active_1')} / {value('active_7')} / {value('active_30')}\n"
@@ -620,12 +621,14 @@ async def send_management_reports(bot, settings, session_factory, *, now=None) -
     local = now.astimezone(ZoneInfo('Europe/Moscow'))
     if (local.hour, local.minute) < (settings.management_report_hour, settings.management_report_minute):
         return
-    periods = [('daily', local.date().isoformat(), 1, 'Ежедневный отчёт')]
-    if local.weekday() == 0:
-        periods.append(('weekly', local.date().isoformat(), 7, 'Еженедельный отчёт'))
-    if local.day == 1:
-        days = (local.date() - (local.date().replace(day=1) - timedelta(days=1)).replace(day=1)).days
-        periods.append(('monthly', local.date().isoformat(), days, 'Ежемесячный отчёт'))
+    week_boundary = local.date() - timedelta(days=local.weekday())
+    month_boundary = local.date().replace(day=1)
+    month_days = (month_boundary - (month_boundary - timedelta(days=1)).replace(day=1)).days
+    # Evaluate the latest due boundary even after Monday / day 1 has passed.
+    # Frozen period keys and the common delivery ledger make this bounded recovery.
+    periods = [('daily', local.date().isoformat(), 1, 'Ежедневный отчёт'),
+               ('weekly', week_boundary.isoformat(), 7, 'Еженедельный отчёт'),
+               ('monthly', month_boundary.isoformat(), month_days, 'Ежемесячный отчёт')]
     async with session_factory() as session:
         recipients = await management_report_recipients(session, settings)
     if not recipients:
@@ -642,10 +645,14 @@ async def send_management_reports(bot, settings, session_factory, *, now=None) -
             else:
                 month_end = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
                 month_start = (month_end - timedelta(days=1)).replace(day=1)
+                week_end = (local - timedelta(days=local.weekday())).replace(hour=settings.management_report_hour,
+                    minute=settings.management_report_minute, second=0, microsecond=0)
+                period_end = month_end if period == 'monthly' else week_end if period == 'weekly' else None
+                period_start = month_start if period == 'monthly' else week_end-timedelta(days=7) if period == 'weekly' else None
                 metrics = await build_management_report(session, now=now, days=days,
-                    period_start=month_start.astimezone(timezone.utc) if period == 'monthly' else None,
-                    period_end=month_end.astimezone(timezone.utc) if period == 'monthly' else None)
-                previous_key = f'management-report:{period}:{(local.date()-timedelta(days=days)).isoformat()}'
+                    period_start=period_start.astimezone(timezone.utc) if period_start else None,
+                    period_end=period_end.astimezone(timezone.utc) if period_end else None)
+                previous_key = f'management-report:{period}:{(datetime.fromisoformat(stamp).date()-timedelta(days=days)).isoformat()}'
                 previous_row = await session.scalar(select(AppSetting).where(AppSetting.key == previous_key))
                 previous = json.loads(previous_row.value)['metrics'] if previous_row and isinstance(previous_row.value, str) else None
                 payload = {'metrics': metrics, 'text': management_report_text(metrics, title=title, previous=previous)}

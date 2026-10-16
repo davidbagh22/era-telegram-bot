@@ -406,6 +406,11 @@ async def _lifecycle_notices_wait_for_commit_and_recover_without_duplicates():
             async with factory() as session:
                 receipts = (await session.scalars(select(NotificationDelivery))).all()
                 assert len(receipts) == 2 and all(row.status == 'sent' and row.attempt_count == 1 for row in receipts)
+                assert await session.scalar(select(func.count()).select_from(AppSetting).where(AppSetting.key.like('event-lifecycle:pending:%'))) == 0
+            from unittest.mock import Mock
+            counted_factory = Mock(side_effect=factory)
+            assert await event_attendance_service.deliver_attendance_notifications(bot, settings, counted_factory) == 0
+            assert counted_factory.call_count == 1  # no sessions/locks for historical terminal rows
     finally:
         await engine.dispose()
 

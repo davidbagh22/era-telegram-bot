@@ -33,7 +33,7 @@
 - Merge SHA: c3cf126b3bd2bd8580f21a22df89e8c585b40661; final PR head e768a7268ec5ef1db82ad81093c0e95fc8286c10, tree 80758ff59b0124819b3efb914b7551e9758910dd.
 - Bot checks 38880266778 и Tests 38880266811: success. Оба прогона: 1674 passed, 1 skipped, 1 xfailed, 58 subtests. PostgreSQL migration/races, browser E2E, dependency audit и secret scan успешны.
 - Дополнительный pre-release backup и isolated restore: success 16.10.2026 09:26:44 UTC, 1 545 104 bytes (повторный запуск штатного OIDC backup workflow).
-- Merge выполнен только после CI и закрытия двух review findings. Render ждёт автоматические проверки main; итоговую production-приёмку фиксировать после live.
+- Merge выполнен только после CI и закрытия двух review findings. Render deploy dep-db8v9imq1p3s738oj3gg live 16.10.2026 09:57:27 UTC. /health и /ready HTTP 200, commit c3cf126, migration 0061_notification_message. games-menu-card confirmed, message_id 26355; navigation delivery attempt_count=1. Старый games-notification-v1 остаётся attempt_count=1, нового анонса нет. После live ошибок в журнале не обнаружено.
 
 ## Следующий этап: управленческая сводка и посещаемость в боте
 

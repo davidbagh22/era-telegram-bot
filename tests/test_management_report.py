@@ -53,14 +53,15 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
             session.add(User(telegram_id=33, first_name='Later', application_status=ApplicationStatus.PENDING))
             await session.commit()
         await send_management_reports(self.bot, self.settings, self.sessions, now=self.now+timedelta(hours=5))
-        self.bot.send_message.assert_awaited_once()
-        text = self.bot.send_message.await_args.args[1]
+        assert self.bot.send_message.await_count == 3
+        text = next(c.args[1] for c in self.bot.send_message.await_args_list if 'Ежедневный отчёт' in c.args[1])
         assert '09:00 МСК' in text and 'Обращения: ждут 1 · дольше 24 ч 1' in text
         assert 'PRIVATE' not in text and 'Admin private' not in text and 'Member private' not in text
         async with self.sessions() as session:
             deliveries = (await session.scalars(select(NotificationDelivery))).all()
-            assert len(deliveries) == 1 and deliveries[0].delivery_key == 'daily:2026-10-16:11'
-            assert deliveries[0].status == 'sent' and deliveries[0].attempt_count == 1
+            assert len(deliveries) == 3
+            assert any(d.delivery_key == 'daily:2026-10-16:11' for d in deliveries)
+            assert all(d.status == 'sent' and d.attempt_count == 1 for d in deliveries)
 
     async def test_missing_game_health_backup_data_are_not_reported_as_zero_or_healthy(self):
         async with self.sessions() as session:
@@ -110,7 +111,16 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
         await send_management_reports(self.bot, self.settings, self.sessions, now=self.now-timedelta(days=1))
         await send_management_reports(self.bot, self.settings, self.sessions, now=self.now)
         assert 'Участников к предыдущему отчёту: +0' in self.bot.send_message.await_args.args[1]
-        assert self.bot.send_message.await_count == 2
+        assert self.bot.send_message.await_count == 4
+
+    async def test_recovery_after_entire_boundary_day_uses_latest_due_period(self):
+        await send_management_reports(self.bot, self.settings, self.sessions, now=self.now)
+        async with self.sessions() as session:
+            keys = set((await session.scalars(select(NotificationDelivery.delivery_key))).all())
+            assert keys == {'daily:2026-10-16:11', 'weekly:2026-10-12:11', 'monthly:2026-10-01:11'}
+            week = await session.scalar(select(AppSetting).where(AppSetting.key == 'management-report:weekly:2026-10-12'))
+            metrics = json.loads(week.value)['metrics']
+            assert metrics['period_end'] == '2026-10-12T06:00:00+00:00'
 
     async def test_excel_contains_aggregates_and_preserves_unknown_values(self):
         async with self.sessions() as session:

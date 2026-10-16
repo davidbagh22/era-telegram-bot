@@ -160,7 +160,7 @@ async def _notify_registered(
     if bot is None:
         return 0
     import json
-    key = f'event-lifecycle:{event.id}:{phase}'
+    key = f'event-lifecycle:pending:{event.id}:{phase}'
     if await session.scalar(select(AppSetting.key).where(AppSetting.key == key)):
         return 0
     recipients = [participant.telegram_id for _, participant in await _registered_users(session, event.id)]
@@ -563,7 +563,7 @@ async def deliver_attendance_notifications(bot: Bot, settings, session_factory) 
     from html import escape
     from sqlalchemy import text
     async with session_factory() as session:
-        keys = (await session.scalars(select(AppSetting.key).where(AppSetting.key.like('event-lifecycle:%')))).all()
+        keys = (await session.scalars(select(AppSetting.key).where(AppSetting.key.like('event-lifecycle:pending:%')))).all()
     delivered = 0
     for key in keys:
         async with session_factory() as session:
@@ -571,6 +571,8 @@ async def deliver_attendance_notifications(bot: Bot, settings, session_factory) 
                 lock_id = int.from_bytes(hashlib.sha256(key.encode()).digest()[:8], 'big', signed=True)
                 await session.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': lock_id})
             row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update())
+            if row is None:
+                continue
             payload = json.loads(row.value) if isinstance(row.value, str) else row.value
             if payload.get('status') != 'pending':
                 continue
@@ -578,11 +580,13 @@ async def deliver_attendance_notifications(bot: Bot, settings, session_factory) 
             if event is None or event.status == EventStatus.CANCELLED or (payload['phase'] == 'start' and event.status in COMPLETED_STATUSES):
                 payload['status'] = 'skipped'
                 row.value = json.dumps(payload, ensure_ascii=False)
+                row.key = key.replace(':pending:', ':'+payload['status']+':', 1)
                 await session.commit()
                 continue
             if payload['phase'] == 'complete' and not (await lifecycle_state(session, event.id)).confirmation_open:
                 payload['status'] = 'skipped'
                 row.value = json.dumps(payload, ensure_ascii=False)
+                row.key = key.replace(':pending:', ':'+payload['status']+':', 1)
                 await session.commit()
                 continue
             eligible = {participant.telegram_id for _, participant in await _registered_users(session, event.id)}
@@ -598,7 +602,7 @@ async def deliver_attendance_notifications(bot: Bot, settings, session_factory) 
                     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
                         InlineKeyboardButton(text='✅ Ввести код посещения', callback_data=f'event:confirm_code:{event.id}')]])
                 result = await safe_send_once(bot, settings, recipient, body,
-                    delivery_key=f'{key}:{recipient}', notification_type='event_lifecycle', reply_markup=keyboard, parse_mode='HTML')
+                    delivery_key=f"event-lifecycle:{event.id}:{payload['phase']}:{recipient}", notification_type='event_lifecycle', reply_markup=keyboard, parse_mode='HTML')
                 delivered += int(result.sent and not result.duplicate)
                 if not result.sent and result.status not in {'blocked', 'unreachable', 'skipped'}:
                     if result.status in {'uncertain', 'conflict'}:
@@ -608,5 +612,7 @@ async def deliver_attendance_notifications(bot: Bot, settings, session_factory) 
             payload['attempts'] = payload.get('attempts', 0) + 1
             payload['status'] = 'needs_attention' if needs_attention or (retry and payload['attempts'] >= 3) else 'pending' if retry else 'sent'
             row.value = json.dumps(payload, ensure_ascii=False)
+            if payload['status'] != 'pending':
+                row.key = key.replace(':pending:', ':'+payload['status']+':', 1)
             await session.commit()
     return delivered
