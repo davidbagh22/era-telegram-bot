@@ -20,6 +20,7 @@ from aiogram.types import (
 )
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import Headers
 
@@ -41,7 +42,7 @@ class QuickEventStates(StatesGroup):
 
 
 FIELDS = {'title': 'Название', 'date': 'Дата · ДД.ММ.ГГГГ', 'time': 'Время · ЧЧ:ММ',
-          'location': 'Место', 'limit': 'Лимит · 0 без лимита', 'points': 'Баллы · 0–1000'}
+          'location': 'Место', 'limit': 'Лимит · 0 без лимита', 'points': 'Баллы · 0–200'}
 
 
 def enabled(settings, telegram_id):
@@ -210,7 +211,7 @@ async def quick_input(message: Message, user: User | None, settings: Settings, s
         elif field in {'limit', 'points'}:
             try:
                 value = int(raw)
-                if not 0 <= value <= (1000 if field == 'points' else 2147483647):
+                if not 0 <= value <= (200 if field == 'points' else 2147483647):
                     raise ValueError
             except ValueError:
                 value = None
@@ -239,7 +240,7 @@ async def quick_input(message: Message, user: User | None, settings: Settings, s
         return
     try:
         event_id = await save_form(session, user, settings, message.bot, data['quick_token'], form)
-    except (TelegramAPIError, HTTPException, ValueError):
+    except (TelegramAPIError, HTTPException, SQLAlchemyError, ValueError):
         await session.rollback()
         await state.update_data(quick_form=form, quick_unsaved=True, quick_edit=None)
         ref = data['quick_token']+'~'+signature(form)
@@ -320,7 +321,7 @@ async def quick_action(call: CallbackQuery, user: User | None, settings: Setting
     if action == 'retry':
         try:
             event_id = await save_form(session, user, settings, call.bot, data['quick_token'], form)
-        except (TelegramAPIError, HTTPException, ValueError):
+        except (TelegramAPIError, HTTPException, SQLAlchemyError, ValueError):
             await session.rollback()
             await call.message.answer('Сохранение пока недоступно. Ввод остаётся в форме.')
             return

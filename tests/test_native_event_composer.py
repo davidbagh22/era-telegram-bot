@@ -1,14 +1,22 @@
+import json
 from datetime import date, time
 from html import unescape
+from unittest import IsolatedAsyncioTestCase
 
 from aiogram.types import InlineKeyboardMarkup
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import Settings
+from app.database.base import Base
+from app.database.event_experience import EventExperience
+from app.database.models import AppSetting, Event, User
 from app.handlers.leader.event_quick_composer import (
     FIELDS,
     enabled,
     missing,
     parse_announcement,
+    save_form,
     signature,
 )
 from app.handlers.leader.events_block6 import mode_keyboard
@@ -90,3 +98,58 @@ def test_html_entities_stay_intact_and_caption_is_bounded():
 
     assert all(len(part.encode("utf-16-le")) // 2 <= limit for part, limit in zip(parts, [1000] + [4000] * (len(parts) - 1)))
     assert unescape("".join(parts)) == original
+
+
+class QuickDraftPersistenceTests(IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
+        self.settings = Settings(bot_token="1234567890:test-token")
+        async with self.sessions() as session:
+            self.manager = User(telegram_id=1593868942, first_name="Manager", phone="+10000001", role="admin")
+            session.add(self.manager)
+            await session.commit()
+
+    async def asyncTearDown(self):
+        await self.engine.dispose()
+
+    async def test_repeated_edits_reuse_one_existing_event_draft(self):
+        form = {
+            "title": "Первая версия",
+            "description": "Полный анонс с <текстом> & символами",
+            "date": "2026-11-07",
+            "time": "18:00",
+            "location": "Дом Москвы",
+            "limit": 30,
+            "points": 0,
+        }
+        async with self.sessions() as session:
+            event_id = await save_form(
+                session, self.manager, self.settings, None, "a" * 16, dict(form)
+            )
+        async with self.sessions() as session:
+            saved = json.loads((await session.scalar(select(AppSetting).where(
+                AppSetting.key == f"native-event-draft:{self.manager.id}:{'a' * 16}"
+            ))).value)
+            event = await session.get(Event, event_id)
+            experience = await session.get(EventExperience, event_id)
+            assert saved["event_id"] == event_id
+            assert event.title == form["title"]
+            assert event.description == form["description"]
+            assert experience.creation_mode == "quick"
+            assert experience.broadcast_enabled is False
+
+        form["title"] = "Исправленная версия"
+        form["limit"] = None
+        async with self.sessions() as session:
+            same_id = await save_form(
+                session, self.manager, self.settings, None, "a" * 16, form
+            )
+            event_count = await session.scalar(select(func.count(Event.id)))
+            event = await session.get(Event, same_id)
+            assert same_id == event_id
+            assert event_count == 1
+            assert event.title == form["title"]
+            assert event.participant_limit is None
