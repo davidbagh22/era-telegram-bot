@@ -18,7 +18,7 @@ async def require_event_manager(
     user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
 ) -> User:
-    if not can_manage_events(user, settings, user.telegram_id):
+    if user.is_blocked or user.is_archived or not can_manage_events(user, settings, user.telegram_id):
         raise HTTPException(status_code=403, detail="event_reviewer_access_required")
     return user
 
@@ -137,3 +137,14 @@ async def close_admin_event_confirmation(
         status = 404 if code == "event_not_found" else 409
         raise HTTPException(status_code=status, detail=code) from exc
     return _out(state)
+
+
+@router.get("/{event_id}/attendance-qr")
+async def read_admin_event_attendance_qr(event_id: int, manager: User = Depends(require_event_manager),
+                                        session: AsyncSession = Depends(get_session), settings: Settings = Depends(get_settings)):
+    from fastapi.responses import Response
+    try:
+        _link, image = await event_attendance_service.confirmation_qr(session, event_id, settings=settings, telegram_id=manager.telegram_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if str(exc) == 'event_not_found' else 409, detail=str(exc)) from exc
+    return Response(content=image, media_type='image/png', headers={'Cache-Control': 'no-store'})

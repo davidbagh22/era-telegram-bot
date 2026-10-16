@@ -5,6 +5,8 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.states.event import EventConfirmationStates
+from app.config import Settings
 from app.database.models import Event, EventActivity, User
 from app.keyboards.participant import event_list_keyboard
 from app.services.event_card import send_event_card
@@ -75,7 +77,7 @@ async def event_list(call: CallbackQuery, user: User | None, session: AsyncSessi
 
 
 @router.callback_query(F.data.startswith("event:view:"))
-async def event_view(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+async def event_view(call: CallbackQuery, user: User | None, session: AsyncSession, settings: Settings | None = None) -> None:
     await call.answer()
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
@@ -101,17 +103,20 @@ async def event_view(call: CallbackQuery, user: User | None, session: AsyncSessi
         extra = "Регистрация закрыта, но карточка мероприятия остаётся доступна."
     elif event.participant_limit is not None and int(stats["free"]) <= 0:
         extra = "Свободных мест сейчас нет."
+    keyboard = _event_keyboard(event.id, can_register=can_register, has_activities=has_activities)
+    if settings is not None:
+        from app.services.event_attendance_service import attendance_v2_enabled, participant_state
+        if attendance_v2_enabled(settings, call.from_user.id):
+            attendance = await participant_state(session, event.id, user.id)
+            if attendance.confirmation_open:
+                keyboard.inline_keyboard.insert(0, [InlineKeyboardButton(text="✅ Подтвердить посещение кодом", callback_data=f"event:confirm_code:{event.id}")])
     await send_event_card(
         call.message,
         event,
         available=str(stats["free"]),
         registered=int(stats["registered"]),
         extra_text=extra,
-        keyboard=_event_keyboard(
-            event.id,
-            can_register=can_register,
-            has_activities=has_activities,
-        ),
+        keyboard=keyboard,
     )
 
 
@@ -141,3 +146,52 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
         + f"\n\nЗарегистрировано: {stats['registered']}"
         + (f"\nСвободных мест: {stats['free']}" if event.participant_limit is not None else "")
     )
+
+
+@router.callback_query(F.data.regexp(r"^event:confirm_code:[0-9]+$"), F.message.chat.type == "private")
+async def confirmation_code_start(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext):
+    await call.answer()
+    from app.services.event_attendance_service import attendance_v2_enabled, participant_state
+    if not _approved(user) or not attendance_v2_enabled(settings, call.from_user.id):
+        return
+    event_id = int(call.data.rsplit(':', 1)[-1])
+    try:
+        attendance = await participant_state(session, event_id, user.id)
+    except ValueError:
+        await call.message.answer('Мероприятие не найдено.')
+        return
+    if not attendance.confirmation_open:
+        await call.message.answer('Подтверждение сейчас закрыто или посещение уже отмечено.')
+        return
+    from app.states.event import EventConfirmationStates
+    await state.set_state(EventConfirmationStates.code)
+    await state.update_data(attendance_event_id=event_id)
+    await call.message.answer('Введите код, который дал ведущий. Например: ABCD-2345. /cancel отменяет ввод.')
+
+
+@router.message(EventConfirmationStates.code, F.chat.type == "private", F.text)
+async def confirmation_code_submit(message: Message, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext):
+    from app.services.event_attendance_service import attendance_v2_enabled, confirm_attendance
+    if not _approved(user) or not attendance_v2_enabled(settings, message.from_user.id):
+        await state.clear()
+        return
+    data = await state.get_data()
+    event_id = data.get('attendance_event_id')
+    if not event_id or len(message.text or '') > 32:
+        await message.answer('Введите короткий код от ведущего или нажмите /cancel.')
+        return
+    try:
+        result = await confirm_attendance(session, int(event_id), user.id, message.text)
+    except ValueError as exc:
+        if str(exc) == 'invalid_attendance_code':
+            await message.answer('Код не подошёл. Проверьте его у ведущего и повторите ввод.')
+        else:
+            await state.clear()
+            await message.answer('Подтверждение недоступно. Проверьте регистрацию и открыто ли окно подтверждения.')
+        return
+    from app.services.referral_service import award_first_event_referral
+    await award_first_event_referral(session, invitee_user_id=user.id, event_id=int(event_id))
+    await session.commit()
+    await state.clear()
+    await message.answer('Посещение уже подтверждено. Повторного начисления нет.' if result.already_confirmed
+                         else f'✅ Посещение подтверждено. Начислено баллов: {result.points_awarded}.')

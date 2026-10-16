@@ -329,21 +329,17 @@ async def event_status_change(
     if not can_change_event_status(event.status, next_status):
         await call.message.answer("Этот переход статуса недоступен для текущего мероприятия")
         return
-    event.status = next_status
-    registrations = (
-        await session.scalars(
-            select(EventRegistration).where(EventRegistration.event_id == event.id)
-        )
-    ).all()
-    if next_status == EventStatus.COMPLETED:
-        notice = (
-            f"Мероприятие «{event.title}» завершено 🌿\n\n"
-            "Спасибо, что были частью события. Скоро здесь могут появиться отзыв, фото или другое задание с баллами"
-        )
-        for registration in registrations:
-            target = await session.get(User, registration.user_id)
-            if target:
-                await safe_send(bot, target.telegram_id, notice)
+    from app.services import event_attendance_service
+    from app.services.authorization_service import can_manage_events
+    if not user or user.is_blocked or user.is_archived or not can_manage_events(user, settings, call.from_user.id):
+        await call.message.answer(texts.NO_ACCESS)
+        return
+    if next_status == EventStatus.ACTIVE:
+        await event_attendance_service.start_event(session, event.id, actor_user_id=user.id, bot=bot, miniapp_url=settings.effective_miniapp_url)
+    elif next_status == EventStatus.COMPLETED:
+        await event_attendance_service.complete_event(session, event.id, actor_user_id=user.id, bot=bot, miniapp_url=settings.effective_miniapp_url)
+    else:
+        event.status = next_status
     await audit(
         session,
         actor_id=user.id if user else None,
@@ -352,8 +348,11 @@ async def event_status_change(
         entity_id=event.id,
         new_value={"status": next_status.value},
     )
+    await session.commit()
+    from app.handlers.admin.events_block6 import event_kb
     await call.message.answer(
-        f"Статус обновлён: {EVENT_STATUS_LABELS.get(next_status, next_status)}"
+        f"Статус обновлён: {EVENT_STATUS_LABELS.get(next_status, next_status)}",
+        reply_markup=event_kb(event, settings=settings, telegram_id=call.from_user.id),
     )
 
 

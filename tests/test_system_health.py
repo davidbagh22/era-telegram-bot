@@ -105,6 +105,17 @@ class BackupHealthTests(unittest.TestCase):
 
 
 class SystemSchedulerTests(unittest.TestCase):
+    def test_management_report_uses_moscow_cron_and_durable_recovery(self):
+        scheduler = SimpleNamespace(add_job=Mock(), get_job=Mock(return_value=None), remove_job=Mock())
+        settings = Settings(bot_token="1234567890:test-token", feature_management_reports="TESTERS", timezone="Asia/Yerevan")
+        add_system_jobs(scheduler, SimpleNamespace(), settings, SimpleNamespace())
+        calls = {call.kwargs['id']: call for call in scheduler.add_job.call_args_list}
+        cron = calls['system-daily-summary']
+        assert cron.args[1] == 'cron'
+        assert cron.kwargs['hour'] == 9 and cron.kwargs['minute'] == 0
+        assert cron.kwargs['timezone'] == 'Europe/Moscow'
+        assert calls['system-summary-recovery'].args[1] == 'interval'
+
     def test_attaches_expected_jobs(self) -> None:
         scheduler = SimpleNamespace(
             add_job=Mock(),
@@ -122,6 +133,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "system-daily-summary",
                 "office-vacancy-reconciliation",
                 "configured-event-reminders",
+                "event-lifecycle-notifications",
                 "event-announcement-recovery",
                 "event-wizard-task-sync",
                 "project-scoring-reconciliation",

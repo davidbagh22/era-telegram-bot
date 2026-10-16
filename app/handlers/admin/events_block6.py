@@ -64,7 +64,7 @@ async def public_event_keyboard(
     )
 
 
-def event_kb(event: Event) -> InlineKeyboardMarkup:
+def event_kb(event: Event, *, settings: Settings | None = None, telegram_id: int = 0) -> InlineKeyboardMarkup:
     rows = []
     if event.status == EventStatus.PENDING_APPROVAL:
         rows.append([InlineKeyboardButton(text="✅ Одобрить без рассылки", callback_data=f"admin:event:approve:{event.id}")])
@@ -88,6 +88,10 @@ def event_kb(event: Event) -> InlineKeyboardMarkup:
             rows.append([InlineKeyboardButton(text="➕ Создать активности", callback_data=f"admin:event:activities:create:{event.id}")])
             rows.append([InlineKeyboardButton(text="📤 Отправить активности", callback_data=f"admin:event:activities:send:{event.id}")])
             rows.append([InlineKeyboardButton(text="📥 Активности на проверке", callback_data="admin:event_activities:review")])
+    from app.services.event_attendance_service import attendance_v2_enabled
+    if settings and attendance_v2_enabled(settings, telegram_id) and event.status in {EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED}:
+        rows.append([InlineKeyboardButton(text="📷 QR подтверждения посещения", callback_data=f"admin:event:confirm_qr:{event.id}")])
+        rows.append([InlineKeyboardButton(text="🔒 Закрыть подтверждение посещения", callback_data=f"admin:event:close_confirmation:{event.id}")])
     rows.append([InlineKeyboardButton(text="← События", callback_data="admin:menu:activity")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -106,7 +110,7 @@ async def events_list(call: CallbackQuery, user: User | None, settings: Settings
             call.message,
             event,
             header=f"📅 Мероприятие #{event.id}\nСтатус: {EVENT_STATUS_LABELS.get(event.status, event.status)}",
-            keyboard=event_kb(event),
+            keyboard=event_kb(event, settings=settings, telegram_id=call.from_user.id),
         )
 
 
@@ -127,7 +131,7 @@ async def approve_event(call: CallbackQuery, user: User | None, settings: Settin
         call.message,
         event,
         header="Мероприятие одобрено. Рассылка ещё не отправлена.",
-        keyboard=event_kb(event),
+        keyboard=event_kb(event, settings=settings, telegram_id=call.from_user.id),
     )
 
 
@@ -144,7 +148,7 @@ async def broadcast_preview(call: CallbackQuery, user: User | None, settings: Se
         event,
         header="👁 Предпросмотр рассылки",
         extra_text="Регистрация будет открыта в боте после публикации.",
-        keyboard=event_kb(event),
+        keyboard=event_kb(event, settings=settings, telegram_id=call.from_user.id),
     )
 
 
@@ -193,7 +197,7 @@ async def broadcast_publish(call: CallbackQuery, user: User | None, settings: Se
             message_thread_id=thread_id,
         )
     await audit(session, actor_id=user.id if user else None, action="event.broadcast_published", entity_type="event", entity_id=event.id)
-    await call.message.answer("Регистрация открыта. Анонс отправлен в «Объявления»." if delivered else "Регистрация открыта, но анонс не доставлен. Проверьте темы и права бота в общем чате.", reply_markup=event_kb(event))
+    await call.message.answer("Регистрация открыта. Анонс отправлен в «Объявления»." if delivered else "Регистрация открыта, но анонс не доставлен. Проверьте темы и права бота в общем чате.", reply_markup=event_kb(event, settings=settings, telegram_id=call.from_user.id))
 
 
 @router.callback_query(F.data.regexp(r"^admin:event:(revise|reject):\d+$"))
@@ -231,3 +235,39 @@ async def event_decision_finish(message: Message, user: User | None, settings: S
         await safe_send(bot, result.owner.telegram_id, result.notice, reply_markup=markup)
     await state.clear()
     await message.answer("Решение сохранено")
+
+
+@router.callback_query(F.data.regexp(r"^admin:event:confirm_qr:[0-9]+$"), F.message.chat.type == "private")
+async def event_confirmation_qr(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession):
+    if not await guard(call, user, settings):
+        return
+    if not user or user.is_blocked or user.is_archived:
+        return
+    from aiogram.types import BufferedInputFile
+    from app.services.event_attendance_service import confirmation_qr
+    event_id = int(call.data.rsplit(':', 1)[-1])
+    try:
+        _link, image = await confirmation_qr(session, event_id, settings=settings, telegram_id=call.from_user.id)
+    except ValueError:
+        await call.message.answer('QR доступен ведущему после завершения мероприятия, пока открыто подтверждение посещения.')
+        return
+    from html import escape
+    event = await session.get(Event, event_id)
+    await call.message.answer_photo(BufferedInputFile(image, filename=f'ERA-attendance-{event_id}.png'),
+        caption=f"Посещение: {escape(event.title)}\n\n" + 'Покажите QR участникам, которые присутствовали. Подтверждение откроется в личном боте. Повторное сканирование не начисляет баллы повторно.')
+
+
+@router.callback_query(F.data.regexp(r"^admin:event:close_confirmation:[0-9]+$"), F.message.chat.type == "private")
+async def event_close_confirmation(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession):
+    if not await guard(call, user, settings) or not user or user.is_blocked or user.is_archived:
+        return
+    from app.services.event_attendance_service import attendance_v2_enabled, close_confirmation
+    if not attendance_v2_enabled(settings, call.from_user.id):
+        return
+    try:
+        await close_confirmation(session, int(call.data.rsplit(':', 1)[-1]), actor_user_id=user.id)
+    except ValueError:
+        await call.message.answer('Окно подтверждения сейчас недоступно.')
+        return
+    await session.commit()
+    await call.message.answer('Подтверждение закрыто. Сохранённые посещения и баллы остаются в истории.')

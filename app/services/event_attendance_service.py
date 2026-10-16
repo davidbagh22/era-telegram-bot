@@ -10,14 +10,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.event_attendance import EventAttendanceSession
-from app.database.models import Event, EventRegistration, PortfolioItem, User
+from app.database.models import AppSetting, Event, EventRegistration, PortfolioItem, User
 from app.services.activity_metrics_service import increment_metric
 from app.services.activity_scoring_service import score_event_role_bonus
 from app.services.audit_service import audit
 from app.services.event_registration_service import event_points_already_awarded
-from app.services.notification_service import safe_send
+from app.services.notification_service import safe_send_once
 from app.services.points_service import add_points
-from app.utils.constants import EventStatus, RegistrationStatus
+from app.utils.constants import ApplicationStatus, EventStatus, RegistrationStatus
 from app.utils.deep_links import miniapp_event_url
 
 CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
@@ -92,7 +92,7 @@ async def _unique_code(session: AsyncSession) -> str:
 
 async def _event_for_update(session: AsyncSession, event_id: int) -> Event:
     event = await session.scalar(
-        select(Event).where(Event.id == event_id).with_for_update()
+        select(Event).where(Event.id == event_id).with_for_update().execution_options(populate_existing=True)
     )
     if event is None:
         raise ValueError("event_not_found")
@@ -123,6 +123,8 @@ async def _registered_users(
         .where(
             EventRegistration.event_id == event_id,
             EventRegistration.status.in_(NOTIFICATION_REGISTRATION_STATUSES),
+            User.is_blocked.is_(False), User.is_archived.is_(False),
+            User.application_status == ApplicationStatus.APPROVED,
         )
         .order_by(EventRegistration.created_at)
     )
@@ -153,34 +155,20 @@ async def _notify_registered(
     miniapp_url: str,
     phase: str,
 ) -> int:
+    # Stage in the caller's event transaction. A rollback must not tell people
+    # that an event started/completed when the lifecycle write did not persist.
     if bot is None:
         return 0
-    rows = await _registered_users(session, event.id)
-    keyboard = _event_button(miniapp_url, event.id)
-    sent = 0
-    for _registration, participant in rows:
-        if phase == "start":
-            text = (
-                f"🔥 Мероприятие начинается\n\n{event.title}\n\n"
-                f"📍 {event.location}\n\n"
-                "Вы зарегистрированы. Если вы на месте — оставайтесь до конца: "
-                "ведущие дадут код подтверждения присутствия. Поле для ввода появится "
-                "в Mini App после завершения мероприятия."
-            )
-        else:
-            text = (
-                f"✅ Мероприятие завершено\n\n{event.title}\n\n"
-                "Если вы были на месте, получите код у ведущего и введите его в карточке "
-                "мероприятия в Mini App. После подтверждения баллы за посещение начислятся автоматически."
-            )
-        if await safe_send(
-            bot,
-            participant.telegram_id,
-            text,
-            keyboard,
-        ):
-            sent += 1
-    return sent
+    import json
+    key = f'event-lifecycle:{event.id}:{phase}'
+    if await session.scalar(select(AppSetting.key).where(AppSetting.key == key)):
+        return 0
+    recipients = [participant.telegram_id for _, participant in await _registered_users(session, event.id)]
+    payload = {'event_id': event.id, 'phase': phase, 'title': event.title, 'location': event.location,
+               'recipients': recipients, 'status': 'pending', 'attempts': 0}
+    session.add(AppSetting(key=key, value=json.dumps(payload, ensure_ascii=False)))
+    await session.flush()
+    return 0  # Delivery is asynchronous; do not claim queued messages were sent.
 
 
 async def lifecycle_state(
@@ -420,6 +408,10 @@ async def confirm_attendance(
     user_id: int,
     code: str,
 ) -> ConfirmationResult:
+    active_user = await session.scalar(select(User.id).where(User.id == user_id,
+        User.application_status == ApplicationStatus.APPROVED, User.is_blocked.is_(False), User.is_archived.is_(False)))
+    if active_user is None:
+        raise ValueError('participant_not_active')
     event = await _event_for_update(session, event_id)
     runtime = await _attendance_session(session, event.id, create=False)
     registration = await session.scalar(
@@ -530,3 +522,91 @@ async def confirm_attendance(
         points_awarded=points_awarded,
         already_confirmed=already_confirmed,
     )
+
+
+def attendance_v2_enabled(settings, telegram_id: int) -> bool:
+    mode = getattr(settings, 'feature_attendance_qr', 'OFF')
+    return mode == 'ALL' or (mode == 'TESTERS' and telegram_id in (settings.attendance_qr_tester_ids or settings.feature_tester_ids))
+
+
+def confirmation_payload(event_id: int, code: str) -> str:
+    return f'attend2_{event_id}_{normalize_code(code)}'
+
+
+def parse_confirmation_payload(payload: str) -> tuple[int, str] | None:
+    import re
+    match = re.fullmatch(r'attend2_([1-9][0-9]{0,9})_([A-Z2-9]{8})', payload)
+    return (int(match[1]), match[2]) if match else None
+
+
+def confirmation_qr_png(link: str) -> bytes:
+    from io import BytesIO
+    import segno
+    output = BytesIO()
+    segno.make_qr(link, error='m').save(output, kind='png', scale=8, border=4)
+    return output.getvalue()
+
+
+async def confirmation_qr(session: AsyncSession, event_id: int, *, settings, telegram_id: int) -> tuple[str, bytes]:
+    if not attendance_v2_enabled(settings, telegram_id):
+        raise ValueError('attendance_qr_disabled')
+    state = await lifecycle_state(session, event_id)
+    if not state.confirmation_open or state.session is None or not state.session.attendance_code:
+        raise ValueError('attendance_not_open')
+    link = f"https://t.me/{settings.bot_username or 'ERA_1bot'}?start={confirmation_payload(event_id, state.session.attendance_code)}"
+    return link, confirmation_qr_png(link)
+
+
+async def deliver_attendance_notifications(bot: Bot, settings, session_factory) -> int:
+    import hashlib
+    import json
+    from html import escape
+    from sqlalchemy import text
+    async with session_factory() as session:
+        keys = (await session.scalars(select(AppSetting.key).where(AppSetting.key.like('event-lifecycle:%')))).all()
+    delivered = 0
+    for key in keys:
+        async with session_factory() as session:
+            if session.bind.dialect.name == 'postgresql':
+                lock_id = int.from_bytes(hashlib.sha256(key.encode()).digest()[:8], 'big', signed=True)
+                await session.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': lock_id})
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update())
+            payload = json.loads(row.value) if isinstance(row.value, str) else row.value
+            if payload.get('status') != 'pending':
+                continue
+            event = await session.get(Event, payload['event_id'])
+            if event is None or event.status == EventStatus.CANCELLED or (payload['phase'] == 'start' and event.status in COMPLETED_STATUSES):
+                payload['status'] = 'skipped'
+                row.value = json.dumps(payload, ensure_ascii=False)
+                await session.commit()
+                continue
+            if payload['phase'] == 'complete' and not (await lifecycle_state(session, event.id)).confirmation_open:
+                payload['status'] = 'skipped'
+                row.value = json.dumps(payload, ensure_ascii=False)
+                await session.commit()
+                continue
+            eligible = {participant.telegram_id for _, participant in await _registered_users(session, event.id)}
+            title = escape(payload['title'])
+            body = (f'🔥 Мероприятие начинается\n\n{title}\n📍 {escape(payload["location"])}\n\n'
+                    'Вы зарегистрированы. После завершения ведущий даст код или QR для подтверждения посещения.'
+                    if payload['phase'] == 'start' else
+                    f'✅ Мероприятие завершено\n\n{title}\n\nЕсли вы были на месте, получите код или QR у ведущего и подтвердите посещение. Баллы начисляются один раз.')
+            retry = needs_attention = False
+            for recipient in sorted(set(payload['recipients']) & eligible):
+                keyboard = _event_button(settings.effective_miniapp_url, event.id)
+                if payload['phase'] == 'complete' and attendance_v2_enabled(settings, recipient):
+                    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text='✅ Ввести код посещения', callback_data=f'event:confirm_code:{event.id}')]])
+                result = await safe_send_once(bot, settings, recipient, body,
+                    delivery_key=f'{key}:{recipient}', notification_type='event_lifecycle', reply_markup=keyboard, parse_mode='HTML')
+                delivered += int(result.sent and not result.duplicate)
+                if not result.sent and result.status not in {'blocked', 'unreachable', 'skipped'}:
+                    if result.status in {'uncertain', 'conflict'}:
+                        needs_attention = True
+                    else:
+                        retry = True
+            payload['attempts'] = payload.get('attempts', 0) + 1
+            payload['status'] = 'needs_attention' if needs_attention or (retry and payload['attempts'] >= 3) else 'pending' if retry else 'sent'
+            row.value = json.dumps(payload, ensure_ascii=False)
+            await session.commit()
+    return delivered

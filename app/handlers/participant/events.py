@@ -47,7 +47,10 @@ async def attendance_confirmation(
     await call.answer()
     if not _approved(user):
         return
-    _, event_id, answer = call.data.split(":")
+    parts = (call.data or "").split(":")
+    if len(parts) != 3 or not parts[1].isdigit() or parts[2] not in {"yes", "no"}:
+        return
+    _, event_id, answer = parts
     registration = await session.scalar(
         select(EventRegistration).where(
             EventRegistration.event_id == int(event_id),
@@ -55,6 +58,9 @@ async def attendance_confirmation(
         )
     )
     if registration is None:
+        return
+    if registration.status in {RegistrationStatus.ATTENDED, RegistrationStatus.NO_SHOW, RegistrationStatus.CANCELLED}:
+        await call.message.answer("Итог посещения уже зафиксирован. Старое напоминание его не изменяет.")
         return
     registration.status = (
         RegistrationStatus.WILL_COME
