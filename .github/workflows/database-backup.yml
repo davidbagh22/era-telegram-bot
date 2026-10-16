@@ -134,26 +134,15 @@ jobs:
           echo "github_retention_days=${GH_RETENTION}" >> "${GITHUB_OUTPUT}"
           echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
 
-      - name: Wait for matching production commit
+      - name: Wait for healthy production backup source
         id: deploy_gate
         shell: bash
         run: |
           set -Eeuo pipefail
-          EXPECTED="${GITHUB_SHA}"
-          for attempt in $(seq 1 60); do
-            HEALTH="$(curl --silent --show-error --max-time 10 "${PRODUCTION_BASE}/health" || true)"
-            LIVE="$(printf '%s' "${HEALTH}" | jq -r '.commit // empty' 2>/dev/null || true)"
-            if [ "${LIVE}" = "${EXPECTED}" ] || [ "${LIVE}" = "${EXPECTED:0:7}" ]; then
-              echo "Production is serving expected commit ${EXPECTED:0:7}."
-              exit 0
-            fi
-            if [ $((attempt % 6)) -eq 0 ]; then
-              echo "Production deploy not ready yet (attempt ${attempt}/60)."
-            fi
-            sleep 10
-          done
-          echo "Production did not reach the expected commit before backup timeout." >&2
-          exit 1
+          # A backup protects the currently running database. Requiring the
+          # workflow SHA blocks reruns and can deadlock a checksPass deployment.
+          # OIDC repository/ref/workflow restrictions remain exact on the server.
+          python3 scripts/backup_source_gate.py "${PRODUCTION_BASE}" >> "${GITHUB_OUTPUT}"
 
       - name: Download transient production snapshot using GitHub OIDC
         id: backup
@@ -284,7 +273,7 @@ jobs:
         id: artifact
         uses: actions/upload-artifact@v7
         with:
-          name: era-${{ steps.tier.outputs.backup_type }}-backup-${{ github.run_id }}
+          name: era-${{ steps.tier.outputs.backup_type }}-backup-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ steps.package.outputs.archive_file }}
           if-no-files-found: error
           retention-days: ${{ steps.tier.outputs.github_retention_days }}
@@ -396,6 +385,7 @@ jobs:
         run: |
           {
             echo "## PostgreSQL backup"
+            echo "- Source runtime SHA: ${{ steps.deploy_gate.outputs.source_commit }}"
             echo "- Production DB credentials exported to GitHub: no"
             echo "- GitHub authentication: short-lived OIDC with exact repo/main/workflow claims"
             echo "- PostgreSQL restore client: explicit ${PG_BIN}"
