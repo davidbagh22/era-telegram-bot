@@ -18,9 +18,8 @@ class BackupRecoveryContractTests(unittest.TestCase):
             "id-token: write",
             "ACTIONS_ID_TOKEN_REQUEST_URL",
             "audience=era-platform-backup",
-            "Wait for matching production commit",
-            'EXPECTED="${GITHUB_SHA}"',
-            '"${PRODUCTION_BASE}/health"',
+            "Wait for healthy production backup source",
+            'scripts/backup_source_gate.py',
             "/snapshot",
             "scripts/verify_database_restore.sh",
             "/material",
@@ -42,7 +41,7 @@ class BackupRecoveryContractTests(unittest.TestCase):
         self.assertNotIn("BACKUP_REPORT_SECRET", workflow)
         self.assertNotIn("BACKUP_REPORT_URL", workflow)
 
-        deploy_gate_pos = workflow.index("Wait for matching production commit")
+        deploy_gate_pos = workflow.index("Wait for healthy production backup source")
         snapshot_pos = workflow.index("Download transient production snapshot using GitHub OIDC")
         restore_pos = workflow.index("Verify restore on isolated PostgreSQL")
         encrypt_pos = workflow.index("Encrypt and verify backup package")
@@ -51,6 +50,7 @@ class BackupRecoveryContractTests(unittest.TestCase):
         self.assertLess(snapshot_pos, restore_pos)
         self.assertLess(restore_pos, encrypt_pos)
         self.assertLess(encrypt_pos, artifact_pos)
+        self.assertIn('${{ github.run_id }}-${{ github.run_attempt }}', workflow)
 
     def test_backup_clients_are_pinned_and_invoked_from_pg18_directory(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "database-backup.yml").read_text(encoding="utf-8")
