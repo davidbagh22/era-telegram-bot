@@ -122,6 +122,15 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
             metrics = json.loads(week.value)['metrics']
             assert metrics['period_end'] == '2026-10-12T06:00:00+00:00'
 
+    async def test_period_before_game_measurement_is_unknown_not_zero(self):
+        async with self.sessions() as session:
+            session.add(AppSetting(key='game-result:later', value=json.dumps({
+                'finished_at': self.now.isoformat(), 'participants': [22]})))
+            await session.commit()
+            metrics = await build_management_report(session, now=self.now,
+                period_start=self.now-timedelta(days=14), period_end=self.now-timedelta(days=7))
+        assert metrics['games_completed'] is None and metrics['game_players'] is None
+
     async def test_excel_contains_aggregates_and_preserves_unknown_values(self):
         async with self.sessions() as session:
             metrics = await build_management_report(session, now=self.now)

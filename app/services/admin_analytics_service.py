@@ -527,8 +527,9 @@ async def build_management_report(session: AsyncSession, *, now: datetime, days:
         if since <= finished < end:
             completed += 1
             players.update(item.get('participants', []))
-    result['games_completed'] = completed if rows else None
-    result['game_players'] = len(players) if rows else None
+    measured_in_period = bool(starts) and min(starts) < end
+    result['games_completed'] = completed if measured_in_period else None
+    result['game_players'] = len(players) if measured_in_period else None
     result['game_coverage_since'] = min(starts).isoformat() if starts else None
     latest = await session.scalar(select(SystemDiagnosticRun).order_by(SystemDiagnosticRun.created_at.desc()).limit(1))
     result['health'] = latest.status if latest else 'нет данных'
