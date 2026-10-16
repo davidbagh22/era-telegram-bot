@@ -101,7 +101,7 @@ async def _send_main_menu(message: Message, user: User | None, settings: Setting
         parse_mode=ParseMode.HTML,
         reply_markup=main_reply_keyboard(
             settings.effective_miniapp_url if settings else "",
-            admin=user.role == Role.ADMIN or bool(settings and message.from_user.id in getattr(settings, 'admin_ids', [])),
+            admin=user.role == Role.ADMIN or bool(settings and getattr(user, 'telegram_id', None) in getattr(settings, 'admin_ids', [])),
         ),
     )
 

@@ -70,10 +70,14 @@ async def main():
         rooms = await asyncio.wait_for(asyncio.gather(*(room_worker(uid) for _ in range(8))), 30)
         assert sum(room is not None for room in rooms) == 1, rooms
         another = await room_worker(uid+1)
-        # Question history is intentionally scoped to each player and format;
-        # another player may receive the same first question.
+        # Random packs are personal; verify the actual per-user reservations,
+        # without requiring two people to receive an identical first question.
         assert another is not None
-        assert another['question'] == next(room for room in rooms if room)['question']
+        async with sessions() as session:
+            for player, room in ((uid, next(room for room in rooms if room)), (uid+1, another)):
+                usage = _data(await session.scalar(select(AppSetting).where(
+                    AppSetting.key == f'era_game:question_usage:quiz:{player}')))
+                assert set(usage) == {str(room['question'])}
         duplicate = await asyncio.wait_for(asyncio.gather(*(award_worker(str(uid)) for _ in range(8))), 30)
         assert sum(duplicate) == 3, duplicate
         capped = await asyncio.wait_for(asyncio.gather(*(award_worker(f'{uid}:{i}') for i in range(12))), 30)

@@ -108,7 +108,7 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
             reason = await session.scalar(select(AuditLog).where(AuditLog.action == 'user.rejected'))
             assert reason.new_value['comment'] == 'Исходное решение'
             resubmission = await session.scalar(select(AuditLog).where(AuditLog.action == 'user.resubmitted'))
-            assert resubmission.old_value['first_name'] == 'Старое имя'
+            assert resubmission.old_value == {'application_status': ApplicationStatus.REJECTED}
 
     async def test_forged_resubmission_cannot_change_approved_or_blocked_profile(self):
         from app.repositories.users import resubmit_user_registration

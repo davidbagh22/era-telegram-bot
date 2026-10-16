@@ -164,8 +164,7 @@ async def resubmit_user_registration(session: AsyncSession, *, telegram_id: int,
         return target, False
     fields = ('first_name', 'last_name', 'age', 'country', 'region', 'city', 'email',
               'education_work', 'occupation', 'experience', 'motivation', 'available_time', 'desired_path')
-    old = {key: getattr(target, key) for key in fields}
-    old['application_status'] = target.application_status
+    old = {'application_status': target.application_status}
     for key in fields:
         if data.get(key) is not None:
             setattr(target, key, data[key])

@@ -59,7 +59,7 @@ class MainInlineKeyboardMiniAppButtonTests(unittest.TestCase):
         )
         self.assertEqual(
             _button_texts(markup),
-            ["🔥 Открыть ЭРА", "🧭 Навигация", "📚 Литература", "❓ Вопросы об ЭРА", "💬 Связь"],
+            ["🔥 Открыть ЭРА", "📊 Админ-сводка", "📥 Заявки", "🧭 Навигация", "📚 Литература", "❓ Вопросы об ЭРА", "💬 Связь"],
         )
 
     def test_navigation_button_is_a_callback_not_a_web_app_button(self) -> None:
@@ -108,7 +108,7 @@ class MainInlineKeyboardMiniAppButtonTests(unittest.TestCase):
             main_inline_keyboard(admin=True, miniapp_url="https://era-app.example/")
         )
         participant_markup = _button_texts(main_inline_keyboard(miniapp_url="https://era-app.example/"))
-        self.assertEqual(admin_markup, participant_markup)
+        self.assertEqual([text for text in admin_markup if text not in {"📊 Админ-сводка", "📥 Заявки"}], participant_markup)
 
 
 if __name__ == "__main__":

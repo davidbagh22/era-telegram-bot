@@ -39,7 +39,7 @@ async def show_home(message: Message, user: User, settings: Settings) -> None:
         ux_texts.MAIN_MENU,
         reply_markup=main_reply_keyboard(
             settings.effective_miniapp_url,
-            admin=user.role == Role.ADMIN or message.from_user.id in settings.admin_ids,
+            admin=user.role == Role.ADMIN or getattr(user, 'telegram_id', None) in getattr(settings, 'admin_ids', []),
         ),
     )
 
