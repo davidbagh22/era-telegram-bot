@@ -12,7 +12,7 @@ from app.services import event_moderation_service
 from app.services.audit_service import audit
 from app.services.authorization_service import can_manage_events
 from app.services.event_card import format_event_text, send_event_card, send_event_card_to_chat
-from app.services.notification_service import safe_send
+from app.services.notification_service import safe_send, safe_answer_photo
 from app.utils import texts
 from app.utils.constants import EVENT_STATUS_LABELS, EventStatus
 from app.utils.deep_links import telegram_event_miniapp_url
@@ -253,7 +253,7 @@ async def event_confirmation_qr(call: CallbackQuery, user: User | None, settings
         return
     from html import escape
     event = await session.get(Event, event_id)
-    await call.message.answer_photo(BufferedInputFile(image, filename=f'ERA-attendance-{event_id}.png'),
+    await safe_answer_photo(call.message, BufferedInputFile(image, filename=f'ERA-attendance-{event_id}.png'),
         caption=f"Посещение: {escape(event.title)}\n\n" + 'Покажите QR участникам, которые присутствовали. Подтверждение откроется в личном боте. Повторное сканирование не начисляет баллы повторно.')
 
 

@@ -12,6 +12,7 @@ from app.database.models import Office, PositionApplication, User, UserOffice
 from app.handlers.admin.access import guard_admin_bot as _guard
 from app.keyboards.participant import open_app_button
 from app.services.system_health_service import system_snapshot
+from app.services.notification_service import safe_answer_document
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PositionApplicationStatus
 
@@ -227,7 +228,7 @@ async def management_report_action(call: CallbackQuery, user: User | None, setti
     metrics = await build_management_report(session, now=datetime.now(timezone.utc))
     if call.data.endswith(':excel'):
         from app.services.excel_report_service import management_summary_workbook
-        await call.message.answer_document(BufferedInputFile(management_summary_workbook(metrics), filename='ERA-management-report.xlsx'))
+        await safe_answer_document(call.message, BufferedInputFile(management_summary_workbook(metrics), filename='ERA-management-report.xlsx'))
         return
     try:
         await call.message.edit_text(management_report_text(metrics), reply_markup=management_report_markup())
