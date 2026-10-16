@@ -154,7 +154,12 @@ async def analytics_overview(call: CallbackQuery, user: User | None, settings: S
         f"Организаций в базе: {data.summary['contacts']}\n\n"
         "Выберите готовый срез или скачайте Excel"
     )
-    await call.message.answer(text, reply_markup=_analytics_keyboard())
+    keyboard = _analytics_keyboard()
+    if getattr(settings, 'feature_management_reports', 'OFF') != 'OFF':
+        from app.services.admin_analytics_service import management_report_recipients
+        if call.from_user.id in await management_report_recipients(session, settings):
+            keyboard.inline_keyboard.insert(0, [InlineKeyboardButton(text='📊 Управленческий отчёт', callback_data='admin:management:refresh')])
+    await call.message.answer(text, reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "admin:analytics:filters")

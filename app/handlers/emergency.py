@@ -284,6 +284,32 @@ async def rescue_start(
     if user is None:
         await message.answer(texts.WELCOME, reply_markup=registration_keyboard())
         return
+    if command and command.args and command.args.startswith('attend2_'):
+        from app.services import event_attendance_service
+        if not _approved(user) or not event_attendance_service.attendance_v2_enabled(settings, message.from_user.id):
+            await message.answer('Подтверждение посещения пока недоступно для этого профиля.')
+            return
+        parsed = event_attendance_service.parse_confirmation_payload(command.args)
+        if parsed is None:
+            await message.answer('Ссылка подтверждения недействительна. Попросите актуальный QR у организатора.')
+            return
+        event_id, code = parsed
+        try:
+            result = await event_attendance_service.confirm_attendance(session, event_id, user.id, code)
+        except ValueError as exc:
+            messages = {'not_registered': 'Сначала зарегистрируйтесь на это мероприятие.',
+                        'registration_not_active': 'Ваша регистрация на мероприятие не активна.',
+                        'attendance_not_open': 'Подтверждение посещения закрыто или мероприятие ещё не завершено.',
+                        'invalid_attendance_code': 'Код недействителен. Попросите актуальный QR у организатора.',
+                        'event_not_found': 'Мероприятие не найдено.'}
+            await message.answer(messages.get(str(exc), 'Не удалось подтвердить посещение. Обратитесь к организатору.'))
+            return
+        from app.services.referral_service import award_first_event_referral
+        await award_first_event_referral(session, invitee_user_id=user.id, event_id=event_id)
+        await session.commit()
+        await message.answer('Посещение уже подтверждено. Повторного начисления нет.' if result.already_confirmed
+                             else f'✅ Посещение подтверждено. Начислено баллов: {result.points_awarded}.')
+        return
     if command and command.args and (command.args == "games" or command.args.startswith("game_")):
         from app.handlers.era_game_room import show_game_cabinet
         mode = command.args[5:] if command.args.startswith("game_") else None

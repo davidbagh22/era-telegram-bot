@@ -476,3 +476,189 @@ async def build_leader_effectiveness(session: AsyncSession, user_id: int) -> Lea
         task_completion_rate=round(tasks_completed / tasks_total * 100, 1) if tasks_total else None,
         overdue_rate=round(overdue / tasks_total * 100, 1) if tasks_total else None,
     )
+
+
+async def build_management_report(session: AsyncSession, *, now: datetime, days: int = 1, period_start: datetime | None = None, period_end: datetime | None = None) -> dict:
+    """Aggregate operational facts; unavailable measurements stay None, never fake zero."""
+    import json
+    from zoneinfo import ZoneInfo
+    from sqlalchemy import or_
+    from app.database.models import AppSetting, EventRegistration, UserQuestion
+    from app.database.system_models import BackupHistory, NotificationDelivery, SystemDiagnosticRun
+    from app.services.admin_dashboard_service import dashboard_metrics, _count
+    from app.services.meaningful_activity_service import meaningful_user_ids_since
+    from app.utils.constants import ApplicationStatus, EventStatus, ProjectStatus, RegistrationStatus
+
+    end = period_end or now
+    since = period_start or end - timedelta(days=days)
+    local_date = now.astimezone(ZoneInfo('Europe/Moscow')).date()
+    dashboard = (await dashboard_metrics(session)).values
+    result = {key: dashboard[key] for key in ('users_total', 'users_pending', 'projects_review', 'tasks_open', 'questions')}
+    result['profiles_new'] = await _count(session, User, User.created_at >= since, User.created_at < end, User.is_archived.is_(False))
+    result['applications_rejected'] = await _count(session, User, User.application_status == ApplicationStatus.REJECTED, User.is_archived.is_(False))
+    result['applications_approved'] = dashboard['users_approved']
+    for window in (1, 7, 30):
+        ids = await meaningful_user_ids_since(session, now - timedelta(days=window), include_current_responsibility=False)
+        result[f'active_{window}'] = await _count(session, User, User.id.in_(ids), User.is_archived.is_(False),
+                                                  User.is_blocked.is_(False), User.application_status == ApplicationStatus.APPROVED)
+    result['events_upcoming'] = await _count(session, Event, Event.event_date >= local_date,
+        Event.event_date <= local_date + timedelta(days=7), Event.status.not_in((EventStatus.DRAFT, EventStatus.CANCELLED, EventStatus.PENDING_APPROVAL)))
+    result['registrations_new'] = await _count(session, EventRegistration, EventRegistration.created_at >= since, EventRegistration.created_at < end)
+    result['attended'] = await _count(session, EventRegistration, EventRegistration.status == RegistrationStatus.ATTENDED,
+                                     EventRegistration.last_confirmation_at >= since, EventRegistration.last_confirmation_at < end)
+    review = (ProjectStatus.PENDING_REVIEW, ProjectStatus.INITIAL_REVIEW, ProjectStatus.VENUE_REVIEW)
+    result['projects_overdue'] = await _count(session, Project, Project.status.in_(review), Project.submitted_at <= now - timedelta(hours=72))
+    result['tasks_open'] = await _count(session, Task, Task.status.in_((TaskStatus.NEW, TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS, TaskStatus.REVIEW, TaskStatus.OVERDUE)))
+    result['tasks_overdue'] = await _count(session, Task, Task.status.in_((TaskStatus.NEW, TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS, TaskStatus.REVIEW, TaskStatus.OVERDUE)),
+                                           or_(Task.deadline < now, Task.status == TaskStatus.OVERDUE))
+    result['questions_overdue'] = await _count(session, UserQuestion, UserQuestion.status.in_(('new', 'open')), UserQuestion.created_at <= now - timedelta(hours=24))
+    result['delivered'] = await _count(session, NotificationDelivery, NotificationDelivery.status == 'sent', NotificationDelivery.sent_at >= since, NotificationDelivery.sent_at < end)
+    result['delivery_errors'] = await _count(session, NotificationDelivery, NotificationDelivery.status.in_(('failed', 'uncertain', 'blocked', 'unreachable')),
+                                            NotificationDelivery.last_attempt_at >= since, NotificationDelivery.last_attempt_at < end)
+    # Room slots are overwritten. Only immutable completed-result entries count as measured history.
+    rows = (await session.scalars(select(AppSetting).where(AppSetting.key.like('game-result:%')))).all()
+    completed, players, starts = 0, set(), []
+    for row in rows:
+        item = json.loads(row.value) if isinstance(row.value, str) else row.value
+        finished = datetime.fromisoformat(item['finished_at'])
+        if finished.tzinfo is None:
+            finished = finished.replace(tzinfo=timezone.utc)
+        starts.append(finished)
+        if since <= finished < end:
+            completed += 1
+            players.update(item.get('participants', []))
+    measured_in_period = bool(starts) and min(starts) < end
+    result['games_completed'] = completed if measured_in_period else None
+    result['game_players'] = len(players) if measured_in_period else None
+    result['game_coverage_since'] = min(starts).isoformat() if starts else None
+    latest = await session.scalar(select(SystemDiagnosticRun).order_by(SystemDiagnosticRun.created_at.desc()).limit(1))
+    result['health'] = latest.status if latest else 'нет данных'
+    heartbeat_at = latest.created_at if latest else None
+    if heartbeat_at and heartbeat_at.tzinfo is None:
+        heartbeat_at = heartbeat_at.replace(tzinfo=timezone.utc)
+    result['scheduler'] = ('работает' if now - heartbeat_at <= timedelta(minutes=30) else 'нет свежего heartbeat') if heartbeat_at else 'нет данных'
+    backup = await session.scalar(select(BackupHistory).where(BackupHistory.status == 'success', BackupHistory.restore_verified_at.is_not(None)).order_by(BackupHistory.restore_verified_at.desc()).limit(1))
+    verified = backup.restore_verified_at if backup else None
+    if verified and verified.tzinfo is None:
+        verified = verified.replace(tzinfo=timezone.utc)
+    result['backup'] = ('восстановление проверено' if now - verified <= timedelta(hours=24) else 'проверенная копия старше 24 ч') if verified else 'нет проверенных данных'
+    result['as_of'] = now.isoformat()
+    result['period_days'] = days
+    result['period_start'] = since.isoformat()
+    result['period_end'] = end.isoformat()
+    return result
+
+
+def management_report_text(metrics: dict, *, title: str = 'Ежедневный отчёт', previous: dict | None = None) -> str:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    def value(key):
+        return 'не измеряется' if metrics.get(key) is None else str(metrics[key])
+    as_of = datetime.fromisoformat(metrics['as_of']).astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m.%Y %H:%M МСК')
+    window = ' — '.join(datetime.fromisoformat(metrics[k]).astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m %H:%M') for k in ('period_start', 'period_end'))
+    text = (f'ЭРА | {title}\nСрез: {as_of}\nОперации за {window} МСК\n\n'
+        f"Участников: {value('users_total')} · новых профилей: {value('profiles_new')}\n"
+        f"Заявки: ожидают {value('users_pending')} · одобрено {value('applications_approved')} · отклонено {value('applications_rejected')}\n"
+        f"Подтверждённая активность, 24 ч / 7 д / 30 д: {value('active_1')} / {value('active_7')} / {value('active_30')}\n"
+        f"Мероприятия на 7 дней: {value('events_upcoming')} · новых регистраций: {value('registrations_new')} · посещений: {value('attended')}\n"
+        f"Проекты: на рассмотрении {value('projects_review')} · дольше 72 ч {value('projects_overdue')}\n"
+        f"Задачи: открыто {value('tasks_open')} · просрочено {value('tasks_overdue')}\n"
+        f"Обращения: ждут {value('questions')} · дольше 24 ч {value('questions_overdue')}\n"
+        f"Игры, новый учёт: игроков {value('game_players')} · завершено {value('games_completed')}\n"
+        f"Автоуведомления: доставлено {value('delivered')} · ошибок {value('delivery_errors')}\n"
+        f"Система: {value('health')} · планировщик: {value('scheduler')}\nБэкап: {value('backup')}\n")
+    if metrics.get('game_coverage_since'):
+        text += 'Игровая статистика ведётся с ' + datetime.fromisoformat(metrics['game_coverage_since']).strftime('%d.%m.%Y') + '.\n'
+    if previous:
+        delta = metrics['users_total'] - previous['users_total']
+        text += f'Участников к предыдущему отчёту: {delta:+d}.\n'
+    else:
+        text += 'Сравнение с предыдущим периодом: нет данных.\n'
+    attention = []
+    for key, label in (('projects_overdue', 'Рассмотреть проекты'), ('tasks_overdue', 'Разобрать просроченные задачи'), ('questions_overdue', 'Ответить на обращения'), ('users_pending', 'Рассмотреть заявки')):
+        if metrics.get(key):
+            attention.append(f'{label}: {metrics[key]}')
+    if metrics.get('backup') != 'восстановление проверено':
+        attention.insert(0, 'Проверить резервное копирование')
+    return text + '\nТребует внимания:\n' + ('\n'.join(f'{i}. {line}' for i, line in enumerate(attention[:3], 1)) or 'Нет просроченных действий по измеряемым показателям.')
+
+
+def management_report_markup():
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='Заявки', callback_data='admin:applications'),
+         InlineKeyboardButton(text='Мероприятия', callback_data='admin:events')],
+        [InlineKeyboardButton(text='Задачи', callback_data='admin:tasks'),
+         InlineKeyboardButton(text='Обновить', callback_data='admin:management:refresh')],
+        [InlineKeyboardButton(text='Excel', callback_data='admin:management:excel')],
+    ])
+
+
+async def management_report_recipients(session: AsyncSession, settings) -> set[int]:
+    from app.database.models import PermissionGrant
+    from app.utils.constants import Role
+    grants = select(PermissionGrant.user_id).where(PermissionGrant.permission == 'analytics.view',
+        PermissionGrant.is_active.is_(True), PermissionGrant.scope_type == 'global')
+    query = select(User.telegram_id).where(User.is_blocked.is_(False), User.is_archived.is_(False),
+        (User.role == Role.ADMIN) | User.telegram_id.in_(settings.admin_ids) | User.id.in_(grants))
+    recipients = set((await session.scalars(query)).all())
+    if settings.management_report_recipient_ids:
+        recipients &= set(settings.management_report_recipient_ids)
+    if settings.feature_management_reports == 'TESTERS':
+        recipients &= set(settings.management_report_recipient_ids or settings.feature_tester_ids)
+    return recipients
+
+
+async def send_management_reports(bot, settings, session_factory, *, now=None) -> None:
+    import hashlib
+    import json
+    from zoneinfo import ZoneInfo
+    from sqlalchemy import text
+    from app.database.models import AppSetting
+    from app.services.notification_service import safe_send_once
+    if settings.feature_management_reports == 'OFF':
+        return
+    now = now or datetime.now(timezone.utc)
+    local = now.astimezone(ZoneInfo('Europe/Moscow'))
+    if (local.hour, local.minute) < (settings.management_report_hour, settings.management_report_minute):
+        return
+    week_boundary = local.date() - timedelta(days=local.weekday())
+    month_boundary = local.date().replace(day=1)
+    month_days = (month_boundary - (month_boundary - timedelta(days=1)).replace(day=1)).days
+    # Evaluate the latest due boundary even after Monday / day 1 has passed.
+    # Frozen period keys and the common delivery ledger make this bounded recovery.
+    periods = [('daily', local.date().isoformat(), 1, 'Ежедневный отчёт'),
+               ('weekly', week_boundary.isoformat(), 7, 'Еженедельный отчёт'),
+               ('monthly', month_boundary.isoformat(), month_days, 'Ежемесячный отчёт')]
+    async with session_factory() as session:
+        recipients = await management_report_recipients(session, settings)
+    if not recipients:
+        return
+    for period, stamp, days, title in periods:
+        key = f'management-report:{period}:{stamp}'
+        async with session_factory() as session:
+            if session.bind.dialect.name == 'postgresql':
+                lock_id = int.from_bytes(hashlib.sha256(key.encode()).digest()[:8], 'big', signed=True)
+                await session.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': lock_id})
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update())
+            if row:
+                payload = json.loads(row.value) if isinstance(row.value, str) else row.value
+            else:
+                month_end = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                month_start = (month_end - timedelta(days=1)).replace(day=1)
+                week_end = (local - timedelta(days=local.weekday())).replace(hour=settings.management_report_hour,
+                    minute=settings.management_report_minute, second=0, microsecond=0)
+                period_end = month_end if period == 'monthly' else week_end if period == 'weekly' else None
+                period_start = month_start if period == 'monthly' else week_end-timedelta(days=7) if period == 'weekly' else None
+                metrics = await build_management_report(session, now=now, days=days,
+                    period_start=period_start.astimezone(timezone.utc) if period_start else None,
+                    period_end=period_end.astimezone(timezone.utc) if period_end else None)
+                previous_key = f'management-report:{period}:{(datetime.fromisoformat(stamp).date()-timedelta(days=days)).isoformat()}'
+                previous_row = await session.scalar(select(AppSetting).where(AppSetting.key == previous_key))
+                previous = json.loads(previous_row.value)['metrics'] if previous_row and isinstance(previous_row.value, str) else None
+                payload = {'metrics': metrics, 'text': management_report_text(metrics, title=title, previous=previous)}
+                session.add(AppSetting(key=key, value=json.dumps(payload, ensure_ascii=False)))
+                await session.commit()
+        for recipient in sorted(recipients):
+            await safe_send_once(bot, settings, recipient, payload['text'], delivery_key=f'{period}:{stamp}:{recipient}',
+                                 notification_type='management_report', reply_markup=management_report_markup())

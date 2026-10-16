@@ -36,6 +36,7 @@ from app.services.literature_analytics_service import send_literature_admin_dige
 from app.services.directions_announcement import publish_directions_announcement
 from app.services.games_launch_service import publish_games_launch
 from app.services.game_room_expiry_service import expire_game_rooms
+from app.services.event_attendance_service import deliver_attendance_notifications
 
 
 def add_system_jobs(
@@ -57,9 +58,14 @@ def add_system_jobs(
 
     scheduler.add_job(run_system_diagnostics, "interval", minutes=15, args=(bot, settings, session_factory), kwargs={"run_type": "heartbeat"}, id="system-heartbeat", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(run_system_diagnostics, "interval", hours=4, args=(bot, settings, session_factory), kwargs={"run_type": "full"}, id="system-full-diagnostic", replace_existing=True, max_instances=1, coalesce=True)
-    scheduler.add_job(send_daily_system_summary, "cron", hour=9, minute=30, args=(bot, settings, session_factory), id="system-daily-summary", replace_existing=True, max_instances=1, coalesce=True)
+    if getattr(settings, "feature_management_reports", "OFF") != "OFF":
+        scheduler.add_job(send_daily_system_summary, "cron", hour=settings.management_report_hour, minute=settings.management_report_minute, timezone="Europe/Moscow", args=(bot, settings, session_factory), id="system-daily-summary", replace_existing=True, max_instances=1, coalesce=True)
+        scheduler.add_job(send_daily_system_summary, "interval", minutes=5, args=(bot, settings, session_factory), id="system-summary-recovery", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    else:
+        scheduler.add_job(send_daily_system_summary, "cron", hour=9, minute=30, args=(bot, settings, session_factory), id="system-daily-summary", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(reconcile_vacancies_job, "interval", minutes=30, args=(session_factory,), id="office-vacancy-reconciliation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(send_configured_event_reminders, "interval", minutes=1, args=(bot, settings, session_factory), id="configured-event-reminders", replace_existing=True, max_instances=1, coalesce=True)
+    scheduler.add_job(deliver_attendance_notifications, "interval", minutes=1, args=(bot, settings, session_factory), id="event-lifecycle-notifications", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(deliver_pending_event_announcements, "interval", minutes=1, args=(bot, settings, session_factory), id="event-announcement-recovery", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(sync_event_wizard_tasks_job, "interval", minutes=1, args=(session_factory,), id="event-wizard-task-sync", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(reconcile_project_scoring_job, "interval", minutes=1, args=(session_factory,), id="project-scoring-reconciliation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)

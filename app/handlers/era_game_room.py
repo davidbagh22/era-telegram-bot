@@ -338,6 +338,7 @@ async def _format_action(query: CallbackQuery, settings: Settings, session: Asyn
         result += f"\n\nℹ️ {item.challenge.explanation}"
     result += f"\n\nОчки за раунд: {score}. Баллы ЭРА: +{awarded}."
     room["result_text"] = result
+    await _store_game_result(session, room)
     await _save(session, key, room)
     await session.commit()
     await query.answer("Ответ принят.")
@@ -616,6 +617,18 @@ async def _publish_room(session: AsyncSession, key: str, message: Message) -> bo
     if _room_view(current) != (text, markup):
         return await _publish_room(session, key, message)
     return True
+
+
+async def _store_game_result(session: AsyncSession, room: dict) -> None:
+    token = room.get('session_token')
+    if room.get('status') != 'finished' or not token:
+        return
+    key = f'game-result:{token}'
+    if await session.scalar(select(AppSetting.key).where(AppSetting.key == key)) is not None:
+        return
+    await _save(session, key, {'finished_at': room['finished_at'], 'participants': room['participants'],
+                              'mode': room.get('mode', room.get('kind')), 'scores': room.get('scores', {}),
+                              'rewards': room.get('rewards', {})})
 
 
 async def _join_lobby(session: AsyncSession, key: str, room: dict, telegram_user) -> bool:
@@ -971,6 +984,7 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
             room["answers"] = {}
             room["token"] = secrets.token_hex(6)
             room["expires_at"] = (datetime.now(timezone.utc) + timedelta(seconds=120)).isoformat()
+        await _store_game_result(session, room)
         await _save(session, key, room)
         await session.commit()
         await query.answer("Ответ принят!")

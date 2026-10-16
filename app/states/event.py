@@ -30,3 +30,7 @@ class SelfieStates(StatesGroup):
 
 class EventActivityStates(StatesGroup):
     submission = State()
+
+
+class EventConfirmationStates(StatesGroup):
+    code = State()

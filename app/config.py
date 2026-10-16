@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     # Valid values: OFF / TESTERS / ALL. Testers are explicit and never
     # inferred from administrator privileges.
     games_rewards_enabled: bool = False  # Enable only after ledger QA
+    feature_management_reports: str = "OFF"
+    feature_attendance_qr: str = "OFF"
+    attendance_qr_tester_ids: IdList = Field(default_factory=list)
+    management_report_hour: int = Field(default=9, ge=0, le=23)
+    management_report_minute: int = Field(default=0, ge=0, le=59)
+    management_report_recipient_ids: IdList = Field(default_factory=list)
     feature_games: str = "OFF"  # OFF until production smoke test and content review 
     feature_auctions: str = "ALL"
     feature_rewards: str = "ALL"
@@ -112,6 +118,11 @@ class Settings(BaseSettings):
         if mode not in {"OFF", "TESTERS", "ALL"}:
             raise ValueError("feature flag mode must be OFF, TESTERS or ALL")
         return mode
+
+    @field_validator("feature_management_reports", "feature_attendance_qr", mode="before")
+    @classmethod
+    def normalize_new_feature_mode(cls, value: object) -> str:
+        return cls.normalize_feature_mode(value or "OFF")
 
     @property
     def chat_ids(self) -> set[int]:

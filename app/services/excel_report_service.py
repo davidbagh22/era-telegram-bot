@@ -313,3 +313,25 @@ def build_development_workbook(result: dict[str, Any]) -> bytes:
     ws.column_dimensions["C"].width = 18
     ws.column_dimensions["D"].width = 52
     return polish_workbook(_bytes(wb))
+
+def management_summary_workbook(metrics: dict) -> bytes:
+    """Aggregate-only export: no questionnaires, names, phone numbers or identifiers."""
+    labels = {
+        'users_total': 'Участников', 'profiles_new': 'Новых профилей', 'users_pending': 'Заявки ожидают',
+        'applications_approved': 'Заявки одобрены', 'applications_rejected': 'Заявки отклонены',
+        'active_1': 'Активны за 24 часа', 'active_7': 'Активны за 7 дней', 'active_30': 'Активны за 30 дней',
+        'events_upcoming': 'Мероприятия на 7 дней', 'registrations_new': 'Новых регистраций', 'attended': 'Подтверждено посещений',
+        'projects_review': 'Проекты на рассмотрении', 'projects_overdue': 'Проекты дольше 72 ч',
+        'tasks_open': 'Открытых задач', 'tasks_overdue': 'Просроченных задач', 'questions': 'Ожидающих обращений',
+        'questions_overdue': 'Обращения дольше 24 ч', 'game_players': 'Игроков (новый учёт)', 'games_completed': 'Завершено игр (новый учёт)',
+        'delivered': 'Доставлено автоуведомлений', 'delivery_errors': 'Ошибок автоуведомлений',
+        'health': 'Диагностика', 'scheduler': 'Планировщик', 'backup': 'Резервное копирование',
+        'as_of': 'Срез UTC', 'period_days': 'Дней в отчётном периоде', 'game_coverage_since': 'Начало учёта игр UTC',
+    }
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = 'Управленческий отчёт'
+    sheet.append(['Показатель', 'Значение'])
+    for key, label in labels.items():
+        sheet.append([label, 'не измеряется' if metrics.get(key) is None else metrics[key]])
+    return polish_workbook(_bytes(workbook))

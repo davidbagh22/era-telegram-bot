@@ -709,6 +709,10 @@ async def send_daily_system_summary(
     settings: Settings,
     session_factory,
 ) -> None:
+    if getattr(settings, "feature_management_reports", "OFF") != "OFF":
+        from app.services.admin_analytics_service import send_management_reports
+        await send_management_reports(bot, settings, session_factory)
+        return
     async with session_factory() as session:
         snapshot = await system_snapshot(session)
     latest = snapshot["latest"]
