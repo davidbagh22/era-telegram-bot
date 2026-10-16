@@ -1,21 +1,31 @@
 import json
 from datetime import date
+from html import unescape
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
 from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
-from aiogram.methods import SendPhoto, SendMessage
+from aiogram.methods import SendMessage, SendPhoto
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.api.v1.admin_event_create import EventDraftCreateIn, EventDraftPatch, create_event_draft, publish_event, save_event_draft_step
+from app.api.v1.admin_event_create import (
+    EventDraftCreateIn,
+    EventDraftPatch,
+    create_event_draft,
+    publish_event,
+    save_event_draft_step,
+)
 from app.config import Settings
 from app.database.base import Base
 from app.database.event_experience import EventExperience
 from app.database.models import AppSetting, User
 from app.database.system_models import NotificationDelivery
-from app.services.event_publication_service import deliver_pending_event_announcements, text_parts
+from app.services.event_publication_service import (
+    deliver_pending_event_announcements,
+    text_parts,
+)
 
 
 class QuickPublicationTests(IsolatedAsyncioTestCase):
@@ -75,7 +85,7 @@ class QuickPublicationTests(IsolatedAsyncioTestCase):
         call = self.bot.send_photo.await_args
         self.assertEqual(call.kwargs["message_thread_id"], 101)
         self.assertLessEqual(len(call.kwargs["caption"].encode("utf-16-le")) // 2, 1024)
-        actual = call.kwargs["caption"] + "".join(item.args[1] for item in self.bot.send_message.await_args_list)
+        actual = unescape(call.kwargs["caption"] + "".join(item.args[1] for item in self.bot.send_message.await_args_list))
         self.assertTrue(actual.startswith(text.strip() + "\n\n📅 07.11.2026 · "))
         self.assertTrue(actual.endswith("\n📍 Дом Москвы"))
         self.assertIsNotNone(self.bot.send_message.await_args.kwargs["reply_markup"])

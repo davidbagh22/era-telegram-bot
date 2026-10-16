@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     # inferred from administrator privileges.
     games_rewards_enabled: bool = False  # Enable only after ledger QA
     feature_management_reports: str = "OFF"
+    feature_native_event_composer: str = "OFF"
+    native_event_composer_tester_ids: IdList = Field(default_factory=list)
     feature_attendance_qr: str = "OFF"
     attendance_qr_tester_ids: IdList = Field(default_factory=list)
     management_report_hour: int = Field(default=9, ge=0, le=23)
@@ -119,7 +121,7 @@ class Settings(BaseSettings):
             raise ValueError("feature flag mode must be OFF, TESTERS or ALL")
         return mode
 
-    @field_validator("feature_management_reports", "feature_attendance_qr", mode="before")
+    @field_validator("feature_management_reports", "feature_attendance_qr", "feature_native_event_composer", mode="before")
     @classmethod
     def normalize_new_feature_mode(cls, value: object) -> str:
         return cls.normalize_feature_mode(value or "OFF")

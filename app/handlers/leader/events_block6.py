@@ -1,9 +1,15 @@
-from datetime import date as DateType, time as TimeType
+from datetime import date as DateType
+from datetime import time as TimeType
 
-from aiogram import F, Bot, Router
+from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -11,7 +17,7 @@ from app.database.models import Event, User
 from app.services.audit_service import audit
 from app.services.notification_service import notify_admins
 from app.utils import texts
-from app.utils.constants import EventStatus, PRIVILEGED_ROLES
+from app.utils.constants import PRIVILEGED_ROLES, EventStatus
 from app.utils.validators import clean_text, parse_date, parse_time
 
 router = Router(name="leader_events_block6")
@@ -32,7 +38,8 @@ class EventBlock6States(StatesGroup):
 
 
 def is_leader(user: User | None) -> bool:
-    return bool(user and not user.is_blocked and user.role in PRIVILEGED_ROLES)
+    return bool(user and not user.is_blocked and not getattr(user, "is_archived", False) and (user.role in PRIVILEGED_ROLES or any(
+        grant.is_active and grant.permission == "events.manage" for grant in (getattr(user, "permission_grants", None) or []))))
 
 
 async def guard(event: CallbackQuery | Message, user: User | None) -> bool:
@@ -47,7 +54,15 @@ async def guard(event: CallbackQuery | Message, user: User | None) -> bool:
     return True
 
 
-def mode_keyboard() -> InlineKeyboardMarkup:
+def mode_keyboard(settings: Settings | None = None, user: User | None = None) -> InlineKeyboardMarkup:
+    from app.handlers.leader.event_quick_composer import enabled
+    from app.services.authorization_service import can_manage_events
+    if settings and user and enabled(settings, user.telegram_id) and can_manage_events(user, settings, user.telegram_id):
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⚡ Быстро · текст и фото", callback_data="leader:eventq:new")],
+            [InlineKeyboardButton(text="🧩 Расширенный мастер", callback_data="leader:event6:mode:constructor")],
+            [InlineKeyboardButton(text="↩️ Мои черновики", callback_data="leader:eventq:drafts")],
+        ])
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🧩 Конструктор по шагам", callback_data="leader:event6:mode:constructor")],
         [InlineKeyboardButton(text="📝 Готовый анонс + фото", callback_data="leader:event6:mode:ready")],
@@ -96,11 +111,11 @@ async def event_revise(call: CallbackQuery, user: User | None, state: FSMContext
 
 
 @router.callback_query(F.data == "leader:event:new")
-async def event_new(call: CallbackQuery, user: User | None, state: FSMContext) -> None:
+async def event_new(call: CallbackQuery, user: User | None, state: FSMContext, settings: Settings | None = None) -> None:
     if not await guard(call, user):
         return
     await state.clear()
-    await call.message.answer("Как подготовить мероприятие?", reply_markup=mode_keyboard())
+    await call.message.answer("Как подготовить мероприятие?", reply_markup=mode_keyboard(settings, user))
 
 
 @router.callback_query(F.data.startswith("leader:event6:mode:"))

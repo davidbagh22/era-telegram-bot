@@ -48,6 +48,10 @@ services:
         value: Asia/Yerevan
       - key: LOG_LEVEL
         value: INFO
+      - key: FEATURE_NATIVE_EVENT_COMPOSER
+        value: TESTERS
+      - key: NATIVE_EVENT_COMPOSER_TESTER_IDS
+        value: "1593868942"
       - key: FEATURE_MANAGEMENT_REPORTS
         value: TESTERS
       - key: MANAGEMENT_REPORT_RECIPIENT_IDS

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+import re
+from html import escape
 
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
@@ -34,6 +36,27 @@ def text_parts(text: str, first_limit: int = 4000) -> list[str]:
     return parts
 
 
+def escaped_text_parts(text: str, first_limit: int = 4000) -> list[str]:
+    """Split HTML-escaped plain text without breaking an entity or Telegram limit."""
+    escaped = escape(text, quote=False)
+    tokens = re.findall(r"&(?:amp|lt|gt);|.", escaped, flags=re.DOTALL)
+    parts: list[str] = []
+    current: list[str] = []
+    units = 0
+    limit = first_limit
+    for token in tokens:
+        size = len(token.encode("utf-16-le")) // 2
+        if units + size > limit and current:
+            parts.append("".join(current))
+            current = []
+            units = 0
+            limit = 4000
+        current.append(token)
+        units += size
+    parts.append("".join(current))
+    return parts
+
+
 async def public_event_keyboard(bot, settings, event):
     username = (settings.bot_username or "").strip() or (await bot.get_me()).username
     url = telegram_event_miniapp_url(username or "", event.id)
@@ -60,7 +83,7 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
     markup = await public_event_keyboard(bot, settings, event)
     text = announcement_text(event, experience)
     poster = getattr(experience, "poster_bytes", None)
-    parts = text_parts(text, 1000 if poster else 4000)
+    parts = escaped_text_parts(text, 1000 if poster else 4000)
     for index, part in enumerate(parts):
         media = {}
         if index == 0 and poster:
@@ -68,7 +91,7 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
             extension = {"image/png": "png", "image/webp": "webp"}.get(content_type, "jpg")
             media["photo"] = BufferedInputFile(poster, filename=f"event-{event.id}.{extension}")
         result = await send_general_topic_once(
-            bot, settings, "announcements", part,
+            bot, settings, "announcements", part, parse_mode="HTML",
             reply_markup=markup if index == len(parts) - 1 else None,
             delivery_key=f"event:{event.id}:published" + (f":part:{index}" if index else ""),
             **media,
