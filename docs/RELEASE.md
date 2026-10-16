@@ -10,7 +10,7 @@
 
 - Исходный production SHA: 72187135aaedd3e8b4b018965feaff1b22ffa844.
 - Последняя подтверждённая backup/restore: 16.10.2026 05:50:23 UTC; рабочая база не восстанавливалась и не очищалась.
-- Схема не меняется: Alembic остаётся 0060_media_chat_bigint. Новые поля живут в существующем JSON состояния комнаты, старые записи читаются с fallback.
+- Миграция 0061_notification_message после 0060_media_chat_bigint добавляет nullable bigint message_id в notification_deliveries. ID и статус отправки подтверждаются одной транзакцией; старые receipts с NULL читаются без догадок. Поля игровых комнат остаются в существующем JSON. Миграция additive; при rollback кода колонка сохраняется.
 - Локально: 140 tests и 8 subtests passed (игры, shared card, expiry/restart, ошибки Telegram, доступ, deep links, навигация). ruff E9/F, compileall и validate_general_chat_content прошли.
 - Полный CI на окончательном head и Render live обязательны до приёмки; не заменяются этим документом.
 

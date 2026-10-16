@@ -97,5 +97,6 @@ class NotificationDelivery(TimestampMixin, Base):
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(96))
     payload_hash: Mapped[str] = mapped_column(String(64))

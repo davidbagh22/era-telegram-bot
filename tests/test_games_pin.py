@@ -39,7 +39,7 @@ class GamesPinTests(IsolatedAsyncioTestCase):
         assert await refresh_games_pin(self.bot, self.settings, self.sessions, 99)
         assert await refresh_games_pin(self.bot, self.settings, self.sessions, 99)
         self.bot.send_message.assert_not_awaited()
-        self.bot.edit_message_text.assert_awaited_once()
+        assert self.bot.edit_message_text.await_count == 2
         self.bot.pin_chat_message.assert_awaited_once_with(chat_id=-100123456, message_id=500, disable_notification=True)
         async with self.sessions() as session:
             state = _data(await session.scalar(select(AppSetting)))
@@ -90,6 +90,51 @@ class GamesPinTests(IsolatedAsyncioTestCase):
             assert all(d.status == 'sent' and d.attempt_count == 1 for d in deliveries)
             state = _data(await session.scalar(select(AppSetting)))
             assert state['message_id'] == 777 and state['status'] == 'confirmed'
+
+    async def test_durable_menu_id_recovers_after_crash_before_pin_state_commit(self):
+        from app.services.games_launch_service import publish_games_launch
+        self.settings.feature_games = 'ALL'
+        self.settings.database_url = 'sqlite+aiosqlite:///:memory:'
+        self.bot.get_chat.return_value = SimpleNamespace(pinned_message=None)
+        self.bot.send_message.side_effect = [self.pinned.model_copy(update={'message_id': 777}),
+                                             self.pinned.model_copy(update={'message_id': 778, 'message_thread_id': 98})]
+        async def topic(bot, settings, key, **kwargs):
+            return 99 if key == 'games' else 98
+        with patch('app.services.games_launch_service.ensure_topic', new=AsyncMock(side_effect=topic)), patch(
+            'app.services.general_topics_service.ensure_topic', new=AsyncMock(side_effect=topic)
+        ), patch('app.services.notification_service._session_factory', return_value=self.sessions):
+            with patch('app.handlers.era_game_room._save', new=AsyncMock(side_effect=RuntimeError('simulated pin state crash'))):
+                with self.assertRaises(RuntimeError):
+                    await publish_games_launch(self.bot, self.settings, self.sessions)
+            await publish_games_launch(self.bot, self.settings, self.sessions)
+        assert self.bot.send_message.await_count == 2
+        self.bot.pin_chat_message.assert_awaited_once_with(chat_id=-100123456, message_id=777, disable_notification=True)
+        async with self.sessions() as session:
+            state = _data(await session.scalar(select(AppSetting)))
+            assert state['message_id'] == 777 and state['status'] == 'confirmed'
+
+    async def test_deleted_confirmed_menu_gets_one_replacement_for_that_message(self):
+        from aiogram.exceptions import TelegramBadRequest
+        from aiogram.methods import EditMessageText
+        from app.services.games_launch_service import publish_games_launch
+        self.settings.feature_games = 'ALL'
+        self.settings.database_url = 'sqlite+aiosqlite:///:memory:'
+        assert await refresh_games_pin(self.bot, self.settings, self.sessions, 99)
+        self.bot.edit_message_text.side_effect = [TelegramBadRequest(method=EditMessageText(text='x'), message='message to edit not found'), True, True]
+        self.bot.send_message.side_effect = [self.pinned.model_copy(update={'message_id': 777}),
+                                             self.pinned.model_copy(update={'message_id': 778, 'message_thread_id': 98})]
+        async def topic(bot, settings, key, **kwargs):
+            return 99 if key == 'games' else 98
+        with patch('app.services.games_launch_service.ensure_topic', new=AsyncMock(side_effect=topic)), patch(
+            'app.services.general_topics_service.ensure_topic', new=AsyncMock(side_effect=topic)
+        ), patch('app.services.notification_service._session_factory', return_value=self.sessions):
+            await publish_games_launch(self.bot, self.settings, self.sessions)
+            await publish_games_launch(self.bot, self.settings, self.sessions)
+        assert self.bot.send_message.await_count == 2
+        assert self.bot.pin_chat_message.await_count == 2
+        async with self.sessions() as session:
+            state = _data(await session.scalar(select(AppSetting)))
+            assert state['message_id'] == 777 and state['replacement_for'] == 500
 
     async def test_registration_startup_never_overwrites_game_pin(self):
         assert await _restore_registration_pin(self.bot, self.settings.general_chat_id)

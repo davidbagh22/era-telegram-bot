@@ -83,6 +83,18 @@ class DurableNotificationDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(row.attempt_count, 1)
         self.assertIsNotNone(row.sent_at)
 
+    async def test_message_id_is_retained_in_the_same_durable_receipt(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=888)))
+        first = await safe_send_once(bot, self.settings, 900001, 'menu', delivery_key='menu-id')
+        second = await safe_send_once(bot, self.settings, 900001, 'menu', delivery_key='menu-id')
+        assert first.message_id == second.message_id == 888
+        assert second.duplicate and bot.send_message.await_count == 1
+        async with self.session_factory() as session:
+            row = await session.scalar(select(NotificationDelivery).where(NotificationDelivery.delivery_key == 'menu-id'))
+            assert row.status == 'sent' and row.message_id == 888
+
     async def test_delivery_key_cannot_be_reused_for_different_payload(self) -> None:
         bot = FakeBot()
         await safe_send_once(

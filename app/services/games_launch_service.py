@@ -25,10 +25,10 @@ async def refresh_games_pin(bot, settings, session_factory, thread_id: int) -> b
     async with session_factory() as session:
         await _lock(session, key)
         state = _data(await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update()))
-        if state.get("version") == version and state.get("status") == "confirmed":
-            return True
-        if state.get("version") and state.get("version") != version:
+        confirmed = state.get("version") == version and state.get("status") == "confirmed"
+        if state.get("revision") != version:
             state["attempts"] = 0
+            state["revision"] = version
         if state.get("attempts", 0) >= 3:
             return False
         state["attempts"] = state.get("attempts", 0) + 1
@@ -50,11 +50,18 @@ async def refresh_games_pin(bot, settings, session_factory, thread_id: int) -> b
                 await bot.edit_message_text(chat_id=settings.general_chat_id, message_id=message_id,
                                             text=PUBLIC_MENU_TEXT, parse_mode="HTML", reply_markup=markup)
             except TelegramBadRequest as exc:
+                if "message to edit not found" in str(exc).lower():
+                    state.pop("message_id", None)
+                    state.update(status="missing", replacement_for=message_id, attempts=0)
+                    await _save(session, key, state)
+                    await session.commit()
+                    return False
                 if "not modified" not in str(exc).lower():
                     raise
-            await bot.pin_chat_message(chat_id=settings.general_chat_id, message_id=message_id,
-                                       disable_notification=True)
-            state.update(status="confirmed", version=version)
+            if not confirmed:
+                await bot.pin_chat_message(chat_id=settings.general_chat_id, message_id=message_id,
+                                           disable_notification=True)
+            state.update(status="confirmed", version=version, attempts=0)
             await _save(session, key, state)
             await session.commit()
             logger.info("Game menu refreshed and pin confirmed")
@@ -94,7 +101,8 @@ async def publish_games_launch(bot, settings, session_factory) -> None:
             outcome = await send_general_topic_once(
                 bot, settings, "games", PUBLIC_MENU_TEXT, parse_mode="HTML",
                 reply_markup=menu_markup(public=True, bot_username=settings.bot_username or "ERA_1bot"),
-                delivery_key="games-menu-identity-v2",
+                delivery_key=(f"games-menu-identity-v2:replace:{state['replacement_for']}"
+                              if state.get("replacement_for") else "games-menu-identity-v2"),
             )
             if not outcome.sent or not outcome.message_id:
                 logger.warning("Games menu edition not reconciled status=%s", outcome.status)

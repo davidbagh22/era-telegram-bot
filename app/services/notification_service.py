@@ -65,8 +65,7 @@ class NotificationDeliveryResult:
     duplicate: bool
     attempt_count: int
     error_code: str | None = None
-    # Returned only when this process observed Telegram accept this exact send.
-    # Historical receipts intentionally do not fabricate a message identifier.
+    # Historical receipts may have no message ID; fresh acknowledgements retain it.
     message_id: int | None = None
 
 
@@ -210,6 +209,7 @@ async def _claim_delivery(
                     duplicate=True,
                     attempt_count=row.attempt_count,
                     error_code=row.error_code,
+                    message_id=row.message_id,
                 )
 
             last_attempt = _aware_utc(row.last_attempt_at)
@@ -261,6 +261,7 @@ async def _record_delivery_outcome(
     status: str,
     error_code: str | None,
     sent_at: datetime | None = None,
+    message_id: int | None = None,
 ) -> int:
     factory = _session_factory(settings.database_url)
     async with factory() as session:
@@ -276,6 +277,8 @@ async def _record_delivery_outcome(
         row.error_code = error_code
         if sent_at is not None:
             row.sent_at = sent_at
+        if message_id is not None:
+            row.message_id = message_id
         await session.commit()
         return row.attempt_count
 
@@ -367,6 +370,7 @@ async def safe_send_once(
                     status="sent",
                     error_code=None,
                     sent_at=datetime.now(timezone.utc),
+                    message_id=message_id,
                 )
             except Exception:
                 # Telegram accepted the message. Never retry immediately if only
