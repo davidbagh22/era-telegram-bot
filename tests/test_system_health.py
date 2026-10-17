@@ -128,6 +128,8 @@ class SystemSchedulerTests(unittest.TestCase):
         self.assertEqual(
             ids,
             [
+                "review-sla-reminders",
+                "support-answer-delivery",
                 "system-heartbeat",
                 "system-full-diagnostic",
                 "system-daily-summary",
@@ -147,6 +149,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "community-verification-expiry",
                 "my-vector-monthly-reminders",
                 "book-club-daily",
+                "book-club-editorial-recovery",
                 "public-catalog-launch",
                 "literature-opening-recovery",
                 "literature-channel-opening",

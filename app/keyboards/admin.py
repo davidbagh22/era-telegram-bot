@@ -12,6 +12,9 @@ def admin_home_keyboard(miniapp_url: str = "") -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="📅 Мероприятия", callback_data="admin:events")],
         [InlineKeyboardButton(text="✅ Задачи", callback_data="admin:tasks"),
          InlineKeyboardButton(text="💡 Проекты", callback_data="admin:projects")],
+        [InlineKeyboardButton(text="📚 Редакция", callback_data="admin:literature:home"),
+         InlineKeyboardButton(text="💬 Обращения", callback_data="admin:questions")],
+        [InlineKeyboardButton(text="📨 Рассылки", callback_data="admin:campaigns")],
     ]
     if miniapp_url:
         rows.append([InlineKeyboardButton(text="🔥 Открыть ЭРА", web_app=WebAppInfo(url=miniapp_url))])

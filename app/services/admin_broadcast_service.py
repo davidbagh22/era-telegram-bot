@@ -12,7 +12,6 @@ replicate. This service only sends to chats that are already bound.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 from uuid import uuid4
 from dataclasses import dataclass
@@ -20,12 +19,14 @@ from datetime import datetime
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from sqlalchemy import func, select, text as sql_text
+from sqlalchemy import func, select, text as sql_text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Broadcast, Department, Direction, User, UserDepartment, UserDirection
+from app.database.system_models import NotificationDelivery
 from app.services.audit_service import audit
+from app.services.authorization_service import is_full_admin
 from app.services.notification_service import BroadcastResult, BroadcastFailure, safe_send, safe_send_once
 from app.services.general_topics_service import send_general_topic
 from app.utils.constants import ApplicationStatus
@@ -112,9 +113,20 @@ async def preview_recipient_count(session: AsyncSession, audience: str, filter_v
 async def _deliver_campaign(bot, settings, session, item) -> BroadcastResult:
     metadata = item.audience_filter_json
     result = BroadcastResult()
+    await session.refresh(item, attribute_names=['status'])
+    if item.status != 'sending':
+        if item.status == 'sent':
+            result.total = len(metadata.get('recipient_ids', []))
+            result.duplicates = int(await session.scalar(select(func.count()).select_from(NotificationDelivery).where(
+                NotificationDelivery.delivery_key.like(f'admin-campaign:{item.id}:user:%'),
+                NotificationDelivery.status == 'sent')) or 0)
+        return result
     needs_review = False
     retry = False
     for user_id in metadata.get("recipient_ids", []):
+        await session.refresh(item, attribute_names=['status'])
+        if item.status != 'sending':
+            return result
         recipient = await session.scalar(select(User).where(User.id == user_id)
                                          .execution_options(populate_existing=True))
         if recipient is None or recipient.is_archived or recipient.is_blocked or recipient.application_status != ApplicationStatus.APPROVED:
@@ -134,20 +146,53 @@ async def _deliver_campaign(bot, settings, session, item) -> BroadcastResult:
             retry |= temporary
             needs_review |= delivery.status in {"uncertain", "conflict"}
             result.failures.append(BroadcastFailure(recipient.telegram_id, delivery.error_code or delivery.status, temporary))
-        await asyncio.sleep(0.05)
+        # Shared Bot transport applies per-chat/global pacing and RetryAfter.
     if item.audience_type == "all" and settings.general_chat_id:
+        await session.refresh(item, attribute_names=['status'])
+        if item.status != 'sending':
+            return result
         ok = await send_general_topic(bot, settings, "notifications", item.text,
                                       delivery_key=f"broadcast:{item.id}")
         if not ok:
             needs_review = True
-    item.status = "sending" if retry else ("review_required" if needs_review else ("partial" if result.failed else "sent"))
-    if item.status == "sent":
-        item.sent_at = datetime.now().astimezone()
+    status = "sending" if retry else ("review_required" if needs_review else ("partial" if result.failed else "sent"))
+    # A pause/cancel committed while the last request was in flight wins over
+    # worker completion. One in-flight Telegram request cannot be recalled.
+    updated = await session.scalar(update(Broadcast).where(Broadcast.id == item.id, Broadcast.status == 'sending')
+        .values(status=status, sent_at=datetime.now().astimezone() if status == 'sent' else None)
+        .returning(Broadcast.id).execution_options(synchronize_session=False))
+    if updated is None:
+        await session.commit()
+        return result
     await audit(session, actor_id=item.author_id, action="broadcast.delivery",
                 entity_type="broadcast", entity_id=item.id,
-                new_value={"sent": result.sent, "failed": result.failed, "duplicates": result.duplicates, "status": item.status})
+                new_value={"sent": result.sent, "failed": result.failed, "duplicates": result.duplicates, "status": status})
     await session.commit()
+    await session.refresh(item, attribute_names=['status', 'sent_at'])
     return result
+
+
+async def control_broadcast(session, settings, *, actor, campaign_id: int, action: str):
+    if actor is None or not is_full_admin(actor, settings, actor.telegram_id):
+        raise BroadcastError('admin_access_required')
+    transitions = {'pause': ({'sending'}, 'paused'), 'resume': ({'paused'}, 'sending'),
+                   'cancel': ({'sending', 'paused'}, 'cancelled')}
+    if action not in transitions:
+        raise BroadcastError('invalid_campaign_action')
+    item = await session.scalar(select(Broadcast).where(Broadcast.id == campaign_id).with_for_update()
+                                .execution_options(populate_existing=True))
+    if item is None or 'campaign_key' not in (item.audience_filter_json or {}):
+        raise BroadcastError('campaign_not_found')
+    allowed, target = transitions[action]
+    if item.status == target:
+        return item
+    if item.status not in allowed:
+        raise BroadcastError('campaign_state_changed')
+    old = item.status
+    item.status = target
+    await audit(session, actor_id=actor.id, action=f'broadcast.{action}', entity_type='broadcast',
+                entity_id=item.id, old_value={'status': old}, new_value={'status': target})
+    return item
 
 
 async def send_personal_broadcast(

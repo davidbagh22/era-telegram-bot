@@ -99,6 +99,9 @@ jobs:
       - name: Prove management report concurrency on PostgreSQL
         run: python scripts/postgres_management_race.py
 
+      - name: Prove editorial, support and broadcast control concurrency on PostgreSQL
+        run: python scripts/postgres_editorial_race.py
+
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 10

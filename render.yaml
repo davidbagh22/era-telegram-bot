@@ -60,6 +60,10 @@ services:
         value: TESTERS
       - key: QUICK_REGISTRATION_TESTER_IDS
         value: "1593868942"
+      - key: FEATURE_REVIEW_REMINDERS
+        value: TESTERS
+      - key: REVIEW_REMINDER_RECIPIENT_IDS
+        value: "1593868942"
       - key: FEATURE_ATTENDANCE_QR
         value: TESTERS
       - key: ATTENDANCE_QR_TESTER_IDS

@@ -79,8 +79,8 @@ class RateLimitDependencyWiringTests(unittest.TestCase):
         post_routes = [r for r in admin_api.router.routes if r.methods and "POST" in r.methods]
         # The mutation inventory intentionally stays explicit: every new POST
         # must either carry the shared rate limiter or make this test fail.
-        # Event participant role/volunteer-hours scoring adds the 64th route.
-        self.assertEqual(len(post_routes), 64, "expected 64 admin mutation routes")
+        # Campaign pause/resume/cancel adds the 65th route.
+        self.assertEqual(len(post_routes), 65, "expected 65 admin mutation routes")
         for route in post_routes:
             deps = [d.call for d in route.dependant.dependencies]
             self.assertIn(

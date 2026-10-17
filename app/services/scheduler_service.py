@@ -22,6 +22,7 @@ from app.database.models import (
     TaskDelivery,
     TaskParticipant,
     User,
+    UserQuestion,
 )
 from app.keyboards.admin import project_review_actions
 from app.services.birthday_service import send_birthday_greetings
@@ -73,6 +74,95 @@ def _reminder_lead(stage: int) -> str:
     if stage == 2:
         return "До события около 3 часов"
     return "Событие скоро начнётся"
+
+
+async def send_review_sla_reminders(bot, settings, session_factory, *, now=None) -> None:
+    """Private, once-per-stage reminders; existing venue reminders keep ownership."""
+    from datetime import timezone
+    mode = getattr(settings, 'feature_review_reminders', 'OFF')
+    if mode == 'OFF':
+        return
+    recipients = {i for i in await admin_notification_recipients(settings) if i > 0}
+    if mode == 'TESTERS':
+        recipients &= set(settings.review_reminder_recipient_ids)
+    if not recipients:
+        return
+    now = now or datetime.now(timezone.utc)
+    async with session_factory() as session:
+        projects = list((await session.scalars(select(Project.id).where(
+            Project.status.in_((ProjectStatus.PENDING_REVIEW, ProjectStatus.INITIAL_REVIEW)),
+            Project.submitted_at <= now - timedelta(hours=72)).order_by(Project.submitted_at))).all())
+        questions = list((await session.scalars(select(UserQuestion.id).where(
+            UserQuestion.status.in_(('new', 'open')), UserQuestion.admin_answer.is_(None),
+            UserQuestion.created_at <= now - timedelta(hours=24)).order_by(UserQuestion.created_at))).all())
+    for kind, ids, model, hours in (('project', projects, Project, 72), ('question', questions, UserQuestion, 24)):
+        fresh_items = 0
+        for item_id in ids:
+            async with session_factory() as session:
+                item = await session.scalar(select(model).where(model.id == item_id).with_for_update()
+                                            .execution_options(populate_existing=True))
+                if kind == 'project':
+                    if item.status not in {ProjectStatus.PENDING_REVIEW, ProjectStatus.INITIAL_REVIEW}:
+                        continue
+                    started, label, callback = item.submitted_at, 'Проект', 'admin:projects'
+                else:
+                    if item.status not in {'new', 'open'} or item.admin_answer:
+                        continue
+                    started, label, callback = item.created_at, 'Обращение', f'admin:support:item:{item.id}'
+                if not started:
+                    continue
+                started = started.replace(tzinfo=timezone.utc) if started.tzinfo is None else started.astimezone(timezone.utc)
+                elapsed = (now - started).total_seconds() / 3600
+                if elapsed < hours:
+                    continue
+                # Recover directly at the current stage without a burst of old reminders.
+                stage = 'escalation' if elapsed >= 2 * hours else 'reminder'
+                message = (f'⚠️ <b>ЭРА · {"Требуется решение" if stage == "escalation" else "Ожидает ответа"}</b>\n\n'
+                           f'{label} <b>#{item.id}</b> ожидает рассмотрения более {hours * (2 if stage == "escalation" else 1)} ч.\n'
+                           f'Срок первого ответа: {hours} ч.\n\nОткройте карточку и примите решение.')
+                markup = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text=f'Открыть {"проекты" if kind == "project" else "обращение"}', callback_data=callback)]])
+                fresh = False
+                for recipient in sorted(recipients):
+                    delivery = await safe_send_once(bot, settings, recipient, message,
+                        delivery_key=f'review-sla:{kind}:{item.id}:{started.isoformat()}:{stage}:{recipient}',
+                        notification_type='review_sla', parse_mode='HTML', reply_markup=markup)
+                    fresh |= delivery.sent and not delivery.duplicate
+                await session.commit()
+                fresh_items += int(fresh)
+                if fresh_items >= 5:
+                    # Drain a backlog gradually. Completed receipts never occupy
+                    # this budget, so the oldest rows cannot starve later items.
+                    break
+
+
+async def deliver_support_answers(bot, settings, session_factory) -> None:
+    """Resume committed answers through the shared delivery ledger after restart."""
+    import hashlib
+    async with session_factory() as session:
+        ids = list((await session.scalars(select(UserQuestion.id).where(
+            UserQuestion.status == 'answer_pending').order_by(UserQuestion.id).limit(50))).all())
+    for item_id in ids:
+        async with session_factory() as session:
+            item = await session.scalar(select(UserQuestion).where(UserQuestion.id == item_id).with_for_update()
+                                        .execution_options(populate_existing=True))
+            if item.status != 'answer_pending' or not item.admin_answer:
+                continue
+            target = await session.get(User, item.user_id)
+            if target is None or target.is_archived or target.is_blocked:
+                item.status = 'answer_failed'
+            else:
+                revision = hashlib.sha256(item.admin_answer.encode()).hexdigest()[:16]
+                delivery = await safe_send_once(bot, settings, target.telegram_id,
+                    f'💬 ЭРА · Ответ на обращение #{item.id}\n\n{item.admin_answer}',
+                    delivery_key=f'support-answer:{item.id}:{revision}', notification_type='support_answer', parse_mode=None)
+                if delivery.status == 'sent':
+                    item.status = 'answered'
+                elif delivery.status in {'uncertain', 'conflict'}:
+                    item.status = 'answer_review'
+                elif delivery.status in {'blocked', 'unreachable', 'skipped'} or delivery.attempt_count >= 3:
+                    item.status = 'answer_failed'
+            await session.commit()
 
 
 async def send_event_reminders(bot: Bot, settings: Settings, session_factory) -> None:
