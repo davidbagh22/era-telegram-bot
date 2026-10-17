@@ -116,12 +116,34 @@ def _menu_button_matches(expected, actual) -> bool:
     return actual.type in ("default", "commands")
 
 
+def _menu_button_mismatch_reason(expected, actual) -> str:
+    """Safe diagnostic codes: never log the configured URL or query values."""
+    from urllib.parse import parse_qsl, urlsplit
+    if _menu_button_matches(expected, actual):
+        return 'match'
+    if expected.type != 'web_app' or actual.type != 'web_app':
+        return 'type'
+    wanted, observed = urlsplit(expected.web_app.url), urlsplit(actual.web_app.url)
+    if (wanted.scheme, wanted.netloc) != (observed.scheme, observed.netloc):
+        return 'origin'
+    if wanted.path != observed.path:
+        return 'path'
+    first, second = dict(parse_qsl(wanted.query)), dict(parse_qsl(observed.query))
+    first_version = first.pop('v', None)
+    second_version = second.pop('v', None)
+    if first == second and wanted.fragment == observed.fragment and first_version != second_version:
+        return 'release_version'
+    return 'query_or_fragment'
+
+
 async def _set_and_verify_menu_button(bot, expected):
     """Telegram's read-back can briefly return the previous release URL."""
     await bot.set_chat_menu_button(menu_button=expected)
     actual = await bot.get_chat_menu_button()
-    for delay in (0.2, 0.5):
+    for delay in (0.2, 0.5, 1.0, 2.0, 4.0):
         if _menu_button_matches(expected, actual):
+            break
+        if delay >= 1.0 and actual.type != 'web_app':
             break
         await asyncio.sleep(delay)
         actual = await bot.get_chat_menu_button()
@@ -427,17 +449,19 @@ async def lifespan(app: FastAPI):
                 )
             else:
                 logger.error(
-                    "Chat menu button mismatch: bot=@%s expected type=%s got type=%s "
+                    "Chat menu button mismatch: bot=@%s expected type=%s got type=%s reason=%s "
                     "— Telegram did not store the configuration we sent",
                     me.username,
                     expected_menu_button.type,
                     actual_menu_button.type,
+                    _menu_button_mismatch_reason(expected_menu_button, actual_menu_button),
                 )
             app.state.bot_diagnostics = {
                 "bot_id": me.id,
                 "bot_username": me.username,
                 "menu_button_type": actual_menu_button.type,
                 "menu_button_verified": menu_button_verified,
+                "menu_button_mismatch_reason": _menu_button_mismatch_reason(expected_menu_button, actual_menu_button),
                 "miniapp_configured": bool(settings.effective_miniapp_url),
                 "webhook_host": base_url,
             }
