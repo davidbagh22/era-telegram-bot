@@ -148,9 +148,12 @@ class GamesPinTests(IsolatedAsyncioTestCase):
         assert self.bot.edit_message_text.await_args.kwargs['message_id'] == 500
 
 
-def test_public_menu_preserves_eleven_formats_and_opens_solo_games_privately():
+def test_public_menu_is_compact_and_all_eleven_formats_remain_available():
     buttons = [button for row in menu_markup(public=True).inline_keyboard for button in row]
-    assert len([b for b in buttons if b.url and '?start=game_' in b.url]) == 9
+    assert len(buttons) == 4
+    solo = [button for row in menu_markup().inline_keyboard for button in row
+            if button.callback_data == 'era_game:solo' or button.callback_data.startswith('era_game:play:')]
+    assert len(solo) == 9
     assert len([b for b in buttons if b.callback_data in {'era_game:team', 'era_game:duel'}]) == 2
     assert any(b.url and b.url.endswith('?start=games') for b in buttons)
     for button in buttons:

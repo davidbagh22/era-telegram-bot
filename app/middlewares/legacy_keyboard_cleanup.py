@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -8,6 +9,9 @@ from aiogram import BaseMiddleware
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import ReplyKeyboardRemove, TelegramObject
 
+from sqlalchemy import select, text
+
+from app.database.models import AppSetting
 from app.utils.ux_texts import LEGACY_KEYBOARD_CLEARED
 from app.keyboards.bot_shell import main_reply_keyboard
 from app.utils.constants import ApplicationStatus, Role
@@ -20,7 +24,7 @@ class LegacyKeyboardCleanupMiddleware(BaseMiddleware):
 
     Approved private profiles receive the current shell, including authorized
     admin shortcuts. Unapproved profiles retain the old cleanup path before
-    registration. The legacy flag is reused; no schema or user reset is needed.
+    registration. A versioned setting refreshes already-migrated clients once. No user reset or schema change is needed.
     """
 
     async def __call__(
@@ -34,7 +38,6 @@ class LegacyKeyboardCleanupMiddleware(BaseMiddleware):
         bot = data.get("bot")
         if (
             user is not None
-            and not user.legacy_reply_keyboard_removed
             and chat is not None
             and chat.type == "private"
             and bot is not None
@@ -50,6 +53,19 @@ class LegacyKeyboardCleanupMiddleware(BaseMiddleware):
                 getattr(user, "role", None) == Role.ADMIN
                 or user.telegram_id in getattr(settings, "admin_ids", [])
             )
+            session = data.get("session")
+            menu_key = f"private-menu:{user.telegram_id}"
+            version = {"version": "2026-10-18-clean", "admin": bool(admin)}
+            saved_menu = None
+            if approved and session is not None:
+                if session.bind.dialect.name == "postgresql":
+                    lock_id = int.from_bytes(hashlib.blake2b(menu_key.encode(), digest_size=8).digest(), "big", signed=True)
+                    await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_id})
+                saved_menu = await session.scalar(select(AppSetting).where(AppSetting.key == menu_key))
+                if saved_menu is not None and saved_menu.value == version:
+                    return await handler(event, data)
+            elif user.legacy_reply_keyboard_removed:
+                return await handler(event, data)
             # An old migration must never remove the current persistent menu.
             # Pending registrations keep their dedicated input keyboard flow.
             markup = (
@@ -74,4 +90,10 @@ class LegacyKeyboardCleanupMiddleware(BaseMiddleware):
                 )
             else:
                 user.legacy_reply_keyboard_removed = True
+                if approved and session is not None:
+                    if saved_menu is None:
+                        session.add(AppSetting(key=menu_key, value=version))
+                    else:
+                        saved_menu.value = version
+                    await session.flush()
         return await handler(event, data)

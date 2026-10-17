@@ -178,3 +178,33 @@ class CurrentPersistentKeyboardMigrationTests(unittest.IsolatedAsyncioTestCase):
         assert markup.is_persistent and markup.one_time_keyboard is False
         assert "📊 Статистика" in {button.text for row in markup.keyboard for button in row}
         assert user.legacy_reply_keyboard_removed
+
+
+class VersionedPrivateMenuTests(unittest.IsolatedAsyncioTestCase):
+    async def test_old_legacy_flag_does_not_block_current_menu_and_next_update_is_silent(self):
+        from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+        from app.database.base import Base
+        from app.config import Settings
+        from app.utils.constants import ApplicationStatus, Role
+        engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            sessions = async_sessionmaker(engine, expire_on_commit=False)
+            user = SimpleNamespace(telegram_id=900001, legacy_reply_keyboard_removed=True,
+                                   application_status=ApplicationStatus.APPROVED, role=Role.ADMIN,
+                                   is_blocked=False, is_archived=False)
+            bot = FakeBot()
+            middleware = LegacyKeyboardCleanupMiddleware()
+            async with sessions() as session:
+                data = {'user': user, 'event_chat': SimpleNamespace(id=42, type='private'), 'bot': bot,
+                        'settings': Settings(bot_token='1234567890:test-token'), 'session': session}
+                for _ in range(3):
+                    await middleware(AsyncMock(), object(), data)
+                    await session.commit()
+            assert len(bot.sent) == 1
+            labels = {b.text for row in bot.sent[0][2]['reply_markup'].keyboard for b in row}
+            assert '📊 Статистика' in labels and '💬 Связь' in labels
+            assert '❓ Вопросы и связь' not in labels
+        finally:
+            await engine.dispose()
