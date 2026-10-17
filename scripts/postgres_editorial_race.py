@@ -18,6 +18,7 @@ from app.services.admin_broadcast_service import control_broadcast, resume_broad
 from app.services.book_club_service import (approve_editorial_item, editorial_revision, run_editorial_queue,
     save_editorial_item, save_editorial_settings)
 from app.services.scheduler_service import deliver_support_answers
+from app.services.support_service import create_support_question, deliver_support_intake_notices
 from app.utils.constants import ApplicationStatus, Role
 
 MATERIAL = ('Название: Проверка очереди\nАвтор: CI\nВведение: Изолированный тест.\n'
@@ -79,6 +80,33 @@ async def main():
         assert len(calls) == 3, len(calls)
         async with sessions() as session:
             assert (await session.get(UserQuestion, question_id)).status == 'answered'
+        async def intake():
+            async with sessions() as session:
+                item, created = await create_support_question(session, user_id=editor_id,
+                    source_key=f'CI-{uid}:8', text='CI unique intake')
+                await session.commit()
+                return item.id, created
+        intakes = await asyncio.wait_for(asyncio.gather(*(intake() for _ in range(8))), 60)
+        assert len({item_id for item_id, _ in intakes}) == 1 and sum(created for _, created in intakes) == 1
+        intake_id = intakes[0][0]
+        async with sessions() as session:
+            expected = set((await session.scalars(select(User.telegram_id).where(User.role == Role.ADMIN,
+                User.is_blocked.is_(False), User.is_archived.is_(False)))).all())
+            await create_support_question(session, user_id=editor_id, source_key=f'CI-{uid}:rollback', text='CI rolled back intake')
+            await session.rollback()
+        intake_calls = []
+        async def intake_send(chat_id, body, **kwargs):
+            assert chat_id in expected and chat_id > 0
+            intake_calls.append(chat_id)
+            return SimpleNamespace(message_id=len(intake_calls))
+        await asyncio.wait_for(asyncio.gather(*(deliver_support_intake_notices(
+            SimpleNamespace(send_message=intake_send), settings, sessions) for _ in range(8))), 60)
+        assert set(intake_calls) == expected and len(intake_calls) == len(expected)
+        async with sessions() as session:
+            assert await session.scalar(select(func.count()).select_from(UserQuestion).where(UserQuestion.text == 'CI rolled back intake')) == 0
+            assert await session.scalar(select(func.count()).select_from(NotificationDelivery).where(
+                NotificationDelivery.delivery_key.like(f'support-intake:{intake_id}:admin:%'),
+                NotificationDelivery.status == 'sent')) == len(expected)
         # Stop the worker while the final Telegram request is still in flight.
         async def cancel_during_send(chat_id, body, **kwargs):
             async with sessions() as session:
@@ -101,7 +129,7 @@ async def main():
             assert (await session.scalar(select(Broadcast).where(Broadcast.author_id == editor_id))).status == 'cancelled'
     finally:
         await engine.dispose()
-    print('PostgreSQL: 8 workers produce one editorial issue and one support answer; in-flight cancellation wins')
+    print('PostgreSQL: 8 workers produce one editorial issue, one intake and one support answer; in-flight cancellation wins')
 
 
 if __name__ == '__main__':

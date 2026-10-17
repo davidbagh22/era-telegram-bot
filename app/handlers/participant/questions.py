@@ -1,20 +1,22 @@
+import logging
+
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
-from app.database.models import User, UserQuestion
+from app.database.models import User
 from app.keyboards.common import yes_no_keyboard
 from app.keyboards.faq import get_faq_answer_keyboard
-from app.services.audit_service import audit
-from app.services.notification_service import notify_admins
+from app.services.support_service import create_support_question, deliver_support_intake_notices
 from app.states.question import QuestionStates
 from app.utils import texts
 from app.utils.constants import ApplicationStatus
 from app.utils.validators import clean_text
 
 router = Router(name="questions")
+logger = logging.getLogger(__name__)
 
 
 async def _begin_question(
@@ -56,7 +58,7 @@ async def question_text(message: Message, state: FSMContext) -> None:
     if not value:
         await message.answer(texts.INVALID_INPUT)
         return
-    await state.update_data(question_text=value)
+    await state.update_data(question_text=value, question_source=f"{message.chat.id}:{message.message_id}")
     await state.set_state(QuestionStates.attachment_choice)
     markup = yes_no_keyboard("question:file")
     context = (await state.get_data()).get("faq_context")
@@ -77,29 +79,31 @@ async def _save_question(
     data = await state.get_data()
     context = data.get("faq_context")
     topic = context.get("topic") if context else None
-    question = UserQuestion(
-        user_id=user.id, text=(f"Тема: {topic}\n\n" if topic else "") + data["question_text"], file_id=file_id
-    )
-    session.add(question)
-    await session.flush()
-    await audit(
-        session,
-        actor_id=user.id,
-        action="question.created",
-        entity_type="user_question",
-        entity_id=question.id,
-        new_value={"source": "faq", "category": context.get("category"), "question": context.get("question")} if context else None,
-    )
+    value = data.get("question_text")
+    if not value or user is None:
+        await message.answer("Обращение уже принято или ввод отменён. Для нового вопроса откройте форму заново.")
+        return
+    source_key = data.get("question_source") or f"{message.chat.id}:{message.message_id}"
+    try:
+        question, _ = await create_support_question(
+            session, user_id=user.id, source_key=source_key,
+            text=(f"Тема: {topic}\n\n" if topic else "") + value, file_id=file_id,
+            context={"category": context.get("category"), "question": context.get("question")} if context else None,
+        )
+    except PermissionError:
+        await state.clear()
+        await message.answer(texts.APPLICATION_PENDING)
+        return
+    await session.commit()
     await state.clear()
     await message.answer(
-        texts.QUESTION_DONE,
+        texts.QUESTION_DONE + f"\n\nНомер обращения: #{question.id}",
         reply_markup=get_faq_answer_keyboard(context["back"]) if context else None,
     )
-    await notify_admins(
-        bot,
-        settings,
-        f"Новый вопрос #{question.id} от {user.first_name} {user.last_name or ''}:\n\n{question.text}",
-    )
+    try:
+        await deliver_support_intake_notices(bot, settings, async_sessionmaker(session.bind, expire_on_commit=False))
+    except Exception as exc:
+        logger.warning("Support intake notice deferred code=%s", type(exc).__name__)
 
 
 @router.callback_query(QuestionStates.attachment_choice, F.data == "question:file:no")

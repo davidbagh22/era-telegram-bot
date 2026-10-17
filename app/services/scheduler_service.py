@@ -143,6 +143,7 @@ async def send_review_sla_reminders(bot, settings, session_factory, *, now=None)
 async def deliver_support_answers(bot, settings, session_factory) -> None:
     """Resume committed answers through the shared delivery ledger after restart."""
     import hashlib
+    from app.services.support_service import deliver_support_intake_notices
     async with session_factory() as session:
         ids = list((await session.scalars(select(UserQuestion.id).where(
             UserQuestion.status == 'answer_pending').order_by(UserQuestion.id).limit(50))).all())
@@ -167,6 +168,7 @@ async def deliver_support_answers(bot, settings, session_factory) -> None:
                 elif delivery.status in {'blocked', 'unreachable', 'skipped'} or delivery.attempt_count >= 3:
                     item.status = 'answer_failed'
             await session.commit()
+    await deliver_support_intake_notices(bot, settings, session_factory)
 
 
 async def send_event_reminders(bot: Bot, settings: Settings, session_factory) -> None:
