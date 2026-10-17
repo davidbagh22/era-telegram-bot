@@ -2,6 +2,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class RegistrationStates(StatesGroup):
+    mode = State()
     # Current streamlined registration flow.
     full_name = State()
     age = State()

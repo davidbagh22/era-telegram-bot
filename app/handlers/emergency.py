@@ -263,6 +263,9 @@ async def rescue_start(
     session: AsyncSession,
     command: CommandObject | None = None,
 ) -> None:
+    from app.handlers.registration import offer_registration_resume
+    if (user is None or user.application_status in {'rejected', 'needs_info'}) and await offer_registration_resume(message, state):
+        return
     await state.clear()
     subscribed = await _subscription_ok(bot, message.from_user.id, settings)
     if subscribed is False:
@@ -283,6 +286,12 @@ async def rescue_start(
         return
     if user is None:
         await message.answer(texts.WELCOME, reply_markup=registration_keyboard())
+        return
+    if user.application_status in {'rejected', 'needs_info'}:
+        from app.handlers.registration import application_status_message
+        from app.keyboards.registration import pending_registration_keyboard
+        await message.answer(application_status_message(user.application_status), reply_markup=pending_registration_keyboard(
+            settings.era_channel_url, can_reapply=not user.is_archived and not user.is_blocked))
         return
     if command and command.args and command.args.startswith('attend2_'):
         from app.services import event_attendance_service

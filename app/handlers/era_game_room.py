@@ -10,6 +10,7 @@ import json
 import logging
 import secrets
 import asyncio
+from html import escape
 from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
@@ -21,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import AppSetting, User
-from app.services.game_content import GameItem, QUIZ_QUESTIONS, items_for_mode
+from app.services.game_content import GameItem, QUIZ_QUESTIONS, choose_quiz_pack, items_for_mode
 from app.services.game_formats import GameMode, check_answer, score_answer
 from app.services.general_topics_service import ensure_topic
 from app.services.game_rewards_service import award_game_points
@@ -145,7 +146,8 @@ async def _reserve_format_item(
                 cleaned[str(item_id)] = used_at.isoformat()
         except (TypeError, ValueError):
             logger.warning("Invalid game content reservation %s", item_id)
-    item = next((candidate for candidate in items if candidate.id not in active), None)
+    available = [candidate for candidate in items if candidate.id not in active]
+    item = secrets.choice(available) if available else None
     if item is None:
         await _save(session, usage_key, cleaned)
         return None
@@ -168,15 +170,19 @@ def _format_prompt(room: dict) -> tuple[str, InlineKeyboardMarkup | None] | None
         return None
     challenge = item.challenge
     heading = room_heading(room) + "\n" + roster(room) + "\n\n"
-    text = f"{challenge.prompt}\n\n<i>Тема: {item.category}</i>"
+    text = f"<b>{escape(challenge.prompt)}</b>\n\n<i>Тема: {escape(item.category)}</i>"
+    if challenge.hints:
+        shown = challenge.hints[:room.get('hints_used', 0)]
+        text += '\n\n' + '\n'.join(f'💡 {escape(hint)}' for hint in shown)
+        text += '\n\nПервая подсказка бесплатная; дополнительные уменьшают очки.'
     if challenge.mode == GameMode.MEMORY:
         if not room.get("memory_revealed"):
             return (
-                heading + f"{challenge.prompt}\n\n<i>Запомни последовательность: она будет показана 5 секунд.</i>",
+                heading + f"{escape(challenge.prompt)}\n\n<i>Запомни последовательность: она будет показана 5 секунд.</i>",
                 None,
             )
         instruction = challenge.prompt.split(":", 1)[0].rstrip()
-        text = f"🧩 <b>Память</b>\n{instruction}\n\nПоследовательность скрыта. Какой она была?"
+        text = f"🧩 <b>Память</b>\n{escape(instruction)}\n\nПоследовательность скрыта. Какой она была?"
     reference = f"{room['id']}~{room['token']}"
     return heading + text + "\n\n" + deadline(room), format_markup(reference, item, hints_used=room.get("hints_used", 0))
 
@@ -235,7 +241,8 @@ async def _start_format(query: CallbackQuery, settings: Settings, session: Async
     room = {
         "id": room_id, "token": token, "session_token": token,
         "mode": mode.value, "item_id": item.id, "status": "playing",
-        "participants": [uid], "answers": {}, "scores": {}, "hints_used": 0,
+        "participants": [uid], "answers": {}, "scores": {},
+        "hints_used": 1 if item.challenge.hints else 0, "first_hint_free": True,
         "created_at": now.isoformat(), "expires_at": (now + timedelta(minutes=5)).isoformat(),
     }
     remember_player(room, query.from_user)
@@ -323,7 +330,8 @@ async def _format_action(query: CallbackQuery, settings: Settings, session: Asyn
         return True
     selected = item.challenge.options[choice]
     correct = check_answer(item.challenge, selected, previous_word=item.previous_word)
-    score = score_answer(item.challenge, selected, hints_used=room.get("hints_used", 0),
+    hints_used = max(0, room.get("hints_used", 0) - int(room.get('first_hint_free', False)))
+    score = score_answer(item.challenge, selected, hints_used=hints_used,
                          previous_word=item.previous_word)
     room.setdefault("answers", {})[str(uid)] = choice
     room.setdefault("scores", {})[str(uid)] = score
@@ -333,9 +341,9 @@ async def _format_action(query: CallbackQuery, settings: Settings, session: Asyn
     if correct and settings.games_rewards_enabled:
         awarded = await award_game_points(session, telegram_id=uid, round_id=room["session_token"], amount=score)
     room["rewards"] = {str(uid): awarded}
-    result = "✅ Верно!" if correct else f"❌ Пока неверно. Ответ: <b>{item.challenge.answer}</b>."
+    result = "✅ Верно!" if correct else f"❌ Пока неверно. Ответ: <b>{escape(item.challenge.answer)}</b>."
     if item.challenge.explanation:
-        result += f"\n\nℹ️ {item.challenge.explanation}"
+        result += f"\n\nℹ️ {escape(item.challenge.explanation)}"
     result += f"\n\nОчки за раунд: {score}. Баллы ЭРА: +{awarded}."
     room["result_text"] = result
     await _store_game_result(session, room)
@@ -396,18 +404,24 @@ async def _reserve_questions(
     user_ids: tuple[int, ...] | list[int] = (),
     mode: str = "solo_quiz",
 ) -> list[int]:
-    """Reserve a question pack without repeating it for any participant.
+    """Shared quiz history prevents solo/team/duel repeats for every player.
 
-    History is scoped to both user and format. For a team, the selected pack
-    must be available to every member, then the same reservation is written to
-    each member's history. The legacy global key is read only by old call sites
-    and migration-era tests that do not identify a player.
+    Prefer unseen questions for 180 days. Only after bank exhaustion recycle
+    the oldest questions with a strict 30-day floor, so daily five-question
+    games remain playable through 180 days. Legacy per-mode history is read.
     """
+    quiz_modes = ('solo_quiz', 'team_quiz', 'team_duel')
+    shared = bool(user_ids and mode in quiz_modes)
     usage_keys = (
         [f"era_game:question_usage:{mode}:{user_id}" for user_id in sorted(set(user_ids))]
         if user_ids
         else ["era_game:question_usage"]
     )
+    write_keys = set(usage_keys)
+    if shared:
+        usage_keys = sorted({f'era_game:question_usage:{kind}:{uid}'
+                             for uid in set(user_ids) for kind in (*quiz_modes, 'quiz')})
+        write_keys.update(f'era_game:question_usage:quiz:{uid}' for uid in set(user_ids))
     for used_key in usage_keys:
         await _lock(session, used_key)
     rows = await session.scalars(
@@ -435,10 +449,24 @@ async def _reserve_questions(
         for question_id in active
     }
     available = [i for i in range(len(QUESTIONS)) if i not in unavailable]
+    chosen = (choose_quiz_pack(available, min(count, len(available))) if user_ids else available[:count])
     if len(available) < count:
-        return []
-    chosen = available[:count]
+        if not shared:
+            return []
+        last_seen: dict[int, datetime] = {}
+        for used in active_by_key.values():
+            for index, when in used.items():
+                index, when = int(index), datetime.fromisoformat(when)
+                last_seen[index] = max(last_seen.get(index, when), when)
+        recycled = sorted((i for i, when in last_seen.items()
+                           if 0 <= i < len(QUESTIONS) and when <= now-timedelta(days=30)),
+                          key=lambda i: (last_seen[i], i))
+        chosen.extend(recycled[:count-len(chosen)])
+        if len(chosen) < count:
+            return []
     for used_key, used in active_by_key.items():
+        if used_key not in write_keys:
+            continue
         for index in chosen:
             used[str(index)] = now.isoformat()
         await _save(session, used_key, used)
@@ -521,7 +549,14 @@ def _room_view(room: dict) -> tuple[str, InlineKeyboardMarkup | None]:
                 f"{player_label(room, uid)}: +{rewards.get(str(uid), 0)}"
                 for uid in room.get("participants", [])
             )
-        return header + "🏁 Игра завершена\n\n" + summary + "\n\n" + roster(room, result=True) + reward_line, None
+        markup = None
+        if room.get('mode') or room.get('kind') == 'solo':
+            callback = f"era_game:play:{room['mode']}" if room.get('mode') else 'era_game:solo'
+            markup = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='🎯 Ещё раунд', callback_data=callback),
+                 InlineKeyboardButton(text='🎮 Мои игры', callback_data='era_game:cabinet')],
+            ])
+        return header + "🏁 Игра завершена\n\n" + summary + "\n\n" + roster(room, result=True) + reward_line, markup
     if room.get("mode"):
         return _format_prompt(room) or (header + "Материал недоступен.", None)
     reference = room["id"] + "~" + room["token"]
@@ -538,7 +573,9 @@ def _room_view(room: dict) -> tuple[str, InlineKeyboardMarkup | None]:
     question, options, _ = QUESTIONS[room["question"]]
     position = room.get("position", 0) + 1
     count = len(room.get("questions", [room["question"]]))
-    return (header + f"<b>Вопрос {position}/{count}</b>\n{question}\n\n"
+    topic = items_for_mode(GameMode.SOLO_QUIZ)[room['question']].category
+    progress = '●' * position + '○' * (count-position)
+    return (header + f"<b>Вопрос {position}/{count}</b> · {progress}\n<i>{escape(topic)}</i>\n\n<b>{escape(question)}</b>\n\n"
             + roster(room) + "\n\nВсе отвечают одновременно. Следующий вопрос — после ответов всех игроков.\n"
             + deadline(room), quiz_markup(reference, options))
 

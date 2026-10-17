@@ -60,13 +60,15 @@ class PanelAndAdminCommandsRedirectTests(unittest.IsolatedAsyncioTestCase):
         buttons = [b for row in markup.inline_keyboard for b in row]
         self.assertTrue(all(b.web_app is not None for b in buttons))
 
-    async def test_admin_command_redirects_instead_of_opening_dashboard(self) -> None:
+    async def test_admin_command_exposes_native_summary_and_application_shortcuts(self) -> None:
         message = SimpleNamespace(answer=AsyncMock(), from_user=SimpleNamespace(id=1))
         state = SimpleNamespace(clear=AsyncMock())
         await dashboard_block_a.admin_dashboard(message, _admin_user(), _settings(), state)
         message.answer.assert_awaited_once()
-        (text,), _ = message.answer.call_args
-        self.assertEqual(text, texts.ADMIN_PANEL_MOVED)
+        (text,), kwargs = message.answer.call_args
+        self.assertIn('Управление ЭРА', text)
+        self.assertIn('admin:applications', str(kwargs['reply_markup']))
+        self.assertIn('admin:management:open', str(kwargs['reply_markup']))
 
     async def test_admin_panel_callback_redirects_instead_of_reopening_dashboard(self) -> None:
         call = SimpleNamespace(
@@ -77,8 +79,9 @@ class PanelAndAdminCommandsRedirectTests(unittest.IsolatedAsyncioTestCase):
         state = SimpleNamespace(clear=AsyncMock())
         await dashboard_block_a.admin_dashboard_callback(call, _admin_user(), _settings(), state)
         call.message.answer.assert_awaited_once()
-        (text,), _ = call.message.answer.call_args
-        self.assertEqual(text, texts.ADMIN_PANEL_MOVED)
+        (text,), kwargs = call.message.answer.call_args
+        self.assertIn('Управление ЭРА', text)
+        self.assertIn('admin:applications', str(kwargs['reply_markup']))
 
     async def test_panel_button_and_callback_redirect_for_admins(self) -> None:
         message = SimpleNamespace(answer=AsyncMock())

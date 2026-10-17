@@ -551,22 +551,30 @@ async def build_management_report(session: AsyncSession, *, now: datetime, days:
 
 def management_report_text(metrics: dict, *, title: str = 'Ежедневный отчёт', previous: dict | None = None) -> str:
     from datetime import datetime
+    from html import escape
     from zoneinfo import ZoneInfo
     def value(key):
-        return 'не измеряется' if metrics.get(key) is None else str(metrics[key])
+        return 'не измеряется' if metrics.get(key) is None else escape(str(metrics[key]))
     as_of = datetime.fromisoformat(metrics['as_of']).astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m.%Y %H:%M МСК')
     window = ' — '.join(datetime.fromisoformat(metrics[k]).astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m %H:%M') for k in ('period_start', 'period_end'))
-    text = (f'ЭРА | {title}\nСрез: {as_of}\nОперации за {window} МСК\n\n'
+    health = {'healthy': 'в норме', 'ok': 'в норме', 'warning': 'требует внимания',
+              'error': 'ошибка', 'critical': 'критично', 'failed': 'ошибка'}.get(metrics.get('health'), value('health'))
+    text = (f'📊 <b>ЭРА · {escape(title)}</b>\n<i>{as_of}</i>\n'
+        f'Операции за {window} МСК\n\n'
+        '<b>👥 Участники и заявки</b>\n'
         f"Участников: {value('users_total')} · новых профилей: {value('profiles_new')}\n"
         f"Заявки: ожидают {value('users_pending')} · одобрено {value('applications_approved')} · отклонено {value('applications_rejected')}\n"
-        f"Подтверждённая активность, 24 ч / 7 д / 30 д: {value('active_1')} / {value('active_7')} / {value('active_30')}\n"
+        f"Активность, 24 ч / 7 д / 30 д: {value('active_1')} / {value('active_7')} / {value('active_30')}\n\n"
+        '<b>📅 События и работа команды</b>\n'
         f"Мероприятия на 7 дней: {value('events_upcoming')} · новых регистраций: {value('registrations_new')} · посещений: {value('attended')}\n"
         f"Проекты: на рассмотрении {value('projects_review')} · дольше 72 ч {value('projects_overdue')}\n"
         f"Задачи: открыто {value('tasks_open')} · просрочено {value('tasks_overdue')}\n"
-        f"Обращения: ждут {value('questions')} · дольше 24 ч {value('questions_overdue')}\n"
+        f"Обращения: ждут {value('questions')} · дольше 24 ч {value('questions_overdue')}\n\n"
+        '<b>🎮 Игры и доставка</b>\n'
         f"Игры, новый учёт: игроков {value('game_players')} · завершено {value('games_completed')}\n"
-        f"Автоуведомления: доставлено {value('delivered')} · ошибок {value('delivery_errors')}\n"
-        f"Система: {value('health')} · планировщик: {value('scheduler')}\nБэкап: {value('backup')}\n")
+        f"Автоуведомления: доставлено {value('delivered')} · ошибок {value('delivery_errors')}\n\n"
+        '<b>🛠 Состояние системы</b>\n'
+        f"Система: {health} · планировщик: {value('scheduler')}\nБэкап: {value('backup')}\n")
     if metrics.get('game_coverage_since'):
         text += 'Игровая статистика ведётся с ' + datetime.fromisoformat(metrics['game_coverage_since']).strftime('%d.%m.%Y') + '.\n'
     if previous:
@@ -580,18 +588,28 @@ def management_report_text(metrics: dict, *, title: str = 'Ежедневный 
             attention.append(f'{label}: {metrics[key]}')
     if metrics.get('backup') != 'восстановление проверено':
         attention.insert(0, 'Проверить резервное копирование')
-    return text + '\nТребует внимания:\n' + ('\n'.join(f'{i}. {line}' for i, line in enumerate(attention[:3], 1)) or 'Нет просроченных действий по измеряемым показателям.')
+    if metrics.get('scheduler') != 'работает':
+        attention.insert(0, 'Проверить работу планировщика')
+    if metrics.get('health') not in {'healthy', 'ok'}:
+        attention.insert(0, 'Проверить состояние сервиса')
+    return text + '\n<b>📌 Требует внимания</b>\n' + ('\n'.join(f'{i}. {line}' for i, line in enumerate(attention[:3], 1)) or 'Нет просроченных действий по измеряемым показателям.')
 
 
-def management_report_markup():
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='Заявки', callback_data='admin:applications'),
-         InlineKeyboardButton(text='Мероприятия', callback_data='admin:events')],
-        [InlineKeyboardButton(text='Задачи', callback_data='admin:tasks'),
-         InlineKeyboardButton(text='Обновить', callback_data='admin:management:refresh')],
-        [InlineKeyboardButton(text='Excel', callback_data='admin:management:excel')],
-    ])
+def management_report_markup(miniapp_url: str = ''):
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    rows = [
+        [InlineKeyboardButton(text='📥 Заявки', callback_data='admin:applications'),
+         InlineKeyboardButton(text='📅 Мероприятия', callback_data='admin:events')],
+        [InlineKeyboardButton(text='✅ Задачи', callback_data='admin:tasks'),
+         InlineKeyboardButton(text='🔄 Обновить', callback_data='admin:management:refresh')],
+        [InlineKeyboardButton(text='📈 Неделя', callback_data='admin:management:period:weekly'),
+         InlineKeyboardButton(text='🗓 Месяц', callback_data='admin:management:period:monthly')],
+        [InlineKeyboardButton(text='📄 Excel', callback_data='admin:management:excel')],
+    ]
+    if miniapp_url:
+        rows.append([InlineKeyboardButton(text='🔥 Открыть ЭРА', web_app=WebAppInfo(url=miniapp_url))])
+    rows.append([InlineKeyboardButton(text='← Управление', callback_data='admin:panel')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def management_report_recipients(session: AsyncSession, settings) -> set[int]:
@@ -661,4 +679,5 @@ async def send_management_reports(bot, settings, session_factory, *, now=None) -
                 await session.commit()
         for recipient in sorted(recipients):
             await safe_send_once(bot, settings, recipient, payload['text'], delivery_key=f'{period}:{stamp}:{recipient}',
-                                 notification_type='management_report', reply_markup=management_report_markup())
+                                 notification_type='management_report', parse_mode='HTML',
+                                 reply_markup=management_report_markup(settings.effective_miniapp_url))

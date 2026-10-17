@@ -16,11 +16,13 @@ from app.keyboards.registration import (
     consent_keyboard,
     directions_keyboard,
     pending_registration_keyboard,
+    registration_mode_keyboard,
+    registration_resume_keyboard,
     registration_review_keyboard,
     time_keyboard,
 )
 from app.keyboards.participant import main_inline_keyboard
-from app.repositories.users import create_user_from_registration
+from app.repositories.users import create_user_from_registration, resubmit_user_registration
 from app.services.admin_user_card import send_admin_application_cards
 from app.services.audit_service import audit
 from app.services.consent_policy import CONSENT_SUMMARY, consent_full_chunks
@@ -176,6 +178,7 @@ async def _notify_admins_registration(
     user,
     *,
     auto_approved_admin: bool,
+    notification_revision: int | None = None,
 ) -> None:
     """Notify admins without letting Telegram affect registration durability."""
     if auto_approved_admin:
@@ -188,7 +191,10 @@ async def _notify_admins_registration(
         return
 
     try:
-        await send_admin_application_cards(bot, settings, session, user)
+        if notification_revision is None:
+            await send_admin_application_cards(bot, settings, session, user)
+        else:
+            await send_admin_application_cards(bot, settings, session, user, notification_revision=notification_revision)
         return
     except Exception:
         logger.exception(
@@ -210,7 +216,84 @@ async def _notify_admins_registration(
         )
 
 
-@router.callback_query(F.data == "registration:start")
+def _quick_enabled(settings, telegram_id: int) -> bool:
+    flag = getattr(settings, 'feature_quick_registration', 'OFF')
+    return flag == 'ALL' or (flag == 'TESTERS' and telegram_id in getattr(settings, 'quick_registration_tester_ids', []))
+
+
+async def offer_registration_resume(message: Message, state: FSMContext) -> bool:
+    getter = getattr(state, 'get_state', None)
+    current = await getter() if getter else None
+    if not isinstance(current, str) or not current.startswith('RegistrationStates:'):
+        return False
+    await message.answer('У Вас осталась незавершённая анкета. Продолжим с сохранённого шага?',
+                         reply_markup=registration_resume_keyboard())
+    return True
+
+
+async def _begin_registration(message, state, settings, telegram_id):
+    if _quick_enabled(settings, telegram_id):
+        await state.set_state(RegistrationStates.mode)
+        await message.answer('📝 Заявка в ЭРА\n\nБыстрая заявка: имя, возраст, страна, город и email. '
+                             'Дополнить профиль можно после рассмотрения.\nПолная анкета поможет команде лучше узнать Вас.',
+                             reply_markup=registration_mode_keyboard())
+    else:
+        await state.set_state(RegistrationStates.full_name)
+        await message.answer(texts.REGISTRATION_INTRO)
+
+
+@router.callback_query(F.data == 'registration:resume')
+async def registration_resume(call: CallbackQuery, state: FSMContext, settings: Settings, user=None):
+    await call.answer()
+    if user is not None and (user.is_archived or user.is_blocked or user.application_status in {ApplicationStatus.APPROVED, ApplicationStatus.PENDING}):
+        await call.message.answer(application_status_message(user.application_status))
+        return
+    current = await state.get_state()
+    prompts = {
+        RegistrationStates.full_name.state: texts.REGISTRATION_INTRO,
+        RegistrationStates.age.state: texts.REG_AGE,
+        RegistrationStates.country.state: texts.REG_COUNTRY,
+        RegistrationStates.region.state: texts.REG_REGION,
+        RegistrationStates.email.state: texts.REG_EMAIL,
+        RegistrationStates.education_work.state: texts.REG_EDUCATION,
+        RegistrationStates.experience.state: texts.REG_EXPERIENCE_SIMPLE,
+        RegistrationStates.motivation.state: texts.REG_MOTIVATION,
+    }
+    if current == RegistrationStates.mode.state:
+        await _begin_registration(call.message, state, settings, call.from_user.id)
+    elif current == RegistrationStates.review.state:
+        await call.message.answer(_registration_review_text(await state.get_data()),
+                                  parse_mode='HTML', reply_markup=registration_review_keyboard())
+    elif current == RegistrationStates.consent.state:
+        await state.update_data(consent_policy_version=CURRENT_POLICY_VERSION)
+        await call.message.answer(CONSENT_SUMMARY, reply_markup=consent_keyboard())
+    elif current == RegistrationStates.directions.state:
+        data = await state.get_data()
+        await call.message.answer(texts.REG_DIRECTION_SIMPLE, reply_markup=directions_keyboard('both', set(data.get('selected_directions', []))))
+    elif current == RegistrationStates.available_time.state:
+        await call.message.answer(texts.REG_TIME, reply_markup=time_keyboard())
+    elif current in prompts:
+        await call.message.answer(prompts[current])
+    else:
+        await call.message.answer('Незавершённая анкета не найдена. Начните регистрацию заново.')
+
+
+@router.callback_query(RegistrationStates.mode, F.data.in_({'reg:mode:quick', 'reg:mode:full'}))
+async def registration_mode(call: CallbackQuery, state: FSMContext, settings: Settings, user=None):
+    if user is not None and (user.is_archived or user.is_blocked or user.application_status in {ApplicationStatus.APPROVED, ApplicationStatus.PENDING}):
+        await call.answer('Анкета уже отправлена.', show_alert=True)
+        return
+    mode = call.data.rsplit(':', 1)[-1]
+    if mode == 'quick' and not _quick_enabled(settings, call.from_user.id):
+        await call.answer('Быстрый режим пока недоступен.', show_alert=True)
+        return
+    await call.answer()
+    await state.update_data(registration_mode=mode)
+    await state.set_state(RegistrationStates.full_name)
+    await call.message.answer(texts.REGISTRATION_INTRO)
+
+
+@router.callback_query(F.data.in_({'registration:start', 'registration:reapply'}))
 async def registration_start(
     call: CallbackQuery,
     state: FSMContext,
@@ -220,7 +303,24 @@ async def registration_start(
 ) -> None:
     await call.answer()
     if user is not None:
-        await call.message.answer(application_status_message(user.application_status))
+        if (call.data == 'registration:reapply' and not user.is_blocked and not user.is_archived
+            and user.application_status in {ApplicationStatus.REJECTED, ApplicationStatus.NEEDS_INFO}):
+            try:
+                subscribed = await is_channel_member(bot, call.from_user.id, settings)
+            except SubscriptionCheckError:
+                subscribed = False
+            if not subscribed:
+                await call.message.answer(texts.SUBSCRIPTION_REQUIRED, reply_markup=subscription_keyboard(settings.era_channel_url))
+                return
+            if await offer_registration_resume(call.message, state):
+                return
+            await state.clear()
+            await state.update_data(resubmission=True)
+            await _begin_registration(call.message, state, settings, call.from_user.id)
+            return
+        await call.message.answer(application_status_message(user.application_status),
+            reply_markup=pending_registration_keyboard(settings.era_channel_url, can_reapply=user.application_status in {
+                ApplicationStatus.REJECTED, ApplicationStatus.NEEDS_INFO}) if user.application_status != ApplicationStatus.APPROVED else None)
         if user.application_status == ApplicationStatus.APPROVED:
             await call.message.answer(
                 texts.MAIN_MENU,
@@ -249,14 +349,15 @@ async def registration_start(
             reply_markup=subscription_keyboard(settings.era_channel_url),
         )
         return
+    if await offer_registration_resume(call.message, state):
+        return
     await state.clear()
-    await state.set_state(RegistrationStates.full_name)
-    await call.message.answer(texts.REGISTRATION_INTRO)
+    await _begin_registration(call.message, state, settings, call.from_user.id)
 
 
 def _split_full_name(value: str) -> tuple[str, str] | None:
     parts = [item for item in value.split() if item]
-    if len(parts) < 2:
+    if len(parts) < 2 or len(parts[0]) > 100 or len(' '.join(parts[1:])) > 100:
         return None
     return parts[0], " ".join(parts[1:])
 
@@ -302,7 +403,7 @@ async def registration_region(message: Message, state: FSMContext) -> None:
     if not value:
         await message.answer("Напишите регион или город текстом.")
         return
-    await state.update_data(region=value, city=value)
+    await state.update_data(region=value, city=value[:100])
     await state.set_state(RegistrationStates.email)
     await message.answer(texts.REG_EMAIL)
 
@@ -314,6 +415,11 @@ async def registration_email(message: Message, state: FSMContext) -> None:
         await message.answer(texts.REG_EMAIL_ERROR)
         return
     await state.update_data(email=value)
+    if (await state.get_data()).get('registration_mode') == 'quick':
+        await state.set_state(RegistrationStates.review)
+        await message.answer(_registration_review_text(await state.get_data()), parse_mode='HTML',
+                             reply_markup=registration_review_keyboard())
+        return
     await state.set_state(RegistrationStates.education_work)
     await message.answer(texts.REG_EDUCATION)
 
@@ -433,10 +539,16 @@ async def registration_motivation(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.callback_query(RegistrationStates.review, F.data == "reg:review:restart")
+@router.callback_query(F.data == "reg:review:restart")
 async def registration_review_restart(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
+    data = await state.get_data()
+    current = await state.get_state()
+    if not isinstance(current, str) or not current.startswith('RegistrationStates:'):
+        await call.message.answer('Анкета уже закрыта. Начните регистрацию через главное меню.')
+        return
     await state.clear()
+    await state.update_data(**{key: data[key] for key in ('resubmission', 'registration_mode') if key in data})
     await state.set_state(RegistrationStates.full_name)
     await call.message.answer(texts.REGISTRATION_INTRO)
 
@@ -490,12 +602,18 @@ async def finish_registration(
             reply_markup=consent_keyboard(),
         )
         return
-    user, created = await create_user_from_registration(
-        session,
-        telegram_id=call.from_user.id,
-        username=call.from_user.username,
-        data=data,
-    )
+    resubmitted = False
+    if data.get('resubmission'):
+        user, resubmitted = await resubmit_user_registration(session, telegram_id=call.from_user.id,
+                                                            username=call.from_user.username, data=data)
+        created = False
+        if not resubmitted:
+            await state.clear()
+            await call.message.answer('Заявка уже изменилась. Проверьте её текущий статус.')
+            return
+    else:
+        user, created = await create_user_from_registration(
+            session, telegram_id=call.from_user.id, username=call.from_user.username, data=data)
     if created:
         now = datetime.now().astimezone()
         session.add(
@@ -571,13 +689,16 @@ async def finish_registration(
             reply_markup=pending_registration_keyboard(settings.era_channel_url),
         )
 
-    if created:
+    if created or resubmitted:
+        from app.services.application_review_service import application_review_version
+        revision = await application_review_version(session, user.id) if resubmitted else None
         await _notify_admins_registration(
             bot,
             settings,
             session,
             user,
             auto_approved_admin=auto_approved_admin,
+            notification_revision=revision,
         )
 
 
@@ -600,8 +721,7 @@ async def registration_status(call: CallbackQuery, user, settings: Settings) -> 
     await call.message.answer(
         application_status_message(user.application_status),
         reply_markup=(
-            pending_registration_keyboard(settings.era_channel_url)
-            if user.application_status in {ApplicationStatus.PENDING, ApplicationStatus.NEEDS_INFO}
-            else None
+            pending_registration_keyboard(settings.era_channel_url,
+                can_reapply=user.application_status in {ApplicationStatus.REJECTED, ApplicationStatus.NEEDS_INFO})
         ),
     )

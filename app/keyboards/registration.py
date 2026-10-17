@@ -176,9 +176,25 @@ def consent_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def pending_registration_keyboard(channel_url: str) -> InlineKeyboardMarkup:
+def registration_mode_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⚡ Быстрая заявка", callback_data="reg:mode:quick")],
+        [InlineKeyboardButton(text="📝 Полная анкета", callback_data="reg:mode:full")],
+    ])
+
+
+def registration_resume_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="↩️ Продолжить анкету", callback_data="registration:resume")],
+        [InlineKeyboardButton(text="Заполнить заново", callback_data="reg:review:restart")],
+    ])
+
+
+def pending_registration_keyboard(channel_url: str, *, can_reapply: bool = False) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[
+        inline_keyboard=([
+            [InlineKeyboardButton(text="✏️ Дополнить и подать повторно", callback_data="registration:reapply")]
+        ] if can_reapply else []) + [
             [
                 InlineKeyboardButton(
                     text="Проверить статус заявки",

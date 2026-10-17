@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from app.database.models import (
     Department,
@@ -118,8 +119,15 @@ async def create_user_from_registration(
         departments=[],
         directions=[],
     )
-    session.add(user)
-    await session.flush()
+    try:
+        async with session.begin_nested():
+            session.add(user)
+            await session.flush()
+    except IntegrityError:
+        existing = await get_user_by_telegram_id(session, telegram_id)
+        if existing is None:
+            raise
+        return existing, False
     await record_consent(
         session,
         user_id=user.id,
@@ -145,32 +153,51 @@ async def create_user_from_registration(
     return user, True
 
 
+async def resubmit_user_registration(session: AsyncSession, *, telegram_id: int,
+                                     username: str | None, data: dict[str, Any]) -> tuple[User | None, bool]:
+    """Update the same applicant; never reset bans, roles, points or history."""
+    from app.services.audit_service import audit
+    target = await session.scalar(select(User).where(User.telegram_id == telegram_id).with_for_update()
+                                  .execution_options(populate_existing=True))
+    if (target is None or target.is_blocked or target.is_archived
+        or target.application_status not in {ApplicationStatus.REJECTED, ApplicationStatus.NEEDS_INFO}):
+        return target, False
+    fields = ('first_name', 'last_name', 'age', 'country', 'region', 'city', 'email',
+              'education_work', 'occupation', 'experience', 'motivation', 'available_time', 'desired_path')
+    old = {'application_status': target.application_status}
+    for key in fields:
+        if data.get(key) is not None:
+            setattr(target, key, data[key])
+    target.username = username
+    target.application_status = ApplicationStatus.PENDING
+    target.personal_data_consent = True
+    target.is_channel_subscribed = True
+    await assign_interests(session, target, data.get('departments'), data.get('directions'))
+    await record_consent(session, user_id=target.id, consent_type='registration', granted=True,
+                         source='bot_resubmission', policy_version=str(data['consent_policy_version']))
+    await audit(session, actor_id=target.id, action='user.resubmitted', entity_type='user', entity_id=target.id,
+                old_value=old, new_value={'application_status': ApplicationStatus.PENDING})
+    return target, True
+
+
 async def assign_interests(
     session: AsyncSession,
     user: User,
-    department_names: Iterable[str],
-    direction_names: Iterable[str],
+    department_names: Iterable[str] | None,
+    direction_names: Iterable[str] | None,
 ) -> None:
-    department_names = set(department_names)
-    direction_names = set(direction_names)
-    departments = (
-        await session.scalars(
-            select(Department).where(Department.name.in_(department_names))
-        )
-    ).all()
-    directions = (
-        await session.scalars(
-            select(Direction).where(Direction.name.in_(direction_names))
-        )
-    ).all()
-    user.departments = [
-        UserDepartment(department=department, status="interested")
-        for department in departments
-    ]
-    user.directions = [
-        UserDirection(direction=direction, status="interested")
-        for direction in directions
-    ]
+    # Missing fields in a quick resubmission preserve the original choices,
+    # including membership status. An explicitly collected empty list clears it.
+    if department_names is not None:
+        departments = (await session.scalars(select(Department).where(
+            Department.name.in_(set(department_names))))).all()
+        user.departments = [UserDepartment(department=department, status="interested")
+                            for department in departments]
+    if direction_names is not None:
+        directions = (await session.scalars(select(Direction).where(
+            Direction.name.in_(set(direction_names))))).all()
+        user.directions = [UserDirection(direction=direction, status="interested")
+                           for direction in directions]
 
 
 async def user_stats(session: AsyncSession, user_id: int) -> dict[str, int]:

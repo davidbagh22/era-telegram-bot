@@ -144,18 +144,15 @@ def _application_miniapp_markup(
 
 
 def _automatic_application_markup(miniapp_url: str, user_id: int) -> InlineKeyboardMarkup | None:
-    """Automatic registration notice has one action: open Admin UI.
-
-    Approval/rejection deliberately stays in the Mini App where the full record,
-    validation and audit trail are available.
-    """
+    """Open the full application in the bot or the existing Admin UI."""
+    rows = [[InlineKeyboardButton(text="📥 Открыть заявку в боте", callback_data=f"admin:application:{user_id}")]]
     if not miniapp_url:
-        return None
+        return InlineKeyboardMarkup(inline_keyboard=rows)
     url = miniapp_path_url(
         miniapp_url, "admin", {"adminSection": "applications", "applicationId": user_id}
     )
     return InlineKeyboardMarkup(
-        inline_keyboard=[
+        inline_keyboard=[*rows,
             [InlineKeyboardButton(text="Открыть в управлении ЭРА", web_app=WebAppInfo(url=url))]
         ]
     )
@@ -240,16 +237,31 @@ async def build_admin_user_card(
 
 
 async def send_admin_user_card(
-    message: Message, session: AsyncSession, target: User, *, mode: str = "profile"
+    message: Message, session: AsyncSession, target: User, *, mode: str = "profile",
+    review_version: int | None = None,
 ) -> None:
     card = await build_admin_user_card(session, target, mode=mode)
+    markup = card.reply_markup
+    if review_version is not None and mode == "application":
+        from app.utils.constants import ApplicationStatus
+        markup = (
+            application_actions(target.id, review_version=review_version)
+            if target.application_status in {ApplicationStatus.PENDING, ApplicationStatus.NEEDS_INFO}
+            else InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Заявки", callback_data="admin:applications")]])
+        )
     if card.photo_file_id:
         await safe_answer_photo(message, card.photo_file_id, caption="Фото участника")
-    await message.answer(card.text, reply_markup=card.reply_markup)
+    # Questionnaire values are plain text, never Telegram markup. Long answers
+    # are split so a valid application cannot become unreadable at 4096 chars.
+    chunks = [card.text[index:index+2000] for index in range(0, len(card.text), 2000)]
+    for index, chunk in enumerate(chunks):
+        await message.answer(chunk, parse_mode=None,
+                             reply_markup=markup if index == len(chunks)-1 else None)
 
 
 async def send_admin_application_cards(
-    bot: Bot, settings: Settings, session: AsyncSession, target: User
+    bot: Bot, settings: Settings, session: AsyncSession, target: User,
+    *, notification_revision: int | None = None,
 ) -> tuple[int, int]:
     """Post-commit, idempotent new-registration notice for administrators."""
     card = await build_admin_user_card(session, target, mode="application")
@@ -257,8 +269,8 @@ async def send_admin_application_cards(
     sent, failed, duplicates = await notify_admins_once(
         bot,
         settings,
-        card.text,
-        delivery_key=f"admin:registration:{target.id}:submitted",
+        card.text if len(card.text) <= 1800 else card.text[:1700] + "\n\nПолная анкета — по кнопке ниже.",
+        delivery_key=f"admin:registration:{target.id}:submitted" + (f":{notification_revision}" if notification_revision is not None else ""),
         notification_type="registration_submitted",
         reply_markup=reply_markup,
     )
