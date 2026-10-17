@@ -68,9 +68,10 @@ class _MemoryStorageCompat(MemoryStorage):
 
 def create_bot(settings: Settings) -> Bot:
     logger.info(
-        "Feature rollout: games=%s reports=%s registration=%s event_composer=%s attendance_qr=%s review_reminders=%s; reports_at=%02d:%02d Europe/Moscow",
+        "Feature rollout: games=%s reports=%s registration=%s event_composer=%s attendance_qr=%s review_reminders=%s support_threads=%s; reports_at=%02d:%02d Europe/Moscow",
         settings.feature_games, settings.feature_management_reports, settings.feature_quick_registration,
         settings.feature_native_event_composer, settings.feature_attendance_qr, settings.feature_review_reminders,
+        settings.feature_support_threads,
         settings.management_report_hour, settings.management_report_minute,
     )
     bot = Bot(

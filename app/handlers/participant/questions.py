@@ -2,7 +2,8 @@ import logging
 
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.filters import Command
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
@@ -10,6 +11,10 @@ from app.database.models import User
 from app.keyboards.common import yes_no_keyboard
 from app.keyboards.faq import get_faq_answer_keyboard
 from app.services.support_service import create_support_question, deliver_support_intake_notices
+from app.services.support_service import (CATEGORIES, append_support_message, support_actor,
+    support_thread, deliver_support_thread_messages)
+from app.services.feature_flags import Feature, feature_enabled
+from app.handlers.support_thread_views import show_my_support, show_support_thread
 from app.states.question import QuestionStates
 from app.utils import texts
 from app.utils.constants import ApplicationStatus
@@ -20,12 +25,21 @@ logger = logging.getLogger(__name__)
 
 
 async def _begin_question(
-    message: Message, state: FSMContext, user: User | None, faq_context: dict | None = None
+    message: Message, state: FSMContext, user: User | None, faq_context: dict | None = None,
+    settings: Settings | None = None,
 ) -> None:
     if not user or user.application_status != ApplicationStatus.APPROVED or user.is_blocked or user.is_archived:
         await message.answer(texts.APPLICATION_PENDING)
         return
     await state.clear()
+    if settings and feature_enabled(settings, Feature.SUPPORT_THREADS, user.telegram_id) and not faq_context:
+        await state.set_state(QuestionStates.category)
+        await message.answer('💬 Обращение в ЭРА\n\nВыберите тему. Переписку видите вы и уполномоченные администраторы. '
+            'Обращение не анонимное. Ориентир первого ответа — 24 часа.',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=label, callback_data=f'support:category:{key}')] for key, label in CATEGORIES.items()
+            ] + [[InlineKeyboardButton(text='💬 Мои обращения', callback_data='support:mine:page:0')]]))
+        return
     await state.set_state(QuestionStates.text)
     if faq_context:
         await state.update_data(faq_context=faq_context)
@@ -38,18 +52,45 @@ async def _begin_question(
 
 @router.message(F.text == "💬 Задать вопрос")
 async def question_start_button(
-    message: Message, state: FSMContext, user: User | None
+    message: Message, state: FSMContext, user: User | None, settings: Settings
 ) -> None:
-    await _begin_question(message, state, user)
+    await _begin_question(message, state, user, settings=settings)
 
 
 @router.callback_query(F.data == "question:start")
 async def question_start(
-    call: CallbackQuery, state: FSMContext, user: User | None, faq_context: dict | None = None
+    call: CallbackQuery, state: FSMContext, user: User | None, faq_context: dict | None = None,
+    settings: Settings | None = None,
 ) -> None:
     await call.answer()
     context = faq_context or (await state.get_data()).get("faq_context")
-    await _begin_question(call.message, state, user, context)
+    await _begin_question(call.message, state, user, context, settings)
+
+
+@router.callback_query(QuestionStates.category, F.data.regexp(r'^support:category:(general|events|projects|points|access)$'))
+async def question_category(call: CallbackQuery, state: FSMContext, user: User | None, settings: Settings, session: AsyncSession):
+    try:
+        await support_actor(session, user.id if user else None, settings)
+    except PermissionError:
+        await call.answer(texts.NO_ACCESS, show_alert=True)
+        return
+    await call.answer()
+    await state.update_data(support_category=call.data.rsplit(':', 1)[-1])
+    await state.set_state(QuestionStates.text)
+    await call.message.answer(texts.QUESTION_START)
+
+
+@router.message(Command('my_questions'))
+@router.message(F.text == '💬 Мои обращения')
+async def my_questions(message: Message, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext):
+    try:
+        actor = await support_actor(session, user.id if user else None, settings)
+    except PermissionError:
+        await message.answer('История обращений пока недоступна для вашего профиля.')
+        return
+    await state.clear()
+    await show_my_support(message, session, actor)
+
 
 
 @router.message(QuestionStates.text)
@@ -85,7 +126,7 @@ async def _save_question(
         return
     source_key = data.get("question_source") or f"{message.chat.id}:{message.message_id}"
     try:
-        question, _ = await create_support_question(
+        question, created = await create_support_question(
             session, user_id=user.id, source_key=source_key,
             text=(f"Тема: {topic}\n\n" if topic else "") + value, file_id=file_id,
             context={"category": context.get("category"), "question": context.get("question")} if context else None,
@@ -94,11 +135,15 @@ async def _save_question(
         await state.clear()
         await message.answer(texts.APPLICATION_PENDING)
         return
+    if created and settings and feature_enabled(settings, Feature.SUPPORT_THREADS, user.telegram_id):
+        question.category = data.get('support_category', 'general')
     await session.commit()
     await state.clear()
     await message.answer(
         texts.QUESTION_DONE + f"\n\nНомер обращения: #{question.id}",
-        reply_markup=get_faq_answer_keyboard(context["back"]) if context else None,
+        reply_markup=(get_faq_answer_keyboard(context["back"]) if context else
+            InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='💬 Мои обращения', callback_data='support:mine:page:0')]])
+            if feature_enabled(settings, Feature.SUPPORT_THREADS, user.telegram_id) else None),
     )
     try:
         await deliver_support_intake_notices(bot, settings, async_sessionmaker(session.bind, expire_on_commit=False))
@@ -146,3 +191,63 @@ async def question_attachment(
 @router.message(QuestionStates.attachment)
 async def question_invalid_attachment(message: Message) -> None:
     await message.answer(texts.QUESTION_SEND_FILE)
+
+
+
+
+@router.callback_query(F.data.regexp(r'^support:mine:(page:\d+|item:\d+|history:\d+:\d+|reply:\d+:\d+|file:\d+:\d+)$'))
+async def my_question_action(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext):
+    try:
+        actor = await support_actor(session, user.id if user else None, settings)
+        parts = call.data.split(':')
+        action, item_id = parts[2], int(parts[3])
+        if action == 'page':
+            await state.clear()
+            await call.answer()
+            await show_my_support(call.message, session, actor, page=item_id)
+            return
+        item = await support_thread(session, item_id, actor.id, settings)
+        if action == 'reply':
+            revision = int(parts[4])
+            if revision != item.thread_revision or item.status == 'thread_closed':
+                await call.answer('Карточка изменилась. Откройте её заново.', show_alert=True)
+                return
+            await state.set_state(QuestionStates.followup)
+            await state.update_data(support_question_id=item.id, support_thread_revision=revision)
+            await call.message.answer(f'Напишите дополнение к обращению #{item.id} до 1500 символов.\n/cancel — отменить.')
+        elif action == 'file':
+            from app.services.notification_service import safe_answer_media
+            if item.file_id:
+                await safe_answer_media(call.message, item.file_id, caption=f'Вложение к обращению #{item.id}')
+        else:
+            await state.clear()
+            await show_support_thread(call.message, session, settings, question_id=item.id, actor_id=actor.id,
+                page=int(parts[4]) if action == 'history' else 0)
+        await call.answer()
+    except PermissionError:
+        await call.answer('Обращение недоступно.', show_alert=True)
+
+
+@router.message(QuestionStates.followup)
+async def question_followup(message: Message, state: FSMContext, user: User | None, settings: Settings, session: AsyncSession, bot: Bot):
+    value = (message.text or '').strip()
+    if not value or len(value) > 1500 or value.startswith('/'):
+        await message.answer('Напишите текст от 1 до 1500 символов или /cancel.')
+        return
+    data = await state.get_data()
+    try:
+        await append_support_message(session, settings, question_id=data.get('support_question_id'),
+            actor_id=user.id if user else None, staff=False, text=value,
+            source_key=f'{message.chat.id}:{message.message_id}', expected_revision=data.get('support_thread_revision'))
+        await session.commit()
+    except (PermissionError, ValueError):
+        await session.rollback()
+        await state.clear()
+        await message.answer('Карточка изменилась или обращение недоступно. Откройте /my_questions и проверьте историю.')
+        return
+    await state.clear()
+    await message.answer('✅ Дополнение сохранено. Ответ появится здесь и в истории /my_questions.')
+    try:
+        await deliver_support_thread_messages(bot, settings, async_sessionmaker(session.bind, expire_on_commit=False))
+    except Exception as exc:
+        logger.warning('Support thread delivery deferred code=%s', type(exc).__name__)

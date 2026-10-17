@@ -511,7 +511,9 @@ async def build_management_report(session: AsyncSession, *, now: datetime, days:
     result['tasks_open'] = await _count(session, Task, Task.status.in_((TaskStatus.NEW, TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS, TaskStatus.REVIEW, TaskStatus.OVERDUE)))
     result['tasks_overdue'] = await _count(session, Task, Task.status.in_((TaskStatus.NEW, TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS, TaskStatus.REVIEW, TaskStatus.OVERDUE)),
                                            or_(Task.deadline < now, Task.status == TaskStatus.OVERDUE))
-    result['questions_overdue'] = await _count(session, UserQuestion, UserQuestion.status.in_(('new', 'open')), UserQuestion.created_at <= now - timedelta(hours=24))
+    result['questions_overdue'] = await _count(session, UserQuestion, or_(
+        UserQuestion.status.in_(('new', 'open')) & (UserQuestion.created_at <= now - timedelta(hours=24)),
+        (UserQuestion.status == 'thread_waiting') & (UserQuestion.waiting_since <= now - timedelta(hours=24))))
     result['delivered'] = await _count(session, NotificationDelivery, NotificationDelivery.status == 'sent', NotificationDelivery.sent_at >= since, NotificationDelivery.sent_at < end)
     result['delivery_errors'] = await _count(session, NotificationDelivery, NotificationDelivery.status.in_(('failed', 'uncertain', 'blocked', 'unreachable')),
                                             NotificationDelivery.last_attempt_at >= since, NotificationDelivery.last_attempt_at < end)

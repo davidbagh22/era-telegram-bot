@@ -17,6 +17,7 @@ from app.keyboards.participant import event_list_keyboard, journey_keyboard, ope
 from app.repositories.users import rating, user_stats
 from app.services.event_service import published_events
 from app.services.points_service import total_points
+from app.services.feature_flags import Feature, feature_enabled
 from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role, STATUS_LABELS
 from app.utils.deep_links import miniapp_admin_url, miniapp_leader_url
@@ -165,12 +166,13 @@ async def opportunities_button(message: Message, user: User | None, session: Asy
 
 
 @router.message(F.text == "💬 Связь")
-async def contact_button(message: Message, user: User | None, state: FSMContext) -> None:
+async def contact_button(message: Message, user: User | None, state: FSMContext, settings: Settings | None = None) -> None:
     await state.clear()
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
-    await message.answer(CONTACT_TEXT, parse_mode=ParseMode.HTML, reply_markup=contact_keyboard())
+    await message.answer(CONTACT_TEXT, parse_mode=ParseMode.HTML, reply_markup=contact_keyboard(
+        support_threads=bool(settings and feature_enabled(settings, Feature.SUPPORT_THREADS, user.telegram_id))))
 
 
 async def _send_navigation_guide(message: Message, user: User | None, settings: Settings) -> None:
@@ -210,7 +212,7 @@ async def navigation_command(message: Message, user: User | None, settings: Sett
 
 
 @router.callback_query(F.data == "contact:menu")
-async def contact_callback(call: CallbackQuery, user: User | None, state: FSMContext, faq_context: dict | None = None) -> None:
+async def contact_callback(call: CallbackQuery, user: User | None, state: FSMContext, faq_context: dict | None = None, settings: Settings | None = None) -> None:
     await call.answer()
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
@@ -218,7 +220,9 @@ async def contact_callback(call: CallbackQuery, user: User | None, state: FSMCon
     await state.clear()
     if faq_context:
         await state.update_data(faq_context=faq_context)
-    await call.message.answer(CONTACT_TEXT, parse_mode=ParseMode.HTML, reply_markup=contact_keyboard(faq_context["back"] if faq_context else None))
+    await call.message.answer(CONTACT_TEXT, parse_mode=ParseMode.HTML, reply_markup=contact_keyboard(
+        faq_context["back"] if faq_context else None,
+        support_threads=bool(settings and feature_enabled(settings, Feature.SUPPORT_THREADS, user.telegram_id))))
 
 
 @router.callback_query(F.data == "team:menu")
