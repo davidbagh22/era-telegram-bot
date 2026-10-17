@@ -153,3 +153,10 @@ Production #339: SHA `50de3c7a39d0a90ad91ae98eff1bdccfde96b468`; Bot checks и T
 Обнаруженный P1 выпуска: MANAGEMENT_REPORT_RECIPIENT_IDS="" вызывал Pydantic SettingsError и update_failed. Значение исправлено на "[]" в Render и Blueprint; добавлен env regression test. Исходный сервис после исправления подтвердил live/health, backup restored 17.10 04:08:35 UTC. Другой P1: исходное создание обращения отправляло Telegram до commit; заменено атомарным intake/source key + durable notice, с серверной повторной проверкой прав.
 
 #327 закрыт без merge; #334 объединён и сохраняет защиту модераторских решений. Новые native approvals не вызывают unban/restrict. Полная delegated access проводка не объявляется готовой. Реальных игроков/мероприятий/посещений для проверки не создавали; Telegram владельца не использовали.
+
+
+## 17.10.2026: системный аудит и regex callback
+
+При финальной сверке обнаружено: workflow Tests показывал 8/9 static checks, но не прерывался. Диагностический run 39006083202 вывел четыре ложных missing-handler записи: home/new/time редакции литературы и её кнопка в admin keyboard. Реальный editorial_action зарегистрирован через ограниченный F.data.regexp; аудитор раньше распознавал только exact/prefix/in_.
+
+Исправление scripts/system_audit_report.py читает literal regexp из AST активного декоратора и использует match, сохраняя якоря и ограничения. Кнопка с тем же префиксом вне regex не становится доступной автоматически. tests/test_system_audit_callback_regex.py проверяет полный отчёт, orphan callback и совпадение с настоящим aiogram HandlerObject.check. Tests workflow выводит issues и прерывается до pytest при неуспешном аудите. Это исправление диагностики CI, а не незарегистрированный production-обработчик. Схема и права не меняются; окончательные результаты — PR #346.
