@@ -881,6 +881,6 @@ def test_long_escaped_team_names_fit_telegram_card_without_repeating_the_reward_
             'scores': {str(uid): 5 for uid in range(1000000000, 1000000008)},
             'rewards': {str(uid): 3 for uid in range(1000000000, 1000000008)}}
     text, _ = _room_view(room)
-    assert len(text) < 4096 and text.count('🏅 ') == 8
+    assert len(text) < 4096 and text.count('🏅 <a') == 8
     assert all(text.count(f'<code>{uid}</code>') == 1 for uid in room['participants'])
     assert text.count('ЭРА +3') == 8
