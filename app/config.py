@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     quick_registration_tester_ids: IdList = Field(default_factory=list)
     feature_review_reminders: str = "OFF"
     feature_support_threads: str = "OFF"
+    support_thread_tester_ids: IdList = Field(default_factory=list)
     review_reminder_recipient_ids: IdList = Field(default_factory=list)
     feature_native_event_composer: str = "OFF"
     native_event_composer_tester_ids: IdList = Field(default_factory=list)

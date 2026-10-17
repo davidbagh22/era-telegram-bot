@@ -112,10 +112,13 @@ class SupportThreadTests(IsolatedAsyncioTestCase):
         self.settings.feature_support_threads = 'TESTERS'
         with self.assertRaises(PermissionError):
             await self.append()
-        self.settings.feature_tester_ids = [11]
+        self.settings.feature_tester_ids = [11, 22]  # Other feature pilots do not grant support access.
         with self.assertRaises(PermissionError):
             await self.append()
-        self.settings.feature_tester_ids = [11, 22]
+        self.settings.support_thread_tester_ids = [11]
+        with self.assertRaises(PermissionError):
+            await self.append()
+        self.settings.support_thread_tester_ids = [11, 22]
         await self.append()
         self.settings.feature_support_threads = 'OFF'
         with self.assertRaises(PermissionError):

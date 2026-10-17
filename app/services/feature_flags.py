@@ -38,7 +38,8 @@ def feature_enabled(settings: Settings, feature: Feature, telegram_id: int | Non
     """Return participant visibility for one optional module.
 
     TESTERS is deliberately independent from admin status. The caller passes a
-    Telegram id and only FEATURE_TESTER_IDS grants tester visibility.
+    Telegram id and an explicit tester list grants visibility. Support uses
+    its separate SUPPORT_THREAD_TESTER_IDS to isolate this rollout.
     """
 
     mode = feature_mode(settings, feature)
@@ -46,7 +47,8 @@ def feature_enabled(settings: Settings, feature: Feature, telegram_id: int | Non
         return True
     if mode == "OFF":
         return False
-    return telegram_id is not None and telegram_id in set(settings.feature_tester_ids)
+    testers = settings.support_thread_tester_ids if feature == Feature.SUPPORT_THREADS else settings.feature_tester_ids
+    return telegram_id is not None and telegram_id in set(testers)
 
 
 def visible_features(settings: Settings, telegram_id: int | None = None) -> dict[str, bool]:
