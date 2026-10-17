@@ -827,6 +827,12 @@ class IdentifiedRoomTests(GameFixture, IsolatedAsyncioTestCase):
         assert '#' not in text
 
 
+    async def test_public_rules_popup_fits_telegram_limit(self):
+        query = await self.click('era_game:rules')
+        assert len(query.answer.await_args.args[0]) <= 200
+        assert query.answer.await_args.kwargs['show_alert'] is True
+
+
 def test_game_name_escaping_does_not_leak_questionnaire_fields():
     from app.services.game_room_presenter import remember_player, roster
     room = {'participants': [11], 'status': 'waiting'}
@@ -865,12 +871,12 @@ class LegacyGameIdentityTests(GameFixture, IsolatedAsyncioTestCase):
             person = await session.get(User, self.user_id)
             self.settings.general_chat_id = -1001
             with patch.object(Message, 'edit_text', new=edit), patch.object(Message, 'answer', new=self.send), patch('app.handlers.era_game_room.ensure_topic', new=topic):
-                for view in ('quiz', 'puzzle'):
+                for view in ('quiz', 'puzzle', 'rules'):
                     await show_game_cabinet(message, self.settings, session, person, view=view, edit=True)
                     buttons = [button for row in edit.await_args.kwargs['reply_markup'].inline_keyboard for button in row]
                     modes.update(button.callback_data for button in buttons if button.callback_data.startswith('era_game:play:') or button.callback_data == 'era_game:solo')
         assert len(modes) == 9
-        assert self.send.await_count == 0 and edit.await_count == 2
+        assert self.send.await_count == 0 and edit.await_count == 3
         assert all(call.kwargs.get('create_if_missing') is False for call in topic.await_args_list)
 
 

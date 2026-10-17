@@ -172,7 +172,7 @@ def _format_prompt(room: dict) -> tuple[str, InlineKeyboardMarkup | None] | None
                 None,
             )
         instruction = challenge.prompt.split(":", 1)[0].rstrip()
-        text = f"🧩 <b>Память</b>\n{escape(instruction)}\n\nПоследовательность скрыта. Какой она была?"
+        text = f"{escape(instruction)}\n\nПоследовательность скрыта. Какой она была?"
     reference = f"{room['id']}~{room['token']}"
     return heading + text + "\n\n" + deadline(room), format_markup(reference, item, hints_used=room.get("hints_used", 0))
 
@@ -754,7 +754,21 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
     recent = sorted((_data(row) for row in personal_rooms), key=lambda room: room.get("created_at", ""), reverse=True)
     active = next((room for room in recent if _live_room(room, datetime.now(timezone.utc))), None)
     buttons = []
-    if view in {"quiz", "puzzle"}:
+    if view == "rules":
+        text = (
+            "📖 <b>Как играть</b>\n\n"
+            "<b>Для себя</b>\nКвиз — 5 вопросов. В остальных форматах — одно задание. "
+            "Отвечайте кнопками; оставшееся время указано в карточке. "
+            "В игре «Память» последовательность видна 5 секунд.\n\n"
+            "<b>С командой</b>\nОт 2 до 8 участников в общей теме. Бот распределяет команды в дуэли. "
+            "Каждый подтверждает готовность и отвечает сам. Имена, состав и результат видны участникам.\n\n"
+            "<b>Очки и баллы ЭРА</b>\nОчки показывают результат раунда. "
+            + ("За квиз с 60% верных ответов — 3 балла ЭРА; единственному победителю команды — ещё 2. "
+               "В одношаговых форматах награда зависит от задания и подсказок. "
+               "Лимиты: 20 в день, 100 в неделю, 300 в месяц. " if settings.games_rewards_enabled else "Начисление баллов ЭРА сейчас выключено. ")
+            + "За незавершённую игру баллы не начисляются. Повторный ответ не увеличивает награду."
+        )
+    elif view in {"quiz", "puzzle"}:
         modes = ({"era_game:solo", "era_game:play:true_or_myth", "era_game:play:guess_country", "era_game:play:culture"}
                  if view == "quiz" else {"era_game:play:chronology", "era_game:play:word_chain", "era_game:play:associations", "era_game:play:logic", "era_game:play:memory"})
         title = "⚡ Квизы и знания" if view == "quiz" else "🧠 Слова и логика"
@@ -937,8 +951,11 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
     if await _format_action(query, settings, session, message, action):
         return
     if action[1] == "rules":
-        rewards = "3 балла за 60% верных ответов; +2 единственному победителю команды. Лимиты: 20/день, 100/неделю, 300/месяц." if settings.games_rewards_enabled else "В тестовом режиме начисление баллов выключено."
-        await query.answer("Квиз: 5 вопросов. За ожидание и незавершённую игру баллы не начисляются. " + rewards, show_alert=True)
+        if message.chat.type == "private":
+            await query.answer()
+            await show_game_cabinet(message, settings, session, user, view="rules", edit=True)
+        else:
+            await query.answer("Команды: 2–8 игроков. Подтвердите готовность и отвечайте кнопками. Квиз — 5 вопросов. Таймер — в карточке. Полные правила — в личном боте: Игры → Правила.", show_alert=True)
         return
     if action[1] == "resume":
         keys = [_key(message.chat.id, message.message_thread_id, rid)
