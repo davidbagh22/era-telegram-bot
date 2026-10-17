@@ -1,14 +1,174 @@
 """Existing UserQuestion intake: canonical permission check and durable notices."""
 import json
 import hashlib
+from datetime import datetime, timezone
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 
-from app.database.models import AppSetting, User, UserQuestion
+from app.database.models import AppSetting, SupportMessage, User, UserQuestion
+from app.services.authorization_service import is_full_admin
+from app.services.feature_flags import Feature, feature_enabled
 from app.services.audit_service import audit
 from app.services.notification_service import admin_notification_recipients, safe_send_once
 from app.utils.constants import ApplicationStatus
+
+CATEGORIES = {'general': 'Общий вопрос', 'events': 'Мероприятия', 'projects': 'Проекты и задачи',
+              'points': 'Баллы и достижения', 'access': 'Доступ и профиль'}
+THREAD_STATUSES = {'thread_waiting', 'thread_answered', 'thread_closed'}
+
+
+async def support_actor(session, user_id, settings, *, staff=False):
+    actor = await session.scalar(select(User).where(User.id == user_id).execution_options(populate_existing=True))
+    if (actor is None or actor.is_blocked or actor.is_archived
+            or actor.application_status != ApplicationStatus.APPROVED
+            or not feature_enabled(settings, Feature.SUPPORT_THREADS, actor.telegram_id)
+            or staff and not is_full_admin(actor, settings, actor.telegram_id)):
+        raise PermissionError('support_access_denied')
+    return actor
+
+
+async def support_thread(session, question_id, actor_id, settings, *, staff=False, lock=False):
+    actor = await support_actor(session, actor_id, settings, staff=staff)
+    query = select(UserQuestion).where(UserQuestion.id == question_id).execution_options(populate_existing=True)
+    item = await session.scalar(query.with_for_update() if lock else query)
+    if item is None or not staff and item.user_id != actor.id:
+        raise PermissionError('support_access_denied')
+    if staff and lock:
+        owner = await session.get(User, item.user_id)
+        if owner is None or not feature_enabled(settings, Feature.SUPPORT_THREADS, owner.telegram_id):
+            raise PermissionError('support_owner_outside_rollout')
+    return item
+
+
+async def _convert_thread(session, item):
+    if item.status in THREAD_STATUSES:
+        return
+    # A legacy answer may currently be in Telegram flight. Let its existing
+    # worker finish; never send it again with a new operation key.
+    if item.status in {'answer_pending', 'answer_failed', 'answer_review'}:
+        raise ValueError('legacy_delivery_pending')
+    session.add(SupportMessage(question_id=item.id, author_id=item.user_id, direction='participant',
+        source_key=f'legacy-question:{item.id}', text=item.text, file_id=item.file_id,
+        delivery_status='legacy', created_at=item.created_at))
+    if item.admin_answer:
+        session.add(SupportMessage(question_id=item.id, author_id=item.answered_by, direction='staff',
+            source_key=f'legacy-answer:{item.id}', text=item.admin_answer, delivery_status='legacy',
+            created_at=item.updated_at))
+    item.thread_revision = 1
+    item.category = item.category or 'general'
+    item.status = 'thread_answered' if item.admin_answer else 'thread_waiting'
+    item.waiting_since = None if item.admin_answer else item.created_at
+    await session.flush()
+
+
+async def append_support_message(session, settings, *, question_id, actor_id, staff, text, source_key, expected_revision):
+    """One row lock protects the conversation and stale admin reply snapshots."""
+    text = text.strip()
+    if not text.strip() or len(text) > 1500 or not source_key or len(source_key) > 120:
+        raise ValueError('invalid_message')
+    item = await support_thread(session, question_id, actor_id, settings, staff=staff, lock=True)
+    key = 'support-message:' + hashlib.sha256(f'{actor_id}:{source_key}'.encode()).hexdigest()
+    existing = await session.scalar(select(SupportMessage).where(SupportMessage.source_key == key))
+    if existing:
+        if existing.question_id != item.id or existing.text != text or existing.direction != ('staff' if staff else 'participant'):
+            raise ValueError('message_source_conflict')
+        return existing, False
+    if item.thread_revision != expected_revision:
+        raise ValueError('stale_thread')
+    await _convert_thread(session, item)
+    if item.status == 'thread_closed':
+        raise ValueError('closed_thread')
+    message = SupportMessage(question_id=item.id, author_id=actor_id,
+        direction='staff' if staff else 'participant', source_key=key, text=text.strip())
+    session.add(message)
+    now = datetime.now(timezone.utc)
+    if staff:
+        item.status, item.waiting_since = 'thread_answered', None
+    else:
+        # Several participant messages before a response do not reset the SLA.
+        item.waiting_since = item.waiting_since or now
+        item.status = 'thread_waiting'
+    item.thread_revision += 1
+    await session.flush()
+    await audit(session, actor_id=actor_id, action='support.message', entity_type='question',
+        entity_id=item.id, new_value={'message_id': message.id, 'direction': message.direction})
+    return message, True
+
+
+async def update_support_thread(session, settings, *, question_id, actor_id, expected_revision, action, category=None):
+    item = await support_thread(session, question_id, actor_id, settings, staff=True, lock=True)
+    if item.thread_revision != expected_revision:
+        raise ValueError('stale_thread')
+    if action not in {'claim', 'release', 'close', 'reopen', 'category'} or action == 'category' and category not in CATEGORIES:
+        raise ValueError('invalid_action')
+    await _convert_thread(session, item)
+    if action == 'claim':
+        if item.assigned_to not in {None, actor_id}:
+            raise ValueError('already_assigned')
+        item.assigned_to = actor_id
+    elif action == 'release':
+        if item.assigned_to != actor_id:
+            raise PermissionError('not_assignee')
+        item.assigned_to = None
+    elif action == 'close':
+        item.status, item.waiting_since = 'thread_closed', None
+    elif action == 'reopen':
+        if item.status != 'thread_closed':
+            raise ValueError('not_closed')
+        item.status, item.waiting_since = 'thread_waiting', datetime.now(timezone.utc)
+    else:
+        item.category = category
+    item.thread_revision += 1
+    await audit(session, actor_id=actor_id, action=f'support.{action}', entity_type='question',
+        entity_id=item.id, new_value={'revision': item.thread_revision, 'status': item.status, 'category': item.category})
+    await session.flush()
+    return item
+
+
+async def deliver_support_thread_messages(bot, settings, session_factory):
+    """Drain committed messages even when rollout is subsequently disabled.
+
+    Existing safe_send_once owns RetryAfter, retries and uncertain outcomes.
+    Never change an old support-answer key or resend a migrated legacy message.
+    """
+    async with session_factory() as session:
+        ids = list((await session.scalars(select(SupportMessage.id).where(
+            SupportMessage.delivery_status == 'pending').order_by(SupportMessage.id).limit(30))).all())
+    for message_id in ids:
+        async with session_factory() as session:
+            message = await session.scalar(select(SupportMessage).where(SupportMessage.id == message_id)
+                .with_for_update().execution_options(populate_existing=True))
+            if not message or message.delivery_status != 'pending':
+                continue
+            item = await session.get(UserQuestion, message.question_id)
+            owner = await session.get(User, item.user_id)
+            if owner is None or owner.is_blocked or owner.is_archived:
+                message.delivery_status = 'unreachable'
+                await session.commit()
+                continue
+            if message.direction == 'staff':
+                recipients = {owner.telegram_id}
+                body = f'💬 ЭРА · Ответ на обращение #{item.id}\n\n{message.text}'
+                callback = f'support:mine:item:{item.id}'
+            else:
+                recipients = {int(i) for i in await admin_notification_recipients(settings) if int(i) > 0}
+                body = f'💬 ЭРА · Дополнение к обращению #{item.id}\n\nУчастник добавил сообщение. Откройте личную карточку обращения.'
+                callback = f'admin:support:item:{item.id}'
+            if not recipients:
+                continue
+            statuses = []
+            for recipient in sorted(recipients):
+                receipt = await safe_send_once(bot, settings, recipient, body,
+                    delivery_key=f'support-thread:{message.id}:{hashlib.sha256(str(recipient).encode()).hexdigest()[:12]}',
+                    notification_type='support_thread', parse_mode=None,
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                        text='Открыть переписку', callback_data=callback)]]))
+                statuses.append(receipt.status if receipt.status != 'failed' or receipt.attempt_count >= 3 else 'pending')
+            if 'pending' not in statuses and 'sending' not in statuses:
+                message.delivery_status = ('sent' if all(s == 'sent' for s in statuses)
+                    else 'uncertain' if any(s in {'uncertain', 'conflict', 'sent_unconfirmed'} for s in statuses) else 'failed')
+            await session.commit()
 
 
 async def create_support_question(session, *, user_id, source_key, text, file_id=None, context=None):

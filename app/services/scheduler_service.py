@@ -8,7 +8,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 
 from app.config import Settings
 from app.services.general_topics_service import send_general_topic
@@ -94,8 +94,10 @@ async def send_review_sla_reminders(bot, settings, session_factory, *, now=None)
             Project.status.in_((ProjectStatus.PENDING_REVIEW, ProjectStatus.INITIAL_REVIEW)),
             Project.submitted_at <= now - timedelta(hours=72)).order_by(Project.submitted_at))).all())
         questions = list((await session.scalars(select(UserQuestion.id).where(
-            UserQuestion.status.in_(('new', 'open')), UserQuestion.admin_answer.is_(None),
-            UserQuestion.created_at <= now - timedelta(hours=24)).order_by(UserQuestion.created_at))).all())
+            or_((UserQuestion.status.in_(('new', 'open')) & UserQuestion.admin_answer.is_(None)
+                  & (UserQuestion.created_at <= now - timedelta(hours=24))),
+                (UserQuestion.status == 'thread_waiting') & (UserQuestion.waiting_since <= now - timedelta(hours=24))))
+            .order_by(func.coalesce(UserQuestion.waiting_since, UserQuestion.created_at)))).all())
     for kind, ids, model, hours in (('project', projects, Project, 72), ('question', questions, UserQuestion, 24)):
         fresh_items = 0
         for item_id in ids:
@@ -107,9 +109,9 @@ async def send_review_sla_reminders(bot, settings, session_factory, *, now=None)
                         continue
                     started, label, callback = item.submitted_at, 'Проект', 'admin:projects'
                 else:
-                    if item.status not in {'new', 'open'} or item.admin_answer:
+                    if item.status not in {'new', 'open', 'thread_waiting'} or item.status != 'thread_waiting' and item.admin_answer:
                         continue
-                    started, label, callback = item.created_at, 'Обращение', f'admin:support:item:{item.id}'
+                    started, label, callback = (item.waiting_since if item.status == 'thread_waiting' else item.created_at), 'Обращение', f'admin:support:item:{item.id}'
                 if not started:
                     continue
                 started = started.replace(tzinfo=timezone.utc) if started.tzinfo is None else started.astimezone(timezone.utc)
@@ -124,7 +126,12 @@ async def send_review_sla_reminders(bot, settings, session_factory, *, now=None)
                 markup = InlineKeyboardMarkup(inline_keyboard=[[
                     InlineKeyboardButton(text=f'Открыть {"проекты" if kind == "project" else "обращение"}', callback_data=callback)]])
                 fresh = False
-                for recipient in sorted(recipients):
+                targets = recipients
+                if kind == 'question' and stage == 'reminder' and item.assigned_to:
+                    assignee = await session.get(User, item.assigned_to)
+                    if assignee and not assignee.is_blocked and not assignee.is_archived and assignee.telegram_id in recipients:
+                        targets = {assignee.telegram_id}
+                for recipient in sorted(targets):
                     key = f'review-sla:{kind}:{item.id}:{started.isoformat()}:{stage}:{recipient}'
                     receipt = await session.scalar(select(NotificationDelivery).where(NotificationDelivery.delivery_key == key))
                     if receipt is not None and receipt.status == 'failed' and receipt.attempt_count >= 3:
@@ -143,7 +150,7 @@ async def send_review_sla_reminders(bot, settings, session_factory, *, now=None)
 async def deliver_support_answers(bot, settings, session_factory) -> None:
     """Resume committed answers through the shared delivery ledger after restart."""
     import hashlib
-    from app.services.support_service import deliver_support_intake_notices
+    from app.services.support_service import deliver_support_intake_notices, deliver_support_thread_messages
     async with session_factory() as session:
         ids = list((await session.scalars(select(UserQuestion.id).where(
             UserQuestion.status == 'answer_pending').order_by(UserQuestion.id).limit(50))).all())
@@ -169,6 +176,7 @@ async def deliver_support_answers(bot, settings, session_factory) -> None:
                     item.status = 'answer_failed'
             await session.commit()
     await deliver_support_intake_notices(bot, settings, session_factory)
+    await deliver_support_thread_messages(bot, settings, session_factory)
 
 
 async def send_event_reminders(bot: Bot, settings: Settings, session_factory) -> None:

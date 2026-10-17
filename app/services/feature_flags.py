@@ -6,6 +6,7 @@ from app.config import Settings
 
 
 class Feature(StrEnum):
+    SUPPORT_THREADS = "support_threads"
     AUCTIONS = "auctions"
     REWARDS = "rewards"
     ERA_PRO = "era_pro"
@@ -17,6 +18,7 @@ class Feature(StrEnum):
 
 
 _FEATURE_ATTR: dict[Feature, str] = {
+    Feature.SUPPORT_THREADS: "feature_support_threads",
     Feature.AUCTIONS: "feature_auctions",
     Feature.REWARDS: "feature_rewards",
     Feature.ERA_PRO: "feature_era_pro",

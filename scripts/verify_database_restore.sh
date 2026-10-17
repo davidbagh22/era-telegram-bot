@@ -61,7 +61,20 @@ SQL
 CODE_HEADS="$("${ALEMBIC_BIN}" heads | awk '{print $1}' | sort -u)"
 RESTORED_HEADS="$("${PSQL}" "${RESTORE_DATABASE_URL}" -At -v ON_ERROR_STOP=1 -c 'SELECT version_num FROM alembic_version ORDER BY version_num;' | sort -u)"
 
-if [[ -z "${CODE_HEADS}" || -z "${RESTORED_HEADS}" || "${CODE_HEADS}" != "${RESTORED_HEADS}" ]]; then
+if [[ -z "${CODE_HEADS}" || -z "${RESTORED_HEADS}" ]]; then
+  echo "Restored or code Alembic revision is empty" >&2
+  exit 1
+fi
+
+if [[ "${CODE_HEADS}" != "${RESTORED_HEADS}" && "${RESTORE_APPLY_MIGRATIONS:-false}" == "true" ]]; then
+  # A pre-deployment backup contains the running schema, which can precede
+  # this commit. Prove its upgrade on the disposable clone; preserve the
+  # original dump and refuse unknown/newer revisions or non-local targets.
+  RESTORED_HEADS="${RESTORED_HEADS}" "${RESTORE_PYTHON:-python3}" scripts/upgrade_restored_database.py
+  RESTORED_HEADS="$("${PSQL}" "${RESTORE_DATABASE_URL}" -At -v ON_ERROR_STOP=1 -c 'SELECT version_num FROM alembic_version ORDER BY version_num;' | sort -u)"
+fi
+
+if [[ "${CODE_HEADS}" != "${RESTORED_HEADS}" ]]; then
   echo "Restored Alembic revision does not match code migration head(s)" >&2
   exit 1
 fi

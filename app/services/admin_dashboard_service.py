@@ -207,7 +207,7 @@ async def dashboard_metrics(session: AsyncSession) -> DashboardMetrics:
         "reports": await _count(
             session, Report, Report.status.in_(["pending", "submitted", "needs_revision"])
         ),
-        "questions": await _count(session, UserQuestion, UserQuestion.status.in_(["new", "open"])),
+        "questions": await _count(session, UserQuestion, UserQuestion.status.in_(["new", "open", "thread_waiting"])),
         "departments": await _count(
             session, DepartmentApplication, DepartmentApplication.status == "pending"
         ),

@@ -8,6 +8,7 @@ from app.database.models import User
 from app.handlers.participant.navigation import _approved, _send_main_menu, _send_navigation_guide
 from app.keyboards.bot_shell import contact_keyboard
 from app.keyboards.participant import open_app_button
+from app.services.feature_flags import Feature, feature_enabled
 from app.utils import texts
 from app.utils.deep_links import (
     miniapp_events_url,
@@ -114,12 +115,13 @@ async def points_command(message: Message, user: User | None, settings: Settings
 
 
 @router.message(Command("contact"), F.chat.type == "private")
-async def contact_command(message: Message, user: User | None, state: FSMContext) -> None:
+async def contact_command(message: Message, user: User | None, state: FSMContext, settings: Settings | None = None) -> None:
     await state.clear()
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
-    await message.answer("💬 Связь с ЭРА\n\nВыберите, что нужно сейчас.", reply_markup=contact_keyboard())
+    await message.answer("💬 Связь с ЭРА\n\nВыберите, что нужно сейчас.", reply_markup=contact_keyboard(
+        support_threads=bool(settings and feature_enabled(settings, Feature.SUPPORT_THREADS, user.telegram_id))))
 
 
 @router.message(Command("help"), F.chat.type == "private")

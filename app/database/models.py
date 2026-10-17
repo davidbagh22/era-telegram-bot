@@ -593,6 +593,23 @@ class UserQuestion(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), default="new", index=True)
     admin_answer: Mapped[str | None] = mapped_column(Text)
     answered_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    category: Mapped[str | None] = mapped_column(String(32))
+    assigned_to: Mapped[int | None] = mapped_column(ForeignKey("users.id", name="fk_question_assignee"), index=True)
+    waiting_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    thread_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class SupportMessage(TimestampMixin, Base):
+    __tablename__ = "support_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("user_questions.id"), index=True)
+    author_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    direction: Mapped[str] = mapped_column(String(16))
+    source_key: Mapped[str] = mapped_column(String(80), unique=True)
+    text: Mapped[str] = mapped_column(Text)
+    file_id: Mapped[str | None] = mapped_column(String(255))
+    delivery_status: Mapped[str] = mapped_column(String(24), default="pending", server_default="pending", index=True)
 
 
 class Broadcast(TimestampMixin, Base):

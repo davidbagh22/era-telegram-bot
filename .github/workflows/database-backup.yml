@@ -85,7 +85,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 -m venv /tmp/era-backup-tools
-          /tmp/era-backup-tools/bin/python -m pip install --disable-pip-version-check --no-input "alembic>=1.14,<2"
+          /tmp/era-backup-tools/bin/python -m pip install --disable-pip-version-check --no-input -r requirements.txt
           /tmp/era-backup-tools/bin/alembic heads >/dev/null
 
       - name: Validate optional external storage
@@ -204,6 +204,8 @@ jobs:
           BACKUP_FILE: ${{ steps.backup.outputs.backup_file }}
           BACKUP_SHA256: ${{ steps.backup.outputs.sha256 }}
           ALEMBIC_BIN: /tmp/era-backup-tools/bin/alembic
+          RESTORE_PYTHON: /tmp/era-backup-tools/bin/python
+          RESTORE_APPLY_MIGRATIONS: "true"
         shell: bash
         run: |
           set +e

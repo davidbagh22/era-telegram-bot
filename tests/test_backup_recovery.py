@@ -73,8 +73,11 @@ class BackupRecoveryContractTests(unittest.TestCase):
         verifier_pos = workflow.index("Install migration verifier")
         restore_pos = workflow.index("Verify restore on isolated PostgreSQL")
         self.assertLess(verifier_pos, restore_pos)
-        self.assertIn('"alembic>=1.14,<2"', workflow)
+        self.assertIn('-r requirements.txt', workflow)
+        self.assertIn('alembic>=1.14,<2', (ROOT / 'requirements.txt').read_text())
         self.assertIn("ALEMBIC_BIN: /tmp/era-backup-tools/bin/alembic", workflow)
+        self.assertIn('RESTORE_APPLY_MIGRATIONS: "true"', workflow)
+        self.assertIn('RESTORE_PYTHON: /tmp/era-backup-tools/bin/python', workflow)
 
     def test_base_backup_does_not_depend_on_ubuntu_awscli_package(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "database-backup.yml").read_text(encoding="utf-8")
