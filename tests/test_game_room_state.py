@@ -347,8 +347,9 @@ class MultiRoundGamesTests(GameFixture, IsolatedAsyncioTestCase):
 
 
     async def test_resume_does_not_advance_or_consume_content(self):
-        room = await self.new_room()
-        query = self.query(room)
+        # Shared resume restores a team; solo recovery is tested privately.
+        room = await self.new_room('team')
+        query = self.query(room, choice=0)
         query.data = 'era_game:resume'
         async with self.sessions() as session:
             usage_before = _data(await session.scalar(select(AppSetting).where(AppSetting.key == 'era_game:question_usage')))
@@ -825,6 +826,25 @@ class IdentifiedRoomTests(GameFixture, IsolatedAsyncioTestCase):
         assert 'Анна' in text and 'Борис' in text
         assert '<code>11</code>' in text and '<code>22</code>' in text
         assert '#' not in text
+
+
+    async def test_resume_matches_the_latest_private_game_shown_in_cabinet(self):
+        await self.click('era_game:play:true_or_myth', private=True)
+        await self.click('era_game:play:guess_country', private=True)
+        await self.click('era_game:resume', private=True)
+        assert 'Угадай страну' in self.bot.edit_message_text.await_args.kwargs['text']
+
+    async def test_legacy_public_resume_cannot_reopen_a_solo_room_in_the_group(self):
+        async with self.sessions() as session:
+            session.add(AppSetting(key=_key(-1001, 10, 'solo-11'), value={
+                'id': 'solo-11', 'kind': 'solo', 'participants': [11], 'status': 'playing',
+                'created_at': datetime.now(timezone.utc).isoformat(),
+                'expires_at': (datetime.now(timezone.utc)+timedelta(minutes=1)).isoformat(),
+                'token': 'legacy', 'message_id': 66, 'question': 0}))
+            await session.commit()
+        query = await self.click('era_game:resume')
+        assert 'Открытой игры нет' in query.answer.await_args.args[0]
+        self.bot.edit_message_text.assert_not_awaited()
 
 
     async def test_public_rules_popup_fits_telegram_limit(self):

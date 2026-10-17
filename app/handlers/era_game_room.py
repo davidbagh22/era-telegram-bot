@@ -958,12 +958,17 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
             await query.answer("Команды: 2–8 игроков. Подтвердите готовность и отвечайте кнопками. Квиз — 5 вопросов. Таймер — в карточке. Полные правила — в личном боте: Игры → Правила.", show_alert=True)
         return
     if action[1] == "resume":
-        keys = [_key(message.chat.id, message.message_thread_id, rid)
-                for rid in (f"solo-{query.from_user.id}", "team", "duel")]
-        prefix = f"era_game:{message.chat.id}:{message.message_thread_id}:f%"
-        rows = (await session.scalars(select(AppSetting).where(
-            AppSetting.key.in_(keys) | AppSetting.key.like(prefix)))).all()
-        for row in rows:
+        private = message.chat.type == "private"
+        room_ids = (f"solo-{query.from_user.id}",) if private else ("team", "duel")
+        keys = [_key(message.chat.id, message.message_thread_id, rid) for rid in room_ids]
+        condition = AppSetting.key.in_(keys)
+        if private:
+            prefix = f"era_game:{message.chat.id}:{message.message_thread_id}:f%"
+            condition |= AppSetting.key.like(prefix)
+        rows = (await session.scalars(select(AppSetting).where(condition))).all()
+        # Match the newest active round advertised by the private cabinet.
+        # Database row order must not decide which game a player resumes.
+        for row in sorted(rows, key=lambda row: _data(row).get("created_at", ""), reverse=True):
             room = _data(row)
             if query.from_user.id not in room.get("participants", []):
                 continue
