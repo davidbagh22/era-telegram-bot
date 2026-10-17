@@ -38,6 +38,7 @@ from app.middlewares.legacy_keyboard_cleanup import LegacyKeyboardCleanupMiddlew
 from app.middlewares.media_chat_activity import MediaChatActivityMiddleware
 from app.middlewares.referral_chat_reward import ReferralChatRewardMiddleware
 from app.middlewares.subscription_check import SubscriptionMiddleware
+from app.middlewares.telegram_delivery import TelegramDeliveryMiddleware
 from app.services.ai_service import AIService
 from app.utils import texts
 
@@ -66,10 +67,18 @@ class _MemoryStorageCompat(MemoryStorage):
 
 
 def create_bot(settings: Settings) -> Bot:
-    return Bot(
+    logger.info(
+        "Feature rollout: games=%s reports=%s registration=%s event_composer=%s attendance_qr=%s review_reminders=%s; reports_at=%02d:%02d Europe/Moscow",
+        settings.feature_games, settings.feature_management_reports, settings.feature_quick_registration,
+        settings.feature_native_event_composer, settings.feature_attendance_qr, settings.feature_review_reminders,
+        settings.management_report_hour, settings.management_report_minute,
+    )
+    bot = Bot(
         token=settings.bot_token,
         default=DefaultBotProperties(link_preview_is_disabled=True),
     )
+    bot.session.middleware(TelegramDeliveryMiddleware())
+    return bot
 
 
 def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:

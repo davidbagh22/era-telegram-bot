@@ -112,3 +112,28 @@ class SingleSourceOfTruthTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MenuReadbackRecoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stale_release_url_has_a_longer_bounded_recovery_window(self):
+        old = _chat_menu_button('https://era.example/app/?v=old')
+        current = _chat_menu_button('https://era.example/app/?v=new')
+        bot = SimpleNamespace(set_chat_menu_button=AsyncMock(), get_chat_menu_button=AsyncMock(side_effect=[old, old, old, current]))
+        with patch('app.webapp.asyncio.sleep', new=AsyncMock()):
+            actual, verified = await _set_and_verify_menu_button(bot, current)
+        self.assertTrue(verified)
+        self.assertEqual(actual.web_app.url, current.web_app.url)
+        self.assertEqual(bot.get_chat_menu_button.await_count, 4)
+
+    async def test_persistent_url_mismatch_stops_and_reports_a_safe_reason(self):
+        from app.webapp import _menu_button_mismatch_reason
+        old = _chat_menu_button('https://era.example/app/?v=old')
+        current = _chat_menu_button('https://era.example/app/?v=new')
+        bot = SimpleNamespace(set_chat_menu_button=AsyncMock(), get_chat_menu_button=AsyncMock(return_value=old))
+        with patch('app.webapp.asyncio.sleep', new=AsyncMock()):
+            _, verified = await _set_and_verify_menu_button(bot, current)
+        self.assertFalse(verified)
+        self.assertEqual(bot.get_chat_menu_button.await_count, 6)
+        self.assertEqual(_menu_button_mismatch_reason(current, old), 'release_version')
+        other = _chat_menu_button('https://different.example/app/?secret=private')
+        self.assertEqual(_menu_button_mismatch_reason(current, other), 'origin')

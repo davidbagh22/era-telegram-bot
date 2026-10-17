@@ -834,7 +834,7 @@ async def content_item_by_id(
             GeneralCustomContent.content_id == content_id
         )
     )
-    if row is None or not row.is_enabled or row.is_skipped:
+    if row is None or row.content_type == 'literature' or not row.is_enabled or row.is_skipped:
         return None
     return ContentItem(
         content_id=row.content_id,

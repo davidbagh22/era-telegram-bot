@@ -65,6 +65,7 @@ from app.services.admin_broadcast_service import (
     preview_recipient_count,
     send_chat_broadcast,
     send_personal_broadcast,
+    control_broadcast,
 )
 from app.services.admin_contacts_service import ContactError
 from app.services.admin_contacts_service import archive_contact as archive_org_contact
@@ -668,6 +669,21 @@ class PersonalBroadcastIn(BaseModel):
     audience: Literal["all", "role", "department", "direction", "age", "city"]
     filter_value: str | None = None
     text: str
+
+
+@router.post('/broadcast/{campaign_id}/{action}')
+async def control_broadcast_campaign(
+    campaign_id: int, action: Literal['pause', 'resume', 'cancel'],
+    admin: User = Depends(require_dashboard_access), session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    _rate_limit: None = Depends(enforce_admin_action_rate_limit),
+) -> dict[str, object]:
+    try:
+        item = await control_broadcast(session, settings, actor=admin, campaign_id=campaign_id, action=action)
+        await session.commit()
+    except BroadcastError as exc:
+        raise HTTPException(status_code=403 if exc.code == 'admin_access_required' else 409, detail=exc.code) from exc
+    return {'id': item.id, 'status': item.status}
 
 
 class PersonalBroadcastResultOut(BaseModel):

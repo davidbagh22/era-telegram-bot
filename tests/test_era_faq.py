@@ -47,7 +47,7 @@ def call(data, text=None):
     return SimpleNamespace(
         data=data,
         answer=AsyncMock(),
-        message=SimpleNamespace(text=text, edit_text=AsyncMock(), answer=AsyncMock()),
+        message=SimpleNamespace(text=text, edit_text=AsyncMock(), answer=AsyncMock(), chat=SimpleNamespace(id=123), message_id=1),
     )
 
 
@@ -221,15 +221,16 @@ class FaqTests(unittest.IsolatedAsyncioTestCase):
         user = approved(first_name="User", last_name="Test")
         await questions.question_start(c, s, user, ctx)
         await s.update_data(question_text="Хочу помогать")
-        session = SimpleNamespace(
-            add=lambda row: setattr(self, "saved_question", row), flush=AsyncMock()
-        )
+        session = SimpleNamespace(commit=AsyncMock(), bind=None)
+        create = AsyncMock(return_value=(SimpleNamespace(id=7), True))
         with (
-            patch.object(questions, "audit", AsyncMock()),
-            patch.object(questions, "notify_admins", AsyncMock()),
+            patch.object(questions, "create_support_question", create),
+            patch.object(questions, "deliver_support_intake_notices", AsyncMock()),
         ):
             await questions._save_question(c.message, s, session, user, None, None)
-        self.assertIn(ctx["topic"], self.saved_question.text)
+        self.assertIn(ctx["topic"], create.await_args.kwargs["text"])
+        self.assertEqual(create.await_args.kwargs["source_key"], "123:1")
+        session.commit.assert_awaited_once()
         self.assertIsNone(await s.get_state())
         markup = c.message.answer.call_args.kwargs["reply_markup"]
         self.assertEqual(markup.inline_keyboard[-1][0].callback_data, "faq:cat:growth")
@@ -281,7 +282,7 @@ class FaqTests(unittest.IsolatedAsyncioTestCase):
         s, c = state(), call("question:start")
         context = faq_message_context(FAQ_DATA["q22"]["text"])
         await questions.question_start(c, s, approved(), context)
-        message = SimpleNamespace(text="Нужен дизайнер", answer=AsyncMock())
+        message = SimpleNamespace(text="Нужен дизайнер", answer=AsyncMock(), chat=SimpleNamespace(id=123), message_id=2)
         await questions.question_text(message, s)
         self.assertEqual(await s.get_state(), QuestionStates.attachment_choice.state)
         callbacks = [
