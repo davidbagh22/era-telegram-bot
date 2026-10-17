@@ -115,7 +115,8 @@ def _callback_filter_records(path: Path) -> list[tuple[str, str, str]]:
                     and isinstance(call.func, ast.Attribute)
                     and call.func.attr == "regexp"
                     and ast.unparse(call.func.value) == "F.data"
-                    and call.args
+                    and len(call.args) == 1
+                    and not call.keywords
                     and isinstance(call.args[0], ast.Constant)
                     and isinstance(call.args[0].value, str)
                 ):
