@@ -25,7 +25,9 @@ from app.database.models import (
     EventRegistration,
     PointTransaction,
     PortfolioItem,
+    SupportMessage,
     User,
+    UserQuestion,
 )
 from app.services.audit_service import audit
 
@@ -113,6 +115,14 @@ async def export_user_data(session: AsyncSession, user: User) -> dict[str, Any]:
         )
     ).all()
 
+    support_questions = (await session.scalars(
+        select(UserQuestion).where(UserQuestion.user_id == user.id).order_by(UserQuestion.id)
+    )).all()
+    support_messages = (await session.scalars(
+        select(SupportMessage).join(UserQuestion, UserQuestion.id == SupportMessage.question_id)
+        .where(UserQuestion.user_id == user.id).order_by(SupportMessage.id)
+    )).all()
+
     await audit(
         session,
         actor_id=user.id,
@@ -155,6 +165,16 @@ async def export_user_data(session: AsyncSession, user: User) -> dict[str, Any]:
                 ),
             )
             for row in career_items
+        ],
+        "support_questions": [
+            _row_to_dict(row, ("id", "text", "file_id", "status", "category", "admin_answer",
+                               "waiting_since", "created_at", "updated_at"))
+            for row in support_questions
+        ],
+        "support_messages": [
+            _row_to_dict(row, ("id", "question_id", "direction", "text", "file_id",
+                               "delivery_status", "created_at", "updated_at"))
+            for row in support_messages
         ],
         "recommendation_requests": [
             _row_to_dict(
