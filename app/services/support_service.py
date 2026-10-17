@@ -41,7 +41,7 @@ async def create_support_question(session, *, user_id, source_key, text, file_id
     marker.value = {'question_id': question.id}
     session.add(AppSetting(key=f'support-intake-notice:{question.id}', value={'question_id': question.id}))
     await audit(session, actor_id=user_id, action='question.created', entity_type='user_question',
-                entity_id=question.id, new_value={'source': 'faq', **(context or {})})
+                entity_id=question.id, new_value={'source': 'faq' if context else 'bot', **(context or {})})
     await session.flush()
     return question, True
 

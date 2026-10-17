@@ -96,6 +96,7 @@ class SupportIntakeTests(IsolatedAsyncioTestCase):
             assert item.text == 'Saved before Telegram'
         assert f'#{item.id}' in message.answer.await_args.args[0]
         assert await self.state.get_state() is None
+        assert await self.state.get_data() == {}
         await deliver_support_intake_notices(self.bot, self.settings, self.sessions)
         await deliver_support_intake_notices(self.bot, self.settings, self.sessions)
         self.bot.send_message.assert_awaited_once()
