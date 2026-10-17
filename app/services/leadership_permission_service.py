@@ -102,10 +102,9 @@ def _matches(entry: ScopedPermission, permission: str, scope_type: str | None, s
     if entry.scope_type == "global":
         return True
     if scope_type is None:
-        # Caller didn't ask for a specific scope (legacy-style "does this
-        # user have this permission anywhere?" check) -- any scoped grant
-        # counts, mirroring authorization_service.active_permissions().
-        return True
+        # No object context means a global operation. Capability inventories
+        # use effective_permission_names instead of authorizing across scopes.
+        return False
     return entry.scope_type == scope_type and entry.scope_id == scope_id
 
 
@@ -132,8 +131,8 @@ async def has_scoped_permission(
 async def effective_permission_names(session: AsyncSession, user: User | None) -> set[str]:
     """Scope-blind view of effective_scoped_permissions -- a drop-in
     superset of authorization_service.active_permissions() that also counts
-    office-template-derived permissions. Existing global boolean checks
-    (can_manage_people, etc.) can adopt this without becoming scope-aware."""
+    office-template-derived permissions. This is a UI capability inventory,
+    not authorization for unscoped/global actions."""
     if user is None:
         return set()
     manual = active_permissions(user)
