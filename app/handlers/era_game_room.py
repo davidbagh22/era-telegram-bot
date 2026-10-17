@@ -17,7 +17,8 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramNetworkError, TelegramServerError
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import select, text as sql_text
+from sqlalchemy import case, cast, func, select, text as sql_text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -542,7 +543,8 @@ def _room_view(room: dict) -> tuple[str, InlineKeyboardMarkup | None]:
         if room.get('mode') or room.get('kind') == 'solo':
             uid = room.get("participants", [None])[0]
             reward = rewards.get(str(uid), 0)
-            return header + "🏁 Игра завершена\n\n" + summary + f"\n\n⭐ Баллы ЭРА: +{reward}", markup
+            reward_line = "" if room.get("mode") and room.get("result_text") else f"\n\n⭐ Баллы ЭРА: +{reward}"
+            return header + "🏁 Игра завершена\n\n" + summary + reward_line, markup
         return header + "🏁 Игра завершена\n\n" + summary + "\n\n" + roster(room, result=True) + reward_line, markup
     if room.get("mode"):
         return _format_prompt(room) or (header + "Материал недоступен.", None)
@@ -677,6 +679,49 @@ async def _join_lobby(session: AsyncSession, key: str, room: dict, telegram_user
     return True
 
 
+def _live_room(room: dict, now: datetime) -> bool:
+    if room.get("status") != "playing":
+        return False
+    try:
+        end = datetime.fromisoformat(room["expires_at"])
+        return end > now if end.tzinfo else end.replace(tzinfo=timezone.utc) > now
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+async def _recent_game_results(session: AsyncSession, uid: int, *, team: bool = False) -> list[dict]:
+    """Filter the existing immutable ledger by participant inside the database.
+
+    Older AppSetting values contain a JSON string; newer rows may contain an
+    object. Normalize both without scanning other people's results in Python.
+    """
+    if session.bind.dialect.name == "postgresql":
+        raw = cast(AppSetting.value, JSONB)
+        document = case((func.jsonb_typeof(raw) == "string", cast(raw.op("#>>")(sql_text("'{}'::text[]")), JSONB)), else_=raw)
+        participant = document["participants"].contains([uid])
+        mode = func.coalesce(document["kind"].astext, document["mode"].astext)
+        finished = document["finished_at"].astext
+    else:
+        document = func.json_extract(AppSetting.value, "$")
+        members = func.json_each(document, "$.participants").table_valued("value")
+        participant = select(1).select_from(members).where(members.c.value == uid).exists()
+        mode = func.coalesce(func.json_extract(document, "$.kind"), func.json_extract(document, "$.mode"))
+        finished = func.json_extract(document, "$.finished_at")
+    rows = (await session.scalars(select(AppSetting).where(
+        AppSetting.key.like("game-result:%"), participant,
+        mode.in_(["team", "duel"]) if team else mode.not_in(["team", "duel"]),
+    ).order_by(finished.desc(), AppSetting.id.desc()).limit(3))).all()
+    results = []
+    for row in rows:
+        item = dict(_data(row))
+        item["status"] = "finished"
+        item["session_token"] = row.key.removeprefix("game-result:")
+        if not item.get("kind") and item.get("mode") in {"solo", "team", "duel"}:
+            item["kind"] = item["mode"]
+        results.append(item)
+    return results
+
+
 async def show_game_cabinet(message: Message, settings: Settings, session: AsyncSession,
                             user: User | None, *, mode: str | None = None, view: str = "home", edit: bool = False) -> None:
     uid = message.chat.id
@@ -705,7 +750,7 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
     personal_rooms = (await session.scalars(select(AppSetting).where(
         AppSetting.key.like(f"era_game:{uid}:None:%")))).all()
     recent = sorted((_data(row) for row in personal_rooms), key=lambda room: room.get("created_at", ""), reverse=True)
-    active = next((room for room in recent if room.get("status") == "playing"), None)
+    active = next((room for room in recent if _live_room(room, datetime.now(timezone.utc))), None)
     buttons = []
     if view in {"quiz", "puzzle"}:
         modes = ({"era_game:solo", "era_game:play:true_or_myth", "era_game:play:guess_country", "era_game:play:culture"}
@@ -713,8 +758,9 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
         title = "⚡ Квизы и знания" if view == "quiz" else "🧠 Слова и логика"
         text = f"<b>{title}</b>\n\nВыберите игру. Ответы и результат останутся здесь, в личном чате."
         buttons = [row for row in menu_markup().inline_keyboard if row[0].callback_data in modes]
-    elif view in {"history", "history_team", "history_duel"}:
+    elif view in {"history", "history_team", "history_duel"} or view.startswith("history_round_"):
         text = "🎮 <b>Мои результаты</b>"
+        recent = await _recent_game_results(session, uid)
         if not recent:
             text += "\n\nЗдесь появятся результаты ваших игр."
         for room in recent[:3]:
@@ -722,27 +768,43 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
             score = room.get("scores", {}).get(str(uid), 0)
             text += f"\n\n{room_heading(room)}\n{status} · Результат: {score} очк."
         if thread_id:
-            team_rooms = []
+            team_rooms = await _recent_game_results(session, uid, team=True)
             for kind in ("team", "duel"):
                 candidate = _data(await session.scalar(select(AppSetting).where(
                     AppSetting.key == _key(settings.general_chat_id, thread_id, kind))))
                 if uid in candidate.get("participants", []):
-                    team_rooms.append(candidate)
-            team_rooms.sort(key=lambda item: item.get("created_at", ""), reverse=True)
-            selected_kind = view.removeprefix("history_") if view != "history" else None
-            selected = next((item for item in team_rooms if selected_kind is None or item.get("kind") == selected_kind), None)
+                    existing = next((item for item in team_rooms if item.get("session_token") == candidate.get("session_token")), None)
+                    if existing is not None:
+                        # Only the identical round may fill missing legacy metadata.
+                        existing.update(candidate)
+                    elif candidate.get("status") != "finished":
+                        team_rooms.insert(0, candidate)
+            team_rooms.sort(key=lambda item: item.get("finished_at", item.get("created_at", "")), reverse=True)
+            selected_token = view.removeprefix("history_round_") if view.startswith("history_round_") else None
+            selected_kind = view.removeprefix("history_") if view in {"history_team", "history_duel"} else None
+            selected = next((item for item in team_rooms if (selected_token is None or item.get("session_token") == selected_token)
+                             and (selected_kind is None or item.get("kind") == selected_kind)), None)
             for room in ([selected] if selected else []):
                 await _hydrate_player_names(session, room, message.bot)
                 status = {"playing": "Игра идёт", "finished": "Игра завершена", "waiting": "Набор игроков", "ready_check": "Проверка готовности", "expired": "Время истекло", "cancelled": "Комната закрыта"}.get(room.get("status"), "Игра закрыта")
-                text += "\n\n" + room_heading(room) + "\n" + status + "\n\n" + roster(room, result=room.get("status") not in {"playing", "waiting", "ready_check"})
-                if room.get("status") == "finished":
+                legacy_duel = room.get("kind") == "duel" and not room.get("teams")
+                displayed_room = dict(room, kind="team") if legacy_duel else room
+                text += "\n\n" + room_heading(room) + "\n" + status + "\n\n" + roster(displayed_room, result=room.get("status") not in {"playing", "waiting", "ready_check"})
+                if legacy_duel:
+                    text += "\n\nРаспределение команд в этой старой игре не сохранено."
+                elif room.get("status") == "finished":
                     text += "\n\n" + result_summary(room)
                 if room.get("message_id"):
                     buttons.append([InlineKeyboardButton(text="👥 Карточка команды", url=_topic_link(settings, thread_id, room["message_id"]))])
             for other in team_rooms:
-                if other is not selected:
-                    label = "🤝 Результаты квиза" if other.get("kind") == "team" else "🏆 Результаты дуэли"
-                    buttons.append([InlineKeyboardButton(text=label, callback_data=f"era_game:catalog:history_{other['kind']}")])
+                if other is not selected and other.get("session_token"):
+                    label = "🤝 Квиз" if other.get("kind") == "team" else "🏆 Дуэль"
+                    at = other.get("finished_at", other.get("created_at"))
+                    if at:
+                        from zoneinfo import ZoneInfo
+                        label += " · " + datetime.fromisoformat(at).astimezone(ZoneInfo("Europe/Moscow")).strftime("%d.%m, %H:%M МСК")
+                    buttons.append([InlineKeyboardButton(text=label, callback_data=f"era_game:catalog:history_round_{other['session_token']}")])
+
     else:
         text = "🎮 <b>Игры ЭРА</b>\n\nНебольшая пауза с пользой: выберите игру для себя или присоединитесь к команде."
         if active:

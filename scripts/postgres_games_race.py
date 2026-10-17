@@ -1,5 +1,6 @@
 """Concurrency acceptance gate for rooms, content reservations and reward caps."""
 import asyncio
+import json
 import os
 import uuid
 from datetime import datetime, timezone
@@ -12,7 +13,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.models import AppSetting, PointTransaction, User
-from app.handlers.era_game_room import _data, _key, _new_room, game_callback
+from app.handlers.era_game_room import _data, _key, _new_room, _recent_game_results, game_callback
 from app.services.game_content import items_for_mode
 from app.services.game_formats import GameMode
 from app.services.game_rewards_service import award_game_points
@@ -117,6 +118,25 @@ async def main():
             async with sessions() as session:
                 result = _data(await session.scalar(select(AppSetting).where(AppSetting.key == room_key)))
                 assert result['status'] == 'finished' and result['message_id'] == 20
+                # Real PostgreSQL JSONB filtering must accept legacy strings and
+                # object values, preserve previous rounds and isolate recipients.
+                first = await _recent_game_results(session, format_uid)
+                assert len(first) == 1 and first[0]['session_token'] == result['session_token']
+                session.add(AppSetting(key=f'game-result:history-{uid}', value={
+                    'mode': 'solo', 'participants': [format_uid], 'scores': {str(format_uid): 2},
+                    'finished_at': datetime.now(timezone.utc).isoformat()}))
+                session.add(AppSetting(key=f'game-result:other-{uid}', value=json.dumps({
+                    'mode': 'solo', 'participants': [uid], 'scores': {str(uid): 2},
+                    'finished_at': datetime.now(timezone.utc).isoformat()})))
+                session.add(AppSetting(key=f'game-result:team-{uid}', value={
+                    'mode': 'duel', 'participants': [format_uid, uid], 'scores': {str(format_uid): 2},
+                    'finished_at': datetime.now(timezone.utc).isoformat()}))
+                await session.commit()
+                retained = await _recent_game_results(session, format_uid)
+                teams = await _recent_game_results(session, format_uid, team=True)
+                assert len(retained) == 2 and all(format_uid in item['participants'] for item in retained)
+                assert len(teams) == 1 and teams[0]['kind'] == 'duel'
+                assert delivery_bot.edit_message_text.await_args.kwargs['text'].count('Баллы ЭРА:') == 1
     finally:
         await engine.dispose()
     print('PostgreSQL games: rooms, player-scoped history, caps, concurrent answer idempotency')

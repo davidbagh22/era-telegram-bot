@@ -884,3 +884,43 @@ def test_long_escaped_team_names_fit_telegram_card_without_repeating_the_reward_
     assert len(text) < 4096 and text.count('🏅 <a') == 8
     assert all(text.count(f'<code>{uid}</code>') == 1 for uid in room['participants'])
     assert text.count('ЭРА +3') == 8
+
+
+class DurableGameHistoryTests(GameFixture, IsolatedAsyncioTestCase):
+    async def test_results_survive_replacement_and_filter_other_players_in_both_json_encodings(self):
+        from app.handlers.era_game_room import _recent_game_results, _store_game_result
+        async with self.sessions() as session:
+            for token, uid, mode in [('first', 11, 'solo'), ('second', 11, 'solo'), ('stranger', 22, 'solo')]:
+                room = {'status': 'finished', 'session_token': token, 'finished_at': datetime.now(timezone.utc).isoformat(),
+                        'participants': [uid], 'kind': mode, 'scores': {str(uid): 2}}
+                await _store_game_result(session, room)
+            session.add(AppSetting(key=_key(11, None, 'solo-11'), value={'status': 'playing', 'participants': [11]}))
+            session.add(AppSetting(key='game-result:team-object', value={'mode': 'duel', 'participants': [11, 22],
+                'finished_at': datetime.now(timezone.utc).isoformat(), 'scores': {'11': 3}}))
+            await session.commit()
+            mine = await _recent_game_results(session, 11)
+            team = await _recent_game_results(session, 11, team=True)
+        assert len(mine) == 2 and {row['session_token'] for row in mine} == {'first', 'second'}
+        assert len(team) == 1 and team[0]['kind'] == 'duel'
+        assert all(11 in row['participants'] for row in mine + team)
+
+    async def test_expired_stored_playing_room_does_not_offer_continue(self):
+        from app.handlers.era_game_room import show_game_cabinet
+        async with self.sessions() as session:
+            session.add(AppSetting(key=_key(11, None, 'solo-11'), value={'status': 'playing',
+                'participants': [11], 'kind': 'solo', 'expires_at': (datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat()}))
+            await session.commit()
+            message = Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=11, type='private')).as_(self.bot)
+            user = await session.get(User, self.user_id)
+            with patch.object(Message, 'answer', new=self.send):
+                await show_game_cabinet(message, self.settings, session, user)
+        assert 'Можно продолжить' not in self.send.await_args.args[0]
+        assert not any(b.callback_data == 'era_game:resume' for row in self.send.await_args.kwargs['reply_markup'].inline_keyboard for b in row)
+
+
+def test_format_completion_mentions_the_awarded_balance_once():
+    from app.handlers.era_game_room import _room_view
+    room = {'mode': 'true_or_myth', 'status': 'finished', 'participants': [11], 'scores': {'11': 1},
+            'rewards': {'11': 1}, 'result_text': '✅ Верно!\n\nОчки за раунд: 1. Баллы ЭРА: +1.'}
+    text, _ = _room_view(room)
+    assert text.count('Баллы ЭРА:') == 1
