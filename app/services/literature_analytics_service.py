@@ -7,6 +7,9 @@ from app.services.notification_service import safe_send_once
 
 
 async def send_literature_admin_digest(bot, settings, session_factory):
+    # The unified daily report includes these totals; avoid a second daily digest.
+    if getattr(settings, 'feature_management_reports', 'OFF') != 'OFF':
+        return
     today = datetime.now(ZoneInfo("Asia/Yerevan")).date()
     if today.isoformat() < "2026-10-10" or today.isoformat() > "2026-11-26":
         return

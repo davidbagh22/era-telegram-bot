@@ -84,6 +84,8 @@ def menu_markup(*, public: bool = False, bot_username: str = "ERA_1bot") -> Inli
         else:
             compact.append(row)
     keyboard.inline_keyboard = compact
+    if not public:
+        keyboard.inline_keyboard.append([InlineKeyboardButton(text="← Досуг", callback_data="leisure:home")])
     return keyboard
 
 

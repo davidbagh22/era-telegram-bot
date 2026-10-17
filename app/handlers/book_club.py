@@ -42,7 +42,7 @@ def _keyboard(subscribed: bool = False, discussion_url: str = '') -> InlineKeybo
     if discussion_url:
         rows.append([InlineKeyboardButton(text='💬 Обсуждение в сообществе', url=discussion_url)])
     rows.append([InlineKeyboardButton(text='📖 Найти книгу в РГБ', url=READ_BOOK_URL)])
-    rows.append([button('🏠 Главное меню', 'menu:main')])
+    rows.append([button('← Досуг', 'leisure:home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -63,7 +63,7 @@ def issue_keyboard(number: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text='🎧 Слушать аудио', url=AUDIOBOOK_URL)],
         nav, [button('← Все выпуски', f'bookclub:list:{(number - 1) // 8}')],
         [button('📚 Литература', 'bookclub:home'), button('🔕 Отписаться', 'bookclub:unsubscribe')],
-        [button('🏠 Главное меню', 'menu:main')],
+        [button('← Досуг', 'leisure:home')],
     ])
 
 

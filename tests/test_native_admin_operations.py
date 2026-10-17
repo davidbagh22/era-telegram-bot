@@ -28,7 +28,7 @@ def buttons(markup):
 def test_admin_has_native_shortcuts_even_with_the_app_enabled():
     for miniapp_url in ('', 'https://era.example/app/'):
         labels = {b.text for b in buttons(main_reply_keyboard(miniapp_url, admin=True))}
-        assert {'📊 Админ-сводка', '📥 Заявки'} <= labels
+        assert {'📊 Статистика', '📥 Заявки'} <= labels
         inline = buttons(main_inline_keyboard(miniapp_url=miniapp_url, admin=True))
         assert {'admin:applications', 'admin:management:open'} <= {b.callback_data for b in inline}
         assert not any(b.text == '📥 Заявки' for b in buttons(main_reply_keyboard(miniapp_url)))

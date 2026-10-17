@@ -15,9 +15,9 @@ router.callback_query.filter(F.message.chat.type == "private")
 
 
 async def _markup(bot, settings: Settings, telegram_id: int = 0) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text="📚 Литература · 48 законов", callback_data="bookclub:home")]]
+    rows = [[InlineKeyboardButton(text="📚 Литература", callback_data="bookclub:home")]]
     if _enabled(settings, telegram_id) and settings.general_chat_id:
-        thread_id = await ensure_topic(bot, settings, "games")
+        thread_id = await ensure_topic(bot, settings, "games", create_if_missing=False)
         chat_id = str(settings.general_chat_id)
         if thread_id and chat_id.startswith("-100"):
             rows.append([InlineKeyboardButton(
@@ -25,13 +25,13 @@ async def _markup(bot, settings: Settings, telegram_id: int = 0) -> InlineKeyboa
                 url=f"https://t.me/c/{chat_id[4:]}/{thread_id}",
             )])
     if _enabled(settings, telegram_id):
-        rows.insert(0, [InlineKeyboardButton(text="👤 Мои игры", callback_data="era_game:cabinet")])
+        rows.insert(0, [InlineKeyboardButton(text="🎮 Игры", callback_data="era_game:cabinet")])
     rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu:main")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def show_leisure(message: Message, settings: Settings, telegram_id: int = 0) -> None:
-    games_line = ("🎮 <b>Интерактив</b> — быстрые квизы и командные игры в общем чате.\n"
+    games_line = ("🎮 <b>Интерактив</b> — одиночные игры в боте и команды в общем чате.\n"
                   if _enabled(settings, telegram_id) else "🎮 <b>Интерактив</b> — скоро откроется.\n")
     await message.answer(
         "🎲 <b>ЭРА | Досуг</b>\n\n"

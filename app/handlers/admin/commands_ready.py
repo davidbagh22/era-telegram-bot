@@ -208,8 +208,8 @@ async def _management_report_access(user, telegram_id, settings, session) -> boo
     )
 
 
-@router.message(Command('report'))
-@router.message(F.text == '📊 Админ-сводка')
+@router.message(Command('report'), F.chat.type == 'private')
+@router.message(F.text.in_({'📊 Статистика', '📊 Админ-сводка'}), F.chat.type == 'private')
 async def management_report_command(message: Message, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await _management_report_access(user, message.from_user.id, settings, session):
         await message.answer('Управленческий отчёт недоступен для этого профиля.')

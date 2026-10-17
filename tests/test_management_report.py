@@ -53,13 +53,13 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
             session.add(User(telegram_id=33, first_name='Later', application_status=ApplicationStatus.PENDING))
             await session.commit()
         await send_management_reports(self.bot, self.settings, self.sessions, now=self.now+timedelta(hours=5))
-        assert self.bot.send_message.await_count == 3
-        text = next(c.args[1] for c in self.bot.send_message.await_args_list if 'Ежедневный отчёт' in c.args[1])
+        assert self.bot.send_message.await_count == 1
+        text = next(c.args[1] for c in self.bot.send_message.await_args_list if 'Итоги за сутки' in c.args[1])
         assert '09:00 МСК' in text and 'Обращения: ждут 1 · дольше 24 ч 1' in text
         assert 'PRIVATE' not in text and 'Admin private' not in text and 'Member private' not in text
         async with self.sessions() as session:
             deliveries = (await session.scalars(select(NotificationDelivery))).all()
-            assert len(deliveries) == 3
+            assert len(deliveries) == 1
             assert any(d.delivery_key == 'daily:2026-10-16:11' for d in deliveries)
             assert all(d.status == 'sent' and d.attempt_count == 1 for d in deliveries)
 
@@ -94,33 +94,30 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
         await send_management_reports(self.bot, self.settings, self.sessions, now=self.now)
         assert self.bot.send_message.await_args.args[0] == 11
 
-    async def test_daily_weekly_monthly_have_separate_stable_period_keys(self):
-        now = datetime(2026, 6, 1, 6, tzinfo=timezone.utc)  # Monday and first of month
+    async def test_one_daily_issue_even_on_monday_and_first_day_of_month(self):
+        now = datetime(2026, 6, 1, 6, tzinfo=timezone.utc)
         await send_management_reports(self.bot, self.settings, self.sessions, now=now)
         await send_management_reports(self.bot, self.settings, self.sessions, now=now+timedelta(hours=1))
-        assert self.bot.send_message.await_count == 3
+        assert self.bot.send_message.await_count == 1
         async with self.sessions() as session:
             keys = set((await session.scalars(select(NotificationDelivery.delivery_key))).all())
-            assert keys == {'daily:2026-06-01:11', 'weekly:2026-06-01:11', 'monthly:2026-06-01:11'}
-            row = await session.scalar(select(AppSetting).where(AppSetting.key == 'management-report:monthly:2026-06-01'))
-            metrics = json.loads(row.value)['metrics']
-            assert metrics['period_start'] == '2026-04-30T21:00:00+00:00'
-            assert metrics['period_end'] == '2026-05-31T21:00:00+00:00'
+            assert keys == {'daily:2026-06-01:11'}
+            snapshot_keys = set((await session.scalars(select(AppSetting.key).where(AppSetting.key.like('management-report:%')))).all())
+            assert snapshot_keys == {'management-report:daily:2026-06-01'}
 
     async def test_previous_report_is_compared_without_republishing_it(self):
         await send_management_reports(self.bot, self.settings, self.sessions, now=self.now-timedelta(days=1))
         await send_management_reports(self.bot, self.settings, self.sessions, now=self.now)
         assert 'Участников к предыдущему отчёту: +0' in self.bot.send_message.await_args.args[1]
-        assert self.bot.send_message.await_count == 4
+        assert self.bot.send_message.await_count == 2
 
-    async def test_recovery_after_entire_boundary_day_uses_latest_due_period(self):
+    async def test_restart_recovers_only_today_without_weekly_monthly_backfill(self):
         await send_management_reports(self.bot, self.settings, self.sessions, now=self.now)
+        await send_management_reports(self.bot, self.settings, self.sessions, now=self.now+timedelta(hours=3))
         async with self.sessions() as session:
             keys = set((await session.scalars(select(NotificationDelivery.delivery_key))).all())
-            assert keys == {'daily:2026-10-16:11', 'weekly:2026-10-12:11', 'monthly:2026-10-01:11'}
-            week = await session.scalar(select(AppSetting).where(AppSetting.key == 'management-report:weekly:2026-10-12'))
-            metrics = json.loads(week.value)['metrics']
-            assert metrics['period_end'] == '2026-10-12T06:00:00+00:00'
+            assert keys == {'daily:2026-10-16:11'}
+        assert self.bot.send_message.await_count == 1
 
     async def test_period_before_game_measurement_is_unknown_not_zero(self):
         async with self.sessions() as session:
@@ -157,3 +154,66 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
             metrics = await build_management_report(session, now=self.now)
         assert metrics['health'] == 'ok' and metrics['scheduler'] == 'работает'
         assert metrics['backup'] == 'восстановление проверено'
+
+
+    async def test_health_freshness_and_latest_backup_failure_are_visible(self):
+        async with self.sessions() as session:
+            session.add(SystemDiagnosticRun(run_type='full', status='ok', score=100, checks_json=[],
+                                            created_at=self.now-timedelta(minutes=5)))
+            session.add(SystemDiagnosticRun(run_type='heartbeat', status='ok', score=100, checks_json=[],
+                                            created_at=self.now-timedelta(hours=2)))
+            session.add(BackupHistory(backup_key='previous-good', status='success',
+                                      completed_at=self.now-timedelta(hours=2), restore_verified_at=self.now-timedelta(hours=2),
+                                      created_at=self.now-timedelta(hours=2), size_bytes=1048576))
+            session.add(BackupHistory(backup_key='latest-failed', status='failed',
+                                      completed_at=self.now-timedelta(minutes=5), created_at=self.now-timedelta(minutes=5)))
+            await session.commit()
+            metrics = await build_management_report(session, now=self.now)
+        text = management_report_text(metrics)
+        assert metrics['health_fresh'] is True
+        assert metrics['scheduler'] == 'нет свежего heartbeat'
+        assert '🩺 Здоровье бота' in text and '💾 Резервная копия' in text
+        assert 'Последняя попытка: ошибка' in text and 'Размер копии: 1.00 МБ' in text
+        assert 'Проверить резервное копирование' in text
+        assert 'Проверить работу планировщика' in text
+
+    async def test_old_healthy_snapshot_is_not_presented_as_current_health(self):
+        async with self.sessions() as session:
+            session.add(SystemDiagnosticRun(run_type='heartbeat', status='ok', score=100, checks_json=[],
+                                            created_at=self.now-timedelta(hours=2)))
+            await session.commit()
+            metrics = await build_management_report(session, now=self.now)
+        text = management_report_text(metrics)
+        assert '🟢 Состояние: в норме' not in text
+        assert 'нет свежей проверки' in text and '16.10.2026 07:00 МСК' in text
+
+    async def test_manual_statistics_does_not_create_a_second_automatic_issue(self):
+        from app.handlers.admin.commands_ready import management_report_command
+        await send_management_reports(self.bot, self.settings, self.sessions, now=self.now)
+        message = SimpleNamespace(from_user=SimpleNamespace(id=11), answer=AsyncMock())
+        async with self.sessions() as session:
+            admin = await session.get(User, self.admin_id)
+            await management_report_command(message, admin, self.settings, session)
+            await management_report_command(message, admin, self.settings, session)
+        assert message.answer.await_count == 2
+        await send_management_reports(self.bot, self.settings, self.sessions, now=self.now+timedelta(hours=2))
+        assert self.bot.send_message.await_count == 1
+
+    async def test_separate_literature_digest_is_folded_into_the_daily_summary(self):
+        from app.services.literature_analytics_service import send_literature_admin_digest
+        await send_literature_admin_digest(self.bot, self.settings, self.sessions)
+        self.bot.send_message.assert_not_awaited()
+        async with self.sessions() as session:
+            metrics = await build_management_report(session, now=self.now)
+        assert 'Литература, всего:' in management_report_text(metrics)
+
+
+    async def test_leisure_navigation_does_not_create_a_missing_forum_topic(self):
+        from app.handlers.era_leisure import _markup
+        settings = Settings(bot_token="1234567890:test-token", feature_games="ALL", general_chat_id=-10042)
+        bot = SimpleNamespace(get_chat=AsyncMock(), create_forum_topic=AsyncMock())
+        with patch('app.services.general_topics_service._session_factory', return_value=self.sessions):
+            markup = await _markup(bot, settings, 11)
+        assert not any(button.url for row in markup.inline_keyboard for button in row)
+        bot.get_chat.assert_not_awaited()
+        bot.create_forum_topic.assert_not_awaited()
