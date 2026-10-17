@@ -116,9 +116,36 @@ def _menu_button_matches(expected, actual) -> bool:
     return actual.type in ("default", "commands")
 
 
+def _menu_button_target_matches(expected, actual) -> bool:
+    """Compare only the app target for diagnostics, never verify a release.
+
+    Telegram can retain an older v build marker after a successful set call.
+    The WebView might still use that release, even with no-cache HTML. Only
+    _menu_button_matches may verify the exact current launch URL. Preserve
+    all other query entries (including blanks, duplicates and order).
+    """
+    from urllib.parse import parse_qsl, urlsplit
+
+    if expected.type != "web_app":
+        return _menu_button_matches(expected, actual)
+    if actual.type != "web_app":
+        return False
+
+    def target(url):
+        parsed = urlsplit(url)
+        query = tuple(
+            (key, value)
+            for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+            if key != "v"
+        )
+        return parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment
+
+    return target(expected.web_app.url) == target(actual.web_app.url)
+
+
 def _menu_button_mismatch_reason(expected, actual) -> str:
     """Safe diagnostic codes: never log the configured URL or query values."""
-    from urllib.parse import parse_qsl, urlsplit
+    from urllib.parse import urlsplit
     if _menu_button_matches(expected, actual):
         return 'match'
     if expected.type != 'web_app' or actual.type != 'web_app':
@@ -128,10 +155,7 @@ def _menu_button_mismatch_reason(expected, actual) -> str:
         return 'origin'
     if wanted.path != observed.path:
         return 'path'
-    first, second = dict(parse_qsl(wanted.query)), dict(parse_qsl(observed.query))
-    first_version = first.pop('v', None)
-    second_version = second.pop('v', None)
-    if first == second and wanted.fragment == observed.fragment and first_version != second_version:
+    if _menu_button_target_matches(expected, actual):
         return 'release_version'
     return 'query_or_fragment'
 
@@ -440,10 +464,22 @@ async def lifespan(app: FastAPI):
             )
             expected_menu_button = _chat_menu_button(settings.effective_miniapp_url)
             actual_menu_button, menu_button_verified = await _set_and_verify_menu_button(bot, expected_menu_button)
+            menu_button_target_verified = _menu_button_target_matches(expected_menu_button, actual_menu_button)
+            menu_button_status = (
+                "verified" if menu_button_verified
+                else "stale_release" if menu_button_target_verified
+                else "mismatch"
+            )
             me = await bot.get_me()
             if menu_button_verified:
                 logger.info(
                     "Chat menu button verified: bot=@%s type=%s",
+                    me.username,
+                    actual_menu_button.type,
+                )
+            elif menu_button_target_verified:
+                logger.warning(
+                    "Chat menu button app target verified; release URL refresh pending: bot=@%s type=%s",
                     me.username,
                     actual_menu_button.type,
                 )
@@ -461,6 +497,9 @@ async def lifespan(app: FastAPI):
                 "bot_username": me.username,
                 "menu_button_type": actual_menu_button.type,
                 "menu_button_verified": menu_button_verified,
+                "menu_button_release_verified": menu_button_verified,
+                "menu_button_target_verified": menu_button_target_verified,
+                "menu_button_status": menu_button_status,
                 "menu_button_mismatch_reason": _menu_button_mismatch_reason(expected_menu_button, actual_menu_button),
                 "miniapp_configured": bool(settings.effective_miniapp_url),
                 "webhook_host": base_url,

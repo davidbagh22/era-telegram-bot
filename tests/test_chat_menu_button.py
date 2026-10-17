@@ -137,3 +137,56 @@ class MenuReadbackRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_menu_button_mismatch_reason(current, old), 'release_version')
         other = _chat_menu_button('https://different.example/app/?secret=private')
         self.assertEqual(_menu_button_mismatch_reason(current, other), 'origin')
+
+
+class MenuButtonTargetDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stale_build_marker_does_not_verify_the_current_release(self):
+        from app.webapp import _menu_button_target_matches
+        current = _chat_menu_button("https://era.example/app/?v=new")
+        old = _chat_menu_button("https://era.example/app/?v=old")
+        bot = SimpleNamespace(set_chat_menu_button=AsyncMock(), get_chat_menu_button=AsyncMock(return_value=old))
+        with patch("app.webapp.asyncio.sleep", new=AsyncMock()):
+            actual, verified = await _set_and_verify_menu_button(bot, current)
+        self.assertFalse(verified)
+        self.assertFalse(_menu_button_matches(current, actual))
+        self.assertTrue(_menu_button_target_matches(current, actual))
+        bot.set_chat_menu_button.assert_awaited_once()
+        self.assertEqual(bot.get_chat_menu_button.await_count, 6)
+
+    def test_only_the_release_marker_can_differ_for_target_diagnostics(self):
+        from app.webapp import _menu_button_target_matches
+        expected = _chat_menu_button("https://era.example/app/?section=events&v=new&empty=#profile")
+        for url in (
+            "https://era.example/app/?section=events&v=old&empty=#profile",
+            "https://era.example/app/?section=events&empty=#profile",
+        ):
+            with self.subTest(url=url):
+                observed = _chat_menu_button(url)
+                self.assertTrue(_menu_button_target_matches(expected, observed))
+                self.assertFalse(_menu_button_matches(expected, observed))
+
+    def test_meaningful_query_entries_cannot_change(self):
+        from app.webapp import _menu_button_target_matches
+        expected = _chat_menu_button("https://era.example/app/?section=events&v=new&empty=#profile")
+        for url in (
+            "https://era.example/app/?section=admin&v=old&empty=#profile",
+            "https://era.example/app/?section=events&v=old#profile",
+            "https://era.example/app/?section=events&v=old&empty=&section=admin#profile",
+            "https://era.example/app/?empty=&section=events&v=old#profile",
+            "https://era.example/app/?section=events&v=old&empty=#other",
+            "http://era.example/app/?section=events&v=old&empty=#profile",
+        ):
+            with self.subTest(url=url):
+                self.assertFalse(_menu_button_target_matches(expected, _chat_menu_button(url)))
+
+    def test_safe_diagnostics_distinguish_release_and_target(self):
+        from app.webapp import _menu_button_mismatch_reason
+        expected = _chat_menu_button("https://era.example/app/?v=new&section=events")
+        self.assertEqual(
+            _menu_button_mismatch_reason(expected, _chat_menu_button("https://era.example/app/?v=old&section=events")),
+            "release_version",
+        )
+        self.assertEqual(
+            _menu_button_mismatch_reason(expected, _chat_menu_button("https://era.example/app/?v=old&section=other")),
+            "query_or_fragment",
+        )
