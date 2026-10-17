@@ -46,19 +46,23 @@ async def _convert_thread(session, item):
         return
     # A legacy answer may currently be in Telegram flight. Let its existing
     # worker finish; never send it again with a new operation key.
-    if item.status in {'answer_pending', 'answer_failed', 'answer_review'}:
+    if item.status == 'answer_pending':
         raise ValueError('legacy_delivery_pending')
+    failed = item.status == 'answer_failed'
+    uncertain = item.status == 'answer_review'
     session.add(SupportMessage(question_id=item.id, author_id=item.user_id, direction='participant',
         source_key=f'legacy-question:{item.id}', text=item.text, file_id=item.file_id,
         delivery_status='legacy', created_at=item.created_at))
     if item.admin_answer:
         session.add(SupportMessage(question_id=item.id, author_id=item.answered_by, direction='staff',
-            source_key=f'legacy-answer:{item.id}', text=item.admin_answer, delivery_status='legacy',
+            source_key=f'legacy-answer:{item.id}', text=item.admin_answer,
+            delivery_status='failed' if failed else 'uncertain' if uncertain else 'legacy',
             created_at=item.updated_at))
     item.thread_revision = 1
     item.category = item.category or 'general'
-    item.status = 'thread_answered' if item.admin_answer else 'thread_waiting'
-    item.waiting_since = None if item.admin_answer else item.created_at
+    answered = bool(item.admin_answer and not failed and not uncertain)
+    item.status = 'thread_answered' if answered else 'thread_waiting'
+    item.waiting_since = None if answered else item.created_at
     await session.flush()
 
 

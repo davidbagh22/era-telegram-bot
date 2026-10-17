@@ -57,6 +57,10 @@ async def show_support_thread(message, session, settings, *, question_id, actor_
         body += item.text
         if item.admin_answer:
             body += f'\n\nАдминистратор:\n{item.admin_answer}'
+        if item.status == 'answer_review':
+            body += '\n\n⚠️ Старая доставка требует сверки. Проверьте переписку перед новым ответом. Старое сообщение повторно не отправляется.'
+        elif item.status == 'answer_failed':
+            body += '\n\n⚠️ Старый ответ не доставлен. Он сохранён в истории; новый ответ оформляется отдельно.'
     else:
         for entry in entries:
             label = 'Администратор' if entry.direction == 'staff' else 'Участник'
@@ -73,7 +77,7 @@ async def show_support_thread(message, session, settings, *, question_id, actor_
         nav.append(button('Дальше →', f'{prefix}:history:{item.id}:{page+1}'))
     if nav:
         rows.append(nav)
-    if editable and item.status != 'thread_closed' and item.status not in {'answer_pending', 'answer_failed', 'answer_review'}:
+    if editable and item.status != 'thread_closed' and item.status != 'answer_pending':
         rows.append([button('✍️ Ответить' if staff else '✍️ Дополнить вопрос',
             f'{prefix}:reply:{item.id}:{item.thread_revision}')])
     if staff and editable:

@@ -178,6 +178,37 @@ class SupportThreadTests(IsolatedAsyncioTestCase):
             row = await session.scalar(select(SupportMessage).where(SupportMessage.direction == 'staff'))
             assert row.delivery_status == 'uncertain'
 
+    async def test_terminal_legacy_delivery_can_be_resolved_without_resending_old_answer(self):
+        for status, delivery_status in [('answer_failed', 'failed'), ('answer_review', 'uncertain')]:
+            with self.subTest(status=status):
+                async with self.sessions() as session:
+                    item = UserQuestion(user_id=self.member, text='Legacy question', status=status, admin_answer='Old terminal answer')
+                    session.add(item)
+                    await session.commit()
+                    self.item = item.id
+                async with self.sessions() as session:
+                    await update_support_thread(session, self.settings, question_id=self.item, actor_id=self.staff,
+                        expected_revision=0, action='claim')
+                    await session.commit()
+                    old = await session.scalar(select(SupportMessage).where(SupportMessage.question_id == self.item,
+                        SupportMessage.direction == 'staff'))
+                    assert old.text == 'Old terminal answer' and old.delivery_status == delivery_status
+                self.bot.send_message.reset_mock()
+                await deliver_support_answers(self.bot, self.settings, self.sessions)
+                self.bot.send_message.assert_not_awaited()
+                await self.append('New explicit answer', source=f'11:new:{status}')
+                await deliver_support_answers(self.bot, self.settings, self.sessions)
+                await deliver_support_answers(self.bot, self.settings, self.sessions)
+                assert self.bot.send_message.await_count == 1
+                assert 'New explicit answer' in self.bot.send_message.await_args.args[1]
+                assert 'Old terminal answer' not in self.bot.send_message.await_args.args[1]
+                async with self.sessions() as session:
+                    item = await session.get(UserQuestion, self.item)
+                    await update_support_thread(session, self.settings, question_id=item.id, actor_id=self.staff,
+                        expected_revision=item.thread_revision, action='close')
+                    await session.commit()
+                    assert item.status == 'thread_closed'
+
     async def test_followups_do_not_postpone_sla_and_reminders_stop_on_answer(self):
         await self.append(staff=False, text='Follow up', source='22:1')
         async with self.sessions() as session:
