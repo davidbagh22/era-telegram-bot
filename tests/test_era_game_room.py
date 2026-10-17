@@ -28,10 +28,13 @@ def test_room_bound_to_chat_and_thread():
 
 
 def test_game_menu_callbacks_are_short_and_in_namespace():
-    for row in menu_markup().inline_keyboard:
-        for button in row:
-            assert button.callback_data.startswith("era_game:")
-            assert len(button.callback_data.encode()) <= 64
+    for public in (False, True):
+        callbacks = [button.callback_data for row in menu_markup(public=public).inline_keyboard
+                     for button in row if button.callback_data]
+        assert callbacks.count('leisure:home') == (0 if public else 1)
+        for callback in callbacks:
+            assert callback.startswith("era_game:") or not public and callback == 'leisure:home'
+            assert len(callback.encode()) <= 64
     for row in lobby_markup("team").inline_keyboard:
         for button in row:
             assert len(button.callback_data.encode()) <= 64
