@@ -102,7 +102,7 @@ class UsersListApiTests(unittest.TestCase):
 
     def test_person_view_permission_allows_read_only_access(self) -> None:
         session = SimpleNamespace()
-        viewer = _participant(permission_grants=[SimpleNamespace(is_active=True, permission="people.view")])
+        viewer = _participant(permission_grants=[SimpleNamespace(is_active=True, permission="people.view", scope_type="global", scope_id=0)])
         app = _build_app(viewer, session)
         client = TestClient(app)
         with patch(
@@ -255,7 +255,7 @@ class PermissionToggleApiTests(unittest.TestCase):
         # `permissions=True` guard branch in rights_block6.py::_guard.
         session = SimpleNamespace()
         manager = _participant(
-            permission_grants=[SimpleNamespace(is_active=True, permission="people.manage")]
+            permission_grants=[SimpleNamespace(is_active=True, permission="people.manage", scope_type="global", scope_id=0)]
         )
         app = _build_app(manager, session)
         client = TestClient(app)

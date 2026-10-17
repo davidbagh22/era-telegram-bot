@@ -24,6 +24,21 @@ def active_permissions(user: User | None) -> set[str]:
     }
 
 
+def active_global_permissions(user: User | None) -> set[str]:
+    """Unscoped operations require a global grant, never any department grant.
+
+    active_permissions remains a capability inventory for UI. A handler with
+    no object/scope check must use this narrower authorization view instead.
+    Missing/malformed scope metadata fails closed.
+    """
+    return {
+        grant.permission
+        for grant in (getattr(user, 'permission_grants', None) or [])
+        if grant.is_active and getattr(grant, 'scope_type', None) == 'global'
+        and getattr(grant, 'scope_id', None) == 0
+    }
+
+
 def is_full_admin(user: User | None, settings: Settings, telegram_id: int) -> bool:
     return bool(
         telegram_id in settings.admin_ids
@@ -41,7 +56,7 @@ def can_view_people(user: User | None, settings: Settings, telegram_id: int) -> 
         return True
     if not user or user.is_blocked or user.is_archived:
         return False
-    return bool(active_permissions(user).intersection({"people.view", "people.manage"}))
+    return bool(active_global_permissions(user).intersection({"people.view", "people.manage"}))
 
 
 def can_manage_people(user: User | None, settings: Settings, telegram_id: int) -> bool:
@@ -49,7 +64,7 @@ def can_manage_people(user: User | None, settings: Settings, telegram_id: int) -
         return True
     if not user or user.is_blocked or user.is_archived:
         return False
-    return "people.manage" in active_permissions(user)
+    return "people.manage" in active_global_permissions(user)
 
 
 def can_manage_permissions(
@@ -63,7 +78,7 @@ def can_manage_events(user: User | None, settings: Settings, telegram_id: int) -
         return True
     if not user or user.is_blocked or user.is_archived:
         return False
-    return "events.manage" in active_permissions(user)
+    return "events.manage" in active_global_permissions(user)
 
 
 def can_manage_tasks(user: User | None, settings: Settings, telegram_id: int) -> bool:
@@ -71,7 +86,7 @@ def can_manage_tasks(user: User | None, settings: Settings, telegram_id: int) ->
         return True
     if not user or user.is_blocked or user.is_archived:
         return False
-    return "tasks.manage" in active_permissions(user)
+    return "tasks.manage" in active_global_permissions(user)
 
 
 def can_manage_partners(user: User | None, settings: Settings, telegram_id: int) -> bool:
@@ -79,7 +94,7 @@ def can_manage_partners(user: User | None, settings: Settings, telegram_id: int)
         return True
     if not user or user.is_blocked or user.is_archived:
         return False
-    return "partners.manage" in active_permissions(user)
+    return "partners.manage" in active_global_permissions(user)
 
 
 async def active_full_admin_count(session: AsyncSession, settings: Settings) -> int:

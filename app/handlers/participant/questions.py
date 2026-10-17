@@ -80,6 +80,19 @@ async def question_category(call: CallbackQuery, state: FSMContext, user: User |
     await call.message.answer(texts.QUESTION_START)
 
 
+@router.message(Command('my_questions'))
+@router.message(F.text == '💬 Мои обращения')
+async def my_questions(message: Message, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext):
+    try:
+        actor = await support_actor(session, user.id if user else None, settings)
+    except PermissionError:
+        await message.answer('История обращений пока недоступна для вашего профиля.')
+        return
+    await state.clear()
+    await show_my_support(message, session, actor)
+
+
+
 @router.message(QuestionStates.text)
 async def question_text(message: Message, state: FSMContext) -> None:
     value = clean_text(message.text or "", 3000)
@@ -180,16 +193,6 @@ async def question_invalid_attachment(message: Message) -> None:
     await message.answer(texts.QUESTION_SEND_FILE)
 
 
-@router.message(Command('my_questions'))
-@router.message(F.text == '💬 Мои обращения')
-async def my_questions(message: Message, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext):
-    try:
-        actor = await support_actor(session, user.id if user else None, settings)
-    except PermissionError:
-        await message.answer('История обращений пока недоступна для вашего профиля.')
-        return
-    await state.clear()
-    await show_my_support(message, session, actor)
 
 
 @router.callback_query(F.data.regexp(r'^support:mine:(page:\d+|item:\d+|history:\d+:\d+|reply:\d+:\d+|file:\d+:\d+)$'))

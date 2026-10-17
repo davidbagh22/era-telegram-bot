@@ -72,7 +72,7 @@ class NotificationDeliveryResult:
 @lru_cache(maxsize=8)
 def _session_factory(database_url: str) -> async_sessionmaker:
     """Return a cached lightweight session factory for notification persistence."""
-    engine = create_async_engine(database_url, pool_pre_ping=True)
+    engine = create_async_engine(database_url, pool_pre_ping=True, hide_parameters=True)
     return async_sessionmaker(engine, expire_on_commit=False)
 
 

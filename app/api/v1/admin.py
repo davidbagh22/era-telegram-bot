@@ -87,7 +87,7 @@ from app.services.application_review_service import (
     request_more_info,
 )
 from app.services.authorization_service import (
-    active_permissions,
+    active_global_permissions,
     can_manage_events,
     can_manage_partners,
     can_manage_people,
@@ -1856,7 +1856,7 @@ async def require_points_awarder(
     # points.award grant specifically — not people.manage, which is a
     # separate, narrower grant on purpose (editing someone's role/status
     # shouldn't automatically also let you move points).
-    if is_full_admin(user, settings, user.telegram_id) or "points.award" in active_permissions(user):
+    if is_full_admin(user, settings, user.telegram_id) or "points.award" in active_global_permissions(user):
         return user
     raise HTTPException(status_code=403, detail="points_award_access_required")
 
@@ -2063,7 +2063,7 @@ async def _build_user_detail_out(
         can_manage=can_manage_people(viewer, settings, viewer.telegram_id),
         can_manage_permissions=can_manage_permissions(viewer, settings, viewer.telegram_id),
         can_award_points=is_full_admin(viewer, settings, viewer.telegram_id)
-        or "points.award" in active_permissions(viewer),
+        or "points.award" in active_global_permissions(viewer),
     )
 
 

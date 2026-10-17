@@ -26,11 +26,8 @@ CHAT_BINDINGS = {
 
 
 def _active_permissions(user: User | None) -> set[str]:
-    return {
-        grant.permission
-        for grant in (getattr(user, "permission_grants", None) or [])
-        if grant.is_active
-    }
+    from app.services.authorization_service import active_global_permissions
+    return active_global_permissions(user)
 
 
 def _can_bind(user: User | None, settings: Settings, telegram_id: int) -> bool:

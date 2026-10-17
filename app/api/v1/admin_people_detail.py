@@ -30,7 +30,7 @@ from app.database.models import (
 )
 from app.database.socials import SocialProfile
 from app.services.authorization_service import (
-    active_permissions,
+    active_global_permissions,
     can_manage_people,
     can_manage_permissions,
     can_view_people,
@@ -604,7 +604,7 @@ async def read_rich_user_detail(
         can_manage=can_manage_people(viewer, settings, viewer.telegram_id),
         can_manage_permissions=can_manage_permissions(viewer, settings, viewer.telegram_id),
         can_award_points=is_full_admin(viewer, settings, viewer.telegram_id)
-        or "points.award" in active_permissions(viewer),
+        or "points.award" in active_global_permissions(viewer),
         metrics=metrics,
         leadership=_signal_text(metrics),
         points_suggestion=point_suggestion,

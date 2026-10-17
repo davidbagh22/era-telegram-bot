@@ -33,7 +33,7 @@ def _user(
         is_blocked=blocked,
         is_archived=archived,
         permission_grants=[
-            SimpleNamespace(permission=permission, is_active=True)
+            SimpleNamespace(permission=permission, is_active=True, scope_type='global', scope_id=0)
             for permission in permissions
         ],
     )
