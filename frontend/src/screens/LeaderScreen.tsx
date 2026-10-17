@@ -9,7 +9,7 @@ type LeaderSection = "overview" | "weekly-pulse" | "open-tasks" | "activities";
 
 const SECTIONS: { value: LeaderSection; label: string; description: string }[] = [
   { value: "overview", label: "Обзор", description: "Состояние вашей зоны и главное на сейчас" },
-  { value: "weekly-pulse", label: "Weekly Pulse", description: "Факты недели, ваша оценка и следующий приоритет" },
+  { value: "weekly-pulse", label: "Пульс недели", description: "Факты недели, ваша оценка и следующий приоритет" },
   { value: "open-tasks", label: "Открытые задачи", description: "Задачи, которые требуют внимания команды" },
   { value: "activities", label: "Активности", description: "Проекты, события и работа участников" },
 ];
@@ -50,7 +50,7 @@ export function LeaderScreen() {
           Пространство лидера
         </h1>
         <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)" }}>
-          Команда, Weekly Pulse, задачи и активности — всё в одном рабочем контуре.
+          Команда, пульс недели, задачи и активности — всё в одном рабочем контуре.
         </p>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", minWidth: 0 }}>

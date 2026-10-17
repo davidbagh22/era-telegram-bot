@@ -34,6 +34,7 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
   const state = useAsync(() => fetchAdminEventAttendanceState(eventId), [eventId, refreshKey]);
   const [busy, setBusy] = useState<"start" | "complete" | "close" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
   const toast = useToast();
 
   const refresh = useCallback(() => {
@@ -97,6 +98,18 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
     }
   }, [eventId, refresh, toast]);
 
+  const copyCode = useCallback(async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCodeCopied(true);
+      successHaptic();
+      toast.show("Код мероприятия скопирован", "success");
+      window.setTimeout(() => setCodeCopied(false), 1800);
+    } catch {
+      toast.show("Не удалось скопировать код. Нажмите и удерживайте код, чтобы скопировать вручную.", "warning");
+    }
+  }, [toast]);
+
   if (state.status === "loading") {
     return <Card><span style={{ color: "var(--era-text-muted)" }}>Загружаем управление мероприятием…</span></Card>;
   }
@@ -125,13 +138,16 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
 
         {item.attendance_code && (
           <div style={{ border: "1px solid rgba(255,100,0,.24)", borderRadius: "1rem", padding: ".9rem", background: "rgba(255,100,0,.055)" }}>
-            <span style={{ display: "block", color: "var(--era-text-muted)", fontSize: ".72rem", fontWeight: 800, letterSpacing: ".06em" }}>КОД ДЛЯ ВЕДУЩИХ</span>
-            <div style={{ marginTop: ".35rem", fontSize: "clamp(1.6rem,8vw,2.25rem)", fontWeight: 950, letterSpacing: ".12em", color: "var(--era-gold-ink)" }}>
+            <span style={{ display: "block", color: "var(--era-text-muted)", fontSize: ".72rem", fontWeight: 800, letterSpacing: ".06em" }}>КОД ДЛЯ УЧАСТНИКОВ</span>
+            <div style={{ marginTop: ".35rem", fontSize: "clamp(1.6rem,8vw,2.25rem)", fontWeight: 950, letterSpacing: ".12em", color: "var(--era-gold-ink)", userSelect: "all" }}>
               {formatCode(item.attendance_code)}
             </div>
-            <p style={{ margin: ".35rem 0 0", color: "var(--era-text-muted)", fontSize: ".78rem", lineHeight: 1.4 }}>
-              Этот код видит только управление. Передайте его участникам, которые реально были на месте, в конце мероприятия.
+            <p style={{ margin: ".35rem 0 .65rem", color: "var(--era-text-muted)", fontSize: ".78rem", lineHeight: 1.4 }}>
+              Передайте код только тем, кто реально был на месте. После завершения мероприятия участник вводит его в приложении и получает баллы автоматически.
             </p>
+            <button type="button" onClick={() => void copyCode(item.attendance_code)} style={{ width: "100%", minHeight: 42, fontWeight: 850 }}>
+              {codeCopied ? "✓ Код скопирован" : "Копировать код"}
+            </button>
           </div>
         )}
 

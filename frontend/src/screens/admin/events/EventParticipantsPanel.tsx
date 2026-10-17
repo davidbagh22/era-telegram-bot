@@ -25,7 +25,7 @@ const FILTERS = [
   { value: "active", label: "Зарегистрированы" },
   { value: "attended", label: "Подтвердили" },
   { value: "cancelled", label: "Отказались" },
-  { value: "no_show", label: "No-show" },
+  { value: "no_show", label: "Не пришли" },
   { value: "waitlist", label: "Лист ожидания" },
 ] as const;
 
@@ -101,7 +101,7 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
           <Metric value={stats.registrations} label="Регистрации" />
           <Metric value={stats.attended} label="Подтвердили посещение" />
           <Metric value={stats.cancelled} label="Отказались" />
-          <Metric value={stats.noShow} label="No-show" />
+          <Metric value={stats.noShow} label="Не пришли" />
           {stats.waitlist > 0 && <Metric value={stats.waitlist} label="Лист ожидания" />}
         </div>
       )}
