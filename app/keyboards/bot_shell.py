@@ -112,7 +112,7 @@ def navigation_guide_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def contact_keyboard(back_callback: str | None = None) -> InlineKeyboardMarkup:
+def contact_keyboard(back_callback: str | None = None, *, support_threads: bool = False) -> InlineKeyboardMarkup:
     """Compact service centre: every button has one clear destination."""
     markup = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -130,6 +130,8 @@ def contact_keyboard(back_callback: str | None = None) -> InlineKeyboardMarkup:
         ]
     )
 
+    if support_threads:
+        markup.inline_keyboard.insert(1, [InlineKeyboardButton(text='💬 Мои обращения', callback_data='support:mine:page:0')])
     if back_callback:
         markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="← К вопросам", callback_data=back_callback)])
     return markup
