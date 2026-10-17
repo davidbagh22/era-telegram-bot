@@ -1,76 +1,59 @@
-# ЭРА: точный остаток мастер-ТЗ после исправления игр
+# ЭРА: точный остаток после релизов #342–#344
 
-Исходный аудит: AUDIT.md и AUDIT_CODE_INVENTORY.md. Не повторять закрытые #336/#337, не объединять старые draft PR и не удалять рабочие данные. Этот список отделяет отсутствующие возможности от функций, которым ещё нужна пользовательская приёмка.
+Реализованный код и протокол выпуска: [PR #344](https://github.com/davidbagh22/era-telegram-bot/pull/344); доказательства — FUNCTIONAL_MATRIX.md, NATIVE_ADMIN_GUIDE.md и RELEASE.md. Повторно не делать кнопки, native заявки, базовые сводки, автокоманды, composer, QR v2, редакционную очередь, campaign controls и SLA.
 
-## Уже выполнено кодом текущих этапов
+## Обязательная реальная приёмка
 
-- #337: обязательная одобренная регистрация для игр, Telegram-имена/ID, автоматические команды, одна карточка, персональные победители, одиночные игры в личном боте, сохранённый закреп, durable message_id и миграция 0061. CI: 1674 passed, 1 skipped, 1 xfailed, 58 subtests; PostgreSQL, browser, dependencies и secret scan успешны.
-- #338: отчёты и attendance v2 добавлены к существующим сервисам, прошли полный CI и опубликованы на 0a78bff13e2266308f1aa5b064d25862ab43e371. Render deploy dep-db931mcs728c73bjhe40 live; /health HTTP 200 (commit 0a78bff), /ready HTTP 200. Адресаты отчётов/QR остаются в TESTERS; ручной пользовательский smoke не выдумывается.
-- #339: короткий native composer (единый текст/фото, редактируемая карточка, полный предпросмотр, возобновляемый черновик) прошёл полный CI и опубликован под отдельным TESTERS allowlist. Render `dep-db93lqvavr4c73ctug6g` live на `50de3c7`; `/health` и `/ready` HTTP 200. Финальный PR CI: 1700 passed, 1 skipped, 1 xfailed, 58 subtests, E2E/PostgreSQL/frontend/secret scan успешны. Ручная Telegram-приёмка владельцем остаётся.
-- Управленческая сводка расширяет admin_analytics_service и существующий system-daily-summary. 09:00 Europe/Moscow + recovery, weekly/monthly, frozen период, общий NotificationDelivery, ручное обновление и агрегированный Excel. Недоступные измерения не подменяются нулями.
-- game-result:* сохраняет завершённые результаты неизменно; перезапись слота комнаты больше не уничтожает новую статистику. Старые комнаты не превращаются задним числом в выдуманную полную историю.
-- Новый attendance QR использует действующий EventAttendanceSession/confirm_attendance. Старые подписанные QR-ссылки остаются закрытыми. QR и код работают в личном боте, сохраняют существующий points_service и право регистрации на мероприятие.
-- Native admin start/complete подключён к тому же lifecycle, а не просто меняет статус Event. Уведомления staging/commit → общий durable sender; rollback не отправляет ложное уведомление, повтор после потери domain acknowledgement не дублирует доставку.
-- Старое напоминание «Приду / не приду» больше не меняет уже подтверждённое посещение, no_show или отменённую регистрацию.
+Вход исполнителя в Telegram владельца не разрешён. Нельзя создавать фиктивных production-игроков, события или посещения. Блокер снимается действиями реальных людей:
 
-Новые отчёты, attendance UX и native event composer включены сначала в TESTERS для явно настроенного администратора. Остальные участники не переводятся на непроверенный новый UX.
+- /start администратора: «Админ-сводка», «Заявки», «Открыть ЭРА»; новая сводка не перезаписывает главное меню.
+- Настоящая заявка: полная карточка, одобрение/отказ/уточнение; ожидающий chat join принимается при одобрении; старые кнопки не меняют решение.
+- Два одобренных участника: автокоманды А/Б, Telegram-имена и ID, готовность, один public message_id, личная карточка состава, персональный результат. Одиночные ответы — только в личном боте.
+- Реальное событие: текст с фото/фото отдельно, изменение даты/лимита, preview, /cancel → resume, одна публикация в прежнюю тему. После события QR/код/manual и повтор — одно посещение и одна награда.
+- Плановая сводка в 09:00 МСК: один delivery receipt на адресата/период; native кнопки и Excel. До фактической отправки не отмечать её принятой.
+- Canary кампании на согласованных получателях: pause → resume без дублей, отмена оставшихся адресатов; массовую рассылку как тест не запускать.
 
-## 1. Приёмка реальными участниками (блокирует отметку «полностью готово»)
+Пути: app/handlers/registration.py, app/handlers/admin/application_review_bot.py, app/services/application_review_service.py, app/handlers/era_game_room.py, app/handlers/leader/events_block6.py, app/services/event_attendance_service.py, app/services/admin_analytics_service.py.
 
-Пути: app/handlers/era_game_room.py, app/handlers/emergency.py, app/handlers/participant/events_stability_block8.py, app/handlers/admin/events_block6.py.
+## Категории, ответственный и переписка обращений
 
-Сценарий: два реальных одобренных участника нажимают одну кнопку дуэли, видят имена и команды А/Б, подтверждают готовность и заканчивают игру. Другой участник не отвечает за чужую одиночную игру. Незарегистрированный получает регистрацию, блокированный не меняет состояние. Проверить открытие карточки команды из личного бота. На реальном завершённом мероприятии проверить QR/код, затем повтор и закрытие окна: одно посещение и одна награда.
+Фактическая UserQuestion имеет text/file_id/status/admin_answer/answered_by и timestamps. #344 завершает первый ответ и его доставку; это не полноценный ticket thread.
 
-Приёмка требует действий реальных людей. Вход в Telegram владельца не разрешён. Фиктивных production игроков, мероприятий и посещений для этой проверки не создавать. После успешного canary расширить FEATURE_ATTENDANCE_QR и FEATURE_MANAGEMENT_REPORTS; до этого не объявлять общий rollout завершённым.
+Пути: app/database/models.py::UserQuestion, app/handlers/admin/support_bot.py::{show_inbox,support_item,support_answer}, app/services/scheduler_service.py::{deliver_support_answers,send_review_sla_reminders}, app/handlers/participant/questions.py::{question_start,_save_question}, app/services/support_service.py::{create_support_question,deliver_support_intake_notices}, app/services/admin_dashboard_service.py.
 
-## 2. Быстрая регистрация и дополнение профиля
+Необходимые изменения: nullable category/assigned_to и отдельная история сообщений либо расширение действующей модели истории после анализа; назначение только разрешённому сотруднику; личный список/карточка участника с ответами и follow-up; audit и права на каждое действие; SLA по последнему ожидающему ответа сообщению, остановка после решения, эскалация ответственному и уполномоченному резерву. Анонимность описать точно; не обещать скрытие от владельца сервиса.
 
-Пути: app/handlers/registration.py, app/states/registration.py, app/keyboards/registration.py, app/repositories/users.py, app/database/models.py, app/database/participation_models.py.
+Приёмка: два администратора не перезаписывают ответ; два одинаковых webhook не создают две реплики; одинаковый текст в разных раундах переписки доставляется отдельно; чужой участник не читает ticket; повтор после рестарта не дублируется. Любая схема — additive migration, isolated upgrade/restore и безопасный rollback без удаления новых сообщений.
 
-Сохранить действующий 17-полевой поток. Проверить фактические обязательные поля и место создания User; минимальный режим должен получить согласие, идентичность и необходимые контакты, сохранить черновик, отправить заявку существующим механизмом и дать дополнить профиль. Не выдавать статус approved автоматически. Исключить повторный User, заявку и уведомление; сохранить причину отказа и повторную подачу.
+## Reviewer проектов и полный маршрут задач
 
-Приёмка: прерывание/возобновление, duplicate update, отказ в согласии, pending/rejected/needs_info/approved, несовершеннолетний без публикации анкетных данных, последующее дополнение всех 17 полей. Актуальность правовых текстов требует отдельной проверки применимого права; новых неподтверждённых юридических обещаний в UI не писать.
+Пути: app/database/models.py::Project, app/services/project_service.py, project_* services, app/handlers/admin/projects_block5_list.py, projects_block5_decision.py, app/services/task_service.py, app/services/scheduler_service.py.
 
-## 3. Создание мероприятий именно в личном боте
+Установить фактического назначенного согласующего через действующие roles/grants; проверить quick и 17-step forms, черновик, доработку, history, reminders и escalations. Существующие initial-review 72/144ч и venue reminder не дублировать. Для задач пройти assign/open-response/deadline/comments/complete/review и параллельное подтверждение с одним award через points_service. Внешний AI при ошибке оставляет ручной путь и сохранённые данные.
 
-Пути: app/handlers/leader/events_block6.py, app/states/event.py, app/api/v1/admin_event_create.py, app/services/event_publication_service.py, frontend/src/screens/admin/events/.
+Приёмка: автор/исполнитель/проверяющий проходят полный цикл, scoped права проверены сервером, stale decision отклоняется, restart не повторяет reminder/reward. Новые поля reviewer — только совместимой миграцией.
 
-#339 уже развернул отдельный короткий native путь: одно поле текста с фото в подписи либо фото отдельно, однозначно распознанные данные, редактирование карточки, полный предпросмотр перед подтверждением, сохранение и возобновление черновика. Используются существующие Event/EventExperience и create/save/upload/publish API. По умолчанию флаг OFF; Blueprint TESTERS разрешает выделенного администратора. #336 и расширенный мастер сохранены.
+## Полная delegated access matrix
 
-Реальные тесты CI покрывают parser, числа, право доступа, draft reuse/редактирование, длинный HTML, существующий outbox и повтор публикации. Владелец должен проверить в боте текст с фото/фото отдельно, правку даты и лимита, возврат из предпросмотра, /cancel→resume и единственную публикацию в тему 26205. До этого расширять rollout нельзя.
+Пути: app/services/authorization_service.py, leadership_permission_service.py, app/middlewares/admin_bot_access.py, app/handlers/admin/__init__.py, docs/ROLE_PERMISSION_MATRIX.md.
 
-## 4. Литература и дополнительные рубрики
+Сопоставить суперадминистратора/админа/руководителя/редакторов/модераторов существующим permission grants и scope. Не расширять корневой admin router одним общим «любой grant»: это откроет legacy handlers. Для каждого делегированного действия нужны owner handler, private-chat filter, серверный permission/scope check и отрицательные тесты. Не снимать чужие ограничения. Старые #250/#253/#282 с permission writes не объединять.
 
-Пути: app/services/book_club_service.py, app/services/literature_launch_service.py, app/services/literature_analytics_service.py, app/services/general_topics_service.py, app/services/daily_public_content_service.py.
+## Редакционная программа и дополнительные рубрики
 
-Существующий цикл «48 законов» не равен всей новой литературной программе из мастер-ТЗ. Нужны проверенные редактором материалы русских/современных/армянских авторов, очередь, редактирование, manual publish, пауза, история и контролируемый переход. Использовать уже существующую очередь/ledger. Не заменять его отдельным sender. Для публикации новых материалов отсутствует человеческое редакторское утверждение; автоматически публиковать непроверенный ИИ-текст нельзя.
+Пути: app/services/book_club_service.py::{save_editorial_item,approve_editorial_item,publish_editorial_item,run_editorial_queue}, app/handlers/admin/literature_editor.py, app/services/daily_public_content_service.py.
 
-Приёмка: одна согласованная публикация по расписанию, рестарт без дубля, пауза, внеплановый выпуск, редактирование до отправки, безопасный пропуск недоступной темы. Дополнительные 2–3 рубрики включать только после выбора и проверки материалов, не все сразу.
+Инфраструктура готова; очередь выключена. Требуются утверждённые человеком материалы русских/современных/армянских авторов и календарь. Сначала 2–3 дополнительные рубрики по существующей инфраструктуре, с возможностью выключения/подписки и контролем шумности. Проверенные тексты утверждать через native editor. Не подменять утверждение автоматически сгенерированным контентом и не включать все рубрики.
 
-## 5. Кампании и единая доставка
+Приёмка: реальный editor-approved выпуск в прежнюю тему, restart без дубля, opt-in DM, pause/resume, отсутствие автоматики для drafts. При uncertain — сверка существующего сообщения, без слепой повторной отправки.
 
-Пути: app/services/notification_service.py, app/services/admin_broadcast_service.py, app/services/event_custom_reminder_service.py и существующие broadcast API/handlers.
+## Политика данных, independent backup и Phase 8
 
-Проверить end-to-end сегменты, паузу/отмену, недоступных пользователей, подписки на необязательные темы, перезапуск, RetryAfter, частичную доставку и uncertain. Не подменять проверку наличием service-функции. Разобрать все оставшиеся safe_send в запланированных задачах; новые recurring deliveries должны иметь выпуск+получатель в ключе. Не запускать массовую DM-кампанию в качестве теста.
+- app/services/consent_service.py, docs/DATA_INVENTORY.md: владелец утверждает применимый текст, version и процедуру для несовершеннолетних. Техническое согласие не является юридической экспертизой. Проверить выгрузку/запрос удаления, не удаляя ledger/историю без установленного основания.
+- .github/workflows/database-backup.yml, scripts/verify_database_restore.sh, backup service: encrypted GitHub fallback и isolated restore работают. Подключить независимое S3-совместимое хранилище через штатные secrets и проверить restore именно оттуда. Секреты в чат не передавать.
+- Сертификаты/portfolio PDF, Calendar, сезоны, армянская/английская локализация: сначала принять базовые процессы, затем проверить реальные существующие реализации. Наличие кода не считать готовностью.
+- Persistent menu: после bounded verification контролировать диагностический reason в Render. Не игнорировать origin/type mismatch и не ослаблять Telegram initData. Ни новый бот, ни новая Mini App не создавались.
 
-Приёмка: интеграционный сценарий на изолированной БД/Mock Telegram плюс canary с согласованными реальными получателями. 429 увеличивает паузу, unknown outcome не переотправляется, редактирование кампании не нарушает уже доставленные части.
+## Техническое ограничение исполнителя
 
-## 6. Проекты, задачи и обращения
-
-Пути: app/services/project_service.py и project_* services, app/services/task_service.py, app/handlers/participant/growth.py, app/handlers/admin/projects_*, app/database/models.py (UserQuestion), соответствующие leader/admin handlers.
-
-Проверить действующие quick/extended входы, drafts, reviewer, историю решений, 72ч reminder и эскалацию; не дублировать уже выпущенные исправления сохранения form_data/format. Для задач проверить назначение, отклик, deadline, комментарии, подтверждение и reward_once. Для обращений проверить категории/ответственного/переписку, SLA 24ч и escalation на реальных статусах модели. Аналитическая строка «старше 24ч» сама по себе не реализует эскалацию.
-
-Приёмка: полный маршрут автора/исполнителя и проверяющего; отрицательные permissions; два одновременных подтверждения дают одну награду; reminder после рестарта отправляется один раз. Недоступность ИИ оставляет ручной путь и данные черновика.
-
-## 7. Права, политика модерации и дальнейшие функции
-
-Пути: app/services/authorization_service.py, app/services/leadership_permission_service.py, app/handlers/admin/panel.py, app/services/chat_access_service.py, app/services/chat_permissions_service.py, docs/ROLE_PERMISSION_MATRIX.md.
-
-Завершить матрицу всех действий по действующим permission grants, включая scope; роли из ТЗ сопоставлять существующим правам, не вводить параллельный ACL. #250/#253/#282 не объединять: в них есть массовые кампании и чужие permission writes. Обычная активность не должна вызывать санкции, bot не отменяет решения модератора.
-
-Фаза 8 (сезоны, сертификаты/портфолио PDF, Google Calendar, локализации) требует отдельного функционального smoke и доказательств. Наличие кода не считать production-приёмкой. Новую Mini App активацию не делать до проверки текущего отключения и Telegram initData.
-
-## Итоговый приёмочный протокол
-
-Для каждого следующего этапа: точный base/main SHA → проверенная копия и isolated restore → целевые тесты → полный CI финального head → merge → Render live на ожидаемом SHA → /health и /ready → DB migration/receipts/scheduler → canary → расширение. Технические ошибки доставлять уполномоченным администраторам, не участникам общего чата. RELEASE.md и матрицу обновлять фактами, не обещаниями.
+Во время этого этапа локальный exec-server потерял соединение. Все подготовленные изменения сохранены в GitHub; выпуск проверен GitHub Actions и Render. Полный первоначальный local suite: 1720 passed. Прерванный локальный прогон второго пакета не засчитывается; для него доказательство — финальный CI точного head. Перед дальнейшими широкими изменениями восстановить рабочую checkout/исполнитель и синхронизировать main, а не продолжать старую локальную ветку.

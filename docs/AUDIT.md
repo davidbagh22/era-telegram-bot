@@ -139,3 +139,17 @@ Production #339: SHA `50de3c7a39d0a90ad91ae98eff1bdccfde96b468`; Bot checks и T
 Из наблюдений после deploy: повторяется startup error `Chat menu button mismatch` (16.10 14:13:50 и 14:56:35 UTC): Bot API возвращает тип `web_app`, но read-back проверка не подтверждает актуальную кнопку. Это не изменялось PR #338/#339; проверить Mini App URL/read-back отдельно, не включать Mini App шире. Последний heartbeat healthy. Резервная копия 16.10 09:26:44 UTC и изолированное восстановление прошли до серии релизов, свежая копия до #339 не запускалась; в #339 новых миграций нет.
 
 Путь `Codex could not read the local image ... No such file` относился к временному upload path предыдущего сеанса; вложения этого диалога доступны, сообщение само по себе не дефект бота.
+
+## 17.10.2026: native operations и надёжность очередей
+
+Эта актуализация уточняет исходный срез выше; полный code inventory и counts не пересоздавались. После #342 доступны direct admin buttons/заявки/сводки и обновлённые игры. #343 исправляет fresh backup/rerun. #344 добавляет reviewed editorial queue, native support/atomic intake, SLA и campaign controls. Соответствующие статусы и остаток: FUNCTIONAL_MATRIX.md, MASTER_REMAINDER.md, IMPLEMENTATION_REPORT_2026_10_17.md.
+
+Точки входа: app/handlers/admin/{commands_ready,dashboard_block_a,application_review_bot,literature_editor,support_bot,campaign_control}.py; participant/questions.py. Сервисы: admin_analytics_service, application_review_service, support_service, book_club_service, admin_broadcast_service, scheduler_service. Общий transport: bot.create_bot → TelegramDeliveryMiddleware → существующий safe_send_once/NotificationDelivery.
+
+Новых таблиц/миграций нет; production schema перед этим выпуском — 0061_notification_message. Source/delivery markers находятся в существующем AppSetting. Pending intents удаляются после terminal receipt, domain questions/history и source keys сохраняются. Дополнительные scheduler jobs: application-notices, support-answer-delivery, review-sla-reminders, book-club-editorial-recovery. Отчёты используют 09:00 Europe/Moscow и существующий recovery.
+
+Ожидаемые значения Blueprint: management reports ALL; quick registration/native composer/QR/SLA TESTERS; editorial queue disabled в БД до редакторского включения. Значения по умолчанию новых Settings flags OFF. Фактические runtime flags проверяются по whitelist startup log; итоговый факт, CI/runtime SHA и live фиксируются в описании PR #344 после деплоя, без чтения секретов.
+
+Обнаруженный P1 выпуска: MANAGEMENT_REPORT_RECIPIENT_IDS="" вызывал Pydantic SettingsError и update_failed. Значение исправлено на "[]" в Render и Blueprint; добавлен env regression test. Исходный сервис после исправления подтвердил live/health, backup restored 17.10 04:08:35 UTC. Другой P1: исходное создание обращения отправляло Telegram до commit; заменено атомарным intake/source key + durable notice, с серверной повторной проверкой прав.
+
+#327 закрыт без merge; #334 объединён и сохраняет защиту модераторских решений. Новые native approvals не вызывают unban/restrict. Полная delegated access проводка не объявляется готовой. Реальных игроков/мероприятий/посещений для проверки не создавали; Telegram владельца не использовали.
