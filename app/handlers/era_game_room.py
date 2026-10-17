@@ -65,27 +65,13 @@ def menu_markup(*, public: bool = False, bot_username: str = "ERA_1bot") -> Inli
         [InlineKeyboardButton(text="📚 Правила", callback_data="era_game:rules")],
     ])
     if public:
-        for row in keyboard.inline_keyboard:
-            button = row[0]
-            data = button.callback_data
-            if data == "era_game:solo" or data.startswith("era_game:play:"):
-                mode = "solo" if data == "era_game:solo" else data.split(":")[-1]
-                button.callback_data = None
-                button.url = f"https://t.me/{bot_username}?start=game_{mode}"
-        keyboard.inline_keyboard.insert(0, [InlineKeyboardButton(
-            text="👤 Мои игры · регистрация", url=f"https://t.me/{bot_username}?start=games"
-        )])
-    # Keep the existing eleven agreed formats, with compact pairs of solo buttons.
-    rows = keyboard.inline_keyboard
-    compact = []
-    for row in rows:
-        if compact and len(compact[-1]) == 1 and row[0].url and compact[-1][0].url and "game_" in row[0].url and "game_" in compact[-1][0].url:
-            compact[-1].extend(row)
-        else:
-            compact.append(row)
-    keyboard.inline_keyboard = compact
-    if not public:
-        keyboard.inline_keyboard.append([InlineKeyboardButton(text="← Досуг", callback_data="leisure:home")])
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎮 Одиночные игры", url=f"https://t.me/{bot_username}?start=games")],
+            [InlineKeyboardButton(text="🤝 Командный квиз", callback_data="era_game:team")],
+            [InlineKeyboardButton(text="🏆 Командная дуэль", callback_data="era_game:duel")],
+            [InlineKeyboardButton(text="📖 Правила", callback_data="era_game:rules")],
+        ])
+    keyboard.inline_keyboard.append([InlineKeyboardButton(text="← Досуг", callback_data="leisure:home")])
     return keyboard
 
 
@@ -546,11 +532,6 @@ def _room_view(room: dict) -> tuple[str, InlineKeyboardMarkup | None]:
         summary = room.get("result_text") or result_summary(room)
         rewards = room.get("rewards", {})
         reward_line = ""
-        if not room.get("mode"):
-            reward_line = "\n\n<b>Баллы ЭРА</b>\n" + "\n".join(
-                f"{player_label(room, uid)}: +{rewards.get(str(uid), 0)}"
-                for uid in room.get("participants", [])
-            )
         markup = None
         if room.get('mode') or room.get('kind') == 'solo':
             callback = f"era_game:play:{room['mode']}" if room.get('mode') else 'era_game:solo'
@@ -732,7 +713,7 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
         title = "⚡ Квизы и знания" if view == "quiz" else "🧠 Слова и логика"
         text = f"<b>{title}</b>\n\nВыберите игру. Ответы и результат останутся здесь, в личном чате."
         buttons = [row for row in menu_markup().inline_keyboard if row[0].callback_data in modes]
-    elif view == "history":
+    elif view in {"history", "history_team", "history_duel"}:
         text = "🎮 <b>Мои результаты</b>"
         if not recent:
             text += "\n\nЗдесь появятся результаты ваших игр."
@@ -741,11 +722,16 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
             score = room.get("scores", {}).get(str(uid), 0)
             text += f"\n\n{room_heading(room)}\n{status} · Результат: {score} очк."
         if thread_id:
+            team_rooms = []
             for kind in ("team", "duel"):
-                room = _data(await session.scalar(select(AppSetting).where(
+                candidate = _data(await session.scalar(select(AppSetting).where(
                     AppSetting.key == _key(settings.general_chat_id, thread_id, kind))))
-                if uid not in room.get("participants", []):
-                    continue
+                if uid in candidate.get("participants", []):
+                    team_rooms.append(candidate)
+            team_rooms.sort(key=lambda item: item.get("created_at", ""), reverse=True)
+            selected_kind = view.removeprefix("history_") if view != "history" else None
+            selected = next((item for item in team_rooms if selected_kind is None or item.get("kind") == selected_kind), None)
+            for room in ([selected] if selected else []):
                 await _hydrate_player_names(session, room, message.bot)
                 status = {"playing": "Игра идёт", "finished": "Игра завершена", "waiting": "Набор игроков", "ready_check": "Проверка готовности", "expired": "Время истекло", "cancelled": "Комната закрыта"}.get(room.get("status"), "Игра закрыта")
                 text += "\n\n" + room_heading(room) + "\n" + status + "\n\n" + roster(room, result=room.get("status") not in {"playing", "waiting", "ready_check"})
@@ -753,6 +739,10 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
                     text += "\n\n" + result_summary(room)
                 if room.get("message_id"):
                     buttons.append([InlineKeyboardButton(text="👥 Карточка команды", url=_topic_link(settings, thread_id, room["message_id"]))])
+            for other in team_rooms:
+                if other is not selected:
+                    label = "🤝 Результаты квиза" if other.get("kind") == "team" else "🏆 Результаты дуэли"
+                    buttons.append([InlineKeyboardButton(text=label, callback_data=f"era_game:catalog:history_{other['kind']}")])
     else:
         text = "🎮 <b>Игры ЭРА</b>\n\nНебольшая пауза с пользой: выберите игру для себя или присоединитесь к команде."
         if active:
@@ -791,17 +781,18 @@ async def _hydrate_player_names(session: AsyncSession, room: dict, bot) -> None:
     if not missing:
         return
     usernames = dict((await session.execute(select(User.telegram_id, User.username).where(User.telegram_id.in_(missing)))).all())
-    for uid in missing:
+    async def resolve(uid):
         if usernames.get(uid):
             players[str(uid)] = "@" + usernames[uid].lstrip("@")
-            continue
+            return
         try:
-            profile = await bot.get_chat(uid)
-        except TelegramAPIError:
-            continue
+            profile = await asyncio.wait_for(bot.get_chat(uid), timeout=5)
+        except (TelegramAPIError, TimeoutError):
+            return
         first, last = getattr(profile, "first_name", None), getattr(profile, "last_name", None)
         if isinstance(first, str):
             players[str(uid)] = " ".join(part for part in (first, last) if isinstance(part, str)).strip()[:60]
+    await asyncio.gather(*(resolve(uid) for uid in missing))
 
 
 def _topic_link(settings: Settings, thread_id: int, message_id: int | None = None) -> str:

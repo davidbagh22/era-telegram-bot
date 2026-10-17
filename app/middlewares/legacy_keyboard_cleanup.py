@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -8,7 +9,7 @@ from aiogram import BaseMiddleware
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import ReplyKeyboardRemove, TelegramObject
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.database.models import AppSetting
 from app.utils.ux_texts import LEGACY_KEYBOARD_CLEARED
@@ -57,6 +58,9 @@ class LegacyKeyboardCleanupMiddleware(BaseMiddleware):
             version = {"version": "2026-10-18-clean", "admin": bool(admin)}
             saved_menu = None
             if approved and session is not None:
+                if session.bind.dialect.name == "postgresql":
+                    lock_id = int.from_bytes(hashlib.blake2b(menu_key.encode(), digest_size=8).digest(), "big", signed=True)
+                    await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_id})
                 saved_menu = await session.scalar(select(AppSetting).where(AppSetting.key == menu_key))
                 if saved_menu is not None and saved_menu.value == version:
                     return await handler(event, data)

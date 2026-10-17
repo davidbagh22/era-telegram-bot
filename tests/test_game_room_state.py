@@ -872,3 +872,15 @@ class LegacyGameIdentityTests(GameFixture, IsolatedAsyncioTestCase):
         assert len(modes) == 9
         assert self.send.await_count == 0 and edit.await_count == 2
         assert all(call.kwargs.get('create_if_missing') is False for call in topic.await_args_list)
+
+
+def test_long_escaped_team_names_fit_telegram_card_without_repeating_the_reward_roster():
+    from app.handlers.era_game_room import _room_view
+    room = {'kind': 'team', 'status': 'finished', 'participants': list(range(1000000000, 1000000008)),
+            'players': {str(uid): '&' * 60 for uid in range(1000000000, 1000000008)},
+            'scores': {str(uid): 5 for uid in range(1000000000, 1000000008)},
+            'rewards': {str(uid): 3 for uid in range(1000000000, 1000000008)}}
+    text, _ = _room_view(room)
+    assert len(text) < 4096 and text.count('🏅 ') == 8
+    assert all(text.count(f'<code>{uid}</code>') == 1 for uid in room['participants'])
+    assert text.count('ЭРА +3') == 8

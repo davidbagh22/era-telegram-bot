@@ -21,7 +21,8 @@ def remember_player(room: dict, telegram_user) -> None:
 
 
 def player_label(room: dict, uid: int) -> str:
-    name = escape(room.get("players", {}).get(str(uid)) or "Профиль Telegram")
+    raw = room.get("players", {}).get(str(uid)) or "Профиль Telegram"
+    name = escape(raw[:30] + ("…" if len(raw) > 30 else ""))
     return f'<a href="tg://user?id={int(uid)}">{name}</a> · <code>{int(uid)}</code>'
 
 
@@ -39,11 +40,14 @@ def roster(room: dict, *, result: bool = False) -> str:
     def member(uid):
         if result:
             suffix = f" — {scores.get(str(uid), 0)} очк."
+            if "rewards" in room:
+                suffix += f" · ЭРА +{room['rewards'].get(str(uid), 0)}"
         elif room.get("status") == "playing":
             suffix = " · ✅ ответ принят" if str(uid) in answers else " · ⏳ отвечает"
         else:
             suffix = " · ✅ готов" if uid in ready else " · ⏳ не готов"
-        return player_label(room, uid) + suffix
+        leader = result and len(participants) > 1 and room.get("kind") != "duel" and scores.get(str(uid), 0) == max(scores.values(), default=0)
+        return ("🏅 " if leader else "") + player_label(room, uid) + suffix
 
     if room.get("kind") == "duel":
         sections = []
@@ -80,4 +84,4 @@ def result_summary(room: dict) -> str:
     best = max(scores.values(), default=0)
     winners = [player_label(room, uid) for uid in players if scores.get(str(uid), 0) == best]
     title = "🏆 Лучший результат" if len(winners) == 1 else "🤝 Лучший результат разделили"
-    return f"{title}:\n" + "\n".join(winners)
+    return f"{title}: {best} очк.\nУчастники отмечены 🏅 в составе команды."
