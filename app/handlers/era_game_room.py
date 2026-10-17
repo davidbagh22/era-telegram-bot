@@ -222,6 +222,7 @@ async def _start_format(query: CallbackQuery, settings: Settings, session: Async
     if current.get("status") == "playing" and datetime.fromisoformat(current["expires_at"]) > now:
         await query.answer("Игра уже открыта. Нажми «Продолжить игру».", show_alert=True)
         return
+    await _store_game_result(session, current)
     item = await _reserve_format_item(session, mode=mode, user_id=uid, now=now)
     if item is None:
         await session.commit()
@@ -483,6 +484,7 @@ async def _new_room(session: AsyncSession, *, chat_id: int, thread_id: int,
     row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update())
     current = _data(row)
     now = datetime.now(timezone.utc)
+    await _store_game_result(session, current)
     if current.get("status") in {"waiting", "ready_check", "playing"}:
         if current.get("expires_at") and datetime.fromisoformat(current["expires_at"]) > now:
             return None
@@ -648,13 +650,17 @@ async def _publish_room(session: AsyncSession, key: str, message: Message) -> bo
 
 async def _store_game_result(session: AsyncSession, room: dict) -> None:
     token = room.get('session_token') or room.get('token')
-    if room.get('status') != 'finished' or not token or not room.get('finished_at'):
+    if room.get('status') != 'finished' or not token:
         return
-    key = f'game-result:{token}'
-    await _lock(session, key)
-    if await session.scalar(select(AppSetting.key).where(AppSetting.key == key)) is not None:
+    dated_key = f'game-result:{token}'
+    undated_key = f'game-result-undated:{token}'
+    await _lock(session, dated_key)
+    if await session.scalar(select(AppSetting.key).where(AppSetting.key.in_([dated_key, undated_key]))) is not None:
         return
-    await _save(session, key, {'finished_at': room['finished_at'], 'participants': room['participants'],
+    # Older rooms may have no completion timestamp. Preserve the result without
+    # inventing one; keep it outside the dated report prefix for code rollback.
+    key = dated_key if room.get('finished_at') else undated_key
+    await _save(session, key, {'finished_at': room.get('finished_at'), 'created_at': room.get('created_at'), 'participants': room['participants'],
                               'mode': room.get('mode', room.get('kind')), 'scores': room.get('scores', {}),
                               'rewards': room.get('rewards', {}), 'players': room.get('players', {}),
                               'kind': room.get('kind'), 'teams': room.get('teams', {}),
@@ -702,22 +708,22 @@ async def _recent_game_results(session: AsyncSession, uid: int, *, team: bool = 
         document = case((func.jsonb_typeof(raw) == "string", cast(raw.op("#>>")(sql_text("'{}'::text[]")), JSONB)), else_=raw)
         participant = cast(func.jsonb_extract_path(document, "participants"), JSONB).contains([uid])
         mode = func.coalesce(document["kind"].astext, document["mode"].astext)
-        finished = document["finished_at"].astext
+        finished = func.coalesce(document["finished_at"].astext, document["created_at"].astext)
     else:
         document = func.json_extract(AppSetting.value, "$")
         members = func.json_each(document, "$.participants").table_valued("value")
         participant = select(1).select_from(members).where(members.c.value == uid).exists()
         mode = func.coalesce(func.json_extract(document, "$.kind"), func.json_extract(document, "$.mode"))
-        finished = func.json_extract(document, "$.finished_at")
+        finished = func.coalesce(func.json_extract(document, "$.finished_at"), func.json_extract(document, "$.created_at"))
     rows = (await session.scalars(select(AppSetting).where(
-        AppSetting.key.like("game-result:%"), participant,
+        AppSetting.key.like("game-result:%") | AppSetting.key.like("game-result-undated:%"), participant,
         mode.in_(["team", "duel"]) if team else mode.not_in(["team", "duel"]),
-    ).order_by(finished.desc(), AppSetting.id.desc()).limit(3))).all()
+    ).order_by(finished.desc().nulls_last(), AppSetting.id.desc()).limit(3))).all()
     results = []
     for row in rows:
         item = dict(_data(row))
         item["status"] = "finished"
-        item["session_token"] = row.key.removeprefix("game-result:")
+        item["session_token"] = row.key.split(":", 1)[1]
         if not item.get("kind") and item.get("mode") in {"solo", "team", "duel"}:
             item["kind"] = item["mode"]
         results.append(item)
@@ -780,7 +786,6 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
         for room in sorted(legacy_finished, key=lambda item: item.get("session_token", item.get("token", ""))):
             await _store_game_result(session, room)
         recent = await _recent_game_results(session, uid)
-        recent.extend(room for room in legacy_finished if not room.get("finished_at"))
         if not recent:
             text += "\n\nЗдесь появятся результаты ваших игр."
         for room in recent[:3]:
@@ -809,7 +814,7 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
                         existing.update(candidate)
                     else:
                         team_rooms.insert(0, candidate)
-            team_rooms.sort(key=lambda item: item.get("finished_at", item.get("created_at", "")), reverse=True)
+            team_rooms.sort(key=lambda item: item.get("finished_at") or item.get("created_at") or "", reverse=True)
             selected_token = view.removeprefix("history_round_") if view.startswith("history_round_") else None
             selected_kind = view.removeprefix("history_") if view in {"history_team", "history_duel"} else None
             selected = next((item for item in team_rooms if (selected_token is None or item.get("session_token") == selected_token)
@@ -829,7 +834,7 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
             for other in team_rooms:
                 if other is not selected and other.get("session_token"):
                     label = "🤝 Квиз" if other.get("kind") == "team" else "🏆 Дуэль"
-                    at = other.get("finished_at", other.get("created_at"))
+                    at = other.get("finished_at") or other.get("created_at")
                     if at:
                         label += " · " + datetime.fromisoformat(at).astimezone(ZoneInfo("Europe/Moscow")).strftime("%d.%m, %H:%M МСК")
                     buttons.append([InlineKeyboardButton(text=label, callback_data=f"era_game:catalog:history_round_{other['session_token']}")])
