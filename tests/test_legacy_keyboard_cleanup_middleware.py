@@ -155,3 +155,26 @@ class LegacyKeyboardCleanupMiddlewareTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CurrentPersistentKeyboardMigrationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_approved_admin_receives_statistics_keyboard_instead_of_remove(self):
+        from aiogram.types import ReplyKeyboardMarkup
+        from app.config import Settings
+        from app.utils.constants import ApplicationStatus, Role
+        user = SimpleNamespace(telegram_id=900001, legacy_reply_keyboard_removed=False,
+                               application_status=ApplicationStatus.APPROVED, role=Role.ADMIN,
+                               is_blocked=False, is_archived=False)
+        bot = FakeBot()
+        handler = AsyncMock()
+        settings = Settings(bot_token="1234567890:test-token")
+        data = {"user": user, "event_chat": SimpleNamespace(id=42, type="private"), "bot": bot, "settings": settings}
+        middleware = LegacyKeyboardCleanupMiddleware()
+        await middleware(handler, object(), data)
+        await middleware(handler, object(), data)
+        assert len(bot.sent) == 1
+        markup = bot.sent[0][2]["reply_markup"]
+        assert isinstance(markup, ReplyKeyboardMarkup)
+        assert markup.is_persistent and markup.one_time_keyboard is False
+        assert "📊 Статистика" in {button.text for row in markup.keyboard for button in row}
+        assert user.legacy_reply_keyboard_removed

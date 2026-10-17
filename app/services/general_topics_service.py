@@ -15,7 +15,7 @@ TOPICS = {"announcements": "Мероприятия", "notifications": "Опов�
 SETUP_TOPICS = ("announcements", "notifications")  # Existing bootstrapping contract
 
 
-async def ensure_topic(bot, settings, key: str, *, session_factory=None) -> int | None:
+async def ensure_topic(bot, settings, key: str, *, session_factory=None, create_if_missing: bool = True) -> int | None:
     """Never fall back to the main thread when forum setup is unavailable.
 
     Separate transaction: creating a topic must not commit a caller's draft.
@@ -37,6 +37,8 @@ async def ensure_topic(bot, settings, key: str, *, session_factory=None) -> int 
             data = json.loads(row.value) if row else {}
             if data.get("thread_id"):
                 return int(data["thread_id"])
+            if not create_if_missing:
+                return None
             if key == "announcements":
                 logger.warning("Existing events topic is not configured; refusing to create a replacement")
                 return None

@@ -107,6 +107,20 @@ def _callback_filter_records(path: Path) -> list[tuple[str, str, str]]:
                 records.append(("exact", value, signature))
             for value in re.findall(r"F\.data\.startswith\(['\"]([^'\"]+)['\"]\)", signature):
                 records.append(("prefix", value, signature))
+            # MagicFilter regexp handlers are reachable too. Read the actual
+            # decorator call, not a prefix guessed from the regex text.
+            for call in ast.walk(decorator):
+                if (
+                    isinstance(call, ast.Call)
+                    and isinstance(call.func, ast.Attribute)
+                    and call.func.attr == "regexp"
+                    and ast.unparse(call.func.value) == "F.data"
+                    and len(call.args) == 1
+                    and not call.keywords
+                    and isinstance(call.args[0], ast.Constant)
+                    and isinstance(call.args[0].value, str)
+                ):
+                    records.append(("regex", call.args[0].value, signature))
             if "F.data.in_(" in signature:
                 literal_values = re.findall(r"['\"]([^'\"]+)['\"]", signature)
                 for value in literal_values:
@@ -116,6 +130,15 @@ def _callback_filter_records(path: Path) -> list[tuple[str, str, str]]:
                     for value in sorted(constants.get(match.group(1), set())):
                         records.append(("exact", value, signature))
     return records
+
+
+def _callback_value_is_handled(value, exact, prefixes, regexes) -> bool:
+    """Use MagicFilter's default regexp match semantics, without widening it."""
+    return (
+        value in exact
+        or any(value.startswith(prefix) for prefix in prefixes)
+        or any(pattern.match(value) is not None for pattern in regexes)
+    )
 
 
 files = sorted(APP.rglob("*.py"))
@@ -182,6 +205,7 @@ add_check("Duplicate active callback handlers", not duplicates, duplicates)
 
 exact_handlers = {value for kind, value, _, _ in handler_records if kind == "exact"}
 prefixes = {value for kind, value, _, _ in handler_records if kind == "prefix"}
+regexes = tuple(re.compile(value) for kind, value, _, _ in handler_records if kind == "regex")
 
 # Buttons embedded in active handlers and shared keyboard modules are reachable
 # UI. Buttons sitting only in unmounted historical handlers are not.
@@ -194,7 +218,7 @@ for path, text in button_sources.items():
     for value in button_pattern.findall(text):
         if value in {"noop", "ignore"}:
             continue
-        if value in exact_handlers or any(value.startswith(prefix) for prefix in prefixes):
+        if _callback_value_is_handled(value, exact_handlers, prefixes, regexes):
             continue
         missing_handlers.append(f"{path.relative_to(ROOT)} -> {value}")
 add_check(

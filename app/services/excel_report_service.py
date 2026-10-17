@@ -325,7 +325,13 @@ def management_summary_workbook(metrics: dict) -> bytes:
         'tasks_open': 'Открытых задач', 'tasks_overdue': 'Просроченных задач', 'questions': 'Ожидающих обращений',
         'questions_overdue': 'Обращения дольше 24 ч', 'game_players': 'Игроков (новый учёт)', 'games_completed': 'Завершено игр (новый учёт)',
         'delivered': 'Доставлено автоуведомлений', 'delivery_errors': 'Ошибок автоуведомлений',
-        'health': 'Диагностика', 'scheduler': 'Планировщик', 'backup': 'Резервное копирование',
+        'health': 'Диагностика', 'health_score': 'Оценка диагностики', 'health_checked_at': 'Проверка системы UTC',
+        'scheduler': 'Планировщик', 'scheduler_checked_at': 'Последний heartbeat UTC',
+        'backup': 'Резервное копирование', 'backup_completed_at': 'Копия создана UTC',
+        'backup_verified_at': 'Восстановление проверено UTC', 'backup_last_status': 'Последняя попытка копирования',
+        'backup_last_attempt_at': 'Время последней попытки UTC',
+        'literature_subscribers': 'Подписчики литературы', 'literature_active': 'Активные читатели всего',
+        'literature_reads_total': 'Отметки чтения всего', 'literature_tasks_total': 'Литературные задания всего',
         'as_of': 'Срез UTC', 'period_days': 'Дней в отчётном периоде', 'game_coverage_since': 'Начало учёта игр UTC',
     }
     workbook = Workbook()

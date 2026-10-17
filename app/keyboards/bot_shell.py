@@ -81,7 +81,7 @@ def main_reply_keyboard(miniapp_url: str = "", *, admin: bool = False) -> ReplyK
         ])
     if admin:
         rows.append([
-            KeyboardButton(text="📊 Админ-сводка"),
+            KeyboardButton(text="📊 Статистика"),
             KeyboardButton(text="📥 Заявки"),
         ])
     rows.append([
@@ -92,6 +92,7 @@ def main_reply_keyboard(miniapp_url: str = "", *, admin: bool = False) -> ReplyK
         keyboard=rows,
         resize_keyboard=True,
         is_persistent=True,
+        one_time_keyboard=False,
         input_field_placeholder="Выберите раздел ЭРА",
     )
 

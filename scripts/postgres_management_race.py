@@ -42,13 +42,13 @@ async def main():
             send_management_reports(SimpleNamespace(send_message=send), settings, sessions, now=now)
             for _ in range(8)
         )), 60)
-        assert len(calls) == 3, len(calls)
+        assert len(calls) == 1, len(calls)
         async with sessions() as session:
             receipt = await session.scalar(select(NotificationDelivery).where(NotificationDelivery.delivery_key == f'daily:2026-10-16:{uid}'))
             assert receipt.status == 'sent' and receipt.attempt_count == 1
-            keys = [f'{period}:{stamp}:{uid}' for period, stamp in [('daily','2026-10-16'),('weekly','2026-10-12'),('monthly','2026-10-01')]]
+            keys = [f'daily:2026-10-16:{uid}']
             receipts = (await session.scalars(select(NotificationDelivery).where(NotificationDelivery.delivery_key.in_(keys)))).all()
-            assert len(receipts) == 3 and all(row.status == 'sent' and row.attempt_count == 1 for row in receipts)
+            assert len(receipts) == 1 and all(row.status == 'sent' and row.attempt_count == 1 for row in receipts)
             assert await session.scalar(select(func.count()).select_from(AppSetting).where(AppSetting.key == 'management-report:daily:2026-10-16')) == 1
             applicant = User(telegram_id=uid+1, first_name='CI Applicant', application_status=ApplicationStatus.PENDING)
             session.add(applicant)
@@ -77,7 +77,7 @@ async def main():
                 AuditLog.action.in_(('user.approved', 'user.rejected')))) == 1
     finally:
         await engine.dispose()
-    print('PostgreSQL: one report per period; 8 concurrent approve/reject decisions produce one audit and reward')
+    print('PostgreSQL: exactly one daily report under 8 schedulers; 8 concurrent approve/reject decisions produce one audit and reward')
 
 
 if __name__ == '__main__':

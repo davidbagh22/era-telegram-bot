@@ -531,17 +531,39 @@ async def build_management_report(session: AsyncSession, *, now: datetime, days:
     result['games_completed'] = completed if measured_in_period else None
     result['game_players'] = len(players) if measured_in_period else None
     result['game_coverage_since'] = min(starts).isoformat() if starts else None
-    latest = await session.scalar(select(SystemDiagnosticRun).order_by(SystemDiagnosticRun.created_at.desc()).limit(1))
+    latest = await session.scalar(select(SystemDiagnosticRun).order_by(SystemDiagnosticRun.created_at.desc(), SystemDiagnosticRun.id.desc()).limit(1))
+    heartbeat = await session.scalar(select(SystemDiagnosticRun).where(SystemDiagnosticRun.run_type == 'heartbeat')
+                                    .order_by(SystemDiagnosticRun.created_at.desc(), SystemDiagnosticRun.id.desc()).limit(1))
+    def observed_at(value):
+        if value is not None and value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value
+    health_at = observed_at(latest.created_at) if latest else None
+    heartbeat_at = observed_at(heartbeat.created_at) if heartbeat else None
     result['health'] = latest.status if latest else 'нет данных'
-    heartbeat_at = latest.created_at if latest else None
-    if heartbeat_at and heartbeat_at.tzinfo is None:
-        heartbeat_at = heartbeat_at.replace(tzinfo=timezone.utc)
-    result['scheduler'] = ('работает' if now - heartbeat_at <= timedelta(minutes=30) else 'нет свежего heartbeat') if heartbeat_at else 'нет данных'
-    backup = await session.scalar(select(BackupHistory).where(BackupHistory.status == 'success', BackupHistory.restore_verified_at.is_not(None)).order_by(BackupHistory.restore_verified_at.desc()).limit(1))
-    verified = backup.restore_verified_at if backup else None
-    if verified and verified.tzinfo is None:
-        verified = verified.replace(tzinfo=timezone.utc)
-    result['backup'] = ('восстановление проверено' if now - verified <= timedelta(hours=24) else 'проверенная копия старше 24 ч') if verified else 'нет проверенных данных'
+    result['health_score'] = latest.score if latest else None
+    result['health_checked_at'] = health_at.isoformat() if health_at else None
+    result['health_fresh'] = bool(health_at and timedelta(0) <= now - health_at <= timedelta(minutes=30))
+    result['scheduler_checked_at'] = heartbeat_at.isoformat() if heartbeat_at else None
+    result['scheduler'] = ('работает' if timedelta(0) <= now - heartbeat_at <= timedelta(minutes=30)
+                           else 'нет свежего heartbeat') if heartbeat_at else 'нет данных'
+    backup = await session.scalar(select(BackupHistory).where(BackupHistory.status == 'success', BackupHistory.restore_verified_at.is_not(None))
+                                  .order_by(BackupHistory.restore_verified_at.desc(), BackupHistory.id.desc()).limit(1))
+    latest_backup = await session.scalar(select(BackupHistory).order_by(BackupHistory.created_at.desc(), BackupHistory.id.desc()).limit(1))
+    verified = observed_at(backup.restore_verified_at) if backup else None
+    result['backup'] = ('восстановление проверено' if timedelta(0) <= now - verified <= timedelta(hours=24)
+                        else 'проверенная копия старше 24 ч') if verified else 'нет проверенных данных'
+    result['backup_verified_at'] = verified.isoformat() if verified else None
+    copied_at = observed_at(backup.completed_at) if backup else None
+    result['backup_completed_at'] = copied_at.isoformat() if copied_at else None
+    result['backup_size_bytes'] = backup.size_bytes if backup else None
+    result['backup_last_status'] = latest_backup.status if latest_backup else None
+    last_attempt_at = observed_at(latest_backup.completed_at or latest_backup.created_at) if latest_backup else None
+    result['backup_last_attempt_at'] = last_attempt_at.isoformat() if last_attempt_at else None
+    from app.services.book_club_service import literature_stats
+    literature = await literature_stats(session)
+    result.update(literature_subscribers=literature['subscribed'], literature_active=literature['active'],
+                  literature_reads_total=literature['read_marks'], literature_tasks_total=literature['task_marks'])
     result['as_of'] = now.isoformat()
     result['period_days'] = days
     result['period_start'] = since.isoformat()
@@ -549,50 +571,89 @@ async def build_management_report(session: AsyncSession, *, now: datetime, days:
     return result
 
 
-def management_report_text(metrics: dict, *, title: str = 'Ежедневный отчёт', previous: dict | None = None) -> str:
-    from datetime import datetime
+def management_report_text(metrics: dict, *, title: str = 'Итоги за сутки', previous: dict | None = None) -> str:
     from html import escape
     from zoneinfo import ZoneInfo
+
     def value(key):
         return 'не измеряется' if metrics.get(key) is None else escape(str(metrics[key]))
-    as_of = datetime.fromisoformat(metrics['as_of']).astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m.%Y %H:%M МСК')
-    window = ' — '.join(datetime.fromisoformat(metrics[k]).astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m %H:%M') for k in ('period_start', 'period_end'))
-    health = {'healthy': 'в норме', 'ok': 'в норме', 'warning': 'требует внимания',
-              'error': 'ошибка', 'critical': 'критично', 'failed': 'ошибка'}.get(metrics.get('health'), value('health'))
-    text = (f'📊 <b>ЭРА · {escape(title)}</b>\n<i>{as_of}</i>\n'
-        f'Операции за {window} МСК\n\n'
+
+    def local_time(raw):
+        if not raw:
+            return 'нет данных'
+        moment = datetime.fromisoformat(raw)
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+        return moment.astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m.%Y %H:%M МСК')
+
+    health_names = {'healthy': 'в норме', 'ok': 'в норме', 'warning': 'требует внимания',
+                    'error': 'ошибка', 'critical': 'критично', 'failed': 'ошибка'}
+    fresh = metrics.get('health_fresh', False)
+    healthy = fresh and metrics.get('health') in {'healthy', 'ok'}
+    health = health_names.get(metrics.get('health'), 'нет данных')
+    if not fresh:
+        health = 'нет свежей проверки' if metrics.get('health_checked_at') else 'нет данных'
+    health_icon = '🟢' if healthy else '🔴' if fresh and metrics.get('health') in {'critical', 'error', 'failed'} else '🟡'
+    scheduler_ok = metrics.get('scheduler') == 'работает'
+    backup_ok = metrics.get('backup') == 'восстановление проверено'
+    backup_last_bad = metrics.get('backup_last_status') not in {None, 'success', 'pending', 'running'}
+    backup_in_progress = metrics.get('backup_last_status') in {'pending', 'running'}
+    window = ' — '.join(
+        datetime.fromisoformat(metrics[key]).astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m %H:%M')
+        for key in ('period_start', 'period_end')
+    )
+    text = (f'📊 <b>ЭРА · {escape(title)}</b>\n'
+        f'<i>Данные на {local_time(metrics["as_of"])}</i>\n'
+        f'Период: {window} МСК\n\n'
         '<b>👥 Участники и заявки</b>\n'
         f"Участников: {value('users_total')} · новых профилей: {value('profiles_new')}\n"
         f"Заявки: ожидают {value('users_pending')} · одобрено {value('applications_approved')} · отклонено {value('applications_rejected')}\n"
-        f"Активность, 24 ч / 7 д / 30 д: {value('active_1')} / {value('active_7')} / {value('active_30')}\n\n"
-        '<b>📅 События и работа команды</b>\n'
-        f"Мероприятия на 7 дней: {value('events_upcoming')} · новых регистраций: {value('registrations_new')} · посещений: {value('attended')}\n"
+        f"Активны за 24 ч / 7 д / 30 д: {value('active_1')} / {value('active_7')} / {value('active_30')}\n\n"
+        '<b>📅 Мероприятия и работа команды</b>\n'
+        f"Мероприятий на 7 дней: {value('events_upcoming')} · регистраций за период: {value('registrations_new')} · посещений: {value('attended')}\n"
         f"Проекты: на рассмотрении {value('projects_review')} · дольше 72 ч {value('projects_overdue')}\n"
         f"Задачи: открыто {value('tasks_open')} · просрочено {value('tasks_overdue')}\n"
         f"Обращения: ждут {value('questions')} · дольше 24 ч {value('questions_overdue')}\n\n"
-        '<b>🎮 Игры и доставка</b>\n'
-        f"Игры, новый учёт: игроков {value('game_players')} · завершено {value('games_completed')}\n"
+        '<b>🎮 Досуг и уведомления</b>\n'
+        f"Игры за период: игроков {value('game_players')} · завершено {value('games_completed')}\n"
+        f"Литература, всего: подписчиков {value('literature_subscribers')} · активных {value('literature_active')}\n"
+        f"Отметок чтения: {value('literature_reads_total')} · выполненных заданий: {value('literature_tasks_total')}\n"
         f"Автоуведомления: доставлено {value('delivered')} · ошибок {value('delivery_errors')}\n\n"
-        '<b>🛠 Состояние системы</b>\n'
-        f"Система: {health} · планировщик: {value('scheduler')}\nБэкап: {value('backup')}\n")
+        '<b>🩺 Здоровье бота</b>\n'
+        f'{health_icon} Состояние: {health}\n'
+        f"Проверка: {local_time(metrics.get('health_checked_at'))}\n"
+        f"{'🟢' if scheduler_ok else '🟡'} Планировщик: {value('scheduler')}\n"
+        f"Последний сигнал: {local_time(metrics.get('scheduler_checked_at'))}\n\n"
+        '<b>💾 Резервная копия</b>\n'
+        f"{'🟢' if backup_ok and not backup_last_bad and not backup_in_progress else '🟡'} {value('backup')}\n"
+        f"Копия создана: {local_time(metrics.get('backup_completed_at'))}\n"
+        f"Восстановление проверено: {local_time(metrics.get('backup_verified_at'))}\n")
+    if metrics.get('backup_size_bytes') is not None:
+        text += f"Размер копии: {metrics['backup_size_bytes'] / (1024 * 1024):.2f} МБ\n"
+    if backup_last_bad or backup_in_progress:
+        backup_status = {'failed': 'ошибка', 'pending': 'выполняется', 'running': 'выполняется'}.get(metrics['backup_last_status'], 'не подтверждена')
+        text += f"Последняя попытка: {backup_status} · {local_time(metrics.get('backup_last_attempt_at'))}\n"
     if metrics.get('game_coverage_since'):
-        text += 'Игровая статистика ведётся с ' + datetime.fromisoformat(metrics['game_coverage_since']).strftime('%d.%m.%Y') + '.\n'
+        text += '\nИгровая статистика ведётся с ' + datetime.fromisoformat(metrics['game_coverage_since']).strftime('%d.%m.%Y') + '.\n'
     if previous:
-        delta = metrics['users_total'] - previous['users_total']
-        text += f'Участников к предыдущему отчёту: {delta:+d}.\n'
+        text += f"Участников к предыдущему отчёту: {metrics['users_total'] - previous['users_total']:+d}.\n"
     else:
         text += 'Сравнение с предыдущим периодом: нет данных.\n'
     attention = []
-    for key, label in (('projects_overdue', 'Рассмотреть проекты'), ('tasks_overdue', 'Разобрать просроченные задачи'), ('questions_overdue', 'Ответить на обращения'), ('users_pending', 'Рассмотреть заявки')):
+    if not healthy:
+        attention.append('Проверить состояние сервиса')
+    if not backup_ok or backup_last_bad:
+        attention.append('Проверить резервное копирование')
+    if not scheduler_ok:
+        attention.append('Проверить работу планировщика')
+    for key, label in (('projects_overdue', 'Рассмотреть проекты'), ('tasks_overdue', 'Разобрать просроченные задачи'),
+                       ('questions_overdue', 'Ответить на обращения'), ('users_pending', 'Рассмотреть заявки')):
         if metrics.get(key):
-            attention.append(f'{label}: {metrics[key]}')
-    if metrics.get('backup') != 'восстановление проверено':
-        attention.insert(0, 'Проверить резервное копирование')
-    if metrics.get('scheduler') != 'работает':
-        attention.insert(0, 'Проверить работу планировщика')
-    if metrics.get('health') not in {'healthy', 'ok'}:
-        attention.insert(0, 'Проверить состояние сервиса')
-    return text + '\n<b>📌 Требует внимания</b>\n' + ('\n'.join(f'{i}. {line}' for i, line in enumerate(attention[:3], 1)) or 'Нет просроченных действий по измеряемым показателям.')
+            attention.append(f'{label}: {escape(str(metrics[key]))}')
+    text += '\n<b>📌 Требует внимания</b>\n' + (
+        '\n'.join(f'{i}. {line}' for i, line in enumerate(attention[:3], 1))
+        or 'По измеряемым показателям срочных действий нет.')
+    return text + '\n\n<i>Свежая статистика в любое время: кнопка «📊 Статистика» внизу.</i>'
 
 
 def management_report_markup(miniapp_url: str = ''):
@@ -628,56 +689,43 @@ async def management_report_recipients(session: AsyncSession, settings) -> set[i
 
 
 async def send_management_reports(bot, settings, session_factory, *, now=None) -> None:
+    """One automatic daily issue; weekly/monthly summaries stay on demand."""
     import hashlib
     import json
     from zoneinfo import ZoneInfo
     from sqlalchemy import text
     from app.database.models import AppSetting
     from app.services.notification_service import safe_send_once
+
     if settings.feature_management_reports == 'OFF':
         return
     now = now or datetime.now(timezone.utc)
     local = now.astimezone(ZoneInfo('Europe/Moscow'))
     if (local.hour, local.minute) < (settings.management_report_hour, settings.management_report_minute):
         return
-    week_boundary = local.date() - timedelta(days=local.weekday())
-    month_boundary = local.date().replace(day=1)
-    month_days = (month_boundary - (month_boundary - timedelta(days=1)).replace(day=1)).days
-    # Evaluate the latest due boundary even after Monday / day 1 has passed.
-    # Frozen period keys and the common delivery ledger make this bounded recovery.
-    periods = [('daily', local.date().isoformat(), 1, 'Ежедневный отчёт'),
-               ('weekly', week_boundary.isoformat(), 7, 'Еженедельный отчёт'),
-               ('monthly', month_boundary.isoformat(), month_days, 'Ежемесячный отчёт')]
+    stamp = local.date().isoformat()
+    key = f'management-report:daily:{stamp}'
     async with session_factory() as session:
         recipients = await management_report_recipients(session, settings)
     if not recipients:
         return
-    for period, stamp, days, title in periods:
-        key = f'management-report:{period}:{stamp}'
-        async with session_factory() as session:
-            if session.bind.dialect.name == 'postgresql':
-                lock_id = int.from_bytes(hashlib.sha256(key.encode()).digest()[:8], 'big', signed=True)
-                await session.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': lock_id})
-            row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update())
-            if row:
-                payload = json.loads(row.value) if isinstance(row.value, str) else row.value
-            else:
-                month_end = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                month_start = (month_end - timedelta(days=1)).replace(day=1)
-                week_end = (local - timedelta(days=local.weekday())).replace(hour=settings.management_report_hour,
-                    minute=settings.management_report_minute, second=0, microsecond=0)
-                period_end = month_end if period == 'monthly' else week_end if period == 'weekly' else None
-                period_start = month_start if period == 'monthly' else week_end-timedelta(days=7) if period == 'weekly' else None
-                metrics = await build_management_report(session, now=now, days=days,
-                    period_start=period_start.astimezone(timezone.utc) if period_start else None,
-                    period_end=period_end.astimezone(timezone.utc) if period_end else None)
-                previous_key = f'management-report:{period}:{(datetime.fromisoformat(stamp).date()-timedelta(days=days)).isoformat()}'
-                previous_row = await session.scalar(select(AppSetting).where(AppSetting.key == previous_key))
-                previous = json.loads(previous_row.value)['metrics'] if previous_row and isinstance(previous_row.value, str) else None
-                payload = {'metrics': metrics, 'text': management_report_text(metrics, title=title, previous=previous)}
-                session.add(AppSetting(key=key, value=json.dumps(payload, ensure_ascii=False)))
-                await session.commit()
-        for recipient in sorted(recipients):
-            await safe_send_once(bot, settings, recipient, payload['text'], delivery_key=f'{period}:{stamp}:{recipient}',
-                                 notification_type='management_report', parse_mode='HTML',
-                                 reply_markup=management_report_markup(settings.effective_miniapp_url))
+    async with session_factory() as session:
+        if session.bind.dialect.name == 'postgresql':
+            lock_id = int.from_bytes(hashlib.sha256(key.encode()).digest()[:8], 'big', signed=True)
+            await session.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': lock_id})
+        row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update())
+        if row:
+            payload = json.loads(row.value) if isinstance(row.value, str) else row.value
+        else:
+            metrics = await build_management_report(session, now=now)
+            previous_stamp = (local.date() - timedelta(days=1)).isoformat()
+            previous_row = await session.scalar(select(AppSetting).where(AppSetting.key == f'management-report:daily:{previous_stamp}'))
+            previous_payload = (json.loads(previous_row.value) if isinstance(previous_row.value, str) else previous_row.value) if previous_row else None
+            previous = previous_payload.get('metrics') if previous_payload else None
+            payload = {'metrics': metrics, 'text': management_report_text(metrics, previous=previous)}
+            session.add(AppSetting(key=key, value=json.dumps(payload, ensure_ascii=False)))
+            await session.commit()
+    for recipient in sorted(recipients):
+        await safe_send_once(bot, settings, recipient, payload['text'], delivery_key=f'daily:{stamp}:{recipient}',
+                             notification_type='management_report', parse_mode='HTML',
+                             reply_markup=management_report_markup(settings.effective_miniapp_url))
