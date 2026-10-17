@@ -171,7 +171,7 @@ def _format_prompt(room: dict) -> tuple[str, InlineKeyboardMarkup | None] | None
     if item is None:
         return None
     challenge = item.challenge
-    heading = room_heading(room) + "\n" + roster(room) + "\n\n"
+    heading = room_heading(room) + "\n\n"
     text = f"<b>{escape(challenge.prompt)}</b>\n\n<i>Тема: {escape(item.category)}</i>"
     if challenge.hints:
         shown = challenge.hints[:room.get('hints_used', 0)]
@@ -541,7 +541,7 @@ def _room_view(room: dict) -> tuple[str, InlineKeyboardMarkup | None]:
         title = {"expired": "⏱ Время игры истекло. Баллы не начислены.",
                  "cancelled": "Комната закрыта: все игроки вышли.",
                  "exhausted": "Новые задания готовятся. Комната закрыта."}[status]
-        return header + title + "\n\n" + roster(room, result=True), None
+        return header + title + ("" if room.get("mode") or room.get("kind") == "solo" else "\n\n" + roster(room, result=True)), None
     if status == "finished":
         summary = room.get("result_text") or result_summary(room)
         rewards = room.get("rewards", {})
@@ -558,6 +558,10 @@ def _room_view(room: dict) -> tuple[str, InlineKeyboardMarkup | None]:
                 [InlineKeyboardButton(text='🎯 Ещё раунд', callback_data=callback),
                  InlineKeyboardButton(text='🎮 Мои игры', callback_data='era_game:cabinet')],
             ])
+        if room.get('mode') or room.get('kind') == 'solo':
+            uid = room.get("participants", [None])[0]
+            reward = rewards.get(str(uid), 0)
+            return header + "🏁 Игра завершена\n\n" + summary + f"\n\n⭐ Баллы ЭРА: +{reward}", markup
         return header + "🏁 Игра завершена\n\n" + summary + "\n\n" + roster(room, result=True) + reward_line, markup
     if room.get("mode"):
         return _format_prompt(room) or (header + "Материал недоступен.", None)
@@ -578,7 +582,7 @@ def _room_view(room: dict) -> tuple[str, InlineKeyboardMarkup | None]:
     topic = items_for_mode(GameMode.SOLO_QUIZ)[room['question']].category
     progress = '●' * position + '○' * (count-position)
     return (header + f"<b>Вопрос {position}/{count}</b> · {progress}\n<i>{escape(topic)}</i>\n\n<b>{escape(question)}</b>\n\n"
-            + roster(room) + "\n\nВсе отвечают одновременно. Следующий вопрос — после ответов всех игроков.\n"
+            + ("" if room.get("kind") == "solo" else roster(room) + "\n\nВсе отвечают одновременно. Следующий вопрос — после ответов всех игроков.\n")
             + deadline(room), quiz_markup(reference, options))
 
 
@@ -667,7 +671,9 @@ async def _store_game_result(session: AsyncSession, room: dict) -> None:
         return
     await _save(session, key, {'finished_at': room['finished_at'], 'participants': room['participants'],
                               'mode': room.get('mode', room.get('kind')), 'scores': room.get('scores', {}),
-                              'rewards': room.get('rewards', {})})
+                              'rewards': room.get('rewards', {}), 'players': room.get('players', {}),
+                              'kind': room.get('kind'), 'teams': room.get('teams', {}),
+                              'team_scores': room.get('team_scores', {})})
 
 
 async def _join_lobby(session: AsyncSession, key: str, room: dict, telegram_user) -> bool:
@@ -691,7 +697,7 @@ async def _join_lobby(session: AsyncSession, key: str, room: dict, telegram_user
 
 
 async def show_game_cabinet(message: Message, settings: Settings, session: AsyncSession,
-                            user: User | None, *, mode: str | None = None) -> None:
+                            user: User | None, *, mode: str | None = None, view: str = "home", edit: bool = False) -> None:
     uid = message.chat.id
     if not _enabled(settings, uid):
         await message.answer("Игры пока недоступны для этого профиля.")
@@ -714,35 +720,88 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
                                 answer=answer_private)
         await game_callback(query, settings, session, user=user)
         return
-    thread_id = await ensure_topic(message.bot, settings, "games") if settings.general_chat_id else None
-    text = "🎮 <b>Мои игры · ЭРА</b>\n\nОдиночные игры проходят здесь, командные — в теме «Интерактив».\n"
+    thread_id = await ensure_topic(message.bot, settings, "games", create_if_missing=False) if settings.general_chat_id else None
     personal_rooms = (await session.scalars(select(AppSetting).where(
         AppSetting.key.like(f"era_game:{uid}:None:%")))).all()
-    recent = sorted((_data(row) for row in personal_rooms), key=lambda room: room.get("created_at", ""), reverse=True)[:3]
-    if recent:
-        text += "\n<b>Последние игры</b>\n"
-        for room in recent:
-            status = {"playing": "в процессе", "finished": "завершена", "expired": "время истекло"}.get(room.get("status"), "закрыта")
+    recent = sorted((_data(row) for row in personal_rooms), key=lambda room: room.get("created_at", ""), reverse=True)
+    active = next((room for room in recent if room.get("status") == "playing"), None)
+    buttons = []
+    if view in {"quiz", "puzzle"}:
+        modes = ({"era_game:solo", "era_game:play:true_or_myth", "era_game:play:guess_country", "era_game:play:culture"}
+                 if view == "quiz" else {"era_game:play:chronology", "era_game:play:word_chain", "era_game:play:associations", "era_game:play:logic", "era_game:play:memory"})
+        title = "⚡ Квизы и знания" if view == "quiz" else "🧠 Слова и логика"
+        text = f"<b>{title}</b>\n\nВыберите игру. Ответы и результат останутся здесь, в личном чате."
+        buttons = [row for row in menu_markup().inline_keyboard if row[0].callback_data in modes]
+    elif view == "history":
+        text = "🎮 <b>Мои результаты</b>"
+        if not recent:
+            text += "\n\nЗдесь появятся результаты ваших игр."
+        for room in recent[:3]:
+            status = {"playing": "В игре", "finished": "Завершена", "expired": "Время истекло"}.get(room.get("status"), "Закрыта")
             score = room.get("scores", {}).get(str(uid), 0)
-            text += f"{room_heading(room)} · {status} · {score} очк.\n"
-    links = []
-    if thread_id:
-        for kind in ("team", "duel"):
-            room = _data(await session.scalar(select(AppSetting).where(
-                AppSetting.key == _key(settings.general_chat_id, thread_id, kind))))
-            if uid in room.get("participants", []):
-                text += "\n" + room_heading(room) + "\n" + roster(room, result=room.get("status") == "finished") + "\n"
+            text += f"\n\n{room_heading(room)}\n{status} · Результат: {score} очк."
+        if thread_id:
+            for kind in ("team", "duel"):
+                room = _data(await session.scalar(select(AppSetting).where(
+                    AppSetting.key == _key(settings.general_chat_id, thread_id, kind))))
+                if uid not in room.get("participants", []):
+                    continue
+                await _hydrate_player_names(session, room, message.bot)
+                status = {"playing": "Игра идёт", "finished": "Игра завершена", "waiting": "Набор игроков", "ready_check": "Проверка готовности", "expired": "Время истекло", "cancelled": "Комната закрыта"}.get(room.get("status"), "Игра закрыта")
+                text += "\n\n" + room_heading(room) + "\n" + status + "\n\n" + roster(room, result=room.get("status") not in {"playing", "waiting", "ready_check"})
+                if room.get("status") == "finished":
+                    text += "\n\n" + result_summary(room)
                 if room.get("message_id"):
-                    links.append([InlineKeyboardButton(text="👥 Открыть мою команду", url=_topic_link(settings, thread_id, room["message_id"]))])
-        links.append([InlineKeyboardButton(text="👥 Командные игры в чате", url=_topic_link(settings, thread_id))])
-    keyboard = menu_markup()
-    # A private menu never creates a separate team lobby.
-    keyboard.inline_keyboard = [row for row in keyboard.inline_keyboard if all(
-        b.callback_data not in {"era_game:team", "era_game:duel"} for b in row)]
-    keyboard.inline_keyboard.extend(links)
-    keyboard.inline_keyboard.append([InlineKeyboardButton(text="🔄 Обновить мои игры", callback_data="era_game:cabinet")])
-    await message.answer(text + "\nВыберите игру ниже. /games возвращает в этот раздел.",
-                         reply_markup=keyboard, parse_mode="HTML")
+                    buttons.append([InlineKeyboardButton(text="👥 Карточка команды", url=_topic_link(settings, thread_id, room["message_id"]))])
+    else:
+        text = "🎮 <b>Игры ЭРА</b>\n\nНебольшая пауза с пользой: выберите игру для себя или присоединитесь к команде."
+        if active:
+            text += "\n\n<b>Можно продолжить</b>\n" + room_heading(active)
+            buttons.append([InlineKeyboardButton(text="▶️ Продолжить игру", callback_data="era_game:resume")])
+        buttons.extend([
+            [InlineKeyboardButton(text="⚡ Квизы и знания", callback_data="era_game:catalog:quiz")],
+            [InlineKeyboardButton(text="🧠 Слова и логика", callback_data="era_game:catalog:puzzle")],
+        ])
+        if thread_id:
+            buttons.append([InlineKeyboardButton(text="👥 Играть с командой", url=_topic_link(settings, thread_id))])
+        buttons.append([InlineKeyboardButton(text="🏅 Мои результаты", callback_data="era_game:catalog:history"),
+                        InlineKeyboardButton(text="📖 Правила", callback_data="era_game:rules")])
+    buttons.append([InlineKeyboardButton(text="← Досуг" if view == "home" else "← Все игры", callback_data="leisure:home" if view == "home" else "era_game:cabinet")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    if edit:
+        try:
+            await message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            return
+        except TelegramBadRequest as exc:
+            if "message is not modified" in str(exc).lower():
+                return
+            if "message to edit not found" not in str(exc).lower() and "message can't be edited" not in str(exc).lower():
+                raise
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+async def _hydrate_player_names(session: AsyncSession, room: dict, bot) -> None:
+    """Recover legacy roster labels only from public Telegram identity.
+
+    Registration first/last names may be private; never use questionnaire fields.
+    This is a view-only enrichment, so it cannot overwrite a concurrent game.
+    """
+    players = room.setdefault("players", {})
+    missing = [uid for uid in room.get("participants", [])[:MAX_PLAYERS] if not players.get(str(uid)) or players[str(uid)] == "Участник"]
+    if not missing:
+        return
+    usernames = dict((await session.execute(select(User.telegram_id, User.username).where(User.telegram_id.in_(missing)))).all())
+    for uid in missing:
+        if usernames.get(uid):
+            players[str(uid)] = "@" + usernames[uid].lstrip("@")
+            continue
+        try:
+            profile = await bot.get_chat(uid)
+        except TelegramAPIError:
+            continue
+        first, last = getattr(profile, "first_name", None), getattr(profile, "last_name", None)
+        if isinstance(first, str):
+            players[str(uid)] = " ".join(part for part in (first, last) if isinstance(part, str)).strip()[:60]
 
 
 def _topic_link(settings: Settings, thread_id: int, message_id: int | None = None) -> str:
@@ -791,7 +850,11 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
         return
     if action[1] == "cabinet" and message.chat.type == "private":
         await query.answer()
-        await show_game_cabinet(message, settings, session, user)
+        await show_game_cabinet(message, settings, session, user, edit=True)
+        return
+    if action[1] == "catalog" and message.chat.type == "private" and len(action) == 3:
+        await query.answer()
+        await show_game_cabinet(message, settings, session, user, view=action[2], edit=True)
         return
     if message.chat.type != "private" and (action[1] == "solo" or action[1] == "play"):
         mode = "solo" if action[1] == "solo" else action[2] if len(action) == 3 else "solo"

@@ -262,17 +262,12 @@ async def report_backup(
                 await notify_admins(
                     bot,
                     settings,
-                    "✅ ЭРА: backup снова выполняется и проходит restore verification.",
+                    "✅ Резервное копирование восстановлено. Проверка восстановления пройдена.",
                 )
                 incident.recovery_notified = True
-        if bot is not None:
-            await notify_admins(
-                bot,
-                settings,
-                "💾 ЭРА: резервная копия готова\n\n"
-                f"Тип: {payload.backup_type}\n"
-                "Restore verification: пройден",
-            )
+        # Routine successes belong in the single daily/manual management report.
+        # Keep the verified metadata and incident recovery above, without one DM
+        # per CI attempt, manual backup or scheduled copy.
 
     await audit(
         session,

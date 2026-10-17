@@ -21,14 +21,13 @@ def remember_player(room: dict, telegram_user) -> None:
 
 
 def player_label(room: dict, uid: int) -> str:
-    name = escape(room.get("players", {}).get(str(uid), "Участник"))
+    name = escape(room.get("players", {}).get(str(uid)) or "Профиль Telegram")
     return f'<a href="tg://user?id={int(uid)}">{name}</a> · <code>{int(uid)}</code>'
 
 
 def room_heading(room: dict) -> str:
     label = MODE_LABELS.get(room.get("kind", room.get("mode")), "🎮 Игра ЭРА")
-    number = escape(room.get("session_token", room.get("token", ""))[:6].upper())
-    return f"<b>{label}</b> · #{number}"
+    return f"<b>{label}</b>"
 
 
 def roster(room: dict, *, result: bool = False) -> str:

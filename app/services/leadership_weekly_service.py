@@ -832,15 +832,19 @@ async def _check_weekly_cycle(
                 )
                 if report is not None and report.submitted_at is not None:
                     continue
+                timezone_label = {"Europe/Moscow": "МСК", "Asia/Yerevan": "Ереван"}.get(
+                    schedule.timezone, cycle_deadline.strftime("UTC%z")
+                )
                 for stage in stages:
                     await send_bot_notification(
                         bot,
                         user.telegram_id,
                         emoji="⏳",
-                        title="Напоминание: Weekly Pulse",
+                        title="Пульс недели · ваш отчёт",
                         body=(
-                            f"Отправьте отчёт за {period_start:%d.%m}–{period_end:%d.%m} "
-                            f"до {cycle_deadline:%d.%m %H:%M}."
+                            f"Период: {period_start:%d.%m}–{period_end:%d.%m}\n"
+                            f"Отправить до {cycle_deadline:%d.%m, %H:%M} "
+                            f"({timezone_label})."
                         ),
                         action=(
                             PrimaryAction(

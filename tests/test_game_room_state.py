@@ -812,8 +812,19 @@ class IdentifiedRoomTests(GameFixture, IsolatedAsyncioTestCase):
                 user = await session.get(User, self.user_id)
                 await show_game_cabinet(message, self.settings, session, user)
         text = self.send.await_args.args[0]
-        assert 'Последние игры' in text and 'Команда А' in text and 'Команда Б' in text
+        assert 'Игры ЭРА' in text and 'Команда А' not in text
+        assert '<code>' not in text and '#' not in text and len(text) < 400
+        buttons = [button for row in self.send.await_args.kwargs['reply_markup'].inline_keyboard for button in row]
+        assert any(button.callback_data == 'era_game:catalog:history' for button in buttons)
+        async with self.sessions() as session:
+            user = await session.get(User, self.user_id)
+            with patch('app.handlers.era_game_room.ensure_topic', new=AsyncMock(return_value=10)), patch.object(Message, 'answer', new=self.send):
+                await show_game_cabinet(message, self.settings, session, user, view='history')
+        text = self.send.await_args.args[0]
+        assert 'Команда А' in text and 'Команда Б' in text
+        assert 'Анна' in text and 'Борис' in text
         assert '<code>11</code>' in text and '<code>22</code>' in text
+        assert '#' not in text
 
 
 def test_game_name_escaping_does_not_leak_questionnaire_fields():
@@ -825,3 +836,39 @@ def test_game_name_escaping_does_not_leak_questionnaire_fields():
     assert '&lt;b&gt;Имя &amp; тест&lt;/b&gt;' in text
     assert '<b>Имя & тест</b>' not in text
     assert set(room['players']) == {'11'}
+
+
+class LegacyGameIdentityTests(GameFixture, IsolatedAsyncioTestCase):
+    async def test_legacy_roster_uses_public_username_and_telegram_name_never_form_name(self):
+        from app.handlers.era_game_room import _hydrate_player_names
+        from app.services.game_room_presenter import roster
+        async with self.sessions() as session:
+            person = await session.get(User, self.user_id)
+            person.username = 'public_name'
+            person.first_name = 'PRIVATE_QUESTIONNAIRE_NAME'
+            await session.commit()
+            room = {'kind': 'duel', 'participants': [11, 22], 'teams': {'11': 'A', '22': 'B'}, 'players': {'11': 'Участник'}}
+            self.bot.get_chat = AsyncMock(return_value=SimpleNamespace(first_name='Телеграм & имя', last_name=None))
+            await _hydrate_player_names(session, room, self.bot)
+        text = roster(room, result=True)
+        assert '@public_name' in text and 'Телеграм &amp; имя' in text
+        assert 'PRIVATE_QUESTIONNAIRE_NAME' not in text and 'Участник' not in text
+        self.bot.get_chat.assert_awaited_once_with(22)
+
+    async def test_catalog_edit_reuses_existing_card_and_never_creates_topic(self):
+        from app.handlers.era_game_room import show_game_cabinet
+        message = Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=11, type='private')).as_(self.bot)
+        edit = AsyncMock()
+        topic = AsyncMock(return_value=None)
+        modes = set()
+        async with self.sessions() as session:
+            person = await session.get(User, self.user_id)
+            self.settings.general_chat_id = -1001
+            with patch.object(Message, 'edit_text', new=edit), patch.object(Message, 'answer', new=self.send), patch('app.handlers.era_game_room.ensure_topic', new=topic):
+                for view in ('quiz', 'puzzle'):
+                    await show_game_cabinet(message, self.settings, session, person, view=view, edit=True)
+                    buttons = [button for row in edit.await_args.kwargs['reply_markup'].inline_keyboard for button in row]
+                    modes.update(button.callback_data for button in buttons if button.callback_data.startswith('era_game:play:') or button.callback_data == 'era_game:solo')
+        assert len(modes) == 9
+        assert self.send.await_count == 0 and edit.await_count == 2
+        assert all(call.kwargs.get('create_if_missing') is False for call in topic.await_args_list)
