@@ -12,6 +12,7 @@ import secrets
 import asyncio
 from html import escape
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramNetworkError, TelegramServerError
@@ -27,7 +28,7 @@ from app.services.game_content import GameItem, QUIZ_QUESTIONS, choose_quiz_pack
 from app.services.game_formats import GameMode, check_answer, score_answer
 from app.services.general_topics_service import ensure_topic
 from app.services.game_rewards_service import award_game_points
-from app.services.game_room_presenter import deadline, player_label, remember_player, result_summary, room_heading, roster
+from app.services.game_room_presenter import deadline, remember_player, result_summary, room_heading, roster
 from app.keyboards.common import registration_keyboard
 from app.utils.constants import ApplicationStatus
 
@@ -646,10 +647,11 @@ async def _publish_room(session: AsyncSession, key: str, message: Message) -> bo
 
 
 async def _store_game_result(session: AsyncSession, room: dict) -> None:
-    token = room.get('session_token')
-    if room.get('status') != 'finished' or not token:
+    token = room.get('session_token') or room.get('token')
+    if room.get('status') != 'finished' or not token or not room.get('finished_at'):
         return
     key = f'game-result:{token}'
+    await _lock(session, key)
     if await session.scalar(select(AppSetting.key).where(AppSetting.key == key)) is not None:
         return
     await _save(session, key, {'finished_at': room['finished_at'], 'participants': room['participants'],
@@ -698,7 +700,7 @@ async def _recent_game_results(session: AsyncSession, uid: int, *, team: bool = 
     if session.bind.dialect.name == "postgresql":
         raw = cast(AppSetting.value, JSONB)
         document = case((func.jsonb_typeof(raw) == "string", cast(raw.op("#>>")(sql_text("'{}'::text[]")), JSONB)), else_=raw)
-        participant = document["participants"].contains([uid])
+        participant = cast(func.jsonb_extract_path(document, "participants"), JSONB).contains([uid])
         mode = func.coalesce(document["kind"].astext, document["mode"].astext)
         finished = document["finished_at"].astext
     else:
@@ -760,24 +762,38 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
         buttons = [row for row in menu_markup().inline_keyboard if row[0].callback_data in modes]
     elif view in {"history", "history_team", "history_duel"} or view.startswith("history_round_"):
         text = "🎮 <b>Мои результаты</b>"
+        legacy_finished = [room for room in recent if room.get("status") == "finished" and uid in room.get("participants", [])]
+        for room in sorted(legacy_finished, key=lambda item: item.get("session_token", item.get("token", ""))):
+            await _store_game_result(session, room)
         recent = await _recent_game_results(session, uid)
+        recent.extend(room for room in legacy_finished if not room.get("finished_at"))
         if not recent:
             text += "\n\nЗдесь появятся результаты ваших игр."
         for room in recent[:3]:
             status = {"playing": "В игре", "finished": "Завершена", "expired": "Время истекло"}.get(room.get("status"), "Закрыта")
             score = room.get("scores", {}).get(str(uid), 0)
-            text += f"\n\n{room_heading(room)}\n{status} · Результат: {score} очк."
+            at = room.get("finished_at")
+            when = datetime.fromisoformat(at).astimezone(ZoneInfo("Europe/Moscow")).strftime("%d.%m, %H:%M МСК") if at else status
+            text += f"\n\n{room_heading(room)}\n{when} · {score} очк."
         if thread_id:
-            team_rooms = await _recent_game_results(session, uid, team=True)
+            candidates = []
             for kind in ("team", "duel"):
-                candidate = _data(await session.scalar(select(AppSetting).where(
-                    AppSetting.key == _key(settings.general_chat_id, thread_id, kind))))
+                candidate = dict(_data(await session.scalar(select(AppSetting).where(
+                    AppSetting.key == _key(settings.general_chat_id, thread_id, kind)))))
+                if candidate.get("token") and not candidate.get("session_token"):
+                    candidate["session_token"] = candidate["token"]
+                if uid in candidate.get("participants", []):
+                    candidates.append(candidate)
+            for candidate in sorted(candidates, key=lambda item: item.get("session_token", item.get("token", ""))):
+                await _store_game_result(session, candidate)
+            team_rooms = await _recent_game_results(session, uid, team=True)
+            for candidate in candidates:
                 if uid in candidate.get("participants", []):
                     existing = next((item for item in team_rooms if item.get("session_token") == candidate.get("session_token")), None)
                     if existing is not None:
                         # Only the identical round may fill missing legacy metadata.
                         existing.update(candidate)
-                    elif candidate.get("status") != "finished":
+                    else:
                         team_rooms.insert(0, candidate)
             team_rooms.sort(key=lambda item: item.get("finished_at", item.get("created_at", "")), reverse=True)
             selected_token = view.removeprefix("history_round_") if view.startswith("history_round_") else None
@@ -801,7 +817,6 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
                     label = "🤝 Квиз" if other.get("kind") == "team" else "🏆 Дуэль"
                     at = other.get("finished_at", other.get("created_at"))
                     if at:
-                        from zoneinfo import ZoneInfo
                         label += " · " + datetime.fromisoformat(at).astimezone(ZoneInfo("Europe/Moscow")).strftime("%d.%m, %H:%M МСК")
                     buttons.append([InlineKeyboardButton(text=label, callback_data=f"era_game:catalog:history_round_{other['session_token']}")])
 

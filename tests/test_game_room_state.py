@@ -904,6 +904,24 @@ class DurableGameHistoryTests(GameFixture, IsolatedAsyncioTestCase):
         assert len(team) == 1 and team[0]['kind'] == 'duel'
         assert all(11 in row['participants'] for row in mine + team)
 
+    async def test_legacy_finished_room_is_preserved_once_without_awarding_points(self):
+        from app.handlers.era_game_room import show_game_cabinet, _recent_game_results
+        async with self.sessions() as session:
+            session.add(AppSetting(key=_key(11, None, 'solo-11'), value={'status': 'finished',
+                'session_token': 'legacy-finished', 'participants': [11], 'kind': 'solo',
+                'finished_at': datetime.now(timezone.utc).isoformat(), 'scores': {'11': 4}}))
+            await session.commit()
+            message = Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=11, type='private')).as_(self.bot)
+            user = await session.get(User, self.user_id)
+            with patch.object(Message, 'answer', new=self.send):
+                for _ in range(2):
+                    await show_game_cabinet(message, self.settings, session, user, view='history')
+                    await session.commit()
+            results = await _recent_game_results(session, 11)
+            assert len(results) == 1 and results[0]['scores']['11'] == 4
+            assert not (await session.scalars(select(PointTransaction))).all()
+            assert '4 очк.' in self.send.await_args.args[0]
+
     async def test_expired_stored_playing_room_does_not_offer_continue(self):
         from app.handlers.era_game_room import show_game_cabinet
         async with self.sessions() as session:
@@ -924,3 +942,8 @@ def test_format_completion_mentions_the_awarded_balance_once():
             'rewards': {'11': 1}, 'result_text': '✅ Верно!\n\nОчки за раунд: 1. Баллы ЭРА: +1.'}
     text, _ = _room_view(room)
     assert text.count('Баллы ЭРА:') == 1
+
+
+def test_durable_format_title_uses_mode_when_optional_kind_is_null():
+    from app.services.game_room_presenter import room_heading
+    assert room_heading({'kind': None, 'mode': 'guess_country'}) == '<b>🌍 Угадай страну</b>'

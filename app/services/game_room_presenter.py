@@ -27,7 +27,7 @@ def player_label(room: dict, uid: int) -> str:
 
 
 def room_heading(room: dict) -> str:
-    label = MODE_LABELS.get(room.get("kind", room.get("mode")), "🎮 Игра ЭРА")
+    label = MODE_LABELS.get(room.get("mode") or room.get("kind"), "🎮 Игра ЭРА")
     return f"<b>{label}</b>"
 
 
