@@ -1,5 +1,6 @@
 """Real PostgreSQL proof for concurrent editorial/support/campaign workers."""
 import asyncio
+import json
 import os
 import uuid
 from datetime import datetime, timezone
@@ -48,7 +49,7 @@ async def main():
             session.add(editor)
             await session.flush()
             editor_id = editor.id
-            session.add(AppSetting(key=f'general_forum:{-uid}:literature', value={'thread_id': 26216}))
+            session.add(AppSetting(key=f'general_forum:{-uid}:literature', value=json.dumps({'thread_id': 26216})))
             item = await save_editorial_item(session, MATERIAL, actor_id=editor.id)
             item_id, content_id = item.id, item.content_id
             await approve_editorial_item(session, item.id, editorial_revision(item), actor_id=editor.id)

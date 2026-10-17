@@ -79,6 +79,7 @@ def _reminder_lead(stage: int) -> str:
 async def send_review_sla_reminders(bot, settings, session_factory, *, now=None) -> None:
     """Private, once-per-stage reminders; existing venue reminders keep ownership."""
     from datetime import timezone
+    from app.database.system_models import NotificationDelivery
     mode = getattr(settings, 'feature_review_reminders', 'OFF')
     if mode == 'OFF':
         return
@@ -124,10 +125,13 @@ async def send_review_sla_reminders(bot, settings, session_factory, *, now=None)
                     InlineKeyboardButton(text=f'Открыть {"проекты" if kind == "project" else "обращение"}', callback_data=callback)]])
                 fresh = False
                 for recipient in sorted(recipients):
+                    key = f'review-sla:{kind}:{item.id}:{started.isoformat()}:{stage}:{recipient}'
+                    receipt = await session.scalar(select(NotificationDelivery).where(NotificationDelivery.delivery_key == key))
+                    if receipt is not None and receipt.status == 'failed' and receipt.attempt_count >= 3:
+                        continue
                     delivery = await safe_send_once(bot, settings, recipient, message,
-                        delivery_key=f'review-sla:{kind}:{item.id}:{started.isoformat()}:{stage}:{recipient}',
-                        notification_type='review_sla', parse_mode='HTML', reply_markup=markup)
-                    fresh |= delivery.sent and not delivery.duplicate
+                        delivery_key=key, notification_type='review_sla', parse_mode='HTML', reply_markup=markup)
+                    fresh |= not delivery.duplicate
                 await session.commit()
                 fresh_items += int(fresh)
                 if fresh_items >= 5:

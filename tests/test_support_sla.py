@@ -85,6 +85,25 @@ class SupportSlaTests(IsolatedAsyncioTestCase):
         await send_review_sla_reminders(self.bot, self.settings, self.sessions, now=self.now)
         assert self.bot.send_message.await_count == 8
 
+    async def test_outage_counts_failed_attempts_toward_the_batch_limit(self):
+        async with self.sessions() as session:
+            session.add_all([UserQuestion(user_id=self.member.id, text='Private support text',
+                created_at=self.now-timedelta(hours=25)) for _ in range(9)])
+            await session.commit()
+        with patch('app.services.notification_service._claim_delivery',
+                   AsyncMock(side_effect=ConnectionError('simulated ledger outage'))) as claims:
+            await send_review_sla_reminders(self.bot, self.settings, self.sessions, now=self.now)
+            assert claims.await_count == 6  # one project and five questions, even when every claim fails
+        self.bot.send_message.assert_not_awaited()
+
+    async def test_definite_failure_stops_after_the_retry_budget(self):
+        from aiogram.exceptions import TelegramBadRequest
+        self.bot.send_message.side_effect = TelegramBadRequest(
+            method=SendMessage(chat_id=11, text='test'), message='bad request')
+        for _ in range(8):
+            await send_review_sla_reminders(self.bot, self.settings, self.sessions, now=self.now)
+        assert self.bot.send_message.await_count == 6  # two records, at most three attempts each
+
     async def test_committed_answer_recovers_and_cannot_send_twice(self):
         async with self.sessions() as session:
             item = await session.get(UserQuestion, self.question.id)
