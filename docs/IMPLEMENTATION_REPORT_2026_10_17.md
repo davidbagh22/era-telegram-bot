@@ -25,3 +25,14 @@ PostgreSQL proof до финального fixture-only исправления: 
 ## Остаток
 
 Функциональные пробелы и необходимые реальные действия отделены в MASTER_REMAINDER.md. Новые категории/owner/многоходовая переписка, полная delegated matrix и phase 8 не выдаются за завершённые. Политика для несовершеннолетних, редакторское утверждение, independent S3 и настоящая Telegram-приёмка не заменяются автоматическими тестами.
+
+
+## Подтверждение выпуска #344 и уточнение menu readback
+
+17.10.2026 04:52:48 UTC Render подтвердил live `2d356003f8f25d9a835fa40caabbe6ecad61ba8a`, deploy `dep-db9ftldg1s2s738ir2s0`. Git tree совпал с проверенным head `77306bc`. Полный CI [Bot checks](https://github.com/davidbagh22/era-telegram-bot/actions/runs/39003258300) и [Tests](https://github.com/davidbagh22/era-telegram-bot/actions/runs/39003258338): 1758 passed, 1 skipped, 1 xfailed, 58 subtests; PostgreSQL, E2E, frontend, secret scan успешны.
+
+Startup подтвердил: games=ALL, reports=ALL, registration=TESTERS, event_composer=TESTERS, attendance_qr=TESTERS, review_reminders=TESTERS; reports_at=09:00 Europe/Moscow. Редакционная очередь ещё выключена по умолчанию: setting отсутствует, черновики не утверждены.
+
+Backup run 38975436382, attempt 3, job 117313511186: healthy runtime source `2d35600`, изолированное восстановление PostgreSQL и Alembic, шифрование и загрузка artifact успешны 17.10.2026 04:55 UTC. Внешняя S3-копия не настроена.
+
+После live выявлен ложный ERROR menu readback: Telegram возвращает тот же app origin/path с предыдущим внутренним build-параметром `v`. HTML уже имеет Cache-Control: no-cache, ресурсы используют хешированные имена. Последующее исправление сравнивает адрес приложения без собственного cache-buster `v`; все остальные query-параметры, дубликаты, пустые значения, порядок, fragment и тип кнопки проверяются. initData/auth и серверные права не изменяются. Тесты отличают эту нормализацию от неправильного домена, пути и содержательных параметров. Финальное состояние этого исправления фиксируется в связанном PR после CI и Render live.

@@ -111,14 +111,36 @@ def _chat_menu_button(miniapp_url: str) -> MenuButtonWebApp | MenuButtonDefault:
 
 
 def _menu_button_matches(expected, actual) -> bool:
+    """Verify the app target, allowing Telegram's cached release marker.
+
+    The v query key is our cache-busting build SHA, not an app route or auth
+    parameter. HTML is served with Cache-Control: no-cache and assets have
+    hashed names. Telegram can retain an older v after a successful set call.
+    All other query entries (including blanks, duplicates and order), the
+    origin, path and fragment must still match.
+    """
+    from urllib.parse import parse_qsl, urlsplit
+
     if expected.type == "web_app":
-        return actual.type == "web_app" and expected.web_app.url == actual.web_app.url
+        if actual.type != "web_app":
+            return False
+
+        def target(url):
+            parsed = urlsplit(url)
+            query = tuple(
+                (key, value)
+                for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+                if key != "v"
+            )
+            return parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment
+
+        return target(expected.web_app.url) == target(actual.web_app.url)
     return actual.type in ("default", "commands")
 
 
 def _menu_button_mismatch_reason(expected, actual) -> str:
     """Safe diagnostic codes: never log the configured URL or query values."""
-    from urllib.parse import parse_qsl, urlsplit
+    from urllib.parse import urlsplit
     if _menu_button_matches(expected, actual):
         return 'match'
     if expected.type != 'web_app' or actual.type != 'web_app':
@@ -128,16 +150,11 @@ def _menu_button_mismatch_reason(expected, actual) -> str:
         return 'origin'
     if wanted.path != observed.path:
         return 'path'
-    first, second = dict(parse_qsl(wanted.query)), dict(parse_qsl(observed.query))
-    first_version = first.pop('v', None)
-    second_version = second.pop('v', None)
-    if first == second and wanted.fragment == observed.fragment and first_version != second_version:
-        return 'release_version'
     return 'query_or_fragment'
 
 
 async def _set_and_verify_menu_button(bot, expected):
-    """Telegram's read-back can briefly return the previous release URL."""
+    """Retry boundedly if Telegram returns a different app target or type."""
     await bot.set_chat_menu_button(menu_button=expected)
     actual = await bot.get_chat_menu_button()
     for delay in (0.2, 0.5, 1.0, 2.0, 4.0):
