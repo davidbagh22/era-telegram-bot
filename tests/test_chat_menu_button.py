@@ -73,8 +73,8 @@ class MenuButtonVerificationTests(unittest.TestCase):
 
 class MenuButtonReadBackTests(unittest.IsolatedAsyncioTestCase):
     async def test_stale_read_back_is_retried_without_rewriting_configuration(self):
-        old = _chat_menu_button("https://era.example/previous-app/")
-        current = _chat_menu_button("https://era.example/app/")
+        old = _chat_menu_button("https://era.example/app/?v=old")
+        current = _chat_menu_button("https://era.example/app/?v=new")
         bot = SimpleNamespace(set_chat_menu_button=AsyncMock(), get_chat_menu_button=AsyncMock(side_effect=[old, current]))
         with patch("app.webapp.asyncio.sleep", new=AsyncMock()):
             actual, verified = await _set_and_verify_menu_button(bot, current)
@@ -83,7 +83,7 @@ class MenuButtonReadBackTests(unittest.IsolatedAsyncioTestCase):
         bot.set_chat_menu_button.assert_awaited_once()
 
     async def test_persistent_mismatch_is_still_reported(self):
-        current = _chat_menu_button("https://era.example/app/")
+        current = _chat_menu_button("https://era.example/app/?v=new")
         bot = SimpleNamespace(set_chat_menu_button=AsyncMock(), get_chat_menu_button=AsyncMock(return_value=MenuButtonDefault()))
         with patch("app.webapp.asyncio.sleep", new=AsyncMock()):
             _, verified = await _set_and_verify_menu_button(bot, current)
@@ -115,9 +115,9 @@ if __name__ == "__main__":
 
 
 class MenuReadbackRecoveryTests(unittest.IsolatedAsyncioTestCase):
-    async def test_stale_app_path_has_a_longer_bounded_recovery_window(self):
-        old = _chat_menu_button('https://era.example/previous-app/')
-        current = _chat_menu_button('https://era.example/app/')
+    async def test_stale_release_url_has_a_longer_bounded_recovery_window(self):
+        old = _chat_menu_button('https://era.example/app/?v=old')
+        current = _chat_menu_button('https://era.example/app/?v=new')
         bot = SimpleNamespace(set_chat_menu_button=AsyncMock(), get_chat_menu_button=AsyncMock(side_effect=[old, old, old, current]))
         with patch('app.webapp.asyncio.sleep', new=AsyncMock()):
             actual, verified = await _set_and_verify_menu_button(bot, current)
@@ -127,41 +127,46 @@ class MenuReadbackRecoveryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_persistent_url_mismatch_stops_and_reports_a_safe_reason(self):
         from app.webapp import _menu_button_mismatch_reason
-        old = _chat_menu_button('https://era.example/previous-app/')
-        current = _chat_menu_button('https://era.example/app/')
+        old = _chat_menu_button('https://era.example/app/?v=old')
+        current = _chat_menu_button('https://era.example/app/?v=new')
         bot = SimpleNamespace(set_chat_menu_button=AsyncMock(), get_chat_menu_button=AsyncMock(return_value=old))
         with patch('app.webapp.asyncio.sleep', new=AsyncMock()):
             _, verified = await _set_and_verify_menu_button(bot, current)
         self.assertFalse(verified)
         self.assertEqual(bot.get_chat_menu_button.await_count, 6)
-        self.assertEqual(_menu_button_mismatch_reason(current, old), 'path')
+        self.assertEqual(_menu_button_mismatch_reason(current, old), 'release_version')
         other = _chat_menu_button('https://different.example/app/?secret=private')
         self.assertEqual(_menu_button_mismatch_reason(current, other), 'origin')
 
 
-class MenuButtonTargetTests(unittest.IsolatedAsyncioTestCase):
-    async def test_stale_build_marker_keeps_the_same_app_and_needs_no_retries(self):
+class MenuButtonTargetDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stale_build_marker_does_not_verify_the_current_release(self):
+        from app.webapp import _menu_button_target_matches
         current = _chat_menu_button("https://era.example/app/?v=new")
         old = _chat_menu_button("https://era.example/app/?v=old")
         bot = SimpleNamespace(set_chat_menu_button=AsyncMock(), get_chat_menu_button=AsyncMock(return_value=old))
-        with patch("app.webapp.asyncio.sleep", new=AsyncMock()) as sleep:
+        with patch("app.webapp.asyncio.sleep", new=AsyncMock()):
             actual, verified = await _set_and_verify_menu_button(bot, current)
-        self.assertTrue(verified)
-        self.assertIs(actual, old)
+        self.assertFalse(verified)
+        self.assertFalse(_menu_button_matches(current, actual))
+        self.assertTrue(_menu_button_target_matches(current, actual))
         bot.set_chat_menu_button.assert_awaited_once()
-        bot.get_chat_menu_button.assert_awaited_once()
-        sleep.assert_not_awaited()
+        self.assertEqual(bot.get_chat_menu_button.await_count, 6)
 
-    def test_only_the_release_marker_can_differ(self):
+    def test_only_the_release_marker_can_differ_for_target_diagnostics(self):
+        from app.webapp import _menu_button_target_matches
         expected = _chat_menu_button("https://era.example/app/?section=events&v=new&empty=#profile")
         for url in (
             "https://era.example/app/?section=events&v=old&empty=#profile",
             "https://era.example/app/?section=events&empty=#profile",
         ):
             with self.subTest(url=url):
-                self.assertTrue(_menu_button_matches(expected, _chat_menu_button(url)))
+                observed = _chat_menu_button(url)
+                self.assertTrue(_menu_button_target_matches(expected, observed))
+                self.assertFalse(_menu_button_matches(expected, observed))
 
     def test_meaningful_query_entries_cannot_change(self):
+        from app.webapp import _menu_button_target_matches
         expected = _chat_menu_button("https://era.example/app/?section=events&v=new&empty=#profile")
         for url in (
             "https://era.example/app/?section=admin&v=old&empty=#profile",
@@ -172,14 +177,14 @@ class MenuButtonTargetTests(unittest.IsolatedAsyncioTestCase):
             "http://era.example/app/?section=events&v=old&empty=#profile",
         ):
             with self.subTest(url=url):
-                self.assertFalse(_menu_button_matches(expected, _chat_menu_button(url)))
+                self.assertFalse(_menu_button_target_matches(expected, _chat_menu_button(url)))
 
-    def test_safe_diagnostics_cover_actual_target_differences(self):
+    def test_safe_diagnostics_distinguish_release_and_target(self):
         from app.webapp import _menu_button_mismatch_reason
         expected = _chat_menu_button("https://era.example/app/?v=new&section=events")
         self.assertEqual(
             _menu_button_mismatch_reason(expected, _chat_menu_button("https://era.example/app/?v=old&section=events")),
-            "match",
+            "release_version",
         )
         self.assertEqual(
             _menu_button_mismatch_reason(expected, _chat_menu_button("https://era.example/app/?v=old&section=other")),
