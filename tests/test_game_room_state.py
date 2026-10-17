@@ -985,6 +985,22 @@ class DurableGameHistoryTests(GameFixture, IsolatedAsyncioTestCase):
             assert not (await session.scalars(select(AppSetting).where(AppSetting.key.like('game-result:%')))).all()
             assert not (await session.scalars(select(PointTransaction))).all()
 
+    async def test_existing_maintenance_backfills_legacy_results_once_without_messages_or_points(self):
+        async with self.sessions() as session:
+            for token, at in [('dated', datetime.now(timezone.utc).isoformat()), ('undated', None)]:
+                session.add(AppSetting(key=_key(11, None, token), value={'status': 'finished',
+                    'session_token': token, 'participants': [11], 'kind': 'solo', 'finished_at': at,
+                    'scores': {'11': 2}, 'created_at': datetime.now(timezone.utc).isoformat()}))
+            await session.commit()
+        assert await expire_game_rooms(self.sessions) == 0
+        assert await expire_game_rooms(self.sessions) == 0
+        async with self.sessions() as session:
+            records = (await session.scalars(select(AppSetting).where(AppSetting.key.like('game-result%')))).all()
+            assert len(records) == 2
+            assert sum(row.key.startswith('game-result-undated:') for row in records) == 1
+            assert not (await session.scalars(select(PointTransaction))).all()
+        self.send.assert_not_awaited()
+
     async def test_expired_stored_playing_room_does_not_offer_continue(self):
         from app.handlers.era_game_room import show_game_cabinet
         async with self.sessions() as session:
@@ -1010,3 +1026,12 @@ def test_format_completion_mentions_the_awarded_balance_once():
 def test_durable_format_title_uses_mode_when_optional_kind_is_null():
     from app.services.game_room_presenter import room_heading
     assert room_heading({'kind': None, 'mode': 'guess_country'}) == '<b>🌍 Угадай страну</b>'
+
+
+def test_legacy_unknown_reward_is_not_rendered_as_zero_or_a_quiz_denominator():
+    from app.handlers.era_game_room import _room_view
+    from app.services.game_room_presenter import roster
+    room = {'mode': 'true_or_myth', 'status': 'finished', 'participants': [11], 'scores': {'11': 2}, 'rewards': {}}
+    text, _ = _room_view(room)
+    assert 'Очки за раунд: 2.' in text and 'из 0' not in text
+    assert 'Баллы ЭРА' not in text and 'ЭРА +0' not in roster(room, result=True)

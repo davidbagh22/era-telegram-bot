@@ -40,7 +40,7 @@ def roster(room: dict, *, result: bool = False) -> str:
     def member(uid):
         if result:
             suffix = f" — {scores.get(str(uid), 0)} очк."
-            if "rewards" in room:
+            if str(uid) in (room.get("rewards") or {}):
                 suffix += f" · ЭРА +{room['rewards'].get(str(uid), 0)}"
         elif room.get("status") == "playing":
             suffix = " · ✅ ответ принят" if str(uid) in answers else " · ⏳ отвечает"

@@ -13,7 +13,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.models import AppSetting, PointTransaction, User
-from app.handlers.era_game_room import _data, _key, _new_room, _recent_game_results, game_callback
+from app.handlers.era_game_room import _data, _key, _new_room, _recent_game_results, _store_game_result, game_callback
 from app.services.game_content import items_for_mode
 from app.services.game_formats import GameMode
 from app.services.game_rewards_service import award_game_points
@@ -137,6 +137,23 @@ async def main():
                 assert len(retained) == 2 and all(format_uid in item['participants'] for item in retained)
                 assert len(teams) == 1 and teams[0]['kind'] == 'duel'
                 assert delivery_bot.edit_message_text.await_args.kwargs['text'].count('Баллы ЭРА:') == 1
+        legacy_token = f'undated-{uid}'
+        legacy = {'status': 'finished', 'session_token': legacy_token, 'kind': 'solo',
+                  'participants': [uid], 'scores': {str(uid): 2},
+                  'created_at': datetime.now(timezone.utc).isoformat()}
+        async def archive_worker():
+            async with sessions() as session:
+                await _store_game_result(session, legacy)
+                await session.commit()
+        awards_before_archive = await count_awards(uid)
+        await asyncio.wait_for(asyncio.gather(*(archive_worker() for _ in range(8))), 30)
+        async with sessions() as session:
+            archived = await _recent_game_results(session, uid)
+            assert sum(item['session_token'] == legacy_token for item in archived) == 1
+            assert next(item for item in archived if item['session_token'] == legacy_token)['finished_at'] is None
+            assert await session.scalar(select(func.count(AppSetting.id)).where(
+                AppSetting.key == f'game-result-undated:{legacy_token}')) == 1
+        assert await count_awards(uid) == awards_before_archive
     finally:
         await engine.dispose()
     print('PostgreSQL games: rooms, player-scoped history, caps, concurrent answer idempotency')

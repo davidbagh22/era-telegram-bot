@@ -545,8 +545,11 @@ def _room_view(room: dict) -> tuple[str, InlineKeyboardMarkup | None]:
             ])
         if room.get('mode') or room.get('kind') == 'solo':
             uid = room.get("participants", [None])[0]
-            reward = rewards.get(str(uid), 0)
-            reward_line = "" if room.get("mode") and room.get("result_text") else f"\n\n⭐ Баллы ЭРА: +{reward}"
+            if room.get("mode") and not room.get("result_text"):
+                summary = f"Очки за раунд: {room.get('scores', {}).get(str(uid), 0)}."
+            reward_line = ""
+            if str(uid) in rewards and not (room.get("mode") and room.get("result_text")):
+                reward_line = f"\n\n⭐ Баллы ЭРА: +{rewards[str(uid)]}"
             return header + "🏁 Игра завершена\n\n" + summary + reward_line, markup
         return header + "🏁 Игра завершена\n\n" + summary + "\n\n" + roster(room, result=True) + reward_line, markup
     if room.get("mode"):
