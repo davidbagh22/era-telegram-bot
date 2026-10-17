@@ -347,8 +347,9 @@ class MultiRoundGamesTests(GameFixture, IsolatedAsyncioTestCase):
 
 
     async def test_resume_does_not_advance_or_consume_content(self):
-        room = await self.new_room()
-        query = self.query(room)
+        # Shared resume restores a team; solo recovery is tested privately.
+        room = await self.new_room('team')
+        query = self.query(room, choice=0)
         query.data = 'era_game:resume'
         async with self.sessions() as session:
             usage_before = _data(await session.scalar(select(AppSetting).where(AppSetting.key == 'era_game:question_usage')))
@@ -827,6 +828,44 @@ class IdentifiedRoomTests(GameFixture, IsolatedAsyncioTestCase):
         assert '#' not in text
 
 
+    async def test_starting_next_format_preserves_undated_previous_round_before_overwrite(self):
+        from app.handlers.era_game_room import _save, _recent_game_results
+        await self.click('era_game:play:true_or_myth', private=True)
+        async with self.sessions() as session:
+            row = await session.scalar(select(AppSetting).where(AppSetting.key.like('era_game:11:None:f%')))
+            room = _data(row)
+            token = room['session_token']
+            room['status'] = 'finished'
+            room.pop('finished_at', None)
+            room['scores'] = {'11': 1}
+            await _save(session, row.key, room)
+            await session.commit()
+        await self.click('era_game:play:true_or_myth', private=True)
+        async with self.sessions() as session:
+            saved = await _recent_game_results(session, 11)
+            assert len(saved) == 1 and saved[0]['session_token'] == token
+            assert saved[0]['finished_at'] is None and saved[0]['scores']['11'] == 1
+            assert not (await session.scalars(select(PointTransaction))).all()
+
+    async def test_resume_matches_the_latest_private_game_shown_in_cabinet(self):
+        await self.click('era_game:play:true_or_myth', private=True)
+        await self.click('era_game:play:guess_country', private=True)
+        await self.click('era_game:resume', private=True)
+        assert 'Угадай страну' in self.bot.edit_message_text.await_args.kwargs['text']
+
+    async def test_legacy_public_resume_cannot_reopen_a_solo_room_in_the_group(self):
+        async with self.sessions() as session:
+            session.add(AppSetting(key=_key(-1001, 10, 'solo-11'), value={
+                'id': 'solo-11', 'kind': 'solo', 'participants': [11], 'status': 'playing',
+                'created_at': datetime.now(timezone.utc).isoformat(),
+                'expires_at': (datetime.now(timezone.utc)+timedelta(minutes=1)).isoformat(),
+                'token': 'legacy', 'message_id': 66, 'question': 0}))
+            await session.commit()
+        query = await self.click('era_game:resume')
+        assert 'Открытой игры нет' in query.answer.await_args.args[0]
+        self.bot.edit_message_text.assert_not_awaited()
+
+
     async def test_public_rules_popup_fits_telegram_limit(self):
         query = await self.click('era_game:rules')
         assert len(query.answer.await_args.args[0]) <= 200
@@ -928,6 +967,40 @@ class DurableGameHistoryTests(GameFixture, IsolatedAsyncioTestCase):
             assert not (await session.scalars(select(PointTransaction))).all()
             assert '4 очк.' in self.send.await_args.args[0]
 
+    async def test_replacing_undated_legacy_quiz_preserves_history_without_fabricating_finish_time(self):
+        from app.handlers.era_game_room import _recent_game_results, _save
+        room = await self.new_room('duel')
+        token = room['session_token']
+        room['status'] = 'finished'
+        room.pop('finished_at', None)
+        room['scores'] = {'11': 2}
+        async with self.sessions() as session:
+            await _save(session, _key(-1001, 10, 'duel'), room)
+            await session.commit()
+        assert await self.new_room('duel') is not None
+        async with self.sessions() as session:
+            saved = await _recent_game_results(session, 11, team=True)
+            assert len(saved) == 1 and saved[0]['session_token'] == token
+            assert saved[0]['finished_at'] is None and saved[0]['scores']['11'] == 2
+            assert not (await session.scalars(select(AppSetting).where(AppSetting.key.like('game-result:%')))).all()
+            assert not (await session.scalars(select(PointTransaction))).all()
+
+    async def test_existing_maintenance_backfills_legacy_results_once_without_messages_or_points(self):
+        async with self.sessions() as session:
+            for token, at in [('dated', datetime.now(timezone.utc).isoformat()), ('undated', None)]:
+                session.add(AppSetting(key=_key(11, None, token), value={'status': 'finished',
+                    'session_token': token, 'participants': [11], 'kind': 'solo', 'finished_at': at,
+                    'scores': {'11': 2}, 'created_at': datetime.now(timezone.utc).isoformat()}))
+            await session.commit()
+        assert await expire_game_rooms(self.sessions) == 0
+        assert await expire_game_rooms(self.sessions) == 0
+        async with self.sessions() as session:
+            records = (await session.scalars(select(AppSetting).where(AppSetting.key.like('game-result%')))).all()
+            assert len(records) == 2
+            assert sum(row.key.startswith('game-result-undated:') for row in records) == 1
+            assert not (await session.scalars(select(PointTransaction))).all()
+        self.send.assert_not_awaited()
+
     async def test_expired_stored_playing_room_does_not_offer_continue(self):
         from app.handlers.era_game_room import show_game_cabinet
         async with self.sessions() as session:
@@ -953,3 +1026,12 @@ def test_format_completion_mentions_the_awarded_balance_once():
 def test_durable_format_title_uses_mode_when_optional_kind_is_null():
     from app.services.game_room_presenter import room_heading
     assert room_heading({'kind': None, 'mode': 'guess_country'}) == '<b>🌍 Угадай страну</b>'
+
+
+def test_legacy_unknown_reward_is_not_rendered_as_zero_or_a_quiz_denominator():
+    from app.handlers.era_game_room import _room_view
+    from app.services.game_room_presenter import roster
+    room = {'mode': 'true_or_myth', 'status': 'finished', 'participants': [11], 'scores': {'11': 2}, 'rewards': {}}
+    text, _ = _room_view(room)
+    assert 'Очки за раунд: 2.' in text and 'из 0' not in text
+    assert 'Баллы ЭРА' not in text and 'ЭРА +0' not in roster(room, result=True)

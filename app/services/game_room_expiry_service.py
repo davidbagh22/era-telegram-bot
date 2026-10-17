@@ -5,7 +5,7 @@ from sqlalchemy import select
 from aiogram.types import Chat, Message
 
 from app.database.models import AppSetting
-from app.handlers.era_game_room import _data, _lock, _save, _publish_room
+from app.handlers.era_game_room import _data, _lock, _save, _publish_room, _store_game_result
 
 
 async def expire_game_rooms(session_factory, bot=None, *, now=None) -> int:
@@ -24,6 +24,11 @@ async def expire_game_rooms(session_factory, bot=None, *, now=None) -> int:
             row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update())
             room = _data(row)
             if room.get('status') not in {'waiting', 'ready_check', 'playing'}:
+                if room.get('status') == 'finished':
+                    # Archive real legacy results through the existing ledger,
+                    # even if their owner has not opened the new cabinet yet.
+                    await _store_game_result(session, room)
+                    await session.commit()
                 if bot is not None and room.get('message_id') and room.get('status') in {'expired', 'finished', 'cancelled', 'exhausted'} and room.get('card_status') != room.get('status'):
                     parts = key.split(':')
                     chat_id, thread = int(parts[1]), parts[2]
