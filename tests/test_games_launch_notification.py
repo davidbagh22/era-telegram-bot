@@ -48,6 +48,6 @@ class GameLaunchTests(IsolatedAsyncioTestCase):
         for format_name in (
             "быстрый и командный квиз", "Правда или миф", "угадай страну", "хронология",
             "словесная цепочка", "ассоциации", "логика", "культурный блиц", "память",
-            "командная дуэль",
+            "командная дуэль", "Шпион",
         ):
             assert format_name in announcement

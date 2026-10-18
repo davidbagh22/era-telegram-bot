@@ -1,7 +1,5 @@
 """Public game cards use Telegram identities, never registration questionnaire data."""
-from datetime import datetime
 from html import escape
-from zoneinfo import ZoneInfo
 
 
 MODE_LABELS = {
@@ -23,7 +21,7 @@ def remember_player(room: dict, telegram_user) -> None:
 def player_label(room: dict, uid: int) -> str:
     raw = room.get("players", {}).get(str(uid)) or "Профиль Telegram"
     name = escape(raw[:30] + ("…" if len(raw) > 30 else ""))
-    return f'<a href="tg://user?id={int(uid)}">{name}</a> · <code>{int(uid)}</code>'
+    return f'<a href="tg://user?id={int(uid)}">{name}</a>'
 
 
 def room_heading(room: dict) -> str:
@@ -43,9 +41,9 @@ def roster(room: dict, *, result: bool = False) -> str:
             if str(uid) in (room.get("rewards") or {}):
                 suffix += f" · ЭРА +{room['rewards'].get(str(uid), 0)}"
         elif room.get("status") == "playing":
-            suffix = " · ✅ ответ принят" if str(uid) in answers else " · ⏳ отвечает"
+            suffix = " · ответил" if str(uid) in answers else " · думает"
         else:
-            suffix = " · ✅ готов" if uid in ready else " · ⏳ не готов"
+            suffix = " · готов" if uid in ready else " · ждём"
         leader = result and len(participants) > 1 and room.get("kind") != "duel" and scores.get(str(uid), 0) == max(scores.values(), default=0)
         return ("🏅 " if leader else "") + player_label(room, uid) + suffix
 
@@ -63,9 +61,8 @@ def roster(room: dict, *, result: bool = False) -> str:
 
 
 def deadline(room: dict) -> str:
-    # Explicit duration avoids confusing a participant's device timezone with the server's.
-    value = datetime.fromisoformat(room["expires_at"]).astimezone(ZoneInfo("Europe/Moscow")).strftime("%H:%M:%S")
-    return f"⏱ До {value} МСК. Ответы — кнопками под карточкой."
+    # Keep the card useful across time zones and avoid stale absolute timestamps.
+    return "⏱ Ответь кнопкой ниже"
 
 
 def result_summary(room: dict) -> str:

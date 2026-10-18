@@ -48,3 +48,22 @@ def test_quiz_themes_cover_requested_subjects():
         "Армения", "Россия", "Мировая культура", "История", "География",
         "Литература", "Наука", "Языки", "Молодёжные проекты", "Логика",
     } <= categories
+
+
+def test_new_quiz_content_is_youthful_practical_and_explained():
+    items = items_for_mode(GameMode.SOLO_QUIZ)
+    prompts = {item.challenge.prompt for item in items}
+    categories = {item.category for item in items}
+    assert {
+        "Медиа и технологии", "Наука и повседневность", "Молодёжные проекты", "Логика"
+    } <= categories
+    assert any("обогнал бегуна" in prompt for prompt in prompts)
+    assert any("DNS" in prompt for prompt in prompts)
+    assert any("хакатоне" in prompt for prompt in prompts)
+    assert all(items_for_mode(GameMode.SOLO_QUIZ)[i].challenge.explanation
+               for i, (prompt, _, _) in enumerate(QUESTIONS)
+               if prompt in {
+                   "Ты обогнал бегуна, который был на втором месте. На каком месте ты теперь?",
+                   "DNS в интернете работает примерно как…",
+                   "Почему лёд держится на поверхности воды?",
+               })

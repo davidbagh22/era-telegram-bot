@@ -713,7 +713,8 @@ class IdentifiedRoomTests(GameFixture, IsolatedAsyncioTestCase):
         card = self.bot.edit_message_text.await_args.kwargs
         assert card['message_id'] == 66
         for uid, name in state['players'].items():
-            assert name in card['text'] and f'<code>{uid}</code>' in card['text']
+            assert name in card['text'] and f' · {uid}' not in card['text']
+        assert '<code>' not in card['text']
         assert '🔴 Команда А' in card['text'] and '🔵 Команда Б' in card['text']
         assert all('duel_join' not in (b.callback_data or '') for row in card['reply_markup'].inline_keyboard for b in row)
 
@@ -750,11 +751,11 @@ class IdentifiedRoomTests(GameFixture, IsolatedAsyncioTestCase):
             correct = QUESTIONS[state['question']][2]
             await self.click(f"era_game:answer:duel~{state['token']}:{correct}", 11)
             partial = self.bot.edit_message_text.await_args.kwargs['text']
-            assert '✅ ответ принят' in partial and '⏳ отвечает' in partial
+            assert 'ответил' in partial and 'думает' in partial
             await self.click(f"era_game:answer:duel~{state['token']}:{(correct+1)%3}", 22)
         result = self.bot.edit_message_text.await_args.kwargs
         assert 'Победила 🔴 Команда А' in result['text']
-        assert '<code>11</code>' in result['text'] and '<code>22</code>' in result['text']
+        assert '<code>' not in result['text']
         assert result['reply_markup'] is None and result['message_id'] == 66
         assert self.send.await_count == 1
         assert (await self.room())['rewards'] == {'11': 3}
@@ -824,7 +825,7 @@ class IdentifiedRoomTests(GameFixture, IsolatedAsyncioTestCase):
         text = self.send.await_args.args[0]
         assert 'Команда А' in text and 'Команда Б' in text
         assert 'Анна' in text and 'Борис' in text
-        assert '<code>11</code>' in text and '<code>22</code>' in text
+        assert '<code>' not in text
         assert '#' not in text
 
 
@@ -927,7 +928,7 @@ def test_long_escaped_team_names_fit_telegram_card_without_repeating_the_reward_
             'rewards': {str(uid): 3 for uid in range(1000000000, 1000000008)}}
     text, _ = _room_view(room)
     assert len(text) < 4096 and text.count('🏅 <a') == 8
-    assert all(text.count(f'<code>{uid}</code>') == 1 for uid in room['participants'])
+    assert '<code>' not in text
     assert text.count('ЭРА +3') == 8
 
 

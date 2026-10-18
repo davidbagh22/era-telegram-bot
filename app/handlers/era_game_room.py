@@ -24,7 +24,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import AppSetting, User
-from app.services.game_content import GameItem, QUIZ_QUESTIONS, choose_quiz_pack, items_for_mode
+from app.services.game_content import (
+    GameItem,
+    QUIZ_EXPLANATIONS,
+    QUIZ_QUESTIONS,
+    choose_quiz_pack,
+    items_for_mode,
+)
 from app.services.game_formats import GameMode, check_answer, score_answer
 from app.services.general_topics_service import ensure_topic
 from app.services.game_rewards_service import award_game_points
@@ -42,10 +48,10 @@ READY_SECONDS = 90
 QUESTIONS = QUIZ_QUESTIONS
 PUBLIC_MENU_TEXT = (
         "🎮 <b>ЭРА | Интерактив</b>\n\n"
-        "👥 Командные игры — здесь. Бот распределит игроков по командам, покажет имена и результаты.\n"
+        "👥 Командные игры — здесь. Бот распределит игроков и покажет имена и результаты.\n"
+        "🕵 «Шпион» — секретные роли, вопросы и голосование.\n"
         "👤 Одиночные игры — в личном боте.\n\n"
-        "Для участия нужна одобренная регистрация в ЭРА. "
-        "При вступлении в команду имя из Telegram и Telegram ID видны участникам."
+        "Для участия нужна одобренная регистрация в ЭРА. В карточках показываются имена участников."
 )
 
 
@@ -71,6 +77,7 @@ def menu_markup(*, public: bool = False, bot_username: str = "ERA_1bot") -> Inli
             [InlineKeyboardButton(text="🎮 Одиночные игры", url=f"https://t.me/{bot_username}?start=games")],
             [InlineKeyboardButton(text="🤝 Командный квиз", callback_data="era_game:team")],
             [InlineKeyboardButton(text="🏆 Командная дуэль", callback_data="era_game:duel")],
+            [InlineKeyboardButton(text="🕵 Шпион", callback_data="era_spyfall:create")],
             [InlineKeyboardButton(text="📖 Правила", callback_data="era_game:rules")],
         ])
     keyboard.inline_keyboard.append([InlineKeyboardButton(text="← Досуг", callback_data="leisure:home")])
@@ -97,14 +104,14 @@ def duel_markup(reference: str, *, ready: bool = False) -> InlineKeyboardMarkup:
 
 def quiz_markup(room_id: str, options: tuple[str, ...]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=option, callback_data=f"era_game:answer:{room_id}:{index}")]
-        for index, option in enumerate(options)
+        [InlineKeyboardButton(text=f"{chr(65 + index)} · Выбрать", callback_data=f"era_game:answer:{room_id}:{index}")]
+        for index, _ in enumerate(options)
     ])
 
 
 def format_markup(reference: str, item: GameItem, *, hints_used: int = 0) -> InlineKeyboardMarkup:
     keyboard = [[InlineKeyboardButton(
-        text=option[:60], callback_data=f"era_game:format_answer:{reference}:{index}"
+        text=f"{chr(65 + index)} · Выбрать", callback_data=f"era_game:format_answer:{reference}:{index}"
     )] for index, option in enumerate(item.challenge.options)]
     if item.challenge.hints and hints_used < len(item.challenge.hints):
         keyboard.append([InlineKeyboardButton(
@@ -160,7 +167,11 @@ def _format_prompt(room: dict) -> tuple[str, InlineKeyboardMarkup | None] | None
         return None
     challenge = item.challenge
     heading = room_heading(room) + "\n\n"
-    text = f"<b>{escape(challenge.prompt)}</b>\n\n<i>Тема: {escape(item.category)}</i>"
+    text = f"<i>{escape(item.category)}</i>\n\n<b>{escape(challenge.prompt)}</b>"
+    if challenge.mode != GameMode.MEMORY and challenge.options:
+        labels = "\n".join(f"<b>{chr(65 + index)}.</b> {escape(option)}"
+                            for index, option in enumerate(challenge.options))
+        text += "\n\n" + labels
     if challenge.hints:
         shown = challenge.hints[:room.get('hints_used', 0)]
         text += '\n\n' + '\n'.join(f'💡 {escape(hint)}' for hint in shown)
@@ -520,6 +531,14 @@ def _registered(user: User | None, telegram_id: int) -> bool:
                 and not user.is_blocked and not user.is_archived)
 
 
+def _learning_summary(room: dict) -> str:
+    notes = room.get("quiz_learning", [])
+    if not notes:
+        return ""
+    lines = "\n".join(f"• {escape(note)}" for note in notes)
+    return f"\n\n<b>💡 Коротко о вопросах</b>\n{lines}"
+
+
 def _bot_link(settings: Settings, payload: str = "games") -> str:
     return f"https://t.me/{settings.bot_username or 'ERA_1bot'}?start={payload}"
 
@@ -550,28 +569,28 @@ def _room_view(room: dict) -> tuple[str, InlineKeyboardMarkup | None]:
             reward_line = ""
             if str(uid) in rewards and not (room.get("mode") and room.get("result_text")):
                 reward_line = f"\n\n⭐ Баллы ЭРА: +{rewards[str(uid)]}"
-            return header + "🏁 Игра завершена\n\n" + summary + reward_line, markup
-        return header + "🏁 Игра завершена\n\n" + summary + "\n\n" + roster(room, result=True) + reward_line, markup
+            return header + "🏁 Игра завершена\n\n" + summary + reward_line + _learning_summary(room), markup
+        return (header + "🏁 Игра завершена\n\n" + summary + "\n\n"
+                + roster(room, result=True) + reward_line + _learning_summary(room), markup)
     if room.get("mode"):
         return _format_prompt(room) or (header + "Материал недоступен.", None)
     reference = room["id"] + "~" + room["token"]
     if status in {"waiting", "ready_check"}:
-        info = ("Набор игроков · до 8 участников. Минимум двое.\n"
-                "Нажмите «Присоединиться», затем подтвердите готовность.\n"
-                "Имена и Telegram ID участников будут видны в этой карточке.")
+        info = "Собираем команду · 2–8 игроков\nНажми «Присоединиться», чтобы войти в игру."
         if room.get("kind") == "duel":
-            info += "\nБот автоматически распределяет игроков поровну в команды А и Б."
+            info += "\nКоманды распределятся автоматически."
         if status == "ready_check":
-            info += "\n\n✅ Все присоединившиеся должны нажать «Готов играть»."
+            info += "\n\nПодтверди готовность, когда все соберутся."
         return (header + info + "\n\n" + roster(room) + "\n\n" + deadline(room),
                 ready_markup(reference) if status == "ready_check" else lobby_markup(reference))
     question, options, _ = QUESTIONS[room["question"]]
     position = room.get("position", 0) + 1
     count = len(room.get("questions", [room["question"]]))
     topic = items_for_mode(GameMode.SOLO_QUIZ)[room['question']].category
-    progress = '●' * position + '○' * (count-position)
-    return (header + f"<b>Вопрос {position}/{count}</b> · {progress}\n<i>{escape(topic)}</i>\n\n<b>{escape(question)}</b>\n\n"
-            + ("" if room.get("kind") == "solo" else roster(room) + "\n\nВсе отвечают одновременно. Следующий вопрос — после ответов всех игроков.\n")
+    choices = "\n".join(f"<b>{chr(65 + index)}.</b> {escape(option)}"
+                         for index, option in enumerate(options))
+    return (header + f"<b>{position} из {count}</b> · {escape(topic)}\n\n<b>{escape(question)}</b>\n\n{choices}\n\n"
+            + ("" if room.get("kind") == "solo" else roster(room) + "\n\n")
             + deadline(room), quiz_markup(reference, options))
 
 
@@ -898,7 +917,7 @@ def _topic_link(settings: Settings, thread_id: int, message_id: int | None = Non
     return f"https://t.me/c/{str(settings.general_chat_id)[4:]}/{thread_id}" + (f"/{message_id}" if message_id else "")
 
 
-@router.message(Command("games", "game"))
+@router.message(Command("games", "game", "play"))
 async def game_menu(message: Message, settings: Settings, session: AsyncSession, user: User | None = None):
     if not message.from_user:
         return
@@ -906,6 +925,23 @@ async def game_menu(message: Message, settings: Settings, session: AsyncSession,
         await show_game_cabinet(message, settings, session, user)
         return
     if user and (user.is_blocked or user.is_archived):
+        return
+    if not _enabled(settings, message.from_user.id) or message.chat.id != settings.general_chat_id:
+        return
+    thread_id = await ensure_topic(message.bot, settings, "games")
+    if not thread_id:
+        return
+    if message.message_thread_id != thread_id:
+        chat_id = str(settings.general_chat_id)
+        if not chat_id.startswith("-100"):
+            return
+        topic_url = _topic_link(settings, thread_id)
+        await message.answer(
+            "🎮 Игры проходят в теме «Интерактив». Открой её и выбирай режим.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Открыть игры", url=topic_url)
+            ]]),
+        )
         return
     if not await _allowed(settings, message, message.from_user.id):
         return
@@ -1154,6 +1190,10 @@ async def game_callback(query: CallbackQuery, settings: Settings, session: Async
                 if team in {"A", "B"}:
                     room.setdefault("team_scores", {"A": 0, "B": 0})[team] += 1
         complete = len(room["answers"]) >= len(room["participants"])
+        if complete:
+            explanation = QUIZ_EXPLANATIONS.get(QUESTIONS[room["question"]][0])
+            if explanation:
+                room.setdefault("quiz_learning", []).append(explanation)
         questions = room.get("questions", [room["question"]])
         finished = complete and room.get("position", 0) + 1 >= len(questions)
         if finished:
