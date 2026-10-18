@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import Settings
 from app.database.base import Base
-from app.database.models import AppSetting, Broadcast, Department, Task, TaskDelivery, User, UserDepartment
+from app.database.models import AppSetting, Broadcast, Department, Office, Task, TaskDelivery, User, UserDepartment, UserOffice
 from app.database.system_models import NotificationDelivery
 from app.handlers.leaders_native import native_leaders
 from app.services import leaders_access_service as access, leaders_campaign_service as campaigns, leaders_workspace as work
@@ -41,6 +41,31 @@ class LeadersWorkcenterTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         await self.engine.dispose()
+
+    async def test_legacy_community_offices_authorize_their_responsibility_and_expire(self):
+        async with self.sessions() as session:
+            deputy=await session.get(User,self.candidate)
+            external=await session.get(Department,self.other_dept)
+            external.name='Внешние связи'
+            head=await session.get(User,self.head)
+            session.add(UserDepartment(user_id=head.id,department_id=external.id))
+            deputy_office=Office(title='Заместитель председателя',scope_type='community')
+            head_office=Office(title='Руководитель внешних связей',scope_type='community')
+            session.add_all([deputy_office,head_office]);await session.flush()
+            a=UserOffice(user_id=deputy.id,office_id=deputy_office.id,appointed_by=self.admin)
+            b=UserOffice(user_id=head.id,office_id=head_office.id,appointed_by=self.admin)
+            session.add_all([a,b]);await session.commit()
+            self.assertTrue(await access.executive(session,deputy,self.settings))
+            self.assertEqual(await access.scopes(session,head,self.settings),{('department',external.id)})
+            self.assertIn(deputy.id,{u.id for u in await work.roster(session,self.settings.leaders_chat_id)})
+            # An explicit scoped override cannot become community-wide authority.
+            a.scope_type='department';a.scope_id=self.dept
+            await session.commit()
+            self.assertFalse(await access.executive(session,deputy,self.settings))
+            a.is_active=False;b.is_active=False
+            await session.commit()
+            self.assertFalse(await access.executive(session,deputy,self.settings))
+            self.assertEqual(await access.scopes(session,head,self.settings),set())
 
     async def test_native_cancel_does_not_get_consumed_as_campaign_or_team_text(self):
         from aiogram.types import Chat, Message

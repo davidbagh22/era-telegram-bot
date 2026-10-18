@@ -1,12 +1,32 @@
 """Workcenter permissions use existing roles, appointments and scoped grants."""
+from datetime import date
+
 from sqlalchemy import inspect, or_, select
 
-from app.database.models import Department, Direction, User, UserDepartment, UserDirection
+from app.database.models import Department, Direction, Office, User, UserDepartment, UserDirection, UserOffice
 from app.services.authorization_service import is_full_admin
 from app.services.leadership_permission_service import active_office_assignments, effective_scoped_permissions
 from app.utils.constants import ApplicationStatus, Role
 
 EXECUTIVE_OFFICES = {'Председатель', 'Заместитель председателя'}
+DEPARTMENT_OFFICES = {
+    'Руководитель внутренних связей': 'Внутренние связи',
+    'Заместитель руководителя внутренних связей': 'Внутренние связи',
+    'Руководитель внешних связей': 'Внешние связи',
+    'Заместитель руководителя внешних связей': 'Внешние связи',
+}
+DIRECTION_OFFICES = {'Лидер направления «Медиа»': 'Медиа'}
+MANAGEMENT_OFFICES = EXECUTIVE_OFFICES | DEPARTMENT_OFFICES.keys() | DIRECTION_OFFICES.keys()
+
+
+def appointment_scope(assignment, office):
+    if assignment.scope_type:
+        return assignment.scope_type, assignment.scope_id
+    if office.direction_id:
+        return 'direction', office.direction_id
+    if office.department_id:
+        return 'department', office.department_id
+    return office.scope_type, office.scope_id
 
 
 def active(user):
@@ -18,8 +38,9 @@ async def executive(session, user, settings):
         return False
     if is_full_admin(user, settings, user.telegram_id):
         return True
-    return any(o.title in EXECUTIVE_OFFICES and o.scope_type == 'global'
-               for _, o in await active_office_assignments(session, user.id))
+    return any(o.title in EXECUTIVE_OFFICES and appointment_scope(a, o)[0] in {'global', 'community'}
+               and appointment_scope(a, o)[1] in {None, 0}
+               for a, o in await active_office_assignments(session, user.id))
 
 
 async def scopes(session, user, settings, permission='tasks.manage'):
@@ -34,15 +55,30 @@ async def scopes(session, user, settings, permission='tasks.manage'):
               if p.permission == permission and
               ((p.scope_type == 'global' and p.scope_id == 0) or
                (p.scope_type in {'department', 'direction'} and isinstance(p.scope_id, int) and p.scope_id > 0))}
-    # A HEAD is bounded by actual memberships, never by the role name alone.
+    # Known legacy offices were seeded with community scope and no department IDs.
+    # Resolve their named responsibility only here, without changing generic grants.
+    appointments = await active_office_assignments(session, user.id)
+    for assignment, office in appointments:
+        if office.title not in MANAGEMENT_OFFICES:
+            continue
+        kind, ident = appointment_scope(assignment, office)
+        if kind in {'department', 'direction'} and ident:
+            result.add((kind, ident))
+        elif kind in {'community', 'global'} and ident in {None, 0}:
+            if office.title in DEPARTMENT_OFFICES:
+                ident = await session.scalar(select(Department.id).where(Department.name == DEPARTMENT_OFFICES[office.title]))
+                if ident: result.add(('department', ident))
+            elif office.title in DIRECTION_OFFICES:
+                ident = await session.scalar(select(Direction.id).where(Direction.name == DIRECTION_OFFICES[office.title]))
+                if ident: result.add(('direction', ident))
     if user.role == Role.HEAD:
-        result.update(('department', ident) for ident in (await session.scalars(select(UserDepartment.department_id).where(UserDepartment.user_id==user.id))).all())
-        result.update(('direction', ident) for ident in (await session.scalars(select(UserDirection.direction_id).where(UserDirection.user_id==user.id))).all())
-        for a, o in await active_office_assignments(session, user.id):
-            kind = a.scope_type or ('direction' if o.direction_id else 'department' if o.department_id else o.scope_type)
-            ident = a.scope_id if a.scope_type else (o.direction_id or o.department_id or o.scope_id)
-            if kind in {'department', 'direction'} and ident:
-                result.add((kind, ident))
+        has_managed_office = await session.scalar(select(UserOffice.id).join(Office, Office.id == UserOffice.office_id)
+            .where(UserOffice.user_id == user.id, Office.title.in_(MANAGEMENT_OFFICES)).limit(1))
+        # Legacy HEADs without appointments retain their existing membership scope.
+        # Once responsibility is represented by an office, its expiry revokes it.
+        if not has_managed_office:
+            result.update(('department', ident) for ident in (await session.scalars(select(UserDepartment.department_id).where(UserDepartment.user_id == user.id))).all())
+            result.update(('direction', ident) for ident in (await session.scalars(select(UserDirection.direction_id).where(UserDirection.user_id == user.id))).all())
     return result
 
 
@@ -99,9 +135,14 @@ async def team(session, chat_id, *, query='', offset=0, limit=20, candidates=Fal
         LeaderChatMembership.leader_chat_id == chat_id,
         LeaderChatMembership.membership_status.in_(['creator', 'administrator', 'member', 'restricted']),
         LeaderChatMembership.left_at.is_(None))
+    today = date.today()
+    appointees = select(UserOffice.user_id).join(Office, Office.id == UserOffice.office_id).where(
+        UserOffice.is_active.is_(True), Office.is_active.is_(True),
+        or_(UserOffice.starts_at.is_(None), UserOffice.starts_at <= today),
+        or_(UserOffice.ends_at.is_(None), UserOffice.ends_at >= today))
     stmt = select(User).where(User.is_archived.is_not(True), User.is_blocked.is_not(True))
     if not candidates:
-        stmt = stmt.where(or_(User.id.in_(known), User.role.in_([Role.LEADER, Role.HEAD, Role.COUNCIL, Role.ADMIN])))
+        stmt = stmt.where(or_(User.id.in_(known), User.id.in_(appointees), User.role.in_([Role.LEADER, Role.HEAD, Role.COUNCIL, Role.ADMIN])))
     else:
         stmt = stmt.where(User.application_status == ApplicationStatus.APPROVED)
     value = query.strip().lstrip('@')[:100]

@@ -36,7 +36,7 @@ async def roster(session, chat_id):
 async def verify_member(session, bot, settings, user):
     if not access.active(user) or not settings.leaders_chat_id:
         return False
-    if user.role == Role.LEADER:
+    if user.role == Role.LEADER or await access.executive(session, user, settings) or await access.scopes(session, user, settings):
         return True
     member = await bot.get_chat_member(settings.leaders_chat_id, user.telegram_id)
     row = await upsert_leader_membership(session, leader_chat_id=settings.leaders_chat_id,
