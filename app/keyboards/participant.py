@@ -63,6 +63,8 @@ def main_inline_keyboard(
         )
         if privileged or admin:
             rows.append([InlineKeyboardButton(text="⚙️ Панель", callback_data="panel:open")])
+    if privileged or admin:
+        rows.append([InlineKeyboardButton(text='🧭 Лидеры',callback_data='wc:home')])
     if admin:
         rows.insert(1 if miniapp_url else 0, [
             InlineKeyboardButton(text="📊 Админ-сводка", callback_data="admin:management:open"),

@@ -110,6 +110,13 @@ async def preview_recipient_count(session: AsyncSession, audience: str, filter_v
     return len(await _resolve_recipients(session, audience, filter_value))
 
 
+def _leaders_receipt_keyboard(item):
+    if not item.audience_filter_json.get('acknowledge'):
+        return None
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text='✅ Ознакомился',callback_data=f'leaders_broadcast:read:{item.id}')]])
+
+
 async def _deliver_campaign(bot, settings, session, item) -> BroadcastResult:
     metadata = item.audience_filter_json
     result = BroadcastResult()
@@ -123,7 +130,7 @@ async def _deliver_campaign(bot, settings, session, item) -> BroadcastResult:
         return result
     needs_review = False
     retry = False
-    for user_id in metadata.get("recipient_ids", []):
+    for user_id in ([] if metadata.get("mode") == "group" else metadata.get("recipient_ids", [])):
         await session.refresh(item, attribute_names=['status'])
         if item.status != 'sending':
             return result
@@ -136,6 +143,7 @@ async def _deliver_campaign(bot, settings, session, item) -> BroadcastResult:
             bot, settings, recipient.telegram_id, item.text,
             delivery_key=f"admin-campaign:{item.id}:user:{recipient.id}",
             notification_type="admin_broadcast",
+            reply_markup=_leaders_receipt_keyboard(item) if item.audience_type=='leaders' else None,
         )
         result.duplicates += int(delivery.duplicate)
         if delivery.sent:
@@ -147,6 +155,31 @@ async def _deliver_campaign(bot, settings, session, item) -> BroadcastResult:
             needs_review |= delivery.status in {"uncertain", "conflict"}
             result.failures.append(BroadcastFailure(recipient.telegram_id, delivery.error_code or delivery.status, temporary))
         # Shared Bot transport applies per-chat/global pacing and RetryAfter.
+    if item.audience_type == 'leaders' and metadata.get('mode') in {'group','both'}:
+        await session.refresh(item, attribute_names=['status'])
+        if item.status != 'sending':
+            return result
+        if metadata.get('chat_id') != settings.leaders_chat_id:
+            item.status = 'review_required'
+            await session.commit()
+            return result
+        from app.services.leaders_topics_service import delivery_topic
+        try:
+            thread = await delivery_topic(session, settings.leaders_chat_id, 'important')
+        except ValueError:
+            item.status = 'review_required'
+            await session.commit()
+            return result
+        delivery = await safe_send_once(bot,settings,settings.leaders_chat_id,item.text,
+            delivery_key=f'admin-campaign:{item.id}:group',notification_type='leaders_broadcast',
+            message_thread_id=thread,reply_markup=_leaders_receipt_keyboard(item))
+        result.total += 1
+        result.sent += int(delivery.sent)
+        result.failed += int(not delivery.sent)
+        needs_review |= delivery.status in {'uncertain','conflict'}
+        retry |= delivery.status in {'pending','failed'} and delivery.error_code in {'telegram_retry_after','delivery_ledger_unavailable','delivery_in_flight'}
+        if delivery.message_id:
+            item.audience_filter_json={**item.audience_filter_json,'message_id':delivery.message_id}
     if item.audience_type == "all" and settings.general_chat_id:
         await session.refresh(item, attribute_names=['status'])
         if item.status != 'sending':
@@ -172,8 +205,8 @@ async def _deliver_campaign(bot, settings, session, item) -> BroadcastResult:
     return result
 
 
-async def control_broadcast(session, settings, *, actor, campaign_id: int, action: str):
-    if actor is None or not is_full_admin(actor, settings, actor.telegram_id):
+async def control_broadcast(session, settings, *, actor, campaign_id: int, action: str, workcenter=False):
+    if not workcenter and (actor is None or not is_full_admin(actor, settings, actor.telegram_id)):
         raise BroadcastError('admin_access_required')
     transitions = {'pause': ({'sending'}, 'paused'), 'resume': ({'paused'}, 'sending'),
                    'cancel': ({'sending', 'paused'}, 'cancelled')}
@@ -183,6 +216,14 @@ async def control_broadcast(session, settings, *, actor, campaign_id: int, actio
                                 .execution_options(populate_existing=True))
     if item is None or 'campaign_key' not in (item.audience_filter_json or {}):
         raise BroadcastError('campaign_not_found')
+    if workcenter:
+        from app.services import leaders_access_service as access
+        data=item.audience_filter_json or {}
+        if item.audience_type!='leaders' or not actor or not await access.permitted_scope(session,actor,settings,
+            department_id=data.get('department_id'),direction_id=data.get('direction_id'),permission='broadcasts.create'):
+            raise BroadcastError('admin_access_required')
+        if item.author_id!=actor.id and not await access.executive(session,actor,settings):
+            raise BroadcastError('admin_access_required')
     allowed, target = transitions[action]
     if item.status == target:
         return item

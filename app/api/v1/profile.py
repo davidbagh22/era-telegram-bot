@@ -4,7 +4,7 @@ import json
 from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_session
@@ -13,6 +13,7 @@ from app.services import career_service, data_rights_service
 from app.services.career_pdf_service import build_career_resume
 from app.services.growth_service import GrowthProgress, growth_progress_for
 from app.services.portfolio_service import build_portfolio_data
+from app.services.progression_service import GrowthCriteria, growth_criteria_for
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -22,6 +23,26 @@ class GrowthProgressOut(BaseModel):
     label: str
     level_index: int
     level_count: int
+
+
+class GrowthCriterionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    key: str
+    label: str
+    current: int
+    required: int
+    done: bool
+
+
+class GrowthCriteriaOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    current_level: str
+    next_level: str | None
+    next_label: str | None
+    mode: str
+    criteria: list[GrowthCriterionOut]
 
 
 class PortfolioEntryOut(BaseModel):
@@ -41,6 +62,7 @@ class ProfileOut(BaseModel):
     last_name: str | None
     role: str
     growth: GrowthProgressOut
+    growth_criteria: GrowthCriteriaOut
     full_name: str
     participation_status: str
     departments: list[str]
@@ -73,6 +95,10 @@ def _growth_out(growth: GrowthProgress) -> GrowthProgressOut:
     )
 
 
+def _growth_criteria_out(criteria: GrowthCriteria) -> GrowthCriteriaOut:
+    return GrowthCriteriaOut.model_validate(criteria)
+
+
 @router.get("", response_model=ProfileOut)
 async def read_profile(
     user: User = Depends(get_current_user),
@@ -80,6 +106,7 @@ async def read_profile(
 ) -> ProfileOut:
     portfolio = await build_portfolio_data(session, user)
     growth = growth_progress_for(user)
+    criteria = await growth_criteria_for(session, user)
     return ProfileOut(
         id=user.id,
         telegram_id=user.telegram_id,
@@ -87,6 +114,7 @@ async def read_profile(
         last_name=user.last_name,
         role=user.role,
         growth=_growth_out(growth),
+        growth_criteria=_growth_criteria_out(criteria),
         full_name=portfolio.full_name,
         participation_status=portfolio.participation_status,
         departments=portfolio.departments,

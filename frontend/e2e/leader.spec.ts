@@ -25,11 +25,11 @@ test("leader opens the separate workspace and creates a new open task", async ({
   await expect(page.getByText(taskTitle)).toBeVisible();
 });
 
-test("leader Weekly Pulse keeps system facts separate and persists subjective weekly assessment", async ({ page }) => {
+test("leader Пульс недели keeps system facts separate and persists subjective weekly assessment", async ({ page }) => {
   await enterLeaderWorkspace(page);
-  await page.getByRole("button", { name: /Weekly Pulse/ }).click();
+  await page.getByRole("button", { name: /Пульс недели/ }).click();
 
-  await expect(page.getByRole("heading", { name: "Weekly Pulse" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Пульс недели" })).toBeVisible();
   await expect(page.getByText("Система уже знает", { exact: true })).toBeVisible();
   await expect(page.getByText(/Эти показатели формируются системой и не редактируются лидером/)).toBeVisible();
   await expect(page.getByText("Команда", { exact: true })).toBeVisible();
@@ -43,8 +43,8 @@ test("leader Weekly Pulse keeps system facts separate and persists subjective we
   await page.getByText("Следующий приоритет").locator("..").getByRole("textbox").fill("E2E: закрыть следующий результат");
   await page.getByText("Что требует внимания").locator("..").getByRole("textbox").fill("E2E: держим темп");
 
-  const submit = page.getByRole("button", { name: /Отправить Weekly Pulse|Обновить Weekly Pulse/ });
+  const submit = page.getByRole("button", { name: /Отправить Пульс недели|Обновить Пульс недели/ });
   await submit.click();
   await expect(page.getByText(/Последняя отправка:/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Обновить Weekly Pulse" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Обновить Пульс недели" })).toBeVisible();
 });

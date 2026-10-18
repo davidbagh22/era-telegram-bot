@@ -13,7 +13,7 @@ from sqlalchemy import select, text
 
 from app.database.models import AppSetting
 from app.utils.ux_texts import LEGACY_KEYBOARD_CLEARED
-from app.keyboards.bot_shell import main_reply_keyboard
+from app.keyboards.bot_shell import has_leaders_entry, main_reply_keyboard
 from app.utils.constants import ApplicationStatus, Role
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,9 @@ class LegacyKeyboardCleanupMiddleware(BaseMiddleware):
             session = data.get("session")
             menu_key = f"private-menu:{user.telegram_id}"
             version = {"version": "2026-10-18-clean", "admin": bool(admin)}
+            leaders = approved and has_leaders_entry(user)
+            if leaders or admin:
+                version["leaders"] = True
             saved_menu = None
             if approved and session is not None:
                 if session.bind.dialect.name == "postgresql":
@@ -69,7 +72,7 @@ class LegacyKeyboardCleanupMiddleware(BaseMiddleware):
             # An old migration must never remove the current persistent menu.
             # Pending registrations keep their dedicated input keyboard flow.
             markup = (
-                main_reply_keyboard(settings.effective_miniapp_url, admin=bool(admin))
+                main_reply_keyboard(settings.effective_miniapp_url, admin=bool(admin), leaders=bool(leaders))
                 if approved else ReplyKeyboardRemove()
             )
             notice = (

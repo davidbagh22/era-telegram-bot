@@ -157,8 +157,11 @@ async def create_assigned_task(
             deadline=payload.deadline,
             points=payload.points,
             bot=bot,
+            settings=settings,
             miniapp_url=settings.effective_miniapp_url,
         )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return TaskOut(
@@ -278,6 +281,8 @@ async def create_open_task(
             settings=settings,
             miniapp_url=settings.effective_miniapp_url,
         )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     deliveries = await leader_service.list_task_deliveries(session, task.id)

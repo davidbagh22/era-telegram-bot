@@ -36,13 +36,12 @@ const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
   { value: "development", label: "Состояние и развитие", description: "Добровольные ежемесячные отметки, охват и потребности сообщества" },
   { value: "career", label: "Портфолио и рекомендации", description: "Проверка достижений и утверждение официальных рекомендательных писем" },
   { value: "applications", label: "Заявки", description: "Новые регистрации и решения по ним" },
-  { value: "leaders-chat", label: "Чат лидеров", description: "Задачи, Пульс, решения и оповещения команды" },
+  { value: "leaders-chat", label: "Лидеры", description: "Команда, задачи, рассылки и Пульс" },
   { value: "offices", label: "Должности", description: "Роли, набор, заявки, назначения и ответственность" },
   { value: "data-rights", label: "Данные и права", description: "Запросы на удаление персональных данных" },
 ];
 
 const WORK_SECTIONS: SectionOption<WorkSection>[] = [
-  { value: "pulse", label: "Рабочий центр", description: "Задачи ЛИДЕРОВ, Пульс, решения и оповещения" },
   { value: "projects", label: "Проекты", description: "Создание, модерация и команды проектов" },
   { value: "events", label: "Мероприятия", description: "Создание, публикация, участники и активности" },
   { value: "tasks", label: "Задания", description: "Создание задач и проверка результатов" },

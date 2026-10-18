@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import User
-from app.keyboards.bot_shell import main_reply_keyboard
+from app.keyboards.bot_shell import has_leaders_entry, main_reply_keyboard
 from app.keyboards.common import registration_keyboard, subscription_keyboard
 from app.keyboards.registration import pending_registration_keyboard
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
@@ -38,7 +38,8 @@ async def show_home(message: Message, user: User, settings: Settings) -> None:
     await message.answer(
         ux_texts.MAIN_MENU,
         reply_markup=main_reply_keyboard(
-            settings.effective_miniapp_url,
+            leaders=has_leaders_entry(user),
+            miniapp_url=settings.effective_miniapp_url,
             admin=user.role == Role.ADMIN or getattr(user, 'telegram_id', None) in getattr(settings, 'admin_ids', []),
         ),
     )
