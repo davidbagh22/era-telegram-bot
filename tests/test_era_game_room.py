@@ -33,7 +33,7 @@ def test_game_menu_callbacks_are_short_and_in_namespace():
                      for button in row if button.callback_data]
         assert callbacks.count('leisure:home') == (0 if public else 1)
         for callback in callbacks:
-            assert callback.startswith("era_game:") or not public and callback == 'leisure:home'
+            assert callback.startswith(("era_game:", "era_spyfall:")) or not public and callback == 'leisure:home'
             assert len(callback.encode()) <= 64
     for row in lobby_markup("team").inline_keyboard:
         for button in row:

@@ -114,7 +114,7 @@ class GeneralChatReplyRouteTests(unittest.IsolatedAsyncioTestCase):
 
 
 class CommandScopeTests(unittest.IsolatedAsyncioTestCase):
-    async def test_group_slash_commands_are_explicitly_hidden(self) -> None:
+    async def test_game_launcher_is_available_in_general_chat_only(self) -> None:
         bot = SimpleNamespace(set_my_commands=AsyncMock())
         settings = SimpleNamespace(
             general_chat_id=-1001,
@@ -132,12 +132,15 @@ class CommandScopeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls[2].args[0], [])
         self.assertIsInstance(calls[2].kwargs["scope"], BotCommandScopeAllGroupChats)
 
-        group_chat_scopes = [
-            call.kwargs["scope"].chat_id
+        group_chat_scopes = {
+            call.kwargs["scope"].chat_id: call.args[0]
             for call in calls[3:7]
             if isinstance(call.kwargs.get("scope"), BotCommandScopeChat)
-        ]
+        }
         self.assertEqual(set(group_chat_scopes), {-1001, -1002, -1003, -1004})
+        self.assertEqual([command.command for command in group_chat_scopes[-1001]], ["games", "play", "spy"])
+        for chat_id in (-1002, -1003, -1004):
+            self.assertEqual(group_chat_scopes[chat_id], [])
         self.assertEqual(calls[-1].args[0], ADMIN_COMMANDS)
         self.assertEqual(calls[-1].kwargs["scope"].chat_id, 999)
 

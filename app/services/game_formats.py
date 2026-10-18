@@ -5,6 +5,7 @@ The room handlers use these rules while managing persisted Telegram sessions.
 """
 from dataclasses import dataclass
 from enum import StrEnum
+import re
 
 
 class GameMode(StrEnum):
@@ -85,3 +86,7 @@ def validate_challenge(challenge: Challenge) -> None:
             raise ValueError("Correct answer must appear in options")
     if challenge.mode in (GameMode.GUESS_COUNTRY, GameMode.ASSOCIATIONS) and not challenge.hints:
         raise ValueError("Hint-based format needs hints")
+    visible_text = (challenge.prompt, challenge.answer, challenge.explanation,
+                    *challenge.options, *challenge.hints)
+    if any(re.search(r"(?:https?://|www\.)", value, flags=re.IGNORECASE) for value in visible_text):
+        raise ValueError("Game content must not contain URLs")

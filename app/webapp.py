@@ -95,6 +95,12 @@ USER_COMMANDS = [
     BotCommand(command="contact", description="Связь с командой"),
 ]
 
+GAME_GROUP_COMMANDS = [
+    BotCommand(command="games", description="Открыть игры ЭРА"),
+    BotCommand(command="play", description="Запустить игру ЭРА"),
+    BotCommand(command="spy", description="Создать игру «Шпион»"),
+]
+
 ADMIN_COMMANDS = USER_COMMANDS + [
     BotCommand(command="status", description="Состояние системы"),
     BotCommand(command="backup", description="Резервные копии"),
@@ -175,7 +181,7 @@ async def _set_and_verify_menu_button(bot, expected):
 
 
 async def _configure_command_scopes(bot, settings) -> None:
-    """Keep slash autocomplete private and remove it from every group scope."""
+    """Expose the game launcher in the community group command menu."""
     await bot.set_my_commands([])
     await bot.set_my_commands(USER_COMMANDS, scope=BotCommandScopeAllPrivateChats())
     await bot.set_my_commands([], scope=BotCommandScopeAllGroupChats())
@@ -188,7 +194,8 @@ async def _configure_command_scopes(bot, settings) -> None:
     }
     for chat_id in group_chat_ids:
         if chat_id:
-            await bot.set_my_commands([], scope=BotCommandScopeChat(chat_id=int(chat_id)))
+            commands = GAME_GROUP_COMMANDS if int(chat_id) == settings.general_chat_id else []
+            await bot.set_my_commands(commands, scope=BotCommandScopeChat(chat_id=int(chat_id)))
 
     for admin_id in settings.admin_ids:
         await bot.set_my_commands(ADMIN_COMMANDS, scope=BotCommandScopeChat(chat_id=admin_id))

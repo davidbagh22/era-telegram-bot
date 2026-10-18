@@ -263,6 +263,10 @@ async def rescue_start(
     session: AsyncSession,
     command: CommandObject | None = None,
 ) -> None:
+    if command and command.args and command.args.startswith("spy_"):
+        from app.handlers.era_spyfall import activate_private
+        await activate_private(message, command.args, session, user)
+        return
     from app.handlers.registration import offer_registration_resume
     if (user is None or user.application_status in {'rejected', 'needs_info'}) and await offer_registration_resume(message, state):
         return

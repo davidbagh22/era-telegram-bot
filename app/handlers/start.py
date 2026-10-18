@@ -90,6 +90,10 @@ async def start(
     session: AsyncSession,
     command: CommandObject | None = None,
 ) -> None:
+    if command and command.args and command.args.startswith("spy_"):
+        from app.handlers.era_spyfall import activate_private
+        if await activate_private(message, command.args, session, user):
+            return
     await state.clear()
     subscribed = await _subscription_ok(bot, message.from_user.id, settings)
     if subscribed is None:

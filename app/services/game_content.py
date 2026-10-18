@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 14826)
+Total output lines: 771
+
 """Versioned, source-backed prompts used by the Telegram game modes.
 
 Content is kept outside callbacks so that each mode can be reviewed and extended
@@ -9,7 +12,7 @@ import json
 import random
 import re
 from dataclasses import dataclass
-from itertools import permutations
+from itertools import combinations, permutations
 from pathlib import Path
 
 from app.services.game_formats import Challenge, GameMode
@@ -212,7 +215,6 @@ def _load_records(filename: str) -> tuple[dict, ...]:
 # and kept outside Telegram callbacks. Wikidata's structured facts are CC0.
 COUNTRY_FACTS = _load_records("game_countries.json")
 CULTURE_FACTS = _load_records("game_culture_facts.json")
-HISTORICAL_EVENTS = _load_records("game_historical_events.json")
 
 
 def _choice_options(correct: str, distractors, *, index: int, count: int = 4) -> tuple[str, ...]:
@@ -246,7 +248,14 @@ def _interleave_by_category(records: tuple[dict, ...]) -> tuple[dict, ...]:
     return tuple(mixed)
 
 
-WORKS = _interleave_by_category(CULTURE_FACTS)
+def _displayable_work(record: dict) -> bool:
+    """Exclude unresolved Wikidata entity placeholders from visible game copy."""
+    display_fields = (record.get("title", ""), record.get("creator", ""))
+    return all(value.strip() and not re.search(r"(?:https?://|www\.|genid)", value, re.I)
+               for value in display_fields)
+
+
+WORKS = _interleave_by_category(tuple(record for record in CULTURE_FACTS if _displayable_work(record)))
 _COUNTRY_BY_ID = {record["id"]: record for record in COUNTRY_FACTS}
 _CULTURE_PROMPTS: list[tuple[str, tuple[str, ...], int]] = []
 _seen_quiz_prompts = {normalize_content(prompt) for prompt, _, _ in QUIZ_QUESTIONS}
@@ -270,69 +279,52 @@ def _capital_distractors(record: dict) -> list[str]:
         if candidate["id"] != record["id"]
         and regions.intersection(candidate.get("continents", ()))
     ]
-    fallback = [candidate["capital"] for candidate in COUNTRY_FACTS if candidate["id"] != record["id"]]
-    return list(dict.fromkeys(same_region + fallback))
-
-
-for index, record in enumerate(COUNTRY_FACTS):
-    prompt = f"Столица какого государства — {record['capital']}?"
-    if normalize_content(prompt) in _seen_quiz_prompts:
-        continue
-    options = _choice_options(record["name"], _country_distractors(record), index=index, count=3)
-    if options:
-        _CULTURE_PROMPTS.append((prompt, options, options.index(record["name"])))
-        _seen_quiz_prompts.add(normalize_content(prompt))
-
-for index, record in enumerate(WORKS):
-    category = record["category"]
-    noun = "книгу" if category == "Литература" else "картину"
-    verb = "написал" if category == "Литература" else "создал"
-    prompt = f"Кто {verb} {noun} «{record['title']}»?"
-    if normalize_content(prompt) in _seen_quiz_prompts:
-        continue
-    distractors = [
-        candidate["creator"] for candidate in WORKS
-        if candidate["category"] == category and candidate["creator_id"] != record["creator_id"]
-    ]
-    distractors += [candidate["creator"] for candidate in WORKS if candidate["creator_id"] != record["creator_id"]]
-    options = _choice_options(record["creator"], distractors, index=index, count=3)
-    if options:
-        _CULTURE_PROMPTS.append((prompt, options, options.index(record["creator"])))
-        _seen_quiz_prompts.add(normalize_content(prompt))
-
-# Youth-project facts checked against the organizations' official descriptions
-# on 2026-10-11: tumo.org/whatistumo/, tumo.org/education-program/ and
-# youth.europa.eu/solidarity/{activity,organisations/solidarity-projects}_en.
-YOUTH_QUESTIONS = (
-    ("Какой образовательный центр Армении предлагает бесплатную программу для подростков?",
-     ("TUMO", "Ереванский государственный университет", "Матенадаран"), 0),
-    ("Из каких частей состоит учебная программа TUMO?",
-     ("Самостоятельные занятия, воркшопы и проектные лаборатории",
-      "Только лекции и экзамены", "Только спортивные тренировки"), 0),
-    ("Сколько учебных направлений объединяет программа TUMO?",
-     ("10", "12", "14"), 2),
-    ("Какова цель Европейского корпуса солидарности?",
-     ("Поддерживать участие молодёжи в волонтёрских и солидарных проектах",
-      "Проводить вступительные экзамены в вузы", "Выдавать туристические визы"), 0),
-    ("Что могут сделать участники молодёжного проекта солидарности?",
-     ("Запустить проект для своего сообщества в стране проживания",
-      "Только участвовать в международной олимпиаде", "Только пройти языковой тест"), 0),
-    ("Сколько участников может быть в волонтёрской команде Европейского корпуса солидарности?",
-     ("От 2 до 8", "От 10 до 40", "От 50 до 100"), 1),
-)
-
-LOGIC_QUESTIONS = (
-    ("Ани стоит левее Мари, а Мари левее Давида. Кто стоит посередине?",
-     ("Ани", "Мари", "Давид"), 1),
-    ("В очереди Левон раньше Ани, а Ани раньше Мари. Кто второй?",
-     ("Левон", "Ани", "Мари"), 1),
-    ("В маршруте Ереван идёт после Гюмри, но до Ванадзора. Какая остановка в середине?",
-     ("Ереван", "Гюмри", "Ванадзор"), 0),
+    fallback = [candidate["capital"] for candidate in COUNTRY_FACTS if candida…2826 tokens truncated…17", "16", "20"), 0),
 )
 
 _BASE_QUIZ_QUESTIONS = QUIZ_QUESTIONS
-QUIZ_QUESTIONS = (tuple(_BASE_QUIZ_QUESTIONS) + tuple(_CULTURE_PROMPTS)
-                  + YOUTH_QUESTIONS + LOGIC_QUESTIONS)
+# Keep the old entries in their original positions so 180-day usage history
+# continues to point to the same content IDs after this bank refresh.
+QUIZ_QUESTIONS = (
+    tuple(_BASE_QUIZ_QUESTIONS)
+    + tuple(_CULTURE_PROMPTS)
+    + YOUTH_QUESTIONS[:6]
+    + LOGIC_QUESTIONS[:3]
+    + YOUTH_QUESTIONS[6:]
+    + MEDIA_QUESTIONS
+    + FUN_SCIENCE_QUESTIONS
+    + LOGIC_QUESTIONS[3:]
+)
+
+QUIZ_EXPLANATIONS = {
+    prompt: explanation for prompt, explanation in (
+        (YOUTH_QUESTIONS[6][0], "Сначала уточни аудиторию и её задачу — так проще выбрать формат и понять, сработал ли он."),
+        (YOUTH_QUESTIONS[7][0], "Хороший питч коротко отвечает: для кого идея, какую проблему решает и что команда сделает."),
+        (YOUTH_QUESTIONS[8][0], "Портфолио показывает конкретные работы и вклад автора, а не только список навыков."),
+        (YOUTH_QUESTIONS[9][0], "Прототип проверяет ключевую идею до затрат на полноценную разработку."),
+        (YOUTH_QUESTIONS[10][0], "Наблюдение за реальным выполнением задачи часто выявляет проблемы, которые автор не замечает."),
+        (YOUTH_QUESTIONS[11][0], "Итог оценивают по пользе и опыту участников, а не только по охвату публикаций."),
+        (MEDIA_QUESTIONS[0][0], "DNS связывает удобное имя сайта с IP-адресом, который используют компьютеры."),
+        (MEDIA_QUESTIONS[1][0], "Фишинг маскирует обман под знакомый сервис, чтобы получить доступ к аккаунту или данным."),
+        (MEDIA_QUESTIONS[2][0], "Второй фактор помогает защитить аккаунт, даже если пароль стал известен кому-то ещё."),
+        (MEDIA_QUESTIONS[3][0], "Alt-текст передаёт смысл изображения пользователям скринридеров и при сбое загрузки."),
+        (MEDIA_QUESTIONS[4][0], "Самостоятельно открытый официальный сервис помогает не переходить по поддельной ссылке."),
+        (MEDIA_QUESTIONS[5][0], "Если один сайт утёк, уникальные пароли не дают автоматически открыть остальные аккаунты."),
+        (MEDIA_QUESTIONS[6][0], "Кэш хранит копии некоторых данных, чтобы повторная загрузка страницы шла быстрее."),
+        (MEDIA_QUESTIONS[7][0], "Алгоритм — это конечные инструкции, которые можно выполнить для решения задачи."),
+        (FUN_SCIENCE_QUESTIONS[0][0], "Венера вращается вокруг оси за 243 земных дня, а вокруг Солнца — примерно за 225."),
+        (FUN_SCIENCE_QUESTIONS[1][0], "Ботанически плод развивается из цветка и содержит семена; в кулинарии томат считают овощем."),
+        (FUN_SCIENCE_QUESTIONS[2][0], "Молекулы воздуха рассеивают коротковолновый синий свет сильнее красного."),
+        (FUN_SCIENCE_QUESTIONS[3][0], "Эхолокация помогает оценивать направление и расстояние до предметов по отражённому звуку."),
+        (FUN_SCIENCE_QUESTIONS[4][0], "Пар из влаги внутри зерна повышает давление, оболочка лопается, и крахмал выворачивается наружу."),
+        (FUN_SCIENCE_QUESTIONS[5][0], "При замерзании вода расширяется, поэтому лёд имеет меньшую плотность и плавает."),
+        (LOGIC_QUESTIONS[3][0], "Обогнав второго, ты занимаешь его место — становишься вторым."),
+        (LOGIC_QUESTIONS[4][0], "Это дедушка, его сын и внук: средний человек одновременно сын и отец."),
+        (LOGIC_QUESTIONS[5][0], "У каждого из 12 месяцев есть 28-й день."),
+        (LOGIC_QUESTIONS[6][0], "На обычном циферблате после 11:00 пройдут 12:00, 1:00 и 2:00."),
+        (LOGIC_QUESTIONS[7][0], "Прибавляем по одному больше каждый раз: +1, +2, +3, +4, затем +5."),
+    )
+}
 
 
 def _country_items() -> tuple[GameItem, ...]:
@@ -446,52 +438,49 @@ def _culture_items(*, associations: bool = False) -> tuple[GameItem, ...]:
     return tuple(items)
 
 
-def _year(record: dict) -> int | None:
-    match = re.match(r"^([+-]?\d+)", record.get("date", ""))
-    return int(match.group(1)) if match else None
-
-
 def _chronology_items() -> tuple[GameItem, ...]:
-    by_title_year = {}
-    for record in HISTORICAL_EVENTS:
-        year = _year(record)
-        title = record.get("title", "").strip()
-        if year is not None and title:
-            by_title_year.setdefault((normalize_content(title), year),
-                                     {"id": record["id"], "title": title, "year": year})
-    events = list(by_title_year.values())
-    if len(events) < 10:
-        return ()
-    rng = random.Random("era-chronology-content-v1")
+    # Curated timeline avoids the noisy auto-import of political, violent, and
+    # tragic news events from the previous Wikidata snapshot. Years are stable
+    # publication/discovery dates; sources are listed in docs/game-content-sources.md.
+    events = [
+        ("chronology-robinson", "Публикация «Робинзона Крузо»", 1719),
+        ("chronology-frankenstein", "Публикация романа «Франкенштейн»", 1818),
+        ("chronology-origin", "Выход книги «Происхождение видов»", 1859),
+        ("chronology-alice", "Публикация «Алисы в Стране чудес»", 1865),
+        ("chronology-eiffel", "Открытие Эйфелевой башни для публики", 1889),
+        ("chronology-lumiere", "Первый публичный платный кинопоказ братьев Люмьер", 1895),
+        ("chronology-flight", "Первый управляемый полёт самолёта братьев Райт", 1903),
+        ("chronology-penicillin", "Открытие пенициллина Александром Флемингом", 1928),
+        ("chronology-snow-white", "Премьера мультфильма «Белоснежка и семь гномов»", 1937),
+        ("chronology-dna", "Публикация модели двойной спирали ДНК", 1953),
+        ("chronology-moon", "Первая высадка людей на Луну: миссия «Аполлон-11»", 1969),
+        ("chronology-web", "Предложена концепция Всемирной паутины", 1989),
+        ("chronology-mona-lisa", "Леонардо да Винчи начинает работу над «Моной Лизой»", 1503),
+        ("chronology-principia", "Публикация «Математических начал натуральной философии» Ньютона", 1687),
+    ]
+    rng = random.Random("era-chronology-culture-science-v2")
     result = []
-    seen = set()
-    for _ in range(50_000):
-        chosen = rng.sample(events, 3)
-        if len({item["year"] for item in chosen}) != 3:
-            continue
-        ordered = sorted(chosen, key=lambda item: (item["year"], item["title"].casefold()))
-        ids = tuple(item["id"] for item in ordered)
-        if ids in seen:
-            continue
-        seen.add(ids)
-        answer = " → ".join(item["title"] for item in ordered)
-        wrong_reverse = " → ".join(item["title"] for item in reversed(ordered))
-        wrong_swap = " → ".join((ordered[1]["title"], ordered[0]["title"], ordered[2]["title"]))
+    timeline_packs = list(combinations(events, 3))
+    rng.shuffle(timeline_packs)
+    for chosen in timeline_packs[:180]:
+        ordered = sorted(chosen, key=lambda item: item[2])
+        ids = tuple(item[0] for item in ordered)
+        names = [item[1] for item in ordered]
+        answer = " → ".join(names)
+        wrong_reverse = " → ".join(reversed(names))
+        wrong_swap = " → ".join((names[1], names[0], names[2]))
         options = (answer, wrong_reverse, wrong_swap)
         displayed = rng.sample(ordered, 3)
-        years = " → ".join(f"{item['title']} ({abs(item['year'])}{' до н. э.' if item['year'] < 0 else ''})"
-                            for item in ordered)
         prompt = "Расположи события от раннего к позднему:\n" + "\n".join(
-            f"• {item['title']}" for item in displayed
+            f"• {item[1]}" for item in displayed
         )
         result.append(GameItem(
             "chronology-" + "-".join(ids),
             Challenge(GameMode.CHRONOLOGY, prompt, answer, options,
-                      explanation=f"По годам: {years}."),
-            "История",
+                      explanation="Правильный порядок: " + " → ".join(
+                          f"{item[1]} ({item[2]})" for item in ordered)),
+            "Наука и культура",
         ))
-        if len(result) == 180:
-            break
     return tuple(result)
 
 
@@ -586,6 +575,24 @@ def _quiz_items(mode: GameMode) -> tuple[GameItem, ...]:
         normalized_prompt = normalize_content(prompt)
         if "tumo" in normalized_prompt or "корпус солидарности" in normalized_prompt or "молодёжного проекта" in normalized_prompt:
             category = "Молодёжные проекты"
+        elif any(term in normalized_prompt for term in (
+            "dns", "фишинг", "двухэтапн", "alt-текст", "alt текст", "пароль",
+            "кэш браузера", "алгоритм", "странную ссылку"
+        )):
+            category = "Медиа и технологии"
+        elif any(term in normalized_prompt for term in (
+            "команда придумала", "питч проекта", "портфолио", "хакатоне команда", "удобно ли новое меню",
+            "волонтёрская акция"
+        )):
+            category = "Молодёжные проекты"
+        elif any(term in normalized_prompt for term in (
+            "обогнал бегуна", "два отца", "каком месяце", "короткая стрелка", "продолжи ряд", "посередине"
+        )):
+            category = "Логика"
+        elif any(term in normalized_prompt for term in (
+            "венере день", "помидор в ботанике", "почему небо", "летучая мышь", "попкорн", "лёд держится"
+        )):
+            category = "Наука и повседневность"
         elif "армян" in normalized_prompt or "ереван" in normalized_prompt or "армени" in normalized_prompt:
             category = "Армения"
         elif "росси" in normalized_prompt or "русск" in normalized_prompt or "москв" in normalized_prompt:
@@ -608,7 +615,8 @@ def _quiz_items(mode: GameMode) -> tuple[GameItem, ...]:
             category = "Общие знания"
         items.append(GameItem(
             f"{mode.value}-{index + 1:03d}",
-            Challenge(mode, prompt, options[answer_index], options),
+            Challenge(mode, prompt, options[answer_index], options,
+                      explanation=QUIZ_EXPLANATIONS.get(prompt, "")),
             category,
         ))
     return tuple(items)
