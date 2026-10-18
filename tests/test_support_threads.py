@@ -14,7 +14,8 @@ from app.database.models import SupportMessage, User, UserQuestion
 from app.database.system_models import NotificationDelivery
 from app.handlers.support_thread_views import show_my_support, show_support_thread
 from app.services.scheduler_service import deliver_support_answers, send_review_sla_reminders
-from app.services.support_service import append_support_message, support_thread, update_support_thread
+from app.services.support_service import (append_support_message, support_thread, update_support_thread,
+    support_attachment, support_assignees, support_message_input)
 from app.utils.constants import ApplicationStatus, Role
 
 
@@ -242,3 +243,103 @@ class SupportThreadTests(IsolatedAsyncioTestCase):
             await show_support_thread(message, session, self.settings, question_id=self.item, actor_id=self.member)
             text = message.answer.await_args.args[0]
             assert 'Original' in text and 'First answer' in text and 'Администратор' in text
+
+    async def test_followup_file_is_preserved_once_and_foreign_file_is_inaccessible(self):
+        async with self.sessions() as session:
+            first, created = await append_support_message(session, self.settings, question_id=self.item,
+                actor_id=self.member, staff=False, text='Скриншот', file_id='followup-file',
+                source_key='22:file', expected_revision=0)
+            await session.commit()
+            again, duplicate = await append_support_message(session, self.settings, question_id=self.item,
+                actor_id=self.member, staff=False, text='Скриншот', file_id='followup-file',
+                source_key='22:file', expected_revision=0)
+            assert created and not duplicate and again.id == first.id
+            for staff, actor in ((False, self.member), (True, self.staff)):
+                assert await support_attachment(session, self.settings, question_id=self.item,
+                    message_id=first.id, actor_id=actor, staff=staff) == 'followup-file'
+            other = UserQuestion(user_id=self.stranger, text='Private ticket')
+            session.add(other)
+            await session.commit()
+            with self.assertRaises(PermissionError):
+                await support_attachment(session, self.settings, question_id=self.item,
+                    message_id=first.id, actor_id=self.stranger)
+            with self.assertRaises(PermissionError):
+                await support_attachment(session, self.settings, question_id=other.id,
+                    message_id=first.id, actor_id=self.stranger)
+            with self.assertRaisesRegex(ValueError, 'message_source_conflict'):
+                await append_support_message(session, self.settings, question_id=self.item,
+                    actor_id=self.member, staff=False, text='Скриншот', file_id='different-file',
+                    source_key='22:file', expected_revision=0)
+
+    async def test_staff_file_notification_and_latest_history_are_readable_after_restart(self):
+        for index in range(4):
+            async with self.sessions() as session:
+                item = await session.get(UserQuestion, self.item)
+                await append_support_message(session, self.settings, question_id=self.item,
+                    actor_id=self.staff, staff=True, text=f'Answer {index}', file_id=f'doc-{index}',
+                    source_key=f'11:doc:{index}', expected_revision=item.thread_revision)
+                await session.commit()
+        await deliver_support_answers(self.bot, self.settings, self.sessions)
+        await deliver_support_answers(self.bot, self.settings, self.sessions)
+        assert self.bot.send_message.await_count == 4
+        assert all('📎 Файл сохранён' in call.args[1] for call in self.bot.send_message.await_args_list)
+        async with self.sessions() as session:
+            message = SimpleNamespace(answer=AsyncMock())
+            await show_support_thread(message, session, self.settings, question_id=self.item, actor_id=self.member)
+            body = message.answer.await_args.args[0]
+            assert 'История: 2 из 2' in body and 'Answer 3' in body and 'Original' not in body
+            buttons = message.answer.await_args.kwargs['reply_markup'].inline_keyboard
+            files = [b for row in buttons for b in row if ':attachment:' in (b.callback_data or '')]
+            assert len(files) == 2
+            assert all(len(b.callback_data.encode()) <= 64 for b in files)
+
+    async def test_assignment_checks_target_and_stale_version_and_notifies_once(self):
+        async with self.sessions() as session:
+            item = await update_support_thread(session, self.settings, question_id=self.item, actor_id=self.staff,
+                expected_revision=0, action='assign', assignee_id=self.other_staff)
+            await session.commit()
+            revision = item.thread_revision
+            assert item.assigned_to == self.other_staff
+        async with self.sessions() as session:
+            with self.assertRaisesRegex(ValueError, 'stale_thread'):
+                await update_support_thread(session, self.settings, question_id=self.item, actor_id=self.staff,
+                    expected_revision=0, action='assign', assignee_id=self.staff)
+            await session.rollback()
+            with self.assertRaises(PermissionError):
+                await update_support_thread(session, self.settings, question_id=self.item, actor_id=self.staff,
+                    expected_revision=revision, action='assign', assignee_id=self.stranger)
+            await session.rollback()
+        await deliver_support_answers(self.bot, self.settings, self.sessions)
+        await deliver_support_answers(self.bot, self.settings, self.sessions)
+        assert self.bot.send_message.await_count == 1 and self.bot.send_message.await_args.args[0] == 12
+        self.bot.send_message.reset_mock()
+        await self.append('New info', staff=False, source='22:assigned')
+        await deliver_support_answers(self.bot, self.settings, self.sessions)
+        assert self.bot.send_message.await_count == 1 and self.bot.send_message.await_args.args[0] == 12
+
+    async def test_revoked_assignee_and_outside_rollout_cannot_be_assigned(self):
+        self.settings.feature_support_threads = 'TESTERS'
+        self.settings.support_thread_tester_ids = [11, 22]
+        async with self.sessions() as session:
+            assert [u.id for u in await support_assignees(session, self.settings)] == [self.staff]
+            with self.assertRaises(PermissionError):
+                await update_support_thread(session, self.settings, question_id=self.item, actor_id=self.staff,
+                    expected_revision=0, action='assign', assignee_id=self.other_staff)
+            await session.rollback()
+            self.settings.support_thread_tester_ids = [11, 12, 22]
+            (await session.get(User, self.other_staff)).is_archived = True
+            await session.commit()
+            with self.assertRaises(PermissionError):
+                await update_support_thread(session, self.settings, question_id=self.item, actor_id=self.staff,
+                    expected_revision=0, action='assign', assignee_id=self.other_staff)
+
+    def test_message_input_accepts_caption_and_file_only_but_rejects_oversize_or_commands(self):
+        for text, caption, photo, document, expected in (
+            (' Text ', None, None, None, ('Text', None)),
+            (None, ' Caption ', [SimpleNamespace(file_id='photo')], None, ('Caption', 'photo')),
+            (None, None, None, SimpleNamespace(file_id='doc'), ('📎 Вложение', 'doc')),
+        ):
+            assert support_message_input(SimpleNamespace(text=text, caption=caption, photo=photo, document=document)) == expected
+        for text in ('/cancel', 'x'*1501, ''):
+            with self.assertRaises(ValueError):
+                support_message_input(SimpleNamespace(text=text, caption=None, photo=None, document=None))

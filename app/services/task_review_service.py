@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import PointTransaction, PortfolioItem, Task, TaskParticipant, TaskSubmission, User
 from app.services.activity_scoring_service import score_task_completion
+from app.services.audit_service import audit
 from app.utils.constants import TaskStatus
 
 TASK_REVIEW_ACTIONS = ("approve", "revision", "reject")
@@ -18,6 +19,7 @@ class TaskReviewResult:
     admin_notice: str
     participant_notice: str | None
     points_awarded: int
+    changed: bool = True
 
 
 async def list_pending_submissions(session: AsyncSession) -> list[TaskSubmission]:
@@ -76,20 +78,26 @@ async def decide_submission(
         raise ValueError("comment_required")
 
     # Serialize approvals for the same task before consulting the points ledger.
-    await session.scalar(select(Task).where(Task.id == task.id).with_for_update())
-    await session.refresh(submission)
+    task = await session.scalar(select(Task).where(Task.id == task.id).with_for_update()
+        .execution_options(populate_existing=True))
+    submission = await session.scalar(select(TaskSubmission).where(TaskSubmission.id == submission.id)
+        .with_for_update().execution_options(populate_existing=True))
+    if not task or not submission or submission.task_id != task.id or submission.user_id != participant.id:
+        raise ValueError('submission_context_mismatch')
+    if submission.status != 'pending':
+        return TaskReviewResult(submission=submission,
+            admin_notice=('Этот результат уже одобрен. Повторно баллы не начисляются.'
+                if action == 'approve' and submission.status == 'approved'
+                else 'Результат уже рассмотрен. Откройте актуальную карточку; прежнее решение сохранено.'),
+            participant_notice=None, points_awarded=0, changed=False)
+    await audit(session, actor_id=actor.id, action=f'task.submission_{action}',
+        entity_type='task_submission', entity_id=submission.id, old_value={'status': 'pending'},
+        new_value={'status': {'approve': 'approved', 'revision': 'needs_revision', 'reject': 'rejected'}[action]})
 
     if action == "approve":
-        if submission.status == "approved":
-            await _complete_public_participation(session, task, participant)
-            return TaskReviewResult(
-                submission=submission,
-                admin_notice="Этот результат уже одобрен. Повторно баллы не начисляются.",
-                participant_notice=None,
-                points_awarded=0,
-            )
         submission.status = "approved"
         submission.reviewed_by = actor.id
+        submission.admin_comment = comment.strip() or None
         await _complete_public_participation(session, task, participant)
         if await _already_awarded(session, participant.id, task.id):
             return TaskReviewResult(

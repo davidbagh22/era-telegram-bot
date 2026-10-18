@@ -12,7 +12,7 @@ from app.keyboards.common import yes_no_keyboard
 from app.keyboards.faq import get_faq_answer_keyboard
 from app.services.support_service import create_support_question, deliver_support_intake_notices
 from app.services.support_service import (CATEGORIES, append_support_message, support_actor,
-    support_thread, deliver_support_thread_messages)
+    support_thread, deliver_support_thread_messages, support_attachment, support_message_input)
 from app.services.feature_flags import Feature, feature_enabled
 from app.handlers.support_thread_views import show_my_support, show_support_thread
 from app.states.question import QuestionStates
@@ -195,7 +195,7 @@ async def question_invalid_attachment(message: Message) -> None:
 
 
 
-@router.callback_query(F.data.regexp(r'^support:mine:(page:\d+|item:\d+|history:\d+:\d+|reply:\d+:\d+|file:\d+:\d+)$'))
+@router.callback_query(F.data.regexp(r'^support:mine:(page:\d+|item:\d+|history:\d+:\d+|reply:\d+:\d+|file:\d+:\d+|attachment:\d+:\d+)$'))
 async def my_question_action(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext):
     try:
         actor = await support_actor(session, user.id if user else None, settings)
@@ -214,15 +214,18 @@ async def my_question_action(call: CallbackQuery, user: User | None, settings: S
                 return
             await state.set_state(QuestionStates.followup)
             await state.update_data(support_question_id=item.id, support_thread_revision=revision)
-            await call.message.answer(f'Напишите дополнение к обращению #{item.id} до 1500 символов.\n/cancel — отменить.')
-        elif action == 'file':
+            await call.message.answer(f'Дополните обращение #{item.id}: текст до 1500 символов, фото или документ. '
+                'К файлу можно добавить подпись.\n/cancel — отменить.')
+        elif action in {'file', 'attachment'}:
             from app.services.notification_service import safe_answer_media
-            if item.file_id:
-                await safe_answer_media(call.message, item.file_id, caption=f'Вложение к обращению #{item.id}')
+            file_id = (await support_attachment(session, settings, question_id=item.id,
+                message_id=int(parts[4]), actor_id=actor.id)) if action == 'attachment' else item.file_id
+            if file_id and not await safe_answer_media(call.message, file_id, caption=f'Вложение к обращению #{item.id}'):
+                await call.message.answer('Файл сохранён, но Telegram сейчас не даёт открыть его. Попробуйте позже.')
         else:
             await state.clear()
             await show_support_thread(call.message, session, settings, question_id=item.id, actor_id=actor.id,
-                page=int(parts[4]) if action == 'history' else 0)
+                page=int(parts[4]) if action == 'history' else None)
         await call.answer()
     except PermissionError:
         await call.answer('Обращение недоступно.', show_alert=True)
@@ -230,15 +233,16 @@ async def my_question_action(call: CallbackQuery, user: User | None, settings: S
 
 @router.message(QuestionStates.followup)
 async def question_followup(message: Message, state: FSMContext, user: User | None, settings: Settings, session: AsyncSession, bot: Bot):
-    value = (message.text or '').strip()
-    if not value or len(value) > 1500 or value.startswith('/'):
-        await message.answer('Напишите текст от 1 до 1500 символов или /cancel.')
+    try:
+        value, file_id = support_message_input(message)
+    except ValueError:
+        await message.answer('Отправьте текст до 1500 символов, фото или документ с подписью. /cancel — отменить.')
         return
     data = await state.get_data()
     try:
         await append_support_message(session, settings, question_id=data.get('support_question_id'),
             actor_id=user.id if user else None, staff=False, text=value,
-            source_key=f'{message.chat.id}:{message.message_id}', expected_revision=data.get('support_thread_revision'))
+            source_key=f'{message.chat.id}:{message.message_id}', expected_revision=data.get('support_thread_revision'), file_id=file_id)
         await session.commit()
     except (PermissionError, ValueError):
         await session.rollback()
