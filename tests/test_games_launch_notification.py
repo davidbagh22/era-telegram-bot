@@ -33,18 +33,25 @@ class GameLaunchTests(IsolatedAsyncioTestCase):
         send.assert_not_awaited()
 
 
-    async def test_games_announcement_uses_notifications_topic_and_stable_delivery_key(self):
+    async def test_games_update_posts_once_in_game_topic_and_launch_link_in_notifications(self):
         settings = SimpleNamespace(feature_games="ALL", general_chat_id=-100123456)
         with patch("app.services.games_launch_service.ensure_topic", new=AsyncMock(return_value=99)), patch(
             "app.services.games_launch_service.send_general_topic", new=AsyncMock(return_value=True)
         ) as send:
             await publish_games_launch(object(), settings, object())
-        assert send.await_count == 1
-        args, kwargs = send.await_args
-        assert args[2] == "notifications"
-        assert kwargs["delivery_key"] == "games-notification-v1"
-        assert kwargs["reply_markup"].inline_keyboard[0][0].url == "https://t.me/c/123456/99"
-        announcement = args[3]
+        assert send.await_count == 2
+        game_args, game_kwargs = send.await_args_list[0].args, send.await_args_list[0].kwargs
+        assert game_args[2] == "games"
+        assert game_kwargs["delivery_key"] == "games-ux-refresh-v1"
+        announcement = game_args[3]
+        assert "Интерактив ЭРА обновился" in announcement
+        assert "Шпиона" in announcement
+        assert "Мафию» пока не запускали" in announcement
+        launch_args, launch_kwargs = send.await_args_list[1].args, send.await_args_list[1].kwargs
+        assert launch_args[2] == "notifications"
+        assert launch_kwargs["delivery_key"] == "games-notification-v1"
+        assert launch_kwargs["reply_markup"].inline_keyboard[0][0].url == "https://t.me/c/123456/99"
+        announcement = launch_args[3]
         for format_name in (
             "быстрый и командный квиз", "Правда или миф", "угадай страну", "хронология",
             "словесная цепочка", "ассоциации", "логика", "культурный блиц", "память",

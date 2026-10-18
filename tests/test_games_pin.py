@@ -73,7 +73,8 @@ class GamesPinTests(IsolatedAsyncioTestCase):
         self.settings.database_url = "sqlite+aiosqlite:///:memory:"
         self.bot.get_chat.return_value = SimpleNamespace(pinned_message=self.pinned.model_copy(update={'text': 'Другой закреп'}))
         self.bot.send_message.side_effect = [self.pinned.model_copy(update={'message_id': 777}),
-                                             self.pinned.model_copy(update={'message_id': 778, 'message_thread_id': 98})]
+                                             self.pinned.model_copy(update={'message_id': 778, 'message_thread_id': 99}),
+                                             self.pinned.model_copy(update={'message_id': 779, 'message_thread_id': 98})]
         async def topic(bot, settings, key, **kwargs):
             return 99 if key == 'games' else 98
         with patch('app.services.games_launch_service.ensure_topic', new=AsyncMock(side_effect=topic)), patch(
@@ -81,11 +82,12 @@ class GamesPinTests(IsolatedAsyncioTestCase):
         ), patch('app.services.notification_service._session_factory', return_value=self.sessions):
             await publish_games_launch(self.bot, self.settings, self.sessions)
             await publish_games_launch(self.bot, self.settings, self.sessions)
-        assert self.bot.send_message.await_count == 2  # menu edition and first announcement only
+        assert self.bot.send_message.await_count == 3  # menu edition, one game-topic update and launch notice
         assert self.bot.pin_chat_message.await_count == 1
         async with self.sessions() as session:
             deliveries = (await session.scalars(select(NotificationDelivery))).all()
             assert {d.delivery_key for d in deliveries} == {'general-topic:games:games-menu-identity-v2',
+                                                           'general-topic:games:games-ux-refresh-v1',
                                                            'general-topic:notifications:games-notification-v1'}
             assert all(d.status == 'sent' and d.attempt_count == 1 for d in deliveries)
             state = _data(await session.scalar(select(AppSetting)))
@@ -97,7 +99,8 @@ class GamesPinTests(IsolatedAsyncioTestCase):
         self.settings.database_url = 'sqlite+aiosqlite:///:memory:'
         self.bot.get_chat.return_value = SimpleNamespace(pinned_message=None)
         self.bot.send_message.side_effect = [self.pinned.model_copy(update={'message_id': 777}),
-                                             self.pinned.model_copy(update={'message_id': 778, 'message_thread_id': 98})]
+                                             self.pinned.model_copy(update={'message_id': 778, 'message_thread_id': 99}),
+                                             self.pinned.model_copy(update={'message_id': 779, 'message_thread_id': 98})]
         async def topic(bot, settings, key, **kwargs):
             return 99 if key == 'games' else 98
         with patch('app.services.games_launch_service.ensure_topic', new=AsyncMock(side_effect=topic)), patch(
@@ -107,7 +110,7 @@ class GamesPinTests(IsolatedAsyncioTestCase):
                 with self.assertRaises(RuntimeError):
                     await publish_games_launch(self.bot, self.settings, self.sessions)
             await publish_games_launch(self.bot, self.settings, self.sessions)
-        assert self.bot.send_message.await_count == 2
+        assert self.bot.send_message.await_count == 3
         self.bot.pin_chat_message.assert_awaited_once_with(chat_id=-100123456, message_id=777, disable_notification=True)
         async with self.sessions() as session:
             state = _data(await session.scalar(select(AppSetting)))
@@ -122,7 +125,8 @@ class GamesPinTests(IsolatedAsyncioTestCase):
         assert await refresh_games_pin(self.bot, self.settings, self.sessions, 99)
         self.bot.edit_message_text.side_effect = [TelegramBadRequest(method=EditMessageText(text='x'), message='message to edit not found'), True, True]
         self.bot.send_message.side_effect = [self.pinned.model_copy(update={'message_id': 777}),
-                                             self.pinned.model_copy(update={'message_id': 778, 'message_thread_id': 98})]
+                                             self.pinned.model_copy(update={'message_id': 778, 'message_thread_id': 99}),
+                                             self.pinned.model_copy(update={'message_id': 779, 'message_thread_id': 98})]
         async def topic(bot, settings, key, **kwargs):
             return 99 if key == 'games' else 98
         with patch('app.services.games_launch_service.ensure_topic', new=AsyncMock(side_effect=topic)), patch(
@@ -130,7 +134,7 @@ class GamesPinTests(IsolatedAsyncioTestCase):
         ), patch('app.services.notification_service._session_factory', return_value=self.sessions):
             await publish_games_launch(self.bot, self.settings, self.sessions)
             await publish_games_launch(self.bot, self.settings, self.sessions)
-        assert self.bot.send_message.await_count == 2
+        assert self.bot.send_message.await_count == 3
         assert self.bot.pin_chat_message.await_count == 2
         async with self.sessions() as session:
             state = _data(await session.scalar(select(AppSetting)))
