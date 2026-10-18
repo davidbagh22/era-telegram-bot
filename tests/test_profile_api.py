@@ -55,6 +55,11 @@ def _build_app(session: SimpleNamespace) -> FastAPI:
 
 
 class ProfileApiTests(unittest.TestCase):
+    def setUp(self):
+        metrics = patch("app.services.progression_service.get_all_metrics", new=AsyncMock(return_value={}))
+        metrics.start()
+        self.addCleanup(metrics.stop)
+
     def test_read_profile_combines_identity_growth_and_portfolio(self) -> None:
         session = SimpleNamespace()
         app = _build_app(session)

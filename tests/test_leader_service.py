@@ -63,7 +63,7 @@ class LeaderServiceTests(unittest.IsolatedAsyncioTestCase):
         direction = Direction(department_id=department.id, name="Культура")
         session.add(direction)
         await session.flush()
-        leader = await self._make_user(session, telegram_id=1, role=Role.LEADER)
+        leader = await self._make_user(session, telegram_id=1, role=Role.HEAD)
         session.add(UserDepartment(user_id=leader.id, department_id=department.id))
         session.add(UserDirection(user_id=leader.id, direction_id=direction.id))
         await session.flush()
@@ -176,8 +176,10 @@ class LeaderServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_create_assigned_task_creates_task(self) -> None:
         async with self.session_factory() as session:
-            leader, _, _ = await self._scope_leader(session)
+            leader, department, _ = await self._scope_leader(session)
             assignee = await self._make_user(session, telegram_id=2)
+            session.add(UserDepartment(user_id=assignee.id, department_id=department.id))
+            await session.flush()
             task = await leader_service.create_assigned_task(
                 session,
                 creator=leader,
@@ -245,9 +247,11 @@ class LeaderServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_decide_task_application_accept_respects_capacity(self) -> None:
         async with self.session_factory() as session:
-            leader, _, _ = await self._scope_leader(session)
+            leader, department, _ = await self._scope_leader(session)
             applicant_a = await self._make_user(session, telegram_id=7)
             applicant_b = await self._make_user(session, telegram_id=8)
+            session.add_all([UserDepartment(user_id=u.id, department_id=department.id) for u in (applicant_a, applicant_b)])
+            await session.flush()
             task = await leader_service.create_open_task(
                 session,
                 creator=leader,
@@ -293,8 +297,10 @@ class LeaderServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_decide_task_application_reject_sets_status(self) -> None:
         async with self.session_factory() as session:
-            leader, _, _ = await self._scope_leader(session)
+            leader, department, _ = await self._scope_leader(session)
             applicant = await self._make_user(session, telegram_id=7)
+            session.add(UserDepartment(user_id=applicant.id, department_id=department.id))
+            await session.flush()
             task = await leader_service.create_open_task(
                 session,
                 creator=leader,
@@ -350,7 +356,7 @@ class TaskChatDeliveryTests(unittest.IsolatedAsyncioTestCase):
         user = User(
             telegram_id=1,
             first_name="Dev",
-            role=Role.LEADER,
+            role=Role.ADMIN,
             application_status=ApplicationStatus.APPROVED,
         )
         session.add(user)

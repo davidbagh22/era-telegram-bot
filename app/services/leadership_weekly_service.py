@@ -780,6 +780,43 @@ async def check_weekly_pulses_job(bot: Bot, settings: Settings, session_factory)
         await _check_weekly_cycle(bot,settings,session_factory,cycle_id)
 
 
+async def _send_cycle_reminder(session, bot, settings, *, user, cycle, stage, body, action):
+    import json
+    from sqlalchemy.exc import IntegrityError
+    from app.database.models import AppSetting
+    from app.database.system_models import NotificationDelivery
+    key=f'leadership-pulse-cycle:{cycle.id}:{stage}:{user.id}'
+    receipt=await session.scalar(select(NotificationDelivery).where(NotificationDelivery.delivery_key==key))
+    if receipt and receipt.chat_id != user.telegram_id:
+        return False  # Never retarget an existing delivery key.
+    if receipt and receipt.status in {'sent','blocked','unreachable','skipped','uncertain'}:
+        return receipt.status=='sent'
+    setting_key=f'pulse-reminder-snapshot:{cycle.id}:{stage}:{user.id}'
+    row=await session.scalar(select(AppSetting).where(AppSetting.key==setting_key))
+    if row is None:
+        payload={'body':body,'title':'Пульс недели · ваш отчёт','emoji':'⏳',
+                 'action_url':action.url if action else None}
+        if receipt:
+            from app.services.notification_service import _payload_hash
+            text='\n\n'.join(['⏳ Пульс недели · ваш отчёт',body.strip()])
+            if receipt.payload_hash != _payload_hash(text):
+                # Pre-snapshot failure cannot be replayed with changed content.
+                # Keep the ledger intact for reconciliation; no renamed key/re-send.
+                return False
+        try:
+            async with session.begin_nested():
+                row=AppSetting(key=setting_key,value=json.dumps(payload,ensure_ascii=False))
+                session.add(row)
+                await session.flush()
+        except IntegrityError:
+            row=await session.scalar(select(AppSetting).where(AppSetting.key==setting_key))
+        await session.commit()
+    data=json.loads(row.value) if isinstance(row.value,str) else row.value
+    return await send_bot_notification(bot,user.telegram_id,title=data['title'],body=data['body'],emoji=data['emoji'],
+        action=PrimaryAction(label='Заполнить Пульс',url=data['action_url']) if data.get('action_url') else None,
+        settings=settings,delivery_key=key,notification_type='leadership_weekly_pulse_due')
+
+
 async def _check_weekly_cycle(
     bot: Bot,
     settings: Settings,
@@ -836,28 +873,11 @@ async def _check_weekly_cycle(
                     schedule.timezone, cycle_deadline.strftime("UTC%z")
                 )
                 for stage in stages:
-                    await send_bot_notification(
-                        bot,
-                        user.telegram_id,
-                        emoji="⏳",
-                        title="Пульс недели · ваш отчёт",
-                        body=(
-                            f"Период: {period_start:%d.%m}–{period_end:%d.%m}\n"
-                            f"Отправить до {cycle_deadline:%d.%m, %H:%M} "
-                            f"({timezone_label})."
-                        ),
-                        action=(
-                            PrimaryAction(
-                                label="Заполнить Пульс",
-                                url=f"https://t.me/{(await bot.get_me()).username}?start=pulse_connect",
-                            )
-                            if settings.effective_miniapp_url
-                            else None
-                        ),
-                        settings=settings,
-                        delivery_key=f"leadership-pulse-cycle:{cycle.id}:{stage}:{user.id}",
-                        notification_type="leadership_weekly_pulse_due",
-                    )
+                    await _send_cycle_reminder(session,bot,settings,user=user,cycle=cycle,stage=stage,
+                        body=(f"Период: {period_start:%d.%m}–{period_end:%d.%m}\n"
+                              f"Отправить до {cycle_deadline:%d.%m, %H:%M} ({timezone_label})."),
+                        action=PrimaryAction(label='Заполнить Пульс',
+                            url=f"https://t.me/{(await bot.get_me()).username}?start=pulse_connect"))
             await session.commit()
             return
 

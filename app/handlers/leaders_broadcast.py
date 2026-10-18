@@ -59,7 +59,9 @@ async def announcement_text(message,state,user,settings,session):
 @router.callback_query(F.data.startswith('leaders_broadcast:'))
 async def announcement_action(call,state,user,settings,session,bot):
     await call.answer()
-    if not call.message or call.message.chat.id!=settings.leaders_chat_id or not user: return
+    if not call.message or not user: return
+    private = getattr(call.message.chat,'type',None)=='private'
+    if not private and call.message.chat.id!=settings.leaders_chat_id: return
     parts=(call.data or '').split(':')
     if len(parts)<2: return
     action=parts[1]
@@ -73,7 +75,14 @@ async def announcement_action(call,state,user,settings,session,bot):
         if not b or b.audience_filter_json.get('chat_id')!=settings.leaders_chat_id: return
         meta=dict(b.audience_filter_json)
         if action=='read':
-            if b.status!='sent' or user.id not in meta.get('recipients', []): return
+            if user.id not in meta.get('recipients', []): return
+            if meta.get('campaign_key'):
+                from app.database.system_models import NotificationDelivery
+                key=f'admin-campaign:{b.id}:'+ (f'user:{user.id}' if private else 'group')
+                receipt=await session.scalar(select(NotificationDelivery).where(NotificationDelivery.delivery_key==key))
+                if not receipt or receipt.status!='sent' or receipt.chat_id!=call.message.chat.id or receipt.message_id!=call.message.message_id:
+                    return
+            elif b.status!='sent': return
             previous=await session.scalar(select(BroadcastAcknowledgement).where(BroadcastAcknowledgement.broadcast_id==b.id,BroadcastAcknowledgement.user_id==user.id))
             if not previous: session.add(BroadcastAcknowledgement(broadcast_id=b.id,user_id=user.id,read_at=datetime.now(timezone.utc)))
             await session.flush()
@@ -81,6 +90,9 @@ async def announcement_action(call,state,user,settings,session,bot):
             message_id=meta.get('message_id') or call.message.message_id
             if not meta.get('message_id'):
                 b.audience_filter_json={**meta, 'message_id': message_id}
+            if private:
+                await call.message.answer('Ознакомление сохранено.')
+                return
             try: await bot.edit_message_text(chat_id=settings.leaders_chat_id,message_id=message_id,text=text,reply_markup=keyboard,parse_mode='HTML')
             except TelegramAPIError: pass
             return

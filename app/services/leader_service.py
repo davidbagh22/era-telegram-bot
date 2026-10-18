@@ -199,6 +199,21 @@ async def list_created_tasks(session: AsyncSession, user: User) -> list[Task]:
     return list(rows.all())
 
 
+async def _creation_scope(session, creator, *, settings=None, assignee=None):
+    from types import SimpleNamespace
+    from app.services import leaders_access_service as access
+    settings=settings or SimpleNamespace(admin_ids=[])
+    available=await access.scopes(session,creator,settings)
+    if ('global',0) in available:
+        return None,None
+    for kind, ident in sorted(available):
+        department_id=ident if kind=='department' else None
+        direction_id=ident if kind=='direction' else None
+        if assignee is None or await access.user_in_scope(session,assignee,department_id,direction_id):
+            return department_id,direction_id
+    raise PermissionError('Нет права создавать задачи этой команде. Откройте раздел «Лидеры».')
+
+
 async def create_assigned_task(
     session: AsyncSession,
     *,
@@ -210,11 +225,14 @@ async def create_assigned_task(
     points: int,
     bot: Bot | None,
     miniapp_url: str = "",
+    settings: Settings | None = None,
 ) -> Task:
     points = normalize_task_points(points)
+    department_id,direction_id=await _creation_scope(session,creator,settings=settings,assignee=assignee)
     task = Task(
         title=title,
         description=description,
+        department_id=department_id,direction_id=direction_id,
         assignee_id=assignee.id,
         creator_id=creator.id,
         deadline=deadline,
@@ -263,11 +281,15 @@ async def create_open_task(
     points = normalize_task_points(points)
     if not 1 <= max_participants <= 50:
         raise ValueError("invalid_max_participants")
+    department_id,direction_id=await _creation_scope(session,creator,settings=settings)
+    if (department_id or direction_id) and destinations:
+        raise PermissionError('Объявление всей команде требует отдельного права.')
     unknown = set(destinations or []) - set(CHAT_DESTINATION_KEYS)
     if unknown:
         raise ValueError("invalid_destination")
     task = Task(
         title=title,
+        department_id=department_id,direction_id=direction_id,
         description=description,
         assignee_id=None,
         creator_id=creator.id,
@@ -366,6 +388,7 @@ async def decide_task_application(
         raise ValueError("unknown_action")
     if task.creator_id != actor.id:
         raise PermissionError("not_task_owner")
+    await _creation_scope(session,actor,assignee=target)
     participant = await session.scalar(
         select(TaskParticipant).where(
             TaskParticipant.task_id == task.id, TaskParticipant.user_id == target.id

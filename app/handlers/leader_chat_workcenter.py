@@ -32,7 +32,7 @@ from app.services.weekly_pulse_cycle_service import upsert_leader_membership
 from app.services.leaders_topics_service import topic_id
 from app.states.task import LeadersChatTaskStates
 from app.keyboards.participant import open_app_button
-from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, TaskStatus
+from app.utils.constants import ApplicationStatus, TaskStatus
 
 router = Router(name="leaders_chat_workcenter")
 
@@ -50,10 +50,10 @@ def _mention(user: User) -> str:
     return f'<a href="tg://user?id={user.telegram_id}">{label}</a>'
 
 
-def _can_create(user: User | None, settings: Settings, telegram_id: int | None) -> bool:
-    if telegram_id and telegram_id in settings.admin_ids:
-        return True
-    return bool(user and user.role in PRIVILEGED_ROLES)
+def _can_create(user, settings, telegram_id):
+    from app.services.authorization_service import is_full_admin
+    return bool(user and not user.is_archived and not user.is_blocked and
+                is_full_admin(user,settings,telegram_id or user.telegram_id))
 
 
 @router.chat_member()
@@ -231,6 +231,9 @@ async def handle_leaders_task_card_action(
         return
 
     if action in {"accept", "return"}:
+        if user is None or task.assignee_id == user.id:
+            await call.answer('Результат должен проверить другой руководитель.',show_alert=True)
+            return
         if not _can_create(user, settings, event_from_user.id if event_from_user else None):
             await call.answer("Проверять результаты могут только руководители.", show_alert=True)
             return

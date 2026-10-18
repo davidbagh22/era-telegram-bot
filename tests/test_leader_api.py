@@ -450,14 +450,14 @@ class OpenTaskDeliveryRetryApiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_retry_own_task_delivery_without_bot_records_failure(self) -> None:
         async with self.session_factory() as session:
-            leader = User(telegram_id=555, first_name="Лидер", role="leader")
+            leader = User(telegram_id=555, first_name="Лидер", role="admin")
             session.add(leader)
             await session.flush()
             leader_id = leader.id
 
         app = self._build_real_app(
             SimpleNamespace(
-                id=leader_id, telegram_id=555, first_name="Лидер", role="leader",
+                id=leader_id, telegram_id=555, first_name="Лидер", role="admin",
                 is_blocked=False, is_archived=False,
             )
         )

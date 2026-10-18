@@ -1239,3 +1239,11 @@ export async function workWrite(path:string,payload:unknown){
 }
 
 export const fetchBookAnalytics=()=>authorizedGet<{subscribers:number;responses:number;respondents:number}>("/api/v1/workcenter/book-club/analytics");
+
+export type WorkScope={kind:string;id:number;name:string};
+export type WorkScopes={tasks:WorkScope[];broadcasts:WorkScope[];executive:boolean};
+export type WorkPerson={id:number;name:string;role:string;offices:string[];can_set_leader:boolean};
+export type WorkCampaign={id:number;text:string;status:string;kind:string;mode:string;recipients:number;sent:number;read:number;uncertain:number;unreachable:number};
+export const fetchWorkScopes=()=>authorizedGet<WorkScopes>('/api/v1/workcenter/scopes');
+export const fetchWorkTeam=(q='',page=0,candidates=false)=>authorizedGet<{items:WorkPerson[];has_more:boolean}>(`/api/v1/workcenter/team?q=${encodeURIComponent(q)}&page=${page}&candidates=${candidates}`);
+export const fetchWorkCampaigns=()=>authorizedGet<WorkCampaign[]>('/api/v1/workcenter/campaigns');

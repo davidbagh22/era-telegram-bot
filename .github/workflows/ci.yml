@@ -108,6 +108,9 @@ jobs:
       - name: Prove task decision and stale review races on PostgreSQL
         run: python scripts/postgres_task_review_race.py
 
+      - name: Prove workcenter confirmation, claim, role and campaign races on PostgreSQL
+        run: python scripts/postgres_leaders_workcenter_race.py
+
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 10

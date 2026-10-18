@@ -12,7 +12,7 @@ from app.database.base import Base
 from app.database.event_attendance import EventAttendanceSession  # noqa: F401
 from app.database.event_experience import EventExperience, EventReminderDelivery  # noqa: F401
 from app.database.leadership_models import LeaderChatMembership, WeeklyPulseCycle, WeeklyPulseSchedule
-from app.database.models import Badge, Event, EventActivity, EventActivitySubmission, PointTransaction, User, UserBadge
+from app.database.models import Badge, Event, EventActivity, EventActivitySubmission, PointTransaction, PermissionGrant, User, UserBadge
 from app.database.session import create_engine_and_sessionmaker
 from app.services.participation_lifecycle_service import complete_onboarding
 from app.utils.constants import ApplicationStatus, EventStatus, Role
@@ -42,6 +42,7 @@ async def seed() -> None:
         activity_submitter = User(telegram_id=ACTIVITY_SUBMITTER_TELEGRAM_ID, first_name="E2E Activity Submitter", role=Role.PARTICIPANT, application_status=ApplicationStatus.APPROVED)
         session.add_all([participant, leader, admin, pending, pending_sync, bidder, redeemer, activity_submitter])
         await session.flush()
+        session.add(PermissionGrant(user_id=leader.id,permission='tasks.manage',scope_type='global',scope_id=0,granted_by=admin.id))
 
         if settings.leaders_chat_id:
             local_now = datetime.now(ZoneInfo(settings.timezone))

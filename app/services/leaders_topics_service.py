@@ -19,7 +19,18 @@ TOPICS = {
 
 async def topic_id(session, chat_id: int, key: str) -> int | None:
     row = await session.scalar(select(AppSetting).where(AppSetting.key == f"leaders_forum:{chat_id}:{key}"))
-    return json.loads(row.value).get("thread_id") if row else None
+    return (json.loads(row.value) if isinstance(row.value,str) else row.value).get('thread_id') if row else None
+
+
+async def delivery_topic(session, chat_id, key):
+    """Distinguish an explicitly configured plain chat from a missing forum topic."""
+    row = await session.scalar(select(AppSetting).where(AppSetting.key == f'leaders_forum:{chat_id}:{key}'))
+    data = (json.loads(row.value) if isinstance(row.value, str) else row.value) if row else {}
+    if data.get('mode') == 'plain':
+        return None
+    if not data.get('thread_id'):
+        raise ValueError('Рабочая тема не настроена. Проверьте привязку чата лидеров.')
+    return data['thread_id']
 
 
 async def panel(session, chat_id, key, username):
@@ -33,10 +44,11 @@ async def panel(session, chat_id, key, username):
               f"\nНа проверке: {sum(t.status == 'review' for t in active)} · Блокеров: {sum(bool(meta(t).get('blocked')) for t in active)}")
         rows=[[('➕ Новая задача','wc:new'),('👤 Мои задачи','wc:list:mine')],
               [('📋 Активные','wc:list:active'),('🟢 Свободные','wc:list:free')],
-              [('🔥 Срочные','wc:list:urgent'),('🚧 Блокеры','wc:list:block')]]
+              [('🔥 Срочные','wc:list:urgent'),('🚧 Блокеры','wc:list:block')],
+              [('📢 Сообщение команде','lc:new')]]
     elif key == "important":
         text="📢 ВАЖНЫЕ ОПОВЕЩЕНИЯ\nСообщения и решения для всей команды."
-        rows=[[('📣 Оповестить всех','leaders_broadcast:new')]]
+        rows=[[('📣 Сообщение команде','lc:new')]]
     else:
         return TOPICS[key][1], InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
             text="Заполнить / подключить Пульс", url=f"https://t.me/{username}?start=pulse_connect")]]) if username else None
@@ -50,18 +62,60 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
     async with session_factory() as session:
         try:
             chat = await bot.get_chat(chat_id)
-            if not chat.is_forum:
-                return {"status": "forum_disabled", "chat_id": chat_id}
             me = await bot.get_me()
             member = await bot.get_chat_member(chat_id, me.id)
-            if not getattr(member, "can_manage_topics", False):
-                return {"status": "missing_manage_topics", "chat_id": chat_id}
+            if not chat.is_forum:
+                existing=await session.scalar(select(AppSetting).where(AppSetting.key==f'leaders_forum:{chat_id}:tasks'))
+                data=(json.loads(existing.value) if isinstance(existing.value,str) else existing.value) if existing else {}
+                if data.get('thread_id'):
+                    return {'status':'forum_disabled','chat_id':chat_id}
+                if data.get('message_state') in {'sending','uncertain'}:
+                    return {'status':'panel_needs_review','chat_id':chat_id}
+                text,keyboard=await panel(session,chat_id,'tasks',me.username)
+                if not data.get('message_id'):
+                    if existing is None:
+                        existing=AppSetting(key=f'leaders_forum:{chat_id}:tasks',value='{}')
+                        session.add(existing)
+                    existing.value=json.dumps({'mode':'plain','thread_id':None,'message_state':'sending'})
+                    await session.commit()
+                    try:
+                        sent=await bot.send_message(chat_id,text,reply_markup=keyboard)
+                    except Exception:
+                        existing.value=json.dumps({'mode':'plain','thread_id':None,'message_state':'uncertain'})
+                        await session.commit()
+                        raise
+                    data={'mode':'plain','thread_id':None,'message_id':sent.message_id,'message_state':'sent'}
+                else:
+                    try:
+                        await bot.edit_message_text(chat_id=chat_id,message_id=data['message_id'],text=text,reply_markup=keyboard)
+                    except Exception as exc:
+                        if 'message is not modified' not in str(exc).lower(): raise
+                existing.value=json.dumps(data)
+                for key in ('important','pulse'):
+                    row=await session.scalar(select(AppSetting).where(AppSetting.key==f'leaders_forum:{chat_id}:{key}'))
+                    if row is None: session.add(AppSetting(key=f'leaders_forum:{chat_id}:{key}',value=json.dumps({'mode':'plain','thread_id':None})))
+                await session.commit()
+                if getattr(member,'can_pin_messages',False) and not data.get('pinned'):
+                    await bot.pin_chat_message(chat_id,data['message_id'],disable_notification=True)
+                    existing.value=json.dumps({**data,'pinned':True})
+                    await session.commit()
+                return {'status':'ready_plain','chat_id':chat_id}
+            if not getattr(member, 'can_manage_topics', False):
+                return {'status': 'missing_manage_topics', 'chat_id': chat_id}
             result = {}
             for key, (name, description) in TOPICS.items():
                 setting_key = f"leaders_forum:{chat_id}:{key}"
                 row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
-                data = json.loads(row.value) if row else {}
+                data = (json.loads(row.value) if isinstance(row.value,str) else row.value) if row else {}
+                if not data.get('thread_id') and data.get('thread_state')=='creating':
+                    return {'status':'topic_needs_review','chat_id':chat_id,'topic':key}
                 if not data.get("thread_id"):
+                    if row is None:
+                        row=AppSetting(key=setting_key,value=json.dumps({'thread_state':'creating'}))
+                        session.add(row)
+                    else:
+                        row.value=json.dumps({**data,'thread_state':'creating'})
+                    await session.commit()
                     topic = await bot.create_forum_topic(chat_id, name=name)
                     data = {"thread_id": topic.message_thread_id}
                     if row is None:
@@ -72,9 +126,15 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                     await session.commit()
                 text, keyboard = await panel(session, chat_id, key, me.username)
                 snapshot = {"text": text, "keyboard": keyboard.model_dump(mode="json") if keyboard else None}
+                if not data.get('message_id') and data.get('message_state') in {'sending','uncertain'}:
+                    return {'status':'panel_needs_review','chat_id':chat_id,'topic':key}
                 if not data.get("message_id"):
+                    data['message_state']='sending'
+                    row.value=json.dumps(data)
+                    await session.commit()
                     message = await bot.send_message(chat_id, text=text, message_thread_id=data["thread_id"], reply_markup=keyboard)
                     data["message_id"] = message.message_id
+                    data["message_state"] = "sent"
                     data["panel"] = snapshot
                     row.value = json.dumps(data)
                     await session.commit()

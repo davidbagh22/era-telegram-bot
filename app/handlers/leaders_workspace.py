@@ -12,6 +12,7 @@ from sqlalchemy import select
 from app.database.models import User, Task, TaskDelivery, TaskSubmission
 from app.utils.constants import TaskStatus
 from app.services import leaders_workspace as service
+from app.services import leaders_access_service as access
 from app.services.leaders_workcenter_service import render_task_card, sync_one_card
 from app.services.notification_service import safe_answer_document, safe_answer_photo
 
@@ -34,9 +35,14 @@ def cancel_kb():
 
 
 async def allowed(event, bot, settings, session, user):
-    message = event.message if hasattr(event,'message') else event
-    if not message or message.chat.id != settings.leaders_chat_id:
+    message = event.message if hasattr(event, 'message') else event
+    if not message or not access.active(user):
         return False
+    private = getattr(message.chat, 'type', None) == 'private'
+    if not private and message.chat.id != settings.leaders_chat_id:
+        return False
+    if private and await access.executive(session, user, settings):
+        return True
     try:
         return await service.verify_member(session, bot, settings, user)
     except TelegramAPIError:
@@ -45,9 +51,12 @@ async def allowed(event, bot, settings, session, user):
 
 async def ask_assignee(message, state, session, settings, query=''):
     users = await service.roster(session, settings.leaders_chat_id)
+    data = await state.get_data()
+    users = [u for u in users if access.in_scope(u, data.get('department_id'), data.get('direction_id'))]
     if query:
         users=[u for u in users if query.lower().lstrip('@') in f'{u.first_name} {u.last_name or ""} {u.username or ""}'.lower()]
-    rows=[[(f'{u.first_name} {u.last_name or ""}'.strip(),f'wc:assign:{u.id}') ] for u in users[:30]]
+    rows=[[(f'{u.first_name} {u.last_name or ""}'.strip(),f'wc:assign:{u.id}') ] for u in users[:12]]
+    rows += [[('Изменить команду', 'wc:scope:choose')]]
     rows += [[('🟢 Оставить свободной','wc:assign:0')],[('Отмена','wc:cancel')]]
     await state.set_state(Wizard.assignee)
     await message.answer('Кому? Отметьте человека через @ или выберите из ЛИДЕРОВ. Для поиска отправьте имя.',reply_markup=kb(rows))
@@ -73,7 +82,14 @@ async def preview(message,state,session):
 
 async def begin(message,state,user,session,settings,title=''):
     await state.clear()
-    await state.update_data(creator_id=user.id,chat_id=message.chat.id,title=title[:2000])
+    options = await access.scope_options(session, user, settings)
+    if not options:
+        raise ValueError('Нет права создавать задачи.')
+    scope = options[0]
+    from uuid import uuid4
+    await state.update_data(creator_id=user.id, chat_id=message.chat.id, title=title[:2000],
+        request_key=str(uuid4()), department_id=scope['id'] if scope['kind']=='department' else None,
+        direction_id=scope['id'] if scope['kind']=='direction' else None)
     if title:
         await ask_assignee(message,state,session,settings)
     else:
@@ -81,20 +97,20 @@ async def begin(message,state,user,session,settings,title=''):
         await message.answer('Что нужно сделать?',reply_markup=cancel_kb())
 
 
-@router.message(Command('task'), F.chat.type.in_({'group','supergroup'}))
+@router.message(Command('task'), F.chat.type.in_({'private','group','supergroup'}))
 async def start_task(message,state,user,settings,session,bot):
     if not await allowed(message,bot,settings,session,user):
         return
-    if not service.manager(user,settings):
+    if not await service.can_create_any(session,user,settings):
         await message.reply('Создавать задачи могут руководители.')
         return
     source=message.reply_to_message
     await begin(message,state,user,session,settings,(source.text or source.caption or '') if source else '')
 
 
-@router.message(Wizard.title, F.chat.type.in_({'group','supergroup'}))
+@router.message(Wizard.title, F.chat.type.in_({'private','group','supergroup'}))
 async def task_title(message,state,user,settings,session,bot):
-    if not await allowed(message,bot,settings,session,user) or not service.manager(user,settings):
+    if not await allowed(message,bot,settings,session,user) or not await service.can_create_any(session,user,settings):
         return
     title=(message.text or message.caption or '').strip()
     if not title or len(title)>2000:
@@ -104,9 +120,9 @@ async def task_title(message,state,user,settings,session,bot):
     await ask_assignee(message,state,session,settings)
 
 
-@router.message(Wizard.assignee,F.chat.type.in_({'group','supergroup'}))
+@router.message(Wizard.assignee,F.chat.type.in_({'private','group','supergroup'}))
 async def task_assignee(message,state,user,settings,session,bot):
-    if not await allowed(message,bot,settings,session,user) or not service.manager(user,settings):
+    if not await allowed(message,bot,settings,session,user) or not await service.can_create_any(session,user,settings):
         return
     ids=[e.user.id for e in message.entities or [] if e.type=='text_mention' and e.user]
     mentions=[e.extract_from(message.text) for e in message.entities or [] if e.type=='mention']
@@ -139,7 +155,7 @@ async def save_deadline(message,state,session,settings,user,value):
         await preview(message,state,session)
 
 
-@router.message(Wizard.deadline,F.chat.type.in_({'group','supergroup'}))
+@router.message(Wizard.deadline,F.chat.type.in_({'private','group','supergroup'}))
 async def task_deadline(message,state,user,settings,session,bot):
     if not await allowed(message,bot,settings,session,user): return
     try:
@@ -173,22 +189,50 @@ async def workspace_callback(call,state,user,settings,session,bot):
     try:
         if action=='cancel':
             await state.clear(); await message.answer('Отменено.'); return
+        if action=='scope':
+            data = await state.get_data()
+            if data.get('creator_id') != user.id or data.get('chat_id') != message.chat.id or data.get('edit_task'):
+                raise ValueError('Откройте создание задачи заново.')
+            options = await access.scope_options(session, user, settings)
+            if parts[2] == 'choose':
+                await message.answer('Кому доступна задача?', reply_markup=kb([
+                    [(o['name'], f"wc:scope:{o['kind']}:{o['id']}")] for o in options]))
+                return
+            scope = next((o for o in options if o['kind'] == parts[2] and o['id'] == int(parts[3])), None)
+            if not scope:
+                raise ValueError('Нет права работать с этой командой.')
+            await state.update_data(department_id=scope['id'] if scope['kind']=='department' else None,
+                direction_id=scope['id'] if scope['kind']=='direction' else None, assignee_id=None)
+            await ask_assignee(message,state,session,settings)
+            return
         if action=='new':
-            if not service.manager(user,settings): raise ValueError('Создавать задачи могут руководители.')
+            if not await service.can_create_any(session,user,settings): raise ValueError('Создавать задачи могут руководители.')
             await begin(message,state,user,session,settings); return
         if action=='list':
             kind=parts[2]
+            page=max(0,int(parts[3])) if len(parts)>3 else 0
             tasks=list((await session.scalars(select(Task).join(TaskDelivery,TaskDelivery.task_id==Task.id).where(
                 TaskDelivery.chat_key=='leaders',TaskDelivery.chat_id==settings.leaders_chat_id).order_by(Task.id.desc()))).unique().all())
+            tasks=[t for t in tasks if access.in_scope(user,t.department_id,t.direction_id) or t.creator_id==user.id or t.assignee_id==user.id or await service.can_manage_task(session,t,user,settings)]
             if kind=='mine': tasks=[t for t in tasks if t.assignee_id==user.id and t.status not in service.TERMINAL]
             elif kind=='free': tasks=[t for t in tasks if t.assignee_id is None and t.status not in service.TERMINAL]
             elif kind=='urgent': tasks=[t for t in tasks if service.meta(t).get('priority')=='urgent' and t.status not in service.TERMINAL]
+            elif kind=='completed': tasks=[t for t in tasks if t.status==TaskStatus.COMPLETED]
+            elif kind=='review': tasks=[t for t in tasks if t.status==TaskStatus.REVIEW]
             elif kind=='block': tasks=[t for t in tasks if service.meta(t).get('blocked') and t.status not in service.TERMINAL]
             else: tasks=[t for t in tasks if t.status not in service.TERMINAL]
-            await message.answer('Задачи' if tasks else 'Задач в этом списке нет.',reply_markup=kb([[(f'#{t.id} {t.title[:45]}',f'wc:details:{t.id}') ] for t in tasks[:30]]) if tasks else None); return
+            page=min(page,max(0,(len(tasks)-1)//8))
+            rows=[[(f'#{t.id} {t.title[:45]}',f'wc:details:{t.id}')] for t in tasks[page*8:(page+1)*8]]
+            nav=[]
+            if page: nav.append(('←',f'wc:list:{kind}:{page-1}'))
+            if (page+1)*8<len(tasks): nav.append(('→',f'wc:list:{kind}:{page+1}'))
+            if nav: rows.append(nav)
+            rows.append([('← Лидеры','wc:home')])
+            await message.answer('Задачи' if tasks else 'Задач в этом списке нет.',reply_markup=kb(rows))
+            return
         if action in {'assignees','assign','due','create'}:
             data=await state.get_data()
-            if not service.manager(user,settings) or data.get('creator_id')!=user.id or data.get('chat_id')!=settings.leaders_chat_id:
+            if not await service.can_create_any(session,user,settings) or data.get('creator_id')!=user.id or data.get('chat_id')!=message.chat.id:
                 raise ValueError('Откройте создание задачи заново.')
             current=await state.get_state()
             if action=='assignees': await ask_assignee(message,state,session,settings); return
@@ -213,7 +257,8 @@ async def workspace_callback(call,state,user,settings,session,bot):
             if current!=Wizard.confirm.state: return
             # Consume confirmation before side effects. Telegram/FSM event isolation serializes a user's callbacks.
             await state.set_state(None)
-            task=await service.create_task(session,settings,user,title=data['title'],description=data['title'],
+            task=await service.create_task(session,settings,user,title=data['title'].split('\n')[0][:255],description=data['title'],
+                request_key=data.get('request_key'),department_id=data.get('department_id'),direction_id=data.get('direction_id'),
                 assignee_id=data.get('assignee_id'),deadline=datetime.fromisoformat(data['deadline']) if data.get('deadline') else None)
             await session.commit()
             await sync_one_card(session,bot,settings,task)
@@ -222,7 +267,12 @@ async def workspace_callback(call,state,user,settings,session,bot):
             await message.answer(f'Задача #{task.id} сохранена.'); return
         task_id=int(parts[2]); task=await service.task_by_id(session,task_id,settings.leaders_chat_id,lock=True)
         if not task: raise ValueError('Задача не найдена.')
-        if action=='details': await details(message,session,task); return
+        if not (access.in_scope(user,task.department_id,task.direction_id) or task.creator_id==user.id or task.assignee_id==user.id or await service.can_manage_task(session,task,user,settings)):
+            raise ValueError('Эта задача доступна другой команде.')
+        if action=='details':
+            await details(message,session,task)
+            await message.answer('Задача',reply_markup=kb([[('Действия',f'wc:actions:{task.id}'),('← Лидеры','wc:home')]]))
+            return
         if action=='claim':
             await message.answer('Взять эту задачу на себя?',reply_markup=kb([[('Да, беру',f'wc:take:{task.id}')],[('Отмена','wc:cancel')]])); return
         if action=='take':
@@ -230,43 +280,46 @@ async def workspace_callback(call,state,user,settings,session,bot):
         elif action=='actions':
             rows=[]
             if task.assignee_id==user.id and task.status not in service.TERMINAL:
-                rows=[[('Начать',f'wc:start:{task.id}'),('Сдать результат',f'wc:submit:{task.id}')],
+                rows=[[('Беру / начать',f'wc:start:{task.id}'),('Сдать результат',f'wc:submit:{task.id}')],
                       [('Есть проблема',f'wc:block:{task.id}'),('Вопрос',f'wc:question:{task.id}')],
                       [('Попросить перенос срока',f'wc:extension:{task.id}')]]
-            if service.can_manage(task,user,settings) and task.status not in service.TERMINAL:
+            if task.assignee_id==user.id and task.status in {TaskStatus.NEW,TaskStatus.PUBLISHED} and not service.meta(task).get('accepted'):
+                rows.append([('Не могу взять',f'wc:decline:{task.id}')])
+            if await service.can_manage_task(session,task,user,settings) and task.status not in service.TERMINAL:
                 rows += [[('Изменить исполнителя',f'wc:reassign:{task.id}'),('Изменить срок',f'wc:reschedule:{task.id}')],
                          [('Срочно',f'wc:urgent:{task.id}'),('Отменить задачу',f'wc:cancel_task:{task.id}')]]
-                if task.status==TaskStatus.REVIEW: rows += [[('Принять',f'wc:accept:{task.id}'),('Вернуть',f'wc:return:{task.id}')]]
+                if task.status==TaskStatus.REVIEW and task.assignee_id!=user.id: rows += [[('Принять',f'wc:accept:{task.id}'),('Вернуть',f'wc:return:{task.id}')]]
             if not rows: raise ValueError('Нет доступных действий.')
             await message.answer(f'Действия по задаче #{task.id}',reply_markup=kb(rows)); return
         elif action in {'reassign','reschedule'}:
-            if not service.can_manage(task,user,settings): raise ValueError('Нужны права руководителя.')
-            await state.clear(); await state.update_data(creator_id=user.id,chat_id=settings.leaders_chat_id,edit_task=task.id)
+            if not await service.can_manage_task(session,task,user,settings): raise ValueError('Нужны права руководителя.')
+            await state.clear(); await state.update_data(creator_id=user.id,chat_id=message.chat.id,edit_task=task.id,department_id=task.department_id,direction_id=task.direction_id)
             if action=='reassign': await ask_assignee(message,state,session,settings)
             else: await ask_deadline(message,state)
             return
         elif action in {'submit','block','question','return','extension'}:
-            if action=='return' and not service.can_manage(task,user,settings): raise ValueError('Нужны права руководителя.')
+            if action=='return' and not await service.can_manage_task(session,task,user,settings): raise ValueError('Нужны права руководителя.')
             if action!='return' and task.assignee_id!=user.id: raise ValueError('Действие доступно исполнителю.')
-            await state.set_state(Wizard.action); await state.update_data(action=action,task_id=task.id,chat_id=settings.leaders_chat_id)
+            await state.set_state(Wizard.action); await state.update_data(action=action,task_id=task.id,chat_id=message.chat.id)
             prompts={'submit':'Что сделано? Отправьте текст, ссылку, фото или документ.', 'return':'Что нужно исправить?',
                 'block':'Что мешает? Вопрос попадёт в решения руководства.','question':'Какой вопрос нужно решить?',
                 'extension':'Укажите желаемый срок и причину. Руководитель получит запрос.'}
             await message.answer(prompts[action],reply_markup=cancel_kb()); return
         elif action=='cancel_task':
-            if not service.can_manage(task,user,settings): raise ValueError('Нужны права руководителя.')
+            if not await service.can_manage_task(session,task,user,settings): raise ValueError('Нужны права руководителя.')
             await message.answer('Отменить задачу?',reply_markup=kb([[('Да, отменить',f'wc:cancel_confirm:{task.id}')],[('Назад',f'wc:actions:{task.id}')]])); return
         else:
-            mapped={'cancel_confirm':'cancel','urgent':'urgent','start':'start','accept':'accept'}.get(action)
+            mapped={'decline':'decline','cancel_confirm':'cancel','urgent':'urgent','start':'start','accept':'accept'}.get(action)
             if not mapped: return
             await service.change_task(session,settings,task,user,mapped,True if action=='urgent' else None)
         await session.commit(); await sync_one_card(session,bot,settings,task); await session.commit()
         await message.answer('Сохранено.')
     except (ValueError,TelegramAPIError) as exc:
+        await session.rollback()
         await message.answer(str(exc)[:500] if isinstance(exc,ValueError) else 'Telegram временно недоступен. Повторите действие.')
 
 
-@router.message(Wizard.action,F.chat.type.in_({'group','supergroup'}))
+@router.message(Wizard.action,F.chat.type.in_({'private','group','supergroup'}))
 async def task_action_text(message,state,user,settings,session,bot):
     if not await allowed(message,bot,settings,session,user): return
     data=await state.get_data()

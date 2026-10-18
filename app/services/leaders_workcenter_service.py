@@ -57,7 +57,7 @@ def render_task_card(task: Task, assignee: User | None) -> str:
         "",
         f"Исполнитель: {mention}",
         f"Срок: {deadline}",
-        f"Статус: {'🚧 Есть проблема' if meta(task).get('blocked') else STATUS_LABELS.get(task.status, escape(str(task.status)))}",
+        f"Статус: {'🚧 Есть проблема' if meta(task).get('blocked') else ('🔵 Предложена' if task.status in {TaskStatus.NEW,TaskStatus.PUBLISHED} and task.assignee_id and meta(task).get('accepted') is False else STATUS_LABELS.get(task.status, escape(str(task.status))))}",
     ]
     if task.comment:
         lines.extend(["", f"⚠️ Блокер: {escape(task.comment[:700])}"])
@@ -81,33 +81,61 @@ async def sync_one_card(session, bot, settings, task):
     from datetime import datetime, timezone
     assignee = await session.get(User, task.assignee_id) if task.assignee_id else None
     snapshot = card_snapshot(task, assignee)
-    if delivery.telegram_message_id and delivery.last_card_snapshot == snapshot:
+    stored=delivery.last_card_snapshot or {}
+    content=stored.get('content',stored)
+    generation=stored.get('generation',0)
+    if delivery.telegram_message_id and content == snapshot:
         return
     try:
         if delivery.telegram_message_id:
             await bot.edit_message_text(chat_id=delivery.chat_id, message_id=delivery.telegram_message_id,
                 text=render_task_card(task,assignee),reply_markup=task_card_keyboard(task,settings),parse_mode="HTML")
         else:
-            thread_id = await topic_id(session,delivery.chat_id,"tasks")
+            thread_id = await topic_id(session,delivery.chat_id,'tasks')
             if not thread_id:
-                delivery.error = "Раздел Задачи ещё не настроен"
+                import json
+                from app.database.models import AppSetting
+                row=await session.scalar(select(AppSetting).where(AppSetting.key==f'leaders_forum:{delivery.chat_id}:tasks'))
+                config=(json.loads(row.value) if isinstance(row.value,str) else row.value) if row else {}
+                if config.get('mode')!='plain':
+                    delivery.error='Раздел Задачи ещё не настроен'
+                    return
+            from app.services.notification_service import safe_send_once
+            from aiogram.types import InlineKeyboardMarkup
+            text=stored.get('initial_text') or render_task_card(task,assignee)
+            markup=stored.get('initial_markup')
+            keyboard=InlineKeyboardMarkup.model_validate(markup) if markup else task_card_keyboard(task,settings)
+            delivery.last_card_snapshot={'content':content,'generation':generation,'initial_text':text,
+                'initial_markup':keyboard.model_dump(mode='json'),
+                'initial_snapshot':stored.get('initial_snapshot',snapshot)}
+            await session.commit()
+            sent=await safe_send_once(bot,settings,delivery.chat_id,text,
+                delivery_key=f'leaders-card:{delivery.id}:{generation}',notification_type='leaders_task_card',
+                message_thread_id=thread_id,reply_markup=keyboard,parse_mode='HTML')
+            if not sent.sent:
+                delivery.status='review_required' if sent.status in {'uncertain','conflict'} else 'pending'
+                delivery.error=sent.error_code or sent.status
                 return
-            sent = await bot.send_message(chat_id=delivery.chat_id,message_thread_id=thread_id,
-                text=render_task_card(task,assignee),reply_markup=task_card_keyboard(task,settings),parse_mode="HTML")
+            if not sent.message_id:
+                delivery.status='review_required'
+                delivery.error='missing_message_id'
+                return
+            snapshot=delivery.last_card_snapshot['initial_snapshot']
             delivery.telegram_message_id=sent.message_id
             delivery.message_thread_id=thread_id
             delivery.sent_at=datetime.now(timezone.utc)
         delivery.status="sent"
-        delivery.last_card_snapshot=snapshot
+        delivery.last_card_snapshot={'content':snapshot,'generation':generation}
         delivery.error=None
     except TelegramAPIError as exc:
         if "message is not modified" in str(exc).lower():
-            delivery.last_card_snapshot=snapshot
+            delivery.last_card_snapshot={'content':snapshot,'generation':generation}
             delivery.error=None
         else:
             delivery.error=str(exc)[:1000]
             if "message to edit not found" in str(exc).lower():
                 delivery.telegram_message_id=None
+                delivery.last_card_snapshot={'content':{},'generation':generation+1}
                 delivery.status="pending"
             logger.warning("Leaders card sync failed task=%s: %s",task.id,exc)
 
