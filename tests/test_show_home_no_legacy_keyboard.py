@@ -52,6 +52,14 @@ class ShowHomeNoLegacyKeyboardTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(markup.is_persistent)
         self.assertTrue(markup.resize_keyboard)
 
+    async def test_leader_has_native_entry_in_the_actual_persistent_menu(self) -> None:
+        message = FakeMessage()
+        settings = SimpleNamespace(era_channel_url='https://t.me/example', effective_miniapp_url='https://era-app.example/')
+        await show_home(message, _approved_user(role=Role.LEADER), settings)
+        buttons = [b for row in message.answers[0][1]['reply_markup'].keyboard for b in row]
+        entry = next(b for b in buttons if b.text == '🧭 Лидеры')
+        self.assertIsNone(entry.web_app)
+
     async def test_reply_carries_the_webapp_entry_point(self) -> None:
         message = FakeMessage()
         settings = SimpleNamespace(

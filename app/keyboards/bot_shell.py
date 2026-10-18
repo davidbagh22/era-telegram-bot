@@ -13,6 +13,13 @@ from app.keyboards.participant import (
     navigation_guide_keyboard as legacy_navigation_guide_keyboard,
 )
 from app.utils.deep_links import miniapp_admin_url, miniapp_leader_url
+from app.utils.constants import PRIVILEGED_ROLES
+from app.services.leadership_permission_service import is_assignment_active
+
+
+def has_leaders_entry(user) -> bool:
+    return bool(user and (user.role in PRIVILEGED_ROLES or any(
+        is_assignment_active(a) for a in user.__dict__.get("office_assignments", []))))
 
 
 def main_inline_keyboard(
@@ -62,7 +69,7 @@ def main_inline_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def main_reply_keyboard(miniapp_url: str = "", *, admin: bool = False) -> ReplyKeyboardMarkup:
+def main_reply_keyboard(miniapp_url: str = "", *, admin: bool = False, leaders: bool = False) -> ReplyKeyboardMarkup:
     """Persistent quick-access menu shown above the Telegram input field."""
     rows: list[list[KeyboardButton]] = []
     if miniapp_url:
@@ -84,6 +91,8 @@ def main_reply_keyboard(miniapp_url: str = "", *, admin: bool = False) -> ReplyK
             KeyboardButton(text="📊 Статистика"),
             KeyboardButton(text="📥 Заявки"),
         ])
+    if leaders or admin:
+        rows.append([KeyboardButton(text="🧭 Лидеры")])
     rows.append([
         KeyboardButton(text="💬 Связь"),
         KeyboardButton(text="🎲 Досуг"),

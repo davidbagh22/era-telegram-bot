@@ -59,8 +59,14 @@ class MainInlineKeyboardMiniAppButtonTests(unittest.TestCase):
         )
         self.assertEqual(
             _button_texts(markup),
-            ["🔥 Открыть ЭРА", "📊 Админ-сводка", "📥 Заявки", "🧭 Навигация", "❓ Вопросы об ЭРА", "💬 Связь"],
+            ["🔥 Открыть ЭРА", "📊 Админ-сводка", "📥 Заявки", "🧭 Навигация", "🧭 Лидеры", "❓ Вопросы об ЭРА", "💬 Связь"],
         )
+
+    def test_leaders_button_opens_native_workflow(self) -> None:
+        markup = main_inline_keyboard(privileged=True, miniapp_url='https://era-app.example/')
+        button = next(b for row in markup.inline_keyboard for b in row if b.text == '🧭 Лидеры')
+        self.assertEqual(button.callback_data, 'wc:home')
+        self.assertIsNone(button.web_app)
 
     def test_navigation_button_is_a_callback_not_a_web_app_button(self) -> None:
         markup = main_inline_keyboard(miniapp_url="https://era-app.example")
@@ -108,7 +114,7 @@ class MainInlineKeyboardMiniAppButtonTests(unittest.TestCase):
             main_inline_keyboard(admin=True, miniapp_url="https://era-app.example/")
         )
         participant_markup = _button_texts(main_inline_keyboard(miniapp_url="https://era-app.example/"))
-        self.assertEqual([text for text in admin_markup if text not in {"📊 Админ-сводка", "📥 Заявки"}], participant_markup)
+        self.assertEqual([text for text in admin_markup if text not in {"📊 Админ-сводка", "📥 Заявки", "🧭 Лидеры"}], participant_markup)
 
 
 if __name__ == "__main__":
