@@ -85,9 +85,10 @@ async def create_task(session, settings, creator, *, title, description='', assi
         old = await session.scalar(select(Task).where(Task.creator_id == creator.id,
             Task.reward_json['leaders']['request_key'].as_string() == request_key))
         if old:
-            if meta(old).get('request_hash') and meta(old)['request_hash']!=request_hash:
+            saved_hash = meta(old).get('request_hash')
+            if saved_hash and saved_hash != request_hash:
                 raise ValueError('Подтверждение уже использовано для другой задачи.')
-            if (old.title, old.assignee_id, old.department_id, old.direction_id) != (title.strip()[:255], assignee_id, department_id, direction_id):
+            if not saved_hash and (old.title, old.assignee_id, old.department_id, old.direction_id) != (title.strip()[:255], assignee_id, department_id, direction_id):
                 raise ValueError('Подтверждение уже использовано для другой задачи.')
             return old
     if deadline:

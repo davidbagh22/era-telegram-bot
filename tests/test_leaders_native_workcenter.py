@@ -87,6 +87,11 @@ class LeadersWorkcenterTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(task.id,again.id)
             self.assertEqual(await session.scalar(select(func.count()).select_from(TaskDelivery)),1)
             await work.claim_task(session,task,member)
+            replay=await work.create_task(session,self.settings,admin,title='Result',request_key='request-111',points=0)
+            self.assertEqual(replay.id,task.id)
+            self.assertEqual(replay.assignee_id,member.id)
+            with self.assertRaises(ValueError):
+                await work.create_task(session,self.settings,admin,title='Changed',request_key='request-111',points=0)
             await work.change_task(session,self.settings,task,member,'start')
             await work.change_task(session,self.settings,task,member,'submit',('Done','document-id'))
             await session.commit()
