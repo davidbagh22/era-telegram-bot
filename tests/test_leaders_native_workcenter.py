@@ -42,6 +42,24 @@ class LeadersWorkcenterTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.engine.dispose()
 
+    async def test_native_cancel_does_not_get_consumed_as_campaign_or_team_text(self):
+        from aiogram.types import Chat, Message
+        from aiogram.fsm.context import FSMContext
+        from aiogram.fsm.storage.memory import MemoryStorage
+        from aiogram.fsm.storage.base import StorageKey
+        from app.handlers.leaders_native import CampaignState, TeamState, cancel_native_flow, router
+        storage=MemoryStorage()
+        state=FSMContext(storage=storage,key=StorageKey(bot_id=1,chat_id=1,user_id=1))
+        message=Message(message_id=1,date=datetime.now(timezone.utc),chat=Chat(id=1,type='private'),text='/cancel')
+        handler=next(h for h in router.message.handlers if h.callback==cancel_native_flow)
+        for value in (CampaignState.text, TeamState.search):
+            await state.set_state(value)
+            self.assertTrue((await handler.check(message,raw_state=await state.get_state(),bot=AsyncMock()))[0])
+        output=AsyncMock()
+        await cancel_native_flow(output,state)
+        self.assertIsNone(await state.get_state())
+        await storage.close()
+
     async def test_leader_status_is_not_management_and_head_is_scoped(self):
         async with self.sessions() as session:
             member=await session.get(User,self.member);head=await session.get(User,self.head)

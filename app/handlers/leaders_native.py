@@ -2,12 +2,12 @@
 from uuid import uuid4
 
 from aiogram import F, Router
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy import select
 
 from app.database.models import Broadcast, User
-from app.handlers.leaders_workspace import allowed, kb, workspace_callback
+from app.handlers.leaders_workspace import Wizard, allowed, kb, workspace_callback
 from app.services import leaders_access_service as access
 from app.services import leaders_campaign_service as campaigns
 
@@ -21,6 +21,13 @@ class TeamState(StatesGroup):
 class CampaignState(StatesGroup):
     text = State()
     confirm = State()
+
+
+@router.message(Command('cancel'), StateFilter(TeamState.search, CampaignState.text, CampaignState.confirm,
+    Wizard.title, Wizard.assignee, Wizard.deadline, Wizard.confirm, Wizard.action))
+async def cancel_native_flow(message, state):
+    await state.clear()
+    await message.answer('Действие отменено. Откройте /leaders для продолжения.')
 
 
 async def show_home(message, session, settings, user):
@@ -121,7 +128,7 @@ async def team_callback(call,state,user,settings,session):
         '\n\nНазначение лидером не выдаёт права рассылать всем, проверять чужие результаты или назначать должности.',reply_markup=kb(rows))
 
 
-@router.message(TeamState.search,F.chat.type=='private')
+@router.message(TeamState.search,F.chat.type=='private',~F.text.startswith('/'))
 async def team_search(message,state,user,settings,session):
     if not await access.executive(session,user,settings):
         await state.clear()
@@ -189,7 +196,7 @@ async def campaign_callback(call,state,user,settings,session,bot):
         await call.message.answer(str(exc))
 
 
-@router.message(CampaignState.text)
+@router.message(CampaignState.text,~F.text.startswith('/'))
 async def campaign_text(message,state,user,settings,session,bot):
     data=await state.get_data()
     if not await allowed(message,bot,settings,session,user) or data.get('owner_id')!=user.id or data.get('chat_id')!=message.chat.id:
