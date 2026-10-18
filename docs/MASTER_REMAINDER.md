@@ -1,4 +1,4 @@
-# ЭРА: точный остаток после релизов #342–#344
+# ЭРА: точный остаток после релизов #342–#350
 
 Реализованный код и протокол выпуска: [PR #344](https://github.com/davidbagh22/era-telegram-bot/pull/344); доказательства — FUNCTIONAL_MATRIX.md, NATIVE_ADMIN_GUIDE.md и RELEASE.md. Повторно не делать кнопки, native заявки, базовые сводки, автокоманды, composer, QR v2, редакционную очередь, campaign controls и SLA.
 
@@ -21,7 +21,7 @@
 
 Пути: app/database/models.py::UserQuestion, app/handlers/admin/support_bot.py::{show_inbox,support_item,support_answer}, app/services/scheduler_service.py::{deliver_support_answers,send_review_sla_reminders}, app/handlers/participant/questions.py::{question_start,_save_question}, app/services/support_service.py::{create_support_question,deliver_support_intake_notices}, app/services/admin_dashboard_service.py.
 
-Осталось: canary реального участника и администратора перед ALL; назначение произвольному другому разрешённому сотруднику и scoped модераторам вместе с permission matrix; новые вложения в дополнениях (исходные вложения уже доступны). Не обещать анонимность — текущая карточка прямо сообщает, кто видит переписку. При неясной доставке требуется сверка, а не повторная отправка.
+В дополнении 18.10 реализованы файлы в ответах/дополнениях, последняя страница истории и выбор другого действующего администратора с durable уведомлением; см. SUPPORT_THREADS_RELEASE.md. Осталось: canary реального участника и администратора перед ALL и scoped модераторы вместе с permission matrix. Не обещать анонимность — текущая карточка прямо сообщает, кто видит переписку. При неясной доставке требуется сверка, а не повторная отправка.
 
 Приёмка: два администратора не перезаписывают ответ; два одинаковых webhook не создают две реплики; одинаковый текст в разных раундах переписки доставляется отдельно; чужой участник не читает ticket; повтор после рестарта не дублируется. Любая схема — additive migration, isolated upgrade/restore и безопасный rollback без удаления новых сообщений.
 

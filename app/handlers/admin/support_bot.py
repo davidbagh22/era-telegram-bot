@@ -15,7 +15,8 @@ from app.services.audit_service import audit
 from app.services.notification_service import safe_answer_media
 from app.services.scheduler_service import deliver_support_answers
 from app.services.support_service import (CATEGORIES, append_support_message, support_thread,
-    update_support_thread, deliver_support_thread_messages)
+    update_support_thread, deliver_support_thread_messages, support_assignees,
+    support_attachment, support_message_input)
 from app.services.feature_flags import Feature, feature_enabled
 from app.handlers.support_thread_views import show_support_thread, STATUS_LABELS as THREAD_LABELS
 from app.utils import texts
@@ -95,7 +96,7 @@ async def support_item(call: CallbackQuery, user: User | None, settings: Setting
             await state.clear()
             await state.set_state(SupportAnswer.text)
             await state.update_data(support_question_id=item.id, support_thread_revision=item.thread_revision)
-            await call.message.answer(f'Напишите ответ на обращение #{item.id} до 1500 символов.\n/cancel — отменить.')
+            await call.message.answer(f'Ответ на обращение #{item.id}: текст до 1500 символов, фото или документ с подписью.\n/cancel — отменить.')
         else:
             await state.clear()
             try:
@@ -140,9 +141,10 @@ async def support_item(call: CallbackQuery, user: User | None, settings: Setting
 async def support_answer(message: Message, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext, bot: Bot):
     if not await _guard(message, user, settings):
         return
-    answer = (message.text or '').strip()
-    if not answer or len(answer) > 1500 or answer.startswith('/'):
-        await message.answer('Напишите ответ от 1 до 1500 символов или /cancel.')
+    try:
+        answer, file_id = support_message_input(message)
+    except ValueError:
+        await message.answer('Отправьте ответ до 1500 символов, фото или документ с подписью. /cancel — отменить.')
         return
     item_id = (await state.get_data()).get('support_question_id')
     data = await state.get_data()
@@ -150,7 +152,7 @@ async def support_answer(message: Message, user: User | None, settings: Settings
         try:
             await append_support_message(session, settings, question_id=item_id, actor_id=user.id if user else None,
                 staff=True, text=answer, source_key=f'{message.chat.id}:{message.message_id}',
-                expected_revision=data['support_thread_revision'])
+                expected_revision=data['support_thread_revision'], file_id=file_id)
             await session.commit()
         except (PermissionError, ValueError):
             await session.rollback()
@@ -163,6 +165,9 @@ async def support_answer(message: Message, user: User | None, settings: Settings
             await deliver_support_thread_messages(bot, settings, async_sessionmaker(session.bind, expire_on_commit=False))
         except Exception as exc:
             logger.warning('Support thread delivery deferred code=%s', type(exc).__name__)
+        return
+    if file_id:
+        await message.answer('Для этого обращения пока доступен текстовый ответ. Напишите текст или /cancel.')
         return
     item = await session.scalar(select(UserQuestion).where(UserQuestion.id == item_id).with_for_update()
                                 .execution_options(populate_existing=True))
@@ -179,7 +184,7 @@ async def support_answer(message: Message, user: User | None, settings: Settings
     await message.answer('✅ Ответ сохранён в очереди доставки. Статус можно проверить в карточке обращения.')
 
 
-@router.callback_query(F.data.regexp(r'^admin:support:thread:(history|reply|file|claim|release|close|reopen|categories):\d+:\d+$'))
+@router.callback_query(F.data.regexp(r'^admin:support:thread:(history|reply|file|attachment|claim|release|close|reopen|categories):\d+:\d+$'))
 @router.callback_query(F.data.regexp(r'^admin:support:thread:category:\d+:\d+:(general|events|projects|points|access)$'))
 async def support_thread_action(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext):
     if not await _guard(call, user, settings):
@@ -191,16 +196,18 @@ async def support_thread_action(call: CallbackQuery, user: User | None, settings
         if action == 'history':
             await state.clear()
             await show_support_thread(call.message, session, settings, question_id=item.id, actor_id=user.id, staff=True, page=revision)
-        elif action == 'file':
-            if item.file_id:
-                await safe_answer_media(call.message, item.file_id, caption=f'Вложение к обращению #{item.id}')
+        elif action in {'file', 'attachment'}:
+            file_id = (await support_attachment(session, settings, question_id=item.id,
+                message_id=revision, actor_id=user.id, staff=True)) if action == 'attachment' else item.file_id
+            if file_id and not await safe_answer_media(call.message, file_id, caption=f'Вложение к обращению #{item.id}'):
+                await call.message.answer('Файл сохранён, но Telegram сейчас не даёт открыть его. Попробуйте позже.')
         elif action == 'reply':
             if item.thread_revision != revision or item.status == 'thread_closed':
                 raise ValueError('stale_thread')
             await state.clear()
             await state.set_state(SupportAnswer.text)
             await state.update_data(support_question_id=item.id, support_thread_revision=revision)
-            await call.message.answer(f'Напишите ответ на обращение #{item.id} до 1500 символов.\n/cancel — отменить.')
+            await call.message.answer(f'Ответ на обращение #{item.id}: текст до 1500 символов, фото или документ с подписью.\n/cancel — отменить.')
         elif action == 'categories':
             await call.message.answer('Выберите тему обращения:', reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text=label, callback_data=f'admin:support:thread:category:{item.id}:{revision}:{key}')]
@@ -215,3 +222,41 @@ async def support_thread_action(call: CallbackQuery, user: User | None, settings
     except (PermissionError, ValueError):
         await session.rollback()
         await call.answer('Карточка изменилась или действие недоступно. Откройте обращение заново.', show_alert=True)
+
+
+@router.callback_query(F.data.regexp(r'^admin:support:thread:(assignees|assign):\d+:\d+:\d+$'))
+async def support_assign(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext):
+    if not await _guard(call, user, settings):
+        return
+    parts = call.data.split(':')
+    action, question_id, revision, target = parts[3], int(parts[4]), int(parts[5]), int(parts[6])
+    try:
+        item = await support_thread(session, question_id, user.id, settings, staff=True)
+        if item.thread_revision != revision or item.status == 'thread_closed':
+            raise ValueError('stale_thread')
+        if action == 'assign':
+            await update_support_thread(session, settings, question_id=question_id, actor_id=user.id,
+                expected_revision=revision, action='assign', assignee_id=target)
+            await session.commit()
+            await state.clear()
+            await show_support_thread(call.message, session, settings, question_id=question_id, actor_id=user.id, staff=True)
+        else:
+            assignees = await support_assignees(session, settings)
+            page = min(target, max(0, (len(assignees)-1)//8))
+            rows = [[InlineKeyboardButton(text=(f'{actor.first_name} {actor.last_name or ""}'.strip())[:45],
+                callback_data=f'admin:support:thread:assign:{item.id}:{revision}:{actor.id}')]
+                for actor in assignees[page*8:(page+1)*8]]
+            nav = []
+            for number, label in ((page-1, '←'), (page+1, '→')):
+                if 0 <= number <= (len(assignees)-1)//8:
+                    nav.append(InlineKeyboardButton(text=label,
+                        callback_data=f'admin:support:thread:assignees:{item.id}:{revision}:{number}'))
+            if nav:
+                rows.append(nav)
+            rows.append([InlineKeyboardButton(text='← Обращение', callback_data=f'admin:support:item:{item.id}')])
+            await call.message.answer('👤 Ответственный\n\nВыберите администратора с доступом к обращениям.',
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        await call.answer()
+    except (PermissionError, ValueError):
+        await session.rollback()
+        await call.answer('Карточка или права изменились. Откройте обращение заново.', show_alert=True)

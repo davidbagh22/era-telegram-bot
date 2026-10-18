@@ -84,7 +84,7 @@ async def _send_submission_card(message: Message, session: AsyncSession, submiss
         f"Статус: {status}\n"
         f"Баллы за задание: {task.points}\n\n"
         f"Итог участника:\n{submission.text or 'текст не прикреплён'}",
-        reply_markup=_review_keyboard(submission.id),
+        reply_markup=_review_keyboard(submission.id) if submission.status == 'pending' else None,
     )
     if submission.file_id:
         await _send_file(message, submission.file_id)

@@ -105,6 +105,8 @@ jobs:
         run: python scripts/postgres_editorial_race.py
       - name: Prove support thread webhook, reply and delivery races on PostgreSQL
         run: python scripts/postgres_support_threads_race.py
+      - name: Prove task decision and stale review races on PostgreSQL
+        run: python scripts/postgres_task_review_race.py
 
   frontend:
     runs-on: ubuntu-latest

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.config import Settings
 from app.database.models import SupportMessage, User, UserQuestion
 from app.database.system_models import NotificationDelivery
-from app.services.support_service import append_support_message, deliver_support_thread_messages
+from app.services.support_service import append_support_message, deliver_support_thread_messages, update_support_thread
 from app.utils.constants import ApplicationStatus, Role
 
 
@@ -41,7 +41,8 @@ async def main():
             async with sessions() as session:
                 try:
                     row, created = await append_support_message(session, settings, question_id=question_id,
-                        actor_id=actor_id or staff_id, staff=True, text='The same response', source_key=source, expected_revision=revision)
+                        actor_id=actor_id or staff_id, staff=True, text='The same response', file_id='ci-document',
+                        source_key=source, expected_revision=revision)
                     await session.commit()
                     return row.id, created
                 except ValueError as exc:
@@ -78,7 +79,33 @@ async def main():
                     f'support-thread:{message_id}:' + hashlib.sha256(str(uid).encode()).hexdigest()[:12]
                     for message_id in message_ids])))).all()
             assert len(rows) == 2 and all(r.status == 'sent' and r.attempt_count == 1 for r in rows)
+            assert (await session.scalar(select(SupportMessage).where(
+                SupportMessage.id == message_ids[0]))).file_id == 'ci-document'
+            revision = (await session.get(UserQuestion, question_id)).thread_revision
+
+        async def assign(index):
+            async with sessions() as session:
+                try:
+                    await update_support_thread(session, settings, question_id=question_id, actor_id=staff_id,
+                        expected_revision=revision, action='assign', assignee_id=staff_id if index % 2 else other_staff_id)
+                    await session.commit()
+                    return True
+                except ValueError as exc:
+                    assert str(exc) == 'stale_thread'
+                    await session.rollback()
+                    return False
+        assert sum(await asyncio.wait_for(asyncio.gather(*(assign(i) for i in range(8))), 45)) == 1
+        assignments = []
+        async def notify_assignee(chat_id, body, **kwargs):
+            assert chat_id in {uid+1, uid+2}
+            assignments.append(body)
+            return SimpleNamespace(message_id=123)
+        await asyncio.wait_for(asyncio.gather(*(deliver_support_thread_messages(
+            SimpleNamespace(send_message=notify_assignee), settings, sessions) for _ in range(8))), 60)
+        await deliver_support_thread_messages(SimpleNamespace(send_message=notify_assignee), settings, sessions)
+        assert len(assignments) == 1
         print('PostgreSQL: 8 duplicate webhooks create one reply; 8 stale competing replies accept one; '
+              'attachments survive; 8 competing assignments accept one and notify once; '
               '8 delivery workers send each distinct message once, including identical text in another round')
     finally:
         await engine.dispose()

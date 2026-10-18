@@ -4,14 +4,14 @@ import hashlib
 from datetime import datetime, timezone
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.database.models import AppSetting, SupportMessage, User, UserQuestion
 from app.services.authorization_service import is_full_admin
 from app.services.feature_flags import Feature, feature_enabled
 from app.services.audit_service import audit
 from app.services.notification_service import admin_notification_recipients, safe_send_once
-from app.utils.constants import ApplicationStatus
+from app.utils.constants import ApplicationStatus, Role
 
 CATEGORIES = {'general': 'Общий вопрос', 'events': 'Мероприятия', 'projects': 'Проекты и задачи',
               'points': 'Баллы и достижения', 'access': 'Доступ и профиль'}
@@ -66,16 +66,47 @@ async def _convert_thread(session, item):
     await session.flush()
 
 
-async def append_support_message(session, settings, *, question_id, actor_id, staff, text, source_key, expected_revision):
+def support_message_input(message):
+    """Read one Telegram text/photo/document without downloading private files."""
+    photo, document = getattr(message, 'photo', None), getattr(message, 'document', None)
+    file_id = photo[-1].file_id if photo else document.file_id if document else None
+    text = (message.text or getattr(message, 'caption', None) or '').strip()
+    if text.startswith('/') or len(text) > 1500 or not (text or file_id):
+        raise ValueError('invalid_message')
+    return text or '📎 Вложение', file_id
+
+
+async def support_attachment(session, settings, *, question_id, message_id, actor_id, staff=False):
+    await support_thread(session, question_id, actor_id, settings, staff=staff)
+    entry = await session.scalar(select(SupportMessage).where(
+        SupportMessage.id == message_id, SupportMessage.question_id == question_id))
+    if entry is None or not entry.file_id:
+        raise PermissionError('support_attachment_unavailable')
+    return entry.file_id
+
+
+async def support_assignees(session, settings):
+    """Only active approved admins inside this feature's explicit audience."""
+    candidates = (await session.scalars(select(User).where(
+        User.application_status == ApplicationStatus.APPROVED,
+        User.is_blocked.is_(False), User.is_archived.is_(False),
+        or_(User.role == Role.ADMIN, User.telegram_id.in_(settings.admin_ids)),
+    ).order_by(User.first_name, User.id))).all()
+    return [actor for actor in candidates if feature_enabled(settings, Feature.SUPPORT_THREADS, actor.telegram_id)]
+
+
+async def append_support_message(session, settings, *, question_id, actor_id, staff, text, source_key, expected_revision, file_id=None):
     """One row lock protects the conversation and stale admin reply snapshots."""
     text = text.strip()
-    if not text.strip() or len(text) > 1500 or not source_key or len(source_key) > 120:
+    if (not text or len(text) > 1500 or not source_key or len(source_key) > 120
+            or file_id is not None and (not isinstance(file_id, str) or not file_id or len(file_id) > 255)):
         raise ValueError('invalid_message')
     item = await support_thread(session, question_id, actor_id, settings, staff=staff, lock=True)
     key = 'support-message:' + hashlib.sha256(f'{actor_id}:{source_key}'.encode()).hexdigest()
     existing = await session.scalar(select(SupportMessage).where(SupportMessage.source_key == key))
     if existing:
-        if existing.question_id != item.id or existing.text != text or existing.direction != ('staff' if staff else 'participant'):
+        if (existing.question_id != item.id or existing.text != text or existing.file_id != file_id
+                or existing.direction != ('staff' if staff else 'participant')):
             raise ValueError('message_source_conflict')
         return existing, False
     if item.thread_revision != expected_revision:
@@ -84,7 +115,7 @@ async def append_support_message(session, settings, *, question_id, actor_id, st
     if item.status == 'thread_closed':
         raise ValueError('closed_thread')
     message = SupportMessage(question_id=item.id, author_id=actor_id,
-        direction='staff' if staff else 'participant', source_key=key, text=text.strip())
+        direction='staff' if staff else 'participant', source_key=key, text=text, file_id=file_id)
     session.add(message)
     now = datetime.now(timezone.utc)
     if staff:
@@ -100,12 +131,18 @@ async def append_support_message(session, settings, *, question_id, actor_id, st
     return message, True
 
 
-async def update_support_thread(session, settings, *, question_id, actor_id, expected_revision, action, category=None):
+async def update_support_thread(session, settings, *, question_id, actor_id, expected_revision, action, category=None, assignee_id=None):
     item = await support_thread(session, question_id, actor_id, settings, staff=True, lock=True)
     if item.thread_revision != expected_revision:
         raise ValueError('stale_thread')
-    if action not in {'claim', 'release', 'close', 'reopen', 'category'} or action == 'category' and category not in CATEGORIES:
+    if action not in {'claim', 'release', 'assign', 'close', 'reopen', 'category'} or action == 'category' and category not in CATEGORIES:
         raise ValueError('invalid_action')
+    if action == 'assign':
+        # Recheck the target at submission time, including revoked access and
+        # rollout changes since the selector was opened.
+        target = await support_actor(session, assignee_id, settings, staff=True)
+        if item.status == 'thread_closed':
+            raise ValueError('closed_thread')
     await _convert_thread(session, item)
     if action == 'claim':
         if item.assigned_to not in {None, actor_id}:
@@ -115,6 +152,8 @@ async def update_support_thread(session, settings, *, question_id, actor_id, exp
         if item.assigned_to != actor_id:
             raise PermissionError('not_assignee')
         item.assigned_to = None
+    elif action == 'assign':
+        item.assigned_to = target.id
     elif action == 'close':
         item.status, item.waiting_since = 'thread_closed', None
     elif action == 'reopen':
@@ -124,8 +163,12 @@ async def update_support_thread(session, settings, *, question_id, actor_id, exp
     else:
         item.category = category
     item.thread_revision += 1
+    if action == 'assign':
+        session.add(AppSetting(key=f'support-assignment:{item.id}:{item.thread_revision}',
+            value={'question_id': item.id, 'assignee_id': target.id}))
     await audit(session, actor_id=actor_id, action=f'support.{action}', entity_type='question',
-        entity_id=item.id, new_value={'revision': item.thread_revision, 'status': item.status, 'category': item.category})
+        entity_id=item.id, new_value={'revision': item.thread_revision, 'status': item.status,
+            'category': item.category, 'assigned_to': item.assigned_to})
     await session.flush()
     return item
 
@@ -136,6 +179,7 @@ async def deliver_support_thread_messages(bot, settings, session_factory):
     Existing safe_send_once owns RetryAfter, retries and uncertain outcomes.
     Never change an old support-answer key or resend a migrated legacy message.
     """
+    await _deliver_support_assignments(bot, settings, session_factory)
     async with session_factory() as session:
         ids = list((await session.scalars(select(SupportMessage.id).where(
             SupportMessage.delivery_status == 'pending').order_by(SupportMessage.id).limit(30))).all())
@@ -154,9 +198,17 @@ async def deliver_support_thread_messages(bot, settings, session_factory):
             if message.direction == 'staff':
                 recipients = {owner.telegram_id}
                 body = f'💬 ЭРА · Ответ на обращение #{item.id}\n\n{message.text}'
+                if message.file_id:
+                    body += '\n\n📎 Файл сохранён в переписке. Нажмите «Открыть переписку».'
                 callback = f'support:mine:item:{item.id}'
             else:
-                recipients = {int(i) for i in await admin_notification_recipients(settings) if int(i) > 0}
+                assignee = await session.get(User, item.assigned_to) if item.assigned_to else None
+                if (assignee and not assignee.is_blocked and not assignee.is_archived
+                        and assignee.application_status == ApplicationStatus.APPROVED
+                        and is_full_admin(assignee, settings, assignee.telegram_id)):
+                    recipients = {assignee.telegram_id}
+                else:
+                    recipients = {int(i) for i in await admin_notification_recipients(settings) if int(i) > 0}
                 body = f'💬 ЭРА · Дополнение к обращению #{item.id}\n\nУчастник добавил сообщение. Откройте личную карточку обращения.'
                 callback = f'admin:support:item:{item.id}'
             if not recipients:
@@ -172,6 +224,37 @@ async def deliver_support_thread_messages(bot, settings, session_factory):
             if 'pending' not in statuses and 'sending' not in statuses:
                 message.delivery_status = ('sent' if all(s == 'sent' for s in statuses)
                     else 'uncertain' if any(s in {'uncertain', 'conflict', 'sent_unconfirmed'} for s in statuses) else 'failed')
+            await session.commit()
+
+
+async def _deliver_support_assignments(bot, settings, session_factory):
+    async with session_factory() as session:
+        keys = list((await session.scalars(select(AppSetting.key).where(
+            AppSetting.key.like('support-assignment:%')).order_by(AppSetting.key).limit(20))).all())
+    for key in keys:
+        async with session_factory() as session:
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update()
+                .execution_options(populate_existing=True))
+            if row is None:
+                continue
+            data = json.loads(row.value) if isinstance(row.value, str) else row.value
+            item = await session.get(UserQuestion, data['question_id'])
+            target = await session.get(User, data['assignee_id'])
+            if (not item or item.status == 'thread_closed' or item.assigned_to != data['assignee_id']
+                    or not target or target.is_blocked or target.is_archived
+                    or target.application_status != ApplicationStatus.APPROVED
+                    or not is_full_admin(target, settings, target.telegram_id)):
+                await session.delete(row)
+                await session.commit()
+                continue
+            receipt = await safe_send_once(bot, settings, target.telegram_id,
+                f'👤 ЭРА · Обращение #{item.id}\n\nВы назначены ответственным. Текст и файлы доступны в личной карточке.',
+                delivery_key=key, notification_type='support_assignment', parse_mode=None,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                    text='Открыть обращение', callback_data=f'admin:support:item:{item.id}')]]))
+            if (receipt.status in {'sent', 'blocked', 'unreachable', 'uncertain', 'conflict', 'skipped', 'sent_unconfirmed'}
+                    or receipt.status == 'failed' and receipt.attempt_count >= 3):
+                await session.delete(row)
             await session.commit()
 
 

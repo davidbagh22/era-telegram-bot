@@ -208,6 +208,51 @@ class TaskReviewServiceTests(unittest.IsolatedAsyncioTestCase):
                     session, submission, task, participant, action="nope", comment="x", actor=admin
                 )
 
+    async def test_stale_revision_or_rejection_preserves_approved_points_and_status(self):
+        async with self.session_factory() as session:
+            admin = await self._make_user(session, telegram_id=1, role=Role.ADMIN)
+            other_admin = await self._make_user(session, telegram_id=3, role=Role.ADMIN)
+            participant = await self._make_user(session, telegram_id=2)
+            task = self._task(creator_id=admin.id)
+            session.add(task)
+            await session.flush()
+            submission = self._submission(task_id=task.id, user_id=participant.id)
+            session.add(submission)
+            await session.flush()
+            await task_review_service.decide_submission(session, submission, task, participant,
+                action='approve', comment='Verified', actor=admin)
+            await session.commit()
+            for action in ('revision', 'reject', 'approve'):
+                result = await task_review_service.decide_submission(session, submission, task, participant,
+                    action=action, comment='Stale comment', actor=other_admin)
+                await session.commit()
+                assert not result.changed and result.participant_notice is None and result.points_awarded == 0
+                assert submission.status == 'approved' and submission.reviewed_by == admin.id
+                assert submission.admin_comment == 'Verified' and task.status == TaskStatus.COMPLETED
+                assert await self._points_sum(session, participant.id) == 20
+
+    async def test_return_then_new_submission_cannot_be_bypassed_by_old_approve(self):
+        async with self.session_factory() as session:
+            admin = await self._make_user(session, telegram_id=1, role=Role.ADMIN)
+            participant = await self._make_user(session, telegram_id=2)
+            task = self._task(creator_id=admin.id)
+            session.add(task)
+            await session.flush()
+            old = self._submission(task_id=task.id, user_id=participant.id)
+            session.add(old)
+            await session.flush()
+            await task_review_service.decide_submission(session, old, task, participant,
+                action='revision', comment='Fix it', actor=admin)
+            new = self._submission(task_id=task.id, user_id=participant.id, text='Fixed')
+            session.add(new)
+            await session.commit()
+            stale = await task_review_service.decide_submission(session, old, task, participant,
+                action='approve', comment='', actor=admin)
+            assert not stale.changed and old.status == 'needs_revision' and new.status == 'pending'
+            accepted = await task_review_service.decide_submission(session, new, task, participant,
+                action='approve', comment='', actor=admin)
+            assert accepted.points_awarded == 20 and await self._points_sum(session, participant.id) == 20
+
     async def test_list_pending_submissions_filters_by_status(self) -> None:
         async with self.session_factory() as session:
             admin = await self._make_user(session, telegram_id=1, role=Role.ADMIN)
