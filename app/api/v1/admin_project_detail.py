@@ -32,11 +32,11 @@ async def read_admin_project_detail(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> AdminProjectDetailOut:
-    if not await can_review_projects(session, reviewer, settings):
-        raise HTTPException(status_code=403, detail="reviewer_access_required")
     project = await session.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="project_not_found")
+    if not await can_review_projects(session, reviewer, settings, project):
+        raise HTTPException(status_code=403, detail="reviewer_access_required")
     author = await session.get(User, project.author_id)
     author_name = (
         f"{author.first_name} {author.last_name or ''}".strip()

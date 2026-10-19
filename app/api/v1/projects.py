@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from io import BytesIO
 from typing import Literal
 
 from aiogram import Bot
-from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,12 +13,11 @@ from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.config import Settings
 from app.database.models import Event, Project, ProjectMember, ProjectMilestone, ProjectRole, Task, User
 from app.services import project_workflow_service, project_workspace_service
-from app.services.notification_service import safe_send, safe_send_document
+from app.services.notification_service import safe_send
 from app.services.project_builder import PROJECT_QUESTIONS
 from app.services.project_workflow_service import ProjectScope
 from app.services.project_workspace_service import WorkspaceError
 from app.utils.deep_links import (
-    miniapp_admin_project_url,
     miniapp_path_url,
     miniapp_project_application_url,
 )
@@ -799,7 +797,7 @@ async def submit_project(
     document = await project_workflow_service.submit_for_review(session, project, user)
     await _commit_if_possible(session)
     if bot is not None:
-        await _notify_reviewers(bot, settings, project, user, document)
+        await _notify_reviewers(bot, settings, project, user, document, session=session)
     return _to_detail(project)
 
 
@@ -873,34 +871,6 @@ async def _notify_task_assignee(
     )
 
 
-async def _notify_reviewers(
-    bot: Bot, settings: Settings, project: Project, user: User, document: str
-) -> None:
-    """Same notification bot/mobile users get from the in-bot submit flow
-    (app/handlers/participant/projects_block5.py::project_submit_full) — the
-    Mini App and Bot share one process, so this reuses the same Bot
-    instance instead of a second, silent submission path."""
-    telegram = f"@{user.username}" if user.username else str(user.telegram_id)
-    summary = (
-        f"💡 Новый проект на рассмотрении\n\n{project.title}\n"
-        f"Автор: {user.first_name} {user.last_name or ''} ({telegram})\n\n"
-        "Полный файл проекта прикреплён ниже."
-    )
-    recipients = set(settings.admin_ids)
-    if settings.leaders_chat_id:
-        recipients.add(settings.leaders_chat_id)
-    keyboard = _url_keyboard(
-        "Открыть модерацию",
-        miniapp_admin_project_url(settings.effective_miniapp_url, project.id),
-    )
-    for chat_id in recipients:
-        await safe_send(bot, chat_id, summary, reply_markup=keyboard)
-        await safe_send_document(
-            bot,
-            chat_id,
-            BufferedInputFile(
-                BytesIO(document.encode("utf-8")).getvalue(),
-                filename=f"ERA_project_{project.id}.txt",
-            ),
-            caption=f"Полный проект #{project.id}",
-        )
+async def _notify_reviewers(bot, settings, project, user, document, *, session=None):
+    from app.services.project_review_notification_service import notify_project_reviewers
+    await notify_project_reviewers(bot, settings, project, user, document, session=session)

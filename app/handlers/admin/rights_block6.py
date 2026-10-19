@@ -313,6 +313,8 @@ async def permission_toggle(
     )
     await call.message.answer(
         f"{'Включено' if enabled else 'Отключено'}: {PERMISSION_LABELS.get(permission, permission)}"
+        + ("\nРабочие разделы для сотрудника: /staff"
+           if permission in {"projects.review", "support.manage", "literature.manage"} else "")
     )
 
 

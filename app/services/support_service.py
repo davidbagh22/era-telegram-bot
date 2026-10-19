@@ -4,14 +4,14 @@ import hashlib
 from datetime import datetime, timezone
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from sqlalchemy import or_, select
+from sqlalchemy import select
 
 from app.database.models import AppSetting, SupportMessage, User, UserQuestion
-from app.services.authorization_service import is_full_admin
+from app.services.staff_access_service import can_operate_queue
 from app.services.feature_flags import Feature, feature_enabled
 from app.services.audit_service import audit
 from app.services.notification_service import admin_notification_recipients, safe_send_once
-from app.utils.constants import ApplicationStatus, Role
+from app.utils.constants import ApplicationStatus
 
 CATEGORIES = {'general': 'Общий вопрос', 'events': 'Мероприятия', 'projects': 'Проекты и задачи',
               'points': 'Баллы и достижения', 'access': 'Доступ и профиль'}
@@ -23,7 +23,7 @@ async def support_actor(session, user_id, settings, *, staff=False):
     if (actor is None or actor.is_blocked or actor.is_archived
             or actor.application_status != ApplicationStatus.APPROVED
             or not feature_enabled(settings, Feature.SUPPORT_THREADS, actor.telegram_id)
-            or staff and not is_full_admin(actor, settings, actor.telegram_id)):
+            or staff and not await can_operate_queue(session, actor, settings, "support.manage")):
         raise PermissionError('support_access_denied')
     return actor
 
@@ -90,9 +90,10 @@ async def support_assignees(session, settings):
     candidates = (await session.scalars(select(User).where(
         User.application_status == ApplicationStatus.APPROVED,
         User.is_blocked.is_(False), User.is_archived.is_(False),
-        or_(User.role == Role.ADMIN, User.telegram_id.in_(settings.admin_ids)),
     ).order_by(User.first_name, User.id))).all()
-    return [actor for actor in candidates if feature_enabled(settings, Feature.SUPPORT_THREADS, actor.telegram_id)]
+    return [actor for actor in candidates
+            if feature_enabled(settings, Feature.SUPPORT_THREADS, actor.telegram_id)
+            and await can_operate_queue(session, actor, settings, "support.manage")]
 
 
 async def append_support_message(session, settings, *, question_id, actor_id, staff, text, source_key, expected_revision, file_id=None):
@@ -205,7 +206,7 @@ async def deliver_support_thread_messages(bot, settings, session_factory):
                 assignee = await session.get(User, item.assigned_to) if item.assigned_to else None
                 if (assignee and not assignee.is_blocked and not assignee.is_archived
                         and assignee.application_status == ApplicationStatus.APPROVED
-                        and is_full_admin(assignee, settings, assignee.telegram_id)):
+                        and await can_operate_queue(session, assignee, settings, "support.manage")):
                     recipients = {assignee.telegram_id}
                 else:
                     recipients = {int(i) for i in await admin_notification_recipients(settings) if int(i) > 0}
@@ -243,7 +244,7 @@ async def _deliver_support_assignments(bot, settings, session_factory):
             if (not item or item.status == 'thread_closed' or item.assigned_to != data['assignee_id']
                     or not target or target.is_blocked or target.is_archived
                     or target.application_status != ApplicationStatus.APPROVED
-                    or not is_full_admin(target, settings, target.telegram_id)):
+                    or not await can_operate_queue(session, target, settings, "support.manage")):
                 await session.delete(row)
                 await session.commit()
                 continue

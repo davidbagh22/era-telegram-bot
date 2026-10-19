@@ -444,6 +444,8 @@ ADMIN_ROLES = {Role.ADMIN}
 PERMISSIONS = (
     "panel.view",
     "applications.review",
+    "support.manage",
+    "literature.manage",
     "events.manage",
     "projects.review",
     "partners.manage",
@@ -468,6 +470,8 @@ PERMISSIONS = (
 PERMISSION_LABELS = {
     "panel.view": "Просмотр панели",
     "applications.review": "Одобрение заявок",
+    "support.manage": "Обработка всех обращений",
+    "literature.manage": "Редакция и публикация литературной очереди",
     "events.manage": "Управление мероприятиями",
     "projects.review": "Управление проектами",
     "partners.manage": "Управление партнёрами",

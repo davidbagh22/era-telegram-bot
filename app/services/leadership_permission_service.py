@@ -100,7 +100,7 @@ def _matches(entry: ScopedPermission, permission: str, scope_type: str | None, s
     if entry.permission != permission:
         return False
     if entry.scope_type == "global":
-        return True
+        return entry.scope_id in (None, 0)
     if scope_type is None:
         # No object context means a global operation. Capability inventories
         # use effective_permission_names instead of authorizing across scopes.

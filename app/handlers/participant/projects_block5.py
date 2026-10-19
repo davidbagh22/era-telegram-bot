@@ -1,9 +1,7 @@
-from io import BytesIO
-
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +9,7 @@ from app.config import Settings
 from app.database.models import Project, User
 from app.keyboards.participant import open_app_button, project_menu_keyboard
 from app.services import project_workflow_service
-from app.services.notification_service import safe_send, safe_send_document
+from app.services.notification_service import safe_send
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, PROJECT_STATUS_LABELS, ProjectStatus
 from app.utils.validators import clean_text
@@ -137,24 +135,10 @@ async def project_submit_full(call: CallbackQuery, session: AsyncSession, user: 
         return
     document = await project_workflow_service.submit_for_review(session, project, user)
     await call.message.answer(texts.PROJECT_SUBMITTED)
-    telegram = f"@{user.username}" if user.username else str(user.telegram_id)
-    summary = f"💡 Новый проект на рассмотрении\n\n{project.title}\nАвтор: {user.first_name} {user.last_name or ''} ({telegram})\n\nПолный файл проекта прикреплён ниже. Решение — в приложении ЭРА."
-    recipients = set(settings.admin_ids)
-    if settings.leaders_chat_id:
-        recipients.add(settings.leaders_chat_id)
-    document_sent = document_failed = 0
-    for chat_id in recipients:
-        await safe_send(bot, chat_id, summary, reply_markup=open_app_button(settings.effective_miniapp_url))
-        ok = await safe_send_document(
-            bot,
-            chat_id,
-            BufferedInputFile(BytesIO(document.encode("utf-8")).getvalue(), filename=f"ERA_project_{project.id}.txt"),
-            caption=f"Полный проект #{project.id}",
-        )
-        document_sent += int(ok)
-        document_failed += int(not ok)
-    if document_failed:
-        await safe_send(bot, user.telegram_id, f"Проект отправлен, но файл проекта дошёл не всем проверяющим. Доставлено: {document_sent}. Ошибок: {document_failed}.")
+    await session.commit()
+    # Shared private reviewer resolution; project files never go to a group.
+    from app.services.project_review_notification_service import notify_project_reviewers
+    await notify_project_reviewers(bot, settings, project, user, document, session=session)
 
 
 @router.callback_query(F.data.startswith("project:team:"))

@@ -11,7 +11,6 @@ from sqlalchemy.orm import selectinload
 from app.config import Settings
 from app.database.models import (
     Event,
-    PermissionGrant,
     Project,
     ProjectMember,
     ProjectMilestone,
@@ -60,21 +59,47 @@ def _is_active_user(user: User | None) -> bool:
 
 
 async def can_review_projects(
-    session: AsyncSession, user: User | None, settings: Settings
+    session: AsyncSession, user: User | None, settings: Settings,
+    project: Project | None = None,
 ) -> bool:
+    if user is None:
+        return False
+    user = await session.get(User, user.id, populate_existing=True)
     if not _is_active_user(user):
         return False
     if is_full_admin(user, settings, user.telegram_id):
         return True
-    return bool(
-        await session.scalar(
-            select(PermissionGrant.id).where(
-                PermissionGrant.user_id == user.id,
-                PermissionGrant.permission == "projects.review",
-                PermissionGrant.is_active.is_(True),
-            )
-        )
-    )
+    # Refresh grants at the authorization boundary: cached ORM relationships
+    # must not keep a revoked grant alive during a long conversation.
+    await session.refresh(user, attribute_names=["permission_grants"])
+    from app.services.leadership_permission_service import has_scoped_permission
+    scopes = [(None, None)]
+    if project is not None:
+        scopes += [("project", project.id)]
+        if project.department_id is not None:
+            scopes.append(("department", project.department_id))
+        if project.direction_id is not None:
+            scopes.append(("direction", project.direction_id))
+    for scope_type, scope_id in scopes:
+        if await has_scoped_permission(session, user, settings, user.telegram_id,
+                                       "projects.review", scope_type=scope_type, scope_id=scope_id):
+            return True
+    return False
+
+
+async def can_review_any_projects(session, user, settings) -> bool:
+    """Inventory gate only; every project still requires an object check."""
+    if user is None:
+        return False
+    user = await session.get(User, user.id, populate_existing=True)
+    if not _is_active_user(user):
+        return False
+    if is_full_admin(user, settings, user.telegram_id):
+        return True
+    await session.refresh(user, attribute_names=["permission_grants"])
+    from app.services.leadership_permission_service import effective_scoped_permissions
+    return any(entry.permission == "projects.review"
+               for entry in await effective_scoped_permissions(session, user))
 
 
 async def can_manage_project(
@@ -82,7 +107,7 @@ async def can_manage_project(
 ) -> bool:
     if not _is_active_user(user):
         return False
-    return project.author_id == user.id or await can_review_projects(session, user, settings)
+    return project.author_id == user.id or await can_review_projects(session, user, settings, project)
 
 
 async def membership_for_user(

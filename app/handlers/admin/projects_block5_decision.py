@@ -1,16 +1,16 @@
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Project, User
-from app.services.notification_service import safe_send
-from app.services.project_workspace_service import can_review_projects
-from app.services.project_workflow_service import decide_project
+from app.services.project_workspace_service import can_review_any_projects, can_review_projects
+from app.services.project_workflow_service import (
+    PROJECT_DECISION_ACTIONS, ProjectDecisionConflict, decide_project, project_review_version,
+)
 from app.utils import texts
-from app.utils.constants import ProjectStatus
 from app.utils.validators import clean_text
 
 router = Router(name="admin_projects_block5_decision")
@@ -28,7 +28,7 @@ async def _guard(
         message = event.message
     else:
         message = event
-    if not await can_review_projects(session, user, settings):
+    if not await can_review_any_projects(session, user, settings):
         await message.answer(texts.NO_ACCESS)
         return False
     return True
@@ -48,8 +48,16 @@ async def decision_start(
     if len(parts) != 5 or not parts[4].isdigit():
         return
     action = parts[3]
+    project = await session.get(Project, int(parts[4]))
+    if action not in PROJECT_DECISION_ACTIONS or project is None:
+        await call.message.answer("Проект или действие не найдены")
+        return
+    if not await can_review_projects(session, user, settings, project):
+        await call.message.answer(texts.NO_ACCESS)
+        return
     await state.set_state(ProjectDecisionStates.comment)
-    await state.update_data(project_decision_action=action, project_decision_id=int(parts[4]))
+    await state.update_data(project_decision_action=action, project_decision_id=int(parts[4]),
+                            project_decision_version=project_review_version(project))
     prompts = {
         "initial_accept": "Комментарий автору: что принято в работу и что уточняем дальше?",
         "venue_approve": "Комментарий автору: проект одобрен, что делать дальше?",
@@ -74,15 +82,18 @@ async def decision_finish(message: Message, user: User | None, settings: Setting
         await state.clear()
         await message.answer("Проект не найден")
         return
+    if not await can_review_projects(session, user, settings, project):
+        await state.clear()
+        await message.answer(texts.NO_ACCESS)
+        return
     action = data["project_decision_action"]
-    result = await decide_project(session, project, action=action, comment=comment, actor=user)
-    notice = result.notice
-    author = await session.get(User, project.author_id)
-    if author:
-        rows = []
-        if project.status == ProjectStatus.APPROVED:
-            rows.append([InlineKeyboardButton(text="📅 Оформить мероприятие", callback_data=f"project:event:{project.id}")])
-            rows.append([InlineKeyboardButton(text="🔍 Найти команду", callback_data=f"project:team:{project.id}")])
-        await safe_send(bot, author.telegram_id, f"💡 {notice}\n\nПроект: {project.title}\n\nКомментарий команды ЭРА:\n{comment}", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows) if rows else None)
+    try:
+        await decide_project(session, project, action=action, comment=comment, actor=user,
+                                      settings=settings, expected_version=data.get("project_decision_version", ""))
+    except (ProjectDecisionConflict, PermissionError):
+        await state.clear()
+        await message.answer("Проект изменился или уже рассмотрен. Откройте свежую карточку проекта.")
+        return
+    await session.commit()
     await state.clear()
-    await message.answer("Решение сохранено и отправлено автору")
+    await message.answer("Решение сохранено. Уведомление автору поставлено в очередь.")

@@ -133,6 +133,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "system-heartbeat",
                 "system-full-diagnostic",
                 "system-daily-summary",
+                "project-review-notices",
                 "application-notices",
                 "office-vacancy-reconciliation",
                 "configured-event-reminders",

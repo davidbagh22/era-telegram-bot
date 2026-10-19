@@ -76,6 +76,49 @@ async def refresh_games_pin(bot, settings, session_factory, thread_id: int) -> b
             return False
 
 
+async def _send_announcement_once(bot, settings, session_factory, topic, text, *,
+                                  delivery_key, parse_mode=None, reply_markup=None) -> bool:
+    """Freeze launch copy before delivery; sent announcements are historical facts."""
+    import hashlib
+    from sqlalchemy import select
+    from app.database.models import AppSetting
+    from app.database.system_models import NotificationDelivery
+    from app.handlers.era_game_room import _data, _lock, _save
+    from app.services.notification_service import _payload_hash
+
+    receipt_key = f"general-topic:{topic}:{delivery_key}"
+    key = "games-announcement:" + hashlib.sha256(receipt_key.encode()).hexdigest()
+    async with session_factory() as session:
+        await _lock(session, key)
+        receipt = await session.scalar(select(NotificationDelivery).where(
+            NotificationDelivery.delivery_key == receipt_key))
+        if receipt:
+            if receipt.chat_id != settings.general_chat_id:
+                logger.error("Game announcement recipient needs reconciliation key=%s", delivery_key)
+                return False
+            if receipt.status in {"sent", "blocked", "unreachable", "skipped", "uncertain"}:
+                return receipt.status == "sent"
+        snapshot = _data(await session.scalar(select(AppSetting).where(AppSetting.key == key)))
+        if not snapshot:
+            if receipt and receipt.payload_hash != _payload_hash(text):
+                logger.error("Unfinished game announcement needs reconciliation key=%s", delivery_key)
+                return False
+            snapshot = dict(chat_id=settings.general_chat_id, topic=topic, text=text,
+                            parse_mode=parse_mode,
+                            reply_markup=reply_markup.model_dump(mode="json") if reply_markup else None)
+            await _save(session, key, snapshot)
+        if snapshot.get("chat_id") != settings.general_chat_id or snapshot.get("topic") != topic:
+            logger.error("Game announcement snapshot target changed key=%s", delivery_key)
+            return False
+        await session.commit()
+    markup = snapshot.get("reply_markup")
+    return await send_general_topic(
+        bot, settings, topic, snapshot["text"], parse_mode=snapshot.get("parse_mode"),
+        reply_markup=InlineKeyboardMarkup.model_validate(markup) if markup else None,
+        delivery_key=delivery_key,
+    )
+
+
 async def publish_games_launch(bot, settings, session_factory) -> None:
     if settings.feature_games != "ALL" or not settings.general_chat_id:
         return
@@ -123,8 +166,8 @@ async def publish_games_launch(bot, settings, session_factory) -> None:
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="🎮 Перейти в Интерактив", url=topic_url)
     ]])
-    await send_general_topic(
-        bot, settings, "games",
+    await _send_announcement_once(
+        bot, settings, session_factory, "games",
         "✨ <b>Интерактив ЭРА обновился</b>\n\n"
         "Вопросы стали разнообразнее: добавили логику, повседневную науку, технологии, "
         "медиаграмотность и молодёжные проекты. После ответа можно увидеть короткое объяснение.\n\n"
@@ -136,8 +179,8 @@ async def publish_games_launch(bot, settings, session_factory) -> None:
         parse_mode="HTML", reply_markup=keyboard,
         delivery_key="games-ux-refresh-v1",
     )
-    await send_general_topic(
-        bot, settings, "notifications",
+    await _send_announcement_once(
+        bot, settings, session_factory, "notifications",
         "🎮 <b>В ЭРА появился Интерактив!</b>\n\n"
         "Тебя ждут 12 форматов: быстрый и командный квиз, «Правда или миф», «Шпион», "
         "угадай страну, хронология, словесная цепочка, ассоциации, логика, "

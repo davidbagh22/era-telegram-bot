@@ -66,7 +66,7 @@ function OpenProjectReview({
     setBusy(true);
     setActionError(null);
     try {
-      await decideProject(project.id, action, trimmed);
+      await decideProject(project.id, action, trimmed, project.review_version);
       onDone();
     } catch (error) {
       setActionError(describeActionError(error));

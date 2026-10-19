@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
 from app.database.models import User, UserQuestion
-from app.services.admin_dashboard_service import has_dashboard_access
+from app.services.staff_access_service import can_operate_queue
 from app.services.audit_service import audit
 from app.services.notification_service import safe_answer_media
 from app.services.scheduler_service import deliver_support_answers
@@ -34,8 +34,8 @@ class SupportAnswer(StatesGroup):
     text = State()
 
 
-async def _guard(event, user, settings):
-    if has_dashboard_access(user, settings, event.from_user.id):
+async def _guard(event, user, settings, session):
+    if await can_operate_queue(session, user, settings, "support.manage"):
         return True
     if isinstance(event, CallbackQuery):
         await event.answer(texts.NO_ACCESS, show_alert=True)
@@ -59,21 +59,21 @@ async def show_inbox(message, session, *, page=0):
         navigation.append(InlineKeyboardButton(text='→', callback_data=f'admin:support:page:{page+1}'))
     if navigation:
         rows.append(navigation)
-    rows.append([InlineKeyboardButton(text='← Админ-панель', callback_data='admin:panel')])
+    rows.append([InlineKeyboardButton(text='← Рабочие разделы', callback_data='staff:home')])
     await message.answer(f'💬 Обращения · {total}\n\nСначала показаны обращения, которые ожидают ответа.',
                          reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 @router.message(Command('support_admin'))
 async def support_command(message: Message, user: User | None, settings: Settings, session: AsyncSession):
-    if await _guard(message, user, settings):
+    if await _guard(message, user, settings, session):
         await show_inbox(message, session)
 
 
 @router.callback_query(F.data == 'admin:questions')
 @router.callback_query(F.data.regexp(r'^admin:support:page:\d+$'))
 async def support_list(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession):
-    if not await _guard(call, user, settings):
+    if not await _guard(call, user, settings, session):
         return
     await call.answer()
     await show_inbox(call.message, session, page=int(call.data.rsplit(':', 1)[-1]) if ':page:' in call.data else 0)
@@ -81,7 +81,7 @@ async def support_list(call: CallbackQuery, user: User | None, settings: Setting
 
 @router.callback_query(F.data.regexp(r'^admin:support:(item|reply|file):\d+$'))
 async def support_item(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext):
-    if not await _guard(call, user, settings):
+    if not await _guard(call, user, settings, session):
         return
     item = await session.get(UserQuestion, int(call.data.rsplit(':', 1)[-1]))
     if item is None:
@@ -139,7 +139,7 @@ async def support_item(call: CallbackQuery, user: User | None, settings: Setting
 
 @router.message(SupportAnswer.text)
 async def support_answer(message: Message, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext, bot: Bot):
-    if not await _guard(message, user, settings):
+    if not await _guard(message, user, settings, session):
         return
     try:
         answer, file_id = support_message_input(message)
@@ -187,7 +187,7 @@ async def support_answer(message: Message, user: User | None, settings: Settings
 @router.callback_query(F.data.regexp(r'^admin:support:thread:(history|reply|file|attachment|claim|release|close|reopen|categories):\d+:\d+$'))
 @router.callback_query(F.data.regexp(r'^admin:support:thread:category:\d+:\d+:(general|events|projects|points|access)$'))
 async def support_thread_action(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext):
-    if not await _guard(call, user, settings):
+    if not await _guard(call, user, settings, session):
         return
     parts = call.data.split(':')
     action, question_id, revision = parts[3], int(parts[4]), int(parts[5])
@@ -226,7 +226,7 @@ async def support_thread_action(call: CallbackQuery, user: User | None, settings
 
 @router.callback_query(F.data.regexp(r'^admin:support:thread:(assignees|assign):\d+:\d+:\d+$'))
 async def support_assign(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext):
-    if not await _guard(call, user, settings):
+    if not await _guard(call, user, settings, session):
         return
     parts = call.data.split(':')
     action, question_id, revision, target = parts[3], int(parts[4]), int(parts[5]), int(parts[6])
