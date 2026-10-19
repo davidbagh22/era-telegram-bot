@@ -25,7 +25,7 @@ from app.database.models import (
     UserDirection,
 )
 from app.database.participation_models import ParticipationLifecycle
-from app.services.analytics_snapshot_service import count_verified_users, verified_users_between
+from app.services.analytics_snapshot_service import count_new_members, count_verified_users, verified_users_between
 from app.services import development_analytics
 from app.services.admin_dashboard_service import dashboard_metrics
 from app.services.meaningful_activity_service import (
@@ -162,12 +162,8 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
 
     approved_total = await _user_count(session, *_current_roster_conditions())
     active_denominator = approved_total
-    new_7d = await _user_count(
-        session, *_current_roster_conditions(), User.created_at >= week_ago
-    )
-    new_30d = await _user_count(
-        session, *_current_roster_conditions(), User.created_at >= month_ago
-    )
+    new_7d = await count_new_members(session, week_ago, now)
+    new_30d = await count_new_members(session, month_ago, now)
     leaders = await _user_count(
         session,
         *_current_roster_conditions(),
@@ -417,8 +413,8 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
 
     metrics = [
         HealthMetric("approved", "Люди", "Текущий состав", approved_total, str(approved_total), "одобрены, не заблокированы, не архивированы и не вышли"),
-        HealthMetric("new_7d", "Люди", "Новые за 7 дней", new_7d, f"+{new_7d}", "новые в текущем составе за последнюю неделю"),
-        HealthMetric("new_30d", "Люди", "Новые за 30 дней", new_30d, f"+{new_30d}", "новые в текущем составе за последний месяц"),
+        HealthMetric("new_7d", "Люди", "Новые за 7 дней", new_7d, f"+{new_7d}", "первое одобрение по аудиту; текущая база, старые записи без истории не восстановлены"),
+        HealthMetric("new_30d", "Люди", "Новые за 30 дней", new_30d, f"+{new_30d}", "первое одобрение по аудиту; текущая база, старые записи без истории не восстановлены"),
         HealthMetric("leaders", "Люди", "Лидеров и руководителей", leaders, str(leaders), f"{_pct(leaders, approved_total):.1f}% текущего состава"),
         HealthMetric("activists", "Люди", "Роль «Активист»", activists, str(activists), "организационная роль, а не показатель активной базы"),
         HealthMetric("growth_conversion", "Люди", "Рост участник → активный/лидер", _pct(progressed, approved_total), f"{_pct(progressed, approved_total):.1f}%", "доля текущего состава, перешедшая из базовой роли", _cap(_pct(progressed, approved_total))),

@@ -7,8 +7,8 @@ from openpyxl import load_workbook
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.base import Base
-from app.database.models import AuditLog, Event, EventRegistration, PointTransaction, Task, User
-from app.services.analytics_snapshot_service import build_analytics_snapshot
+from app.database.models import AuditLog, Event, EventRegistration, PointTransaction, Task, TaskSubmission, User
+from app.services.analytics_snapshot_service import build_analytics_snapshot, count_new_members
 from app.services.excel_service import build_analytics_workbook
 from app.services.admin_dashboard_service import dashboard_metrics
 from app.services.organization_health_service import build_organization_health
@@ -34,6 +34,10 @@ class AnalyticsSnapshotTests(unittest.IsolatedAsyncioTestCase):
             session.add(EventRegistration(event_id=event.id, user_id=users[2].id, status='attended', last_confirmation_at=now-timedelta(days=3)))
             session.add(AuditLog(action='user.approved', entity_type='user', entity_id=users[0].id, created_at=now-timedelta(days=6)))
             session.add(Task(title='one', description='fixture', creator_id=users[0].id, status='review', deadline=now-timedelta(days=2)))
+            public = Task(title='Public', description='fixture', creator_id=users[0].id, status='published')
+            session.add(public)
+            await session.flush()
+            session.add(TaskSubmission(task_id=public.id, user_id=users[0].id, status='pending'))
             await session.commit()
             snapshot = await build_analytics_snapshot(session, now=now)
             metrics = {m.key: m for m in snapshot.metrics}
@@ -42,7 +46,7 @@ class AnalyticsSnapshotTests(unittest.IsolatedAsyncioTestCase):
             assert metrics['active'].previous == 1
             assert metrics['retention'].value == 100
             assert metrics['new_members'].value == 1
-            assert metrics['attention'].value == 1
+            assert metrics['attention'].value == 2
             assert metrics['members'].previous is None
             assert metrics['funnel'].value is None
             workbook = load_workbook(BytesIO(build_analytics_workbook([], [], [], {}, snapshot=snapshot)))
@@ -68,4 +72,22 @@ class AnalyticsSnapshotTests(unittest.IsolatedAsyncioTestCase):
         async with async_sessionmaker(engine)() as session:
             snapshot = await build_analytics_snapshot(session)
             assert next(m for m in snapshot.metrics if m.key == 'retention').value is None
+        await engine.dispose()
+
+
+    async def test_new_member_boundaries_and_first_approval(self):
+        engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        now = datetime(2026, 10, 20, 12, tzinfo=timezone.utc)
+        async with async_sessionmaker(engine)() as session:
+            people = [User(telegram_id=i, first_name='Fixture', application_status='approved') for i in (11, 12, 13)]
+            session.add_all(people); await session.flush()
+            for person, stamp in zip(people, [now-timedelta(days=30), now, now-timedelta(days=30, microseconds=1)]):
+                session.add(AuditLog(action='user.approved', entity_type='user', entity_id=person.id, created_at=stamp))
+            session.add(AuditLog(action='user.approved', entity_type='user', entity_id=people[2].id, created_at=now-timedelta(days=1)))
+            await session.commit()
+            assert await count_new_members(session, now-timedelta(days=30), now) == 1
+            assert await count_new_members(session, now-timedelta(days=7), now) == 0
+            assert await count_new_members(session, now-timedelta(days=90), now) == 2
         await engine.dispose()

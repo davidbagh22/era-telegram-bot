@@ -35,6 +35,7 @@ async def show_home(message, session, settings, user):
             [('Завершённые','wc:list:completed')]]
     if await access.scopes(session,user,settings):
         rows.insert(0,[('➕ Новая задача','wc:new'),('На проверке','wc:list:review')])
+        rows.append([('Результаты команды', 'leaders:analytics')])
     if await access.scopes(session,user,settings,'broadcasts.create'):
         rows.append([('📢 Новая рассылка','lc:new'),('История рассылок','lc:history')])
     if await access.executive(session,user,settings):
@@ -223,3 +224,32 @@ async def show_campaign(message,session,item):
     await message.answer(f'Рассылка #{item.id} · {label}\nВыбрано аккаунтов: {data["recipients"]}\n'
         f'Отправок подтверждено: {data["sent"]}\nНедоступны: {data["unreachable"]}\n'
         f'Исход неизвестен: {data["uncertain"]}\nОзнакомились: {data["read"]}',reply_markup=kb(rows))
+
+
+@router.callback_query(F.data == 'leaders:analytics', F.message.chat.type == 'private')
+async def leader_operations(call, user, settings, session, bot):
+    await call.answer()
+    if not await allowed(call, bot, settings, session, user):
+        return
+    from app.services.admin_analytics_service import build_scoped_leader_operations
+    from app.utils.telegram import edit_text_or_answer
+    try:
+        data = await build_scoped_leader_operations(session, user, settings)
+    except PermissionError:
+        await call.message.answer('Нет действующих полномочий на аналитику команды.')
+        return
+    delta = data.verified_results - data.previous_results
+    lines = ['Результаты команды', 'Только ваша действующая зона ответственности.', '',
+             f'Активных задач: {data.active_tasks}', f'Завершено всего: {data.completed_tasks}',
+             f'Просрочено: {data.overdue_tasks}', f'Ожидают проверки: {data.awaiting_review}',
+             f'Принятых результатов за 30 дней: {data.verified_results} ({delta:+d} к предыдущим 30 дням)',
+             '', 'Текущая нагрузка (задач):']
+    lines.extend(f'{name[:70]}: {count}' for name, count in data.workload[:10])
+    if len(data.workload) > 10:
+        lines.append(f'Ещё исполнителей: {len(data.workload)-10}')
+    lines.append('Цели месяца:')
+    lines.extend(f'{title[:100]}: {current}/{target if target is not None else "—"}' for title, current, target in data.month_goals[:5])
+    if not data.month_goals:
+        lines.append('Цели пока не заданы.')
+    lines.append('Результаты — подтверждённые проверки задач, без цифровых баллов и субъективного рейтинга людей.')
+    await edit_text_or_answer(call.message, '\n'.join(lines), reply_markup=kb([[('Назад', 'wc:home'), ('Главная', 'home')]]))

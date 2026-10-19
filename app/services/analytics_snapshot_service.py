@@ -83,6 +83,16 @@ async def count_verified_users(session: AsyncSession, start: datetime, end: date
     return int(await session.scalar(select(func.count()).select_from(verified_users_between(start, end).subquery())) or 0)
 
 
+async def count_new_members(session: AsyncSession, start: datetime, end: datetime) -> int:
+    first = select(AuditLog.entity_id.label('user_id'), func.min(AuditLog.created_at).label('at')).where(
+        AuditLog.action == 'user.approved', AuditLog.entity_type == 'user',
+    ).group_by(AuditLog.entity_id).subquery()
+    return int(await session.scalar(select(func.count()).select_from(first).where(
+        first.c.at >= start.astimezone(timezone.utc), first.c.at < end.astimezone(timezone.utc),
+        first.c.user_id.in_(select(User.id).where(*roster_conditions())),
+    )) or 0)
+
+
 async def build_analytics_snapshot(
     session: AsyncSession, *, days: int = 30, now: datetime | None = None,
     timezone_name: str = 'Asia/Yerevan',
@@ -111,19 +121,18 @@ async def build_analytics_snapshot(
     retained = await count(select(func.count()).select_from(active(start, end).where(facts.c.user_id.in_(active(older, start))).subquery()))
     prior_cohort = await active_count(older - timedelta(days=days), older)
     prior_retained = await count(select(func.count()).select_from(active(older, start).where(facts.c.user_id.in_(active(older - timedelta(days=days), older))).subquery()))
-    first_approval = select(AuditLog.entity_id.label('user_id'), func.min(AuditLog.created_at).label('at')).where(
-        AuditLog.action == 'user.approved', AuditLog.entity_type == 'user',
-    ).group_by(AuditLog.entity_id).subquery()
-
     async def approvals(a, b):
-        return await count(select(func.count()).select_from(first_approval).where(first_approval.c.at >= a.astimezone(timezone.utc), first_approval.c.at < b.astimezone(timezone.utc), first_approval.c.user_id.in_(roster)))
+        return await count_new_members(session, a, b)
 
     async def events(a, b):
         # Event dates are organization-local dates. Exclude the current partial
         # day so both comparison periods contain the same number of whole days.
         return await count(select(func.count()).select_from(Event).where(Event.status.in_(['completed', 'report_submitted']), Event.event_date >= a.date(), Event.event_date < b.date()))
 
-    attention = or_(Task.status.in_(['review', 'overdue']), (Task.deadline < now) & Task.status.in_(['new', 'published', 'in_progress']))
+    pending_result = select(TaskSubmission.id).where(TaskSubmission.task_id == Task.id, TaskSubmission.status == 'pending').exists()
+    attention = or_(Task.status.in_(['review', 'overdue']),
+                    (Task.deadline < now) & Task.status.in_(['new', 'published', 'in_progress']),
+                    pending_result & (Task.status != 'cancelled'))
     metrics = (
         AnalyticsMetric('members', 'Действующие участники', await count(select(func.count()).select_from(User).where(*roster_conditions())), None, 'Текущий состав; исторический снимок состава отсутствует'),
         AnalyticsMetric('new_members', f'Новые участники · {days} дн.', await approvals(start, end), await approvals(older, start), 'Первое одобрение по аудиту; старые записи без истории не восстанавливаются из роли'),

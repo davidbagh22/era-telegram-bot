@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.management_models import AdminSurvey, AdminSurveyResponse, MonthlyGoal, OrganizationContact
-from app.database.models import Event, EventActivitySubmission, Project, Task, User, UserQuestion
+from app.database.models import Event, EventActivitySubmission, Project, Task, TaskSubmission, User, UserQuestion
 from app.handlers.admin.management_ready import _guard, analytics_excel
 from app.handlers.admin.surveys_analytics import survey_excel
 from app.services.admin_analytics_service import build_analytics_payload
@@ -182,7 +182,7 @@ async def analytics_waiting(call: CallbackQuery, user: User | None, settings: Se
     pending_users = int(await session.scalar(select(func.count()).select_from(User).where(User.application_status == ApplicationStatus.PENDING, User.is_archived.is_(False))) or 0)
     pending_projects = int(await session.scalar(select(func.count()).select_from(Project).where(Project.status.in_([ProjectStatus.PENDING_REVIEW, ProjectStatus.INITIAL_REVIEW, ProjectStatus.VENUE_REVIEW, ProjectStatus.NEEDS_REVISION]))) or 0)
     pending_events = int(await session.scalar(select(func.count()).select_from(Event).where(Event.status == EventStatus.PENDING_APPROVAL)) or 0)
-    pending_tasks = int(await session.scalar(select(func.count()).select_from(Task).where(Task.status == TaskStatus.REVIEW)) or 0)
+    pending_tasks = int(await session.scalar(select(func.count()).select_from(Task).where(((Task.status == TaskStatus.REVIEW) | select(TaskSubmission.id).where(TaskSubmission.task_id == Task.id, TaskSubmission.status == 'pending').exists()) & (Task.status != TaskStatus.CANCELLED))) or 0)
     pending_activities = int(await session.scalar(select(func.count()).select_from(EventActivitySubmission).where(EventActivitySubmission.status.in_(["pending", "leader_approved"]))) or 0)
     pending_questions = int(await session.scalar(select(func.count()).select_from(UserQuestion).where(UserQuestion.status == "new")) or 0)
     active_goals = int(await session.scalar(select(func.count()).select_from(MonthlyGoal).where(MonthlyGoal.status == "active")) or 0)
@@ -197,9 +197,20 @@ async def analytics_waiting(call: CallbackQuery, user: User | None, settings: Se
         f"💬 Вопросы пользователей: {pending_questions}\n"
         f"🎯 Активные цели месяца: {active_goals}\n"
         f"🤝 Организаций в базе: {active_contacts}\n\n"
-        "Если число больше нуля — откройте соответствующий раздел из админ-панели"
+        "Откройте очередь кнопкой ниже. Показатели разных очередей не суммируются в число людей."
     )
-    await call.message.answer(text, reply_markup=_analytics_keyboard())
+    actions = []
+    for count, label, callback in (
+        (pending_users, "Заявки участников", "admin:applications"),
+        (pending_projects, "Решения по проектам", "admin:projects"),
+        (pending_events, "Согласовать мероприятия", "admin:events"),
+        (pending_tasks, "Проверить результаты задач", "admin:task_submissions"),
+        (pending_activities, "Проверить активности", "admin:event_activities:review"),
+    ):
+        if count:
+            actions.append([InlineKeyboardButton(text=f"{label}: {count}", callback_data=callback)])
+    actions.append([InlineKeyboardButton(text="Назад", callback_data="admin:analytics"), InlineKeyboardButton(text="Главная", callback_data="admin:panel")])
+    await edit_text_or_answer(call.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=actions))
 
 
 @router.callback_query(F.data.startswith("admin:analytics:slice:"))

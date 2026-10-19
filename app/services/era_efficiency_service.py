@@ -8,8 +8,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Event, EventRegistration, Feedback, Project, User
-from app.services.analytics_snapshot_service import count_verified_users, roster_conditions
-from app.utils.constants import ApplicationStatus, EventStatus, ProjectStatus, RegistrationStatus
+from app.services.analytics_snapshot_service import count_new_members, count_verified_users, roster_conditions
+from app.utils.constants import EventStatus, ProjectStatus, RegistrationStatus
 
 
 @dataclass(frozen=True)
@@ -90,20 +90,7 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
     )
     approved_total = len(approved_users)
 
-    # Do date filtering in SQL instead of comparing ORM datetime objects in
-    # Python. SQLite returns naive datetimes while PostgreSQL can return
-    # timezone-aware ones; comparing those directly caused the weekly
-    # analytics endpoint to fail in E2E even though the data itself was fine.
-    new_users_7d = int(
-        await session.scalar(
-            select(func.count(User.id)).where(
-                User.is_archived.is_(False),
-                User.application_status == ApplicationStatus.APPROVED,
-                User.created_at >= week_ago,
-            )
-        )
-        or 0
-    )
+    new_users_7d = await count_new_members(session, week_ago, now)
 
     active_users_30d = await count_verified_users(session, month_ago, now)
     active_rate = (active_users_30d / approved_total * 100) if approved_total else 0.0
@@ -245,7 +232,7 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
             value=float(new_users_7d),
             display=f"+{new_users_7d}",
             score=None,
-            note="одобрено за последние 7 дней",
+            note="первое одобрение за 7 дней по аудиту; старые записи без истории не восстановлены",
         ),
     ]
 

@@ -17,3 +17,5 @@
 Аналитика 2.0: services/analytics_snapshot_service.py (build_analytics_snapshot, verified_activity_facts, roster_conditions), tests/test_analytics_snapshot.py. SQL aggregates; 7/30/90 дней; общий snapshot для native overview и basic Excel. Когортная воронка и согласование старых health/efficiency пока не реализованы.
 
 Рост: services/analytics_growth_service.py:build_growth_snapshot; tests/test_analytics_growth.py. Native analytics_filters: analytics_growth, analytics_growth_gaps; admin API /analytics/growth; Excel «Рост 90 дней». Экспорт монтируется напрямую в analytics_filters, исторические management/survey routers не подключать целиком.
+
+Scoped leaders: services/admin_analytics_service.py:build_scoped_leader_operations → leaders_access_service.scopes(tasks.manage); handlers/leaders_native.py:leader_operations; tests/test_scoped_leader_analytics.py. Все запросы задач/результатов/целей ограничены разрешёнными department/direction либо executive global. Обычный статус leader не расширяет scope.
