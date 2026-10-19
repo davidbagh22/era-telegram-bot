@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.services.analytics_snapshot_service import build_analytics_snapshot
+
 from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Literal
@@ -206,6 +208,19 @@ class AnalyticsSummaryOut(BaseModel):
     goals: int
 
 
+@router.get("/analytics/overview")
+async def read_analytics_overview(
+    days: Literal[7, 30, 90] = 30,
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    snapshot = await build_analytics_snapshot(session, days=days, timezone_name=settings.timezone)
+    return {"days": days, "as_of": snapshot.as_of, "metrics": [
+        {**asdict(metric), "delta": metric.delta} for metric in snapshot.metrics
+    ]}
+
+
 @router.get("/analytics", response_model=AnalyticsSummaryOut)
 async def read_analytics_summary(
     _admin: User = Depends(require_dashboard_access),
@@ -338,6 +353,8 @@ async def export_leadership_analytics_excel(
 @router.get("/analytics/export.xlsx")
 async def export_analytics_excel(
     section: Literal["all", "users", "departments", "events", "projects"] = "all",
+    days: Literal[7, 30, 90] = 30,
+    settings: Settings = Depends(get_settings),
     _admin: User = Depends(require_dashboard_access),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
@@ -352,6 +369,7 @@ async def export_analytics_excel(
         goals=data.goals,
         contacts=data.contacts,
         sections=EXCEL_SECTION_MAP.get(section),
+        snapshot=await build_analytics_snapshot(session, days=days, timezone_name=settings.timezone),
     )
     return Response(
         content=content,

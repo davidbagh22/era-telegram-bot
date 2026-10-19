@@ -12,6 +12,8 @@ from app.database.management_models import AdminSurvey, AdminSurveyResponse, Mon
 from app.database.models import Event, EventActivitySubmission, Project, Task, User, UserQuestion
 from app.handlers.admin.management_ready import _guard
 from app.services.admin_analytics_service import build_analytics_payload
+from app.services.analytics_snapshot_service import build_analytics_snapshot
+from app.utils.telegram import edit_text_or_answer
 from app.utils.constants import (
     APPLICATION_STATUS_LABELS,
     EVENT_STATUS_LABELS,
@@ -31,6 +33,7 @@ router = Router(name="admin_analytics_filters")
 def _analytics_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text=f"{days} дней", callback_data=f"admin:analytics:period:{days}") for days in (7, 30, 90)],
             [
                 InlineKeyboardButton(text="🚦 Что где ждёт", callback_data="admin:analytics:waiting"),
                 InlineKeyboardButton(text="🔎 Фильтры", callback_data="admin:analytics:filters"),
@@ -135,31 +138,27 @@ async def system_menu(call: CallbackQuery, user: User | None, settings: Settings
 
 
 @router.callback_query(F.data == "admin:analytics")
+@router.callback_query(F.data.regexp(r"^admin:analytics:period:(7|30|90)$"))
 async def analytics_overview(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await _guard(call, user, settings):
         return
-    data = await build_analytics_payload(session)
-    survey_count = int(await session.scalar(select(func.count()).select_from(AdminSurvey)) or 0)
-    response_count = int(await session.scalar(select(func.count()).select_from(AdminSurveyResponse)) or 0)
-    text = (
-        "📊 Аналитика ЭРА\n\n"
-        f"Участников в базе: {data.summary['total_users']}\n"
-        f"Одобрены: {data.summary['approved_users']}\n"
-        f"Новые заявки: {data.summary['pending_users']}\n"
-        f"Мероприятий: {data.summary['events']}\n"
-        f"Проектов: {data.summary['projects']}\n"
-        f"Опросов: {survey_count}\n"
-        f"Ответов на опросы: {response_count}\n"
-        f"Целей месяца: {data.summary['goals']}\n"
-        f"Организаций в базе: {data.summary['contacts']}\n\n"
-        "Выберите готовый срез или скачайте Excel"
-    )
+    days = int(call.data.rsplit(":", 1)[-1]) if ":period:" in call.data else 30
+    snapshot = await build_analytics_snapshot(session, days=days, timezone_name=settings.timezone)
+    lines = [f"📊 Аналитика ЭРА · {days} дней", ""]
+    for metric in snapshot.metrics:
+        value = "нет данных" if metric.value is None else str(metric.value)
+        delta = "" if metric.delta is None else f" ({metric.delta:+g})"
+        lines.append(f"{metric.label}: {value}{delta}")
+    lines.extend(["", "Активность — подтверждённые результаты. Должности и цифровые действия считаются отдельно.",
+                  f"Изменение — к предыдущим {days} дням. Исторические значения без доказательств не восстанавливаются.",
+                  "Определения и ограничения — в Excel, лист «Обзор 2.0»."])
+    text = "\n".join(lines)
     keyboard = _analytics_keyboard()
     if getattr(settings, 'feature_management_reports', 'OFF') != 'OFF':
         from app.services.admin_analytics_service import management_report_recipients
         if call.from_user.id in await management_report_recipients(session, settings):
             keyboard.inline_keyboard.insert(0, [InlineKeyboardButton(text='📊 Управленческий отчёт', callback_data='admin:management:refresh')])
-    await call.message.answer(text, reply_markup=keyboard)
+    await edit_text_or_answer(call.message, text, reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "admin:analytics:filters")

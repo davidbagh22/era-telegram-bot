@@ -36,6 +36,7 @@ async def export_executive_report(
     end_date: date | None = Query(default=None),
     _admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> Response:
     """MASTER §54 executive workbook with period selection and privacy guardrails."""
     try:
@@ -58,6 +59,7 @@ async def export_executive_report(
         start_date=start,
         end_date=end,
         period_label=label,
+        timezone_name=settings.timezone,
     )
     suffix = f"{start:%Y%m%d}-{end:%Y%m%d}"
     return Response(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.services.analytics_snapshot_service import build_analytics_snapshot
+
 from aiogram import F, Bot, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -152,6 +154,7 @@ async def analytics_excel(call: CallbackQuery, user: User | None, settings: Sett
         goals=data.goals,
         contacts=data.contacts,
         sections=EXCEL_SECTION_MAP.get(section),
+        snapshot=await build_analytics_snapshot(session, timezone_name=settings.timezone),
     )
     if not await safe_answer_document(
         call.message,

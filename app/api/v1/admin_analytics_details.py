@@ -78,7 +78,7 @@ class HealthMetricOut(BaseModel):
     key: str
     category: str
     label: str
-    value: float
+    value: float | None
     display: str
     note: str
     score: int | None = None

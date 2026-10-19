@@ -105,6 +105,26 @@ class AdminAnalyticsServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(payload.goals), 1)
             self.assertEqual(payload.goals[0].title, "Активная")
 
+    async def test_organization_totals_are_not_recent_page_limits(self) -> None:
+        async with self.session_factory() as session:
+            user = User(telegram_id=99, first_name="fixture")
+            session.add(user)
+            await session.flush()
+            session.add_all([
+                Event(title=f"E{index}", description="fixture", event_date=date(2026, 9, 1),
+                      event_time=time(12), location="online", format="online", created_by=user.id)
+                for index in range(501)
+            ])
+            session.add_all([Project(title=f"P{index}", short_description="fixture", author_id=user.id)
+                             for index in range(501)])
+            session.add_all([MonthlyGoal(month="2026-10", title=f"G{index}", target_value=1,
+                                         scope_type="global") for index in range(201)])
+            await session.commit()
+            payload = await build_analytics_payload(session)
+            self.assertEqual(payload.summary['events'], 501)
+            self.assertEqual(payload.summary['projects'], 501)
+            self.assertEqual(payload.summary['goals'], 201)
+
 
 def _admin(**overrides) -> SimpleNamespace:
     defaults = dict(id=1, telegram_id=999, role="admin", is_blocked=False, is_archived=False, permission_grants=[])
@@ -166,6 +186,7 @@ class AdminAnalyticsApiTests(unittest.TestCase):
         with (
             patch("app.api.v1.admin.build_analytics_payload", new=AsyncMock(return_value=fake_payload)),
             patch("app.api.v1.admin.build_analytics_workbook", return_value=b"fake-xlsx-bytes"),
+            patch("app.api.v1.admin.build_analytics_snapshot", new=AsyncMock(return_value=None)),
         ):
             response = client.get("/api/v1/admin/analytics/export.xlsx?section=users")
         self.assertEqual(response.status_code, 200)

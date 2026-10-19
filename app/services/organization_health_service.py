@@ -25,11 +25,11 @@ from app.database.models import (
     UserDirection,
 )
 from app.database.participation_models import ParticipationLifecycle
+from app.services.analytics_snapshot_service import count_verified_users, verified_users_between
 from app.services import development_analytics
 from app.services.admin_dashboard_service import dashboard_metrics
 from app.services.meaningful_activity_service import (
     meaningful_points_condition,
-    meaningful_user_ids_since,
 )
 from app.services.participation_lifecycle_service import MODE_ACTIVE, MODE_EXITED, MODE_LIGHT
 from app.utils.constants import (
@@ -47,7 +47,7 @@ class HealthMetric:
     key: str
     category: str
     label: str
-    value: float
+    value: float | None
     display: str
     note: str
     score: int | None = None
@@ -139,12 +139,7 @@ async def _user_count(session: AsyncSession, *conditions) -> int:
 
 
 async def _meaningful_active_count(session: AsyncSession, cutoff: datetime) -> int:
-    ids = await meaningful_user_ids_since(
-        session, cutoff, include_current_responsibility=True
-    )
-    if not ids:
-        return 0
-    return await _user_count(session, *_active_denominator_conditions(), User.id.in_(ids))
+    return await count_verified_users(session, cutoff, datetime.now(timezone.utc))
 
 
 async def build_organization_health(session: AsyncSession) -> OrganizationHealthSnapshot:
@@ -166,7 +161,7 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
     two_weeks_ahead = today + timedelta(days=14)
 
     approved_total = await _user_count(session, *_current_roster_conditions())
-    active_denominator = await _user_count(session, *_active_denominator_conditions())
+    active_denominator = approved_total
     new_7d = await _user_count(
         session, *_current_roster_conditions(), User.created_at >= week_ago
     )
@@ -192,24 +187,13 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
     active_90d = await _meaningful_active_count(session, quarter_ago)
     dormant_30d = max(active_denominator - active_30d, 0)
 
-    retention_denominator = await _user_count(
-        session,
-        *_active_denominator_conditions(),
-        User.created_at < month_ago,
-    )
-    retained_ids = await meaningful_user_ids_since(
-        session, month_ago, include_current_responsibility=True
-    )
-    retained_30d = (
-        await _user_count(
-            session,
-            *_active_denominator_conditions(),
-            User.created_at < month_ago,
-            User.id.in_(retained_ids),
-        )
-        if retained_ids
-        else 0
-    )
+    previous_cohort = verified_users_between(now - timedelta(days=60), month_ago)
+    current_cohort = verified_users_between(month_ago, now)
+    retention_denominator = int(await session.scalar(select(func.count()).select_from(previous_cohort.subquery())) or 0)
+    retained_30d = int(await session.scalar(select(func.count()).select_from(
+        current_cohort.intersect(previous_cohort).subquery()
+    )) or 0)
+
 
     department_users = int(
         await session.scalar(
@@ -443,8 +427,8 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
         HealthMetric("active_7d", "Вовлечённость", "Активность за 7 дней", active_7d, f"{active_7d} · {_pct(active_7d, active_denominator):.1f}%", "только подтверждённые реальные действия или текущая ответственность"),
         HealthMetric("active_30d", "Вовлечённость", "Активность за 30 дней", active_30d, f"{active_30d} · {_pct(active_30d, active_denominator):.1f}%", "цифровая активность не считается реальным действием", _cap(_pct(active_30d, active_denominator))),
         HealthMetric("active_90d", "Вовлечённость", "Активность за 90 дней", active_90d, f"{active_90d} · {_pct(active_90d, active_denominator):.1f}%", "широкий контур реальной активности"),
-        HealthMetric("retention_30d", "Вовлечённость", "30-дневное удержание", _pct(retained_30d, retention_denominator), f"{_pct(retained_30d, retention_denominator):.1f}%", "участники в активном или лёгком режиме старше 30 дней с подтверждённым действием или текущей ответственностью", _cap(_pct(retained_30d, retention_denominator))),
-        HealthMetric("dormant_30d", "Вовлечённость", "Без активности 30 дней", dormant_30d, str(dormant_30d), "режимы «Пауза», «Наблюдатель» и «Вышел» исключены из знаменателя"),
+        HealthMetric("retention_30d", "Вовлечённость", "30-дневное удержание", (_pct(retained_30d, retention_denominator) if retention_denominator else None), (f"{_pct(retained_30d, retention_denominator):.1f}%" if retention_denominator else "Нет данных"), "вернувшиеся из подтверждённо активной когорты предыдущих 30 дней; текущий состав", (_cap(_pct(retained_30d, retention_denominator)) if retention_denominator else None)),
+        HealthMetric("dormant_30d", "Вовлечённость", "Без активности 30 дней", dormant_30d, str(dormant_30d), "текущие approved участники без blocked/archived и режима «Вышел»"),
         HealthMetric("events_30d", "События", "Мероприятий за 30 дней", events_30d, str(events_30d), "проведённые/живые события"),
         HealthMetric("upcoming_14d", "События", "Событий на 14 дней", upcoming_14d, str(upcoming_14d), "запланированный ритм"),
         HealthMetric("event_registrations", "События", "Регистраций за 30 дней", event_registrations_30d, str(event_registrations_30d), "по событиям последнего месяца"),

@@ -35,6 +35,7 @@ from app.database.models import (
     UserDirection,
     UserOffice,
 )
+from app.services.analytics_snapshot_service import roster_conditions
 from app.utils.constants import AttentionItemStatus, LeadershipGoalStatus, TaskStatus
 
 
@@ -92,12 +93,12 @@ async def build_analytics_payload(session: AsyncSession) -> AnalyticsPayload:
     events = list(
         (
             await session.scalars(
-                select(Event).order_by(Event.event_date.desc(), Event.event_time).limit(500)
+                select(Event).order_by(Event.event_date.desc(), Event.event_time)
             )
         ).all()
     )
     projects = list(
-        (await session.scalars(select(Project).order_by(Project.created_at.desc()).limit(500))).all()
+        (await session.scalars(select(Project).order_by(Project.created_at.desc()))).all()
     )
     totals = dict(
         (
@@ -111,7 +112,7 @@ async def build_analytics_payload(session: AsyncSession) -> AnalyticsPayload:
 
     dep_rows = (
         await session.execute(
-            select(Department.id, Department.name, func.count(UserDepartment.id))
+            select(Department.id, Department.name, func.count(UserDepartment.id).filter(UserDepartment.user_id.in_(select(User.id).where(*roster_conditions()))))
             .join(UserDepartment, Department.id == UserDepartment.department_id, isouter=True)
             .group_by(Department.id, Department.name)
             .order_by(Department.name)
@@ -119,7 +120,7 @@ async def build_analytics_payload(session: AsyncSession) -> AnalyticsPayload:
     ).all()
     dir_rows = (
         await session.execute(
-            select(Department.name, Direction.id, Direction.name, func.count(UserDirection.id))
+            select(Department.name, Direction.id, Direction.name, func.count(UserDirection.id).filter(UserDirection.user_id.in_(select(User.id).where(*roster_conditions()))))
             .join(Direction, Direction.department_id == Department.id)
             .join(UserDirection, UserDirection.direction_id == Direction.id, isouter=True)
             .group_by(Department.name, Direction.id, Direction.name)
@@ -132,7 +133,6 @@ async def build_analytics_payload(session: AsyncSession) -> AnalyticsPayload:
                 select(MonthlyGoal)
                 .where(MonthlyGoal.status != "deleted")
                 .order_by(MonthlyGoal.month.desc(), MonthlyGoal.created_at.desc())
-                .limit(200)
             )
         ).all()
     )

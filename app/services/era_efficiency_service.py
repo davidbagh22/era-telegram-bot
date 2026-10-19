@@ -7,7 +7,8 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Event, EventRegistration, Feedback, PointTransaction, Project, User
+from app.database.models import Event, EventRegistration, Feedback, Project, User
+from app.services.analytics_snapshot_service import count_verified_users, roster_conditions
 from app.utils.constants import ApplicationStatus, EventStatus, ProjectStatus, RegistrationStatus
 
 
@@ -82,8 +83,7 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
         (
             await session.scalars(
                 select(User).where(
-                    User.is_archived.is_(False),
-                    User.application_status == ApplicationStatus.APPROVED,
+                    *roster_conditions(),
                 )
             )
         ).all()
@@ -105,18 +105,7 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
         or 0
     )
 
-    active_users_30d = int(
-        await session.scalar(
-            select(func.count(func.distinct(PointTransaction.user_id)))
-            .join(User, User.id == PointTransaction.user_id)
-            .where(
-                PointTransaction.created_at >= month_ago,
-                User.is_archived.is_(False),
-                User.application_status == ApplicationStatus.APPROVED,
-            )
-        )
-        or 0
-    )
+    active_users_30d = await count_verified_users(session, month_ago, now)
     active_rate = (active_users_30d / approved_total * 100) if approved_total else 0.0
 
     event_live_statuses = (

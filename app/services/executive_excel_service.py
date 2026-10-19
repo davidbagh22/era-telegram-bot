@@ -4,6 +4,7 @@ from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -11,6 +12,7 @@ from openpyxl.utils import get_column_letter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.analytics_snapshot_service import verified_users_between
 from app.database.models import (
     EventRegistration,
     LeadershipAttentionItem,
@@ -149,6 +151,7 @@ async def build_executive_workbook(
     start_date: date,
     end_date: date,
     period_label: str,
+    timezone_name: str = "Asia/Yerevan",
 ) -> bytes:
     """Build the single executive workbook defined by MASTER section 54.
 
@@ -169,11 +172,12 @@ async def build_executive_workbook(
         and not u.is_blocked
         and getattr(lifecycle_by_user.get(u.id), "participation_mode", "ACTIVE") != "EXITED"
     ]
-    active_base = [
-        u for u in current_roster
-        if getattr(lifecycle_by_user.get(u.id), "activity_state", None) == "ACTIVE"
-        and getattr(lifecycle_by_user.get(u.id), "participation_mode", "ACTIVE") in {"ACTIVE", "LIGHT"}
-    ]
+    zone = ZoneInfo(timezone_name)
+    active_ids = set((await session.scalars(verified_users_between(
+        datetime.combine(start_date, datetime.min.time(), tzinfo=zone),
+        datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=zone),
+    ))).all())
+    active_base = [u for u in current_roster if u.id in active_ids]
     new_users = [u for u in approved if _in_period(u.created_at, start_date, end_date)]
     returned = [
         u for u in approved
@@ -209,7 +213,7 @@ async def build_executive_workbook(
     summary_rows = [
         ["Подтверждено исторически", len(approved), "Все когда-либо одобренные профили в доступной базе", "User.application_status"],
         ["Текущий состав", len(current_roster), "Одобрены, не archived/blocked и не EXITED", "ParticipationLifecycle"],
-        ["Активная база", len(active_base), "Meaningful Activity + ACTIVE/LIGHT mode; digital points сюда не входят", "ParticipationLifecycle"],
+        ["Активная база", len(active_base), "Подтверждённые результаты за выбранный период; без цифровых баллов и должностей", "Verified activity facts"],
         ["Новые за период", len(new_users), "Одобренные участники, зарегистрированные в периоде", "User.created_at"],
         ["Вернулись за период", len(returned), "Зафиксированный возврат после снижения активности", "ParticipationLifecycle.returned_at"],
         ["События за период", len(period_events), "События с датой внутри выбранного периода", "Event.event_date"],

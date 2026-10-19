@@ -47,7 +47,7 @@ export interface HealthMetric {
   key: string;
   category: string;
   label: string;
-  value: number;
+  value: number | null;
   display: string;
   note: string;
   score: number | null;
