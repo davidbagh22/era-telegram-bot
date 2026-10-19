@@ -206,7 +206,7 @@ def build_career_resume(
 
     grouped: dict[str, list[CareerPortfolioItem]] = {}
     for item in items:
-        if item.include_in_resume and item.status != "pending":
+        if item.include_in_resume and item.status not in {"pending", "revoked"}:
             grouped.setdefault(item.item_type, []).append(item)
     era = _era_sections(portfolio)
     seen: set[str] = set()

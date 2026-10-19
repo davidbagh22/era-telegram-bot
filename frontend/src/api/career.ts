@@ -65,6 +65,10 @@ async function requestBlob(path: string, retry = true): Promise<Blob> {
 
 export const fetchCareerDashboard = () => request<CareerDashboard>("/api/v1/career/dashboard");
 
+export interface IssuedCertificate { id: number; number: string; title: string; status: string; issued_at: string }
+export const fetchCertificates = () => request<IssuedCertificate[]>("/api/v1/career/certificates");
+export const downloadCertificate = (id: number) => requestBlob(`/api/v1/career/certificates/${id}.pdf`);
+
 export const updateCareerProfile = (payload: CareerProfileData) =>
   request<CareerProfileData>("/api/v1/career/profile", {
     method: "PATCH",

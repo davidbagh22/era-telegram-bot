@@ -35,7 +35,6 @@ LEGACY_ADMIN_ACTIONS = {
     "admin:menu:communications",
     "admin:participants",
     "admin:task:new",
-    "admin:applications",
     "admin:menu:users",
     "admin:people:ages",
     "admin:people:cities",

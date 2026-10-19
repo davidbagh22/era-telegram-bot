@@ -15,6 +15,7 @@ from app.utils import texts
 from app.utils.constants import ApplicationStatus
 
 router = Router(name="admin_dashboard_block_a")
+applications_router = Router(name="delegated_applications_queue")
 PAGE_SIZE = 8
 
 
@@ -65,7 +66,7 @@ async def admin_dashboard(
     )
 
 
-async def _show_application_list(message: Message, session: AsyncSession, *, page: int = 0, edit: bool = False) -> None:
+async def _show_application_list(message: Message, session: AsyncSession, *, page: int = 0, edit: bool = False, can_summary: bool = True) -> None:
     conditions = (
         User.application_status.in_([ApplicationStatus.PENDING, ApplicationStatus.NEEDS_INFO]),
         User.is_archived.is_not(True),
@@ -86,9 +87,10 @@ async def _show_application_list(message: Message, session: AsyncSession, *, pag
         navigation.append(InlineKeyboardButton(text="Далее →", callback_data=f"admin:applications:page:{page+1}"))
     if navigation:
         rows.append(navigation)
-    rows.append([InlineKeyboardButton(text="🔄 Обновить", callback_data=f"admin:applications:page:{page}"),
-                 InlineKeyboardButton(text="📊 Сводка", callback_data="admin:management:open")])
-    rows.append([InlineKeyboardButton(text="← Управление", callback_data="admin:panel")])
+    rows.append([InlineKeyboardButton(text="🔄 Обновить", callback_data=f"admin:applications:page:{page}")])
+    if can_summary:
+        rows[-1].append(InlineKeyboardButton(text="📊 Сводка", callback_data="admin:management:open"))
+    rows.append([InlineKeyboardButton(text="← Рабочие разделы", callback_data="staff:home")])
     text = (f"📥 <b>Заявки ЭРА · {total}</b>\n\n"
             + (f"Страница {page+1} из {(total+PAGE_SIZE-1)//PAGE_SIZE}. Сначала самые ранние заявки.\n"
                "📝 Ожидает решения · 💬 Запрошено уточнение\n\nВыберите человека, чтобы открыть анкету и принять решение."
@@ -106,35 +108,41 @@ async def _show_application_list(message: Message, session: AsyncSession, *, pag
     await message.answer(text, parse_mode="HTML", reply_markup=markup)
 
 
-@router.message(Command("applications"))
-@router.message(F.text == "📥 Заявки")
+@applications_router.message(Command("applications"))
+@applications_router.message(Command("applications_review"))
+@applications_router.message(F.text == "📥 Заявки")
 async def applications_queue(
     message: Message,
     user: User | None,
     settings: Settings,
     session: AsyncSession,
 ) -> None:
-    if not await _guard(message, user, settings):
+    if not await _application_guard(message, user, settings, session):
         return
-    await _show_application_list(message, session)
+    await _show_application_list(message, session, can_summary=has_dashboard_access(user,settings,message.from_user.id))
 
 
-@router.callback_query(F.data == "admin:applications")
-@router.callback_query(F.data.regexp(r"^admin:applications:page:\d{1,6}$"))
+@applications_router.callback_query(F.data == "admin:applications")
+@applications_router.callback_query(F.data.regexp(r"^admin:applications:page:\d{1,6}$"))
 async def applications_callback(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
-    if not await _guard(call, user, settings):
+    if not await _application_guard(call, user, settings, session):
         return
     page = int(call.data.rsplit(":", 1)[-1]) if ":page:" in call.data else 0
-    await _show_application_list(call.message, session, page=page, edit=":page:" in call.data)
+    await _show_application_list(call.message, session, page=page, edit=":page:" in call.data,
+                                 can_summary=has_dashboard_access(user,settings,call.from_user.id))
 
 
-@router.callback_query(F.data.regexp(r"^admin:application:\d+$"))
+@applications_router.callback_query(F.data.regexp(r"^admin:application:\d+$"))
 async def application_detail(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
-    if not await _guard(call, user, settings):
+    if not await _application_guard(call, user, settings, session):
         return
     target = await session.get(User, int(call.data.rsplit(":", 1)[-1]))
     if target is None or target.is_archived:
         await call.message.answer("Эта заявка недоступна. Обновите список заявок.")
+        return
+    if (not has_dashboard_access(user,settings,call.from_user.id) and target.application_status not in
+            {ApplicationStatus.PENDING, ApplicationStatus.NEEDS_INFO}):
+        await call.message.answer("Эта заявка уже рассмотрена. Обновите очередь.")
         return
     revision = await application_review_version(session, target.id)
     await send_admin_user_card(call.message, session, target, mode="application", review_version=revision)
@@ -155,3 +163,16 @@ async def admin_dashboard_callback(
 
 
 # Both surfaces share services and permissions; Telegram owns these native actions.
+
+
+async def _application_guard(event, user, settings, session):
+    from app.services.staff_access_service import can_operate_queue
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        message = event.message
+    else:
+        message = event
+    if not await can_operate_queue(session, user, settings, "applications.review"):
+        await message.answer(texts.NO_ACCESS)
+        return False
+    return True

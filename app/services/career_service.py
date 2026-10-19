@@ -134,7 +134,7 @@ async def update_item(
     item: CareerPortfolioItem,
     **changes: Any,
 ) -> CareerPortfolioItem:
-    if item.status == "verified":
+    if item.status in {"verified", "revoked"}:
         raise ValueError("verified_item_locked")
     if "item_type" in changes and changes["item_type"] is not None:
         if changes["item_type"] not in CAREER_ITEM_TYPES:
@@ -171,7 +171,7 @@ async def attach_file(
     file_id: str,
     file_name: str,
 ) -> CareerPortfolioItem:
-    if item.status == "verified":
+    if item.status in {"verified", "revoked"}:
         raise ValueError("verified_item_locked")
     item.file_id = file_id
     item.file_name = clean_text(file_name, max_length=255) or "document"
@@ -187,6 +187,8 @@ async def attach_file(
 async def request_verification(
     session: AsyncSession, item: CareerPortfolioItem
 ) -> CareerPortfolioItem:
+    if item.status == "revoked":
+        raise ValueError("verified_item_locked")
     if item.status == "verified":
         return item
     if not item.file_id and not item.url:

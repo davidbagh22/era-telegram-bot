@@ -1,7 +1,7 @@
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +38,7 @@ def _event_keyboard(event_id: int, *, can_register: bool, has_activities: bool) 
         rows.append([InlineKeyboardButton(text="Зарегистрироваться", callback_data=f"event:join:{event_id}")])
     if has_activities:
         rows.append([InlineKeyboardButton(text="✨ Активности", callback_data=f"event:activities:{event_id}")])
+    rows.append([InlineKeyboardButton(text="Добавить в календарь", callback_data=f"event:calendar:{event_id}")])
     rows.append([InlineKeyboardButton(text="← Афиша", callback_data="events:list")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -117,6 +118,34 @@ async def event_view(call: CallbackQuery, user: User | None, session: AsyncSessi
         registered=int(stats["registered"]),
         extra_text=extra,
         keyboard=keyboard,
+    )
+
+
+@router.callback_query(F.data.regexp(r"^event:calendar:[0-9]+$"), F.message.chat.type == "private")
+async def event_calendar(call: CallbackQuery, user: User | None, session: AsyncSession, settings: Settings):
+    await call.answer()
+    if not _approved(user):
+        await call.message.answer(texts.APPLICATION_PENDING)
+        return
+    from app.database.event_experience import EventExperience
+    from app.services.event_calendar_service import build_event_calendar
+    from app.database.models import EventRegistration
+    from app.utils.constants import EventStatus
+    event_id = int(call.data.rsplit(":", 1)[-1])
+    event = await session.get(Event, event_id)
+    registration = await session.scalar(select(EventRegistration).where(
+        EventRegistration.event_id == event_id, EventRegistration.user_id == user.id))
+    if event is None or (event.status not in PUBLIC_EVENT_STATUSES and not (
+        registration and event.status in {EventStatus.CANCELLED, EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED}
+    )):
+        await call.message.answer("Мероприятие недоступно.")
+        return
+    experience = await session.get(EventExperience, event_id)
+    await call.message.answer_document(
+        BufferedInputFile(build_event_calendar(event, experience, timezone_name=settings.timezone),
+                          filename=f"ERA-{event_id}.ics"),
+        caption=f"Время события: {settings.timezone}. Импортируйте файл в календарь. После изменения события скачайте актуальную версию.",
+        parse_mode=None,
     )
 
 

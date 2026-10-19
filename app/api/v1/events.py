@@ -24,6 +24,8 @@ from app.services.event_service import (
     registered_count,
 )
 from app.services.notification_service import safe_send
+from app.services.event_calendar_service import build_event_calendar
+from app.services.event_service import PUBLIC_EVENT_STATUSES
 from app.utils.constants import EventStatus, RegistrationStatus
 from app.utils.deep_links import activity_submit_deep_link, miniapp_event_url
 
@@ -261,6 +263,31 @@ async def read_event_poster(
         media_type=experience.poster_content_type or "image/jpeg",
         headers={"Cache-Control": "private, max-age=300"},
     )
+
+
+@router.get("/{event_id}/calendar.ics")
+async def read_event_calendar(
+    event_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    from app.utils.constants import ApplicationStatus
+    if user.application_status != ApplicationStatus.APPROVED:
+        raise HTTPException(status_code=403, detail="application_not_approved")
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    registration = await _get_registration(session, event_id, user.id)
+    if event.status not in PUBLIC_EVENT_STATUSES and not (
+        registration and event.status in {EventStatus.CANCELLED, EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED}
+    ):
+        raise HTTPException(status_code=404, detail="event_not_found")
+    experience = await session.get(EventExperience, event_id)
+    return Response(build_event_calendar(event, experience, timezone_name=settings.timezone),
+                    media_type="text/calendar; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="ERA-{event_id}.ics"',
+                             "Cache-Control": "private, no-store"})
 
 
 @router.get("/{event_id}", response_model=EventOut)

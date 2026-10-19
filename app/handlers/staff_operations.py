@@ -17,8 +17,10 @@ async def show_operations(message, session, user, settings):
     if await can_review_any_projects(session, user, settings):
         entries.append('/projects_review — проекты на проверке')
     for permission, label in (
+        ('applications.review', '/applications_review — заявки участников'),
         ('support.manage', '/support_admin — обращения'),
         ('literature.manage', '/literature_admin — литературная редакция'),
+        ('portfolio.review', '/issue_certificate — выдача сертификатов'),
     ):
         if await can_operate_queue(session, user, settings, permission):
             entries.append(label)

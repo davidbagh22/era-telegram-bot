@@ -238,7 +238,7 @@ async def rating(session: AsyncSession, limit: int = 10) -> list[tuple[User, int
                 User, func.coalesce(func.sum(PointTransaction.points), 0).label("score")
             )
             .outerjoin(PointTransaction, PointTransaction.user_id == User.id)
-            .where(User.application_status == "approved", User.is_blocked.is_(False))
+            .where(User.application_status == "approved", User.is_blocked.is_(False), User.is_archived.is_(False))
             .group_by(User.id)
             .order_by(func.sum(PointTransaction.points).desc().nullslast(), User.id)
             .limit(limit)
@@ -265,7 +265,7 @@ async def weekly_rating(
                     PointTransaction.category != PointCategory.DIGITAL_ENGAGEMENT,
                 ),
             )
-            .where(User.application_status == "approved", User.is_blocked.is_(False))
+            .where(User.application_status == "approved", User.is_blocked.is_(False), User.is_archived.is_(False))
             .group_by(User.id)
             .having(func.coalesce(func.sum(PointTransaction.points), 0) > 0)
             .order_by(func.sum(PointTransaction.points).desc().nullslast(), User.id)

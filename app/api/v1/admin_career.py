@@ -15,7 +15,7 @@ from app.config import Settings
 from app.database.career_models import CareerPortfolioItem, RecommendationRequest
 from app.database.models import User
 from app.services import career_service
-from app.services.authorization_service import is_full_admin
+from app.services.authorization_service import is_full_admin, active_global_permissions
 from app.services.notification_service import safe_send
 
 router = APIRouter(prefix="/admin/career", tags=["admin-career"])
@@ -35,12 +35,8 @@ class ReviewRecommendationIn(BaseModel):
 def _has_review_permission(user: User, settings: Settings) -> bool:
     if is_full_admin(user, settings, user.telegram_id):
         return True
-    return any(
-        grant.is_active
-        and grant.permission == "portfolio.review"
-        and grant.scope_type == "global"
-        for grant in (user.permission_grants or [])
-    )
+    return (not user.is_blocked and not user.is_archived
+            and "portfolio.review" in active_global_permissions(user))
 
 
 def _require_review_permission(user: User, settings: Settings) -> None:
