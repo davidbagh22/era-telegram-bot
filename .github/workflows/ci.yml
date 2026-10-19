@@ -111,6 +111,9 @@ jobs:
       - name: Prove workcenter confirmation, claim, role and campaign races on PostgreSQL
         run: python scripts/postgres_leaders_workcenter_race.py
 
+      - name: Prove scoped project reviewer and decision races on PostgreSQL
+        run: python scripts/postgres_project_review_race.py
+
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 10
