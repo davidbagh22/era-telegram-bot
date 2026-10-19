@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.services.analytics_snapshot_service import build_analytics_snapshot
+from app.services.analytics_growth_service import build_growth_snapshot
 
 from aiogram import F, Bot, Router
 from aiogram.filters import Command
@@ -139,10 +140,10 @@ async def analytics(call: CallbackQuery, user: User | None, settings: Settings, 
 
 
 @router.callback_query(F.data.in_({"admin:analytics:excel", "admin:analytics:excel:all", "admin:analytics:excel:users", "admin:analytics:excel:departments", "admin:analytics:excel:events", "admin:analytics:excel:projects"}))
-async def analytics_excel(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
+async def analytics_excel(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, *, days: int = 30) -> None:
     if not await _guard(call, user, settings):
         return
-    section = call.data.rsplit(":", 1)[-1] if call.data.count(":") >= 3 else "all"
+    section = call.data.rsplit(":", 1)[-1] if call.data.count(":") >= 3 and ":download:" not in call.data else "all"
     data = await build_analytics_payload(session)
     content = build_analytics_workbook(
         data.users,
@@ -154,11 +155,12 @@ async def analytics_excel(call: CallbackQuery, user: User | None, settings: Sett
         goals=data.goals,
         contacts=data.contacts,
         sections=EXCEL_SECTION_MAP.get(section),
-        snapshot=await build_analytics_snapshot(session, timezone_name=settings.timezone),
+        growth=await build_growth_snapshot(session),
+        snapshot=await build_analytics_snapshot(session, days=days, timezone_name=settings.timezone),
     )
     if not await safe_answer_document(
         call.message,
-        BufferedInputFile(content, filename=f"ERA_analytics_{section}.xlsx"),
+        BufferedInputFile(content, filename=f"ERA_analytics_{section}_{days}d.xlsx"),
         caption="Готово. Таблица оформлена на русском и готова для работы",
     ):
         await call.message.answer("Таблица собрана, но Telegram не дал отправить файл. Попробуйте ещё раз.")

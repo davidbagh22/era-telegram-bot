@@ -10,9 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.management_models import AdminSurvey, AdminSurveyResponse, MonthlyGoal, OrganizationContact
 from app.database.models import Event, EventActivitySubmission, Project, Task, User, UserQuestion
-from app.handlers.admin.management_ready import _guard
+from app.handlers.admin.management_ready import _guard, analytics_excel
+from app.handlers.admin.surveys_analytics import survey_excel
 from app.services.admin_analytics_service import build_analytics_payload
 from app.services.analytics_snapshot_service import build_analytics_snapshot
+from app.services.analytics_growth_service import build_growth_snapshot
 from app.utils.telegram import edit_text_or_answer
 from app.utils.constants import (
     APPLICATION_STATUS_LABELS,
@@ -50,6 +52,7 @@ def _analytics_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="📅 События", callback_data="admin:analytics:slice:events"),
                 InlineKeyboardButton(text="💡 Проекты", callback_data="admin:analytics:slice:projects"),
             ],
+            [InlineKeyboardButton(text="Рост за 90 дней", callback_data="admin:analytics:growth")],
             [InlineKeyboardButton(text="🗳 Управленческие опросы", callback_data="admin:surveys")],
             [InlineKeyboardButton(text="← Управление", callback_data="admin:menu:system")],
         ]
@@ -146,7 +149,7 @@ async def analytics_overview(call: CallbackQuery, user: User | None, settings: S
     snapshot = await build_analytics_snapshot(session, days=days, timezone_name=settings.timezone)
     lines = [f"📊 Аналитика ЭРА · {days} дней", ""]
     for metric in snapshot.metrics:
-        value = "нет данных" if metric.value is None else str(metric.value)
+        value = "см. Рост за 90 дней" if metric.key == "funnel" else ("нет данных" if metric.value is None else str(metric.value))
         delta = "" if metric.delta is None else f" ({metric.delta:+g})"
         lines.append(f"{metric.label}: {value}{delta}")
     lines.extend(["", "Активность — подтверждённые результаты. Должности и цифровые действия считаются отдельно.",
@@ -154,6 +157,7 @@ async def analytics_overview(call: CallbackQuery, user: User | None, settings: S
                   "Определения и ограничения — в Excel, лист «Обзор 2.0»."])
     text = "\n".join(lines)
     keyboard = _analytics_keyboard()
+    keyboard.inline_keyboard.insert(1, [InlineKeyboardButton(text=f"Excel · {days} дней", callback_data=f"admin:analytics:download:{days}")])
     if getattr(settings, 'feature_management_reports', 'OFF') != 'OFF':
         from app.services.admin_analytics_service import management_report_recipients
         if call.from_user.id in await management_report_recipients(session, settings):
@@ -273,3 +277,58 @@ async def analytics_slice(call: CallbackQuery, user: User | None, settings: Sett
             ]
         ),
     )
+
+
+@router.callback_query(F.data == "admin:analytics:growth")
+async def analytics_growth(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
+    if not await _guard(call, user, settings):
+        return
+    growth = await build_growth_snapshot(session)
+    lines = ["Рост · когорта регистраций за 90 дней", ""]
+    rows = []
+    for stage in growth.stages:
+        conversion = "—" if stage.conversion is None else f"{stage.conversion:g}%"
+        duration = "—" if stage.median_days is None else f"{stage.median_days:g} дн."
+        lines.append(f"{stage.label}: {stage.count} · {conversion} · срок {duration}")
+        if stage.lost_user_ids:
+            rows.append([InlineKeyboardButton(text=f"{stage.label}: ещё не наблюдалось у {len(stage.lost_user_ids)}", callback_data=f"admin:analytics:gaps:{stage.key}:0")])
+    lines.extend(["", f"Одобрены без истории одобрения: {growth.approval_history_missing}.", growth.note])
+    rows.append([InlineKeyboardButton(text="Назад", callback_data="admin:analytics"), InlineKeyboardButton(text="Главная", callback_data="admin:panel")])
+    await edit_text_or_answer(call.message, "\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.regexp(r"^admin:analytics:gaps:(approved|first|repeat|active|leader):[0-9]{1,6}$"))
+async def analytics_growth_gaps(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
+    if not await _guard(call, user, settings):
+        return
+    _, _, _, key, raw_page = call.data.split(":")
+    page = int(raw_page)
+    growth = await build_growth_snapshot(session)
+    stage = next(item for item in growth.stages if item.key == key)
+    ids = stage.lost_user_ids[page * 10:(page + 1) * 10]
+    people = (await session.scalars(select(User).where(User.id.in_(ids)).order_by(User.first_name))).all() if ids else []
+    lines = [f"{stage.label} · пока нет наблюдаемого перехода", "Не означает, что участник ушёл.", ""]
+    lines.extend(" ".join(part for part in [person.first_name, person.last_name] if part) for person in people)
+    if not people:
+        lines.append("В этом срезе участников нет.")
+    rows = []
+    if page:
+        rows.append([InlineKeyboardButton(text="Предыдущие", callback_data=f"admin:analytics:gaps:{key}:{page-1}")])
+    if (page + 1) * 10 < len(stage.lost_user_ids):
+        rows.append([InlineKeyboardButton(text="Следующие", callback_data=f"admin:analytics:gaps:{key}:{page+1}")])
+    rows.append([InlineKeyboardButton(text="Назад", callback_data="admin:analytics:growth"), InlineKeyboardButton(text="Главная", callback_data="admin:panel")])
+    await edit_text_or_answer(call.message, "\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+# Reuse the existing guarded exporters, mounting only their exact routes.
+# The historical management/survey routers remain unmounted.
+router.callback_query.register(analytics_excel, F.data.in_({
+    "admin:analytics:excel", "admin:analytics:excel:all", "admin:analytics:excel:users",
+    "admin:analytics:excel:departments", "admin:analytics:excel:events", "admin:analytics:excel:projects",
+}))
+router.callback_query.register(survey_excel, F.data == "admin:analytics:excel:surveys")
+
+
+@router.callback_query(F.data.regexp(r"^admin:analytics:download:(7|30|90)$"))
+async def analytics_period_excel(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
+    await analytics_excel(call, user, settings, session, days=int(call.data.rsplit(":", 1)[-1]))

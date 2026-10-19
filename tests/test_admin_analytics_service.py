@@ -160,6 +160,12 @@ class AdminAnalyticsApiTests(unittest.TestCase):
         response = client.get("/api/v1/admin/analytics")
         self.assertEqual(response.status_code, 403)
 
+    def test_participant_cannot_read_growth_overview_or_export(self) -> None:
+        client = TestClient(_build_app(_participant()))
+        for path in ('overview', 'growth', 'export.xlsx'):
+            with self.subTest(path=path):
+                self.assertEqual(client.get('/api/v1/admin/analytics/' + path).status_code, 403)
+
     def test_admin_reads_summary(self) -> None:
         app = _build_app(_admin())
         client = TestClient(app)
@@ -187,6 +193,7 @@ class AdminAnalyticsApiTests(unittest.TestCase):
             patch("app.api.v1.admin.build_analytics_payload", new=AsyncMock(return_value=fake_payload)),
             patch("app.api.v1.admin.build_analytics_workbook", return_value=b"fake-xlsx-bytes"),
             patch("app.api.v1.admin.build_analytics_snapshot", new=AsyncMock(return_value=None)),
+            patch("app.api.v1.admin.build_growth_snapshot", new=AsyncMock(return_value=None)),
         ):
             response = client.get("/api/v1/admin/analytics/export.xlsx?section=users")
         self.assertEqual(response.status_code, 200)

@@ -15,3 +15,5 @@
 Все пути app/ относительны корню app, кроме явно указанных tests/scripts/frontend/docs. Сервис использует общую ERA PostgreSQL dpg-d91r19vavr4c73fs837g-a; схему commission и другие сервисы не менять. Тестовые записи только в изолированных базах. Ключи, полные анкеты и дампы в документы/логи не помещать. Render SQL connector read-only; не пытаться обходить транзакционное ограничение. Автодеплой checksPass: второй ручной deploy после merge не запускать.
 
 Аналитика 2.0: services/analytics_snapshot_service.py (build_analytics_snapshot, verified_activity_facts, roster_conditions), tests/test_analytics_snapshot.py. SQL aggregates; 7/30/90 дней; общий snapshot для native overview и basic Excel. Когортная воронка и согласование старых health/efficiency пока не реализованы.
+
+Рост: services/analytics_growth_service.py:build_growth_snapshot; tests/test_analytics_growth.py. Native analytics_filters: analytics_growth, analytics_growth_gaps; admin API /analytics/growth; Excel «Рост 90 дней». Экспорт монтируется напрямую в analytics_filters, исторические management/survey routers не подключать целиком.

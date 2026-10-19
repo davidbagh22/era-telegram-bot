@@ -40,3 +40,15 @@ def test_enum_labels_use_readable_russian_names() -> None:
     labels = _enum_labels(ApplicationStatus, APPLICATION_STATUS_LABELS)
     assert labels["pending"] == "На рассмотрении"
     assert labels["approved"] == "Одобрена"
+
+
+def test_only_guarded_excel_functions_are_mounted_in_analytics_router() -> None:
+    from app.handlers.admin.analytics_filters import router
+    from app.handlers.admin.management_ready import analytics_excel
+    from app.handlers.admin.surveys_analytics import survey_excel
+    from app.handlers.admin.legacy_action_bridge import LEGACY_ADMIN_ACTIONS
+    callbacks = [handler.callback for handler in router.callback_query.handlers]
+    assert callbacks.count(analytics_excel) == 1
+    assert callbacks.count(survey_excel) == 1
+    assert 'admin:analytics:excel:all' not in LEGACY_ADMIN_ACTIONS
+    assert 'admin:analytics:excel:surveys' not in LEGACY_ADMIN_ACTIONS

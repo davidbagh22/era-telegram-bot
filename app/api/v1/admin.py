@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.services.analytics_snapshot_service import build_analytics_snapshot
+from app.services.analytics_growth_service import build_growth_snapshot
 
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -208,6 +209,14 @@ class AnalyticsSummaryOut(BaseModel):
     goals: int
 
 
+@router.get("/analytics/growth")
+async def read_analytics_growth(
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return asdict(await build_growth_snapshot(session))
+
+
 @router.get("/analytics/overview")
 async def read_analytics_overview(
     days: Literal[7, 30, 90] = 30,
@@ -369,6 +378,7 @@ async def export_analytics_excel(
         goals=data.goals,
         contacts=data.contacts,
         sections=EXCEL_SECTION_MAP.get(section),
+        growth=await build_growth_snapshot(session),
         snapshot=await build_analytics_snapshot(session, days=days, timezone_name=settings.timezone),
     )
     return Response(

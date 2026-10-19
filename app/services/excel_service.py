@@ -55,6 +55,7 @@ def build_analytics_workbook(
     contacts: Iterable[Any] = (),
     sections: set[str] | None = None,
     snapshot=None,
+    growth=None,
 ) -> bytes:
     from openpyxl import Workbook
     from openpyxl.chart import BarChart, PieChart, Reference
@@ -300,6 +301,12 @@ def build_analytics_workbook(
             c.organization_name, c.contact_name or "", c.position or "", c.second_contact_name or "", c.second_position or "", c.email or "", c.phone or "", c.notes or "",
         ] for c in contacts])
 
+    if growth is not None:
+        ws = append_sheet("Рост 90 дней", ["Наблюдаемый этап", "Участников", "Конверсия предыдущего этапа, %", "Медиана срока, дней"], [
+            [stage.label, stage.count, stage.conversion, stage.median_days] for stage in growth.stages
+        ])
+        ws.append(["Ограничения", growth.note])
+        ws.append(["Одобрены без истории одобрения", growth.approval_history_missing])
     if snapshot is not None:
         append_sheet("Обзор 2.0", ["Показатель", "Значение", "Прошлый период", "Изменение", "Определение"], [
             [m.label, m.value, m.previous, m.delta, m.note] for m in snapshot.metrics
