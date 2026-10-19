@@ -404,6 +404,11 @@ async def lifespan(app: FastAPI):
     app.state.bot = bot
     app.state.dispatcher = dispatcher
 
+    from app.services.registration_reset_service import apply_registration_reset
+    reset_status = await apply_registration_reset(settings, session_factory, dispatcher.storage, bot.id)
+    if reset_status != "disabled":
+        logger.info("ERA registration reset operation: %s", reset_status)
+
     fixed, failed = await enforce_general_chat_writable(bot, settings, session_factory)
     logger.info("General chat write permissions enforced: fixed=%s failed=%s", fixed, failed)
 

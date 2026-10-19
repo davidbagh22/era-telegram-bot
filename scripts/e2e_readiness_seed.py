@@ -24,7 +24,7 @@ async def seed():
             admin=await session.scalar(select(User).where(User.telegram_id==900003))
             user=User(telegram_id=900011,first_name='E2E Certificate Holder',application_status=ApplicationStatus.APPROVED)
             session.add(user);await session.flush()
-            await complete_onboarding(session,user,actor_id=admin.id,source='e2e')
+            await complete_onboarding(session,user)
             event=Event(title='E2E Подтверждённое участие',description='Only local E2E',event_date=date.today()-timedelta(days=1),
                         event_time=time(12),location='Ереван',format='offline',created_by=admin.id,status=EventStatus.COMPLETED)
             session.add(event);await session.flush()

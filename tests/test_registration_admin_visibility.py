@@ -33,7 +33,10 @@ def test_successful_application_delivery_remains_non_failing() -> None:
 
 def test_admin_bot_has_database_backed_application_recovery() -> None:
     source = (ROOT / "app/handlers/admin/dashboard_block_a.py").read_text(encoding="utf-8")
-    assert '@router.message(Command("applications"))' in source
+    assert '@applications_router.message(Command("applications"))' in source
+    from app.handlers.admin import project_review_router
+    from app.handlers.admin.dashboard_block_a import applications_router
+    assert applications_router.parent_router is project_review_router
     assert "ApplicationStatus.PENDING" in source
     assert "ApplicationStatus.NEEDS_INFO" in source
     assert "User.is_archived.is_not(True)" in source

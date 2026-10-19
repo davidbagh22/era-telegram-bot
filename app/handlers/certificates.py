@@ -13,6 +13,7 @@ from app.database.models import Event, EventRegistration, User
 from app.services import certificate_service as service
 from app.services.certificate_pdf_service import build_certificate_pdf
 from app.services.staff_access_service import can_operate_queue
+from app.services.notification_service import safe_answer_document
 from app.utils.constants import ApplicationStatus, RegistrationStatus
 
 router = Router(name="certificates")
@@ -133,7 +134,7 @@ async def preview(message: Message, user, session, settings, state: FSMContext):
     key = uuid4().hex
     await state.update_data(cert_snapshot=snapshot, cert_hash=service.snapshot_hash(snapshot), cert_key=key)
     await state.set_state(CertificateFlow.confirm)
-    await message.answer_document(BufferedInputFile(build_certificate_pdf(snapshot), filename="ERA_certificate_preview.pdf"),
+    await safe_answer_document(message, BufferedInputFile(build_certificate_pdf(snapshot), filename="ERA_certificate_preview.pdf"),
         caption="Проверьте ФИО, событие, дату, подписанта и оформление. Подтверждением вы утверждаете этот шаблон и основание выдачи. Факсимиле и цифровая подпись не добавляются.",
         reply_markup=kb([("Подтвердить выдачу", f"cert:confirm:{key}")]))
 
@@ -169,7 +170,7 @@ async def download(call: CallbackQuery, user, session, settings):
             or (issue.user_id != user.id and not staff)):
         await call.message.answer("Документ недоступен.")
         return
-    await call.message.answer_document(BufferedInputFile(build_certificate_pdf(issue.snapshot, number=issue.document_number,
+    await safe_answer_document(call.message, BufferedInputFile(build_certificate_pdf(issue.snapshot, number=issue.document_number,
         issued_at=issue.issued_at, revoked=issue.status == "revoked"), filename=f"{issue.document_number}.pdf"),
         caption=f"{issue.document_number} • {'ОТОЗВАН' if issue.status == 'revoked' else 'Выдан'}",
         reply_markup=kb([("Отозвать документ", f"cert:revoke:{issue.id}")]) if staff and issue.status == "issued" else None)

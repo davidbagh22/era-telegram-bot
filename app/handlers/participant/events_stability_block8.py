@@ -10,6 +10,7 @@ from app.config import Settings
 from app.database.models import Event, EventActivity, User
 from app.keyboards.participant import event_list_keyboard
 from app.services.event_card import send_event_card
+from app.services.notification_service import safe_answer_document
 from app.services.event_registration_service import registration_stats
 from app.services.event_service import (
     PUBLIC_EVENT_STATUSES,
@@ -141,11 +142,10 @@ async def event_calendar(call: CallbackQuery, user: User | None, session: AsyncS
         await call.message.answer("Мероприятие недоступно.")
         return
     experience = await session.get(EventExperience, event_id)
-    await call.message.answer_document(
+    await safe_answer_document(call.message,
         BufferedInputFile(build_event_calendar(event, experience, timezone_name=settings.timezone),
                           filename=f"ERA-{event_id}.ics"),
         caption=f"Время события: {settings.timezone}. Импортируйте файл в календарь. После изменения события скачайте актуальную версию.",
-        parse_mode=None,
     )
 
 
