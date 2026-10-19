@@ -9,17 +9,39 @@ from aiogram.types import BufferedInputFile
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.config import Settings
 from app.database.career_models import CareerPortfolioItem, RecommendationRequest
+from app.database.certificate_models import CertificateIssue
 from app.database.models import User
 from app.services import career_service
 from app.services.career_pdf_service import build_career_resume, build_official_recommendation
 from app.services.portfolio_service import build_portfolio_data
 
 router = APIRouter(prefix="/career", tags=["career"])
+
+
+@router.get("/certificates")
+async def my_certificates(user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
+    rows = (await session.scalars(select(CertificateIssue).where(CertificateIssue.user_id == user.id)
+                                  .order_by(CertificateIssue.id.desc()))).all()
+    return [{"id": row.id, "number": row.document_number, "title": row.snapshot["event_title"],
+             "status": row.status, "issued_at": row.issued_at.isoformat()} for row in rows]
+
+
+@router.get("/certificates/{issue_id}.pdf")
+async def certificate_pdf(issue_id: int, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
+    from app.services.certificate_pdf_service import build_certificate_pdf
+    issue = await session.get(CertificateIssue, issue_id)
+    if issue is None or issue.user_id != user.id:
+        raise HTTPException(status_code=404, detail="certificate_not_found")
+    return Response(build_certificate_pdf(issue.snapshot, number=issue.document_number, issued_at=issue.issued_at,
+                                           revoked=issue.status == "revoked"), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{issue.document_number}.pdf"',
+                             "Cache-Control": "private, no-store"})
 
 MAX_EVIDENCE_BYTES = 10 * 1024 * 1024
 ALLOWED_CONTENT_TYPES = {
@@ -160,7 +182,7 @@ async def delete_item(
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, bool]:
     item = _owned_item(await session.get(CareerPortfolioItem, item_id), user)
-    if item.status == "verified":
+    if item.status in {"verified", "revoked"}:
         raise HTTPException(status_code=409, detail="verified_item_locked")
     await session.delete(item)
     await session.commit()
@@ -176,7 +198,7 @@ async def upload_evidence(
     bot: Bot = Depends(get_bot),
 ) -> dict:
     item = _owned_item(await session.get(CareerPortfolioItem, item_id), user)
-    if item.status == "verified":
+    if item.status in {"verified", "revoked"}:
         raise HTTPException(status_code=409, detail="verified_item_locked")
     if upload.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=415, detail="unsupported_evidence_type")

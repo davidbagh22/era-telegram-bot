@@ -19,6 +19,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.career_models import CareerPortfolioItem, CareerProfile, RecommendationRequest
+from app.database.certificate_models import CertificateIssue
 from app.database.models import (
     ConsentLog,
     DataDeletionRequest,
@@ -99,6 +100,7 @@ async def export_user_data(session: AsyncSession, user: User) -> dict[str, Any]:
             .order_by(PortfolioItem.created_at)
         )
     ).all()
+    certificate_rows = (await session.scalars(select(CertificateIssue).where(CertificateIssue.user_id == user.id))).all()
     career_profile = await session.get(CareerProfile, user.id)
     career_items = (
         await session.scalars(
@@ -134,6 +136,7 @@ async def export_user_data(session: AsyncSession, user: User) -> dict[str, Any]:
     return {
         "exported_at": datetime.now().astimezone().isoformat(),
         "profile": profile,
+        "issued_certificates": [_row_to_dict(row, ("id", "event_id", "revision", "status", "snapshot", "issued_at", "revoked_at", "revocation_reason")) | {"number": row.document_number} for row in certificate_rows],
         "consent_log": [
             _row_to_dict(row, ("consent_type", "policy_version", "granted", "source", "created_at"))
             for row in consent_rows
@@ -161,7 +164,7 @@ async def export_user_data(session: AsyncSession, user: User) -> dict[str, Any]:
                 (
                     "item_type", "title", "organization", "description", "issued_at", "url",
                     "file_name", "status", "include_in_resume", "admin_comment", "submitted_at",
-                    "verified_at", "created_at", "updated_at",
+                    "verified_at", "created_at",
                 ),
             )
             for row in career_items
@@ -262,7 +265,21 @@ async def fulfill_deletion_request(
         # data. Remove their DB records when deletion is approved. Telegram file
         # identifiers become unreachable from ERA after these rows are removed.
         await session.execute(delete(RecommendationRequest).where(RecommendationRequest.user_id == target.id))
-        await session.execute(delete(CareerPortfolioItem).where(CareerPortfolioItem.user_id == target.id))
+        certificates = (await session.scalars(select(CertificateIssue).where(CertificateIssue.user_id == target.id))).all()
+        retained = []
+        for certificate in certificates:
+            certificate.snapshot = {**certificate.snapshot, "full_name": "Удалённый пользователь", "signatory": "ЭРА"}
+            certificate.status = "revoked"
+            certificate.revoked_at = certificate.revoked_at or datetime.now().astimezone()
+            certificate.revocation_reason = "Персональные данные удалены"
+            retained.append(certificate.portfolio_item_id)
+            item = await session.get(CareerPortfolioItem, certificate.portfolio_item_id)
+            if item:
+                item.status, item.title = "revoked", certificate.document_number
+                item.description = item.file_id = item.url = item.organization = item.file_name = item.admin_comment = None
+        await session.flush()
+        await session.execute(delete(CareerPortfolioItem).where(CareerPortfolioItem.user_id == target.id,
+                                                               CareerPortfolioItem.id.not_in(retained or [-1])))
         await session.execute(delete(CareerProfile).where(CareerProfile.user_id == target.id))
         request.status = FULFILLED
         action = "user.deletion_fulfilled"

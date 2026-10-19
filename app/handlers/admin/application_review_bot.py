@@ -2,14 +2,13 @@
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
 from app.database.models import User
-from app.keyboards.admin import admin_home_keyboard
-from app.services.admin_dashboard_service import has_dashboard_access
+from app.services.staff_access_service import can_operate_queue
 from app.services.application_review_service import (
     application_review_version, approve_application, deliver_application_notices,
     reject_application, request_more_info, stage_application_notice,
@@ -55,13 +54,13 @@ async def _finish(message, session, bot, settings, target, *, action, comment, a
     await session.commit()
     await deliver_application_notices(bot, settings, factory, only_key=key)
     await message.answer(f'✅ {label}. Решение сохранено.',
-                         reply_markup=admin_home_keyboard(settings.effective_miniapp_url))
+                         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Заявки", callback_data="admin:applications")]]))
 
 
 @router.callback_query(F.data.regexp(r'^admin:application_action:(approve|reject|info):\d+:\d+$'))
 async def application_action(call: CallbackQuery, user: User | None, settings: Settings,
                              session: AsyncSession, state: FSMContext, bot: Bot) -> None:
-    if not has_dashboard_access(user, settings, call.from_user.id):
+    if not await can_operate_queue(session, user, settings, "applications.review", telegram_id=call.from_user.id):
         await call.answer(texts.NO_ACCESS, show_alert=True)
         return
     _, _, action, raw_id, raw_revision = call.data.split(':')
@@ -84,7 +83,7 @@ async def application_action(call: CallbackQuery, user: User | None, settings: S
 @router.message(ApplicationComment.text)
 async def application_comment(message: Message, user: User | None, settings: Settings,
                               session: AsyncSession, state: FSMContext, bot: Bot) -> None:
-    if not has_dashboard_access(user, settings, message.from_user.id):
+    if not await can_operate_queue(session, user, settings, "applications.review", telegram_id=message.from_user.id):
         await message.answer(texts.NO_ACCESS)
         return
     comment = (message.text or '').strip()

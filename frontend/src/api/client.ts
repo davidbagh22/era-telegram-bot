@@ -262,9 +262,12 @@ export function fetchHome(): Promise<HomeSnapshot> {
 
 // Mini App equivalent of the Bot's "🏆 Рейтинг" (cabinet:rating) — see
 // app/services/leaderboard_service.py.
-export function fetchLeaderboard(): Promise<Leaderboard> {
-  return authorizedGet<Leaderboard>("/api/v1/leaderboard");
+export function fetchLeaderboard(seasonId?: string): Promise<Leaderboard> {
+  return authorizedGet<Leaderboard>("/api/v1/leaderboard" + (seasonId ? `?season_id=${encodeURIComponent(seasonId)}` : ""));
 }
+
+export interface RankingSeason { id: string; title: string; starts_at: string; ends_at: string; timezone: string; rules: string; status: string }
+export function fetchRankingSeasons(): Promise<RankingSeason[]> { return authorizedGet<RankingSeason[]>("/api/v1/ranking-seasons"); }
 
 // DELTA ToR §52-54: Топ недели widget on Home — always the fixed top-5.
 export function fetchWeeklyLeaderboard(): Promise<Leaderboard> {
@@ -1171,6 +1174,15 @@ export async function downloadResumePdf(): Promise<Blob> {
   if (!response.ok) {
     throw new ApiError(response.status, await parseErrorDetail(response));
   }
+  return response.blob();
+}
+
+export async function downloadEventCalendar(eventId: number): Promise<Blob> {
+  if (!sessionToken) throw new ApiError(401, "missing_token");
+  const response = await fetch(`${API_BASE_URL}/api/v1/events/${eventId}/calendar.ics`, {
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!response.ok) throw new ApiError(response.status, await parseErrorDetail(response));
   return response.blob();
 }
 

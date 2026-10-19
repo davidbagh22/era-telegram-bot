@@ -51,7 +51,6 @@ router.include_router(analytics_filters.router)
 router.include_router(commands_ready.router)
 router.include_router(version_command.router)
 router.include_router(dashboard_block_a.router)
-router.include_router(application_review_bot.router)
 router.include_router(campaign_control.router)
 router.include_router(task_review_block2.router)
 router.include_router(rights_block6.router)
@@ -85,3 +84,10 @@ project_review_router.include_router(literature_editor.router)
 project_review_router.include_router(support_bot.router)
 from app.handlers.staff_operations import router as staff_operations_router
 project_review_router.include_router(staff_operations_router)
+from app.handlers.certificates import router as certificates_router
+project_review_router.include_router(certificates_router)
+from app.handlers.ranking_seasons import router as ranking_seasons_router
+project_review_router.include_router(ranking_seasons_router)
+
+project_review_router.include_router(dashboard_block_a.applications_router)
+project_review_router.include_router(application_review_bot.router)

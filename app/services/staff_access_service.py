@@ -7,16 +7,17 @@ from app.services.leadership_permission_service import has_scoped_permission
 from app.utils.constants import ApplicationStatus
 
 
-async def can_operate_queue(session, user, settings, permission):
+async def can_operate_queue(session, user, settings, permission, *, telegram_id=None):
     if user is None:
-        return False
+        return telegram_id in settings.admin_ids if telegram_id is not None else False
     actor = await session.scalar(select(User).where(User.id == user.id)
                                  .execution_options(populate_existing=True))
-    if (actor is None or actor.is_blocked or actor.is_archived
-            or actor.application_status != ApplicationStatus.APPROVED):
+    if actor is None or actor.is_blocked or actor.is_archived:
         return False
     if is_full_admin(actor, settings, actor.telegram_id):
         return True
+    if actor.application_status != ApplicationStatus.APPROVED:
+        return False
     if permission == 'support.manage':
         from app.services.feature_flags import Feature, feature_enabled
         if not feature_enabled(settings, Feature.SUPPORT_THREADS, actor.telegram_id):

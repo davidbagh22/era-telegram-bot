@@ -6,7 +6,7 @@ from datetime import date
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -161,6 +161,16 @@ def _automatic_application_markup(miniapp_url: str, user_id: int) -> InlineKeybo
 async def build_admin_user_card(
     session: AsyncSession, target: User, *, mode: str = "profile"
 ) -> AdminUserCard:
+    # Registration creates a User in this same session. selectin relationships
+    # are not populated merely by INSERT/commit, and reading them synchronously
+    # below would issue async IO outside greenlet_spawn. Reload only unloaded
+    # attributes, under await, without replacing pending in-memory edits.
+    state = inspect(target)
+    if state.persistent:
+        required = {"departments", "directions", "permission_grants", "created_at"}
+        missing = sorted(required & state.unloaded)
+        if missing:
+            await session.refresh(target, attribute_names=missing)
     photo_file_id, social_text = await _socials(session, target.id)
     points, portfolio_count, badge_names = await _activity_summary(session, target)
     base = [

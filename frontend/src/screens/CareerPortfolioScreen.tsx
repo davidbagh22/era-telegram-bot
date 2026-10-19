@@ -10,6 +10,9 @@ import {
   updateCareerItem,
   updateCareerProfile,
   uploadCareerEvidence,
+  fetchCertificates,
+  downloadCertificate,
+  type IssuedCertificate,
 } from "../api/career";
 import { ActionCell } from "../components/ActionCell";
 import { BottomSheet } from "../components/BottomSheet";
@@ -45,6 +48,7 @@ const STATUS_META: Record<string, { label: string; mark: string }> = {
   pending: { label: "На проверке", mark: "◌" },
   verified: { label: "Подтверждено ЭРА", mark: "✓" },
   rejected: { label: "Нужно уточнить", mark: "!" },
+  revoked: { label: "Отозвано", mark: "!" },
 };
 
 const EMPTY_FORM: CareerItemPayload = {
@@ -93,7 +97,7 @@ function ItemCard({
   onDelete: () => void;
 }) {
   const status = STATUS_META[item.status] ?? STATUS_META.self_reported;
-  const canEdit = item.status !== "verified";
+  const canEdit = !["verified", "revoked"].includes(item.status);
   const canVerify = canEdit && item.status !== "pending" && (item.has_file || Boolean(item.url));
   return (
     <Card>
@@ -166,6 +170,13 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const toast = useToast();
+  const [certificates, setCertificates] = useState<IssuedCertificate[]>([]);
+  const [certificateError, setCertificateError] = useState(false);
+  const loadCertificates = useCallback(() => {
+    fetchCertificates().then((rows) => { setCertificates(rows); setCertificateError(false); })
+      .catch(() => setCertificateError(true));
+  }, []);
+  useEffect(loadCertificates, [loadCertificates]);
 
   const refresh = useCallback(async () => {
     try {
@@ -300,6 +311,15 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
   return (
     <div className="era-page era-stagger" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
       <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← Профиль</button>
+
+      {certificateError && <button type="button" onClick={loadCertificates}>Не удалось загрузить сертификаты. Повторить</button>}
+      {certificates.length > 0 && <section aria-label="Сертификаты ЭРА">
+        <h2>Сертификаты ЭРА</h2>
+        {certificates.map((cert) => <ActionCell key={cert.id} title={cert.title}
+          description={`${cert.number} • ${cert.status === "revoked" ? "Отозван" : "Выдан"}`} meta="PDF"
+          onClick={() => { void downloadCertificate(cert.id).then((blob) => saveBlob(blob, `${cert.number}.pdf`))
+            .catch(() => toast.show("Не удалось скачать сертификат", "error")); }} />)}
+      </section>}
 
       <Card gradient>
         <p style={{ margin: "0 0 0.3rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Профессиональный профиль</p>

@@ -640,6 +640,9 @@ async def recover_general_content(bot: Bot, settings: Settings, session_factory)
 
 def create_scheduler(bot: Bot, settings: Settings, session_factory) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=settings.timezone)
+    from app.services.ranking_season_service import close_ranking_seasons
+    scheduler.add_job(close_ranking_seasons, "interval", minutes=5, args=(session_factory,),
+                      id="ranking-season-close", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(
         send_event_reminders,
         "interval",

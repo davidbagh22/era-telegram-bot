@@ -1,4 +1,5 @@
-import { fetchLeaderboard } from "../api/client";
+import { useState } from "react";
+import { fetchLeaderboard, fetchRankingSeasons } from "../api/client";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
@@ -75,7 +76,9 @@ function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
 }
 
 export function LeaderboardScreen({ onBack }: LeaderboardScreenProps) {
-  const state = useAsync(fetchLeaderboard, []);
+  const [seasonId, setSeasonId] = useState("");
+  const seasons = useAsync(fetchRankingSeasons, []);
+  const state = useAsync(() => fetchLeaderboard(seasonId || undefined), [seasonId]);
 
   return (
     <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -88,6 +91,14 @@ export function LeaderboardScreen({ onBack }: LeaderboardScreenProps) {
         </h1>
       </div>
 
+      {seasons.status === "ready" && seasons.data.length > 0 && <label>Период рейтинга
+        <select value={seasonId} onChange={(e) => setSeasonId(e.target.value)}>
+          <option value="">За всё время</option>
+          {[...seasons.data].sort((a,b) => b.starts_at.localeCompare(a.starts_at)).map((s) =>
+            <option key={s.id} value={s.id}>{s.title}{s.status === "closed" ? " • архив" : s.status === "upcoming" ? " • скоро" : ""}</option>)}
+        </select>
+        {seasonId && <p>{seasons.data.find((s) => s.id === seasonId)?.rules}</p>}
+      </label>}
       {state.status === "loading" && <SkeletonList count={6} />}
 
       {state.status === "error" && (

@@ -6,7 +6,7 @@ from aiogram.filters import Command
 import logging
 
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -145,7 +145,10 @@ async def _send_rating(message: Message, user: User, session: AsyncSession) -> N
     ]
     await message.answer(
         texts.rating_text(names, place, current_points),
-        reply_markup=back_keyboard("menu:main"),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Сезоны рейтинга", callback_data="season:list")],
+            [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
+        ]),
     )
 
 

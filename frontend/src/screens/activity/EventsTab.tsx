@@ -4,6 +4,7 @@ import {
   describeActionError,
   fetchEventActivities,
   fetchEvents,
+  downloadEventCalendar,
   registerForEvent,
 } from "../../api/client";
 import { BottomSheet } from "../../components/BottomSheet";
@@ -51,34 +52,27 @@ function posterSrc(event: EventItem): string | null {
   return `${API_BASE_URL}/api/v1/event-posters/${event.id}`;
 }
 
-function addToCalendar(event: EventItem): void {
-  const pad = (value: string) => value.replace(/[-:]/g, "");
-  const start = `${pad(event.event_date)}T${pad(event.event_time)}00`;
-  const endTime = event.end_time ?? event.event_time;
-  const end = `${pad(event.event_date)}T${pad(endTime)}00`;
-  const description = (event.full_description ?? event.description).replace(/\n/g, "\\n");
-  const location = [event.location, event.address].filter(Boolean).join(", ");
-  const ics = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//ERA//Events//RU",
-    "BEGIN:VEVENT",
-    `UID:era-event-${event.id}`,
-    `DTSTART:${start}`,
-    `DTEND:${end}`,
-    `SUMMARY:${event.title}`,
-    `DESCRIPTION:${description}`,
-    `LOCATION:${location}`,
-    "END:VEVENT",
-    "END:VCALENDAR",
-  ].join("\r\n");
-  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `ERA-${event.id}.ics`;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 500);
+function EventCalendarButton({ event }: { event: EventItem }) {
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  async function download() {
+    setBusy(true);
+    try {
+      const blob = await downloadEventCalendar(event.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `ERA-${event.id}.ics`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      toast.show("Откройте файл в календаре. После изменения события скачайте новую версию.");
+    } catch {
+      toast.show("Не удалось получить календарь. Попробуйте ещё раз или скачайте его в боте.", "error");
+    } finally { setBusy(false); }
+  }
+  return <button type="button" disabled={busy} onClick={() => void download()}>{busy ? "Готовим календарь…" : "Добавить в календарь"}</button>;
 }
 
 function EventActivitiesPanel({ eventId }: { eventId: number }) {
@@ -178,7 +172,7 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
   const waitlisted = event.registration_status === WAITLIST_STATUS;
 
   return (
-    <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.85rem", paddingBottom: "7.2rem" }}>
+    <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.85rem", paddingBottom: "calc(var(--era-page-bottom-safe, 10rem) + 5rem)" }}>
       <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← К событиям</button>
       <EventPoster event={event} />
 
@@ -265,7 +259,7 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
       {registered && <EventAttendancePanel eventId={event.id} />}
 
       {event.project_id && <button type="button" onClick={() => { window.location.hash = `#/projects/${event.project_id}`; }}>Открыть связанный проект →</button>}
-      <button type="button" onClick={() => addToCalendar(event)}>Добавить в календарь</button>
+      <EventCalendarButton event={event} />
       {event.chat_url && <a href={event.chat_url} target="_blank" rel="noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть чат</a>}
       {event.contact && <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.86rem" }}>Связь: {event.contact}</p>}
       {actionError && <p style={{ color: "var(--era-error)", margin: 0 }}>{actionError}</p>}
@@ -456,7 +450,7 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
                   <span style={{ color: "var(--era-text-muted)" }}>{formatDate(registrationSuccess.event_date)} · {registrationSuccess.event_time}</span>
                   <span style={{ color: "var(--era-text-muted)" }}>{registrationSuccess.location}</span>
                 </div>
-                <button type="button" className="era-btn-primary" onClick={() => addToCalendar(registrationSuccess)}>Добавить в календарь</button>
+                <EventCalendarButton event={registrationSuccess} />
                 <button type="button" onClick={() => setRegistrationSuccess(null)}>Готово</button>
               </div>
             )}

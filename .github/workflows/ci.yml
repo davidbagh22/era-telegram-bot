@@ -113,6 +113,8 @@ jobs:
 
       - name: Prove scoped project reviewer and decision races on PostgreSQL
         run: python scripts/postgres_project_review_race.py
+      - name: Prove certificate issuance and ranking season races on PostgreSQL
+        run: python scripts/postgres_certificate_season_race.py
 
   frontend:
     runs-on: ubuntu-latest
@@ -186,6 +188,8 @@ jobs:
           python -m pytest -q tests/test_fsm_persistence.py
       - name: Seed E2E fixtures (participant/leader/admin/pending applicant)
         run: python scripts/e2e_seed.py
+      - name: Seed isolated certificate and season acceptance fixtures
+        run: python scripts/e2e_readiness_seed.py
       - name: Start backend
         run: |
           nohup python -m uvicorn app.webapp:app --host 127.0.0.1 --port 8000 > uvicorn.log 2>&1 &
