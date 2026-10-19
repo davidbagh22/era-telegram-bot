@@ -107,6 +107,20 @@ class ProjectWorkspaceServiceTests(unittest.IsolatedAsyncioTestCase):
             await claim_project_review(session, project.id, reviewer, self.settings, release=True)
             self.assertIsNone(await assigned_project_reviewer(session, project.id))
 
+    async def test_cached_admin_profile_does_not_survive_revocation(self):
+        from sqlalchemy import update
+        async with self.session_factory() as session:
+            author = await self._make_user(session, 11, "Author")
+            reviewer = await self._make_user(session, 12, "Admin", role=Role.ADMIN)
+            project = self._project(author_id=author.id)
+            session.add(project)
+            await session.flush()
+            self.assertTrue(await project_workspace_service.can_review_projects(session, reviewer, self.settings, project))
+            await session.execute(update(User).where(User.id == reviewer.id).values(role=Role.PARTICIPANT)
+                                  .execution_options(synchronize_session=False))
+            self.assertEqual(reviewer.role, Role.ADMIN)
+            self.assertFalse(await project_workspace_service.can_review_projects(session, reviewer, self.settings, project))
+
     async def test_role_application_approval_and_capacity(self) -> None:
         async with self.session_factory() as session:
             author = await self._make_user(session, 1, "Leader")

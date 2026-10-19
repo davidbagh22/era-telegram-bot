@@ -239,7 +239,10 @@ class AdminProjectsApiTests(unittest.TestCase):
         session = SimpleNamespace(get=AsyncMock(return_value=project))
         app = _build_app(_admin(), session)
         client = TestClient(app)
-        with patch("app.api.v1.admin.can_review_projects", new=AsyncMock(return_value=True)):
+        with (
+            patch("app.api.v1.admin.can_review_projects", new=AsyncMock(return_value=True)),
+            patch("app.api.v1.admin.can_review_any_projects", new=AsyncMock(return_value=True)),
+        ):
             response = client.post(
                 "/api/v1/admin/projects/20/decide",
                 json={"action": "not_real", "comment": "ok"},
@@ -250,7 +253,10 @@ class AdminProjectsApiTests(unittest.TestCase):
         session = SimpleNamespace()
         app = _build_app(_admin(), session)
         client = TestClient(app)
-        with patch("app.api.v1.admin.can_review_projects", new=AsyncMock(return_value=True)):
+        with (
+            patch("app.api.v1.admin.can_review_projects", new=AsyncMock(return_value=True)),
+            patch("app.api.v1.admin.can_review_any_projects", new=AsyncMock(return_value=True)),
+        ):
             response = client.post(
                 "/api/v1/admin/projects/20/decide",
                 json={"action": "reject", "comment": ""},
@@ -261,7 +267,10 @@ class AdminProjectsApiTests(unittest.TestCase):
         session = SimpleNamespace(get=AsyncMock(return_value=None))
         app = _build_app(_admin(), session)
         client = TestClient(app)
-        with patch("app.api.v1.admin.can_review_projects", new=AsyncMock(return_value=True)):
+        with (
+            patch("app.api.v1.admin.can_review_projects", new=AsyncMock(return_value=True)),
+            patch("app.api.v1.admin.can_review_any_projects", new=AsyncMock(return_value=True)),
+        ):
             response = client.post(
                 "/api/v1/admin/projects/999/decide",
                 json={"action": "reject", "comment": "no"},

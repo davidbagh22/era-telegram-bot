@@ -1,5 +1,5 @@
 """Project reviewer ownership without changing existing project IDs or form data."""
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.database.models import AppSetting, Project
 from app.services.audit_service import audit
@@ -48,8 +48,8 @@ async def claim_project_review(session, project_id, actor, settings, *, release=
 
 async def project_review_recipients(session, project, settings):
     """Private reviewer inboxes only; no project files in the leaders' group."""
-    from app.database.models import User
-    from app.utils.constants import ApplicationStatus
+    from app.database.models import Office, PermissionGrant, User, UserOffice
+    from app.utils.constants import ApplicationStatus, Role
     assigned_id = await assigned_project_reviewer(session, project.id)
     if assigned_id:
         assigned = await session.get(User, assigned_id)
@@ -57,7 +57,17 @@ async def project_review_recipients(session, project, settings):
                 and assigned.application_status == ApplicationStatus.APPROVED
                 and await can_review_projects(session, assigned, settings, project)):
             return {assigned.telegram_id}
+    manual_ids = select(PermissionGrant.user_id).where(
+        PermissionGrant.permission == 'projects.review', PermissionGrant.is_active.is_(True))
+    office_rows = (await session.execute(select(UserOffice.user_id, Office.permission_template)
+        .join(Office, Office.id == UserOffice.office_id)
+        .where(UserOffice.is_active.is_(True), Office.is_active.is_(True)))).all()
+    office_ids = {user_id for user_id, template in office_rows if 'projects.review' in (template or [])}
+    # This is only a candidate inventory; exact scope and current appointment
+    # dates are still checked per person below.
     candidates = (await session.scalars(select(User).where(
+        or_(User.role == Role.ADMIN, User.telegram_id.in_(settings.admin_ids),
+            User.id.in_(manual_ids), User.id.in_(office_ids)),
         User.is_blocked.is_(False), User.is_archived.is_(False),
         User.application_status == ApplicationStatus.APPROVED,
     ))).all()

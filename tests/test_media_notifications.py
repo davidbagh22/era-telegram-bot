@@ -125,7 +125,10 @@ def test_submission_media_notifications_use_safe_helpers() -> None:
     assert "await bot.send_photo(chat_id, submission.file_id" not in activity_source
     assert "await bot.send_document(chat_id, submission.file_id" not in activity_source
 
-    assert "safe_send_document" in project_source
+    project_notifier_source = (ROOT / "app/services/project_review_notification_service.py").read_text(encoding="utf-8")
+    assert "notify_project_reviewers" in project_source
+    assert "safe_send_document" in project_notifier_source
+    assert "await bot.send_document" not in project_notifier_source
     assert "await bot.send_document(chat_id, BufferedInputFile" not in project_source
 
     assert "safe_send_photo" in event_card_source

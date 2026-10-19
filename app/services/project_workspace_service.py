@@ -62,6 +62,9 @@ async def can_review_projects(
     session: AsyncSession, user: User | None, settings: Settings,
     project: Project | None = None,
 ) -> bool:
+    if user is None:
+        return False
+    user = await session.get(User, user.id, populate_existing=True)
     if not _is_active_user(user):
         return False
     if is_full_admin(user, settings, user.telegram_id):
@@ -86,6 +89,9 @@ async def can_review_projects(
 
 async def can_review_any_projects(session, user, settings) -> bool:
     """Inventory gate only; every project still requires an object check."""
+    if user is None:
+        return False
+    user = await session.get(User, user.id, populate_existing=True)
     if not _is_active_user(user):
         return False
     if is_full_admin(user, settings, user.telegram_id):
