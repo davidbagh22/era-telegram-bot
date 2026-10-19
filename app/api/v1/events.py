@@ -280,7 +280,7 @@ async def read_event_calendar(
         raise HTTPException(status_code=404, detail="event_not_found")
     registration = await _get_registration(session, event_id, user.id)
     if event.status not in PUBLIC_EVENT_STATUSES and not (
-        registration and event.status in {EventStatus.CANCELLED, EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED}
+        registration and event.status in {EventStatus.ACTIVE, EventStatus.CANCELLED, EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED}
     ):
         raise HTTPException(status_code=404, detail="event_not_found")
     experience = await session.get(EventExperience, event_id)

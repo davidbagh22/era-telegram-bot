@@ -60,7 +60,7 @@ async def _finish(message, session, bot, settings, target, *, action, comment, a
 @router.callback_query(F.data.regexp(r'^admin:application_action:(approve|reject|info):\d+:\d+$'))
 async def application_action(call: CallbackQuery, user: User | None, settings: Settings,
                              session: AsyncSession, state: FSMContext, bot: Bot) -> None:
-    if not await can_operate_queue(session, user, settings, "applications.review"):
+    if not await can_operate_queue(session, user, settings, "applications.review", telegram_id=call.from_user.id):
         await call.answer(texts.NO_ACCESS, show_alert=True)
         return
     _, _, action, raw_id, raw_revision = call.data.split(':')
@@ -83,7 +83,7 @@ async def application_action(call: CallbackQuery, user: User | None, settings: S
 @router.message(ApplicationComment.text)
 async def application_comment(message: Message, user: User | None, settings: Settings,
                               session: AsyncSession, state: FSMContext, bot: Bot) -> None:
-    if not await can_operate_queue(session, user, settings, "applications.review"):
+    if not await can_operate_queue(session, user, settings, "applications.review", telegram_id=message.from_user.id):
         await message.answer(texts.NO_ACCESS)
         return
     comment = (message.text or '').strip()

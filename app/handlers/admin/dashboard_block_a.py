@@ -172,7 +172,7 @@ async def _application_guard(event, user, settings, session):
         message = event.message
     else:
         message = event
-    if not await can_operate_queue(session, user, settings, "applications.review"):
+    if not await can_operate_queue(session, user, settings, "applications.review", telegram_id=event.from_user.id):
         await message.answer(texts.NO_ACCESS)
         return False
     return True

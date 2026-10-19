@@ -137,7 +137,7 @@ async def event_calendar(call: CallbackQuery, user: User | None, session: AsyncS
     registration = await session.scalar(select(EventRegistration).where(
         EventRegistration.event_id == event_id, EventRegistration.user_id == user.id))
     if event is None or (event.status not in PUBLIC_EVENT_STATUSES and not (
-        registration and event.status in {EventStatus.CANCELLED, EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED}
+        registration and event.status in {EventStatus.ACTIVE, EventStatus.CANCELLED, EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED}
     )):
         await call.message.answer("Мероприятие недоступно.")
         return

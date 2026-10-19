@@ -77,6 +77,15 @@ async def main():
             row=await session.get(AppSetting,sid)
             assert row.value['results']==[]
             assert await session.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.action=='ranking.season_closed'))==1
+        from app.services import data_rights_service
+        async with sessions() as session:
+            holder=await session.get(User,uid)
+            deletion=await data_rights_service.request_deletion(session,holder,None)
+            await data_rights_service.fulfill_deletion_request(session,deletion,admin=await session.get(User,aid),approve=True)
+            await session.commit()
+            assert (await session.get(CertificateIssue,newids[0])).status=='revoked'
+            assert await session.scalar(select(func.count()).select_from(CertificateIssue).where(CertificateIssue.user_id==uid))==2
+        print('PostgreSQL: approved anonymization preserves certificate numbers without foreign-key violations')
         print('PostgreSQL: 8 concurrent issues -> 1 certificate; 8 revocations -> 1 audit; 8 corrections -> 1 new revision; 8 season creations/closures -> 1 definition and 1 archive')
     finally:
         await engine.dispose()

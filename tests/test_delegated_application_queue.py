@@ -25,3 +25,13 @@ def test_only_application_handlers_move_outside_full_admin_root():
     assert router.message.filter is not None
     from app.handlers.admin.legacy_action_bridge import LEGACY_ADMIN_ACTIONS
     assert 'admin:applications' not in LEGACY_ADMIN_ACTIONS
+
+
+def test_configured_bootstrap_admin_can_open_applications_without_profile():
+    from app.config import Settings
+    async def scenario():
+        settings=Settings(bot_token='0000000000:TEST',admin_ids=[12])
+        message=SimpleNamespace(from_user=SimpleNamespace(id=12),answer=AsyncMock())
+        assert await _application_guard(message,None,settings,None)
+        message.answer.assert_not_awaited()
+    asyncio.run(scenario())

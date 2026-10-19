@@ -72,3 +72,7 @@ def test_calendar_endpoint_private_download_and_hidden_event_denial():
     assert client_for(event(), approved=False).get("/api/v1/events/42/calendar.ics").status_code == 403
     assert client_for(event(status=EventStatus.CANCELLED)).get("/api/v1/events/42/calendar.ics").status_code == 404
     assert client_for(event(status=EventStatus.CANCELLED), registered=True).get("/api/v1/events/42/calendar.ics").status_code == 200
+
+
+def test_registered_participant_can_export_active_event():
+    assert client_for(event(status=EventStatus.ACTIVE), registered=True).get("/api/v1/events/42/calendar.ics").status_code == 200

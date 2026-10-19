@@ -78,6 +78,21 @@ def test_issuance_revocation_reissue_and_current_permissions():
                 assert new.revision==2 and new.id!=issue.id
                 assert await session.scalar(select(func.count()).select_from(CertificateIssue)) == 2
                 await session.commit()
+                # Personal export includes the registry; approved erasure keeps
+                # document numbers but removes holder PII without breaking FKs.
+                from app.services import data_rights_service
+                await session.refresh(target, attribute_names=['departments','directions'])
+                exported=await data_rights_service.export_user_data(session,target)
+                assert len(exported['issued_certificates'])==2
+                assert exported['issued_certificates'][-1]['snapshot']['full_name']==new_snapshot['full_name']
+                deletion=await data_rights_service.request_deletion(session,target,None)
+                await data_rights_service.fulfill_deletion_request(session,deletion,admin=actor,approve=True)
+                await session.commit()
+                await session.refresh(new)
+                assert new.status=='revoked' and new.snapshot['full_name']=='Удалённый пользователь'
+                assert new.snapshot['signatory']=='ЭРА'
+                assert (await session.get(PortfolioItem,new.portfolio_item_id)).status=='revoked'
+
         finally:
             await engine.dispose()
     asyncio.run(scenario())
