@@ -3,7 +3,7 @@ import asyncio
 import os
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -54,6 +54,13 @@ async def main():
         winners = await asyncio.wait_for(asyncio.gather(*(claim(i) for i in reviewer_ids)), 45)
         assert len([i for i in winners if i is not None]) == 1, winners
         winner = next(i for i in winners if i is not None)
+        async with sessions() as session:
+            await session.execute(update(PermissionGrant).where(PermissionGrant.user_id == winner)
+                                  .values(is_active=False))
+            await session.commit()
+        recovered = await asyncio.wait_for(asyncio.gather(*(claim(i) for i in reviewer_ids)), 45)
+        assert len([i for i in recovered if i is not None]) == 1, recovered
+        winner = next(i for i in recovered if i is not None)
 
         async def decide(action):
             async with sessions() as session:
@@ -78,7 +85,7 @@ async def main():
                 AuditLog.action == 'project_review_decision')) == 1
             assert await session.scalar(select(func.count()).select_from(AppSetting).where(
                 AppSetting.key.like(f'project-review-notice:{project_id}:%'))) == 1
-        print('PostgreSQL: one owner from 8 claims; one decision and notice from 8 approvals; 8 stale rejections blocked')
+        print('PostgreSQL: one owner from 8 claims, revoked owner recovered once; one decision and notice from 8 approvals; 8 stale rejections blocked')
     finally:
         await engine.dispose()
 

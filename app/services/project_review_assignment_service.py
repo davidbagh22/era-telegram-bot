@@ -21,6 +21,18 @@ async def assigned_project_reviewer(session, project_id):
     return data.get('reviewer_id')
 
 
+async def active_project_reviewer(session, project, settings):
+    """A revoked owner leaves a historical assignment, not a queue lock."""
+    from app.database.models import User
+    reviewer_id = await assigned_project_reviewer(session, project.id)
+    if reviewer_id is None or reviewer_id == project.author_id:
+        return None
+    reviewer = await session.get(User, reviewer_id, populate_existing=True)
+    if reviewer and await can_review_projects(session, reviewer, settings, project):
+        return reviewer_id
+    return None
+
+
 async def claim_project_review(session, project_id, actor, settings, *, release=False):
     project = await session.scalar(select(Project).where(Project.id == project_id)
                                    .with_for_update().execution_options(populate_existing=True))
@@ -30,7 +42,8 @@ async def claim_project_review(session, project_id, actor, settings, *, release=
         raise PermissionError('project_self_review')
     if project.status not in {ProjectStatus.PENDING_REVIEW, ProjectStatus.INITIAL_REVIEW, ProjectStatus.VENUE_REVIEW}:
         raise ValueError('project_review_stale')
-    current = await assigned_project_reviewer(session, project.id)
+    previous = await assigned_project_reviewer(session, project.id)
+    current = await active_project_reviewer(session, project, settings)
     if current not in {None, actor.id} and not is_full_admin(actor, settings, actor.telegram_id):
         raise PermissionError('project_review_assigned')
     reviewer_id = None if release else actor.id
@@ -41,7 +54,7 @@ async def claim_project_review(session, project_id, actor, settings, *, release=
         row.value = {'reviewer_id': reviewer_id}
     await audit(session, actor_id=actor.id, action='project.review.assignment',
                 entity_type='project', entity_id=project.id,
-                old_value={'reviewer_id': current}, new_value={'reviewer_id': reviewer_id})
+                old_value={'reviewer_id': previous}, new_value={'reviewer_id': reviewer_id})
     await session.flush()
     return reviewer_id
 
@@ -50,7 +63,7 @@ async def project_review_recipients(session, project, settings):
     """Private reviewer inboxes only; no project files in the leaders' group."""
     from app.database.models import Office, PermissionGrant, User, UserOffice
     from app.utils.constants import ApplicationStatus, Role
-    assigned_id = await assigned_project_reviewer(session, project.id)
+    assigned_id = await active_project_reviewer(session, project, settings)
     if assigned_id:
         assigned = await session.get(User, assigned_id)
         if (assigned and assigned.telegram_id > 0

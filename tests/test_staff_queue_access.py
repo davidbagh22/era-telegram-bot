@@ -58,7 +58,13 @@ class StaffQueueAccessTests(IsolatedAsyncioTestCase):
             await session.flush()
             self.assertEqual((await support_thread(session, item.id, staff.id, self.settings, staff=True)).id, item.id)
             self.assertIn(staff.id, [u.id for u in await support_assignees(session, self.settings)])
+            self.settings.feature_support_threads = 'TESTERS'
+            self.settings.support_thread_tester_ids = [99]
+            self.assertFalse(await can_operate_queue(session, staff, self.settings, 'support.manage'))
+            self.settings.support_thread_tester_ids = [2, 3]
+            self.assertTrue(await can_operate_queue(session, staff, self.settings, 'support.manage'))
             self.settings.feature_support_threads = 'OFF'
             with self.assertRaises(PermissionError):
                 await support_thread(session, item.id, staff.id, self.settings, staff=True)
             self.assertEqual(await support_assignees(session, self.settings), [])
+            self.assertFalse(await can_operate_queue(session, staff, self.settings, 'support.manage'))

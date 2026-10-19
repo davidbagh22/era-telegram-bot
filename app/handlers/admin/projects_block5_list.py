@@ -10,7 +10,7 @@ from app.config import Settings
 from app.database.models import Project, User
 from app.services.notification_service import safe_answer_document
 from app.services.project_builder import render_project_document
-from app.services.project_review_assignment_service import assigned_project_reviewer, claim_project_review
+from app.services.project_review_assignment_service import active_project_reviewer, claim_project_review
 from app.services.project_workspace_service import can_review_any_projects, can_review_projects
 from app.utils import texts
 from app.utils.constants import PROJECT_STATUS_LABELS, ProjectStatus
@@ -78,7 +78,7 @@ async def show_projects(message, user, settings, session):
     for project in projects:
         author = await _author(session, project)
         who = f"{author.first_name} {author.last_name or ''}".strip() if author else f"ID {project.author_id}"
-        reviewer_id = await assigned_project_reviewer(session, project.id)
+        reviewer_id = await active_project_reviewer(session, project, settings)
         reviewer = await session.get(User, reviewer_id) if reviewer_id else None
         reviewer_label = reviewer.first_name if reviewer else "общая очередь"
         tg = f"@{author.username}" if author and author.username else "без username"

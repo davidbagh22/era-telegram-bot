@@ -17,5 +17,9 @@ async def can_operate_queue(session, user, settings, permission):
         return False
     if is_full_admin(actor, settings, actor.telegram_id):
         return True
+    if permission == 'support.manage':
+        from app.services.feature_flags import Feature, feature_enabled
+        if not feature_enabled(settings, Feature.SUPPORT_THREADS, actor.telegram_id):
+            return False
     await session.refresh(actor, attribute_names=['permission_grants'])
     return await has_scoped_permission(session, actor, settings, actor.telegram_id, permission)

@@ -318,9 +318,9 @@ async def decide_project(
     }
     if project.status not in allowed[action]:
         raise ProjectDecisionConflict("project_review_stale")
-    from app.services.project_review_assignment_service import assigned_project_reviewer, claim_project_review
+    from app.services.project_review_assignment_service import active_project_reviewer, claim_project_review
     from app.services.authorization_service import is_full_admin
-    assigned = await assigned_project_reviewer(session, project.id)
+    assigned = await active_project_reviewer(session, project, settings)
     if assigned not in {None, actor.id} and not is_full_admin(actor, settings, actor.telegram_id):
         raise PermissionError("project_review_assigned")
     if assigned is None:

@@ -121,6 +121,31 @@ class ProjectWorkspaceServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(reviewer.role, Role.ADMIN)
             self.assertFalse(await project_workspace_service.can_review_projects(session, reviewer, self.settings, project))
 
+    async def test_revoked_reviewer_does_not_lock_out_other_delegates(self):
+        from app.database.models import PermissionGrant
+        from app.services.project_review_assignment_service import claim_project_review, active_project_reviewer
+        from app.services.project_workflow_service import decide_project
+        async with self.session_factory() as session:
+            author = await self._make_user(session, 11, "Author")
+            former = await self._make_user(session, 12, "Former")
+            replacement = await self._make_user(session, 13, "Replacement")
+            project = self._project(author_id=author.id, status=ProjectStatus.INITIAL_REVIEW)
+            session.add(project)
+            await session.flush()
+            old_grant = PermissionGrant(user_id=former.id, permission="projects.review", scope_type="project",
+                                        scope_id=project.id, granted_by=author.id, is_active=True)
+            session.add_all([old_grant, PermissionGrant(user_id=replacement.id, permission="projects.review",
+                scope_type="project", scope_id=project.id, granted_by=author.id, is_active=True)])
+            await session.flush()
+            await claim_project_review(session, project.id, former, self.settings)
+            old_grant.is_active = False
+            await session.flush()
+            self.assertIsNone(await active_project_reviewer(session, project, self.settings))
+            await claim_project_review(session, project.id, replacement, self.settings)
+            await decide_project(session, project, action="initial_accept", comment="Recovered queue",
+                                 actor=replacement, settings=self.settings)
+            self.assertEqual(project.status, ProjectStatus.VENUE_REVIEW)
+
     async def test_role_application_approval_and_capacity(self) -> None:
         async with self.session_factory() as session:
             author = await self._make_user(session, 1, "Leader")
