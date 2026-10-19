@@ -109,7 +109,7 @@ from app.services.maintenance_service import (
 )
 from app.services.notification_service import broadcast_detailed, safe_send
 from app.services.points_service import total_points
-from app.services.project_workspace_service import can_review_projects
+from app.services.project_workspace_service import can_review_any_projects, can_review_projects
 from app.utils import texts
 from app.utils.constants import (
     PERMISSIONS,
@@ -956,6 +956,7 @@ async def request_more_info_endpoint(
 
 
 class ProjectModerationOut(BaseModel):
+    review_version: str
     id: int
     title: str
     short_description: str
@@ -967,6 +968,7 @@ class ProjectModerationOut(BaseModel):
 
 def _to_moderation_out(project: Project) -> ProjectModerationOut:
     return ProjectModerationOut(
+        review_version=project_workflow_service.project_review_version(project),
         id=project.id,
         title=project.title,
         short_description=project.short_description,
@@ -987,27 +989,41 @@ async def require_project_reviewer(
     return user
 
 
+async def require_scoped_project_reviewer(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+) -> User:
+    if not await can_review_any_projects(session, user, settings):
+        raise HTTPException(status_code=403, detail="reviewer_access_required")
+    return user
+
+
 @router.get("/projects", response_model=list[ProjectModerationOut])
 async def read_projects_for_review(
-    _reviewer: User = Depends(require_project_reviewer),
+    _reviewer: User = Depends(require_scoped_project_reviewer),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> list[ProjectModerationOut]:
     projects = await project_workflow_service.list_projects_for_review(session)
-    return [_to_moderation_out(project) for project in projects]
+    return [_to_moderation_out(project) for project in projects
+            if await can_review_projects(session, _reviewer, settings, project)]
 
 
 class ProjectDecisionIn(BaseModel):
     action: str
     comment: str
+    expected_version: str | None = None
 
 
 @router.post("/projects/{project_id}/decide", response_model=ProjectModerationOut)
 async def decide_project_endpoint(
     project_id: int,
     payload: ProjectDecisionIn,
-    reviewer: User = Depends(require_project_reviewer),
+    reviewer: User = Depends(require_scoped_project_reviewer),
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
+    settings: Settings = Depends(get_settings),
     _rate_limit: None = Depends(enforce_admin_action_rate_limit),
 ) -> ProjectModerationOut:
     if not payload.comment.strip():
@@ -1017,17 +1033,20 @@ async def decide_project_endpoint(
     project = await session.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="project_not_found")
-    result = await project_workflow_service.decide_project(
-        session, project, action=payload.action, comment=payload.comment, actor=reviewer
-    )
-    if bot is not None:
-        author = await session.get(User, project.author_id)
-        if author is not None:
-            await safe_send(
-                bot,
-                author.telegram_id,
-                f"💡 {result.notice}\n\nПроект: {project.title}\n\nКомментарий команды ЭРА:\n{payload.comment}",
-            )
+    if not await can_review_projects(session, reviewer, settings, project):
+        raise HTTPException(status_code=403, detail="reviewer_access_required")
+    if not payload.expected_version:
+        raise HTTPException(status_code=409, detail="project_review_version_required")
+    try:
+        await project_workflow_service.decide_project(
+            session, project, action=payload.action, comment=payload.comment, actor=reviewer,
+            settings=settings, expected_version=payload.expected_version,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except project_workflow_service.ProjectDecisionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await session.commit()
     return _to_moderation_out(project)
 
 

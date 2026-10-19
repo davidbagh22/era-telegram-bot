@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.v1.router import api_router
 from app.config import Settings
+from app.database.models import Project
 
 
 def _admin(**overrides) -> SimpleNamespace:
@@ -43,7 +44,7 @@ def _target_user(**overrides) -> SimpleNamespace:
     return SimpleNamespace(**defaults)
 
 
-def _project(**overrides) -> SimpleNamespace:
+def _project(**overrides) -> Project:
     defaults = dict(
         id=20,
         title="Idea",
@@ -54,7 +55,7 @@ def _project(**overrides) -> SimpleNamespace:
         admin_comment=None,
     )
     defaults.update(overrides)
-    return SimpleNamespace(**defaults)
+    return Project(**defaults)
 
 
 def _build_app(user, session: SimpleNamespace, bot=None) -> FastAPI:
@@ -187,7 +188,7 @@ class AdminProjectsApiTests(unittest.TestCase):
         app = _build_app(_participant(), session)
         client = TestClient(app)
         with patch(
-            "app.api.v1.admin.can_review_projects", new=AsyncMock(return_value=False)
+            "app.api.v1.admin.can_review_any_projects", new=AsyncMock(return_value=False)
         ):
             response = client.get("/api/v1/admin/projects")
         self.assertEqual(response.status_code, 403)
@@ -198,6 +199,7 @@ class AdminProjectsApiTests(unittest.TestCase):
         client = TestClient(app)
         with (
             patch("app.api.v1.admin.can_review_projects", new=AsyncMock(return_value=True)),
+            patch("app.api.v1.admin.can_review_any_projects", new=AsyncMock(return_value=True)),
             patch(
                 "app.api.v1.admin.project_workflow_service.list_projects_for_review",
                 new=AsyncMock(return_value=[_project()]),
@@ -207,16 +209,17 @@ class AdminProjectsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()[0]["title"], "Idea")
 
-    def test_decide_project_notifies_author(self) -> None:
+    def test_decide_project_commits_outbox_without_direct_send(self) -> None:
         project = _project()
         author = SimpleNamespace(telegram_id=777)
-        session = SimpleNamespace(get=AsyncMock(side_effect=[project, author]))
+        session = SimpleNamespace(get=AsyncMock(side_effect=[project, author]), commit=AsyncMock())
         bot = SimpleNamespace()
         app = _build_app(_admin(), session, bot=bot)
         client = TestClient(app)
         result = SimpleNamespace(notice="Проект одобрен", project=project)
         with (
             patch("app.api.v1.admin.can_review_projects", new=AsyncMock(return_value=True)),
+            patch("app.api.v1.admin.can_review_any_projects", new=AsyncMock(return_value=True)),
             patch(
                 "app.api.v1.admin.project_workflow_service.decide_project",
                 new=AsyncMock(return_value=result),
@@ -225,10 +228,11 @@ class AdminProjectsApiTests(unittest.TestCase):
         ):
             response = client.post(
                 "/api/v1/admin/projects/20/decide",
-                json={"action": "venue_approve", "comment": "ok"},
+                json={"action": "venue_approve", "comment": "ok", "expected_version": "test-review-version"},
             )
         self.assertEqual(response.status_code, 200)
-        safe_send_mock.assert_awaited_once()
+        safe_send_mock.assert_not_awaited()
+        session.commit.assert_awaited_once()
 
     def test_decide_project_invalid_action(self) -> None:
         project = _project()

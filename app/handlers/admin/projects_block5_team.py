@@ -21,11 +21,8 @@ class TeamPostStates(StatesGroup):
 
 def _is_admin(user: User | None, settings: Settings, telegram_id: int) -> bool:
     return bool(
-        telegram_id in settings.admin_ids
-        or (user and user.role == Role.ADMIN and not user.is_blocked)
-        or (user and not user.is_blocked and not user.is_archived and any(
-            g.is_active and g.permission == "projects.review" for g in (user.permission_grants or [])
-        ))
+        user and not user.is_blocked and not user.is_archived
+        and (telegram_id in settings.admin_ids or user.role == Role.ADMIN)
     )
 
 

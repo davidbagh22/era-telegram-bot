@@ -29,7 +29,7 @@ from app.handlers import (
     registration,
     start,
 )
-from app.handlers.admin import router as admin_router
+from app.handlers.admin import router as admin_router, project_review_router
 from app.handlers.leader import router as leader_router
 from app.handlers.leader_chat_workcenter import router as leader_chat_workcenter_router
 from app.handlers.participant import router as participant_router
@@ -146,6 +146,7 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
         chat_unlock.router,
         start.router,
         registration.router,
+        project_review_router,
         admin_router,
         leader_event_photo.router,
         leader_router,

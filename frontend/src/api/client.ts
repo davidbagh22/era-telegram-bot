@@ -744,10 +744,12 @@ export function decideProject(
   projectId: number,
   action: ProjectDecisionAction,
   comment: string,
+  expectedVersion: string,
 ): Promise<ProjectForModeration> {
   return authorizedPost<ProjectForModeration>(`/api/v1/admin/projects/${projectId}/decide`, {
     action,
     comment,
+    expected_version: expectedVersion,
   });
 }
 

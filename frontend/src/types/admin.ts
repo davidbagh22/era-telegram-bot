@@ -64,6 +64,7 @@ export type ProjectDecisionAction =
   | "reject";
 
 export interface ProjectForModeration {
+  review_version: string;
   id: number;
   title: string;
   short_description: string;

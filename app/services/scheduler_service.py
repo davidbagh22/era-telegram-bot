@@ -127,6 +127,11 @@ async def send_review_sla_reminders(bot, settings, session_factory, *, now=None)
                     InlineKeyboardButton(text=f'Открыть {"проекты" if kind == "project" else "обращение"}', callback_data=callback)]])
                 fresh = False
                 targets = recipients
+                if kind == 'project' and stage == 'reminder':
+                    from app.services.project_review_assignment_service import project_review_recipients
+                    targets = await project_review_recipients(session, item, settings)
+                    if mode == 'TESTERS':
+                        targets &= set(settings.review_reminder_recipient_ids)
                 if kind == 'question' and stage == 'reminder' and item.assigned_to:
                     assignee = await session.get(User, item.assigned_to)
                     if assignee and not assignee.is_blocked and not assignee.is_archived and assignee.telegram_id in recipients:

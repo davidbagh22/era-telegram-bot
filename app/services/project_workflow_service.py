@@ -276,12 +276,56 @@ class ModerationResult:
     project: Project
 
 
+class ProjectDecisionConflict(ValueError):
+    """The review card no longer describes the current project."""
+
+
+def project_review_version(project: Project) -> str:
+    import hashlib
+    import json
+    return hashlib.sha256(json.dumps({
+        column.key: str(getattr(project, column.key))
+        for column in Project.__table__.columns
+        if column.key not in {"created_at", "updated_at"}
+    }, sort_keys=True).encode()).hexdigest()[:24]
+
+
 async def decide_project(
-    session: AsyncSession, project: Project, *, action: str, comment: str, actor: User
+    session: AsyncSession, project: Project, *, action: str, comment: str, actor: User,
+    settings, expected_version: str | None = None,
 ) -> ModerationResult:
     if action not in PROJECT_DECISION_ACTIONS:
         raise ValueError(f"unknown project decision action: {action!r}")
 
+    # Serialise decisions and reload state after a competing reviewer commits.
+    project = await session.scalar(select(Project).where(Project.id == project.id)
+                                   .with_for_update().execution_options(populate_existing=True))
+    if project is None:
+        raise ProjectDecisionConflict("project_not_found")
+    from app.services.project_workspace_service import can_review_projects
+    if not await can_review_projects(session, actor, settings, project):
+        raise PermissionError("reviewer_access_required")
+    if expected_version is not None and project_review_version(project) != expected_version:
+        raise ProjectDecisionConflict("project_review_stale")
+    if project.author_id == actor.id:
+        raise ProjectDecisionConflict("project_self_review")
+    allowed = {
+        "initial_accept": {ProjectStatus.PENDING_REVIEW, ProjectStatus.INITIAL_REVIEW},
+        "venue_approve": {ProjectStatus.VENUE_REVIEW},
+        "revise": REVIEW_STATUSES,
+        "reject": REVIEW_STATUSES,
+        "postpone": REVIEW_STATUSES,
+    }
+    if project.status not in allowed[action]:
+        raise ProjectDecisionConflict("project_review_stale")
+    from app.services.project_review_assignment_service import assigned_project_reviewer, claim_project_review
+    from app.services.authorization_service import is_full_admin
+    assigned = await assigned_project_reviewer(session, project.id)
+    if assigned not in {None, actor.id} and not is_full_admin(actor, settings, actor.telegram_id):
+        raise PermissionError("project_review_assigned")
+    if assigned is None:
+        await claim_project_review(session, project.id, actor, settings)
+    previous_status = project.status
     project.admin_comment = comment
 
     if action == "initial_accept":
@@ -316,4 +360,9 @@ async def decide_project(
         notice = "Проект отклонён"
 
     await session.flush()
+    await audit(session, actor_id=actor.id, action="project_review_decision",
+                entity_type="project", entity_id=project.id,
+                old_value={"status": previous_status}, new_value={"action": action, "status": project.status})
+    from app.services.project_review_notice_service import stage_project_review_notice
+    await stage_project_review_notice(session, project, notice=notice, revision=project_review_version(project))
     return ModerationResult(notice=notice, project=project)

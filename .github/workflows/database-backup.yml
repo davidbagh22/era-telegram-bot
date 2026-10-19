@@ -293,6 +293,19 @@ jobs:
           REFERENCE="$(scripts/store_encrypted_backup_s3.sh)"
           echo "storage_reference=${REFERENCE}" >> "${GITHUB_OUTPUT}"
 
+      - name: Download and restore the external encrypted copy on isolated PostgreSQL
+        id: external_restore
+        if: steps.config.outputs.external_storage == 'true'
+        shell: bash
+        env:
+          EXTERNAL_REFERENCE: ${{ steps.external.outputs.storage_reference }}
+          ARCHIVE_SHA256: ${{ steps.package.outputs.archive_sha256 }}
+          BACKUP_SHA256: ${{ steps.backup.outputs.sha256 }}
+          ALEMBIC_BIN: /tmp/era-backup-tools/bin/alembic
+          RESTORE_PYTHON: /tmp/era-backup-tools/bin/python
+          RESTORE_APPLY_MIGRATIONS: "true"
+        run: bash scripts/verify_external_backup.sh
+
       - name: Report successful verified backup using GitHub OIDC
         id: success_report
         env:

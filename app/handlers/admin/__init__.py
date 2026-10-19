@@ -52,15 +52,11 @@ router.include_router(commands_ready.router)
 router.include_router(version_command.router)
 router.include_router(dashboard_block_a.router)
 router.include_router(application_review_bot.router)
-router.include_router(literature_editor.router)
-router.include_router(support_bot.router)
 router.include_router(campaign_control.router)
 router.include_router(task_review_block2.router)
 router.include_router(rights_block6.router)
 router.include_router(rights_block6_block_menu.router)
 router.include_router(user_profile_block3_safe.router)
-router.include_router(projects_block5_list.router)
-router.include_router(projects_block5_decision.router)
 router.include_router(projects_block5_team.router)
 router.include_router(events_block6.router)
 router.include_router(event_registration_block14.router)
@@ -76,3 +72,16 @@ router.include_router(offices_management.router)
 router.include_router(legacy_action_bridge.router)
 
 __all__ = ["router"]
+
+# Only object-authorized review handlers are exposed to delegated staff.
+# Legacy admin_root keeps its full-admin filters and routes.
+project_review_router = Router(name="scoped_project_review")
+project_review_router.message.filter(F.chat.type == "private")
+project_review_router.callback_query.filter(F.message.chat.type == "private")
+project_review_router.include_router(projects_block5_list.router)
+project_review_router.include_router(projects_block5_decision.router)
+
+project_review_router.include_router(literature_editor.router)
+project_review_router.include_router(support_bot.router)
+from app.handlers.staff_operations import router as staff_operations_router
+project_review_router.include_router(staff_operations_router)

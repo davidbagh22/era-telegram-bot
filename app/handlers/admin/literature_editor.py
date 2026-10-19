@@ -13,7 +13,7 @@ from app.config import Settings
 from app.database.autocontent_models import GeneralCustomContent
 from app.database.models import User
 from app.database.system_models import NotificationDelivery
-from app.services.admin_dashboard_service import has_dashboard_access
+from app.services.staff_access_service import can_operate_queue
 from app.services.book_club_service import (EDITORIAL_FIELDS, approve_editorial_item, editorial_revision,
     editorial_settings, publish_editorial_item, render_editorial, save_editorial_item, save_editorial_settings)
 from app.utils import texts
@@ -26,8 +26,8 @@ class EditorialInput(StatesGroup):
     time = State()
 
 
-async def _guard(event, user, settings):
-    if user is not None and has_dashboard_access(user, settings, event.from_user.id):
+async def _guard(event, user, settings, session):
+    if await can_operate_queue(session, user, settings, "literature.manage"):
         return True
     if isinstance(event, CallbackQuery):
         await event.answer(texts.NO_ACCESS, show_alert=True)
@@ -59,7 +59,7 @@ async def _queue(message, session, page=0):
          InlineKeyboardButton(text='Продолжить' if config['paused'] else 'Пауза',
                               callback_data=f"admin:literature:paused:{int(not config['paused'])}")],
         [InlineKeyboardButton(text='⏰ Изменить время', callback_data='admin:literature:time')],
-        [InlineKeyboardButton(text='← Управление', callback_data='admin:panel')],
+        [InlineKeyboardButton(text='← Рабочие разделы', callback_data='staff:home')],
     ])
     await message.answer(f"📚 Редакция ЭРА · {total} материалов\n\n"
         f"Очередь: {'включена' if config['enabled'] else 'выключена'} · {'пауза' if config['paused'] else 'по расписанию'}\n"
@@ -71,13 +71,13 @@ async def _queue(message, session, page=0):
 
 @router.message(Command('literature_admin'))
 async def editorial_command(message: Message, user: User | None, settings: Settings, session: AsyncSession):
-    if await _guard(message, user, settings):
+    if await _guard(message, user, settings, session):
         await _queue(message, session)
 
 
 @router.callback_query(F.data.regexp(r'^admin:literature:(?:home|new|time|page:\d{1,5}|enabled:[01]|paused:[01]|item:\d+|edit:\d+|approve:\d+:[0-9a-f]{12}|send:\d+:[0-9a-f]{12})$'))
 async def editorial_action(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext, bot: Bot):
-    if not await _guard(call, user, settings):
+    if not await _guard(call, user, settings, session):
         return
     await call.answer()
     parts = call.data.split(':')
@@ -142,7 +142,7 @@ async def editorial_action(call: CallbackQuery, user: User | None, settings: Set
 @router.message(EditorialInput.text)
 @router.message(EditorialInput.time)
 async def editorial_input(message: Message, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext):
-    if not await _guard(message, user, settings):
+    if not await _guard(message, user, settings, session):
         return
     try:
         if await state.get_state() == EditorialInput.time.state:
