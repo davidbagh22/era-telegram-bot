@@ -16,3 +16,5 @@
 
 ## Продолжение
 Сначала git status и текущие remote main/PR SHA, затем AI_WORK_MAP. Адресные тесты запускать с BOT_TOKEN=0000000000:LOCALTEST (фиктивный token). Полный CI перед merge. Native media только через safe_answer_document; в E2E seed complete_onboarding(session,user) без лишних аргументов. Не повторять полный аудит. После этапа обновлять этот файл фактическим результатом.
+
+20.10 03:30 AMT: CI head 0705c380 PostgreSQL/frontend/secrets success; E2E 42 passed/2 skipped/1 failure — calendar button overlapped by fixed registration footer. Increased event-detail bottom safe padding, preserving an actual clickable E2E test (no force click). Backend CI still running; after patch needs final-head CI. Reset env saved; actual reset NOT yet run. Local analytics branch checkpoints 2a717f47, 7fb639dd (not deployed).

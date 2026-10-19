@@ -172,7 +172,7 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
   const waitlisted = event.registration_status === WAITLIST_STATUS;
 
   return (
-    <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.85rem", paddingBottom: "7.2rem" }}>
+    <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.85rem", paddingBottom: "calc(var(--era-page-bottom-safe, 10rem) + 5rem)" }}>
       <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← К событиям</button>
       <EventPoster event={event} />
 
