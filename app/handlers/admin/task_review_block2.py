@@ -191,3 +191,94 @@ async def reject_finish(message: Message, user: User | None, settings: Settings,
         await safe_send(bot, participant.telegram_id, result.participant_notice)
     await state.clear()
     await message.answer(result.admin_notice)
+
+
+def _attention_version(task: Task) -> str:
+    import hashlib
+    from datetime import timezone
+    def stamp(value):
+        if value is None:
+            return ''
+        return (value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)).isoformat()
+    return hashlib.sha256(f'{task.status}|{stamp(task.deadline)}|{stamp(task.updated_at)}'.encode()).hexdigest()[:10]
+
+
+async def _attention_guard(call, user, settings, session):
+    from app.services.staff_access_service import can_operate_queue
+    allowed = await can_operate_queue(session, user, settings, 'tasks.manage', telegram_id=call.from_user.id)
+    if not allowed or user is None or user.telegram_id != call.from_user.id:
+        await call.answer('Доступ отсутствует.', show_alert=True)
+        return False
+    return True
+
+
+@router.callback_query(F.data.regexp(r'^admin:taskattention:page:\d+$'), F.message.chat.type == 'private')
+async def task_attention_queue(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession):
+    from datetime import datetime, timezone
+    from html import escape
+    from sqlalchemy import func, select
+    from app.services.analytics_snapshot_service import task_attention_condition
+    from app.utils.telegram import edit_text_or_answer
+    if not await _attention_guard(call, user, settings, session):
+        return
+    await call.answer()
+    condition = task_attention_condition(datetime.now(timezone.utc))
+    total = int(await session.scalar(select(func.count()).select_from(Task).where(condition)) or 0)
+    page = min(int(call.data.rsplit(':', 1)[-1]), max(0, (total-1)//8))
+    tasks = (await session.scalars(select(Task).where(condition).order_by(Task.deadline.asc().nullslast(), Task.id).offset(page*8).limit(8))).all()
+    rows = [[InlineKeyboardButton(text=f'#{task.id} {task.title[:45]}', callback_data=f'admin:taskattention:item:{task.id}')] for task in tasks]
+    navigation = []
+    if page:
+        navigation.append(InlineKeyboardButton(text='←', callback_data=f'admin:taskattention:page:{page-1}'))
+    if (page+1)*8 < total:
+        navigation.append(InlineKeyboardButton(text='→', callback_data=f'admin:taskattention:page:{page+1}'))
+    if navigation:
+        rows.append(navigation)
+    rows.append([InlineKeyboardButton(text='← Сводка', callback_data='admin:management:open')])
+    text = f'<b>Задачи требуют внимания: {total}</b>\n\n' + ('\n'.join(f'#{task.id} {escape(task.title[:100])}' for task in tasks) or 'Открытых проблем нет.')
+    await edit_text_or_answer(call.message, text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.regexp(r'^admin:taskattention:(item:\d+|(cancel|confirm|extend):\d+:[a-f0-9]{10})$'), F.message.chat.type == 'private')
+async def task_attention_action(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession):
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import select
+    from app.services.leaders_workspace import change_task, TERMINAL
+    from app.services.leaders_workcenter_service import render_task_card
+    from app.utils.telegram import edit_text_or_answer
+    if not await _attention_guard(call, user, settings, session):
+        return
+    parts = call.data.split(':')
+    action, task_id = parts[2], int(parts[3])
+    task = await session.scalar(select(Task).where(Task.id == task_id).with_for_update().execution_options(populate_existing=True))
+    if task is None or task.status in TERMINAL:
+        await call.answer('Задача уже закрыта или удалена. Обновите список.', show_alert=True)
+        return
+    version = _attention_version(task)
+    if action != 'item' and parts[4] != version:
+        await call.answer('Задача изменилась. Откройте её заново.', show_alert=True)
+        return
+    if action in {'confirm', 'extend'}:
+        try:
+            await change_task(session, settings, task, user, 'cancel' if action == 'confirm' else 'deadline',
+                              value=datetime.now(timezone.utc)+timedelta(days=7) if action == 'extend' else None)
+            await session.commit()
+            await session.refresh(task)
+        except ValueError as exc:
+            await session.rollback()
+            await call.answer(str(exc), show_alert=True)
+            return
+        version = _attention_version(task)
+    await call.answer()
+    rows = []
+    if task.status not in TERMINAL:
+        if action == 'cancel':
+            rows.append([InlineKeyboardButton(text='Подтвердить отмену задачи', callback_data=f'admin:taskattention:confirm:{task.id}:{version}')])
+            rows.append([InlineKeyboardButton(text='Оставить задачу', callback_data=f'admin:taskattention:item:{task.id}')])
+        else:
+            rows.append([InlineKeyboardButton(text='Результаты на проверке', callback_data='admin:task_submissions')])
+            rows.append([InlineKeyboardButton(text='Срок: 7 дней с сегодняшнего дня', callback_data=f'admin:taskattention:extend:{task.id}:{version}')])
+            rows.append([InlineKeyboardButton(text='Отменить задачу', callback_data=f'admin:taskattention:cancel:{task.id}:{version}')])
+    rows.append([InlineKeyboardButton(text='← Требуют внимания', callback_data='admin:taskattention:page:0')])
+    assignee = await session.get(User, task.assignee_id) if task.assignee_id else None
+    await edit_text_or_answer(call.message, render_task_card(task, assignee), parse_mode='HTML', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))

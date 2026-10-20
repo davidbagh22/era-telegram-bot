@@ -180,12 +180,15 @@ async def analytics_filters(call: CallbackQuery, user: User | None, settings: Se
 async def analytics_waiting(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await _guard(call, user, settings):
         return
-    pending_users = int(await session.scalar(select(func.count()).select_from(User).where(User.application_status == ApplicationStatus.PENDING, User.is_archived.is_(False))) or 0)
+    pending_users = int(await session.scalar(select(func.count()).select_from(User).where(User.application_status.in_([ApplicationStatus.PENDING, ApplicationStatus.NEEDS_INFO]), User.is_archived.is_(False))) or 0)
     pending_projects = int(await session.scalar(select(func.count()).select_from(Project).where(Project.status.in_([ProjectStatus.PENDING_REVIEW, ProjectStatus.INITIAL_REVIEW, ProjectStatus.VENUE_REVIEW, ProjectStatus.NEEDS_REVISION]))) or 0)
     pending_events = int(await session.scalar(select(func.count()).select_from(Event).where(Event.status == EventStatus.PENDING_APPROVAL)) or 0)
     pending_tasks = int(await session.scalar(select(func.count()).select_from(Task).where(((Task.status == TaskStatus.REVIEW) | select(TaskSubmission.id).where(TaskSubmission.task_id == Task.id, TaskSubmission.status == 'pending').exists()) & (Task.status != TaskStatus.CANCELLED))) or 0)
+    from datetime import datetime, timezone
+    from app.services.analytics_snapshot_service import task_attention_condition
+    tasks_attention = int(await session.scalar(select(func.count()).select_from(Task).where(task_attention_condition(datetime.now(timezone.utc)))) or 0)
     pending_activities = int(await session.scalar(select(func.count()).select_from(EventActivitySubmission).where(EventActivitySubmission.status.in_(["pending", "leader_approved"]))) or 0)
-    pending_questions = int(await session.scalar(select(func.count()).select_from(UserQuestion).where(UserQuestion.status == "new")) or 0)
+    pending_questions = int(await session.scalar(select(func.count()).select_from(UserQuestion).where(UserQuestion.status.in_(['new', 'open', 'thread_waiting', 'answer_failed', 'answer_review']))) or 0)
     delivery = await delivery_problem_counts(session)
     project_metrics = await build_project_analytics(session, timezone_name=settings.timezone)
     without_results = next(metric.value for metric in project_metrics.metrics if metric.key == 'without_results')
@@ -197,6 +200,7 @@ async def analytics_waiting(call: CallbackQuery, user: User | None, settings: Se
         f"💡 Незавершённые согласования проектов: {pending_projects}\n"
         f"📅 Мероприятия на согласовании: {pending_events}\n"
         f"✅ Задачи на проверке: {pending_tasks}\n"
+        f"Задачи требуют внимания: {tasks_attention}\n"
         f"✨ Активности после мероприятий: {pending_activities}\n"
         f"💬 Вопросы пользователей: {pending_questions}\n"
         f"🎯 Активные цели месяца: {active_goals}\n"
@@ -212,6 +216,8 @@ async def analytics_waiting(call: CallbackQuery, user: User | None, settings: Se
         (pending_projects, "Решения по проектам", "admin:projects"),
         (pending_events, "Согласовать мероприятия", "admin:events"),
         (pending_tasks, "Проверить результаты задач", "admin:task_submissions"),
+        (tasks_attention, "Разобрать задачи", "admin:taskattention:page:0"),
+        (pending_questions, "Ответить на обращения", "admin:questions"),
         (pending_activities, "Проверить активности", "admin:event_activities:review"),
     ):
         if count:

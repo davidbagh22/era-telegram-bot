@@ -158,6 +158,11 @@ async def change_task(session, settings, task, user, action, value=None):
         task.assignee_id = value
         set_meta(task, accepted=False if value else None)
     elif action == 'deadline':
+        if value is not None and (value.tzinfo is None or value <= datetime.now(timezone.utc)):
+            raise ValueError('Укажите будущий срок с часовым поясом.')
+        if task.status == TaskStatus.OVERDUE and value is not None:
+            pending = await session.scalar(select(TaskSubmission.id).where(TaskSubmission.task_id == task.id, TaskSubmission.status == 'pending').limit(1))
+            task.status = TaskStatus.REVIEW if pending else TaskStatus.IN_PROGRESS
         task.deadline = value
         task.remind_at = value-timedelta(hours=24) if value else None
         for delivery in (await session.scalars(select(TaskDelivery).where(TaskDelivery.task_id == task.id))).all():
@@ -206,7 +211,8 @@ async def change_task(session, settings, task, user, action, value=None):
     else:
         raise ValueError('Неизвестное действие.')
     await audit(session, actor_id=user.id, action=f'leaders.task_{action}', entity_type='task',
-                entity_id=task.id, old_value=old, new_value={'status':str(task.status)})
+                entity_id=task.id, old_value=old, new_value={'status':str(task.status), 'assignee_id':task.assignee_id,
+                    'deadline':task.deadline.isoformat() if task.deadline else None})
 
 
 def deadline_label(value, fmt='%d.%m.%Y %H:%M'):
