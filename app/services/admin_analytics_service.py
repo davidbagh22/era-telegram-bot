@@ -610,7 +610,7 @@ def management_report_attention(metrics: dict) -> list[str]:
     """Keep every actionable warning; healthy diagnostics belong in details."""
     warnings = []
     for key, label in (
-        ('tasks_overdue', 'Разобрать просроченные задачи'),
+        ('tasks_attention', 'Разобрать задачи, требующие внимания'),
         ('questions_overdue', 'Ответить на обращения'),
         ('users_pending', 'Рассмотреть заявки'),
         ('projects_overdue', 'Рассмотреть проекты'),
@@ -750,7 +750,7 @@ def management_report_markup(miniapp_url: str = '', *, days: int = 1, details: b
         [button('Excel', f'admin:management:view:{days}:excel'), button('Обновить', f"admin:management:view:{days}:{'details' if details else 'overview'}")],
     ]
     if miniapp_url:
-        rows.append([InlineKeyboardButton(text='Открыть ЭРА', web_app=WebAppInfo(url=miniapp_url))])
+        rows.append([InlineKeyboardButton(text='🔥 Открыть ЭРА', web_app=WebAppInfo(url=miniapp_url))])
     rows.append([button('← Управление', 'admin:panel')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
