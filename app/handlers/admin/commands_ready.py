@@ -216,11 +216,12 @@ async def management_report_command(message: Message, user: User | None, setting
         return
     from datetime import datetime, timezone
     from app.services.admin_analytics_service import build_management_report, management_report_text, management_report_markup
-    metrics = await build_management_report(session, now=datetime.now(timezone.utc))
+    metrics = await build_management_report(session, now=datetime.now(timezone.utc), timezone_name=settings.timezone)
     await message.answer(management_report_text(metrics, title='Админ-сводка'), parse_mode='HTML',
                          reply_markup=management_report_markup(settings.effective_miniapp_url))
 
 
+@router.callback_query(F.data.regexp(r'^admin:management:view:(1|7|30):(overview|details|excel)$'), F.message.chat.type == 'private')
 @router.callback_query(F.data.in_({'admin:management:open', 'admin:management:refresh', 'admin:management:excel',
                                   'admin:management:period:weekly', 'admin:management:period:monthly'}), F.message.chat.type == 'private')
 async def management_report_action(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
@@ -234,13 +235,20 @@ async def management_report_action(call: CallbackQuery, user: User | None, setti
     from app.services.admin_analytics_service import build_management_report, management_report_text, management_report_markup
     days, title = {'weekly': (7, 'Сводка за неделю'), 'monthly': (30, 'Сводка за 30 дней')}.get(
         call.data.rsplit(':', 1)[-1], (1, 'Админ-сводка'))
-    metrics = await build_management_report(session, now=datetime.now(timezone.utc), days=days)
+    view = 'overview'
+    if call.data.startswith('admin:management:view:'):
+        _, _, _, period, view = call.data.split(':')
+        days = int(period)
+        title = {1: 'Итоги за сутки', 7: 'Итоги за 7 дней', 30: 'Итоги за 30 дней'}[days]
+    metrics = await build_management_report(session, now=datetime.now(timezone.utc), days=days, timezone_name=settings.timezone)
     if call.data.endswith(':excel'):
         from app.services.excel_report_service import management_summary_workbook
         await safe_answer_document(call.message, BufferedInputFile(management_summary_workbook(metrics), filename='ERA-management-report.xlsx'))
         return
-    text = management_report_text(metrics, title=title)
-    markup = management_report_markup(settings.effective_miniapp_url)
+    from app.services.admin_analytics_service import management_report_details_text
+    renderer = management_report_details_text if view == 'details' else management_report_text
+    text = renderer(metrics, title=title)
+    markup = management_report_markup(settings.effective_miniapp_url, days=days, details=view == 'details')
     if call.data.endswith(':open'):
         await call.message.answer(text, parse_mode='HTML', reply_markup=markup)
         return

@@ -317,6 +317,10 @@ def build_development_workbook(result: dict[str, Any]) -> bytes:
 def management_summary_workbook(metrics: dict) -> bytes:
     """Aggregate-only export: no questionnaires, names, phone numbers or identifiers."""
     labels = {
+        'new_members': 'Новых одобрено за период', 'active_period': 'Подтверждённо активных за период',
+        'events_held': 'Проведено мероприятий за период', 'task_results': 'Принято заданий за период',
+        'projects_active': 'Проекты в работе сейчас', 'tasks_attention': 'Задачи требуют внимания сейчас',
+        'period_start': 'Начало периода UTC', 'period_end': 'Конец периода UTC',
         'users_total': 'Участников', 'profiles_new': 'Новых профилей', 'users_pending': 'Заявки ожидают',
         'applications_approved': 'Заявки одобрены', 'applications_rejected': 'Заявки отклонены',
         'active_1': 'Активны за 24 часа', 'active_7': 'Активны за 7 дней', 'active_30': 'Активны за 30 дней',
@@ -340,4 +344,9 @@ def management_summary_workbook(metrics: dict) -> bytes:
     sheet.append(['Показатель', 'Значение'])
     for key, label in labels.items():
         sheet.append([label, 'не измеряется' if metrics.get(key) is None else metrics[key]])
+    comparison = workbook.create_sheet('Сравнение периодов')
+    comparison.append(['Показатель', 'Текущий период', 'Предыдущий равный период', 'Изменение'])
+    for key, old in metrics.get('comparison', {}).items():
+        current = metrics.get(key)
+        comparison.append([labels.get(key, key), current, old, current-old if current is not None and old is not None else None])
     return polish_workbook(_bytes(workbook))

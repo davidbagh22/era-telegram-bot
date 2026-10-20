@@ -480,45 +480,76 @@ async def build_leader_effectiveness(session: AsyncSession, user_id: int) -> Lea
     )
 
 
-async def build_management_report(session: AsyncSession, *, now: datetime, days: int = 1, period_start: datetime | None = None, period_end: datetime | None = None) -> dict:
+async def _management_period_facts(session, start, end, timezone_name):
+    """Comparable flows only; current stocks never masquerade as history."""
+    from zoneinfo import ZoneInfo
+    from app.database.models import EventRegistration
+    from app.database.system_models import NotificationDelivery
+    from app.services.analytics_snapshot_service import count_new_members, count_verified_users, held_events_between
+
+    def count(model, *conditions):
+        return select(func.count()).select_from(model).where(*conditions).scalar_subquery()
+
+    accepted = select(func.count(func.distinct(TaskSubmission.id))).join(AuditLog,
+        (AuditLog.entity_type == 'task_submission') & (AuditLog.entity_id == TaskSubmission.id)
+    ).where(AuditLog.action == 'task.submission_approve', TaskSubmission.status == 'approved',
+            AuditLog.created_at >= start, AuditLog.created_at < end).scalar_subquery()
+    zone = ZoneInfo(timezone_name)
+    queries = {
+        'profiles_new': count(User, User.created_at >= start, User.created_at < end, User.is_archived.is_(False)),
+        'events_held': select(func.count()).select_from(held_events_between(start.astimezone(zone), end.astimezone(zone)).subquery()).scalar_subquery(),
+        'registrations_new': count(EventRegistration, EventRegistration.created_at >= start, EventRegistration.created_at < end),
+        'attended': count(EventRegistration, EventRegistration.status == 'attended', EventRegistration.last_confirmation_at >= start, EventRegistration.last_confirmation_at < end),
+        'task_results': accepted,
+        'delivered': count(NotificationDelivery, NotificationDelivery.status == 'sent', NotificationDelivery.sent_at >= start, NotificationDelivery.sent_at < end),
+        'delivery_errors': count(NotificationDelivery, NotificationDelivery.status.in_(['failed', 'uncertain', 'blocked', 'unreachable', 'conflict']),
+                                 NotificationDelivery.last_attempt_at >= start, NotificationDelivery.last_attempt_at < end),
+    }
+    row = (await session.execute(select(*queries.values()))).one()
+    result = dict(zip(queries, map(int, row)))
+    result['new_members'] = await count_new_members(session, start, end)
+    result['active_period'] = await count_verified_users(session, start, end)
+    return result
+
+
+async def build_management_report(session: AsyncSession, *, now: datetime, days: int = 1, period_start: datetime | None = None, period_end: datetime | None = None, timezone_name: str = "Asia/Yerevan") -> dict:
     """Aggregate operational facts; unavailable measurements stay None, never fake zero."""
     import json
     from zoneinfo import ZoneInfo
     from sqlalchemy import or_
-    from app.database.models import AppSetting, EventRegistration, UserQuestion
-    from app.database.system_models import BackupHistory, NotificationDelivery, SystemDiagnosticRun
+    from app.database.models import AppSetting, UserQuestion
+    from app.database.system_models import BackupHistory, SystemDiagnosticRun
     from app.services.admin_dashboard_service import dashboard_metrics, _count
-    from app.services.meaningful_activity_service import meaningful_user_ids_since
-    from app.utils.constants import ApplicationStatus, EventStatus, ProjectStatus, RegistrationStatus
+    from app.services.analytics_snapshot_service import count_verified_users, task_attention_condition
+    from app.utils.constants import ApplicationStatus, EventStatus, ProjectStatus
 
     end = period_end or now
     since = period_start or end - timedelta(days=days)
-    local_date = now.astimezone(ZoneInfo('Europe/Moscow')).date()
+    if any(value.tzinfo is None for value in (now, since, end)) or since >= end:
+        raise ValueError('Report window must be timezone-aware with start before end')
+    now, since, end = (value.astimezone(timezone.utc) for value in (now, since, end))
+    local_date = end.astimezone(ZoneInfo(timezone_name)).date()
     dashboard = (await dashboard_metrics(session)).values
     result = {key: dashboard[key] for key in ('users_total', 'users_pending', 'projects_review', 'tasks_open', 'questions')}
-    result['profiles_new'] = await _count(session, User, User.created_at >= since, User.created_at < end, User.is_archived.is_(False))
+    result.update(await _management_period_facts(session, since, end, timezone_name))
+    result['comparison'] = await _management_period_facts(session, since-(end-since), since, timezone_name)
     result['applications_rejected'] = await _count(session, User, User.application_status == ApplicationStatus.REJECTED, User.is_archived.is_(False))
     result['applications_approved'] = dashboard['users_approved']
+    result['projects_active'] = dashboard['projects_active']
     for window in (1, 7, 30):
-        ids = await meaningful_user_ids_since(session, now - timedelta(days=window), include_current_responsibility=False)
-        result[f'active_{window}'] = await _count(session, User, User.id.in_(ids), User.is_archived.is_(False),
-                                                  User.is_blocked.is_(False), User.application_status == ApplicationStatus.APPROVED)
+        result[f'active_{window}'] = await count_verified_users(session, end-timedelta(days=window), end)
     result['events_upcoming'] = await _count(session, Event, Event.event_date >= local_date,
         Event.event_date <= local_date + timedelta(days=7), Event.status.not_in((EventStatus.DRAFT, EventStatus.CANCELLED, EventStatus.PENDING_APPROVAL)))
-    result['registrations_new'] = await _count(session, EventRegistration, EventRegistration.created_at >= since, EventRegistration.created_at < end)
-    result['attended'] = await _count(session, EventRegistration, EventRegistration.status == RegistrationStatus.ATTENDED,
-                                     EventRegistration.last_confirmation_at >= since, EventRegistration.last_confirmation_at < end)
     review = (ProjectStatus.PENDING_REVIEW, ProjectStatus.INITIAL_REVIEW, ProjectStatus.VENUE_REVIEW)
     result['projects_overdue'] = await _count(session, Project, Project.status.in_(review), Project.submitted_at <= now - timedelta(hours=72))
     result['tasks_open'] = await _count(session, Task, Task.status.in_((TaskStatus.NEW, TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS, TaskStatus.REVIEW, TaskStatus.OVERDUE)))
     result['tasks_overdue'] = await _count(session, Task, Task.status.in_((TaskStatus.NEW, TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS, TaskStatus.REVIEW, TaskStatus.OVERDUE)),
                                            or_(Task.deadline < now, Task.status == TaskStatus.OVERDUE))
+    result['tasks_attention'] = await _count(session, Task, task_attention_condition(now))
+    result['questions'] = await _count(session, UserQuestion, UserQuestion.status.in_(['new', 'open', 'thread_waiting', 'answer_failed', 'answer_review']))
     result['questions_overdue'] = await _count(session, UserQuestion, or_(
         UserQuestion.status.in_(('new', 'open')) & (UserQuestion.created_at <= now - timedelta(hours=24)),
         (UserQuestion.status == 'thread_waiting') & (UserQuestion.waiting_since <= now - timedelta(hours=24))))
-    result['delivered'] = await _count(session, NotificationDelivery, NotificationDelivery.status == 'sent', NotificationDelivery.sent_at >= since, NotificationDelivery.sent_at < end)
-    result['delivery_errors'] = await _count(session, NotificationDelivery, NotificationDelivery.status.in_(('failed', 'uncertain', 'blocked', 'unreachable')),
-                                            NotificationDelivery.last_attempt_at >= since, NotificationDelivery.last_attempt_at < end)
     # Room slots are overwritten. Only immutable completed-result entries count as measured history.
     rows = (await session.scalars(select(AppSetting).where(AppSetting.key.like('game-result:%')))).all()
     completed, players, starts = 0, set(), []
@@ -575,7 +606,64 @@ async def build_management_report(session: AsyncSession, *, now: datetime, days:
     return result
 
 
+def management_report_attention(metrics: dict) -> list[str]:
+    """Keep every actionable warning; healthy diagnostics belong in details."""
+    warnings = []
+    for key, label in (
+        ('tasks_attention', 'Разобрать задачи, требующие внимания'),
+        ('questions_overdue', 'Ответить на обращения'),
+        ('users_pending', 'Рассмотреть заявки'),
+        ('projects_overdue', 'Рассмотреть проекты'),
+        ('delivery_errors', 'Проверить ошибки доставки'),
+    ):
+        if metrics.get(key):
+            warnings.append(f'{label}: {int(metrics[key])}')
+    if not metrics.get('health_fresh') or metrics.get('health') not in {'ok', 'healthy'}:
+        warnings.append('Проверить состояние сервиса: нет свежей успешной проверки')
+    if metrics.get('scheduler') != 'работает':
+        warnings.append('Проверить работу планировщика')
+    if metrics.get('backup') != 'восстановление проверено' or metrics.get('backup_last_status') not in {None, 'success', 'pending', 'running'}:
+        warnings.append('Проверить резервное копирование')
+    return warnings
+
+
 def management_report_text(metrics: dict, *, title: str = 'Итоги за сутки', previous: dict | None = None) -> str:
+    """Comparable flows use an equal SQL window, never a prior stock snapshot."""
+    from html import escape
+    from zoneinfo import ZoneInfo
+    zone = ZoneInfo('Europe/Moscow')
+    end = datetime.fromisoformat(metrics['period_end']).astimezone(zone)
+    start = datetime.fromisoformat(metrics['period_start']).astimezone(zone)
+    comparison = metrics.get('comparison', {})
+
+    def flow(key):
+        current = metrics.get(key)
+        if current is None:
+            return 'нет данных'
+        old = comparison.get(key)
+        return str(current) if old is None else f'{current} ({current-old:+d})'
+
+    attention = management_report_attention(metrics)
+    text = (f'📊 <b>ЭРА · {escape(title)}</b>\n'
+            f'{start:%d.%m %H:%M} — {end:%d.%m %H:%M} МСК\n\n'
+            '<b>Требует решения</b>\n'
+            + ('\n'.join('• ' + line for line in attention) or 'Срочных отклонений по измеряемым показателям нет.')
+            + '\n\n<b>Участники</b>\n'
+            f"Действующих сейчас: {metrics['users_total']}\n"
+            f"Новых одобрено: {flow('new_members')}\n"
+            f"С подтверждённым результатом: {flow('active_period')}\n\n"
+            '<b>Результаты за период</b>\n'
+            f"Проведено мероприятий: {flow('events_held')}\n"
+            f"Подтверждено посещений: {flow('attended')}\n"
+            f"Принято заданий: {flow('task_results')}\n"
+            f"Проектов в работе сейчас: {metrics.get('projects_active', 'нет данных')}\n"
+            f"Открытых задач сейчас: {metrics['tasks_open']}\n\n")
+    return text + ('<i>В скобках — изменение к предыдущему равному периоду. '
+                   'Мероприятия — за полные локальные дни; активность — по подтверждённым результатам.</i>'
+                   if comparison else '<i>Сравнение с предыдущим периодом: нет данных.</i>')
+
+
+def management_report_details_text(metrics: dict, *, title: str = 'Все показатели', previous: dict | None = None) -> str:
     from html import escape
     from zoneinfo import ZoneInfo
 
@@ -612,15 +700,17 @@ def management_report_text(metrics: dict, *, title: str = 'Итоги за су�
         '<b>👥 Участники и заявки</b>\n'
         f"Участников: {value('users_total')} · новых профилей: {value('profiles_new')}\n"
         f"Заявки: ожидают {value('users_pending')} · одобрено {value('applications_approved')} · отклонено {value('applications_rejected')}\n"
-        f"Активны за 24 ч / 7 д / 30 д: {value('active_1')} / {value('active_7')} / {value('active_30')}\n\n"
+        f"Подтверждённо активны за 24 ч / 7 д / 30 д: {value('active_1')} / {value('active_7')} / {value('active_30')}\n"
+        f"Первых одобрений за период: {value('new_members')} · активных за период: {value('active_period')}\n\n"
         '<b>📅 Мероприятия и работа команды</b>\n'
         f"Мероприятий на 7 дней: {value('events_upcoming')} · регистраций за период: {value('registrations_new')} · посещений: {value('attended')}\n"
-        f"Проекты: на рассмотрении {value('projects_review')} · дольше 72 ч {value('projects_overdue')}\n"
+        f"Проекты: на рассмотрении {value('projects_review')} · дольше 72 ч {value('projects_overdue')} · в работе {value('projects_active')}\n"
+        f"Проведено мероприятий: {value('events_held')} · принято заданий: {value('task_results')}\n"
         f"Задачи: открыто {value('tasks_open')} · просрочено {value('tasks_overdue')}\n"
         f"Обращения: ждут {value('questions')} · дольше 24 ч {value('questions_overdue')}\n\n"
         '<b>🎮 Досуг и уведомления</b>\n'
         f"Игры за период: игроков {value('game_players')} · завершено {value('games_completed')}\n"
-        f"Литература, всего: подписчиков {value('literature_subscribers')} · активных {value('literature_active')}\n"
+        f"Литература: подписчиков сейчас {value('literature_subscribers')} · участников с отметками за всё время {value('literature_active')}\n"
         f"Отметок чтения: {value('literature_reads_total')} · выполненных заданий: {value('literature_tasks_total')}\n"
         f"Автоуведомления: доставлено {value('delivered')} · ошибок {value('delivery_errors')}\n\n"
         '<b>🩺 Здоровье бота</b>\n'
@@ -639,41 +729,29 @@ def management_report_text(metrics: dict, *, title: str = 'Итоги за су�
         text += f"Последняя попытка: {backup_status} · {local_time(metrics.get('backup_last_attempt_at'))}\n"
     if metrics.get('game_coverage_since'):
         text += '\nИгровая статистика ведётся с ' + datetime.fromisoformat(metrics['game_coverage_since']).strftime('%d.%m.%Y') + '.\n'
-    if previous:
-        text += f"Участников к предыдущему отчёту: {metrics['users_total'] - previous['users_total']:+d}.\n"
-    else:
-        text += 'Сравнение с предыдущим периодом: нет данных.\n'
-    attention = []
-    if not healthy:
-        attention.append('Проверить состояние сервиса')
-    if not backup_ok or backup_last_bad:
-        attention.append('Проверить резервное копирование')
-    if not scheduler_ok:
-        attention.append('Проверить работу планировщика')
-    for key, label in (('projects_overdue', 'Рассмотреть проекты'), ('tasks_overdue', 'Разобрать просроченные задачи'),
-                       ('questions_overdue', 'Ответить на обращения'), ('users_pending', 'Рассмотреть заявки')):
-        if metrics.get(key):
-            attention.append(f'{label}: {escape(str(metrics[key]))}')
-    text += '\n<b>📌 Требует внимания</b>\n' + (
-        '\n'.join(f'{i}. {line}' for i, line in enumerate(attention[:3], 1))
-        or 'По измеряемым показателям срочных действий нет.')
-    return text + '\n\n<i>Свежая статистика в любое время: кнопка «📊 Статистика» внизу.</i>'
+    text += '\nМероприятия считаются за полные локальные календарные дни; посещения — по времени подтверждения.\n'
+    if metrics.get('comparison'):
+        text += '\n<b>К предыдущему равному периоду</b>\n'
+        for key, label in (('new_members', 'Новые одобрения'), ('active_period', 'Подтверждённо активные'), ('events_held', 'Мероприятия'), ('attended', 'Посещения'), ('task_results', 'Принятые задания')):
+            text += f"{label}: {metrics[key] - metrics['comparison'][key]:+d}\n"
+    text += '\n<b>Требует внимания</b>\n' + ('\n'.join(management_report_attention(metrics)) or 'Срочных действий нет.')
+    return text
 
 
-def management_report_markup(miniapp_url: str = ''):
+def management_report_markup(miniapp_url: str = '', *, days: int = 1, details: bool = False):
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    def button(text, action):
+        return InlineKeyboardButton(text=text, callback_data=action)
     rows = [
-        [InlineKeyboardButton(text='📥 Заявки', callback_data='admin:applications'),
-         InlineKeyboardButton(text='📅 Мероприятия', callback_data='admin:events')],
-        [InlineKeyboardButton(text='✅ Задачи', callback_data='admin:tasks'),
-         InlineKeyboardButton(text='🔄 Обновить', callback_data='admin:management:refresh')],
-        [InlineKeyboardButton(text='📈 Неделя', callback_data='admin:management:period:weekly'),
-         InlineKeyboardButton(text='🗓 Месяц', callback_data='admin:management:period:monthly')],
-        [InlineKeyboardButton(text='📄 Excel', callback_data='admin:management:excel')],
+        [button('Заявки', 'admin:applications'), button('Обращения', 'admin:questions')],
+        [button('Задачи требуют внимания', 'admin:taskattention:page:0'), button('Проекты', 'admin:projects')],
+        [button('Сутки', 'admin:management:view:1:overview'), button('7 дней', 'admin:management:view:7:overview'), button('30 дней', 'admin:management:view:30:overview')],
+        [button('Кратко' if details else 'Все показатели и диагностика', f"admin:management:view:{days}:{'overview' if details else 'details'}")],
+        [button('Excel', f'admin:management:view:{days}:excel'), button('Обновить', f"admin:management:view:{days}:{'details' if details else 'overview'}")],
     ]
     if miniapp_url:
         rows.append([InlineKeyboardButton(text='🔥 Открыть ЭРА', web_app=WebAppInfo(url=miniapp_url))])
-    rows.append([InlineKeyboardButton(text='← Управление', callback_data='admin:panel')])
+    rows.append([button('← Управление', 'admin:panel')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -721,7 +799,7 @@ async def send_management_reports(bot, settings, session_factory, *, now=None) -
         if row:
             payload = json.loads(row.value) if isinstance(row.value, str) else row.value
         else:
-            metrics = await build_management_report(session, now=now)
+            metrics = await build_management_report(session, now=now, timezone_name=settings.timezone)
             previous_stamp = (local.date() - timedelta(days=1)).isoformat()
             previous_row = await session.scalar(select(AppSetting).where(AppSetting.key == f'management-report:daily:{previous_stamp}'))
             previous_payload = (json.loads(previous_row.value) if isinstance(previous_row.value, str) else previous_row.value) if previous_row else None

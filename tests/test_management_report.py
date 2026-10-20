@@ -14,7 +14,7 @@ from app.database.base import Base
 from app.database.models import AppSetting, PermissionGrant, User, UserQuestion
 from app.database.system_models import BackupHistory, NotificationDelivery, SystemDiagnosticRun
 from app.services.admin_analytics_service import (build_management_report, management_report_text,
-    management_report_recipients, send_management_reports)
+    management_report_recipients, send_management_reports, management_report_details_text, management_report_markup)
 from app.services.excel_report_service import management_summary_workbook
 from app.utils.constants import ApplicationStatus, Role
 
@@ -55,7 +55,7 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
         await send_management_reports(self.bot, self.settings, self.sessions, now=self.now+timedelta(hours=5))
         assert self.bot.send_message.await_count == 1
         text = next(c.args[1] for c in self.bot.send_message.await_args_list if 'Итоги за сутки' in c.args[1])
-        assert '09:00 МСК' in text and 'Обращения: ждут 1 · дольше 24 ч 1' in text
+        assert '09:00 МСК' in text and 'Ответить на обращения: 1' in text
         assert 'PRIVATE' not in text and 'Admin private' not in text and 'Member private' not in text
         async with self.sessions() as session:
             deliveries = (await session.scalars(select(NotificationDelivery))).all()
@@ -69,8 +69,9 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
         assert metrics['games_completed'] is None and metrics['game_players'] is None
         assert metrics['health'] == 'нет данных' and metrics['scheduler'] == 'нет данных'
         text = management_report_text(metrics)
-        assert 'игроков не измеряется · завершено не измеряется' in text
-        assert 'Сравнение с предыдущим периодом: нет данных' in text
+        assert 'игроков не измеряется · завершено не измеряется' in management_report_details_text(metrics)
+        assert 'изменение к предыдущему равному периоду' in text
+        assert metrics['comparison']['active_period'] == 0
         assert 'Проверить резервное копирование' in text
 
     async def test_recipients_require_global_permission_and_blocked_profiles_are_excluded(self):
@@ -108,7 +109,8 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
     async def test_previous_report_is_compared_without_republishing_it(self):
         await send_management_reports(self.bot, self.settings, self.sessions, now=self.now-timedelta(days=1))
         await send_management_reports(self.bot, self.settings, self.sessions, now=self.now)
-        assert 'Участников к предыдущему отчёту: +0' in self.bot.send_message.await_args.args[1]
+        assert 'Новых одобрено: 0 (+0)' in self.bot.send_message.await_args.args[1]
+        assert 'Участников к предыдущему отчёту' not in self.bot.send_message.await_args.args[1]
         assert self.bot.send_message.await_count == 2
 
     async def test_restart_recovers_only_today_without_weekly_monthly_backfill(self):
@@ -172,8 +174,10 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
         text = management_report_text(metrics)
         assert metrics['health_fresh'] is True
         assert metrics['scheduler'] == 'нет свежего heartbeat'
-        assert '🩺 Здоровье бота' in text and '💾 Резервная копия' in text
-        assert 'Последняя попытка: ошибка' in text and 'Размер копии: 1.00 МБ' in text
+        details = management_report_details_text(metrics)
+        assert '🩺 Здоровье бота' in details and '💾 Резервная копия' in details
+        assert '🩺 Здоровье бота' not in text
+        assert 'Последняя попытка: ошибка' in details and 'Размер копии: 1.00 МБ' in details
         assert 'Проверить резервное копирование' in text
         assert 'Проверить работу планировщика' in text
 
@@ -185,7 +189,9 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
             metrics = await build_management_report(session, now=self.now)
         text = management_report_text(metrics)
         assert '🟢 Состояние: в норме' not in text
-        assert 'нет свежей проверки' in text and '16.10.2026 07:00 МСК' in text
+        assert 'Проверить состояние сервиса' in text
+        details = management_report_details_text(metrics)
+        assert 'нет свежей проверки' in details and '16.10.2026 07:00 МСК' in details
 
     async def test_manual_statistics_does_not_create_a_second_automatic_issue(self):
         from app.handlers.admin.commands_ready import management_report_command
@@ -205,7 +211,8 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
         self.bot.send_message.assert_not_awaited()
         async with self.sessions() as session:
             metrics = await build_management_report(session, now=self.now)
-        assert 'Литература, всего:' in management_report_text(metrics)
+        assert 'участников с отметками за всё время' in management_report_details_text(metrics)
+        assert 'Литература' not in management_report_text(metrics)
 
 
     async def test_leisure_navigation_does_not_create_a_missing_forum_topic(self):
@@ -217,3 +224,124 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
         assert not any(button.url for row in markup.inline_keyboard for button in row)
         bot.get_chat.assert_not_awaited()
         bot.create_forum_topic.assert_not_awaited()
+
+
+    async def test_verified_zero_point_results_strict_windows_and_first_approval(self):
+        from datetime import time
+        from app.database.models import AuditLog, Event, EventRegistration, PointTransaction
+        async with self.sessions() as session:
+            event = Event(title='Test', description='Test', event_date=self.now.date(), event_time=time(12), location='Online', format='online', created_by=self.admin_id)
+            session.add(event)
+            await session.flush()
+            session.add(EventRegistration(event_id=event.id, user_id=self.member_id, status='attended', last_confirmation_at=self.now-timedelta(hours=2)))
+            session.add_all([
+                AuditLog(action='user.approved', entity_type='user', entity_id=self.member_id, created_at=self.now-timedelta(hours=3)),
+                AuditLog(action='user.approved', entity_type='user', entity_id=self.admin_id, created_at=self.now-timedelta(days=3)),
+                AuditLog(action='user.approved', entity_type='user', entity_id=self.admin_id, created_at=self.now-timedelta(hours=4)),
+                PointTransaction(user_id=self.admin_id, points=10, reason='Boundary', source_type='task_completion', created_at=self.now),
+            ])
+            await session.commit()
+            metrics = await build_management_report(session, now=self.now)
+        assert metrics['active_period'] == metrics['active_1'] == 1
+        assert metrics['new_members'] == 1
+        assert metrics['comparison']['active_period'] == 0
+        text = management_report_text(metrics)
+        assert 'С подтверждённым результатом: 1 (+1)' in text
+        assert len(text) < 1800
+        workbook = load_workbook(BytesIO(management_summary_workbook(metrics)))
+        comparison = list(workbook['Сравнение периодов'].values)
+        assert ('Подтверждённо активных за период', 1, 0, 1) in comparison
+
+    async def test_period_survives_details_refresh_and_export(self):
+        from app.handlers.admin.commands_ready import management_report_action
+        for days in (1, 7, 30):
+            markup = management_report_markup(days=days, details=True)
+            callbacks = {b.callback_data for row in markup.inline_keyboard for b in row}
+            assert f'admin:management:view:{days}:excel' in callbacks
+            assert f'admin:management:view:{days}:details' in callbacks
+            call = SimpleNamespace(from_user=SimpleNamespace(id=11), answer=AsyncMock(),
+                data=f'admin:management:view:{days}:excel', message=SimpleNamespace())
+            async with self.sessions() as session:
+                admin = await session.get(User, self.admin_id)
+                with patch('app.handlers.admin.commands_ready.safe_answer_document', new_callable=AsyncMock) as send:
+                    await management_report_action(call, admin, self.settings, session)
+                workbook = load_workbook(BytesIO(send.await_args.args[1].data))
+                values = dict(list(workbook.active.values)[1:])
+                assert values['Дней в отчётном периоде'] == days
+
+    async def test_attention_never_hides_business_warnings_behind_diagnostics(self):
+        async with self.sessions() as session:
+            metrics = await build_management_report(session, now=self.now)
+        metrics.update(tasks_attention=7, tasks_overdue=6, users_pending=5, projects_overdue=4, delivery_errors=3)
+        text = management_report_text(metrics)
+        for expected in ['Разобрать задачи, требующие внимания: 7', 'обращения: 1', 'заявки: 5', 'проекты: 4', 'доставки: 3', 'резервное копирование']:
+            assert expected in text
+        assert text.index('Требует решения') < text.index('Действующих сейчас')
+
+    async def test_task_attention_actions_require_fresh_global_rights_and_version(self):
+        from app.database.models import Task
+        from app.handlers.admin.task_review_block2 import task_attention_action, _attention_version
+        async with self.sessions() as session:
+            task = Task(title='Attention', description='Test', creator_id=self.admin_id, status='overdue', deadline=self.now-timedelta(days=1))
+            session.add(task)
+            await session.flush()
+            token = _attention_version(task)
+            call = SimpleNamespace(from_user=SimpleNamespace(id=22), answer=AsyncMock(), data=f'admin:taskattention:extend:{task.id}:{token}', message=SimpleNamespace(edit_text=AsyncMock()))
+            member = await session.get(User, self.member_id)
+            await task_attention_action(call, member, self.settings, session)
+            assert task.status == 'overdue'
+            call.answer.assert_awaited_with('Доступ отсутствует.', show_alert=True)
+            call.from_user.id = 11
+            call.data = f'admin:taskattention:extend:{task.id}:0000000000'
+            admin = await session.get(User, self.admin_id)
+            await task_attention_action(call, admin, self.settings, session)
+            assert task.status == 'overdue'
+            assert 'изменилась' in call.answer.await_args.args[0]
+            call.data = f'admin:taskattention:extend:{task.id}:{token}'
+            with patch('app.utils.telegram.edit_text_or_answer', new_callable=AsyncMock):
+                await task_attention_action(call, admin, self.settings, session)
+            assert task.status == 'in_progress'
+            assert task.deadline.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc)
+
+
+    async def test_attention_queue_cannot_cancel_task_with_pending_result(self):
+        from app.database.models import Task, TaskSubmission
+        from app.handlers.admin.task_review_block2 import task_attention_action, _attention_version
+        async with self.sessions() as session:
+            task = Task(title='Pending result', description='Test', creator_id=self.admin_id, status='review')
+            session.add(task)
+            await session.flush()
+            submission = TaskSubmission(task_id=task.id, user_id=self.member_id, status='pending')
+            session.add(submission)
+            await session.flush()
+            admin = await session.get(User, self.admin_id)
+            token = _attention_version(task)
+            call = SimpleNamespace(
+                from_user=SimpleNamespace(id=11), answer=AsyncMock(),
+                data='admin:taskattention:confirm:' + str(task.id) + ':' + token,
+                message=SimpleNamespace(edit_text=AsyncMock()),
+            )
+            await task_attention_action(call, admin, self.settings, session)
+            assert task.status == 'review'
+            assert submission.status == 'pending'
+            call.answer.assert_awaited_once_with(
+                'Нельзя отменить задачу: сначала проверьте отправленный результат.',
+                show_alert=True,
+            )
+
+    async def test_deadline_keeps_pending_results_in_review_and_is_audited(self):
+        from app.database.models import AuditLog, Task, TaskSubmission
+        from app.services.leaders_workspace import change_task
+        async with self.sessions() as session:
+            task = Task(title='Review', description='Test', creator_id=self.admin_id, status='overdue')
+            session.add(task)
+            await session.flush()
+            session.add(TaskSubmission(task_id=task.id, user_id=self.member_id, status='pending'))
+            await session.flush()
+            admin = await session.get(User, self.admin_id)
+            await change_task(session, self.settings, task, admin, 'deadline', datetime.now(timezone.utc)+timedelta(days=7))
+            assert task.status == 'review'
+            await session.flush()
+            log = await session.scalar(select(AuditLog).where(AuditLog.action == 'leaders.task_deadline'))
+            assert log.entity_id == task.id
+            assert log.new_value['deadline'] == task.deadline.isoformat()

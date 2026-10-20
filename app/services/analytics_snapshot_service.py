@@ -18,6 +18,12 @@ from app.services.meaningful_activity_service import meaningful_points_condition
 ACTIVE_PROJECT_STATUSES = ('approved', 'in_progress')
 
 
+def held_events_between(start: datetime, end: datetime):
+    """Confirmed event dates over complete organization-local calendar days."""
+    return select(Event.id).where(Event.status.in_(['completed', 'report_submitted']),
+                                  Event.event_date >= start.date(), Event.event_date < end.date())
+
+
 def task_attention_condition(now: datetime):
     pending_result = select(TaskSubmission.id).where(
         TaskSubmission.task_id == Task.id, TaskSubmission.status == 'pending').exists()
@@ -146,7 +152,7 @@ async def build_analytics_snapshot(
     async def events(a, b):
         # Event dates are organization-local dates. Exclude the current partial
         # day so both comparison periods contain the same number of whole days.
-        return await count(select(func.count()).select_from(Event).where(Event.status.in_(['completed', 'report_submitted']), Event.event_date >= a.date(), Event.event_date < b.date()))
+        return await count(select(func.count()).select_from(held_events_between(a, b).subquery()))
 
     attention = task_attention_condition(now)
     metrics = (
@@ -176,8 +182,7 @@ async def build_event_analytics(session: AsyncSession, *, days=30, now=None, tim
     ).where(EventRegistration.status == 'attended').group_by(EventRegistration.user_id).subquery()
 
     async def period(a, b):
-        held = select(Event.id).where(Event.status.in_(['completed', 'report_submitted']),
-                                      Event.event_date >= a.date(), Event.event_date < b.date())
+        held = held_events_between(a, b)
         created_query = select(func.count()).select_from(Event).where(
             Event.created_at >= a.astimezone(timezone.utc), Event.created_at < b.astimezone(timezone.utc)).scalar_subquery()
         held_query = select(func.count()).select_from(held.subquery()).scalar_subquery()
