@@ -1,26 +1,29 @@
-# Состояние ЭРА — 20.10.2026
+# Состояние ЭРА — 20.10.2026, после выпуска #357
 
-## Production / сброс — выполнено
-- PR #356 MERGED, main/prod bcb029947459380a8e690cf06711f7f817b5f974. Render LIVE dep-dbbb03bm8hqs738ocb80, 20.10 00:05 UTC. /health и /ready = 200, health commit bcb0299.
-- Точный целевой Telegram ID предоставлен пользователем. Reset receipt = complete, encrypted_snapshot присутствует. Старый user_id=31 архивирован с синтетическим Telegram ID, community identity user_id=NULL. Активной users-записи с исходным ID пока нет: доступна новая регистрация через /start. Прежний ledger сохранён: 2 записи / 105 баллов. Связей leader_chat_memberships нет. Ключ резервной копии остаётся только в Render env, не публиковать и не регенерировать.
-- Полная реальная повторная отправка анкеты самим пользователем ещё не наблюдалась; не объявлять её проверенной через Telegram-клиент.
+## Текущий hotfix: оформление регистрации
+- Скриншоты пользователя 13:00–13:04 показали буквальные <b> в шагах анкеты. В #357 исправлялись фото, а не HTML prompts. Причина подтверждена: отправки REG* и resume не задавали parse_mode при отсутствии глобального HTML. Исправлено локально явным HTML только для доверенных констант; экранирование пользовательских ответов в review сохраняется. Адресные проверки: исходный набор 30 passed + 12 subtests; после добавления полного сценария ещё 14 passed, lint passed. Regression проверяет полный маршрут/продолжение без global parse mode и экранирование ответов. Требуются PR, полный CI и выпуск. Незавершённая анкета — штатное сохранение прогресса, не повод повторно сбрасывать регистрацию.
 
-## Аналитика и фотографии — PR #357, финальный выпуск
-- Последний полный CI remote ca2418ff67f1639a80e3b115d5abb25977c13838: оба workflows success, все 6 jobs success. Main остаётся bcb0299. Перед merge повторить проверки нового head.
-- Общий verified SQL snapshot 7/30/90, first audit approval, retention в одном SQL statement, наблюдаемая воронка 90 дней без восстановления истории из текущей роли. Native Telegram/API/Excel, health/efficiency/dashboard используют общие факты. Лимиты 500/200 удалены; проверены 501/501/201.
-- Scoped результаты лидеров: свежие tasks.manage grants/offices, своя область, нагрузка/результаты/цели. Обычная роль leader не выдаёт глобальные права. Events: явка отдельно от регистрации и баллов, реальные отзывы. Projects: статусы отдельно от подтверждённых вкладов/этапов. Delivery warnings по существующим receipts, чтение ничего не отправляет.
-- Замечания review: открытые task-scoped блокеры включены в distinct attention, закрытые задачи исключены; approved/in_progress унифицированы как active projects в snapshot/dashboard/health/efficiency, статусы отдельно в project report. Добавлен регрессионный тест на одинаковые итоги и несколько блокеров одной задачи.
-- Новый запрос пользователя: фото при регистрации. Исправлены две причины: текущий поток обнулял photo_file_id и не имел загрузки; автоматическая карточка игнорировала фото. В quick/full review есть необязательная кнопка загрузки/замены, предпросмотр и resume; фото сохраняется после submit/resubmit, администраторы получают photo+caption <1024 через прежний durable receipt. Недоступное фото не скрывает текст анкеты. Старые consent/FSM остаются совместимыми.
-- Адресные проверки до финального push: 58 passed + 12 subtests, дополнительные 25 passed; lint passed. Изменения photo resubmit и аналитики требуют CI нового head. Изолированный PostgreSQL probe выполняет все builders 7/30/90.
+## Последний проверенный production
+- main: 13cdabde0500178da1a29c45dab4a66501b0338e. PR #357 MERGED; родители bcb0299 (#356) и d0fd9531; кодовое дерево 5b4a5449fd5b86a2d40d75c2fec5584ef2fc6e93 совпало с проверенным деревом PR.
+- Render dep-dbbjbo0473hc73dkvusg LIVE 20.10 09:36:50 UTC / 13:36:50 Asia/Yerevan. Штатный checksPass auto deploy, без ручного дублирования.
+- Реальный HTTP после LIVE: /health 200 commit=13cdabd; /ready 200 ready. /api/v1/admin/analytics/{overview,growth,sections/events} и /analytics/export.xlsx = 401 без авторизации. Startup complete; новых error logs не найдено. React /app/ обслуживается в production; native Telegram остаётся основным маршрутом.
+- PR final head d0fd9531: оба workflows и все 6 jobs success. 1895 passed, 1 skipped, 1 xfailed, 97 subtests; линтер, зависимости/секреты, frontend, E2E, реальные PostgreSQL migrations/races/builders и Redis FSM прошли. Main run 39400088885: все 5 jobs success.
 
-## Следующие действия
-1. Remote #357 = 6faa39932143aa6ed5cc634c07a07cea23a87663, его CI запущен. Последующий точечный fix учитывает UTF-16/emoji в caption; перед продолжением сверить фактический remote head и tree. Два review threads исправлены и resolved. Других открытых PR нет.
-2. Full CI нового head, resolve двух исправленных threads, merge #357 → штатный auto deploy после main checksPass (не запускать лишний deploy).
-3. Проверить prod SHA, /ready, startup/logs и router/export wiring. Реальную загрузку фото и отправку анкеты из Telegram-клиента не объявлять проверенной без факта.
-4. Security: ipAllowList 0.0.0.0/0 НЕ изменён. Нет update ACL в Render MCP; browser login request истёк, прежняя вкладка отсутствует. Не считать timeout отказом/успехом и не извлекать credentials. Для UI изменения нужен действующий вход Render.
-5. Backup: scheduled run 39377805234 success 20.10 06:00 UTC. Workflow использует OIDC HTTPS snapshot через внутренний PG, проверку restore и encrypted GitHub artifact. Bot/connector PG connections private; public=0. S3 extra layer требует отсутствующих credentials, GitHub уже независимый от Render слой.
+## Выпущено
+- Сброс предоставленного пользователем точного Telegram ID завершён ещё в #356. Receipt complete, шифрованная резервная копия есть, private FSM очищен. Старый user_id=31 архивирован с синтетическим ID; community identity отвязана, ledger/audit/FKs сохранены. На новом старте #357 операция вернула already_complete: новая регистрация повторно не сбрасывается. Ключ находится только в Render env; не выводить и не регенерировать.
+- Фото: quick/full анкета позволяет необязательно добавить/заменить фото перед подтверждением; preview и resume; motivation больше не обнуляет photo_file_id. Submit/resubmit сохраняет SocialProfile. Администраторы получают фото+короткую подпись через прежний durable receipt; учитываются emoji/UTF-16 и лимит caption. Полная анкета открывается нативной кнопкой. Недоступное фото не скрывает текст. Проверены fresh-session DB/card, повторная подача и доставка с caption.
+- Аналитика: общий verified SQL snapshot 7/30/90, первое audit approval, retention одним SQL statement; NULL вместо выдуманных процентов. Рост 90 дней по реально наблюдаемым датам/аудиту, два distinct результата, роли не заменяют историю. Native Telegram/API/Excel, dashboard/health/efficiency согласованы. Лимиты 500/200 сняты; проверены 501/501/201.
+- Scoped результаты лидеров по свежим tasks.manage grants/offices: свои задачи/нагрузка/результаты/цели. Роль leader не выдаёт глобальные права. Реальный change_role пишет именно тот audit, который читает рост.
+- Events: регистрации, реальная явка, новые/вернувшиеся посетители и реальные отзывы разделены. Projects: статусы отдельно от подтверждённых вкладов/этапов, просрочки и отсутствие результата. Active projects = approved/in_progress во всех общих сводках. Открытые task-scoped blockers входят в distinct attention; закрытые задачи не включаются. Delivery warnings по существующим receipts без повторных отправок.
+- Все review threads #357 resolved. Перед выпуском других открытых PR не было; старые заменённые ветки не объединять повторно.
 
-## Остаток итогового ТЗ
-Полная AM/EN локализация/редакторская приёмка; категорийное делегирование поддержки/редакции; независимый backup provider/ACL по факту доступов; реальные Telegram-клиентские сценарии и 24 часа наблюдения. Полный контракт: docs/ERA_FINAL_TZ_2026_10_19.md. Не выдавать CI за реальную приёмку.
+## Что ещё НЕ завершено
+1. PostgreSQL external allowlist всё ещё 0.0.0.0/0. Render MCP не предоставляет update ACL. Browser login не завершён, прежняя вкладка отсутствует; API-ключа/CLI в среде нет. Нужен действующий безопасный вход Render, затем internal-only и проверка bot/migrations/backup. Не заявлять, что сеть уже закрыта.
+2. Дополнительная S3-копия без credentials провайдера не подключена. Независимый от Render encrypted GitHub backup УЖЕ работает: run 39377805234 success 20.10 06:00 UTC; download OIDC snapshot, isolated PG18 restore, encrypt/verify/upload artifact — success. S3 upload/download/restore skipped. Не путать отсутствие S3 с отсутствием резервной копии.
+3. Полная AM/EN локализация основных маршрутов и содержательная редакторская приёмка; категорийное делегирование поддержки/редакции. Существующие global grants и scoped projects/tasks сохранены, admin root не расширять.
+4. Реальная клиентская Telegram-приёмка: повторная анкета с фото самим пользователем, цикл задач с разными участниками, canary рассылки/игр/мероприятий. Не создавать фиктивных участников и массовые production-рассылки как тест. HTTP/CI не заменяют эти факты. 24 часа после выпуска ещё не прошли.
 
-Тесты запускать с BOT_TOKEN=0000000000:LOCALTEST в ../era-test-env. Комиссионный бот, его схему и чужие изменения не трогать. Начинать с этого файла и AI_WORK_MAP; не перечитывать весь проект.
+## Как продолжать экономно
+Этот post-release checkpoint сохранён в ветке feat/analytics2-20261020, поверх main 13cdabde. В main документы могут описывать предвыпускной этап; сначала сверить фактические main/prod SHA и этот checkpoint, не повторять уже завершённый аудит/сброс/релиз. Карта: AI_WORK_MAP.md; формулы: AI_ANALYTICS_SPEC.md; полный остаток: ERA_FINAL_TZ_2026_10_19.md.
+
+Тесты: BOT_TOKEN=0000000000:LOCALTEST ../era-test-env/bin/python -m pytest -q <точные тесты>. Изменения через отдельную ветку и PR. Не трогать commission-бот, его схему и чужой untracked файл app/.commission_bot_community.py.vo6FgJ. Не печатать secrets/анкеты/дампы. Не запускать ручной deploy при активном auto deploy.

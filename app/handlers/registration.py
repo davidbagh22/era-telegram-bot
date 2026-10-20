@@ -240,7 +240,7 @@ async def _begin_registration(message, state, settings, telegram_id):
                              reply_markup=registration_mode_keyboard())
     else:
         await state.set_state(RegistrationStates.full_name)
-        await message.answer(texts.REGISTRATION_INTRO)
+        await message.answer(texts.REGISTRATION_INTRO, parse_mode="HTML")
 
 
 @router.callback_query(F.data == 'registration:resume')
@@ -271,11 +271,11 @@ async def registration_resume(call: CallbackQuery, state: FSMContext, settings: 
         await call.message.answer(CONSENT_SUMMARY, reply_markup=consent_keyboard())
     elif current == RegistrationStates.directions.state:
         data = await state.get_data()
-        await call.message.answer(texts.REG_DIRECTION_SIMPLE, reply_markup=directions_keyboard('both', set(data.get('selected_directions', []))))
+        await call.message.answer(texts.REG_DIRECTION_SIMPLE, parse_mode="HTML", reply_markup=directions_keyboard('both', set(data.get('selected_directions', []))))
     elif current == RegistrationStates.available_time.state:
-        await call.message.answer(texts.REG_TIME, reply_markup=time_keyboard())
+        await call.message.answer(texts.REG_TIME, parse_mode="HTML", reply_markup=time_keyboard())
     elif current in prompts:
-        await call.message.answer(prompts[current])
+        await call.message.answer(prompts[current], parse_mode="HTML")
     else:
         await call.message.answer('Незавершённая анкета не найдена. Начните регистрацию заново.')
 
@@ -292,7 +292,7 @@ async def registration_mode(call: CallbackQuery, state: FSMContext, settings: Se
     await call.answer()
     await state.update_data(registration_mode=mode)
     await state.set_state(RegistrationStates.full_name)
-    await call.message.answer(texts.REGISTRATION_INTRO)
+    await call.message.answer(texts.REGISTRATION_INTRO, parse_mode="HTML")
 
 
 @router.callback_query(F.data.in_({'registration:start', 'registration:reapply'}))
@@ -369,23 +369,23 @@ async def registration_full_name(message: Message, state: FSMContext) -> None:
     value = clean_text(message.text or "", 180)
     parsed = _split_full_name(value or "")
     if parsed is None:
-        await message.answer(texts.REG_FULL_NAME_ERROR)
+        await message.answer(texts.REG_FULL_NAME_ERROR, parse_mode="HTML")
         return
     first_name, last_name = parsed
     await state.update_data(first_name=first_name, last_name=last_name)
     await state.set_state(RegistrationStates.age)
-    await message.answer(texts.REG_AGE)
+    await message.answer(texts.REG_AGE, parse_mode="HTML")
 
 
 @router.message(RegistrationStates.age)
 async def registration_age(message: Message, state: FSMContext) -> None:
     value = parse_age(message.text or "")
     if value is None:
-        await message.answer(texts.REG_AGE_ERROR)
+        await message.answer(texts.REG_AGE_ERROR, parse_mode="HTML")
         return
     await state.update_data(age=value, birth_date=None)
     await state.set_state(RegistrationStates.country)
-    await message.answer(texts.REG_COUNTRY)
+    await message.answer(texts.REG_COUNTRY, parse_mode="HTML")
 
 
 @router.message(RegistrationStates.country)
@@ -396,7 +396,7 @@ async def registration_country(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(country=value)
     await state.set_state(RegistrationStates.region)
-    await message.answer(texts.REG_REGION)
+    await message.answer(texts.REG_REGION, parse_mode="HTML")
 
 
 @router.message(RegistrationStates.region)
@@ -407,21 +407,21 @@ async def registration_region(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(region=value, city=value[:100])
     await state.set_state(RegistrationStates.email)
-    await message.answer(texts.REG_EMAIL)
+    await message.answer(texts.REG_EMAIL, parse_mode="HTML")
 
 
 @router.message(RegistrationStates.email)
 async def registration_email(message: Message, state: FSMContext) -> None:
     value = normalize_email(message.text or "")
     if value is None:
-        await message.answer(texts.REG_EMAIL_ERROR)
+        await message.answer(texts.REG_EMAIL_ERROR, parse_mode="HTML")
         return
     await state.update_data(email=value)
     if (await state.get_data()).get('registration_mode') == 'quick':
         await _show_registration_review(message, state)
         return
     await state.set_state(RegistrationStates.education_work)
-    await message.answer(texts.REG_EDUCATION)
+    await message.answer(texts.REG_EDUCATION, parse_mode="HTML")
 
 
 @router.message(RegistrationStates.education_work)
@@ -433,7 +433,7 @@ async def registration_education(message: Message, state: FSMContext) -> None:
     await state.update_data(education_work=value, occupation=value, selected_directions=[])
     await state.set_state(RegistrationStates.directions)
     await message.answer(
-        texts.REG_DIRECTION_SIMPLE,
+        texts.REG_DIRECTION_SIMPLE, parse_mode="HTML",
         reply_markup=directions_keyboard("both"),
     )
 
@@ -447,7 +447,7 @@ async def registration_directions(call: CallbackQuery, state: FSMContext) -> Non
 
     if key == "done":
         if not selected:
-            await call.message.answer(texts.REG_DIRECTION_REQUIRED)
+            await call.message.answer(texts.REG_DIRECTION_REQUIRED, parse_mode="HTML")
             return
         names = [DIRECTION_OPTIONS[item] for item in selected if item != "participate"]
         departments: list[str] = []
@@ -457,7 +457,7 @@ async def registration_directions(call: CallbackQuery, state: FSMContext) -> Non
             departments.append("Внешние связи")
         await state.update_data(directions=names, departments=departments)
         await state.set_state(RegistrationStates.experience)
-        await call.message.answer(texts.REG_EXPERIENCE_SIMPLE)
+        await call.message.answer(texts.REG_EXPERIENCE_SIMPLE, parse_mode="HTML")
         return
 
     if key not in DIRECTION_OPTIONS:
@@ -484,7 +484,7 @@ async def registration_experience(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(experience=value, skills=[])
     await state.set_state(RegistrationStates.available_time)
-    await message.answer(texts.REG_TIME, reply_markup=time_keyboard())
+    await message.answer(texts.REG_TIME, parse_mode="HTML", reply_markup=time_keyboard())
 
 
 @router.callback_query(
@@ -498,7 +498,7 @@ async def registration_available_time(call: CallbackQuery, state: FSMContext) ->
         return
     await state.update_data(available_time=TIME_VALUES[key], desired_path="Участник")
     await state.set_state(RegistrationStates.motivation)
-    await call.message.answer(texts.REG_MOTIVATION)
+    await call.message.answer(texts.REG_MOTIVATION, parse_mode="HTML")
 
 
 def _registration_review_text(data: dict) -> str:
@@ -593,7 +593,7 @@ async def registration_review_restart(call: CallbackQuery, state: FSMContext) ->
     await state.clear()
     await state.update_data(**{key: data[key] for key in ('resubmission', 'registration_mode') if key in data})
     await state.set_state(RegistrationStates.full_name)
-    await call.message.answer(texts.REGISTRATION_INTRO)
+    await call.message.answer(texts.REGISTRATION_INTRO, parse_mode="HTML")
 
 
 @router.callback_query(RegistrationStates.review, F.data == "reg:review:ok")
@@ -619,7 +619,7 @@ async def full_consent(call: CallbackQuery) -> None:
 async def no_consent(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await state.clear()
-    await call.message.answer(texts.REG_NO_CONSENT)
+    await call.message.answer(texts.REG_NO_CONSENT, parse_mode="HTML")
 
 
 @router.callback_query(RegistrationStates.consent, F.data == "reg:consent:yes")
@@ -735,7 +735,7 @@ async def finish_registration(
         )
     else:
         await call.message.answer(
-            texts.REG_DONE,
+            texts.REG_DONE, parse_mode="HTML",
             reply_markup=pending_registration_keyboard(settings.era_channel_url),
         )
 

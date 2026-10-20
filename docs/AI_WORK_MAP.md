@@ -1,6 +1,6 @@
 # Карта точечной работы ЭРА
 
-Production/main bcb0299, PR #356 merged и LIVE. Аналитика — PR #357, незавершённый этап/проверки в AI_TASK_STATE.md. Сначала сверять git HEAD и remote SHA, затем читать только затронутые модули.
+Production/main 13cdabde, PR #356 и #357 merged, Render LIVE dep-dbbjbo0473hc73dkvusg; /health и /ready = 200. Post-release checkpoint — feat/analytics2-20261020: docs/AI_TASK_STATE.md; не повторять выполненный reset/CI/релиз. Сначала сверять git HEAD и remote SHA, затем читать только затронутые модули.
 
 | Задача | Файлы / основные символы | Данные | Проверки |
 |---|---|---|---|
