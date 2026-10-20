@@ -272,9 +272,9 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
     async def test_attention_never_hides_business_warnings_behind_diagnostics(self):
         async with self.sessions() as session:
             metrics = await build_management_report(session, now=self.now)
-        metrics.update(tasks_overdue=6, users_pending=5, projects_overdue=4, delivery_errors=3)
+        metrics.update(tasks_attention=7, tasks_overdue=6, users_pending=5, projects_overdue=4, delivery_errors=3)
         text = management_report_text(metrics)
-        for expected in ['задачи: 6', 'обращения: 1', 'заявки: 5', 'проекты: 4', 'доставки: 3', 'резервное копирование']:
+        for expected in ['Разобрать задачи, требующие внимания: 7', 'обращения: 1', 'заявки: 5', 'проекты: 4', 'доставки: 3', 'резервное копирование']:
             assert expected in text
         assert text.index('Требует решения') < text.index('Действующих сейчас')
 
@@ -303,6 +303,31 @@ class ManagementReportTests(IsolatedAsyncioTestCase):
             assert task.status == 'in_progress'
             assert task.deadline.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc)
 
+
+    async def test_attention_queue_cannot_cancel_task_with_pending_result(self):
+        from app.database.models import Task, TaskSubmission
+        from app.handlers.admin.task_review_block2 import task_attention_action, _attention_version
+        async with self.sessions() as session:
+            task = Task(title='Pending result', description='Test', creator_id=self.admin_id, status='review')
+            session.add(task)
+            await session.flush()
+            submission = TaskSubmission(task_id=task.id, user_id=self.member_id, status='pending')
+            session.add(submission)
+            await session.flush()
+            admin = await session.get(User, self.admin_id)
+            token = _attention_version(task)
+            call = SimpleNamespace(
+                from_user=SimpleNamespace(id=11), answer=AsyncMock(),
+                data='admin:taskattention:confirm:' + str(task.id) + ':' + token,
+                message=SimpleNamespace(edit_text=AsyncMock()),
+            )
+            await task_attention_action(call, admin, self.settings, session)
+            assert task.status == 'review'
+            assert submission.status == 'pending'
+            call.answer.assert_awaited_once_with(
+                'Нельзя отменить задачу: сначала проверьте отправленный результат.',
+                show_alert=True,
+            )
 
     async def test_deadline_keeps_pending_results_in_review_and_is_audited(self):
         from app.database.models import AuditLog, Task, TaskSubmission
