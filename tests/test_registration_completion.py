@@ -117,6 +117,29 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
         assert 'Анна &amp; Тестова' in review
         assert 'Новые друзья &lt;и&gt; опыт' in review
 
+    async def test_referral_entry_uses_current_form_and_keeps_invite_on_resume(self):
+        from app.handlers import referrals
+        for rollout in ['OFF', 'ALL']:
+            await self.state.clear()
+            self.settings.feature_quick_registration = rollout
+            self.call.data = 'registration:ref:start:123456'
+            with patch.object(referrals, 'validate_referral_code', AsyncMock(
+                return_value=(SimpleNamespace(code='123456'), None))), patch.object(
+                referrals, 'is_channel_member', AsyncMock(return_value=True)):
+                await referrals.registration_start_with_referral(self.call, self.state, AsyncMock(),
+                    self.bot, self.settings, None)
+            if rollout == 'ALL':
+                assert await self.state.get_state() == RegistrationStates.mode.state
+                self.call.data = 'reg:mode:full'
+                await registration.registration_mode(self.call, self.state, self.settings)
+            assert await self.state.get_state() == RegistrationStates.full_name.state
+            assert self.call.message.answer.await_args.kwargs['parse_mode'] == 'HTML'
+            assert (await self.state.get_data())['referral_code'] == '123456'
+        await self.state.set_state(RegistrationStates.first_name)
+        await registration.registration_resume(self.call, self.state, self.settings)
+        assert await self.state.get_state() == RegistrationStates.full_name.state
+        assert (await self.state.get_data())['referral_code'] == '123456'
+
     async def test_quick_flow_creates_one_pending_user_with_explicit_consent(self):
         await self.complete_quick_form()
         data = await self.state.get_data()

@@ -250,6 +250,11 @@ async def registration_resume(call: CallbackQuery, state: FSMContext, settings: 
         await call.message.answer(application_status_message(user.application_status))
         return
     current = await state.get_state()
+    if current == RegistrationStates.first_name.state:
+        # Older referral cards opened a retired state with no input handler.
+        # Resume the current full-name question without losing the invite code.
+        current = RegistrationStates.full_name.state
+        await state.set_state(RegistrationStates.full_name)
     prompts = {
         RegistrationStates.full_name.state: texts.REGISTRATION_INTRO,
         RegistrationStates.age.state: texts.REG_AGE,
