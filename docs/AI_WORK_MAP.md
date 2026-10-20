@@ -26,3 +26,5 @@ Entity reports: analytics_snapshot_service.build_event_analytics/build_project_a
 Оформление регистрации: все REG prompts/resume — explicit HTML; referrals.registration_start_with_referral → общий registration._begin_registration. Legacy first_name при resume → full_name, код и прогресс сохраняются. tests/test_registration_completion: full flow/escape/referral OFF+ALL/legacy resume.
 
 Точный остаток/пакеты PR: FINAL_RELEASE_BACKLOG_2026_10_20.md. Старый management report: admin_analytics_service.build_management_report/management_report_text/send_management_reports; native commands_ready (manual previous не передаётся), book_club_service.literature_stats (накопительные markers); analytics_filters.analytics_waiting. Следующий этап — общие verified facts/periods/report UI/attention actions.
+
+Решение пользователя 20.10.2026: языковой пакет отложен, текущий язык интерфейса сохраняется. Локализация не блокирует текущую окончательную приёмку; выполнять только по отдельному запросу.
