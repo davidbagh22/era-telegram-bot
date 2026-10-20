@@ -1,6 +1,6 @@
 # Карта точечной работы ЭРА
 
-Production/main 13cdabde, PR #356 и #357 merged, Render LIVE dep-dbbjbo0473hc73dkvusg; /health и /ready = 200. Post-release checkpoint — feat/analytics2-20261020: docs/AI_TASK_STATE.md; не повторять выполненный reset/CI/релиз. Сначала сверять git HEAD и remote SHA, затем читать только затронутые модули.
+Production/main 4fc319ce, #356/#357/#358 merged. Render LIVE dep-dbbk8bek1f9s73bumib0; /health и /ready = 200. Последний checkpoint: fix/registration-html-20261020/docs/AI_TASK_STATE.md. Сначала сверять фактический SHA; не повторять reset/релизы.
 
 | Задача | Файлы / основные символы | Данные | Проверки |
 |---|---|---|---|
@@ -23,3 +23,4 @@ Scoped leaders: services/admin_analytics_service.py:build_scoped_leader_operatio
 Entity reports: analytics_snapshot_service.build_event_analytics/build_project_analytics/delivery_problem_counts → analytics_filters.analytics_entities/analytics_waiting; API /analytics/sections/{events|projects}; Excel «События 2.0»/«Проекты 2.0». tests/test_entity_analytics; PostgreSQL probe scripts/postgres_certificate_season_race.py. Сохранение native Excel routes проверяет test_system_audit_callback_regex.
 
 Фото регистрации: handlers/registration.py:registration_photo_start/registration_photo/_show_registration_review/finish_registration → database/socials.SocialProfile; keyboards/registration.registration_review_keyboard; services/admin_user_card.send_admin_application_cards → notification_service.notify_admins_once(photo). Доставка через прежний safe_send_once/receipt, caption ≤900, full card отдельно. tests/test_registration_completion (quick upload, resubmit, preservation), test_registration_admin_visibility (photo caption).
+Оформление регистрации: все REG prompts/resume — explicit HTML; referrals.registration_start_with_referral → общий registration._begin_registration. Legacy first_name при resume → full_name, код и прогресс сохраняются. tests/test_registration_completion: full flow/escape/referral OFF+ALL/legacy resume.

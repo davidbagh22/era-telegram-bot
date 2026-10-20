@@ -1,9 +1,13 @@
 # Состояние ЭРА — 20.10.2026, после выпуска #357
 
-## Текущий hotfix: оформление регистрации
-- Скриншоты пользователя 13:00–13:04 показали буквальные <b> в шагах анкеты. В #357 исправлялись фото, а не HTML prompts. Причина подтверждена: отправки REG* и resume не задавали parse_mode при отсутствии глобального HTML. Исправлено локально явным HTML только для доверенных констант; экранирование пользовательских ответов в review сохраняется. Адресные проверки: исходный набор 30 passed + 12 subtests; после добавления полного сценария ещё 14 passed, lint passed. Regression проверяет полный маршрут/продолжение без global parse mode и экранирование ответов. PR #358: первый head 890a1f04 прошёл все 6 checks. Review нашло дополнительный referral вход: он теперь использует общий _begin_registration, сохраняет код и существующую анкету; legacy first_name при resume переводится в рабочий full_name. Добавлен regression OFF/ALL referral + legacy resume. Нужны CI финального head и выпуск. Незавершённая анкета — штатное сохранение прогресса, не повод повторно сбрасывать регистрацию.
+## Последний production — #358, оформление регистрации
+- Main 4fc319ce1fff74e1ab12980f0343ef500366918d; PR #358 MERGED. Tested head 5f19bcbcae4ac742960df10ccbc4555516e4bd89, tree 3c06b550c13494504771b3f0c21c0b54b76dcae9; merge сохранил #357 ancestry и точное дерево.
+- Все 6 PR checks и 5 main checks success; 1897 passed, 97 subtests, 1 skipped/1 xfailed. Main run 39406910833.
+- Render dep-dbbk8bek1f9s73bumib0 LIVE 20.10 10:37:41 UTC / 14:37:41 Asia/Yerevan; штатный auto deploy. После LIVE реальный /health=200 commit=4fc319c, /ready=200 ready; error logs после начала deploy отсутствуют.
+- Все доверенные REG prompts и resume отправляются с явным HTML; пользовательские ответы в review экранируются. Referral использует тот же _begin_registration и сохраняет код/существующую анкету; legacy first_name при resume переводится в рабочий full_name. Проверены полный маршрут и referral OFF/ALL. Старые сообщения Telegram не перерисовываются; /start → «Продолжить анкету» даёт новый экран без сброса данных.
+- Реальное отображение новых сообщений в клиенте пользователя ещё не наблюдалось. Незавершённая анкета — штатное сохранение прогресса, не причина повторять reset.
 
-## Последний проверенный production
+## Предыдущий production — #357
 - main: 13cdabde0500178da1a29c45dab4a66501b0338e. PR #357 MERGED; родители bcb0299 (#356) и d0fd9531; кодовое дерево 5b4a5449fd5b86a2d40d75c2fec5584ef2fc6e93 совпало с проверенным деревом PR.
 - Render dep-dbbjbo0473hc73dkvusg LIVE 20.10 09:36:50 UTC / 13:36:50 Asia/Yerevan. Штатный checksPass auto deploy, без ручного дублирования.
 - Реальный HTTP после LIVE: /health 200 commit=13cdabd; /ready 200 ready. /api/v1/admin/analytics/{overview,growth,sections/events} и /analytics/export.xlsx = 401 без авторизации. Startup complete; новых error logs не найдено. React /app/ обслуживается в production; native Telegram остаётся основным маршрутом.
@@ -24,6 +28,6 @@
 4. Реальная клиентская Telegram-приёмка: повторная анкета с фото самим пользователем, цикл задач с разными участниками, canary рассылки/игр/мероприятий. Не создавать фиктивных участников и массовые production-рассылки как тест. HTTP/CI не заменяют эти факты. 24 часа после выпуска ещё не прошли.
 
 ## Как продолжать экономно
-Этот post-release checkpoint сохранён в ветке feat/analytics2-20261020, поверх main 13cdabde. В main документы могут описывать предвыпускной этап; сначала сверить фактические main/prod SHA и этот checkpoint, не повторять уже завершённый аудит/сброс/релиз. Карта: AI_WORK_MAP.md; формулы: AI_ANALYTICS_SPEC.md; полный остаток: ERA_FINAL_TZ_2026_10_19.md.
+Этот post-release checkpoint сохранён в ветке fix/registration-html-20261020, поверх main 4fc319ce. В main документы могут описывать предвыпускной этап; сначала сверить фактические main/prod SHA и этот checkpoint, не повторять уже завершённый аудит/сброс/релиз. Карта: AI_WORK_MAP.md; формулы: AI_ANALYTICS_SPEC.md; полный остаток: ERA_FINAL_TZ_2026_10_19.md.
 
 Тесты: BOT_TOKEN=0000000000:LOCALTEST ../era-test-env/bin/python -m pytest -q <точные тесты>. Изменения через отдельную ветку и PR. Не трогать commission-бот, его схему и чужой untracked файл app/.commission_bot_community.py.vo6FgJ. Не печатать secrets/анкеты/дампы. Не запускать ручной deploy при активном auto deploy.
