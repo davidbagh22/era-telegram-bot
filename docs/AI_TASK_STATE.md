@@ -22,6 +22,7 @@
 - Все review threads #357 resolved. Перед выпуском других открытых PR не было; старые заменённые ветки не объединять повторно.
 
 ## Что ещё НЕ завершено
+0. Подтверждён остаток именно админ-аналитики: присланная сводка использует ledger-only meaningful_user_ids_since, ручные отчёты без previous, daily comparison только users_total, literature active — накопительно, не все attention queues/actions согласованы. Следующий приоритет — пакет A из FINAL_RELEASE_BACKLOG_2026_10_20.md; затем B/C и реальные сценарии. GitHub open PRs = 0 на проверке. Не заявлять, что старый ежедневный отчёт уже полностью унифицирован новым overview.
 1. PostgreSQL external allowlist всё ещё 0.0.0.0/0. Render MCP не предоставляет update ACL. Browser login не завершён, прежняя вкладка отсутствует; API-ключа/CLI в среде нет. Нужен действующий безопасный вход Render, затем internal-only и проверка bot/migrations/backup. Не заявлять, что сеть уже закрыта.
 2. Дополнительная S3-копия без credentials провайдера не подключена. Независимый от Render encrypted GitHub backup УЖЕ работает: run 39377805234 success 20.10 06:00 UTC; download OIDC snapshot, isolated PG18 restore, encrypt/verify/upload artifact — success. S3 upload/download/restore skipped. Не путать отсутствие S3 с отсутствием резервной копии.
 3. Полная AM/EN локализация основных маршрутов и содержательная редакторская приёмка; категорийное делегирование поддержки/редакции. Существующие global grants и scoped projects/tasks сохранены, admin root не расширять.
