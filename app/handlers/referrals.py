@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.handlers.registration import registration_start
+from app.handlers.registration import _begin_registration, offer_registration_resume, registration_start
 from app.keyboards.registration import consent_keyboard, referral_code_keyboard
 from app.services.consent_policy import CONSENT_SUMMARY
 from app.services.referral_service import validate_referral_code
@@ -153,13 +153,13 @@ async def registration_start_with_referral(
         )
         return
 
-    # registration_start() normally clears FSM data. For a referral deep link,
-    # start the same first registration step ourselves so the validated code
-    # survives all the way to user creation.
+    if await offer_registration_resume(call.message, state):
+        return
+    # Preserve the validated code while using the same current form, HTML
+    # formatting and rollout choice as the ordinary registration entry.
     await state.clear()
     await state.update_data(referral_code=code_row.code)
-    await state.set_state(RegistrationStates.first_name)
-    await call.message.answer(texts.REGISTRATION_INTRO)
+    await _begin_registration(call.message, state, settings, call.from_user.id)
 
 
 @router.callback_query(RegistrationStates.consent, F.data == "reg:ref:start")

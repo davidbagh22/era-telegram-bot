@@ -32,7 +32,7 @@ class RegistrationSkillsExperienceTests(unittest.IsolatedAsyncioTestCase):
             last_name="Багдасарян",
         )
         state.set_state.assert_awaited_once_with(RegistrationStates.age)
-        message.answer.assert_awaited_once_with(texts.REG_AGE)
+        message.answer.assert_awaited_once_with(texts.REG_AGE, parse_mode="HTML")
 
     async def test_education_goes_directly_to_direction_choice(self) -> None:
         message = SimpleNamespace(text="МГУ, студент", answer=AsyncMock())

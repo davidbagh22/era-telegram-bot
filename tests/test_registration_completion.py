@@ -80,6 +80,66 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
         assert await self.state.get_state() == RegistrationStates.review.state
         message.answer_photo.assert_awaited_once()
 
+    async def test_full_form_and_resume_render_headings_and_escape_answers(self):
+        # No global Bot parse mode: each formatted prompt must carry its own.
+        await registration._begin_registration(self.call.message, self.state,
+            Settings(bot_token='1234567890:test', feature_quick_registration='OFF'), 22)
+        messages = [self.call.message]
+        for handler, value in [
+            (registration.registration_full_name, 'Анна & Тестова'),
+            (registration.registration_age, '24'),
+            (registration.registration_country, 'Армения'),
+            (registration.registration_region, 'Ереван'),
+            (registration.registration_email, 'applicant@example.test'),
+            (registration.registration_education, 'Университет'),
+        ]:
+            message = self.message(value)
+            messages.append(message)
+            await handler(message, self.state)
+            await registration.registration_resume(self.call, self.state, self.settings)
+        await self.state.update_data(selected_directions=['participate'])
+        self.call.data = 'reg:dir:done'
+        await registration.registration_directions(self.call, self.state)
+        message = self.message('Помогать команде')
+        messages.append(message)
+        await registration.registration_experience(message, self.state)
+        self.call.data = 'reg:time:1-2'
+        await registration.registration_available_time(self.call, self.state)
+        message = self.message('Новые друзья <и> опыт')
+        messages.append(message)
+        await registration.registration_motivation(message, self.state)
+        assert await self.state.get_state() == RegistrationStates.review.state
+        for message in messages:
+            for sent in message.answer.await_args_list:
+                if '<b>' in sent.args[0]:
+                    assert sent.kwargs.get('parse_mode') == 'HTML'
+        review = message.answer.await_args.args[0]
+        assert 'Анна &amp; Тестова' in review
+        assert 'Новые друзья &lt;и&gt; опыт' in review
+
+    async def test_referral_entry_uses_current_form_and_keeps_invite_on_resume(self):
+        from app.handlers import referrals
+        for rollout in ['OFF', 'ALL']:
+            await self.state.clear()
+            self.settings.feature_quick_registration = rollout
+            self.call.data = 'registration:ref:start:123456'
+            with patch.object(referrals, 'validate_referral_code', AsyncMock(
+                return_value=(SimpleNamespace(code='123456'), None))), patch.object(
+                referrals, 'is_channel_member', AsyncMock(return_value=True)):
+                await referrals.registration_start_with_referral(self.call, self.state, AsyncMock(),
+                    self.bot, self.settings, None)
+            if rollout == 'ALL':
+                assert await self.state.get_state() == RegistrationStates.mode.state
+                self.call.data = 'reg:mode:full'
+                await registration.registration_mode(self.call, self.state, self.settings)
+            assert await self.state.get_state() == RegistrationStates.full_name.state
+            assert self.call.message.answer.await_args.kwargs['parse_mode'] == 'HTML'
+            assert (await self.state.get_data())['referral_code'] == '123456'
+        await self.state.set_state(RegistrationStates.first_name)
+        await registration.registration_resume(self.call, self.state, self.settings)
+        assert await self.state.get_state() == RegistrationStates.full_name.state
+        assert (await self.state.get_data())['referral_code'] == '123456'
+
     async def test_quick_flow_creates_one_pending_user_with_explicit_consent(self):
         await self.complete_quick_form()
         data = await self.state.get_data()
