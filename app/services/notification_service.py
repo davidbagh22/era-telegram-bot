@@ -597,6 +597,8 @@ async def notify_admins_once(
     delivery_key: str,
     notification_type: str,
     reply_markup=None,
+    photo=None,
+    parse_mode: str | None = None,
 ) -> tuple[int, int, int]:
     """Durably notify all admins once per semantic event and recipient."""
     recipients = await admin_notification_recipients(settings)
@@ -610,6 +612,8 @@ async def notify_admins_once(
             delivery_key=f"{delivery_key}:{chat_id}",
             notification_type=notification_type,
             reply_markup=reply_markup,
+            **({'photo': photo} if photo is not None else {}),
+            **({'parse_mode': parse_mode} if parse_mode is not None else {}),
         )
         if result.duplicate:
             duplicates += 1

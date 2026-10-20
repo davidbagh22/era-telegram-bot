@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Event, Project, User
-from app.services.analytics_snapshot_service import build_event_analytics, count_new_members, count_verified_users, roster_conditions
+from app.services.analytics_snapshot_service import ACTIVE_PROJECT_STATUSES, build_event_analytics, count_new_members, count_verified_users, roster_conditions
 from app.utils.constants import EventStatus, ProjectStatus
 
 
@@ -128,7 +128,7 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
     active_projects = int(
         await session.scalar(
             select(func.count(Project.id)).where(
-                Project.status == ProjectStatus.IN_PROGRESS
+                Project.status.in_(ACTIVE_PROJECT_STATUSES)
             )
         )
         or 0
@@ -178,7 +178,7 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
             value=float(active_projects),
             display=str(active_projects),
             score=project_output_score,
-            note=f"в работе · новых за 30 дней: {projects_created_30d}",
+            note=f"одобрены и в работе · новых за 30 дней: {projects_created_30d}",
         ),
         EfficiencyMetric(
             key="registrations",

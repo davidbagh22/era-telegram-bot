@@ -141,6 +141,7 @@ def referral_code_keyboard(prefill: str | None = None) -> InlineKeyboardMarkup:
 def registration_review_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="Добавить / заменить фото", callback_data="reg:photo:add")],
             [
                 InlineKeyboardButton(
                     text="✅ Всё верно",

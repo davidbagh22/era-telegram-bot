@@ -7,7 +7,7 @@ from openpyxl import load_workbook
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.base import Base
-from app.database.models import AuditLog, Event, EventRegistration, PointTransaction, Task, TaskSubmission, User
+from app.database.models import AuditLog, Event, EventRegistration, LeadershipAttentionItem, PointTransaction, Project, Task, TaskSubmission, User
 from app.services.analytics_snapshot_service import build_analytics_snapshot, count_new_members
 from app.services.excel_service import build_analytics_workbook
 from app.services.admin_dashboard_service import dashboard_metrics
@@ -72,6 +72,31 @@ class AnalyticsSnapshotTests(unittest.IsolatedAsyncioTestCase):
         async with async_sessionmaker(engine)() as session:
             snapshot = await build_analytics_snapshot(session)
             assert next(m for m in snapshot.metrics if m.key == 'retention').value is None
+        await engine.dispose()
+
+    async def test_open_blockers_are_distinct_and_project_statuses_agree(self):
+        engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            owner = User(telegram_id=99, first_name='Fixture', application_status='approved')
+            session.add(owner); await session.flush()
+            tasks = [Task(title=status, description='Fixture', creator_id=owner.id, status=status)
+                     for status in ['in_progress', 'completed', 'cancelled', 'new']]
+            session.add_all(tasks); await session.flush()
+            for task in tasks:
+                session.add(LeadershipAttentionItem(type='leaders_task', scope_type='task', scope_id=task.id,
+                                                   status='resolved' if task.status == 'new' else 'open'))
+            session.add(LeadershipAttentionItem(type='leaders_task', scope_type='task', scope_id=tasks[0].id, status='in_progress'))
+            for status in ['approved', 'in_progress', 'draft', 'completed', 'cancelled']:
+                session.add(Project(title=status, short_description='Fixture', author_id=owner.id, status=status))
+            await session.commit()
+            metrics = {m.key: m for m in (await build_analytics_snapshot(session)).metrics}
+            assert metrics['attention'].value == 1
+            assert metrics['projects'].value == 2
+            assert (await dashboard_metrics(session)).values['projects_active'] == 2
+            assert next(m.value for m in (await build_organization_health(session)).metrics if m.key == 'active_projects') == 2
+            assert next(m.value for m in (await build_efficiency_snapshot(session)).metrics if m.key == 'projects') == 2
         await engine.dispose()
 
 

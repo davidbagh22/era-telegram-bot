@@ -23,7 +23,7 @@ from app.database.models import (
 )
 from app.database.participation_models import ParticipationLifecycle
 from app.services.authorization_service import is_full_admin
-from app.services.analytics_snapshot_service import count_verified_users
+from app.services.analytics_snapshot_service import ACTIVE_PROJECT_STATUSES, count_verified_users
 from app.services.participation_lifecycle_service import (
     MODE_EXITED,
 )
@@ -132,7 +132,7 @@ async def dashboard_metrics(session: AsyncSession) -> DashboardMetrics:
             ),
         ),
         "projects_active": await _count(
-            session, Project, Project.status.in_([ProjectStatus.APPROVED, ProjectStatus.IN_PROGRESS])
+            session, Project, Project.status.in_(ACTIVE_PROJECT_STATUSES)
         ),
         "events_pending": await _count(session, Event, Event.status == EventStatus.PENDING_APPROVAL),
         "events_live": await _count(

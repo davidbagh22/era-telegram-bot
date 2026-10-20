@@ -260,7 +260,8 @@ async def send_admin_user_card(
             else InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Заявки", callback_data="admin:applications")]])
         )
     if card.photo_file_id:
-        await safe_answer_photo(message, card.photo_file_id, caption="Фото участника")
+        if not await safe_answer_photo(message, card.photo_file_id, caption="Фото участника"):
+            await message.answer('Фото недоступно в Telegram. Участник может загрузить его заново в настройках профиля.')
     # Questionnaire values are plain text, never Telegram markup. Long answers
     # are split so a valid application cannot become unreadable at 4096 chars.
     chunks = [card.text[index:index+2000] for index in range(0, len(card.text), 2000)]
@@ -276,13 +277,19 @@ async def send_admin_application_cards(
     """Post-commit, idempotent new-registration notice for administrators."""
     card = await build_admin_user_card(session, target, mode="application")
     reply_markup = _automatic_application_markup(settings.effective_miniapp_url, target.id)
+    # Telegram photo captions are limited to 1024 characters. Keep the full
+    # questionnaire available through the existing guarded application action.
+    limit = 900 if card.photo_file_id else 1800
+    summary = card.text if len(card.text) <= limit else card.text[:limit-80] + "\n\nПолная анкета — по кнопке ниже."
     sent, failed, duplicates = await notify_admins_once(
         bot,
         settings,
-        card.text if len(card.text) <= 1800 else card.text[:1700] + "\n\nПолная анкета — по кнопке ниже.",
+        summary,
         delivery_key=f"admin:registration:{target.id}:submitted" + (f":{notification_revision}" if notification_revision is not None else ""),
         notification_type="registration_submitted",
         reply_markup=reply_markup,
+        **({'photo': card.photo_file_id} if card.photo_file_id else {}),
+        parse_mode='',
     )
     if sent == 0 and duplicates == 0:
         logger.error("Application card delivery failed for all recipients user_id=%s", target.id)

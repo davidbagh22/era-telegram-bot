@@ -23,7 +23,7 @@ from app.database.models import (
     UserDirection,
 )
 from app.database.participation_models import ParticipationLifecycle
-from app.services.analytics_snapshot_service import activity_cohort_counts, build_event_analytics, count_new_members, count_verified_users
+from app.services.analytics_snapshot_service import ACTIVE_PROJECT_STATUSES, activity_cohort_counts, build_event_analytics, count_new_members, count_verified_users
 from app.services import development_analytics
 from app.services.admin_dashboard_service import dashboard_metrics
 from app.services.meaningful_activity_service import (
@@ -229,7 +229,7 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
     active_projects = await _count(
         session,
         Project,
-        Project.status == ProjectStatus.IN_PROGRESS,
+        Project.status.in_(ACTIVE_PROJECT_STATUSES),
     )
     new_projects_30d = await _count(
         session,
@@ -362,7 +362,7 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
         HealthMetric("attendance_rate", "События", "Явка", attendance_rate, (f"{attendance_rate:.1f}%" if attendance_rate is not None else "Нет данных"), f"пришли {attended_30d} · зарегистрировано {event_registrations_30d}", (_cap(attendance_rate) if attendance_rate is not None else None)),
         HealthMetric("feedback", "События", "Оценка мероприятий", feedback_avg, f"{feedback_avg:.1f}/5" if feedback_count else "Нет данных", f"{feedback_count} отзывов", _cap((feedback_avg / 5) * 100) if feedback_count else None),
         HealthMetric("feedback_rate", "События", "Охват обратной связью", feedback_rate, (f"{feedback_rate:.1f}%" if feedback_rate is not None else "Нет данных"), "доля посетивших, оставивших отзыв"),
-        HealthMetric("active_projects", "Проекты", "Проектов в работе", active_projects, str(active_projects), "статус in_progress; одобренные без запуска учитываются отдельно"),
+        HealthMetric("active_projects", "Проекты", "Действующие проекты", active_projects, str(active_projects), "статусы approved/in_progress; без черновиков и завершённых"),
         HealthMetric("new_projects_30d", "Проекты", "Новых проектов за 30 дней", new_projects_30d, str(new_projects_30d), "новый проектный поток"),
         HealthMetric("completed_projects", "Проекты", "Завершено проектов", completed_projects, str(completed_projects), "накопленный подтверждённый результат"),
         HealthMetric("project_members", "Проекты", "Подтверждённых вкладов", project_members, str(project_members), "учитывается только подтверждённый вклад участника в проект"),

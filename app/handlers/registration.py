@@ -5,7 +5,8 @@ from urllib.parse import urlparse
 
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -27,7 +28,7 @@ from app.services.admin_user_card import send_admin_application_cards
 from app.services.audit_service import audit
 from app.services.consent_policy import CONSENT_SUMMARY, consent_full_chunks
 from app.services.consent_service import CURRENT_POLICY_VERSION
-from app.services.notification_service import admin_notification_recipients, safe_send
+from app.services.notification_service import admin_notification_recipients, safe_answer_photo, safe_send
 from app.services.points_service import add_points
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.states.registration import RegistrationStates
@@ -262,8 +263,9 @@ async def registration_resume(call: CallbackQuery, state: FSMContext, settings: 
     if current == RegistrationStates.mode.state:
         await _begin_registration(call.message, state, settings, call.from_user.id)
     elif current == RegistrationStates.review.state:
-        await call.message.answer(_registration_review_text(await state.get_data()),
-                                  parse_mode='HTML', reply_markup=registration_review_keyboard())
+        await _show_registration_review(call.message, state)
+    elif current == RegistrationStates.profile_photo.state:
+        await call.message.answer(_PHOTO_PROMPT, reply_markup=_photo_back_keyboard())
     elif current == RegistrationStates.consent.state:
         await state.update_data(consent_policy_version=CURRENT_POLICY_VERSION)
         await call.message.answer(CONSENT_SUMMARY, reply_markup=consent_keyboard())
@@ -416,9 +418,7 @@ async def registration_email(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(email=value)
     if (await state.get_data()).get('registration_mode') == 'quick':
-        await state.set_state(RegistrationStates.review)
-        await message.answer(_registration_review_text(await state.get_data()), parse_mode='HTML',
-                             reply_markup=registration_review_keyboard())
+        await _show_registration_review(message, state)
         return
     await state.set_state(RegistrationStates.education_work)
     await message.answer(texts.REG_EDUCATION)
@@ -514,6 +514,7 @@ def _registration_review_text(data: dict) -> str:
         f"Учёба / работа: {html.escape(str(data.get('education_work') or '—'))}\n"
         f"Интересы: {html.escape(directions)}\n"
         f"Время: {html.escape(str(data.get('available_time') or '—'))}\n\n"
+        f"Фото: {'добавлено' if data.get('profile_photo_file_id') else 'не добавлено (необязательно)'}\n\n"
         f"<b>Опыт / чем полезны</b>\n{html.escape(str(data.get('experience') or '—'))}\n\n"
         f"<b>Почему ЭРА</b>\n{html.escape(str(data.get('motivation') or '—'))}"
     )
@@ -528,15 +529,57 @@ async def registration_motivation(message: Message, state: FSMContext) -> None:
     await state.update_data(
         motivation=value,
         phone=None,
-        profile_photo_file_id=None,
         social_url=None,
     )
+    await _show_registration_review(message, state)
+
+
+async def _show_registration_review(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     await state.set_state(RegistrationStates.review)
+    if data.get('profile_photo_file_id'):
+        if not await safe_answer_photo(message, data['profile_photo_file_id'], caption='Фото для анкеты'):
+            await message.answer('Фото не удалось показать. Добавьте его заново кнопкой ниже.')
     await message.answer(
         _registration_review_text(data),
+        parse_mode='HTML',
         reply_markup=registration_review_keyboard(),
     )
+
+
+_PHOTO_PROMPT = 'Отправьте свою фотографию обычным фото в Telegram. Она появится в анкете и карточке администратора. Фото необязательно.'
+
+
+def _photo_back_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text='Вернуться к анкете', callback_data='reg:photo:back'),
+    ]])
+
+
+@router.callback_query(RegistrationStates.review, F.data == 'reg:photo:add')
+async def registration_photo_start(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    await state.set_state(RegistrationStates.profile_photo)
+    await call.message.answer(_PHOTO_PROMPT, reply_markup=_photo_back_keyboard())
+
+
+@router.callback_query(RegistrationStates.profile_photo, F.data == 'reg:photo:back')
+async def registration_photo_back(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    await _show_registration_review(call.message, state)
+
+
+@router.message(RegistrationStates.profile_photo, F.photo)
+@router.message(RegistrationStates.review, F.photo)
+async def registration_photo(message: Message, state: FSMContext) -> None:
+    await state.update_data(profile_photo_file_id=message.photo[-1].file_id)
+    await _show_registration_review(message, state)
+
+
+@router.message(RegistrationStates.profile_photo)
+async def registration_photo_invalid(message: Message) -> None:
+    await message.answer('Отправьте изображение как фото, а не файл, или вернитесь к анкете.',
+                         reply_markup=_photo_back_keyboard())
 
 
 @router.callback_query(F.data == "reg:review:restart")
@@ -635,6 +678,13 @@ async def finish_registration(
                     updated_at=now,
                 )
             )
+
+    elif resubmitted and data.get('profile_photo_file_id'):
+        profile = await session.scalar(select(SocialProfile).where(SocialProfile.user_id == user.id))
+        if profile is None:
+            profile = SocialProfile(user_id=user.id)
+            session.add(profile)
+        profile.photo_file_id = data['profile_photo_file_id']
 
     auto_approved_admin = call.from_user.id in settings.admin_ids
     if auto_approved_admin:

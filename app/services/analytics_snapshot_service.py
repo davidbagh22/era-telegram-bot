@@ -9,11 +9,27 @@ from sqlalchemy import String, and_, case, cast, func, literal, or_, select, uni
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
-    AuditLog, Event, EventRegistration, PointTransaction, Project,
+    AuditLog, Event, EventRegistration, LeadershipAttentionItem, PointTransaction, Project,
     ProjectMember, Task, TaskSubmission, User,
 )
 from app.database.participation_models import ParticipationLifecycle
 from app.services.meaningful_activity_service import meaningful_points_condition
+
+ACTIVE_PROJECT_STATUSES = ('approved', 'in_progress')
+
+
+def task_attention_condition(now: datetime):
+    pending_result = select(TaskSubmission.id).where(
+        TaskSubmission.task_id == Task.id, TaskSubmission.status == 'pending').exists()
+    blocker = select(LeadershipAttentionItem.id).where(
+        LeadershipAttentionItem.scope_type == 'task', LeadershipAttentionItem.scope_id == Task.id,
+        LeadershipAttentionItem.status.in_(['open', 'in_progress']),
+    ).exists()
+    return and_(Task.status.not_in(['completed', 'cancelled']), or_(
+        Task.status.in_(['review', 'overdue']),
+        (Task.deadline < now) & Task.status.in_(['new', 'published', 'in_progress']),
+        pending_result, blocker,
+    ))
 
 
 @dataclass(frozen=True)
@@ -132,10 +148,7 @@ async def build_analytics_snapshot(
         # day so both comparison periods contain the same number of whole days.
         return await count(select(func.count()).select_from(Event).where(Event.status.in_(['completed', 'report_submitted']), Event.event_date >= a.date(), Event.event_date < b.date()))
 
-    pending_result = select(TaskSubmission.id).where(TaskSubmission.task_id == Task.id, TaskSubmission.status == 'pending').exists()
-    attention = or_(Task.status.in_(['review', 'overdue']),
-                    (Task.deadline < now) & Task.status.in_(['new', 'published', 'in_progress']),
-                    pending_result & (Task.status != 'cancelled'))
+    attention = task_attention_condition(now)
     metrics = (
         AnalyticsMetric('members', 'Действующие участники', await count(select(func.count()).select_from(User).where(*roster_conditions())), None, 'Текущий состав; исторический снимок состава отсутствует'),
         AnalyticsMetric('new_members', f'Новые участники · {days} дн.', await approvals(start, end), await approvals(older, start), 'Первое одобрение по аудиту; старые записи без истории не восстанавливаются из роли'),
@@ -143,8 +156,8 @@ async def build_analytics_snapshot(
         AnalyticsMetric('retention', 'Удержание, %', round(100 * retained / previous_active, 1) if previous_active else None, round(100 * prior_retained / prior_cohort, 1) if prior_cohort else None, 'Вернувшиеся из активной когорты предыдущего периода; состав ограничен текущей базой'),
         AnalyticsMetric('funnel', 'Участник → активный → лидер', None, None, 'Наблюдаемая когорта — раздел «Рост за 90 дней»; текущая роль не доказывает переход'),
         AnalyticsMetric('events', f'Проведённые мероприятия · {days} дн.', await events(start, end), await events(older, start), 'Завершённые мероприятия за полные локальные дни; регистрация не равна явке'),
-        AnalyticsMetric('projects', 'Действующие проекты', await count(select(func.count()).select_from(Project).where(Project.status == 'in_progress')), None, 'Текущий статус; история изменения состава проектов отсутствует'),
-        AnalyticsMetric('attention', 'Задачи требуют внимания', await count(select(func.count()).select_from(Task).where(attention)), None, 'Просрочки и проверка; каждая задача учитывается один раз'),
+        AnalyticsMetric('projects', 'Действующие проекты', await count(select(func.count()).select_from(Project).where(Project.status.in_(ACTIVE_PROJECT_STATUSES))), None, 'Одобренные и в работе; исторический состав проектов неизвестен'),
+        AnalyticsMetric('attention', 'Задачи требуют внимания', await count(select(func.count()).select_from(Task).where(attention)), None, 'Просрочки, открытые блокеры и проверка; каждая незакрытая задача учитывается один раз'),
     )
     return AnalyticsSnapshot(days, now, metrics)
 
