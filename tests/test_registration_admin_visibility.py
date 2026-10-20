@@ -35,13 +35,14 @@ def test_successful_application_delivery_remains_non_failing() -> None:
 def test_photo_is_forwarded_with_caption_within_telegram_limit() -> None:
     card = _card()
     card.photo_file_id = 'uploaded-photo'
-    card.text = 'Анкета ' * 700
+    card.text = '😀' * 900
     with patch('app.services.admin_user_card.build_admin_user_card', AsyncMock(return_value=card)), patch(
         'app.services.admin_user_card.notify_admins_once', AsyncMock(return_value=(1, 0, 0)),
     ) as notify:
         asyncio.run(send_admin_application_cards(object(), _settings(), AsyncMock(), SimpleNamespace(id=7)))
     assert notify.await_args.kwargs['photo'] == 'uploaded-photo'
     assert len(notify.await_args.args[2]) <= 1024
+    assert len(notify.await_args.args[2].encode('utf-16-le')) // 2 <= 1024
     assert notify.await_args.kwargs['parse_mode'] == ''
 
 def test_admin_bot_has_database_backed_application_recovery() -> None:

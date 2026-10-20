@@ -14,7 +14,7 @@
 - Адресные проверки до финального push: 58 passed + 12 subtests, дополнительные 25 passed; lint passed. Изменения photo resubmit и аналитики требуют CI нового head. Изолированный PostgreSQL probe выполняет все builders 7/30/90.
 
 ## Следующие действия
-1. Commit только изменённых ERA файлов и docs, push #357 с expected remote head ca2418ff; проверить совпадение дерева.
+1. Remote #357 = 6faa39932143aa6ed5cc634c07a07cea23a87663, его CI запущен. Последующий точечный fix учитывает UTF-16/emoji в caption; перед продолжением сверить фактический remote head и tree. Два review threads исправлены и resolved. Других открытых PR нет.
 2. Full CI нового head, resolve двух исправленных threads, merge #357 → штатный auto deploy после main checksPass (не запускать лишний deploy).
 3. Проверить prod SHA, /ready, startup/logs и router/export wiring. Реальную загрузку фото и отправку анкеты из Telegram-клиента не объявлять проверенной без факта.
 4. Security: ipAllowList 0.0.0.0/0 НЕ изменён. Нет update ACL в Render MCP; browser login request истёк, прежняя вкладка отсутствует. Не считать timeout отказом/успехом и не извлекать credentials. Для UI изменения нужен действующий вход Render.

@@ -280,7 +280,11 @@ async def send_admin_application_cards(
     # Telegram photo captions are limited to 1024 characters. Keep the full
     # questionnaire available through the existing guarded application action.
     limit = 900 if card.photo_file_id else 1800
-    summary = card.text if len(card.text) <= limit else card.text[:limit-80] + "\n\nПолная анкета — по кнопке ниже."
+    encoded = card.text.encode('utf-16-le')
+    summary = card.text if len(encoded) <= limit*2 else (
+        encoded[:(limit-80)*2].decode('utf-16-le', errors='ignore')
+        + "\n\nПолная анкета — по кнопке ниже."
+    )
     sent, failed, duplicates = await notify_admins_once(
         bot,
         settings,
