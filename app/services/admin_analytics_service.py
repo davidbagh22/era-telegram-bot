@@ -14,11 +14,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.management_models import MonthlyGoal, OrganizationContact
 from app.database.models import (
+    AuditLog,
     Department,
     Direction,
     Event,
@@ -30,11 +31,13 @@ from app.database.models import (
     PositionApplication,
     Project,
     Task,
+    TaskSubmission,
     User,
     UserDepartment,
     UserDirection,
     UserOffice,
 )
+from app.services.analytics_snapshot_service import roster_conditions
 from app.utils.constants import AttentionItemStatus, LeadershipGoalStatus, TaskStatus
 
 
@@ -92,12 +95,12 @@ async def build_analytics_payload(session: AsyncSession) -> AnalyticsPayload:
     events = list(
         (
             await session.scalars(
-                select(Event).order_by(Event.event_date.desc(), Event.event_time).limit(500)
+                select(Event).order_by(Event.event_date.desc(), Event.event_time)
             )
         ).all()
     )
     projects = list(
-        (await session.scalars(select(Project).order_by(Project.created_at.desc()).limit(500))).all()
+        (await session.scalars(select(Project).order_by(Project.created_at.desc()))).all()
     )
     totals = dict(
         (
@@ -111,7 +114,7 @@ async def build_analytics_payload(session: AsyncSession) -> AnalyticsPayload:
 
     dep_rows = (
         await session.execute(
-            select(Department.id, Department.name, func.count(UserDepartment.id))
+            select(Department.id, Department.name, func.count(UserDepartment.id).filter(UserDepartment.user_id.in_(select(User.id).where(*roster_conditions()))))
             .join(UserDepartment, Department.id == UserDepartment.department_id, isouter=True)
             .group_by(Department.id, Department.name)
             .order_by(Department.name)
@@ -119,7 +122,7 @@ async def build_analytics_payload(session: AsyncSession) -> AnalyticsPayload:
     ).all()
     dir_rows = (
         await session.execute(
-            select(Department.name, Direction.id, Direction.name, func.count(UserDirection.id))
+            select(Department.name, Direction.id, Direction.name, func.count(UserDirection.id).filter(UserDirection.user_id.in_(select(User.id).where(*roster_conditions()))))
             .join(Direction, Direction.department_id == Department.id)
             .join(UserDirection, UserDirection.direction_id == Direction.id, isouter=True)
             .group_by(Department.name, Direction.id, Direction.name)
@@ -132,7 +135,6 @@ async def build_analytics_payload(session: AsyncSession) -> AnalyticsPayload:
                 select(MonthlyGoal)
                 .where(MonthlyGoal.status != "deleted")
                 .order_by(MonthlyGoal.month.desc(), MonthlyGoal.created_at.desc())
-                .limit(200)
             )
         ).all()
     )
@@ -731,3 +733,76 @@ async def send_management_reports(bot, settings, session_factory, *, now=None) -
         await safe_send_once(bot, settings, recipient, payload['text'], delivery_key=f'daily:{stamp}:{recipient}',
                              notification_type='management_report', parse_mode='HTML',
                              reply_markup=management_report_markup(settings.effective_miniapp_url))
+
+
+@dataclass(frozen=True)
+class ScopedLeaderOperations:
+    active_tasks: int
+    completed_tasks: int
+    overdue_tasks: int
+    awaiting_review: int
+    verified_results: int
+    previous_results: int
+    workload: tuple[tuple[str, int], ...]
+    month_goals: tuple[tuple[str, int | float, int | float | None], ...]
+
+
+async def build_scoped_leader_operations(session: AsyncSession, actor: User, settings, *, now=None) -> ScopedLeaderOperations:
+    """Current task-management authority bounds every query, never role alone."""
+    from app.services import leaders_access_service as access
+    if actor is None:
+        raise PermissionError('Нет полномочий руководителя')
+    await session.refresh(actor, attribute_names=['role', 'is_archived', 'is_blocked', 'permission_grants'])
+    scopes = await access.scopes(session, actor, settings, 'tasks.manage')
+    if not scopes:
+        raise PermissionError('Нет полномочий руководителя')
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        raise ValueError('now must have a timezone')
+    departments = [ident for kind, ident in scopes if kind == 'department']
+    directions = [ident for kind, ident in scopes if kind == 'direction']
+    global_access = ('global', 0) in scopes
+    zone = True if global_access else or_(Task.department_id.in_(departments), Task.direction_id.in_(directions))
+    active = Task.status.in_(['new', 'published', 'in_progress', 'review', 'overdue'])
+    pending = select(TaskSubmission.id).where(TaskSubmission.task_id == Task.id, TaskSubmission.status == 'pending').exists()
+    counts = (await session.execute(select(
+        func.count().filter(active),
+        func.count().filter(Task.status == 'completed'),
+        func.count().filter(active & or_(Task.status == 'overdue', Task.deadline < now)),
+        func.count().filter(active & or_(Task.status == 'review', pending)),
+    ).select_from(Task).where(zone))).one()
+
+    async def results(start, end):
+        return int(await session.scalar(select(func.count(func.distinct(TaskSubmission.id)))
+            .join(Task, Task.id == TaskSubmission.task_id)
+            .join(AuditLog, and_(AuditLog.entity_type == 'task_submission', AuditLog.entity_id == TaskSubmission.id))
+            .where(zone, TaskSubmission.status == 'approved', AuditLog.action == 'task.submission_approve',
+                   AuditLog.created_at >= start, AuditLog.created_at < end)) or 0)
+
+    grouped = (await session.execute(select(Task.assignee_id, func.count()).where(zone, active)
+                                     .group_by(Task.assignee_id))).all()
+    ids = [ident for ident, _ in grouped if ident is not None]
+    people = (await session.scalars(select(User).where(User.id.in_(ids), *roster_conditions()))).all() if ids else []
+    names = {person.id: ' '.join(part for part in [person.first_name, person.last_name] if part) for person in people}
+    workload = tuple(sorted(((names.get(ident, 'Без исполнителя' if ident is None else 'Недоступный участник'), count)
+                             for ident, count in grouped), key=lambda row: row[0]))
+    from zoneinfo import ZoneInfo
+    month = now.astimezone(ZoneInfo(settings.timezone)).strftime('%Y-%m')
+    goal_scope = True if global_access else or_(
+        and_(MonthlyGoal.scope_type == 'department', MonthlyGoal.scope_id.in_(departments)),
+        and_(MonthlyGoal.scope_type == 'direction', MonthlyGoal.scope_id.in_(directions)),
+    )
+    goals = tuple((await session.execute(select(MonthlyGoal.title, MonthlyGoal.current_value, MonthlyGoal.target_value)
+        .where(goal_scope, MonthlyGoal.month == month, MonthlyGoal.status != 'deleted').order_by(MonthlyGoal.title))).all())
+    leadership_scope = True if global_access else or_(
+        and_(LeadershipGoal.scope_type == 'department', LeadershipGoal.scope_id.in_(departments)),
+        and_(LeadershipGoal.scope_type == 'direction', LeadershipGoal.scope_id.in_(directions)),
+    )
+    local_today = now.astimezone(ZoneInfo(settings.timezone)).date()
+    leadership_goals = (await session.execute(select(LeadershipGoal.title, LeadershipGoal.progress, LeadershipGoal.target)
+        .where(leadership_scope, LeadershipGoal.period_type == 'month',
+               LeadershipGoal.period_start <= local_today, LeadershipGoal.period_end >= local_today,
+               LeadershipGoal.status != 'deleted').order_by(LeadershipGoal.title))).all()
+    goals += tuple(leadership_goals)
+    return ScopedLeaderOperations(*map(int, counts), await results(now-timedelta(days=30), now),
+                                  await results(now-timedelta(days=60), now-timedelta(days=30)), workload, goals)

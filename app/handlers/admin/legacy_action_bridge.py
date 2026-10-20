@@ -42,8 +42,6 @@ LEGACY_ADMIN_ACTIONS = {
     "admin:people:list:all:0:0",
     "admin:people:roles",
     "admin:people:search",
-    "admin:analytics:excel:all",
-    "admin:analytics:excel:surveys",
 }
 
 

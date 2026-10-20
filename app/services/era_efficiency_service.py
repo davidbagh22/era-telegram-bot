@@ -7,15 +7,16 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Event, EventRegistration, Feedback, PointTransaction, Project, User
-from app.utils.constants import ApplicationStatus, EventStatus, ProjectStatus, RegistrationStatus
+from app.database.models import Event, Project, User
+from app.services.analytics_snapshot_service import ACTIVE_PROJECT_STATUSES, build_event_analytics, count_new_members, count_verified_users, roster_conditions
+from app.utils.constants import EventStatus, ProjectStatus
 
 
 @dataclass(frozen=True)
 class EfficiencyMetric:
     key: str
     label: str
-    value: float
+    value: float | None
     display: str
     score: int | None
     note: str
@@ -75,48 +76,22 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
     today = date.today()
     week_ago = now - timedelta(days=7)
     month_ago = now - timedelta(days=30)
-    month_ago_date = today - timedelta(days=30)
     two_weeks_ahead = today + timedelta(days=14)
 
     approved_users = list(
         (
             await session.scalars(
                 select(User).where(
-                    User.is_archived.is_(False),
-                    User.application_status == ApplicationStatus.APPROVED,
+                    *roster_conditions(),
                 )
             )
         ).all()
     )
     approved_total = len(approved_users)
 
-    # Do date filtering in SQL instead of comparing ORM datetime objects in
-    # Python. SQLite returns naive datetimes while PostgreSQL can return
-    # timezone-aware ones; comparing those directly caused the weekly
-    # analytics endpoint to fail in E2E even though the data itself was fine.
-    new_users_7d = int(
-        await session.scalar(
-            select(func.count(User.id)).where(
-                User.is_archived.is_(False),
-                User.application_status == ApplicationStatus.APPROVED,
-                User.created_at >= week_ago,
-            )
-        )
-        or 0
-    )
+    new_users_7d = await count_new_members(session, week_ago, now)
 
-    active_users_30d = int(
-        await session.scalar(
-            select(func.count(func.distinct(PointTransaction.user_id)))
-            .join(User, User.id == PointTransaction.user_id)
-            .where(
-                PointTransaction.created_at >= month_ago,
-                User.is_archived.is_(False),
-                User.application_status == ApplicationStatus.APPROVED,
-            )
-        )
-        or 0
-    )
+    active_users_30d = await count_verified_users(session, month_ago, now)
     active_rate = (active_users_30d / approved_total * 100) if approved_total else 0.0
 
     event_live_statuses = (
@@ -128,16 +103,8 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
         EventStatus.COMPLETED,
         EventStatus.REPORT_SUBMITTED,
     )
-    events_30d = int(
-        await session.scalar(
-            select(func.count(Event.id)).where(
-                Event.event_date >= month_ago_date,
-                Event.event_date <= today,
-                Event.status.in_(event_live_statuses),
-            )
-        )
-        or 0
-    )
+    event_metrics = {metric.key: metric for metric in (await build_event_analytics(session, now=now)).metrics}
+    events_30d = event_metrics['held'].value
     upcoming_events_14d = int(
         await session.scalar(
             select(func.count(Event.id)).where(
@@ -161,36 +128,15 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
     active_projects = int(
         await session.scalar(
             select(func.count(Project.id)).where(
-                Project.status.in_((ProjectStatus.APPROVED, ProjectStatus.IN_PROGRESS))
+                Project.status.in_(ACTIVE_PROJECT_STATUSES)
             )
         )
         or 0
     )
 
-    registrations_30d = int(
-        await session.scalar(
-            select(func.count(EventRegistration.id)).where(
-                EventRegistration.created_at >= month_ago,
-                EventRegistration.status.in_(
-                    (
-                        RegistrationStatus.REGISTERED,
-                        RegistrationStatus.WILL_COME,
-                        RegistrationStatus.ATTENDED,
-                    )
-                ),
-            )
-        )
-        or 0
-    )
-
-    feedback_count = int(
-        await session.scalar(select(func.count(Feedback.id)).where(Feedback.created_at >= month_ago))
-        or 0
-    )
-    feedback_avg = float(
-        await session.scalar(select(func.avg(Feedback.rating)).where(Feedback.created_at >= month_ago))
-        or 0.0
-    )
+    registrations_30d = event_metrics['registrations'].value
+    feedback_count = event_metrics['ratings'].value
+    feedback_avg = event_metrics['average'].value
 
     # Transparent score: engagement carries 45%, organizational output 35%,
     # participant feedback 20%. If there is no feedback in the period, we do
@@ -232,7 +178,7 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
             value=float(active_projects),
             display=str(active_projects),
             score=project_output_score,
-            note=f"в работе · новых за 30 дней: {projects_created_30d}",
+            note=f"одобрены и в работе · новых за 30 дней: {projects_created_30d}",
         ),
         EfficiencyMetric(
             key="registrations",
@@ -240,7 +186,7 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
             value=float(registrations_30d),
             display=str(registrations_30d),
             score=None,
-            note="регистраций и подтверждений за 30 дней",
+            note="регистрации с обязательством прийти на завершённые события; waitlist и отмены исключены",
         ),
         EfficiencyMetric(
             key="feedback",
@@ -256,7 +202,7 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
             value=float(new_users_7d),
             display=f"+{new_users_7d}",
             score=None,
-            note="одобрено за последние 7 дней",
+            note="первое одобрение за 7 дней по аудиту; старые записи без истории не восстановлены",
         ),
     ]
 

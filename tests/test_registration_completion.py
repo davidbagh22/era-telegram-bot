@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.config import Settings
 from app.database.base import Base
 from app.database.models import AuditLog, ConsentLog, Department, Direction, User, UserDepartment, UserDirection
+from app.database.socials import SocialProfile
 from app.handlers import emergency, registration
 from app.services.application_review_service import reject_application
 from app.services.consent_service import CURRENT_POLICY_VERSION
@@ -37,7 +38,7 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
     def message(self, text):
         return SimpleNamespace(text=text, from_user=self.call.from_user, answer=AsyncMock())
 
-    async def complete_quick_form(self, *, user=None):
+    async def complete_quick_form(self, *, user=None, photo=None):
         with patch.object(registration, 'is_channel_member', AsyncMock(return_value=True)):
             await registration.registration_start(self.call, self.state, self.bot, self.settings, user)
         assert await self.state.get_state() == RegistrationStates.mode.state
@@ -49,7 +50,35 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
         await registration.registration_region(self.message('Ереван'), self.state)
         await registration.registration_email(self.message('applicant@example.test'), self.state)
         assert await self.state.get_state() == RegistrationStates.review.state
+        if photo:
+            await registration.registration_photo_start(self.call, self.state)
+            message = self.message(None)
+            message.photo = [SimpleNamespace(file_id='small'), SimpleNamespace(file_id=photo)]
+            message.answer_photo = AsyncMock()
+            await registration.registration_photo(message, self.state)
+            message.answer_photo.assert_awaited_once_with(photo, caption='Фото для анкеты', reply_markup=None)
         await registration.registration_review_ok(self.call, self.state)
+
+    async def test_uploaded_photo_survives_submit_and_is_available_to_admin_card(self):
+        await self.complete_quick_form(photo='registration-photo')
+        with patch.object(registration, '_notify_admins_registration', AsyncMock()):
+            async with self.sessions() as session:
+                await registration.finish_registration(self.call, self.state, session, self.bot, self.settings)
+        from app.services.admin_user_card import build_admin_user_card
+        async with self.sessions() as session:
+            user = await session.scalar(select(User))
+            profile = await session.scalar(select(SocialProfile).where(SocialProfile.user_id == user.id))
+            assert profile.photo_file_id == 'registration-photo'
+            assert (await build_admin_user_card(session, user, mode='application')).photo_file_id == 'registration-photo'
+
+    async def test_motivation_does_not_erase_existing_photo(self):
+        await self.state.update_data(profile_photo_file_id='already-uploaded')
+        message = self.message('Хочу участвовать')
+        message.answer_photo = AsyncMock()
+        await registration.registration_motivation(message, self.state)
+        assert (await self.state.get_data())['profile_photo_file_id'] == 'already-uploaded'
+        assert await self.state.get_state() == RegistrationStates.review.state
+        message.answer_photo.assert_awaited_once()
 
     async def test_quick_flow_creates_one_pending_user_with_explicit_consent(self):
         await self.complete_quick_form()
@@ -96,7 +125,7 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
             await session.commit()
             user_id = target.id
         self.call.data = 'registration:reapply'
-        await self.complete_quick_form(user=target)
+        await self.complete_quick_form(user=target, photo='replacement-photo')
         with patch.object(registration, '_notify_admins_registration', AsyncMock()) as notify:
             async with self.sessions() as session:
                 await registration.finish_registration(self.call, self.state, session, self.bot, self.settings)
@@ -105,6 +134,8 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
             target = await session.scalar(select(User).where(User.telegram_id == 22))
             assert target.id == user_id and target.application_status == ApplicationStatus.PENDING
             assert target.first_name == 'Анна'
+            profile = await session.scalar(select(SocialProfile).where(SocialProfile.user_id == target.id))
+            assert profile.photo_file_id == 'replacement-photo'
             reason = await session.scalar(select(AuditLog).where(AuditLog.action == 'user.rejected'))
             assert reason.new_value['comment'] == 'Исходное решение'
             resubmission = await session.scalar(select(AuditLog).where(AuditLog.action == 'user.resubmitted'))

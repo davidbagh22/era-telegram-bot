@@ -50,7 +50,7 @@ class AnalyticsDetailsOut(BaseModel):
 class EfficiencyMetricOut(BaseModel):
     key: str
     label: str
-    value: float
+    value: float | None
     display: str
     score: int | None
     note: str
@@ -78,7 +78,7 @@ class HealthMetricOut(BaseModel):
     key: str
     category: str
     label: str
-    value: float
+    value: float | None
     display: str
     note: str
     score: int | None = None

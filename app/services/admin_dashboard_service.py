@@ -23,11 +23,9 @@ from app.database.models import (
 )
 from app.database.participation_models import ParticipationLifecycle
 from app.services.authorization_service import is_full_admin
-from app.services.meaningful_activity_service import meaningful_user_ids_since
+from app.services.analytics_snapshot_service import ACTIVE_PROJECT_STATUSES, count_verified_users
 from app.services.participation_lifecycle_service import (
-    MODE_ACTIVE,
     MODE_EXITED,
-    MODE_LIGHT,
 )
 from app.utils.constants import (
     ApplicationStatus,
@@ -109,32 +107,8 @@ class DashboardMetrics:
 
 async def dashboard_metrics(session: AsyncSession) -> DashboardMetrics:
     """Live Command Center counters backed by real entity/source queries."""
-    active_ids = await meaningful_user_ids_since(
-        session,
-        datetime.now(timezone.utc) - timedelta(days=14),
-        include_current_responsibility=True,
-    )
-    if active_ids:
-        active_base = int(
-            await session.scalar(
-                select(func.count(User.id))
-                .select_from(User)
-                .outerjoin(ParticipationLifecycle, ParticipationLifecycle.user_id == User.id)
-                .where(
-                    User.application_status == ApplicationStatus.APPROVED,
-                    User.is_archived.is_(False),
-                    User.is_blocked.is_(False),
-                    User.id.in_(active_ids),
-                    or_(
-                        ParticipationLifecycle.user_id.is_(None),
-                        ParticipationLifecycle.participation_mode.in_([MODE_ACTIVE, MODE_LIGHT]),
-                    ),
-                )
-            )
-            or 0
-        )
-    else:
-        active_base = 0
+    now = datetime.now(timezone.utc)
+    active_base = await count_verified_users(session, now - timedelta(days=14), now)
 
     current_roster = await _current_roster_count(session)
     values = {
@@ -158,7 +132,7 @@ async def dashboard_metrics(session: AsyncSession) -> DashboardMetrics:
             ),
         ),
         "projects_active": await _count(
-            session, Project, Project.status.in_([ProjectStatus.APPROVED, ProjectStatus.IN_PROGRESS])
+            session, Project, Project.status.in_(ACTIVE_PROJECT_STATUSES)
         ),
         "events_pending": await _count(session, Event, Event.status == EventStatus.PENDING_APPROVAL),
         "events_live": await _count(

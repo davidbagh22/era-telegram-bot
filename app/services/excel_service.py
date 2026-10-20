@@ -54,6 +54,9 @@ def build_analytics_workbook(
     goals: Iterable[Any] = (),
     contacts: Iterable[Any] = (),
     sections: set[str] | None = None,
+    snapshot=None,
+    growth=None,
+    entity_snapshots=(),
 ) -> bytes:
     from openpyxl import Workbook
     from openpyxl.chart import BarChart, PieChart, Reference
@@ -160,12 +163,12 @@ def build_analytics_workbook(
             ("Участники в базе", len(users), "100%", "Размер текущего сообщества"),
             ("Одобрены", len(approved_users), f"{_safe_percent(len(approved_users), len(users))}%", "Прошли вход в систему ЭРА"),
             ("Новые заявки", len(pending_users), f"{_safe_percent(len(pending_users), len(users))}%", "Требуют решения команды"),
-            ("Участники с баллами", len(active_users), f"{_safe_percent(len(active_users), len(users))}%", "Есть подтверждённая активность"),
+            ("Участники с баллами", len(active_users), f"{_safe_percent(len(active_users), len(users))}%", "Положительный баланс; подтверждённая активность отдельно в «Обзор 2.0»"),
             ("Мероприятия", len(events), "—", "Объём событийной работы"),
             ("Проекты", len(projects), "—", "Инициативность сообщества"),
-            ("Баллы всего", total_points_value, "—", "Суммарный подтверждённый вклад"),
-            ("Средний баланс", avg_points, "—", "Средняя активность на участника"),
-            ("Медианный баланс", median_points, "—", "Типичный уровень активности без влияния лидеров"),
+            ("Баллы всего", total_points_value, "—", "Баланс всех категорий, включая цифровые начисления"),
+            ("Средний баланс", avg_points, "—", "Средний баланс баллов на участника"),
+            ("Медианный баланс", median_points, "—", "Медиана баланса баллов"),
             ("Организации", len(contacts), "—", "Размер внешней базы контактов"),
             ("Цели месяца", len(goals), "—", "Количество управленческих целей"),
         ]
@@ -204,7 +207,7 @@ def build_analytics_workbook(
             ws.cell(index, 2, point_totals.get(member.id, 0))
         if leaders:
             chart = BarChart()
-            chart.title = "Топ-10 по активности"
+            chart.title = "Топ-10 по баллам"
             chart.y_axis.title = "Баллы"
             chart.add_data(Reference(ws, min_col=2, min_row=top_start, max_row=top_start + len(leaders)), titles_from_data=True)
             chart.set_categories(Reference(ws, min_col=1, min_row=top_start + 1, max_row=top_start + len(leaders)))
@@ -218,11 +221,11 @@ def build_analytics_workbook(
             ["Одобрены", len(approved_users), _safe_percent(len(approved_users), len(users)), "Прошли вход"],
             ["Выбрали департамент", sum(1 for u in users if getattr(u, "departments", None)), _safe_percent(sum(1 for u in users if getattr(u, "departments", None)), len(users)), "Определили направление участия"],
             ["Выбрали направление", sum(1 for u in users if getattr(u, "directions", None)), _safe_percent(sum(1 for u in users if getattr(u, "directions", None)), len(users)), "Есть предметный интерес"],
-            ["Получили баллы", len(active_users), _safe_percent(len(active_users), len(users)), "Совершили подтверждённое действие"],
+            ["Получили баллы", len(active_users), _safe_percent(len(active_users), len(users)), "Положительный баланс всех категорий; не подтверждение результата"],
         ]
-        ws = append_sheet("Воронка роста", ["Этап", "Количество", "Конверсия, %", "Что показывает"], funnel_rows)
+        ws = append_sheet("Воронка роста", ["Текущий срез (не исторический переход)", "Количество", "Доля базы, %", "Что показывает"], funnel_rows)
         chart = BarChart()
-        chart.title = "Воронка вовлечения"
+        chart.title = "Текущие срезы базы; история переходов отдельно"
         chart.add_data(Reference(ws, min_col=2, min_row=1, max_row=ws.max_row), titles_from_data=True)
         chart.set_categories(Reference(ws, min_col=1, min_row=2, max_row=ws.max_row))
         chart.height = 8
@@ -299,6 +302,20 @@ def build_analytics_workbook(
             c.organization_name, c.contact_name or "", c.position or "", c.second_contact_name or "", c.second_position or "", c.email or "", c.phone or "", c.notes or "",
         ] for c in contacts])
 
+    for title, entity in entity_snapshots:
+        append_sheet(title, ["Показатель", "Значение", "Прошлый период", "Изменение", "Определение"], [
+            [metric.label, metric.value, metric.previous, metric.delta, metric.note] for metric in entity.metrics
+        ])
+    if growth is not None:
+        ws = append_sheet("Рост 90 дней", ["Наблюдаемый этап", "Участников", "Конверсия предыдущего этапа, %", "Медиана срока, дней"], [
+            [stage.label, stage.count, stage.conversion, stage.median_days] for stage in growth.stages
+        ])
+        ws.append(["Ограничения", growth.note])
+        ws.append(["Одобрены без истории одобрения", growth.approval_history_missing])
+    if snapshot is not None:
+        append_sheet("Обзор 2.0", ["Показатель", "Значение", "Прошлый период", "Изменение", "Определение"], [
+            [m.label, m.value, m.previous, m.delta, m.note] for m in snapshot.metrics
+        ])
     stream = BytesIO()
     wb.save(stream)
     return stream.getvalue()

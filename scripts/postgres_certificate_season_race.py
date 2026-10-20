@@ -85,6 +85,22 @@ async def main():
             await session.commit()
             assert (await session.get(CertificateIssue,newids[0])).status=='revoked'
             assert await session.scalar(select(func.count()).select_from(CertificateIssue).where(CertificateIssue.user_id==uid))==2
+        from app.services.analytics_snapshot_service import build_analytics_snapshot, build_event_analytics, build_project_analytics
+        from app.services.analytics_growth_service import build_growth_snapshot
+        from app.services.admin_analytics_service import build_scoped_leader_operations
+        async with sessions() as session:
+            for days in (7,30,90):
+                snapshot=await build_analytics_snapshot(session,days=days)
+                values={metric.key:metric.value for metric in snapshot.metrics}
+                assert values['active'] <= values['members']
+                assert values['retention'] is None or 0 <= values['retention'] <= 100
+                events=await build_event_analytics(session,days=days)
+                rate=next(metric.value for metric in events.metrics if metric.key=='attendance')
+                assert rate is None or 0 <= rate <= 100
+                await build_project_analytics(session,days=days)
+            assert len((await build_growth_snapshot(session)).stages)==6
+            await build_scoped_leader_operations(session,await session.get(User,aid),settings)
+        print('PostgreSQL: analytics 7/30/90, observed growth, event/project aggregates and scoped operations execute on migrated schema')
         print('PostgreSQL: approved anonymization preserves certificate numbers without foreign-key violations')
         print('PostgreSQL: 8 concurrent issues -> 1 certificate; 8 revocations -> 1 audit; 8 corrections -> 1 new revision; 8 season creations/closures -> 1 definition and 1 archive')
     finally:
