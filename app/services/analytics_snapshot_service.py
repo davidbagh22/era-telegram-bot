@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import String, case, cast, func, literal, or_, select, union_all
+from sqlalchemy import String, and_, case, cast, func, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
@@ -93,6 +93,19 @@ async def count_new_members(session: AsyncSession, start: datetime, end: datetim
     )) or 0)
 
 
+async def activity_cohort_counts(session: AsyncSession, *, now: datetime, days: int = 30) -> tuple[int, int, int, int, int]:
+    current = verified_users_between(now-timedelta(days=days), now)
+    previous = verified_users_between(now-timedelta(days=2*days), now-timedelta(days=days))
+    older = verified_users_between(now-timedelta(days=3*days), now-timedelta(days=2*days))
+    def number(query):
+        return select(func.count()).select_from(query.subquery()).scalar_subquery()
+    # Ratios must use one PostgreSQL snapshot even if roster eligibility is
+    # changed concurrently with this read. No mixed numerator/denominator.
+    row = (await session.execute(select(number(current), number(previous), number(current.intersect(previous)),
+                                        number(older), number(previous.intersect(older))))).one()
+    return tuple(map(int, row))
+
+
 async def build_analytics_snapshot(
     session: AsyncSession, *, days: int = 30, now: datetime | None = None,
     timezone_name: str = 'Asia/Yerevan',
@@ -105,22 +118,12 @@ async def build_analytics_snapshot(
     zone = ZoneInfo(timezone_name)
     end = now.astimezone(zone)
     start, older = end - timedelta(days=days), end - timedelta(days=2 * days)
-    facts = verified_activity_facts()
-    roster = select(User.id).where(*roster_conditions())
 
     async def count(statement):
         return int(await session.scalar(statement) or 0)
 
-    def active(a, b):
-        return select(facts.c.user_id).where(facts.c.at >= a.astimezone(timezone.utc), facts.c.at < b.astimezone(timezone.utc), facts.c.user_id.in_(roster)).distinct()
-
-    async def active_count(a, b):
-        return await count(select(func.count()).select_from(active(a, b).subquery()))
-
-    current_active, previous_active = await active_count(start, end), await active_count(older, start)
-    retained = await count(select(func.count()).select_from(active(start, end).where(facts.c.user_id.in_(active(older, start))).subquery()))
-    prior_cohort = await active_count(older - timedelta(days=days), older)
-    prior_retained = await count(select(func.count()).select_from(active(older, start).where(facts.c.user_id.in_(active(older - timedelta(days=days), older))).subquery()))
+    current_active, previous_active, retained, prior_cohort, prior_retained = await activity_cohort_counts(
+        session, now=end, days=days)
     async def approvals(a, b):
         return await count_new_members(session, a, b)
 
@@ -144,3 +147,128 @@ async def build_analytics_snapshot(
         AnalyticsMetric('attention', 'Задачи требуют внимания', await count(select(func.count()).select_from(Task).where(attention)), None, 'Просрочки и проверка; каждая задача учитывается один раз'),
     )
     return AnalyticsSnapshot(days, now, metrics)
+
+
+async def build_event_analytics(session: AsyncSession, *, days=30, now=None, timezone_name='Asia/Yerevan') -> AnalyticsSnapshot:
+    from app.database.models import Feedback
+    if days not in (7, 30, 90):
+        raise ValueError('Supported periods: 7, 30, 90 days')
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        raise ValueError('now must have a timezone')
+    end = now.astimezone(ZoneInfo(timezone_name))
+    start, older = end - timedelta(days=days), end - timedelta(days=2*days)
+    first_visit = select(EventRegistration.user_id.label('user_id'), func.min(Event.event_date).label('day')).join(
+        Event, Event.id == EventRegistration.event_id,
+    ).where(EventRegistration.status == 'attended').group_by(EventRegistration.user_id).subquery()
+
+    async def period(a, b):
+        held = select(Event.id).where(Event.status.in_(['completed', 'report_submitted']),
+                                      Event.event_date >= a.date(), Event.event_date < b.date())
+        created_query = select(func.count()).select_from(Event).where(
+            Event.created_at >= a.astimezone(timezone.utc), Event.created_at < b.astimezone(timezone.utc)).scalar_subquery()
+        held_query = select(func.count()).select_from(held.subquery()).scalar_subquery()
+        rating_count = select(func.count(Feedback.id)).where(Feedback.event_id.in_(held)).scalar_subquery()
+        average_query = select(func.avg(Feedback.rating)).where(Feedback.event_id.in_(held)).scalar_subquery()
+        visitor_feedback = select(func.count(Feedback.id)).join(EventRegistration,
+            (EventRegistration.event_id == Feedback.event_id) & (EventRegistration.user_id == Feedback.user_id)
+        ).where(Feedback.event_id.in_(held), EventRegistration.status == 'attended').scalar_subquery()
+        eligible = EventRegistration.status.in_(['registered', 'will_come', 'attended', 'no_show'])
+        present = EventRegistration.status == 'attended'
+        first_condition = and_(present, first_visit.c.day >= a.date(), first_visit.c.day < b.date())
+        # One statement keeps numerator, denominator and visitor cohorts on the
+        # same PostgreSQL snapshot while late attendance is being confirmed.
+        created, count, regs, attended, visitors, first, ratings, average, visitor_ratings = (await session.execute(select(
+            created_query, held_query, func.count().filter(eligible), func.count().filter(present),
+            func.count(func.distinct(EventRegistration.user_id)).filter(present),
+            func.count(func.distinct(EventRegistration.user_id)).filter(first_condition), rating_count, average_query, visitor_feedback,
+        ).select_from(EventRegistration).outerjoin(first_visit, first_visit.c.user_id == EventRegistration.user_id)
+          .where(EventRegistration.event_id.in_(held)))).one()
+        return dict(created=created, held=count, registrations=regs, attended=attended,
+                    attendance=round(100*attended/regs, 1) if regs else None,
+                    first=first, returning=visitors-first, ratings=ratings,
+                    average=round(float(average), 1) if average is not None else None,
+                    feedback_coverage=round(100*visitor_ratings/attended, 1) if attended else None)
+
+    current, previous = await period(start, end), await period(older, start)
+    definitions = [
+        ('created', 'Созданы', 'Создание за выбранный период, включая черновики'),
+        ('held', 'Проведены', 'completed/report_submitted, полные локальные дни'),
+        ('registrations', 'Регистрации с обязательством прийти', 'registered/will_come/attended/no_show; waitlist и отмены исключены'),
+        ('attended', 'Подтверждённые посещения', 'Статус attended, независимо от баллов'),
+        ('attendance', 'Явка, %', 'Подтверждённые посещения / регистрации с обязательством прийти'),
+        ('first', 'Первое известное посещение', 'Уникальные посетители; первая подтверждённая дата в имеющемся реестре'),
+        ('returning', 'Вернувшиеся посетители', 'Уникальные посетители с подтверждённым посещением до периода'),
+        ('ratings', 'Оставлено отзывов', 'Только фактически оставленные отзывы по проведённым событиям'),
+        ('average', 'Средняя оценка', 'Отсутствующий отзыв не становится нулевой оценкой'),
+        ('feedback_coverage', 'Охват отзывами посетителей, %', 'Отзывы подтверждённых посетителей / подтверждённые посещения'),
+    ]
+    return AnalyticsSnapshot(days, now, tuple(AnalyticsMetric(key, label, current[key], previous[key], note)
+                                             for key, label, note in definitions))
+
+
+async def build_project_analytics(session: AsyncSession, *, days=30, now=None, timezone_name='Asia/Yerevan') -> AnalyticsSnapshot:
+    from app.database.models import ProjectMilestone
+    if days not in (7, 30, 90):
+        raise ValueError('Supported periods: 7, 30, 90 days')
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        raise ValueError('now must have a timezone')
+    end = now.astimezone(ZoneInfo(timezone_name))
+    start, older = (end - timedelta(days=days)).astimezone(timezone.utc), (end - timedelta(days=2*days)).astimezone(timezone.utc)
+    end = end.astimezone(timezone.utc)
+    status_groups = [('ideas', 'Черновики идей', ['draft']),
+                     ('review', 'На рассмотрении', ['pending_review', 'initial_review', 'venue_review', 'needs_revision']),
+                     ('approved', 'Одобрены', ['approved']), ('active', 'Действующие', ['in_progress']),
+                     ('completed', 'Завершены', ['completed'])]
+    counts = (await session.execute(select(*(func.count().filter(Project.status.in_(statuses))
+                                              for _, _, statuses in status_groups)).select_from(Project))).one()
+    metrics = [AnalyticsMetric(key, label, int(value), None, 'Текущий статус; исторический снимок отсутствует')
+               for (key, label, _), value in zip(status_groups, counts)]
+
+    async def count(model, *conditions):
+        return int(await session.scalar(select(func.count()).select_from(model).where(*conditions)) or 0)
+
+    for key, label, model, stamp, conditions in [
+        ('created', 'Созданы за период', Project, Project.created_at, []),
+        ('contributions', 'Подтверждённые вклады', ProjectMember, ProjectMember.contribution_confirmed_at, [ProjectMember.contribution_status == 'confirmed']),
+        ('milestones', 'Завершённые этапы за период', ProjectMilestone, ProjectMilestone.completed_at, [ProjectMilestone.status == 'completed']),
+    ]:
+        metrics.append(AnalyticsMetric(key, label, await count(model, *conditions, stamp >= start, stamp < end),
+                                       await count(model, *conditions, stamp >= older, stamp < start),
+                                       'По фактической дате создания/подтверждения/завершения; не по updated_at'))
+    people = int(await session.scalar(select(func.count(func.distinct(ProjectMember.user_id))).where(ProjectMember.status == 'accepted')) or 0)
+    metrics.append(AnalyticsMetric('participants', 'Принятые участники', people, None,
+                                   'Уникальные принятые участники в реестре; автор без отдельного участия не добавляется'))
+    overdue = int(await session.scalar(select(func.count()).select_from(ProjectMilestone).join(Project, Project.id == ProjectMilestone.project_id)
+        .where(Project.status.in_(['approved', 'in_progress']), ProjectMilestone.deadline < now,
+               ProjectMilestone.status.not_in(['completed', 'cancelled']))) or 0)
+    metrics.append(AnalyticsMetric('overdue', 'Просроченные этапы', overdue, None,
+                                   'Незакрытые этапы одобренных/действующих проектов с прошедшим сроком'))
+    contribution = select(ProjectMember.id).where(ProjectMember.project_id == Project.id,
+        ProjectMember.contribution_status == 'confirmed', ProjectMember.contribution_confirmed_at >= start,
+        ProjectMember.contribution_confirmed_at < end).exists()
+    milestone = select(ProjectMilestone.id).where(ProjectMilestone.project_id == Project.id,
+        ProjectMilestone.status == 'completed', ProjectMilestone.completed_at >= start, ProjectMilestone.completed_at < end).exists()
+    task_result = select(TaskSubmission.id).join(Task, Task.id == TaskSubmission.task_id).join(
+        AuditLog, (AuditLog.entity_type == 'task_submission') & (AuditLog.entity_id == TaskSubmission.id),
+    ).where(Task.project_id == Project.id, TaskSubmission.status == 'approved', AuditLog.action == 'task.submission_approve',
+            AuditLog.created_at >= start, AuditLog.created_at < end).exists()
+    no_results = await count(Project, Project.status.in_(['approved', 'in_progress']), Project.created_at < start,
+                             ~contribution, ~milestone, ~task_result)
+    metrics.append(AnalyticsMetric('without_results', f'Без подтверждённых результатов · {days} дн.', no_results, None,
+        'Проект существует весь период; нет подтверждённого вклада, завершённого этапа или принятого задания. Это повод проверить процесс, не оценка качества.'))
+    return AnalyticsSnapshot(days, now, tuple(metrics))
+
+
+async def delivery_problem_counts(session: AsyncSession, *, days=30, now=None) -> dict[str, int]:
+    from app.database.system_models import NotificationDelivery
+    now = now or datetime.now(timezone.utc)
+    rows = (await session.execute(select(NotificationDelivery.notification_type, func.count()).where(
+        NotificationDelivery.last_attempt_at >= now-timedelta(days=days), NotificationDelivery.last_attempt_at < now,
+        NotificationDelivery.status.in_(['failed', 'blocked', 'unreachable', 'uncertain', 'conflict']),
+        NotificationDelivery.notification_type.in_(['management_report', 'admin_broadcast', 'leaders_broadcast']),
+    ).group_by(NotificationDelivery.notification_type))).all()
+    values = dict(rows)
+    return {'reports': int(values.get('management_report', 0)),
+            'broadcasts': int(values.get('admin_broadcast', 0) + values.get('leaders_broadcast', 0))}

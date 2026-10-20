@@ -1,6 +1,6 @@
 # Карта точечной работы ЭРА
 
-База production: 982c3ebf. Продолжение PR #356: remote head 0705c380, local d7fc3ba3, одинаковое дерево 62b84e28. При смене SHA сверять только изменённые модули.
+Production/main bcb0299, PR #356 merged и LIVE. Аналитика — PR #357, незавершённый этап/проверки в AI_TASK_STATE.md. Сначала сверять git HEAD и remote SHA, затем читать только затронутые модули.
 
 | Задача | Файлы / основные символы | Данные | Проверки |
 |---|---|---|---|
@@ -14,8 +14,10 @@
 
 Все пути app/ относительны корню app, кроме явно указанных tests/scripts/frontend/docs. Сервис использует общую ERA PostgreSQL dpg-d91r19vavr4c73fs837g-a; схему commission и другие сервисы не менять. Тестовые записи только в изолированных базах. Ключи, полные анкеты и дампы в документы/логи не помещать. Render SQL connector read-only; не пытаться обходить транзакционное ограничение. Автодеплой checksPass: второй ручной deploy после merge не запускать.
 
-Аналитика 2.0: services/analytics_snapshot_service.py (build_analytics_snapshot, verified_activity_facts, roster_conditions), tests/test_analytics_snapshot.py. SQL aggregates; 7/30/90 дней; общий snapshot для native overview и basic Excel. Когортная воронка и согласование старых health/efficiency пока не реализованы.
+Аналитика 2.0: services/analytics_snapshot_service.py (build_analytics_snapshot, verified_activity_facts, roster_conditions), tests/test_analytics_snapshot.py. SQL aggregates; 7/30/90 дней; общий snapshot для native overview и basic Excel. Когортная воронка и health/efficiency подключены; финальный CI и выпуск отслеживать в состоянии.
 
 Рост: services/analytics_growth_service.py:build_growth_snapshot; tests/test_analytics_growth.py. Native analytics_filters: analytics_growth, analytics_growth_gaps; admin API /analytics/growth; Excel «Рост 90 дней». Экспорт монтируется напрямую в analytics_filters, исторические management/survey routers не подключать целиком.
 
 Scoped leaders: services/admin_analytics_service.py:build_scoped_leader_operations → leaders_access_service.scopes(tasks.manage); handlers/leaders_native.py:leader_operations; tests/test_scoped_leader_analytics.py. Все запросы задач/результатов/целей ограничены разрешёнными department/direction либо executive global. Обычный статус leader не расширяет scope.
+
+Entity reports: analytics_snapshot_service.build_event_analytics/build_project_analytics/delivery_problem_counts → analytics_filters.analytics_entities/analytics_waiting; API /analytics/sections/{events|projects}; Excel «События 2.0»/«Проекты 2.0». tests/test_entity_analytics; PostgreSQL probe scripts/postgres_certificate_season_race.py. Сохранение native Excel routes проверяет test_system_audit_callback_regex.

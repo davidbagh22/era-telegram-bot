@@ -19,7 +19,7 @@ export interface AnalyticsDetails {
 export interface EfficiencyMetric {
   key: string;
   label: string;
-  value: number;
+  value: number | null;
   display: string;
   score: number | null;
   note: string;

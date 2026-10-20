@@ -56,6 +56,7 @@ def build_analytics_workbook(
     sections: set[str] | None = None,
     snapshot=None,
     growth=None,
+    entity_snapshots=(),
 ) -> bytes:
     from openpyxl import Workbook
     from openpyxl.chart import BarChart, PieChart, Reference
@@ -301,6 +302,10 @@ def build_analytics_workbook(
             c.organization_name, c.contact_name or "", c.position or "", c.second_contact_name or "", c.second_position or "", c.email or "", c.phone or "", c.notes or "",
         ] for c in contacts])
 
+    for title, entity in entity_snapshots:
+        append_sheet(title, ["Показатель", "Значение", "Прошлый период", "Изменение", "Определение"], [
+            [metric.label, metric.value, metric.previous, metric.delta, metric.note] for metric in entity.metrics
+        ])
     if growth is not None:
         ws = append_sheet("Рост 90 дней", ["Наблюдаемый этап", "Участников", "Конверсия предыдущего этапа, %", "Медиана срока, дней"], [
             [stage.label, stage.count, stage.conversion, stage.median_days] for stage in growth.stages

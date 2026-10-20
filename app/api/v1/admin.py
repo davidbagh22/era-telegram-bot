@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.services.analytics_snapshot_service import build_analytics_snapshot
+from app.services.analytics_snapshot_service import build_analytics_snapshot, build_event_analytics, build_project_analytics
 from app.services.analytics_growth_service import build_growth_snapshot
 
 from dataclasses import asdict
@@ -209,6 +209,21 @@ class AnalyticsSummaryOut(BaseModel):
     goals: int
 
 
+@router.get("/analytics/sections/{kind}")
+async def read_analytics_section(
+    kind: Literal['events', 'projects'],
+    days: Literal[7, 30, 90] = 30,
+    _admin: User = Depends(require_dashboard_access),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    builder = build_event_analytics if kind == 'events' else build_project_analytics
+    snapshot = await builder(session, days=days, timezone_name=settings.timezone)
+    return {'days': days, 'as_of': snapshot.as_of, 'metrics': [
+        {**asdict(metric), 'delta': metric.delta} for metric in snapshot.metrics
+    ]}
+
+
 @router.get("/analytics/growth")
 async def read_analytics_growth(
     _admin: User = Depends(require_dashboard_access),
@@ -378,6 +393,10 @@ async def export_analytics_excel(
         goals=data.goals,
         contacts=data.contacts,
         sections=EXCEL_SECTION_MAP.get(section),
+        entity_snapshots=[
+            ('События 2.0', await build_event_analytics(session, days=days, timezone_name=settings.timezone)),
+            ('Проекты 2.0', await build_project_analytics(session, days=days, timezone_name=settings.timezone)),
+        ],
         growth=await build_growth_snapshot(session),
         snapshot=await build_analytics_snapshot(session, days=days, timezone_name=settings.timezone),
     )

@@ -13,7 +13,7 @@ from app.database.models import Event, EventActivitySubmission, Project, Task, T
 from app.handlers.admin.management_ready import _guard, analytics_excel
 from app.handlers.admin.surveys_analytics import survey_excel
 from app.services.admin_analytics_service import build_analytics_payload
-from app.services.analytics_snapshot_service import build_analytics_snapshot
+from app.services.analytics_snapshot_service import build_analytics_snapshot, build_event_analytics, build_project_analytics, delivery_problem_counts
 from app.services.analytics_growth_service import build_growth_snapshot
 from app.utils.telegram import edit_text_or_answer
 from app.utils.constants import (
@@ -49,8 +49,8 @@ def _analytics_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🏛 Департаменты", callback_data="admin:analytics:slice:departments"),
             ],
             [
-                InlineKeyboardButton(text="📅 События", callback_data="admin:analytics:slice:events"),
-                InlineKeyboardButton(text="💡 Проекты", callback_data="admin:analytics:slice:projects"),
+                InlineKeyboardButton(text="📅 Мероприятия", callback_data="admin:analytics:entities:events:30"),
+                InlineKeyboardButton(text="💡 Проекты", callback_data="admin:analytics:entities:projects:30"),
             ],
             [InlineKeyboardButton(text="Рост за 90 дней", callback_data="admin:analytics:growth")],
             [InlineKeyboardButton(text="🗳 Управленческие опросы", callback_data="admin:surveys")],
@@ -151,7 +151,8 @@ async def analytics_overview(call: CallbackQuery, user: User | None, settings: S
     for metric in snapshot.metrics:
         value = "см. Рост за 90 дней" if metric.key == "funnel" else ("нет данных" if metric.value is None else str(metric.value))
         delta = "" if metric.delta is None else f" ({metric.delta:+g})"
-        lines.append(f"{metric.label}: {value}{delta}")
+        warning = "⚠️ " if metric.key in {"active", "retention"} and metric.delta is not None and metric.delta < 0 else ""
+        lines.append(f"{warning}{metric.label}: {value}{delta}")
     lines.extend(["", "Активность — подтверждённые результаты. Должности и цифровые действия считаются отдельно.",
                   f"Изменение — к предыдущим {days} дням. Исторические значения без доказательств не восстанавливаются.",
                   "Определения и ограничения — в Excel, лист «Обзор 2.0»."])
@@ -185,18 +186,24 @@ async def analytics_waiting(call: CallbackQuery, user: User | None, settings: Se
     pending_tasks = int(await session.scalar(select(func.count()).select_from(Task).where(((Task.status == TaskStatus.REVIEW) | select(TaskSubmission.id).where(TaskSubmission.task_id == Task.id, TaskSubmission.status == 'pending').exists()) & (Task.status != TaskStatus.CANCELLED))) or 0)
     pending_activities = int(await session.scalar(select(func.count()).select_from(EventActivitySubmission).where(EventActivitySubmission.status.in_(["pending", "leader_approved"]))) or 0)
     pending_questions = int(await session.scalar(select(func.count()).select_from(UserQuestion).where(UserQuestion.status == "new")) or 0)
+    delivery = await delivery_problem_counts(session)
+    project_metrics = await build_project_analytics(session, timezone_name=settings.timezone)
+    without_results = next(metric.value for metric in project_metrics.metrics if metric.key == 'without_results')
     active_goals = int(await session.scalar(select(func.count()).select_from(MonthlyGoal).where(MonthlyGoal.status == "active")) or 0)
     active_contacts = int(await session.scalar(select(func.count()).select_from(OrganizationContact).where(OrganizationContact.is_active.is_(True))) or 0)
     text = (
         "🚦 Что где ждёт\n\n"
         f"👥 Заявки участников: {pending_users}\n"
-        f"💡 Проекты на решении: {pending_projects}\n"
+        f"💡 Незавершённые согласования проектов: {pending_projects}\n"
         f"📅 Мероприятия на согласовании: {pending_events}\n"
         f"✅ Задачи на проверке: {pending_tasks}\n"
         f"✨ Активности после мероприятий: {pending_activities}\n"
         f"💬 Вопросы пользователей: {pending_questions}\n"
         f"🎯 Активные цели месяца: {active_goals}\n"
-        f"🤝 Организаций в базе: {active_contacts}\n\n"
+        f"🤝 Организаций в базе: {active_contacts}\n"
+        f"Проекты без подтверждённых результатов за 30 дней: {without_results}\n"
+        f"Проблемные доставки рассылок за 30 дней: {delivery['broadcasts']}\n"
+        f"Проблемные доставки отчётов за 30 дней: {delivery['reports']}\n\n"
         "Откройте очередь кнопкой ниже. Показатели разных очередей не суммируются в число людей."
     )
     actions = []
@@ -209,6 +216,12 @@ async def analytics_waiting(call: CallbackQuery, user: User | None, settings: Se
     ):
         if count:
             actions.append([InlineKeyboardButton(text=f"{label}: {count}", callback_data=callback)])
+    if without_results:
+        actions.append([InlineKeyboardButton(text='Проверить результаты проектов', callback_data='admin:analytics:entities:projects:30')])
+    if delivery['broadcasts']:
+        actions.append([InlineKeyboardButton(text='Проверить историю рассылок', callback_data='lc:history')])
+    if delivery['reports'] and getattr(settings, 'feature_management_reports', 'OFF') != 'OFF':
+        actions.append([InlineKeyboardButton(text='Проверить управленческий отчёт', callback_data='admin:management:refresh')])
     actions.append([InlineKeyboardButton(text="Назад", callback_data="admin:analytics"), InlineKeyboardButton(text="Главная", callback_data="admin:panel")])
     await edit_text_or_answer(call.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=actions))
 
@@ -333,13 +346,41 @@ async def analytics_growth_gaps(call: CallbackQuery, user: User | None, settings
 
 # Reuse the existing guarded exporters, mounting only their exact routes.
 # The historical management/survey routers remain unmounted.
-router.callback_query.register(analytics_excel, F.data.in_({
+@router.callback_query(F.data.in_({
     "admin:analytics:excel", "admin:analytics:excel:all", "admin:analytics:excel:users",
     "admin:analytics:excel:departments", "admin:analytics:excel:events", "admin:analytics:excel:projects",
 }))
-router.callback_query.register(survey_excel, F.data == "admin:analytics:excel:surveys")
+async def analytics_legacy_excel(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
+    await analytics_excel(call, user, settings, session)
+
+
+@router.callback_query(F.data == "admin:analytics:excel:surveys")
+async def analytics_survey_excel(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
+    await survey_excel(call, user, settings, session)
 
 
 @router.callback_query(F.data.regexp(r"^admin:analytics:download:(7|30|90)$"))
 async def analytics_period_excel(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     await analytics_excel(call, user, settings, session, days=int(call.data.rsplit(":", 1)[-1]))
+
+
+@router.callback_query(F.data.regexp(r"^admin:analytics:entities:(events|projects):(7|30|90)$"))
+async def analytics_entities(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
+    if not await _guard(call, user, settings):
+        return
+    _, _, _, kind, raw_days = call.data.split(":")
+    days = int(raw_days)
+    builder = build_event_analytics if kind == 'events' else build_project_analytics
+    data = await builder(session, days=days, timezone_name=settings.timezone)
+    lines = [f'{"Мероприятия" if kind == "events" else "Проекты"} · {days} дней', '']
+    for metric in data.metrics:
+        value = 'нет данных' if metric.value is None else str(metric.value)
+        delta = '' if metric.delta is None else f' ({metric.delta:+g})'
+        lines.append(f'{metric.label}: {value}{delta}')
+    lines.extend(['', 'Скобки — изменение к предыдущему сопоставимому периоду. Текущие статусы без исторического снимка не имеют выдуманной динамики.',
+                  'Определения и ограничения — в Excel.'])
+    rows = [[InlineKeyboardButton(text=f'{period} дней', callback_data=f'admin:analytics:entities:{kind}:{period}') for period in (7,30,90)],
+            [InlineKeyboardButton(text=f'Excel · {days} дней', callback_data=f'admin:analytics:download:{days}')],
+            [InlineKeyboardButton(text='Открыть управление', callback_data='admin:events' if kind == 'events' else 'admin:projects')],
+            [InlineKeyboardButton(text='Назад', callback_data='admin:analytics'), InlineKeyboardButton(text='Главная', callback_data='admin:panel')]]
+    await edit_text_or_answer(call.message, '\n'.join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))

@@ -50,7 +50,7 @@ class AnalyticsDetailsOut(BaseModel):
 class EfficiencyMetricOut(BaseModel):
     key: str
     label: str
-    value: float
+    value: float | None
     display: str
     score: int | None
     note: str

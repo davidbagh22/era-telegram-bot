@@ -7,16 +7,16 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Event, EventRegistration, Feedback, Project, User
-from app.services.analytics_snapshot_service import count_new_members, count_verified_users, roster_conditions
-from app.utils.constants import EventStatus, ProjectStatus, RegistrationStatus
+from app.database.models import Event, Project, User
+from app.services.analytics_snapshot_service import build_event_analytics, count_new_members, count_verified_users, roster_conditions
+from app.utils.constants import EventStatus, ProjectStatus
 
 
 @dataclass(frozen=True)
 class EfficiencyMetric:
     key: str
     label: str
-    value: float
+    value: float | None
     display: str
     score: int | None
     note: str
@@ -76,7 +76,6 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
     today = date.today()
     week_ago = now - timedelta(days=7)
     month_ago = now - timedelta(days=30)
-    month_ago_date = today - timedelta(days=30)
     two_weeks_ahead = today + timedelta(days=14)
 
     approved_users = list(
@@ -104,16 +103,8 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
         EventStatus.COMPLETED,
         EventStatus.REPORT_SUBMITTED,
     )
-    events_30d = int(
-        await session.scalar(
-            select(func.count(Event.id)).where(
-                Event.event_date >= month_ago_date,
-                Event.event_date <= today,
-                Event.status.in_(event_live_statuses),
-            )
-        )
-        or 0
-    )
+    event_metrics = {metric.key: metric for metric in (await build_event_analytics(session, now=now)).metrics}
+    events_30d = event_metrics['held'].value
     upcoming_events_14d = int(
         await session.scalar(
             select(func.count(Event.id)).where(
@@ -137,36 +128,15 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
     active_projects = int(
         await session.scalar(
             select(func.count(Project.id)).where(
-                Project.status.in_((ProjectStatus.APPROVED, ProjectStatus.IN_PROGRESS))
+                Project.status == ProjectStatus.IN_PROGRESS
             )
         )
         or 0
     )
 
-    registrations_30d = int(
-        await session.scalar(
-            select(func.count(EventRegistration.id)).where(
-                EventRegistration.created_at >= month_ago,
-                EventRegistration.status.in_(
-                    (
-                        RegistrationStatus.REGISTERED,
-                        RegistrationStatus.WILL_COME,
-                        RegistrationStatus.ATTENDED,
-                    )
-                ),
-            )
-        )
-        or 0
-    )
-
-    feedback_count = int(
-        await session.scalar(select(func.count(Feedback.id)).where(Feedback.created_at >= month_ago))
-        or 0
-    )
-    feedback_avg = float(
-        await session.scalar(select(func.avg(Feedback.rating)).where(Feedback.created_at >= month_ago))
-        or 0.0
-    )
+    registrations_30d = event_metrics['registrations'].value
+    feedback_count = event_metrics['ratings'].value
+    feedback_avg = event_metrics['average'].value
 
     # Transparent score: engagement carries 45%, organizational output 35%,
     # participant feedback 20%. If there is no feedback in the period, we do
@@ -216,7 +186,7 @@ async def build_efficiency_snapshot(session: AsyncSession) -> EfficiencySnapshot
             value=float(registrations_30d),
             display=str(registrations_30d),
             score=None,
-            note="регистраций и подтверждений за 30 дней",
+            note="регистрации с обязательством прийти на завершённые события; waitlist и отмены исключены",
         ),
         EfficiencyMetric(
             key="feedback",

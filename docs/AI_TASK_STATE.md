@@ -1,32 +1,27 @@
-# Состояние работы ЭРА
+# Состояние ЭРА — 20.10.2026
 
-Обновлено 20.10.2026, Asia/Yerevan. Цель: сброс целевого аккаунта → завершение #356 → единая аналитика 2.0 → остаток итогового ТЗ → production-проверка.
+## Production / сброс — выполнено
+- PR #356 MERGED, main/prod bcb029947459380a8e690cf06711f7f817b5f974. Render LIVE dep-dbbb03bm8hqs738ocb80, 20.10 00:05 UTC. /health и /ready = 200, health commit bcb0299.
+- Точный целевой Telegram ID предоставлен пользователем. Reset receipt = complete, encrypted_snapshot присутствует. Старый user_id=31 архивирован с синтетическим Telegram ID, community identity user_id=NULL. Активной users-записи с исходным ID пока нет: доступна новая регистрация через /start. Прежний ledger сохранён: 2 записи / 105 баллов. Связей leader_chat_memberships нет. Ключ резервной копии остаётся только в Render env, не публиковать и не регенерировать.
+- Полная реальная повторная отправка анкеты самим пользователем ещё не наблюдалась; не объявлять её проверенной через Telegram-клиент.
 
-## Проверено
-- Prod LIVE/main 982c3ebf; PR #356 открыт, remote head 0705c380 (local d7fc3ba3, дерево 62b84e28 совпадает).
-- Первый CI: PostgreSQL migrations/races, frontend и secrets прошли. Backend упал на прямых answer_document в новых handlers и старом assertion имени router. E2E seed передавал несуществующие actor_id/source в complete_onboarding. Исправления безопасной media-доставки и E2E seed прошли адресные проверки. Дополнительно закрываются review: ACTIVE event ICS, bootstrap admin queue, certificate export/anonymization с сохранением FK; 17 privacy/certificate tests passed. Требуется полный CI нового SHA.
-- Точный поиск целевого аккаунта по заявленным username/телефону в users и username в leader_chat_memberships дал 0 строк. Сброс НЕ выполнен. Пользователь предоставил точный Telegram ID; найден archived participant, user_id=31. Есть 2 points, нет assigned tasks/projects/attendance/offices. Подготовлен replay-safe reset через ERA_REGISTRATION_RESET: encrypted User/FSM snapshot, архивная запись и ledger сохраняются, identity map отвязывается, очищается только private FSM. Адресный reset test пройден, защищённая команда и отдельный backup key сохранены в Render env; deploy старого main от конфигурации LIVE dep-dbbaa4rbc2fs73aepa4g не содержит reset hook. Требуется выпуск/выполнение и подтверждение read-only SQL. Нельзя считать reset выполненным заранее.
-- ERA PostgreSQL ipAllowList содержит 0.0.0.0/0. Ограничение НЕ изменено: сначала сохранить внешнее подключение backup workflow; имеющиеся Render tools не предоставляют изменение ACL.
+## Аналитика — PR #357, выпуск ожидается
+- Remote head перед текущим исправлением: 28044773159ac426d6779e0dd9b7fd05035af6a3. Local branch feat/entity-analytics-20261020, code parent b4ee3b75. Проверять фактический HEAD и remote SHA перед продолжением.
+- На предыдущем head frontend/E2E/PG/secrets прошли; backend 1888 passed, 1 failed: static callback audit не распознавал .register для Excel. Заменено стандартными decorated wrappers, общий защищённый exporter сохранён, legacy routers не монтируются целиком. Адресный audit пройден.
+- Реализованы общий verified SQL snapshot 7/30/90, first audit approval, cohort retention (один SQL snapshot числителя/знаменателя), NULL при отсутствии базы, digital/office отдельно. Подключены native Telegram, API, Excel, dashboard, health, efficiency и executive export. Лимиты 500/200 удалены, проверены 501 events/projects и 201 goals.
+- Рост 90 дней: фактические approval/role audits, два разных event/task/project, дедуп attendance+points, сроки и пагинация разрывов; роль не заменяет историю. Незавершённый этап не называется уходом.
+- Лидеры: scoped task results/workload/month goals по свежим tasks.manage grants/offices. Обычный leader не получает общий доступ, отзыв grant проверен. Native private-only «Результаты команды».
+- Новые срезы events/projects: реальные посещения отдельно от регистраций и баллов; waitlist/отмены вне знаменателя; первый/вернувшийся посетитель; реальные отзывы и coverage. Статусы проектов отдельно от dated contributions/completed milestones, overdue и отсутствие подтверждённых результатов весь период. Telegram/API/Excel — общие формулы. Доставка отчётов/рассылок — по существующим receipts, без новых уведомлений/повторных отправок.
+- Health/efficiency выровнены по held events, attendance, feedback и in_progress; историческая конверсия отделена от текущих ролей. Nullable feedback согласован с API/frontend.
+- Последняя адресная проверка: 35 passed + 17 subtests; lint passed; frontend build passed. PostgreSQL CI probe дополнен реальным выполнением всех analytics builders на migrated isolated DB. Требуется полный CI финального нового SHA, review → merge → штатный auto deploy main → /ready/logs.
 
-## Текущие действия
-1. Зафиксировать исправления #356 и служебные документы, адресные тесты; новый PR CI → merge → auto deploy → /ready, schema, logs.
-2. После получения ID определить users/dependencies; защищённая резервная копия затронутого профиля, транзакционный reset регистрации с сохранением ledger/audit и чужих данных, FSM только этого пользователя; реальная повторная подача. Не использовать commission reset.
-3. Найти и устранить лимиты 500 событий/проектов, 200 целей в итогах admin_analytics_service. Утвердить формулы AI_ANALYTICS_SPEC, разделить digital / verified / responsibility; внедрить общий snapshot для Telegram/Excel, 7/30/90 дней и scoped доступ.
-4. Полный остаток: docs/ERA_FINAL_TZ_2026_10_19.md, docs/READINESS_RELEASE_2026_10_19.md. AM/EN, категорийное делегирование, независимый backup, редакционная и реальная Telegram-приёмка пока НЕ завершены.
+## Следующие действия
+1. Commit текущих только ERA analytics файлов и docs, push в #357 с expected remote SHA; дерево remote должно совпасть с local.
+2. Дождаться final-head CI, исправить реальные ошибки; merge #357 при успешных checks. Render autoDeploy checksPass: не запускать второй ручной deploy; main CI тоже задерживает выпуск.
+3. Проверить prod SHA, /ready, ошибки, доступность native routes без тестовых записей/рассылок в production.
+4. Проверить security/backup: PostgreSQL ipAllowList 0.0.0.0/0 ещё не изменён (Render MCP не даёт update ACL). Текущий database-backup workflow использует OIDC HTTPS snapshot, а не внешнее прямое PG-подключение; проверить фактические источники перед политикой internal-only. S3 extra copy требует настройки провайдера; GitHub encrypted artifact backup — существующий отдельный слой.
 
-## Продолжение
-Сначала git status и текущие remote main/PR SHA, затем AI_WORK_MAP. Адресные тесты запускать с BOT_TOKEN=0000000000:LOCALTEST (фиктивный token). Полный CI перед merge. Native media только через safe_answer_document; в E2E seed complete_onboarding(session,user) без лишних аргументов. Не повторять полный аудит. После этапа обновлять этот файл фактическим результатом.
+## Остаток итогового ТЗ
+Полная AM/EN локализация/редакторская приёмка; категорийное делегирование поддержки/редакции; независимый backup provider/ACL по факту доступов; реальные Telegram-клиентские сценарии и 24 часа наблюдения. Полный контракт: docs/ERA_FINAL_TZ_2026_10_19.md. Не выдавать CI за реальную приёмку.
 
-20.10 03:30 AMT: CI head 0705c380 PostgreSQL/frontend/secrets success; E2E 42 passed/2 skipped/1 failure — calendar button overlapped by fixed registration footer. Increased event-detail bottom safe padding, preserving an actual clickable E2E test (no force click). Backend CI still running; after patch needs final-head CI. Reset env saved; actual reset NOT yet run. Local analytics branch checkpoints 2a717f47, 7fb639dd (not deployed).
-## Следующий пакет аналитики (локальная ветка feat/analytics2-work-20261020)
-Общий SQL snapshot текущей базы, первых одобрений по audit, distinct verified пользователей (включая подтверждения без баллов), удержания прошлой активной когорты, завершённых событий, текущих проектов и distinct задач на проверке/просрочке. Исторические снимки состава и воронка помечены недоступными; не выдуманы. Native обзор и Excel используют этот сервис. Лимиты 500/200 удалены. После #356 нужен отдельный PR/полный CI, не считать в production. Пульт/health/efficiency теперь используют общие verified facts; lifecycle правило «активен ИЛИ действующая должность» сохранено только для lifecycle, не KPI. Скоуп руководителей и расширенные actionable warnings остаются; когортная воронка добавлена следующим пакетом.
-
-Аналитика: 32 адресных теста пройдены, lint/build пройдены; дополнительная проверка снятия лимитов 501 events/501 projects/201 goals пройдена. Executive Excel activity также переведена на verified facts выбранного периода. Nullable retention согласован с API и frontend типом. Release #356 final head ba763a16, CI 39341931367/39341931363, ожидается.
-
-Пакет роста: analytics_growth_service SQL cohort 90 дней, аудиты approval/role, два разных подтверждённых event/task/project, без дубля attendance+points; разрывы и сроки. Native/API/Excel подключены, пустая/исторически неполная когорта обозначены. Найдено, что старый Excel handler был в unmounted router: смонтированы только guarded exporter functions в analytics_filters; legacy bridge больше не перехватывает их. Период Excel 7/30/90 из выбранного обзора, root admin защита сохраняется.
-
-33 focused tests + 3 participant-denial subtests passed после роста/native export; lint passed. PR #357 parent release ba763a16, исходный head 4b49ab10. Growth и native exporter ownership включаются следующим commit этого PR, новый полный CI обязателен. Release #356 E2E/PG/frontend/secrets success, два backend job пока in progress.
-
-Следующий scoped-пакет (ветка feat/leader-analytics-20261020, пока локально): build_scoped_leader_operations использует свежие grants/offices tasks.manage; active/completed/overdue/review задачи, результаты 30/30 по audit, нагрузка по имени без рейтинга, MonthlyGoal + LeadershipGoal своей области. Native «Результаты команды» private only; ordinary leader и отозванный scoped grant не дают доступа. 21 адресный тест пройден. Общий task attention дополнен pending submissions у published/public задач. В блоке ожиданий прямые кнопки к существующим очередям. Нужен CI/PR/выпуск.
-
-Финальный адресный прогон scoped-пакета: 44 passed + 3 denial subtests; отдельно 3 period/boundary tests passed. Новые участники в health/efficiency/executive Excel также переведены на общий count_new_members (первый audit approval, повторное одобрение не новый участник). Scope-пакет включается в #357, отдельная третья админка/сервис не создаются. Оставшиеся самостоятельные блоки: полный обзор событий/проектов с результатами и динамикой, наблюдаемые delivery/report warnings, независимый backup/ACL, полная AM/EN и реальная Telegram-приёмка.
+Тесты запускать с BOT_TOKEN=0000000000:LOCALTEST в ../era-test-env. Комиссионный бот, его схему и чужие изменения не трогать. Начинать с этого файла и AI_WORK_MAP; не перечитывать весь проект.

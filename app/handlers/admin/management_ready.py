@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.services.analytics_snapshot_service import build_analytics_snapshot
+from app.services.analytics_snapshot_service import build_analytics_snapshot, build_event_analytics, build_project_analytics
 from app.services.analytics_growth_service import build_growth_snapshot
 
 from aiogram import F, Bot, Router
@@ -155,6 +155,10 @@ async def analytics_excel(call: CallbackQuery, user: User | None, settings: Sett
         goals=data.goals,
         contacts=data.contacts,
         sections=EXCEL_SECTION_MAP.get(section),
+        entity_snapshots=[
+            ('События 2.0', await build_event_analytics(session, days=days, timezone_name=settings.timezone)),
+            ('Проекты 2.0', await build_project_analytics(session, days=days, timezone_name=settings.timezone)),
+        ],
         growth=await build_growth_snapshot(session),
         snapshot=await build_analytics_snapshot(session, days=days, timezone_name=settings.timezone),
     )
