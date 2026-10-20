@@ -258,6 +258,19 @@ async def task_attention_action(call: CallbackQuery, user: User | None, settings
     if action != 'item' and parts[4] != version:
         await call.answer('Задача изменилась. Откройте её заново.', show_alert=True)
         return
+    if action == 'confirm':
+        pending_result = await session.scalar(
+            select(TaskSubmission.id).where(
+                TaskSubmission.task_id == task.id,
+                TaskSubmission.status == 'pending',
+            ).limit(1)
+        )
+        if pending_result is not None:
+            await call.answer(
+                'Нельзя отменить задачу: сначала проверьте отправленный результат.',
+                show_alert=True,
+            )
+            return
     if action in {'confirm', 'extend'}:
         try:
             await change_task(session, settings, task, user, 'cancel' if action == 'confirm' else 'deadline',
