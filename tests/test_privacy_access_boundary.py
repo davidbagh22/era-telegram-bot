@@ -48,6 +48,30 @@ class CommunityPrivacyTests(unittest.TestCase):
 
 
 class ApiCachePrivacyTests(unittest.TestCase):
+    def test_miniapp_framing_is_limited_to_self_and_official_telegram_web(self):
+        app = FastAPI()
+        app.middleware("http")(security_headers_middleware)
+
+        @app.get("/app/")
+        def miniapp():
+            from starlette.responses import HTMLResponse
+            return HTMLResponse("<html>ERA</html>", headers={"X-Frame-Options": "SAMEORIGIN"})
+
+        client = TestClient(app)
+        response = client.get("/app/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("x-frame-options", response.headers)
+        self.assertEqual(
+            response.headers["content-security-policy"],
+            "frame-ancestors 'self' https://web.telegram.org",
+        )
+        # Lookalike paths must not inherit the Mini App framing exception.
+        for path in ("/api/v1/profile", "/application", "/health"):
+            with self.subTest(path=path):
+                response = client.get(path)
+                self.assertEqual(response.headers["x-frame-options"], "SAMEORIGIN")
+                self.assertNotIn("content-security-policy", response.headers)
+
     def test_api_data_and_auth_errors_are_not_stored_but_assets_keep_cache(self):
         app = FastAPI()
         app.middleware("http")(security_headers_middleware)
@@ -68,3 +92,21 @@ class ApiCachePrivacyTests(unittest.TestCase):
             self.assertEqual(response.headers["cache-control"], "no-store, private")
             self.assertEqual(response.headers["pragma"], "no-cache")
         self.assertIn("immutable", client.get("/app/assets/bundle.js").headers["cache-control"])
+
+
+class PublicPosterCacheTests(unittest.TestCase):
+    def test_only_successful_public_image_posters_keep_cache(self):
+        app = FastAPI()
+        app.middleware("http")(security_headers_middleware)
+
+        @app.get("/api/v1/event-posters/{poster_id}")
+        def poster(poster_id: str):
+            from starlette.responses import Response
+            if poster_id == "2":
+                return Response("private", media_type="application/json", headers={"Cache-Control": "public, max-age=300"})
+            return Response(b"image", media_type="image/png", headers={"Cache-Control": "public, max-age=300"})
+
+        client = TestClient(app)
+        self.assertEqual(client.get("/api/v1/event-posters/1").headers["cache-control"], "public, max-age=300")
+        for path in ("/api/v1/event-posters/2", "/api/v1/event-posters/not-a-number", "/api/v1/event-posters/1/private"):
+            self.assertEqual(client.get(path).headers["cache-control"], "no-store, private")
