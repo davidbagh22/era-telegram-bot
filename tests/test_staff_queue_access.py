@@ -1,19 +1,21 @@
 """Delegation is capability-specific, global-only, revocable, and rollout-bound."""
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import Settings
 from app.database.base import Base
-from app.database.models import PermissionGrant, SupportMessage, User, UserQuestion
+from app.database.models import AppSetting, PermissionGrant, SupportMessage, User, UserQuestion
+from app.handlers.admin.rights_block6 import toggle_support_category_permission
 from app.handlers.admin.support_bot import show_inbox
 from app.services.staff_access_service import (can_operate_queue,
     can_edit_literature, can_manage_literature_settings,
     can_operate_support_category, support_category_scope_id)
 from app.services.support_service import (support_thread, support_assignees, support_attachment,
-    update_support_thread)
+    update_support_thread, deliver_support_thread_messages)
 from app.utils.constants import ApplicationStatus, Role
 
 
@@ -144,3 +146,74 @@ class StaffQueueAccessTests(IsolatedAsyncioTestCase):
             grant.is_active = False
             await session.flush()
             self.assertFalse(await can_edit_literature(session, editor, self.settings))
+
+    async def test_delivery_rechecks_current_category_and_partial_revocation(self):
+        for index, scenario in enumerate(('allowed', 'moved', 'revoked')):
+            with self.subTest(scenario=scenario):
+                async with self.factory() as session:
+                    offset = index * 100
+                    admin = User(telegram_id=10 + offset, first_name='Admin', role=Role.ADMIN,
+                        application_status=ApplicationStatus.APPROVED)
+                    staff = User(telegram_id=20 + offset, first_name='Scoped',
+                        application_status=ApplicationStatus.APPROVED)
+                    owner = User(telegram_id=30 + offset, first_name='Owner',
+                        application_status=ApplicationStatus.APPROVED)
+                    session.add_all([admin, staff, owner])
+                    await session.flush()
+                    events = PermissionGrant(user_id=staff.id, permission='support.manage',
+                        scope_type='support_category', scope_id=support_category_scope_id('events'),
+                        granted_by=admin.id, is_active=scenario != 'revoked')
+                    projects = PermissionGrant(user_id=staff.id, permission='support.manage',
+                        scope_type='support_category', scope_id=support_category_scope_id('projects'),
+                        granted_by=admin.id, is_active=True)
+                    item = UserQuestion(user_id=owner.id, text='Question',
+                        category='general' if scenario == 'moved' else 'events', assigned_to=staff.id)
+                    session.add_all([events, projects, item])
+                    await session.flush()
+                    key = f'support-assignment:scope-{index}'
+                    session.add(AppSetting(key=key, value={'question_id': item.id, 'assignee_id': staff.id}))
+                    session.add(SupportMessage(question_id=item.id, author_id=owner.id,
+                        direction='participant', source_key=f'scope-delivery-{index}', text='Followup',
+                        delivery_status='pending'))
+                    await session.commit()
+                    # Another valid category must not authorize this ticket.
+                    self.assertTrue(await can_operate_queue(session, staff, self.settings, 'support.manage'))
+                    admin_tg, staff_tg = admin.telegram_id, staff.telegram_id
+                send = AsyncMock(return_value=SimpleNamespace(status='sent', attempt_count=1))
+                with patch('app.services.support_service.safe_send_once', send), patch(
+                        'app.services.support_service.admin_notification_recipients',
+                        AsyncMock(return_value={admin_tg})):
+                    await deliver_support_thread_messages(None, self.settings, self.factory)
+                    await deliver_support_thread_messages(None, self.settings, self.factory)
+                recipients = [call.args[2] for call in send.await_args_list]
+                self.assertEqual(recipients, [staff_tg, staff_tg] if scenario == 'allowed' else [admin_tg])
+                async with self.factory() as session:
+                    self.assertIsNone(await session.scalar(select(AppSetting).where(AppSetting.key == key)))
+
+    async def test_category_callback_toggles_grant_and_preserves_literature_indicator(self):
+        async with self.factory() as session:
+            admin = User(telegram_id=1000, first_name='Admin', role=Role.ADMIN,
+                application_status=ApplicationStatus.APPROVED)
+            target = User(telegram_id=1001, first_name='Editor',
+                application_status=ApplicationStatus.APPROVED)
+            session.add_all([admin, target])
+            await session.flush()
+            literature = PermissionGrant(user_id=target.id, permission='literature.manage',
+                scope_type='literature_category', scope_id=1, granted_by=admin.id, is_active=True)
+            session.add(literature)
+            await session.commit()
+            scope = support_category_scope_id('events')
+            call = SimpleNamespace(data=f'admin:permission:support_category_toggle:{target.id}:{scope}',
+                message=SimpleNamespace(answer=AsyncMock(), edit_reply_markup=AsyncMock()))
+            for enabled in (True, False):
+                with patch('app.handlers.admin.rights_block6._guard', AsyncMock(return_value=True)):
+                    await toggle_support_category_permission(call, admin, self.settings, session)
+                grant = await session.scalar(select(PermissionGrant).where(
+                    PermissionGrant.user_id == target.id, PermissionGrant.permission == 'support.manage'))
+                self.assertEqual(grant.is_active, enabled)
+                markup = call.message.edit_reply_markup.await_args.kwargs['reply_markup']
+                button = next(button for row in markup.inline_keyboard for button in row
+                    if button.callback_data == f'admin:permission:literature_toggle:{target.id}')
+                self.assertTrue(button.text.startswith('✅'))
+                await session.refresh(literature)
+                self.assertTrue(literature.is_active)

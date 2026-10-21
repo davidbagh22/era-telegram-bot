@@ -2,13 +2,13 @@
 
 База main теперь `9d815e65d2fcdbc3bca34a273bc57bc8645dab88`; PR #359 merged. Пакет A из этого backlog включён в #359; исходные production-проверки и реальные Telegram/Excel сценарии всё ещё требуют подтверждения после deploy.
 
-Пакет B реализован на `feat/category-scoped-staff-access-20261021` и отправлен PR #360 (`4631a4324db009b09c4fb15b27eaa08cd20d8cef`): category scopes на существующих `PermissionGrant`, ограничения списков/карточек/вложений/ответов и редакционных действий, защита настроек модуля и перепроверки после отзыва. Полный локальный pytest до последних двух UI-regression тестов прошёл (1905 passed, 1 skipped, 1 xfailed, 97 subtests); финальный адресный набор — 44 passed, 14 subtests; general-chat validation, system audit (9/9) и Ruff прошли. GitHub `Bot checks` и `Tests` выполняются. #359 LIVE на точном SHA, но production polling identity `@MVKSRS_bot` не совпадает с ожидаемым `@ERA_1bot`; секрет в Render не менялся, требуется безопасное обновление владельцем и повторная сквозная проверка.
+Пакет B реализован на `feat/category-scoped-staff-access-20261021` и отправлен PR #360: category scopes на существующих `PermissionGrant`, ограничения списков/карточек/вложений/ответов и редакционных действий, защита настроек модуля и перепроверки после отзыва. Review/повторная проверка исправили delivery-time category check, callback разбора ID и сохранение литературного индикатора. Адресный набор — 46 passed, 17 subtests; требуется полный CI финального SHA перед merge. #359 LIVE на точном SHA; основной webhook работает как `@ERA_1bot`. `@MVKSRS_bot` — отдельный Commission poller; прежнее заключение о неверном BOT_TOKEN ошибочно, замена секрета не требуется. Реальная сквозная приёмка остаётся отдельным gate.
 
 # ЭРА — остаток до окончательной приёмки, 20.10.2026
 
 База анализа: main 4fc319ce, закрытые #356/#357/#358, текущая карта/состояние и точечная проверка генератора присланной админ-сводки. GitHub open PRs на проверке: 0. Ниже предлагаемые пакеты, а не существующие номера PR. Полный повторный аудит всего репозитория не выполнялся; новые PR сверх этого перечня возможны по обнаруженным дефектам реальной приёмки.
 
-## Подтверждённый остаток аналитики — первый приоритет
+## Исторический остаток аналитики до #359 — не повторять как новый backlog
 - admin_analytics_service.build_management_report использует meaningful_user_ids_since (ledger only при include_current_responsibility=False), а общий overview — verified facts с нулевыми баллами/attendance/project/task confirmations. Это несовместимые определения подтверждённой активности; Excel/новый overview не доказывают согласованность старой ежедневной сводки.
 - meaningful_user_ids_since не имеет верхней границы периода; активность отчёта строится относительно now, а не его period_end. Нужны общие verified helpers и одинаковые [start,end) для текущего и предыдущего окна.
 - commands_ready: ручные daily/weekly/monthly вызовы management_report_text не передают previous. Плановый daily передаёт предыдущий сохранённый отчёт, но renderer сравнивает только users_total. Полной динамики KPI ещё нет; исторические текущие stocks не восстанавливать задним числом.

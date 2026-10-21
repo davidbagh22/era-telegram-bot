@@ -1,10 +1,10 @@
 # Карта точечной работы ЭРА
 
-Production/main 4fc319ce, #356/#357/#358 merged. Render LIVE dep-dbbk8bek1f9s73bumib0; /health и /ready = 200. Последний checkpoint: fix/registration-html-20261020/docs/AI_TASK_STATE.md. Сначала сверять фактический SHA; не повторять reset/релизы.
+Актуальный checkpoint: docs/AI_TASK_STATE.md. Сначала сверять фактический SHA; не повторять reset/релизы. Исторические сведения ниже не заменяют live-проверку.
 
 # Актуальная точка — 21.10.2026
 
-Текущий main: `9d815e65d2fcdbc3bca34a273bc57bc8645dab88` (#359 merged). PR #360 открыт на `4631a4324db009b09c4fb15b27eaa08cd20d8cef`; GitHub `Bot checks` и `Tests` выполняются. Render deploy LIVE на main SHA; `/health` и `/ready` = 200, но production logs называют бота `@MVKSRS_bot` вместо ожидаемого `@ERA_1bot` — требуется безопасно обновить BOT_TOKEN владельцем и повторно принять. Полный pytest на предыдущем кодовом checkpoint 1905 passed, финальные адресные тесты 44 passed, 14 subtests.
+Текущий main: `9d815e65d2fcdbc3bca34a273bc57bc8645dab88` (#359 merged). PR #360 открыт. Render deploy LIVE на main SHA; `/health` и `/ready` = 200. Основной `@ERA_1bot` работает через webhook; отдельный Commission `@MVKSRS_bot` через polling. Старое заключение о неверном BOT_TOKEN опровергнуто кодом и live logs; секрет не менять. После трёх исправлений review/кнопки адресные тесты 46 passed, 17 subtests; требуется полный CI точного финального SHA.
 
 Для поддержки используется `PermissionGrant(permission=support.manage, scope_type=support_category, scope_id=1..5)`; для редакции литературы — `PermissionGrant(permission=literature.manage, scope_type=literature_category, scope_id=1)`. Категорийная литература даёт только очередь материалов и действия по материалам, не общие настройки расписания/модуля. Права проверяются заново на сервере для каждого callback и формы.
 
@@ -31,7 +31,7 @@ Entity reports: analytics_snapshot_service.build_event_analytics/build_project_a
 Фото регистрации: handlers/registration.py:registration_photo_start/registration_photo/_show_registration_review/finish_registration → database/socials.SocialProfile; keyboards/registration.registration_review_keyboard; services/admin_user_card.send_admin_application_cards → notification_service.notify_admins_once(photo). Доставка через прежний safe_send_once/receipt, caption ≤900, full card отдельно. tests/test_registration_completion (quick upload, resubmit, preservation), test_registration_admin_visibility (photo caption).
 Оформление регистрации: все REG prompts/resume — explicit HTML; referrals.registration_start_with_referral → общий registration._begin_registration. Legacy first_name при resume → full_name, код и прогресс сохраняются. tests/test_registration_completion: full flow/escape/referral OFF+ALL/legacy resume.
 
-Точный остаток/пакеты PR: FINAL_RELEASE_BACKLOG_2026_10_20.md. Старый management report: admin_analytics_service.build_management_report/management_report_text/send_management_reports; native commands_ready (manual previous не передаётся), book_club_service.literature_stats (накопительные markers); analytics_filters.analytics_waiting. Следующий этап — общие verified facts/periods/report UI/attention actions.
+Точный остаток/пакеты PR: FINAL_RELEASE_BACKLOG_2026_10_20.md. Management report и общие verified facts/periods/report UI/attention actions уже включены в #359; не выполнять пакет повторно. Следующий gate — реальные Telegram/Excel сценарии и эксплуатационные зависимости.
 
 Решение пользователя 20.10.2026: языковой пакет отложен, текущий язык интерфейса сохраняется. Локализация не блокирует текущую окончательную приёмку; выполнять только по отдельному запросу.
 

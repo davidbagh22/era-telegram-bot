@@ -407,7 +407,7 @@ async def toggle_support_category_permission(call: CallbackQuery, user: User | N
         settings: Settings, session: AsyncSession) -> None:
     if not await _guard(call, user, settings, permissions=True):
         return
-    _, _, _, _, raw_target, raw_scope = call.data.split(":")
+    raw_target, raw_scope = call.data.rsplit(":", 2)[-2:]
     target_id, scope_id = int(raw_target), int(raw_scope)
     if scope_id not in SUPPORT_CATEGORY_SCOPE.values():
         await call.message.answer("Категория не найдена")
@@ -448,7 +448,12 @@ async def toggle_support_category_permission(call: CallbackQuery, user: User | N
         PermissionGrant.is_active.is_(True),
         PermissionGrant.scope_id.in_(SUPPORT_CATEGORY_SCOPE.values()),
     ))).all())
-    await call.message.edit_reply_markup(reply_markup=_support_category_permissions_keyboard(target_id, active))
+    literature_grant = await session.scalar(select(PermissionGrant).where(
+        PermissionGrant.user_id == target_id, PermissionGrant.permission == "literature.manage",
+        PermissionGrant.scope_type == "literature_category",
+        PermissionGrant.scope_id == LITERATURE_CATEGORY_SCOPE_ID))
+    await call.message.edit_reply_markup(reply_markup=_support_category_permissions_keyboard(
+        target_id, active, literature_enabled=bool(literature_grant and literature_grant.is_active)))
 
 
 @router.callback_query(F.data.regexp(r"^admin:user:(block|unblock):\d+$"))

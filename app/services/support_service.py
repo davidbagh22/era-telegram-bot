@@ -220,7 +220,7 @@ async def deliver_support_thread_messages(bot, settings, session_factory):
                 assignee = await session.get(User, item.assigned_to) if item.assigned_to else None
                 if (assignee and not assignee.is_blocked and not assignee.is_archived
                         and assignee.application_status == ApplicationStatus.APPROVED
-                        and await can_operate_queue(session, assignee, settings, "support.manage")):
+                        and await can_operate_support_category(session, assignee, settings, item.category or 'general')):
                     recipients = {assignee.telegram_id}
                 else:
                     recipients = {int(i) for i in await admin_notification_recipients(settings) if int(i) > 0}
@@ -258,7 +258,7 @@ async def _deliver_support_assignments(bot, settings, session_factory):
             if (not item or item.status == 'thread_closed' or item.assigned_to != data['assignee_id']
                     or not target or target.is_blocked or target.is_archived
                     or target.application_status != ApplicationStatus.APPROVED
-                    or not await can_operate_queue(session, target, settings, "support.manage")):
+                    or not await can_operate_support_category(session, target, settings, item.category or 'general')):
                 await session.delete(row)
                 await session.commit()
                 continue
