@@ -269,7 +269,9 @@ function AnalyticsReportPanel() {
     setBusy(format);
     try {
       const blob = await downloadFullAnalyticsReport(period, start, end, format);
-      saveBlob(blob, `ERA_analytics_${period === "custom" ? `${start}_${end}` : period}.${format}`);
+      // Keep the established Excel filename; PDF carries the selected dates.
+      saveBlob(blob, format === "xlsx" ? "ERA_full_report.xlsx" :
+        `ERA_analytics_${period === "custom" ? `${start}_${end}` : period}.pdf`);
       toast.show("Отчёт готов к сохранению.", "success");
     } catch {
       toast.show("Не удалось сформировать отчёт. Попробуйте ещё раз.", "error");
