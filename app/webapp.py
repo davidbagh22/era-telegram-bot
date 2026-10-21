@@ -571,7 +571,17 @@ async def security_headers_middleware(request: Request, call_next):
         response.headers["Pragma"] = "no-cache"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    # Telegram Web embeds the Mini App from another origin. SAMEORIGIN on
+    # its entry document blocks that legitimate client. Restrict framing
+    # with an exact-origin CSP instead; do not allow arbitrary HTTPS sites.
+    if request.url.path == "/app" or request.url.path.startswith("/app/"):
+        response.headers["Content-Security-Policy"] = (
+            "frame-ancestors 'self' https://web.telegram.org"
+        )
+        if "X-Frame-Options" in response.headers:
+            del response.headers["X-Frame-Options"]
+    else:
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
     if request.url.scheme == "https":
         response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     return response

@@ -48,6 +48,30 @@ class CommunityPrivacyTests(unittest.TestCase):
 
 
 class ApiCachePrivacyTests(unittest.TestCase):
+    def test_miniapp_framing_is_limited_to_self_and_official_telegram_web(self):
+        app = FastAPI()
+        app.middleware("http")(security_headers_middleware)
+
+        @app.get("/app/")
+        def miniapp():
+            from starlette.responses import HTMLResponse
+            return HTMLResponse("<html>ERA</html>", headers={"X-Frame-Options": "SAMEORIGIN"})
+
+        client = TestClient(app)
+        response = client.get("/app/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("x-frame-options", response.headers)
+        self.assertEqual(
+            response.headers["content-security-policy"],
+            "frame-ancestors 'self' https://web.telegram.org",
+        )
+        # Lookalike paths must not inherit the Mini App framing exception.
+        for path in ("/api/v1/profile", "/application", "/health"):
+            with self.subTest(path=path):
+                response = client.get(path)
+                self.assertEqual(response.headers["x-frame-options"], "SAMEORIGIN")
+                self.assertNotIn("content-security-policy", response.headers)
+
     def test_api_data_and_auth_errors_are_not_stored_but_assets_keep_cache(self):
         app = FastAPI()
         app.middleware("http")(security_headers_middleware)

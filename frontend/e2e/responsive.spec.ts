@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/test";
 
 const WIDTHS = [320, 360, 390, 430, 768];
 const PARTICIPANT_TELEGRAM_ID = 900001;
-const FLAKY_WIDTHS = new Set([430, 768]);
 const OVERFLOW_TOLERANCE_PX = 5;
 
 async function expectNoHorizontalOverflow(page: import("@playwright/test").Page, width: number) {
@@ -34,7 +33,6 @@ async function expectNoHorizontalOverflow(page: import("@playwright/test").Page,
 
 for (const width of WIDTHS) {
   test(`layout has no horizontal overflow at ${width}px`, async ({ page }) => {
-    test.skip(FLAKY_WIDTHS.has(width), "quarantined: shared local E2E worker intermittently stalls late widths");
     await page.setViewportSize({ width, height: 844 });
     await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
 
