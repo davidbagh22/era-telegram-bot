@@ -99,3 +99,8 @@ export interface HomeSnapshot {
   tasks_in_progress_count: number;
   vector: VectorHomeSummary | null;
 }
+
+export interface DailyQuote {
+  date: string;
+  text: string;
+}

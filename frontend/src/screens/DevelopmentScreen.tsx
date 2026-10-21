@@ -393,9 +393,10 @@ function CheckinScreen({
   return (
     <div className="era-page" style={{ padding: "1.2rem", display: "grid", gap: 10 }}>
       <Header title="Контекст месяца" onBack={onBack} />
-      <p>Что больше всего влияло на тебя? Выбери до 3.</p>
+      <p>Что сильнее всего повлияло на этот месяц? Выбери до 3 вариантов.</p>
       <ChipGrid values={home.context_options} selected={factors} max={3} onChange={setFactors} />
-      <h2>Что хочется развить?</h2>
+      <h2>Что ты хочешь развить?</h2>
+      <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>Тоже можно выбрать до 3 вариантов.</p>
       <ChipGrid values={home.development_wants} selected={wants} max={3} onChange={setWants} />
       <button
         type="button"
@@ -690,7 +691,18 @@ function ChipGrid({
         return (
           <button
             key={value}
+            type="button"
             aria-pressed={active}
+            disabled={!active && selected.length >= max}
+            style={{
+              minHeight: 44,
+              borderRadius: "var(--era-radius-control)",
+              border: `1px solid ${active ? "var(--era-violet)" : "var(--era-border)"}`,
+              background: active ? "var(--era-tint-violet)" : "var(--era-surface)",
+              color: "var(--era-text)",
+              opacity: !active && selected.length >= max ? 0.5 : 1,
+              boxShadow: active ? "0 0 0 2px rgba(99,44,255,.12)" : undefined,
+            }}
             onClick={() =>
               active
                 ? onChange(selected.filter((item) => item !== value))

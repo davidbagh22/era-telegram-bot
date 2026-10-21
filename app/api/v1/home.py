@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_session
 from app.database.models import User
 from app.services.home_service import build_home_snapshot
+from app.services.daily_public_content_service import text_for_day
 
 router = APIRouter(tags=["home"])
+MOSCOW = ZoneInfo("Europe/Moscow")
 
 
 class GrowthProgressOut(BaseModel):
@@ -137,6 +142,11 @@ class HomeSnapshotOut(BaseModel):
     vector: VectorHomeSummaryOut | None
 
 
+class DailyQuoteOut(BaseModel):
+    date: str
+    text: str
+
+
 @router.get("/home", response_model=HomeSnapshotOut)
 async def read_home(
     user: User = Depends(get_current_user),
@@ -144,3 +154,10 @@ async def read_home(
 ) -> HomeSnapshotOut:
     snapshot = await build_home_snapshot(session, user)
     return HomeSnapshotOut.model_validate(snapshot)
+
+
+@router.get("/home/daily-quote", response_model=DailyQuoteOut)
+async def read_daily_quote(user: User = Depends(get_current_user)) -> DailyQuoteOut:
+    """Show the same daily thought in Mini App that is scheduled for the ERA channel."""
+    day = datetime.now(MOSCOW).date().isoformat()
+    return DailyQuoteOut(date=day, text=text_for_day(day, "channel_post"))

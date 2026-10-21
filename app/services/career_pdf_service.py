@@ -88,7 +88,10 @@ def _header(styles, title: str, subtitle: str):
 
     if not LOGO_PATH.exists():
         raise RuntimeError("ERA logo asset is unavailable")
-    logo = Image(str(LOGO_PATH), width=30 * mm, height=30 * mm)
+    logo = Image(str(LOGO_PATH))
+    logo_scale = (26 * mm) / max(logo.imageWidth, logo.imageHeight)
+    logo.drawWidth = logo.imageWidth * logo_scale
+    logo.drawHeight = logo.imageHeight * logo_scale
     copy = [
         Paragraph("ОБЪЕДИНЕНИЕ ЛИДЕРОВ И КУЛЬТУРНЫХ ИНИЦИАТИВ", styles["eyebrow"]),
         Paragraph(escape(title), styles["name"]),
@@ -259,7 +262,10 @@ def build_career_resume(
         ]))
         story.extend([table, Spacer(1, 2 * mm)])
 
-    story.append(_signature_block(styles, resume_note=True))
+    story.append(Paragraph(
+        "Подтверждённые записи отмечены ЭРА. Остальные сведения добавлены владельцем портфолио.",
+        styles["small"],
+    ))
     doc.build(story)
     return stream.getvalue()
 

@@ -105,6 +105,12 @@ export const submitCareerVerification = (itemId: number) =>
 export const downloadCareerResume = (purpose: CareerPurpose) =>
   requestBlob(`/api/v1/career/resume.pdf?purpose=${encodeURIComponent(purpose)}`);
 
+export const sendCareerResume = (purpose: CareerPurpose) =>
+  request<{ sent: boolean }>("/api/v1/career/resume/send", {
+    method: "POST",
+    body: JSON.stringify({ purpose }),
+  });
+
 export const requestOfficialRecommendation = (purpose: CareerPurpose) =>
   request<OfficialRecommendation>("/api/v1/career/recommendation/request", {
     method: "POST",
