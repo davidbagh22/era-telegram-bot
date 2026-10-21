@@ -9,7 +9,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, CondPageBreak, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, CondPageBreak, KeepTogether, Table, TableStyle
 from reportlab.graphics.shapes import Drawing, Line, Rect, String
 from app.services.career_pdf_service import _register_font
 
@@ -115,10 +115,12 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
         story.extend([CondPageBreak(22*mm), p(f'{i:02d}. {row.get("Задание", "Задание")}', 'item'),
             p(f'{STATUS.get(status, text(status))} · создано {text(row.get("Создано"))} · срок {text(row.get("Дедлайн"))}', 'small')])
 
+    telegram_start = len(story)
     section('04 / Канал и общий чат', 'Фактически полученные сообщения Telegram, а не план публикаций. Тексты и личности авторов не сохраняются в счётчике.')
     if not telegram or not telegram.get('sources'):
         story.append(p('Источники Telegram в этом отчёте не предоставлены.'))
-    for source in (telegram or {}).get('sources', []):
+    for index, source in enumerate((telegram or {}).get('sources', [])):
+        source_start = telegram_start if index == 0 else len(story)
         def source_date(value):
             return datetime.fromisoformat(value).astimezone(ZoneInfo(telegram.get('timezone', 'Asia/Yerevan'))).strftime('%d.%m.%Y %H:%M') if value else 'ещё нет'
         story.extend([p(source['label'], 'item'), p(f'{source["observed_value"]} учтено', 'value'),
@@ -144,15 +146,17 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
                 chart.add(String(x,6,day['date'],fontName='ERAUnicode',fontSize=7,fillColor=muted,textAnchor=anchor))
             story.append(chart)
         story.extend([p(source['explanation'], 'small'), p(source['history_note'], 'small'), Spacer(1, 4*mm)])
+        story[source_start:] = [KeepTogether(story[source_start:])]
     section('05 / Команда и возможности', 'Обезличенные итоги. Департаменты и направления - текущий срез; достижения и заявки - за выбранные даты.')
     for key, title, fields in [('04','Департаменты',['Департамент','Участников','Активных целей','Выполнено целей']),
         ('05','Направления',['Направление','Департамент','Участников']),
         ('10','Заявки на возможности',['Статус заявки','Количество']),
         ('11','Достижения',['Тип достижения','Статус','Количество'])]:
-        story.extend([CondPageBreak(24*mm), p(title, 'item')])
         safe_rows = [row for row in records(key) if fields[0] in row]
         if not safe_rows:
-            story.append(p('Нет записей в доступном срезе.', 'small'))
+            story.append(p(f'{title}: нет записей в доступном срезе.', 'small'))
+            continue
+        story.extend([CondPageBreak(24*mm), p(title, 'item')])
         for row in safe_rows:
             story.append(p(' · '.join(f'{label}: {text(row.get(label))}' for label in fields)))
     section('06 / Партнёрства и цели', 'Текущий организационный срез, не историческая оценка за месяц. Без контактных лиц и персональных целей.')
