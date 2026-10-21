@@ -4,7 +4,7 @@ Production/main 4fc319ce, #356/#357/#358 merged. Render LIVE dep-dbbk8bek1f9s73b
 
 # Актуальная точка — 21.10.2026
 
-Текущий main: `9d815e65d2fcdbc3bca34a273bc57bc8645dab88` (#359 merged); open PRs = 0 на последней проверке. Render deploy LIVE на этот SHA; `/health` и `/ready` = 200, но production logs называют бота `@MVKSRS_bot` вместо ожидаемого `@ERA_1bot` — требуется исправить BOT_TOKEN и повторно принять. Категорийное делегирование находится в `feat/category-scoped-staff-access-20261021`; полный pytest на предыдущем кодовом checkpoint 1905 passed, финальные адресные тесты 44 passed, 14 subtests; GitHub PR CI и merge ещё не выполнены.
+Текущий main: `9d815e65d2fcdbc3bca34a273bc57bc8645dab88` (#359 merged). PR #360 открыт на `4631a4324db009b09c4fb15b27eaa08cd20d8cef`; GitHub `Bot checks` и `Tests` выполняются. Render deploy LIVE на main SHA; `/health` и `/ready` = 200, но production logs называют бота `@MVKSRS_bot` вместо ожидаемого `@ERA_1bot` — требуется безопасно обновить BOT_TOKEN владельцем и повторно принять. Полный pytest на предыдущем кодовом checkpoint 1905 passed, финальные адресные тесты 44 passed, 14 subtests.
 
 Для поддержки используется `PermissionGrant(permission=support.manage, scope_type=support_category, scope_id=1..5)`; для редакции литературы — `PermissionGrant(permission=literature.manage, scope_type=literature_category, scope_id=1)`. Категорийная литература даёт только очередь материалов и действия по материалам, не общие настройки расписания/модуля. Права проверяются заново на сервере для каждого callback и формы.
 

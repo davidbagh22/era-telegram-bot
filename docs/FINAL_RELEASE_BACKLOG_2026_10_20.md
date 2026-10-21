@@ -2,7 +2,7 @@
 
 База main теперь `9d815e65d2fcdbc3bca34a273bc57bc8645dab88`; PR #359 merged. Пакет A из этого backlog включён в #359; исходные production-проверки и реальные Telegram/Excel сценарии всё ещё требуют подтверждения после deploy.
 
-Пакет B реализован на `feat/category-scoped-staff-access-20261021`: category scopes на существующих `PermissionGrant`, ограничения списков/карточек/вложений/ответов и редакционных действий, защита настроек модуля и перепроверки после отзыва. Полный локальный pytest до последних двух UI-regression тестов прошёл (1905 passed, 1 skipped, 1 xfailed, 97 subtests); финальный адресный набор — 44 passed, 14 subtests; general-chat validation, system audit (9/9) и Ruff прошли. GitHub PR CI ожидает PR. #359 LIVE на точном SHA, но production polling identity `@MVKSRS_bot` не совпадает с ожидаемым `@ERA_1bot`; исправить секрет в Render и проверить сценарии.
+Пакет B реализован на `feat/category-scoped-staff-access-20261021` и отправлен PR #360 (`4631a4324db009b09c4fb15b27eaa08cd20d8cef`): category scopes на существующих `PermissionGrant`, ограничения списков/карточек/вложений/ответов и редакционных действий, защита настроек модуля и перепроверки после отзыва. Полный локальный pytest до последних двух UI-regression тестов прошёл (1905 passed, 1 skipped, 1 xfailed, 97 subtests); финальный адресный набор — 44 passed, 14 subtests; general-chat validation, system audit (9/9) и Ruff прошли. GitHub `Bot checks` и `Tests` выполняются. #359 LIVE на точном SHA, но production polling identity `@MVKSRS_bot` не совпадает с ожидаемым `@ERA_1bot`; секрет в Render не менялся, требуется безопасное обновление владельцем и повторная сквозная проверка.
 
 # ЭРА — остаток до окончательной приёмки, 20.10.2026
 
