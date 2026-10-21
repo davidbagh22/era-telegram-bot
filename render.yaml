@@ -87,3 +87,5 @@ databases:
     plan: basic-256mb
     databaseName: era_nfvd
     user: era
+    # Bot, migrations and snapshot export connect from Render's private network.
+    ipAllowList: []
