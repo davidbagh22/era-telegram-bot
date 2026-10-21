@@ -42,6 +42,15 @@ def test_country_and_association_items_have_three_ordered_hints():
         assert all(len(item.challenge.hints) == 3 for item in items_for_mode(mode))
 
 
+def test_reviewed_quiz_prompts_do_not_confuse_instruments_or_geographic_units():
+    duduk = next(item for item in QUESTIONS if item[1] == ('Дудук', 'Канон', 'Зурна'))
+    assert 'абрикосового дерева' in duduk[0]
+    assert duduk[1][duduk[2]] == 'Дудук'
+    asia = next(item for item in QUESTIONS if item[1] == ('Азия', 'Африка', 'Европа'))
+    assert asia[0] == 'Какая часть света занимает наибольшую площадь?'
+    assert asia[1][asia[2]] == 'Азия'
+
+
 def test_quiz_themes_cover_requested_subjects():
     categories = {item.category for item in items_for_mode(GameMode.SOLO_QUIZ)}
     assert {

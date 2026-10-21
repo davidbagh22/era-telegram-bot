@@ -68,26 +68,10 @@ def test_role_shell_adds_only_relevant_workspace() -> None:
     assert "🧭 Режим лидера" not in admin
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Fails deterministically on GitHub Actions (Ubuntu, Python 3.12.13) "
-        "but passes on every local reproduction attempt: aiogram 3.30.0 / "
-        "pydantic 2.13.4 matched exactly via a fresh venv from "
-        "requirements.txt, Python 3.12.10 and 3.14 on Windows, several "
-        "PYTHONHASHSEED values, LANG=C, isolated / targeted-subset / "
-        "full-suite runs. navigation_guide_keyboard() "
-        "(app/keyboards/bot_shell.py) is a pure function with no shared "
-        "state and wasn't touched by the commits that made this failure "
-        "start appearing. CI's own diagnostic dump showed the leader "
-        "keyboard missing the QR row entirely -- i.e. `if admin or "
-        "privileged:` (privileged=True) evaluating falsy -- which isn't "
-        "reproducible outside that specific runner. Needs live CI "
-        "debugging (e.g. an SSH-into-runner step) to actually diagnose; "
-        "see PR #237 for the investigation. Not strict, so this starts "
-        "reporting again the moment it passes anywhere."
-    ),
-)
-def test_navigation_exposes_qr_only_to_operational_roles() -> None:
+def test_navigation_exposes_only_the_correct_role_workspace() -> None:
+    # QR controls belong to the assigned event, not the generic navigation.
+    # Match the current role-aware guide contract instead of xfail-ing the
+    # intentionally removed legacy QR row (see test_navigation_guide.py).
     participant = _labels(navigation_guide_keyboard("https://example.com/app"))
     leader = _labels(
         navigation_guide_keyboard(
@@ -98,7 +82,13 @@ def test_navigation_exposes_qr_only_to_operational_roles() -> None:
 
     assert "🧭 Мой вектор" in participant
     assert "🎟 QR вход на событие" not in participant
-    assert "🎟 QR вход на событие" in leader
+    assert "🎟 QR вход на событие" not in leader
+    assert "🧭 Режим лидера" not in participant
+    assert "🧭 Режим лидера" in leader
+    assert "⚙️ Режим администратора" not in leader
+    admin = _labels(navigation_guide_keyboard("https://example.com/app", admin=True, privileged=True))
+    assert "⚙️ Режим администратора" in admin
+    assert "🧭 Режим лидера" not in admin
 
 
 def test_contact_is_a_compact_service_centre() -> None:
