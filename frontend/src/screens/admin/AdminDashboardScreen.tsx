@@ -292,7 +292,7 @@ function AnalyticsReportPanel() {
       </div>}
       {invalid && <p role="status">Укажите начало и конец периода по порядку.</p>}
       <div className="era-analytics-export-actions">
-        <button className="era-btn-primary" disabled={invalid || busy !== null} onClick={() => void download("pdf")}>{busy === "pdf" ? "Готовим PDF…" : "↓ Скачать красивый PDF"}</button>
+        <button className="era-btn-primary" disabled={invalid || busy !== null} onClick={() => void download("pdf")}>{busy === "pdf" ? "Готовим PDF…" : "↓ Скачать отчёт PDF"}</button>
         <button disabled={invalid || busy !== null} onClick={() => void download("xlsx")}>{busy === "xlsx" ? "Готовим Excel…" : "Excel"}</button>
       </div>
       <small>Даты применяются к отчёту. На экране — текущий состав и показатели со своими периодами, указанными в пояснениях.</small>
@@ -442,12 +442,12 @@ export function AdminDashboardScreen() {
         <a href="#analytics-records">Записи</a>
       </nav>
       <Card style={{ padding: "0.95rem", background: "radial-gradient(circle at 95% 0%, rgba(99,44,255,.14), transparent 44%), var(--era-surface)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "0.7rem" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "0.5rem" }}>
           <div>
             <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Админ · сейчас</p>
             <h2 style={{ margin: "0.15rem 0 0", fontSize: "var(--era-text-2xl)" }}>ЭРА одним взглядом</h2>
           </div>
-          <StatusBadge label={health.data.period_label} tone="violet" />
+          <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.68rem", lineHeight: 1.45 }}>{health.data.period_label}</p>
         </div>
         <div style={{ display: "grid", gap: "0.7rem", marginTop: "0.8rem" }}>
           <HeroScore score={efficiency.data.score} label="Эффективность" sublabel={efficiency.data.label} />

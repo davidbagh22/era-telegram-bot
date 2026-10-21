@@ -61,7 +61,7 @@ test("analytics exports selected custom period as a complete PDF", async ({ page
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: /Аналитика/ }).click();
   await page.getByLabel("Период отчёта").selectOption("custom");
-  const downloadButton = page.getByRole("button", { name: "↓ Скачать красивый PDF" });
+  const downloadButton = page.getByRole("button", { name: "↓ Скачать отчёт PDF" });
   await expect(downloadButton).toBeDisabled();
   await page.getByLabel("Начало периода").fill("2026-01-01");
   await page.getByLabel("Конец периода").fill("2026-10-21");
@@ -82,6 +82,12 @@ test("analytics exports selected custom period as a complete PDF", async ({ page
   expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
   expect(pdf.length).toBeGreaterThan(10_000);
   await expect(downloadButton).toBeEnabled();
+  for (const width of [320, 430, 768]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const heading = await page.getByRole("heading", { name: "ЭРА одним взглядом" }).boundingBox();
+    expect(heading?.width).toBeGreaterThan(200);
+  }
 });
 
 test("overview KPI opens exact underlying rows", async ({ page }) => {
