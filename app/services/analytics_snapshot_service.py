@@ -45,6 +45,8 @@ class AnalyticsMetric:
     value: int | float | None
     previous: int | float | None
     note: str
+    numerator: int | float | None = None
+    denominator: int | float | None = None
 
     @property
     def delta(self):
@@ -206,6 +208,7 @@ async def build_event_analytics(session: AsyncSession, *, days=30, now=None, tim
                     attendance=round(100*attended/regs, 1) if regs else None,
                     first=first, returning=visitors-first, ratings=ratings,
                     average=round(float(average), 1) if average is not None else None,
+                    visitor_ratings=visitor_ratings,
                     feedback_coverage=round(100*visitor_ratings/attended, 1) if attended else None)
 
     current, previous = await period(start, end), await period(older, start)
@@ -221,8 +224,10 @@ async def build_event_analytics(session: AsyncSession, *, days=30, now=None, tim
         ('average', 'Средняя оценка', 'Отсутствующий отзыв не становится нулевой оценкой'),
         ('feedback_coverage', 'Охват отзывами посетителей, %', 'Отзывы подтверждённых посетителей / подтверждённые посещения'),
     ]
-    return AnalyticsSnapshot(days, now, tuple(AnalyticsMetric(key, label, current[key], previous[key], note)
-                                             for key, label, note in definitions))
+    return AnalyticsSnapshot(days, now, tuple(AnalyticsMetric(key, label, current[key], previous[key], note,
+        current['visitor_ratings'] if key == 'feedback_coverage' else current['attended'] if key == 'attendance' else None,
+        current['attended'] if key == 'feedback_coverage' else current['registrations'] if key == 'attendance' else None)
+        for key, label, note in definitions))
 
 
 async def build_project_analytics(session: AsyncSession, *, days=30, now=None, timezone_name='Asia/Yerevan') -> AnalyticsSnapshot:

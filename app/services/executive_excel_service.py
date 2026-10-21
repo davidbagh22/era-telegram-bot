@@ -213,16 +213,16 @@ async def build_executive_workbook(
         ws.sheet_view.showGridLines = False
 
     summary_rows = [
-        ["Подтверждено исторически", len(approved), "Все когда-либо одобренные профили в доступной базе", "User.application_status"],
+        ["Профили со статусом «Одобрен»", len(approved), "Текущий статус approved, включая профили вне действующего состава; это не историческая когорта", "User.application_status"],
         ["Текущий состав", len(current_roster), "Одобрены, не archived/blocked и не EXITED", "ParticipationLifecycle"],
         ["Активная база", len(active_base), "Подтверждённые результаты за выбранный период; без цифровых баллов и должностей", "Verified activity facts"],
         ["Новые за период", new_members, "Первое одобрение по аудиту; исторически неполные записи не восстановлены", "AuditLog user.approved"],
         ["Вернулись за период", len(returned), "Зафиксированный возврат после снижения активности", "ParticipationLifecycle.returned_at"],
         ["События за период", len(period_events), "События с датой внутри выбранного периода", "Event.event_date"],
-        ["Attendance rate", round(len(attended) * 100 / len(period_regs), 1) if period_regs else 0, "Подтверждённые посещения / регистрации выбранных событий", "EventRegistration"],
+        ["Attendance rate", round(len(attended) * 100 / len(period_regs), 1) if period_regs else None, "Подтверждённые посещения / регистрации выбранных событий", "EventRegistration"],
         ["Проекты за период", len(period_projects), "Проекты, созданные в выбранном периоде", "Project.created_at"],
         ["Verified task results", len(completed_task_submissions), "Только подтверждённые результаты задач", "TaskSubmission"],
-        ["Эффективность", efficiency.score, efficiency.label, "ERA efficiency service"],
+        ["Условный операционный индекс", efficiency.score if current_roster else None, efficiency.label if current_roster else "Нет базы для расчёта", "ERA efficiency: эвристика платформы, собственное окно 7/30 дней; не объективная оценка организации"],
         ["Пульс Мой вектор", health.pulse if health.pulse is not None else "—", health.pulse_label, "Безопасный агрегат; cohort suppression"],
     ]
     _summary_sheet(wb[SHEET_NAMES[0]], period_label=period_label, rows=summary_rows)
@@ -274,7 +274,7 @@ async def build_executive_workbook(
     for event in period_events:
         total = reg_counts.get(event.id, 0)
         came = attended_counts.get(event.id, 0)
-        event_rows.append([event.title, event.event_date, _enum(event.status), total, came, round(came * 100 / total, 1) if total else 0])
+        event_rows.append([event.title, event.event_date, _enum(event.status), total, came, round(came * 100 / total, 1) if total else None])
     _append_table(wb[SHEET_NAMES[6]], ["Событие", "Дата", "Статус", "Регистраций", "Посетили", "Attendance, %"], event_rows)
 
     contributor_counts: Counter[int] = Counter(

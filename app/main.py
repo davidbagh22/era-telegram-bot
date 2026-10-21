@@ -43,7 +43,7 @@ async def main() -> None:
     async with session_factory() as session:
         await seed_reference_data(session, settings)
 
-    bot = create_bot(settings)
+    bot = create_bot(settings, session_factory)
     dispatcher = create_dispatcher(settings, session_factory)
     scheduler = create_scheduler(bot, settings, session_factory)
     add_system_jobs(scheduler, bot, settings, session_factory)
@@ -77,6 +77,8 @@ async def main() -> None:
             pass
         scheduler.shutdown(wait=False)
         await dispatcher.storage.close()
+        from app.middlewares.telegram_analytics import drain_sent_observations
+        await drain_sent_observations()
         await bot.session.close()
         await engine.dispose()
 

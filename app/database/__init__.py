@@ -107,3 +107,5 @@ __all__ = [
     "LeaderChatMembership",
     "BroadcastAcknowledgement",
 ]
+
+import app.database.telegram_analytics  # noqa: F401

@@ -17,6 +17,8 @@ from app.services.admin_analytics_service import build_analytics_payload
 from app.services.admin_dashboard_service import has_dashboard_access
 from app.services.era_efficiency_service import build_efficiency_snapshot
 from app.services.executive_excel_service import build_executive_workbook, resolve_report_period
+from app.services.telegram_analytics_export import add_telegram_sheets
+from app.services.telegram_analytics_service import report_window, telegram_snapshot
 from app.services.executive_pdf_service import build_executive_pdf
 from app.services.organization_health_extended_service import build_extended_organization_health
 
@@ -55,6 +57,10 @@ async def export_executive_report(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    try:
+        window_start, window_end = report_window(start_date=start, end_date=end, timezone_name=settings.timezone)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     analytics = await build_analytics_payload(session)
     efficiency = await build_efficiency_snapshot(session)
     health = await build_extended_organization_health(session)
@@ -68,13 +74,19 @@ async def export_executive_report(
         period_label=label,
         timezone_name=settings.timezone,
     )
+    telegram = await telegram_snapshot(session, settings, start=window_start, end=window_end)
+    content = await run_in_threadpool(add_telegram_sheets, content, telegram)
     if format == "pdf":
         media = (await media_service.analytics(session, settings)
                  if await media_service.can_manage_media(session, _admin, settings) else None)
         content = await run_in_threadpool(
             build_executive_pdf, content, period_label=f"{label} · {start:%d.%m.%Y}–{end:%d.%m.%Y}",
-            health=health, efficiency=efficiency, analytics=analytics, media=media,
+            health=health, efficiency=efficiency, analytics=analytics, media=media, telegram=telegram,
         )
+    from app.services.audit_service import audit
+    await audit(session, actor_id=_admin.id, action="analytics.report_generated", entity_type="analytics_report",
+                entity_id=_admin.id, new_value={"format": format, "start": start.isoformat(), "end": end.isoformat()})
+    await session.commit()
     suffix = f"{start:%Y%m%d}-{end:%Y%m%d}"
     return Response(
         content=content,

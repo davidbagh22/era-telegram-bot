@@ -33,6 +33,7 @@ from app.handlers.admin import router as admin_router, project_review_router
 from app.handlers.leader import router as leader_router
 from app.handlers.leader_chat_workcenter import router as leader_chat_workcenter_router
 from app.handlers.participant import router as participant_router
+from app.middlewares.telegram_analytics import TelegramAnalyticsMiddleware, TelegramSentAnalyticsMiddleware, router as telegram_analytics_router
 from app.middlewares.auth import DatabaseAuthMiddleware
 from app.middlewares.faq_context import FaqContextMiddleware
 from app.middlewares.community_identity import CommunityIdentityMiddleware
@@ -68,7 +69,7 @@ class _MemoryStorageCompat(MemoryStorage):
         self.redis = _NoopRedisCompat()
 
 
-def create_bot(settings: Settings) -> Bot:
+def create_bot(settings: Settings, session_factory=None) -> Bot:
     logger.info(
         "Feature rollout: games=%s reports=%s registration=%s event_composer=%s attendance_qr=%s review_reminders=%s support_threads=%s; reports_at=%02d:%02d Europe/Moscow",
         settings.feature_games, settings.feature_management_reports, settings.feature_quick_registration,
@@ -81,6 +82,8 @@ def create_bot(settings: Settings) -> Bot:
         default=DefaultBotProperties(link_preview_is_disabled=True),
     )
     bot.session.middleware(TelegramDeliveryMiddleware())
+    if session_factory is not None:
+        bot.session.middleware(TelegramSentAnalyticsMiddleware(session_factory, settings))
     return bot
 
 
@@ -104,6 +107,7 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     dispatcher = Dispatcher(storage=storage, events_isolation=storage.create_isolation() if isinstance(storage, RedisStorage) else SimpleEventIsolation())
     dispatcher["settings"] = settings
     dispatcher["ai_service"] = AIService(settings)
+    dispatcher.update.outer_middleware(TelegramAnalyticsMiddleware(session_factory, settings))
     dispatcher.update.outer_middleware(DatabaseAuthMiddleware(session_factory))
     dispatcher.callback_query.outer_middleware(FaqContextMiddleware())
     dispatcher.update.outer_middleware(LegacyKeyboardCleanupMiddleware())
@@ -129,6 +133,7 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
     chat.router.message.outer_middleware(media_chat_activity)
 
     dispatcher.include_routers(
+        telegram_analytics_router,
         # Referral deep links are a specialised /start form and must be handled
         # before the emergency catch-all /start router, otherwise ref_<code>
         # is discarded before registration begins.

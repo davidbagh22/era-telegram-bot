@@ -2,7 +2,7 @@ from datetime import date
 from io import BytesIO
 from types import SimpleNamespace as NS
 from unittest import IsolatedAsyncioTestCase, TestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -68,15 +68,16 @@ class ExecutivePDFRouteTests(TestCase):
         self.api = api
         app = FastAPI()
         app.include_router(api.router)
-        app.dependency_overrides[api.get_session] = lambda: object()
-        app.dependency_overrides[api.get_settings] = lambda: NS(timezone='Asia/Yerevan')
+        app.dependency_overrides[api.get_session] = lambda: AsyncMock(add=Mock())
+        app.dependency_overrides[api.get_settings] = lambda: NS(timezone='Asia/Yerevan', era_channel_id=None, general_chat_id=None)
         app.dependency_overrides[api.require_admin] = lambda: NS(id=1)
         self.app = app
         self.client = TestClient(app)
 
     def test_period_pdf_headers_and_shared_facts(self):
         api = self.api
-        with patch.object(api, 'build_analytics_payload', AsyncMock(return_value=NS())), \
+        with patch.object(api, 'telegram_snapshot', AsyncMock(return_value={'start': '2026-10-01', 'end': '2026-10-21', 'sources': []})), \
+             patch.object(api, 'build_analytics_payload', AsyncMock(return_value=NS())), \
              patch.object(api, 'build_efficiency_snapshot', AsyncMock(return_value=NS())), \
              patch.object(api, 'build_extended_organization_health', AsyncMock(return_value=NS())), \
              patch.object(api, 'media_service') as media_service, \

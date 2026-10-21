@@ -44,6 +44,11 @@ export interface EfficiencySnapshot {
 }
 
 export interface HealthMetric {
+  id?: string; period?: string; source?: string; updated_at?: string; explanation?: string; previous_value?: number | null; delta?: number | null; drilldown?: string | null;
+  numerator?: number | null;
+  denominator?: number | null;
+  unit?: string;
+  data_state?: string;
   key: string;
   category: string;
   label: string;
@@ -159,4 +164,36 @@ export function downloadFullAnalyticsReport(
     params.set("end_date", endDate);
   }
   return adminBlob(`/api/v1/admin/analytics/executive-report.${format}?${params.toString()}`);
+}
+
+export interface TelegramAnalyticsSource {
+  id: string; label: string; value: number | null; observed_value: number;
+  previous_value: number | null; delta: number | null; data_state: string;
+  connection_status: string; started_at: string | null; coverage_since: string | null;
+  checked_at: string | null; last_event_at: string | null; total_observed: number;
+  explanation: string; history_note: string;
+  daily: { date: string; value: number | null; observed: number }[];
+}
+export interface AnalyticsV2Metric {
+  id: string; label: string; value: number | null; previous_value: number | null;
+  delta: number | null; period: string; explanation: string; denominator: number | null;
+}
+export interface AnalyticsV2Snapshot {
+  start: string; end: string; updated_at: string;
+  metrics: AnalyticsV2Metric[]; sources: TelegramAnalyticsSource[]; member_growth: TelegramAnalyticsSource["daily"];
+}
+export function fetchAnalyticsV2(days: number, start?: string, end?: string): Promise<AnalyticsV2Snapshot> {
+  const params = new URLSearchParams({ days: String(days) });
+  if (start && end) { params.set("start_date", start); params.set("end_date", end); }
+  return adminGet(`/api/v1/admin/analytics/v2?${params}`);
+}
+export async function checkAnalyticsSources(): Promise<void> {
+  const token = await adminToken();
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/analytics/v2/sources/check`, {
+    method: "POST", headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new ApiError(response.status, response.statusText);
+}
+export function fetchAnalyticsReports(): Promise<{ items: { generated_at: string; format: string; start: string; end: string }[] }> {
+  return adminGet("/api/v1/admin/analytics/v2/reports");
 }

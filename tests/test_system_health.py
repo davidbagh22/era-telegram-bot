@@ -128,6 +128,7 @@ class SystemSchedulerTests(unittest.TestCase):
         self.assertEqual(
             ids,
             [
+                "telegram-analytics-sources",
                 "review-sla-reminders",
                 "support-answer-delivery",
                 "system-heartbeat",

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import csv
 from enum import Enum
 from io import BytesIO, StringIO
@@ -75,6 +77,18 @@ class EfficiencyOut(BaseModel):
 
 
 class HealthMetricOut(BaseModel):
+    id: str | None = None
+    period: str = ""
+    previous_value: float | None = None
+    delta: float | None = None
+    source: str = ""
+    updated_at: str = ""
+    explanation: str = ""
+    drilldown: str | None = None
+    numerator: float | None = None
+    denominator: float | None = None
+    unit: str = "count"
+    data_state: str = "valid"
     key: str
     category: str
     label: str
@@ -256,7 +270,15 @@ async def read_organization_health(
         pulse_sample_size=health.pulse_sample_size,
         pulse_suppressed=health.pulse_suppressed,
         vector_dimensions=[VectorDimensionOut(**item.__dict__) for item in health.vector_dimensions],
-        metrics=[HealthMetricOut(**item.__dict__) for item in health.metrics],
+        metrics=[HealthMetricOut(**item.__dict__, id=item.key,
+            period=("7 дней" if item.key.endswith('_7d') else "90 дней" if item.key.endswith('_90d') else
+                    "Следующие 14 дней" if item.key == 'upcoming_14d' else
+                    "30 дней" if item.key.endswith('_30d') or item.key in {
+                        'event_registrations', 'attendance_rate', 'feedback', 'feedback_rate', 'task_acceptance',
+                        'activity_acceptance', 'task_delivery', 'broadcasts', 'referrals_created', 'referrals_registered',
+                        'referrals_first_event'} else "Текущий / накопленный срез; детали в методике"),
+            source=f"Реестры ЭРА · {item.category}", updated_at=datetime.now(timezone.utc).isoformat(),
+            explanation=item.note) for item in health.metrics],
         risks=health.risks,
         period_label=health.period_label,
         data_note=health.data_note,

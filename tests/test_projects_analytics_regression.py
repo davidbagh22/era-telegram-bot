@@ -18,7 +18,7 @@ def test_incomplete_project_cannot_be_submitted() -> None:
 def test_analytics_has_weekly_efficiency_and_exports() -> None:
     screen = (ROOT / "frontend/src/screens/admin/AdminDashboardScreen.tsx").read_text(encoding="utf-8")
     api = (ROOT / "app/api/v1/admin_analytics_details.py").read_text(encoding="utf-8")
-    assert 'label="Эффективность"' in screen
+    assert "Условный операционный индекс" in screen
     assert "Что делать дальше" in screen
     assert "ERA_full_report.xlsx" in screen
     assert '"/weekly"' in api
