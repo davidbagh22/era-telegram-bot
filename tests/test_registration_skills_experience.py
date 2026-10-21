@@ -34,7 +34,7 @@ class RegistrationSkillsExperienceTests(unittest.IsolatedAsyncioTestCase):
         state.set_state.assert_awaited_once_with(RegistrationStates.age)
         message.answer.assert_awaited_once_with(texts.REG_AGE, parse_mode="HTML")
 
-    async def test_education_goes_directly_to_direction_choice(self) -> None:
+    async def test_education_does_not_invent_occupation(self) -> None:
         message = SimpleNamespace(text="МГУ, студент", answer=AsyncMock())
         state = AsyncMock()
 
@@ -42,12 +42,9 @@ class RegistrationSkillsExperienceTests(unittest.IsolatedAsyncioTestCase):
 
         state.update_data.assert_awaited_once_with(
             education_work="МГУ, студент",
-            occupation="МГУ, студент",
-            selected_directions=[],
         )
-        state.set_state.assert_awaited_once_with(RegistrationStates.directions)
-        self.assertEqual(message.answer.await_args.args[0], texts.REG_DIRECTION_SIMPLE)
-        self.assertIsNotNone(message.answer.await_args.kwargs.get("reply_markup"))
+        state.set_state.assert_awaited_once_with(RegistrationStates.occupation)
+        self.assertEqual(message.answer.await_args.args[0], texts.REG_OCCUPATION)
 
     async def test_experience_is_one_concrete_free_text_step(self) -> None:
         message = SimpleNamespace(
@@ -60,7 +57,6 @@ class RegistrationSkillsExperienceTests(unittest.IsolatedAsyncioTestCase):
 
         state.update_data.assert_awaited_once_with(
             experience="Организовывал мероприятия и умею делать дизайн",
-            skills=[],
         )
         state.set_state.assert_awaited_once_with(RegistrationStates.available_time)
         self.assertEqual(message.answer.await_args.args[0], texts.REG_TIME)

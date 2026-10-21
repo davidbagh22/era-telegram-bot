@@ -17,10 +17,10 @@ from app.keyboards.registration import (
     consent_keyboard,
     directions_keyboard,
     pending_registration_keyboard,
-    registration_mode_keyboard,
     registration_resume_keyboard,
     registration_review_keyboard,
     time_keyboard,
+    desired_path_keyboard,
 )
 from app.keyboards.participant import main_inline_keyboard
 from app.repositories.users import create_user_from_registration, resubmit_user_registration
@@ -233,14 +233,10 @@ async def offer_registration_resume(message: Message, state: FSMContext) -> bool
 
 
 async def _begin_registration(message, state, settings, telegram_id):
-    if _quick_enabled(settings, telegram_id):
-        await state.set_state(RegistrationStates.mode)
-        await message.answer('📝 Заявка в ЭРА\n\nБыстрая заявка: имя, возраст, страна, город и email. '
-                             'Дополнить профиль можно после рассмотрения.\nПолная анкета поможет команде лучше узнать Вас.',
-                             reply_markup=registration_mode_keyboard())
-    else:
-        await state.set_state(RegistrationStates.full_name)
-        await message.answer(texts.REGISTRATION_INTRO, parse_mode="HTML")
+    # One complete questionnaire, including installations where the old quick flag remains on.
+    await state.update_data(registration_mode='full', registration_form_version=2)
+    await state.set_state(RegistrationStates.full_name)
+    await message.answer(texts.REGISTRATION_INTRO, parse_mode="HTML")
 
 
 @router.callback_query(F.data == 'registration:resume')
@@ -262,6 +258,8 @@ async def registration_resume(call: CallbackQuery, state: FSMContext, settings: 
         RegistrationStates.region.state: texts.REG_REGION,
         RegistrationStates.email.state: texts.REG_EMAIL,
         RegistrationStates.education_work.state: texts.REG_EDUCATION,
+        RegistrationStates.occupation.state: texts.REG_OCCUPATION,
+        RegistrationStates.skills.state: texts.REG_SKILLS,
         RegistrationStates.experience.state: texts.REG_EXPERIENCE_SIMPLE,
         RegistrationStates.motivation.state: texts.REG_MOTIVATION,
     }
@@ -277,12 +275,21 @@ async def registration_resume(call: CallbackQuery, state: FSMContext, settings: 
     elif current == RegistrationStates.directions.state:
         data = await state.get_data()
         await call.message.answer(texts.REG_DIRECTION_SIMPLE, parse_mode="HTML", reply_markup=directions_keyboard('both', set(data.get('selected_directions', []))))
+    elif current == RegistrationStates.desired_path.state:
+        await call.message.answer(texts.REG_PATH, reply_markup=desired_path_keyboard())
+    elif current == RegistrationStates.social_url.state:
+        await call.message.answer(_SOCIAL_PROMPT, reply_markup=_social_keyboard())
     elif current == RegistrationStates.available_time.state:
         await call.message.answer(texts.REG_TIME, parse_mode="HTML", reply_markup=time_keyboard())
     elif current in prompts:
         await call.message.answer(prompts[current], parse_mode="HTML")
     else:
-        await call.message.answer('Незавершённая анкета не найдена. Начните регистрацию заново.')
+        data = await state.get_data()
+        if isinstance(current, str) and current.startswith('RegistrationStates:'):
+            if await _ensure_complete(call.message, state, data):
+                await _show_registration_review(call.message, state)
+        else:
+            await call.message.answer('Незавершённая анкета не найдена. Откройте регистрацию через главное меню.')
 
 
 @router.callback_query(RegistrationStates.mode, F.data.in_({'reg:mode:quick', 'reg:mode:full'}))
@@ -290,14 +297,8 @@ async def registration_mode(call: CallbackQuery, state: FSMContext, settings: Se
     if user is not None and (user.is_archived or user.is_blocked or user.application_status in {ApplicationStatus.APPROVED, ApplicationStatus.PENDING}):
         await call.answer('Анкета уже отправлена.', show_alert=True)
         return
-    mode = call.data.rsplit(':', 1)[-1]
-    if mode == 'quick' and not _quick_enabled(settings, call.from_user.id):
-        await call.answer('Быстрый режим пока недоступен.', show_alert=True)
-        return
     await call.answer()
-    await state.update_data(registration_mode=mode)
-    await state.set_state(RegistrationStates.full_name)
-    await call.message.answer(texts.REGISTRATION_INTRO, parse_mode="HTML")
+    await _begin_registration(call.message, state, settings, call.from_user.id)
 
 
 @router.callback_query(F.data.in_({'registration:start', 'registration:reapply'}))
@@ -422,9 +423,6 @@ async def registration_email(message: Message, state: FSMContext) -> None:
         await message.answer(texts.REG_EMAIL_ERROR, parse_mode="HTML")
         return
     await state.update_data(email=value)
-    if (await state.get_data()).get('registration_mode') == 'quick':
-        await _show_registration_review(message, state)
-        return
     await state.set_state(RegistrationStates.education_work)
     await message.answer(texts.REG_EDUCATION, parse_mode="HTML")
 
@@ -435,7 +433,29 @@ async def registration_education(message: Message, state: FSMContext) -> None:
     if not value:
         await message.answer(texts.INVALID_INPUT)
         return
-    await state.update_data(education_work=value, occupation=value, selected_directions=[])
+    await state.update_data(education_work=value)
+    await state.set_state(RegistrationStates.occupation)
+    await message.answer(texts.REG_OCCUPATION, parse_mode="HTML")
+
+
+@router.message(RegistrationStates.occupation)
+async def registration_occupation(message: Message, state: FSMContext) -> None:
+    value = clean_text(message.text or "", 255)
+    if not value:
+        await message.answer(texts.INVALID_INPUT)
+        return
+    await state.update_data(occupation=value)
+    await state.set_state(RegistrationStates.skills)
+    await message.answer(texts.REG_SKILLS, parse_mode="HTML")
+
+
+@router.message(RegistrationStates.skills)
+async def registration_skills(message: Message, state: FSMContext) -> None:
+    skills = _parse_skills(message.text or "")
+    if not skills:
+        await message.answer("Перечислите навыки или напишите, чему хотите научиться.")
+        return
+    await state.update_data(skills=skills)
     await state.set_state(RegistrationStates.directions)
     await message.answer(
         texts.REG_DIRECTION_SIMPLE, parse_mode="HTML",
@@ -487,7 +507,7 @@ async def registration_experience(message: Message, state: FSMContext) -> None:
     if not value:
         await message.answer(texts.INVALID_INPUT)
         return
-    await state.update_data(experience=value, skills=[])
+    await state.update_data(experience=value)
     await state.set_state(RegistrationStates.available_time)
     await message.answer(texts.REG_TIME, parse_mode="HTML", reply_markup=time_keyboard())
 
@@ -501,7 +521,20 @@ async def registration_available_time(call: CallbackQuery, state: FSMContext) ->
     key = call.data.rsplit(":", 1)[-1]
     if key not in TIME_VALUES:
         return
-    await state.update_data(available_time=TIME_VALUES[key], desired_path="Участник")
+    await state.update_data(available_time=TIME_VALUES[key])
+    await state.set_state(RegistrationStates.desired_path)
+    await call.message.answer(texts.REG_PATH, reply_markup=desired_path_keyboard())
+
+
+@router.callback_query(RegistrationStates.desired_path, F.data.startswith('reg:path:'))
+async def registration_desired_path(call: CallbackQuery, state: FSMContext) -> None:
+    choices = ['Участник', 'Активист', 'Лидер', 'Руководитель', 'Совет']
+    key = call.data.rsplit(':', 1)[-1]
+    if not key.isdigit() or not 0 <= int(key) < len(choices):
+        await call.answer('Выберите вариант кнопкой.', show_alert=True)
+        return
+    await call.answer()
+    await state.update_data(desired_path=choices[int(key)])
     await state.set_state(RegistrationStates.motivation)
     await call.message.answer(texts.REG_MOTIVATION, parse_mode="HTML")
 
@@ -516,13 +549,35 @@ def _registration_review_text(data: dict) -> str:
         f"Страна: {html.escape(str(data.get('country') or '—'))}\n"
         f"Регион / город: {html.escape(str(data.get('region') or '—'))}\n"
         f"Email: {html.escape(str(data.get('email') or '—'))}\n"
+        + (f"Соцсеть / портфолио: {html.escape(str(data['social_url']))}\n" if data.get('social_url') else "")
+        + (f"Телефон: {html.escape(str(data['phone']))}\n" if data.get('phone') else "")
+        +
         f"Учёба / работа: {html.escape(str(data.get('education_work') or '—'))}\n"
+        f"Занятие: {html.escape(str(data.get('occupation') or '—'))}\n"
+        f"Навыки: {html.escape(', '.join(data.get('skills') or []) or '—')}\n"
         f"Интересы: {html.escape(directions)}\n"
-        f"Время: {html.escape(str(data.get('available_time') or '—'))}\n\n"
-        f"Фото: {'добавлено' if data.get('profile_photo_file_id') else 'не добавлено (необязательно)'}\n\n"
+        f"Время: {html.escape(str(data.get('available_time') or '—'))}\n"
+        f"Формат участия: {html.escape(str(data.get('desired_path') or '—'))}\n\n"
+        f"Фото: {'добавлено' if data.get('profile_photo_file_id') else 'нужно добавить перед отправкой'}\n\n"
         f"<b>Опыт / чем полезны</b>\n{html.escape(str(data.get('experience') or '—'))}\n\n"
         f"<b>Почему ЭРА</b>\n{html.escape(str(data.get('motivation') or '—'))}"
     )
+
+
+def _review_chunks(text):
+    """Split on complete HTML lines; count decoded UTF-16, Telegram's real limit."""
+    chunks, current, units = [], '', 0
+    for line in text.splitlines(keepends=True):
+        plain = html.unescape(line.replace('<b>', '').replace('</b>', ''))
+        size = len(plain.encode('utf-16-le')) // 2
+        if current and units + size > 3500:
+            chunks.append(current.rstrip())
+            current, units = '', 0
+        current += line
+        units += size
+    if current.strip():
+        chunks.append(current.rstrip())
+    return chunks
 
 
 @router.message(RegistrationStates.motivation)
@@ -531,12 +586,9 @@ async def registration_motivation(message: Message, state: FSMContext) -> None:
     if not value:
         await message.answer(texts.INVALID_INPUT)
         return
-    await state.update_data(
-        motivation=value,
-        phone=None,
-        social_url=None,
-    )
-    await _show_registration_review(message, state)
+    await state.update_data(motivation=value)
+    await state.set_state(RegistrationStates.social_url)
+    await message.answer(_SOCIAL_PROMPT, reply_markup=_social_keyboard())
 
 
 async def _show_registration_review(message: Message, state: FSMContext) -> None:
@@ -545,14 +597,75 @@ async def _show_registration_review(message: Message, state: FSMContext) -> None
     if data.get('profile_photo_file_id'):
         if not await safe_answer_photo(message, data['profile_photo_file_id'], caption='Фото для анкеты'):
             await message.answer('Фото не удалось показать. Добавьте его заново кнопкой ниже.')
-    await message.answer(
-        _registration_review_text(data),
-        parse_mode='HTML',
-        reply_markup=registration_review_keyboard(),
-    )
+    chunks = _review_chunks(_registration_review_text(data))
+    for index, chunk in enumerate(chunks):
+        await message.answer(chunk, parse_mode='HTML',
+            reply_markup=registration_review_keyboard() if index == len(chunks)-1 else None)
 
 
-_PHOTO_PROMPT = 'Отправьте свою фотографию обычным фото в Telegram. Она появится в анкете и карточке администратора. Фото необязательно.'
+_PHOTO_PROMPT = 'Добавьте фотографию для анкеты обычным фото в Telegram. Её увидит команда, которая рассматривает заявку. Это не согласие на публичную публикацию фотографии.'
+_SOCIAL_PROMPT = 'Ссылка на Ваш профиль или портфолио (необязательно). Отправьте https-ссылку или пропустите этот шаг.'
+
+
+def _social_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Пропустить', callback_data='reg:social:skip')]])
+
+
+async def _after_social(message, state):
+    data = await state.get_data()
+    if data.get('profile_photo_file_id'):
+        await _show_registration_review(message, state)
+    else:
+        await state.set_state(RegistrationStates.profile_photo)
+        await message.answer(_PHOTO_PROMPT, reply_markup=_photo_back_keyboard())
+
+
+@router.callback_query(RegistrationStates.social_url, F.data == 'reg:social:skip')
+async def registration_social_skip(call: CallbackQuery, state: FSMContext):
+    await call.answer()
+    # A skipped question never erases a previously entered link.
+    await state.update_data(social_step_completed=True)
+    await _after_social(call.message, state)
+
+
+@router.message(RegistrationStates.social_url)
+async def registration_social(message: Message, state: FSMContext):
+    url = _normalize_url(message.text or '')
+    if not url:
+        await message.answer('Проверьте ссылку или нажмите «Пропустить».', reply_markup=_social_keyboard())
+        return
+    await state.update_data(social_url=url, social_step_completed=True)
+    await _after_social(message, state)
+
+
+async def _ensure_complete(message, state, data):
+    # Old review/consent buttons and in-flight quick forms must collect missing answers,
+    # preserving every existing field and referral instead of restarting the registration.
+    requirements = [
+        ('first_name', RegistrationStates.full_name, texts.REGISTRATION_INTRO),
+        ('last_name', RegistrationStates.full_name, texts.REGISTRATION_INTRO),
+        ('age', RegistrationStates.age, texts.REG_AGE),
+        ('country', RegistrationStates.country, texts.REG_COUNTRY),
+        ('region', RegistrationStates.region, texts.REG_REGION),
+        ('email', RegistrationStates.email, texts.REG_EMAIL),
+        ('education_work', RegistrationStates.education_work, texts.REG_EDUCATION),
+        ('occupation', RegistrationStates.occupation, texts.REG_OCCUPATION),
+        ('skills', RegistrationStates.skills, texts.REG_SKILLS),
+        ('experience', RegistrationStates.experience, texts.REG_EXPERIENCE_SIMPLE),
+        ('available_time', RegistrationStates.available_time, texts.REG_TIME),
+        ('desired_path', RegistrationStates.desired_path, texts.REG_PATH),
+        ('motivation', RegistrationStates.motivation, texts.REG_MOTIVATION),
+        ('profile_photo_file_id', RegistrationStates.profile_photo, _PHOTO_PROMPT),
+    ]
+    for key, target, prompt in requirements:
+        present = data.get('region') or data.get('city') if key == 'region' else data.get(key)
+        if not present:
+            await state.set_state(target)
+            markup = time_keyboard() if key == 'available_time' else desired_path_keyboard() if key == 'desired_path' else None
+            await message.answer('Перед отправкой нужно дополнить анкету. Сохранённые ответы остаются в ней.')
+            await message.answer(prompt, parse_mode='HTML', reply_markup=markup)
+            return False
+    return True
 
 
 def _photo_back_keyboard() -> InlineKeyboardMarkup:
@@ -604,6 +717,8 @@ async def registration_review_restart(call: CallbackQuery, state: FSMContext) ->
 @router.callback_query(RegistrationStates.review, F.data == "reg:review:ok")
 async def registration_review_ok(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
+    if not await _ensure_complete(call.message, state, await state.get_data()):
+        return
     await state.update_data(consent_policy_version=CURRENT_POLICY_VERSION)
     await state.set_state(RegistrationStates.consent)
     await call.message.answer(CONSENT_SUMMARY, reply_markup=consent_keyboard())
@@ -650,6 +765,8 @@ async def finish_registration(
             reply_markup=consent_keyboard(),
         )
         return
+    if not await _ensure_complete(call.message, state, data):
+        return
     resubmitted = False
     if data.get('resubmission'):
         user, resubmitted = await resubmit_user_registration(session, telegram_id=call.from_user.id,
@@ -690,6 +807,11 @@ async def finish_registration(
             profile = SocialProfile(user_id=user.id)
             session.add(profile)
         profile.photo_file_id = data['profile_photo_file_id']
+        profile.contact_email = user.email
+        if data.get('social_url'):
+            existing_link = await session.scalar(select(SocialLink).where(SocialLink.user_id == user.id, SocialLink.url == data['social_url']))
+            if existing_link is None:
+                session.add(SocialLink(user_id=user.id, url=data['social_url'], platform=_platform_from_url(data['social_url'])))
 
     auto_approved_admin = call.from_user.id in settings.admin_ids
     if auto_approved_admin:
