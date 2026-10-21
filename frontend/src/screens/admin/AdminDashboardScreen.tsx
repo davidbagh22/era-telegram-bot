@@ -205,6 +205,8 @@ function ScoreLine({ score }: { score: number }) {
 }
 
 function ExecutiveMetric({ metric }: { metric: HealthMetric }) {
+  const hasValue = metric.value !== null && !/нет данных|нет заявок/i.test(metric.display);
+  const isZero = hasValue && metric.value === 0;
   return (
     <div
       style={{
@@ -216,7 +218,7 @@ function ExecutiveMetric({ metric }: { metric: HealthMetric }) {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minHeight: 38 }}>
-        {metric.score !== null && <MiniRing score={metric.score} size={36} accent={scoreTone(metric.score)} />}
+        {metric.score !== null && !isZero && <MiniRing score={metric.score} size={36} accent={scoreTone(metric.score)} />}
         <strong
           style={{
             display: "block",
@@ -225,7 +227,7 @@ function ExecutiveMetric({ metric }: { metric: HealthMetric }) {
             lineHeight: 1.05,
           }}
         >
-          {metric.display}
+          {hasValue ? metric.display : "Нет данных"}
         </strong>
       </div>
       <span style={{ display: "block", marginTop: "0.4rem", fontSize: "0.72rem", fontWeight: 800, lineHeight: 1.25 }}>
@@ -242,7 +244,7 @@ function MetricRow({ metric }: { metric: HealthMetric }) {
         <span style={{ minWidth: 0, fontSize: "0.78rem", fontWeight: 750, lineHeight: 1.25 }}>{metric.label}</span>
         <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1rem", whiteSpace: "nowrap" }}>{metric.display}</strong>
       </div>
-      {metric.score !== null && (
+      {metric.score !== null && metric.value !== 0 && (
         <div style={{ marginTop: "0.38rem" }}>
           <ScoreLine score={metric.score} />
         </div>
@@ -437,7 +439,6 @@ export function AdminDashboardScreen() {
 
   return (
     <div className="era-analytics" style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
-      <AnalyticsReportPanel />
       <nav className="era-analytics-jump" aria-label="Разделы аналитики">
         <a href="#analytics-main">Главное</a><a href="#analytics-risks">Внимание</a>
         <a href="#analytics-metrics">Показатели</a><a href="#analytics-actions">Рекомендации</a>
@@ -461,7 +462,7 @@ export function AdminDashboardScreen() {
           />
         </div>
         <p style={{ margin: "0.65rem 0 0", color: "var(--era-text-muted)", fontSize: "0.65rem" }}>
-          Пульс: охват {health.data.pulse_coverage}% · n={health.data.pulse_sample_size}. При выборке меньше 5 человек показатель скрывается.
+          Пульс: охват {health.data.pulse_coverage}% · выборка {health.data.pulse_sample_size} человек. При выборке меньше 5 показатель скрывается. Индекс описывает только доступные ответы, а не всю деятельность ЭРА.
         </p>
       </Card>
 
@@ -478,6 +479,7 @@ export function AdminDashboardScreen() {
         </div>
       </section>
 
+      <AnalyticsReportPanel />
       <section id="analytics-risks" aria-label="Зоны внимания">
       {health.data.risks.length > 0 ? (
         <Card style={{ padding: "0.8rem 0.85rem", borderLeft: "3px solid var(--era-red)" }}>
@@ -532,7 +534,7 @@ export function AdminDashboardScreen() {
           expandedCategories.size === groupedMetrics.length ? new Set() : new Set(groupedMetrics.map((group) => group.category))
         )}>{expandedCategories.size === groupedMetrics.length ? "Свернуть показатели" : "Развернуть все показатели"}</button>
         <p style={{ margin: "0 0 0.45rem", color: "var(--era-text-muted)", fontSize: "0.68rem", lineHeight: 1.35 }}>
-          Категории свёрнуты. Нажмите на нужную — внутри все показатели и пояснения.
+          Откройте интересующую категорию, чтобы увидеть определения и источники. Ноль означает отсутствие зафиксированного результата, но не обязательно отсутствие работы.
         </p>
         <div style={{ display: "grid", gap: "0.45rem" }}>
           {groupedMetrics.map(({ category, metrics, avgScore }) => {
@@ -600,7 +602,7 @@ export function AdminDashboardScreen() {
           <StatusBadge label={`${efficiency.data.recommendations.length}`} tone="violet" />
         </div>
         <div style={{ display: "grid", gap: "0.45rem" }}>
-          {efficiency.data.recommendations.map((item, index) => (
+          {efficiency.data.recommendations.slice(0, 3).map((item, index) => (
             <Card key={`${item.title}-${index}`} style={{ padding: "0.75rem 0.8rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: "0.55rem", alignItems: "flex-start" }}>
                 <strong style={{ fontSize: "0.86rem" }}>{item.title}</strong>
@@ -637,7 +639,7 @@ export function AdminDashboardScreen() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.45rem" }}>
         <button type="button" className="era-btn-primary" disabled={downloadingSection !== null} onClick={() => void handleHealthReport()} style={{ minHeight: "2.8rem", fontSize: "0.72rem" }}>{downloadingSection === "health" ? "…" : "↓ Здоровье"}</button>
-        <span style={{ fontSize: "0.72rem", color: "var(--era-text-muted)", alignSelf: "center" }}>Полный PDF и Excel — в начале раздела</span>
+        <span style={{ fontSize: "0.72rem", color: "var(--era-text-muted)", alignSelf: "center" }}>PDF и Excel доступны после главных показателей</span>
       </div>
 
       {dashboard.status === "ready" && (
