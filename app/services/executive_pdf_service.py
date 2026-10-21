@@ -17,7 +17,7 @@ from reportlab.platypus import (
 from app.services.career_pdf_service import _register_font
 
 
-def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficiency) -> bytes:
+def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficiency, analytics=None, media=None) -> bytes:
     _register_font()
     ink = colors.HexColor('#202032')
     muted = colors.HexColor('#656575')
@@ -84,7 +84,7 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
         story.extend([table, Spacer(1, 3*mm)])
     story.extend([p('Как читать отчёт', 'heading'), p(
         'События, проекты и результаты отфильтрованы по выбранным датам. '
-        'Состав организации — текущий срез. Эффективность и пульс имеют собственные '
+        'Состав, организации и цели — текущий срез. Эффективность и пульс имеют собственные '
         'окна расчёта; их нельзя интерпретировать как оценку выбранного периода.', 'small'),
         p(f'Период пульса: {getattr(health, "period_label", "текущее окно")}', 'small'),
         p(f'Период эффективности: {getattr(efficiency, "period_label", "текущее окно")}', 'small'),
@@ -126,6 +126,32 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
                     display = value.strftime('%d.%m.%Y') if isinstance(value, (date, datetime)) else value
                     story.append(p(f'{label}: {display}'))
             story.append(Spacer(1, 3*mm))
+    if analytics is not None:
+        story.extend([Spacer(1, 6*mm), CondPageBreak(55*mm), p('Организации · текущая база', 'heading')])
+        contacts = getattr(analytics, 'contacts', [])
+        for contact in contacts:
+            # Deliberately omit private contact details and free-form notes.
+            story.append(p(contact.organization_name))
+        if not contacts:
+            story.append(p('Организаций в базе пока нет.', 'small'))
+        story.extend([Spacer(1, 6*mm), CondPageBreak(55*mm), p('Цели · текущий срез', 'heading')])
+        goals = getattr(analytics, 'goals', [])
+        for goal in goals:
+            story.extend([p(goal.title, 'eyebrow'), p(f'{goal.scope_name} · {goal.month}'),
+                          p(f'Выполнение: {goal.current_value}/{goal.target_value} · {goal.status}')])
+        if not goals:
+            story.append(p('Целей в доступных данных пока нет.', 'small'))
+    if media is not None:
+        story.extend([Spacer(1, 6*mm), CondPageBreak(55*mm), p('Медиа', 'heading'),
+                      p('Публикации и задачи — текущие итоги; сообщения и авторы — последние 30 дней.', 'small')])
+        for key, label in [('planned', 'В контент-плане'), ('published', 'Опубликовано'),
+                           ('failed', 'Ошибки публикации'), ('on_time_rate', 'Вовремя, %'),
+                           ('tasks_created', 'Создано задач'), ('tasks_completed', 'Выполнено задач'),
+                           ('channel_posts_period', 'Публикаций за 30 дней'),
+                           ('chat_messages_period', 'Сообщений за 30 дней'),
+                           ('chat_active_authors_period', 'Активных авторов за 30 дней')]:
+            value = getattr(media, key, None)
+            story.append(p(f'{label}: {value if value is not None else "—"}'))
     wb.close()
     doc.build(story, onFirstPage=page, onLaterPages=page)
     return output.getvalue()

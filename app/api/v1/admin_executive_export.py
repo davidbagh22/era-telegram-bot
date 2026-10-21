@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_session, get_settings
 from app.config import Settings
 from app.database.models import User
+from app.services import media_service
 from app.services.admin_analytics_service import build_analytics_payload
 from app.services.admin_dashboard_service import has_dashboard_access
 from app.services.era_efficiency_service import build_efficiency_snapshot
@@ -68,9 +69,11 @@ async def export_executive_report(
         timezone_name=settings.timezone,
     )
     if format == "pdf":
+        media = (await media_service.analytics(session, settings)
+                 if await media_service.can_manage_media(session, _admin, settings) else None)
         content = await run_in_threadpool(
             build_executive_pdf, content, period_label=f"{label} · {start:%d.%m.%Y}–{end:%d.%m.%Y}",
-            health=health, efficiency=efficiency,
+            health=health, efficiency=efficiency, analytics=analytics, media=media,
         )
     suffix = f"{start:%Y%m%d}-{end:%Y%m%d}"
     return Response(

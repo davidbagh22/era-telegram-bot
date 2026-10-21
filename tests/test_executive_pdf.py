@@ -39,7 +39,10 @@ def fixture():
 def report():
     return build_executive_pdf(fixture(), period_label='01.10.2026–21.10.2026',
         health=NS(risks=['Сроки требуют внимания'], metrics=[], period_label='30 дней'),
-        efficiency=NS(recommendations=[], period_label='7 дней'))
+        efficiency=NS(recommendations=[], period_label='7 дней'),
+        analytics=NS(contacts=[NS(organization_name='Партнёр ЭРА', email='PRIVATE_EMAIL', phone='PRIVATE_PHONE', notes='PRIVATE_NOTE')],
+                     goals=[NS(title='Цель организации', scope_name='ЭРА', month='2026-10', current_value=3, target_value=5, status='active')]),
+        media=NS(published=12))
 
 
 class ExecutivePDFTests(TestCase):
@@ -50,8 +53,11 @@ class ExecutivePDFTests(TestCase):
         text = '\n'.join(page.extract_text() for page in pdf.pages)
         for expected in ['Текущий состав', '66', 'Приоритеты руководителя',
                          'Имя <script> & текст', '=Имя участника', '=Название проекта', 'Данных за выбранный период нет',
-                         '01.10.2026', 'Сроки требуют внимания', 'Очень длинный текст']:
+                         '01.10.2026', 'Сроки требуют внимания', 'Очень длинный текст',
+                         'Партнёр ЭРА', 'Цель организации', 'Выполнение: 3/5', 'Опубликовано: 12']:
             self.assertIn(expected, text)
+        for secret in ['PRIVATE_EMAIL', 'PRIVATE_PHONE', 'PRIVATE_NOTE']:
+            self.assertNotIn(secret, text)
         self.assertGreater(len(pdf.pages), 4)
         self.assertTrue(all('Для внутреннего использования' in page.extract_text() for page in pdf.pages))
 
@@ -73,12 +79,17 @@ class ExecutivePDFRouteTests(TestCase):
         with patch.object(api, 'build_analytics_payload', AsyncMock(return_value=NS())), \
              patch.object(api, 'build_efficiency_snapshot', AsyncMock(return_value=NS())), \
              patch.object(api, 'build_extended_organization_health', AsyncMock(return_value=NS())), \
+             patch.object(api, 'media_service') as media_service, \
              patch.object(api, 'build_executive_workbook', AsyncMock(return_value=fixture())) as builder:
+            media_service.can_manage_media = AsyncMock(return_value=False)
+            media_service.analytics = AsyncMock()
             response = self.client.get('/admin/analytics/executive-report.pdf?period=custom&start_date=2026-10-01&end_date=2026-10-21')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers['content-type'], 'application/pdf')
         self.assertEqual(response.headers['cache-control'], 'no-store, private')
         self.assertIn('20261001-20261021.pdf', response.headers['content-disposition'])
+        media_service.analytics.assert_not_awaited()
+        self.assertTrue(response.content.startswith(b'%PDF-'))
         self.assertEqual(builder.call_args.kwargs['start_date'], date(2026, 10, 1))
 
     def test_invalid_period_does_not_build_report(self):
