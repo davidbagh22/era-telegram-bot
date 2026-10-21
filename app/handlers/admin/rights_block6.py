@@ -23,6 +23,8 @@ from app.services.authorization_service import (
 from app.services.notification_service import safe_send
 from app.services.admin_user_card import send_admin_user_card
 from app.services.chat_access_service import sync_user_chat_access
+from app.services.staff_access_service import LITERATURE_CATEGORY_SCOPE_ID, SUPPORT_CATEGORY_SCOPE
+from app.services.support_service import CATEGORIES
 from app.utils import texts
 from app.utils.constants import (
     PERMISSION_LABELS,
@@ -139,7 +141,22 @@ def _permissions_keyboard(target_id: int, active: set[str]) -> InlineKeyboardMar
         ]
         for permission in PERMISSIONS
     ]
+    rows.append([InlineKeyboardButton(text="🗂 Категории обращений",
+        callback_data=f"admin:permission:support_categories:{target_id}")])
     rows.append([InlineKeyboardButton(text="← К участнику", callback_data=f"admin:user:{target_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _support_category_permissions_keyboard(target_id: int, active: set[int], *, literature_enabled=False) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(
+        text=f"{'✅' if SUPPORT_CATEGORY_SCOPE[key] in active else '▫️'} {label}",
+        callback_data=f"admin:permission:support_category_toggle:{target_id}:{SUPPORT_CATEGORY_SCOPE[key]}",
+    )] for key, label in CATEGORIES.items()]
+    rows.append([InlineKeyboardButton(
+        text=f"{'✅' if literature_enabled else '▫️'} Литературная редакция",
+        callback_data=f"admin:permission:literature_toggle:{target_id}")])
+    rows.append([InlineKeyboardButton(text="← Технические права",
+        callback_data=f"admin:user:permissions:{target_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -316,6 +333,122 @@ async def permission_toggle(
         + ("\nРабочие разделы для сотрудника: /staff"
            if permission in {"projects.review", "support.manage", "literature.manage"} else "")
     )
+
+
+@router.callback_query(F.data.regexp(r"^admin:permission:support_categories:\d+$"))
+async def support_category_permissions(call: CallbackQuery, user: User | None, settings: Settings,
+                                       session: AsyncSession) -> None:
+    if not await _guard(call, user, settings, permissions=True):
+        return
+    target_id = int(call.data.rsplit(":", 1)[-1])
+    target = await session.get(User, target_id)
+    if not target:
+        await call.message.answer("Участник не найден")
+        return
+    grants = (await session.scalars(select(PermissionGrant).where(
+        PermissionGrant.user_id == target_id,
+        PermissionGrant.permission == "support.manage",
+        PermissionGrant.scope_type == "support_category",
+        PermissionGrant.scope_id.in_(SUPPORT_CATEGORY_SCOPE.values()),
+    ))).all()
+    active = {grant.scope_id for grant in grants if grant.is_active}
+    literature_grant = await session.scalar(select(PermissionGrant).where(
+        PermissionGrant.user_id == target_id, PermissionGrant.permission == "literature.manage",
+        PermissionGrant.scope_type == "literature_category",
+        PermissionGrant.scope_id == LITERATURE_CATEGORY_SCOPE_ID))
+    await call.message.answer(
+        f"🗂 Доступ к обращениям по категориям\n\n{target.first_name} {target.last_name or ''}\n"
+        "Категорийные права дают доступ только к выбранным обращениям и не открывают админку/настройки.",
+        reply_markup=_support_category_permissions_keyboard(target_id, active,
+            literature_enabled=bool(literature_grant and literature_grant.is_active)))
+
+
+@router.callback_query(F.data.regexp(r"^admin:permission:literature_toggle:\d+$"))
+async def toggle_literature_category_permission(call: CallbackQuery, user: User | None,
+        settings: Settings, session: AsyncSession) -> None:
+    if not await _guard(call, user, settings, permissions=True):
+        return
+    target_id = int(call.data.rsplit(":", 1)[-1])
+    target = await session.get(User, target_id)
+    if not target:
+        await call.message.answer("Участник не найден")
+        return
+    decision = await can_change_permission(actor=user, target=target)
+    if not decision.allowed:
+        await call.message.answer(decision.reason)
+        return
+    grant = await session.scalar(select(PermissionGrant).where(
+        PermissionGrant.user_id == target_id, PermissionGrant.permission == "literature.manage",
+        PermissionGrant.scope_type == "literature_category",
+        PermissionGrant.scope_id == LITERATURE_CATEGORY_SCOPE_ID))
+    if grant:
+        grant.is_active = not grant.is_active
+        enabled = grant.is_active
+    else:
+        session.add(PermissionGrant(user_id=target_id, permission="literature.manage",
+            scope_type="literature_category", scope_id=LITERATURE_CATEGORY_SCOPE_ID,
+            granted_by=user.id if user else target_id))
+        enabled = True
+    await audit(session, actor_id=user.id if user else None, action="user.permission_changed",
+        entity_type="user", entity_id=target_id, new_value={
+            "permission": "literature.manage", "scope_type": "literature_category",
+            "scope_id": LITERATURE_CATEGORY_SCOPE_ID, "enabled": enabled})
+    await session.commit()
+    await call.message.edit_reply_markup(reply_markup=_support_category_permissions_keyboard(
+        target_id, active=set((await session.scalars(select(PermissionGrant.scope_id).where(
+            PermissionGrant.user_id == target_id, PermissionGrant.permission == "support.manage",
+            PermissionGrant.scope_type == "support_category", PermissionGrant.is_active.is_(True),
+            PermissionGrant.scope_id.in_(SUPPORT_CATEGORY_SCOPE.values())))).all()),
+        literature_enabled=enabled))
+
+
+@router.callback_query(F.data.regexp(r"^admin:permission:support_category_toggle:\d+:\d+$"))
+async def toggle_support_category_permission(call: CallbackQuery, user: User | None,
+        settings: Settings, session: AsyncSession) -> None:
+    if not await _guard(call, user, settings, permissions=True):
+        return
+    _, _, _, _, raw_target, raw_scope = call.data.split(":")
+    target_id, scope_id = int(raw_target), int(raw_scope)
+    if scope_id not in SUPPORT_CATEGORY_SCOPE.values():
+        await call.message.answer("Категория не найдена")
+        return
+    target = await session.get(User, target_id)
+    if not target:
+        await call.message.answer("Участник не найден")
+        return
+    decision = await can_change_permission(actor=user, target=target)
+    if not decision.allowed:
+        await call.message.answer(decision.reason)
+        return
+    grant = await session.scalar(select(PermissionGrant).where(
+        PermissionGrant.user_id == target_id,
+        PermissionGrant.permission == "support.manage",
+        PermissionGrant.scope_type == "support_category",
+        PermissionGrant.scope_id == scope_id,
+    ))
+    if grant:
+        grant.is_active = not grant.is_active
+        enabled = grant.is_active
+    else:
+        grant = PermissionGrant(user_id=target_id, permission="support.manage",
+            scope_type="support_category", scope_id=scope_id,
+            granted_by=user.id if user else target_id)
+        session.add(grant)
+        enabled = True
+    key = next(category for category, value in SUPPORT_CATEGORY_SCOPE.items() if value == scope_id)
+    await audit(session, actor_id=user.id if user else None, action="user.permission_changed",
+        entity_type="user", entity_id=target_id, new_value={
+            "permission": "support.manage", "scope_type": "support_category",
+            "scope_id": scope_id, "category": key, "enabled": enabled})
+    await session.commit()
+    active = set((await session.scalars(select(PermissionGrant.scope_id).where(
+        PermissionGrant.user_id == target_id,
+        PermissionGrant.permission == "support.manage",
+        PermissionGrant.scope_type == "support_category",
+        PermissionGrant.is_active.is_(True),
+        PermissionGrant.scope_id.in_(SUPPORT_CATEGORY_SCOPE.values()),
+    ))).all())
+    await call.message.edit_reply_markup(reply_markup=_support_category_permissions_keyboard(target_id, active))
 
 
 @router.callback_query(F.data.regexp(r"^admin:user:(block|unblock):\d+$"))

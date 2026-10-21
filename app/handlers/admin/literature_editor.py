@@ -13,7 +13,7 @@ from app.config import Settings
 from app.database.autocontent_models import GeneralCustomContent
 from app.database.models import User
 from app.database.system_models import NotificationDelivery
-from app.services.staff_access_service import can_operate_queue
+from app.services.staff_access_service import can_manage_literature_settings, can_operate_queue
 from app.services.book_club_service import (EDITORIAL_FIELDS, approve_editorial_item, editorial_revision,
     editorial_settings, publish_editorial_item, render_editorial, save_editorial_item, save_editorial_settings)
 from app.utils import texts
@@ -36,7 +36,7 @@ async def _guard(event, user, settings, session):
     return False
 
 
-async def _queue(message, session, page=0):
+async def _queue(message, session, page=0, *, manage_settings=True):
     config = await editorial_settings(session)
     total = int(await session.scalar(select(func.count()).select_from(GeneralCustomContent).where(
         GeneralCustomContent.content_type == 'literature')) or 0)
@@ -52,18 +52,20 @@ async def _queue(message, session, page=0):
         navigation.append(InlineKeyboardButton(text='→', callback_data=f'admin:literature:page:{page+1}'))
     if navigation:
         rows.append(navigation)
-    rows.extend([
-        [InlineKeyboardButton(text='➕ Новый материал', callback_data='admin:literature:new')],
-        [InlineKeyboardButton(text='Отключить очередь' if config['enabled'] else 'Включить очередь',
-                              callback_data=f"admin:literature:enabled:{int(not config['enabled'])}"),
-         InlineKeyboardButton(text='Продолжить' if config['paused'] else 'Пауза',
-                              callback_data=f"admin:literature:paused:{int(not config['paused'])}")],
-        [InlineKeyboardButton(text='⏰ Изменить время', callback_data='admin:literature:time')],
-        [InlineKeyboardButton(text='← Рабочие разделы', callback_data='staff:home')],
-    ])
-    await message.answer(f"📚 Редакция ЭРА · {total} материалов\n\n"
-        f"Очередь: {'включена' if config['enabled'] else 'выключена'} · {'пауза' if config['paused'] else 'по расписанию'}\n"
-        f"Время: {config['hour']:02d}:{config['minute']:02d} МСК\n\n"
+    rows.append([InlineKeyboardButton(text='➕ Новый материал', callback_data='admin:literature:new')])
+    if manage_settings:
+        rows.extend([
+            [InlineKeyboardButton(text='Отключить очередь' if config['enabled'] else 'Включить очередь',
+                                  callback_data=f"admin:literature:enabled:{int(not config['enabled'])}"),
+             InlineKeyboardButton(text='Продолжить' if config['paused'] else 'Пауза',
+                                  callback_data=f"admin:literature:paused:{int(not config['paused'])}")],
+            [InlineKeyboardButton(text='⏰ Изменить время', callback_data='admin:literature:time')],
+        ])
+    rows.append([InlineKeyboardButton(text='← Рабочие разделы', callback_data='staff:home')])
+    settings_text = (f"Очередь: {'включена' if config['enabled'] else 'выключена'} · "
+        f"{'пауза' if config['paused'] else 'по расписанию'}\n"
+        f"Время: {config['hour']:02d}:{config['minute']:02d} МСК\n\n") if manage_settings else ''
+    await message.answer(f"📚 Редакция ЭРА · {total} материалов\n\n" + settings_text +
         '📝 Черновик · 📗 Проверено редактором · ✅ Доставлено\n'
         'При включении очередь заменяет автоматический цикл 48 законов. '
         'Без подтверждения редактора материал не публикуется.', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
@@ -72,7 +74,7 @@ async def _queue(message, session, page=0):
 @router.message(Command('literature_admin'))
 async def editorial_command(message: Message, user: User | None, settings: Settings, session: AsyncSession):
     if await _guard(message, user, settings, session):
-        await _queue(message, session)
+        await _queue(message, session, manage_settings=await can_manage_literature_settings(session, user, settings))
 
 
 @router.callback_query(F.data.regexp(r'^admin:literature:(?:home|new|time|page:\d{1,5}|enabled:[01]|paused:[01]|item:\d+|edit:\d+|approve:\d+:[0-9a-f]{12}|send:\d+:[0-9a-f]{12})$'))
@@ -82,8 +84,13 @@ async def editorial_action(call: CallbackQuery, user: User | None, settings: Set
     await call.answer()
     parts = call.data.split(':')
     action = parts[2]
+    manage_settings = await can_manage_literature_settings(session, user, settings)
+    if action in {'enabled', 'paused', 'time'} and not manage_settings:
+        await call.message.answer(texts.NO_ACCESS)
+        return
     if action in {'home', 'page'}:
-        await _queue(call.message, session, int(parts[3]) if action == 'page' else 0)
+        await _queue(call.message, session, int(parts[3]) if action == 'page' else 0,
+                     manage_settings=manage_settings)
         return
     if action in {'enabled', 'paused'}:
         await save_editorial_settings(session, actor_id=user.id, **{action: bool(int(parts[3]))})
@@ -146,6 +153,10 @@ async def editorial_input(message: Message, user: User | None, settings: Setting
         return
     try:
         if await state.get_state() == EditorialInput.time.state:
+            if not await can_manage_literature_settings(session, user, settings):
+                await state.clear()
+                await message.answer(texts.NO_ACCESS)
+                return
             import re
             if not re.fullmatch(r'\d{2}:\d{2}', message.text or ''):
                 raise ValueError('invalid_time')

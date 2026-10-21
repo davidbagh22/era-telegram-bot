@@ -1,3 +1,20 @@
+# Текущий checkpoint — 21.10.2026
+
+## После #359
+- GitHub `main` подтверждён на `9d815e65d2fcdbc3bca34a273bc57bc8645dab88`; открытых PR на последней проверке нет. #359 объединён. Его проверки ранее прошли: 1903 passed, 1 skipped, 1 xfailed, 97 subtests; E2E, frontend/security и PostgreSQL проверки зелёные.
+- Production подтверждён: Render deploy `dep-dbbv1oe7bikc73ahfhqg` LIVE на SHA `9d815e65d2fcdbc3bca34a273bc57bc8645dab88`; `/health` и `/ready` = 200, после deploy error logs отсутствуют, одна рабочая instance. Но dispatcher стартовал как `@MVKSRS_bot` (ID `8842890484`), а ожидаемый бот — `@ERA_1bot`: проверить/исправить Render `BOT_TOKEN` и повторно подтвердить имя, не раскрывая/не копируя секрет в лог/репозиторий. До этого production-бот не принят.
+- 24-часовой post-release контроль ещё не наступил: deploy LIVE `20.10 22:55:29 UTC`, контрольная отметка `21.10 22:55:29 UTC`.
+- Категорийные права поддержки/редакции реализованы в отдельной ветке `feat/category-scoped-staff-access-20261021`, пока без PR. Существующие `PermissionGrant` получают `support_category` scopes по категориям обращений и отдельный `literature_category` scope. Полный pytest до последних двух UI-regression тестов: 1905 passed, 1 skipped, 1 xfailed, 97 subtests; финальный адресный набор: 44 passed, 14 subtests. General-chat validator passed, system audit 9/9, Ruff, compile/diff clean. GitHub full CI ожидает PR. Проверены чужая категория, подмена ID, отзыв, назначение, список/вложения и запрет настроек всего модуля для литературы.
+
+## Открытые зависимости/приёмка
+- Render workspace не подтверждён пользователем; поэтому не читать/менять Render ресурсы. После подтверждения проверить service `srv-d91r1j7avr4c73fs8h00`, deploy SHA, `/health`, `/ready`, ошибки/события и PostgreSQL allowlist.
+- External PostgreSQL allowlist подтверждён как `0.0.0.0/0`. Render подтверждает текущий service и DB; DB connection activity идёт с private `10.x` адресов. По актуальным правилам Render allowlist ограничивает только public ingress, поэтому пустой allowlist оставит same-region private networking. MCP не умеет менять ACL; CLI/API credential недоступны. Нужен разрешённый Dashboard fallback/доступ администратора; перед изменением повторно проверить bot/migrations/backup.
+- Последний encrypted GitHub backup — run `39552815304` от `21.10 06:00 UTC`, SHA `9d815e65`; snapshot, изолированный restore PG18, encryption/verification и artifact — success. S3 upload/restore skipped из-за отсутствия credentials.
+- Не подтверждены редактор/календарь и 180-дневное покрытие литературного и игрового контента; согласование сертификатного шаблона/подписанта, правил сезонов и текстов обработки данных; реальные Telegram-сценарии и 24-часовой мониторинг.
+- Не сбрасывать регистрацию повторно; не создавать фиктивные production-участия и массовые тестовые рассылки. Языковой пакет не добавлять.
+
+Сведения ниже сохранены как исторический post-release checkpoint `#357/#358` и не являются описанием текущего main/prod.
+
 # Состояние ЭРА — 20.10.2026, после выпуска #357
 
 ## Последний production — #358, оформление регистрации

@@ -2,6 +2,12 @@
 
 Production/main 4fc319ce, #356/#357/#358 merged. Render LIVE dep-dbbk8bek1f9s73bumib0; /health и /ready = 200. Последний checkpoint: fix/registration-html-20261020/docs/AI_TASK_STATE.md. Сначала сверять фактический SHA; не повторять reset/релизы.
 
+# Актуальная точка — 21.10.2026
+
+Текущий main: `9d815e65d2fcdbc3bca34a273bc57bc8645dab88` (#359 merged); open PRs = 0 на последней проверке. Render deploy LIVE на этот SHA; `/health` и `/ready` = 200, но production logs называют бота `@MVKSRS_bot` вместо ожидаемого `@ERA_1bot` — требуется исправить BOT_TOKEN и повторно принять. Категорийное делегирование находится в `feat/category-scoped-staff-access-20261021`; полный pytest на предыдущем кодовом checkpoint 1905 passed, финальные адресные тесты 44 passed, 14 subtests; GitHub PR CI и merge ещё не выполнены.
+
+Для поддержки используется `PermissionGrant(permission=support.manage, scope_type=support_category, scope_id=1..5)`; для редакции литературы — `PermissionGrant(permission=literature.manage, scope_type=literature_category, scope_id=1)`. Категорийная литература даёт только очередь материалов и действия по материалам, не общие настройки расписания/модуля. Права проверяются заново на сервере для каждого callback и формы.
+
 | Задача | Файлы / основные символы | Данные | Проверки |
 |---|---|---|---|
 | Регистрация и повторная подача | handlers/registration.py:registration_start,finish_registration; repositories/users.py:create_user_from_registration,resubmit_user_registration; handlers/emergency.py:start | users, social_profiles/social_links, consent, audit; FSM Redis | test_registration_admin_visibility, test_registration_card_async, test_native_admin_operations |
