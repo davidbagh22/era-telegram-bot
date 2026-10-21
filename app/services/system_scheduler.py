@@ -55,7 +55,7 @@ def add_system_jobs(
     # A restart interrupts verifiable continuous coverage, even when permissions persist.
     for chat_id in source_targets(settings).values():
         mark_coverage_gap(chat_id)
-    scheduler.add_job(refresh_sources_job, "interval", minutes=5, args=(bot, settings, session_factory), id="telegram-analytics-sources", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    scheduler.add_job(refresh_sources_job, "interval", minutes=5, args=(bot, settings, session_factory), id="telegram-analytics-sources", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now, misfire_grace_time=120)
 
     scheduler.add_job(send_review_sla_reminders, 'interval', minutes=15, args=(bot, settings, session_factory), id='review-sla-reminders', replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(deliver_support_answers, 'interval', minutes=1, args=(bot, settings, session_factory), id='support-answer-delivery', replace_existing=True, max_instances=1, coalesce=True)

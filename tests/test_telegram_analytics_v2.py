@@ -97,6 +97,8 @@ class TelegramFactsTests(IsolatedAsyncioTestCase):
         self.assertIsNone(row['value'])
         self.assertIsNone(row['previous_value'])
         self.assertEqual(row['observed_value'], 1)
+        self.assertEqual([(item['days'], item['observed']) for item in row['rolling_counts']], [(7,1),(30,1),(90,1)])
+        self.assertTrue(all(not item['complete'] for item in row['rolling_counts']))
         self.assertTrue(all(day['value'] is None for day in row['daily']))
 
     async def test_zero_requires_full_coverage_and_previous_requires_two_periods(self):
@@ -197,6 +199,25 @@ class TelegramFactsTests(IsolatedAsyncioTestCase):
         self.assertEqual(result, 'business result')
         handler.assert_awaited_once()
         self.assertEqual(await self.session.scalar(select(func.count()).select_from(TelegramMessageFact)), 1)
+
+    async def test_committed_channel_edit_replay_and_group_topics_feed_counts_in_fresh_session(self):
+        from app.middlewares.telegram_analytics import TelegramAnalyticsMiddleware
+        from app.services.telegram_analytics_service import refresh_sources_job
+        observer = TelegramAnalyticsMiddleware(self.factory, SETTINGS)
+        for i, field, item in [(1,'channel_post',message()), (2,'channel_post',message()),
+            (3,'edited_channel_post',message(edit_date=NOW)),
+            (4,'message',message(1,channel=False,message_thread_id=7)),
+            (5,'message',message(2,channel=False,message_thread_id=9))]:
+            await observer(AsyncMock(), Update(update_id=i, **{field:item}), {})
+        async with self.factory() as reader:
+            result = await telegram_snapshot(reader, SETTINGS, start=self.start, end=self.end, now=NOW+timedelta(seconds=1))
+        self.assertEqual([source['observed_value'] for source in result['sources']], [1,2])
+        bot = NS(id=99, get_chat_member=AsyncMock(return_value=NS(status='administrator')))
+        with self.assertLogs('app.services.telegram_analytics_service', level='INFO') as logs:
+            await refresh_sources_job(bot, SETTINGS, self.factory)
+        self.assertTrue(any('kind=channel total_observed=1' in line for line in logs.output))
+        self.assertTrue(any('kind=general total_observed=2' in line for line in logs.output))
+        self.assertNotIn('NEVER_STORE_THIS_BODY', str(logs.output))
 
     async def test_export_keeps_null_and_observed_counts_and_same_days(self):
         await self.source(coverage=NOW-timedelta(hours=1))

@@ -1,12 +1,12 @@
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import Date, cast, func, select
-from app.database.models import AuditLog, User
+from app.database.models import AuditLog, User, Event, Project, Task
 from app.services.analytics_snapshot_service import count_new_members, count_verified_users, roster_conditions
 from app.services.telegram_analytics_service import telegram_snapshot
 
 
-def metric(key, label, value, *, period, source, explanation, previous=None, denominator=None):
-    return dict(id=key, label=label, value=value, unit='человек', period=period,
+def metric(key, label, value, *, period, source, explanation, previous=None, denominator=None, unit='человек'):
+    return dict(id=key, label=label, value=value, unit=unit, period=period,
         previous_value=previous, delta=(value - previous if value is not None and previous is not None else None),
         numerator=value, denominator=denominator, data_state='valid' if value is not None else 'unavailable',
         source=source, explanation=explanation, updated_at=datetime.now(timezone.utc).isoformat(), drilldown=None)
@@ -35,6 +35,16 @@ async def build_v2_snapshot(session, settings, *, start, end, now=None):
         metric('verified_active', 'С подтверждённым результатом', active, period=label, source='Verified activity facts',
                denominator=roster, previous=previous_active,
                explanation='Текущий состав с подтверждённым посещением или результатом задачи/проекта. Переписка и просмотры сюда не входят.')]
+    for model, key, title, column, unit in [
+        (Event, 'events', 'Мероприятия по дате', Event.event_date, 'мероприятий'),
+        (Project, 'projects', 'Создано проектов', Project.created_at, 'проектов'),
+        (Task, 'tasks', 'Создано заданий', Task.created_at, 'заданий'),
+    ]:
+        left, right = (start.date(), end.date()) if model is Event else (start, effective_end)
+        value = int(await session.scalar(select(func.count(model.id)).where(column >= left, column < right)) or 0)
+        snapshot['metrics'].append(metric(key, title, value, period=label, source=f'{model.__name__}.{column.key}',
+            unit=unit, explanation=('Все мероприятия с календарной датой внутри периода; это не число проведённых событий.'
+                if model is Event else 'Новые записи, созданные в выбранном периоде. Статусы и перечень доступны в отчёте.')))
     first = select(AuditLog.entity_id.label('user_id'), func.min(AuditLog.created_at).label('at')).where(
         AuditLog.action == 'user.approved', AuditLog.entity_type == 'user').group_by(AuditLog.entity_id).subquery()
     day_expr = (cast(func.timezone(settings.timezone, first.c.at), Date) if session.bind.dialect.name == 'postgresql'

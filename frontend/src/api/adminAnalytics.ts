@@ -172,6 +172,7 @@ export interface TelegramAnalyticsSource {
   connection_status: string; started_at: string | null; coverage_since: string | null;
   checked_at: string | null; last_event_at: string | null; total_observed: number;
   explanation: string; history_note: string;
+  rolling_counts: { days: number; observed: number; complete: boolean }[];
   daily: { date: string; value: number | null; observed: number }[];
 }
 export interface AnalyticsV2Metric {
