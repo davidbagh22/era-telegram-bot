@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from html import escape
 from io import BytesIO
 
@@ -86,15 +87,21 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
         story.extend([Spacer(1, 4*mm), p('Канал и общий чат', 'heading')])
         labels = {'valid': 'Период покрыт наблюдениями', 'insufficient': 'Неполная история',
                   'unavailable': 'Источник не подтверждён', 'stale': 'Проверка устарела'}
+        def source_date(value):
+            if not value:
+                return 'не подтверждено'
+            parsed = datetime.fromisoformat(value)
+            return parsed.astimezone(ZoneInfo(telegram.get('timezone', 'Asia/Yerevan'))).strftime('%d.%m.%Y %H:%M')
         for source in telegram['sources']:
+            source_start = len(story)
             story.append(p(source['label'], 'eyebrow'))
             value = source['value']
-            story.append(p(value if value is not None else f"{source['observed_value']} учтено · неполные данные", 'value'))
+            story.append(p(value if value is not None else f"{source['observed_value']} учтено" if source['observed_value'] else "Нет данных", 'value'))
             story.append(p(labels.get(source['data_state'], 'Нет данных'), 'small'))
             if source['delta'] is not None:
                 story.append(p(f"Изменение: {source['delta']:+g}; предыдущий равный период: {source['previous_value']}"))
             story.append(p(source['explanation'], 'small'))
-            story.append(p(f"Начало сбора: {source['started_at'] or 'не подключён'}. Непрерывное покрытие: {source['coverage_since'] or 'не подтверждено'}", 'small'))
+            story.append(p(f"Начало сбора: {source_date(source['started_at'])}. Непрерывное покрытие: {source_date(source['coverage_since'])}", 'small'))
             days = source['daily']
             if days:
                 maximum = max(1, *(day['value'] if day['value'] is not None else day['observed'] for day in days))
@@ -111,6 +118,8 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
                 chart.add(String(458, 6, days[-1]['date'], textAnchor='end', fontName='ERAUnicode', fontSize=7, fillColor=muted))
                 story.append(chart)
             story.append(p(source['history_note'], 'small'))
+            # Keep a source title, count, coverage and its chart on the same page.
+            story[source_start:] = [KeepTogether(story[source_start:])]
     story.extend([p('Как читать отчёт', 'heading'), p(
         'События, проекты и результаты отфильтрованы по выбранным датам. '
         'Состав, организации и цели — текущий срез. Эффективность и пульс имеют собственные '

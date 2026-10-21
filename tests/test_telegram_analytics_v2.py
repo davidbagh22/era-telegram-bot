@@ -83,10 +83,11 @@ class TelegramFactsTests(IsolatedAsyncioTestCase):
         await self.source('general')
         for item in [message(1, channel=False, message_thread_id=7), message(2, channel=False, message_thread_id=8),
                      message(3, channel=False, bot=True, sender_chat=Chat(id=-1002, type='supergroup')),
+                     message(7, channel=False, bot=True, sender_chat=Chat(id=-1009, type='channel')),
                      message(4, channel=False, bot=True), message(5, channel=False, is_automatic_forward=True),
                      message(6, channel=False, text=None, new_chat_title='Service')]:
             await observe_message(self.session, item, kind='general', observed_at=NOW)
-        self.assertEqual((await self.snapshot())['sources'][1]['value'], 3)
+        self.assertEqual((await self.snapshot())['sources'][1]['value'], 4)
 
     async def test_partial_coverage_is_not_zero_or_comparable(self):
         await self.source(coverage=NOW-timedelta(hours=1))
@@ -181,6 +182,9 @@ class TelegramFactsTests(IsolatedAsyncioTestCase):
         from app.services.organization_health_extended_service import build_extended_organization_health
         snapshot = await build_extended_organization_health(self.session)
         self.assertEqual(len(snapshot.metrics), 59)
+        active = next(metric for metric in snapshot.metrics if metric.key == 'active_30d')
+        self.assertNotIn('0.0%', active.display)
+        self.assertIsNone(active.score)
         for metric in snapshot.metrics:
             if metric.unit != 'count' and not metric.denominator:
                 self.assertIsNone(metric.value, metric.key)

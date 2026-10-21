@@ -59,7 +59,7 @@ async def observe_message(session, message, *, kind, observed_at=None):
         return False
     if kind != 'channel':
         sender = message.from_user
-        anonymous_admin = bool(message.sender_chat and message.sender_chat.id == message.chat.id)
+        anonymous_admin = bool(message.sender_chat)
         if message.is_automatic_forward or (not anonymous_admin and (sender is None or sender.is_bot)):
             return False
     now = observed_at or datetime.now(timezone.utc)
@@ -164,7 +164,7 @@ async def telegram_snapshot(session, settings, *, start, end, now=None):
     previous_start = start - duration
     effective_end = min(utc(end), utc(now))
     previous_end = effective_end - duration
-    result = {'start': start.date().isoformat(), 'end': (end.date() - timedelta(days=1)).isoformat(),
+    result = {'timezone': settings.timezone, 'start': start.date().isoformat(), 'end': (end.date() - timedelta(days=1)).isoformat(),
               'updated_at': now.isoformat(), 'sources': []}
     for kind, title in [('channel', 'Публикации канала'), ('general', 'Сообщения общего чата')]:
         chat_id = source_targets(settings).get(kind)
