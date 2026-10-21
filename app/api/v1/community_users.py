@@ -27,6 +27,8 @@ async def read_community_user(
     _viewer: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> CommunityUserOut:
+    if _viewer.application_status != ApplicationStatus.APPROVED:
+        raise HTTPException(status_code=403, detail="approved_membership_required")
     user = await session.get(User, user_id)
     if (
         user is None
