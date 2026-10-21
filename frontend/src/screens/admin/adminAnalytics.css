@@ -1,0 +1,21 @@
+.era-analytics { --analytics-accent: var(--era-red); }
+.era-analytics-report {
+  padding: 1.25rem; border: 1px solid var(--era-border); border-radius: var(--era-radius-card);
+  background: radial-gradient(ellipse at top right, rgba(99,44,255,.12), transparent 65%), var(--era-surface);
+  box-shadow: var(--era-shadow-soft); display: grid; gap: .65rem;
+}
+.era-analytics-eyebrow { font-size: .65rem; font-weight: 800; letter-spacing: .12em; color: var(--era-text-muted); }
+.era-analytics-report h3 { margin: 0; font-size: clamp(1.35rem, 5vw, 1.85rem); line-height: 1.15; font-family: var(--era-font-display); }
+.era-analytics-report p { margin: 0; font-size: .8rem; line-height: 1.5; color: var(--era-text-muted); }
+.era-analytics-report label { font-size: .75rem; font-weight: 700; display: grid; gap: .35rem; min-width: 0; }
+.era-analytics-report select, .era-analytics-report input { width: 100%; min-width: 0; box-sizing: border-box; min-height: 44px; padding: .6rem; border-radius: 10px; border: 1px solid var(--era-border); color: var(--era-text); background: var(--era-surface); font: inherit; }
+.era-analytics-dates { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .5rem; }
+.era-analytics-export-actions { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .5rem; }
+.era-analytics-export-actions button { min-height: 48px; white-space: normal; }
+.era-analytics-report small { font-size: .65rem; line-height: 1.45; color: var(--era-text-muted); }
+.era-analytics button:focus-visible, .era-analytics select:focus-visible, .era-analytics input:focus-visible { outline: 2px solid var(--era-blue); outline-offset: 3px; }
+@media (max-width: 359px) { .era-analytics-export-actions, .era-analytics-dates { grid-template-columns: 1fr; } }
+.era-analytics-jump { display: flex; gap: .4rem; flex-wrap: wrap; }
+.era-analytics-jump a { text-decoration: none; color: var(--era-text); font-size: .73rem; font-weight: 700; padding: .65rem .75rem; background: var(--era-surface); border: 1px solid var(--era-border); border-radius: 999px; }
+.era-analytics [id] { scroll-margin-top: 5rem; }
+.era-analytics-expand { margin: .25rem 0 .65rem; font-size: .75rem; }

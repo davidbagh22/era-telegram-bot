@@ -56,6 +56,26 @@ test("analytics expands from overview instead of a separate control hub", async 
   await expect(page.getByRole("button", { name: /Вовлечённость.*показателей/ })).toBeVisible();
 });
 
+test("analytics exports selected custom period as a complete PDF", async ({ page }) => {
+  await enterAdminWorkspace(page);
+  await page.getByRole("button", { name: /Аналитика/ }).click();
+  await page.getByLabel("Период отчёта").selectOption("custom");
+  const downloadButton = page.getByRole("button", { name: "↓ Скачать красивый PDF" });
+  await expect(downloadButton).toBeDisabled();
+  await page.getByLabel("Начало периода").fill("2026-01-01");
+  await page.getByLabel("Конец периода").fill("2026-10-21");
+  const responsePromise = page.waitForResponse((response) =>
+    response.url().includes("executive-report.pdf"));
+  await downloadButton.click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toContain("application/pdf");
+  expect(response.url()).toContain("start_date=2026-01-01");
+  expect(response.url()).toContain("end_date=2026-10-21");
+  expect((await response.body()).subarray(0, 5).toString()).toBe("%PDF-");
+  await expect(downloadButton).toBeEnabled();
+});
+
 test("overview KPI opens exact underlying rows", async ({ page }) => {
   await enterAdminWorkspace(page);
 
