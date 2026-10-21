@@ -41,22 +41,31 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
     async def complete_quick_form(self, *, user=None, photo=None):
         with patch.object(registration, 'is_channel_member', AsyncMock(return_value=True)):
             await registration.registration_start(self.call, self.state, self.bot, self.settings, user)
-        assert await self.state.get_state() == RegistrationStates.mode.state
-        self.call.data = 'reg:mode:quick'
-        await registration.registration_mode(self.call, self.state, self.settings, user)
+        assert await self.state.get_state() == RegistrationStates.full_name.state
         await registration.registration_full_name(self.message('Анна Тестова'), self.state)
         await registration.registration_age(self.message('17'), self.state)
         await registration.registration_country(self.message('Армения'), self.state)
         await registration.registration_region(self.message('Ереван'), self.state)
         await registration.registration_email(self.message('applicant@example.test'), self.state)
-        assert await self.state.get_state() == RegistrationStates.review.state
-        if photo:
-            await registration.registration_photo_start(self.call, self.state)
-            message = self.message(None)
-            message.photo = [SimpleNamespace(file_id='small'), SimpleNamespace(file_id=photo)]
-            message.answer_photo = AsyncMock()
-            await registration.registration_photo(message, self.state)
-            message.answer_photo.assert_awaited_once_with(photo, caption='Фото для анкеты', reply_markup=None)
+        await registration.registration_education(self.message('Университет'), self.state)
+        await registration.registration_occupation(self.message('Студент'), self.state)
+        await registration.registration_skills(self.message('Дизайн, тексты'), self.state)
+        await self.state.update_data(selected_directions=['participate'])
+        self.call.data = 'reg:dir:done'
+        await registration.registration_directions(self.call, self.state)
+        await registration.registration_experience(self.message('Помогал команде проекта'), self.state)
+        self.call.data = 'reg:time:1-2'
+        await registration.registration_available_time(self.call, self.state)
+        self.call.data = 'reg:path:0'
+        await registration.registration_desired_path(self.call, self.state)
+        await registration.registration_motivation(self.message('Хочу создавать события'), self.state)
+        await registration.registration_social_skip(self.call, self.state)
+        assert await self.state.get_state() == RegistrationStates.profile_photo.state
+        message = self.message(None)
+        message.photo = [SimpleNamespace(file_id='small'), SimpleNamespace(file_id=photo or 'fixture-photo')]
+        message.answer_photo = AsyncMock()
+        await registration.registration_photo(message, self.state)
+        message.answer_photo.assert_awaited_once_with(photo or 'fixture-photo', caption='Фото для анкеты', reply_markup=None)
         await registration.registration_review_ok(self.call, self.state)
 
     async def test_uploaded_photo_survives_submit_and_is_available_to_admin_card(self):
@@ -77,8 +86,10 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
         message.answer_photo = AsyncMock()
         await registration.registration_motivation(message, self.state)
         assert (await self.state.get_data())['profile_photo_file_id'] == 'already-uploaded'
-        assert await self.state.get_state() == RegistrationStates.review.state
-        message.answer_photo.assert_awaited_once()
+        assert await self.state.get_state() == RegistrationStates.social_url.state
+        self.call.message.answer_photo = AsyncMock()
+        await registration.registration_social_skip(self.call, self.state)
+        self.call.message.answer_photo.assert_awaited_once()
 
     async def test_full_form_and_resume_render_headings_and_escape_answers(self):
         # No global Bot parse mode: each formatted prompt must carry its own.
@@ -92,6 +103,8 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
             (registration.registration_region, 'Ереван'),
             (registration.registration_email, 'applicant@example.test'),
             (registration.registration_education, 'Университет'),
+            (registration.registration_occupation, 'Студент'),
+            (registration.registration_skills, 'Дизайн, SMM'),
         ]:
             message = self.message(value)
             messages.append(message)
@@ -105,15 +118,20 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
         await registration.registration_experience(message, self.state)
         self.call.data = 'reg:time:1-2'
         await registration.registration_available_time(self.call, self.state)
+        self.call.data = 'reg:path:0'
+        await registration.registration_desired_path(self.call, self.state)
+        await self.state.update_data(profile_photo_file_id='fixture-photo')
+        self.call.message.answer_photo = AsyncMock()
         message = self.message('Новые друзья <и> опыт')
         messages.append(message)
         await registration.registration_motivation(message, self.state)
+        await registration.registration_social_skip(self.call, self.state)
         assert await self.state.get_state() == RegistrationStates.review.state
         for message in messages:
             for sent in message.answer.await_args_list:
                 if '<b>' in sent.args[0]:
                     assert sent.kwargs.get('parse_mode') == 'HTML'
-        review = message.answer.await_args.args[0]
+        review = self.call.message.answer.await_args.args[0]
         assert 'Анна &amp; Тестова' in review
         assert 'Новые друзья &lt;и&gt; опыт' in review
 
@@ -128,10 +146,6 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
                 referrals, 'is_channel_member', AsyncMock(return_value=True)):
                 await referrals.registration_start_with_referral(self.call, self.state, AsyncMock(),
                     self.bot, self.settings, None)
-            if rollout == 'ALL':
-                assert await self.state.get_state() == RegistrationStates.mode.state
-                self.call.data = 'reg:mode:full'
-                await registration.registration_mode(self.call, self.state, self.settings)
             assert await self.state.get_state() == RegistrationStates.full_name.state
             assert self.call.message.answer.await_args.kwargs['parse_mode'] == 'HTML'
             assert (await self.state.get_data())['referral_code'] == '123456'
@@ -158,6 +172,51 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
             assert user.first_name == 'Анна' and user.email == 'applicant@example.test'
             assert user.personal_data_consent
             assert await session.scalar(select(func.count()).select_from(ConsentLog)) == 1
+
+    async def test_old_quick_consent_cannot_submit_incomplete_form_or_erase_invite(self):
+        await self.state.update_data(first_name='Анна', last_name='Тестова', age=24, email='fixture@example.test',
+            referral_code='123456', consent_policy_version=CURRENT_POLICY_VERSION, registration_mode='quick')
+        with patch.object(registration, 'create_user_from_registration', AsyncMock()) as create:
+            async with self.sessions() as session:
+                await registration.finish_registration(self.call, self.state, session, self.bot, self.settings)
+            create.assert_not_awaited()
+        assert await self.state.get_state() == RegistrationStates.education_work.state
+        assert (await self.state.get_data())['referral_code'] == '123456'
+        assert (await self.state.get_data())['email'] == 'fixture@example.test'
+
+    async def test_photo_is_required_before_consent_even_from_an_old_review_button(self):
+        await self.complete_quick_form()
+        data=await self.state.get_data()
+        data.pop('profile_photo_file_id')
+        await self.state.set_data(data)
+        await self.state.set_state(RegistrationStates.review)
+        await registration.registration_review_ok(self.call,self.state)
+        assert await self.state.get_state() == RegistrationStates.profile_photo.state
+        assert (await self.state.get_data())['first_name'] == 'Анна'
+
+    async def test_social_skip_preserves_existing_optional_contacts(self):
+        await self.state.update_data(social_url='https://example.test/portfolio',phone='+37400000000',profile_photo_file_id='photo')
+        self.call.message.answer_photo=AsyncMock()
+        await registration.registration_motivation(self.message('Хочу помогать'),self.state)
+        await registration.registration_social_skip(self.call,self.state)
+        data=await self.state.get_data()
+        assert data['social_url']=='https://example.test/portfolio'
+        assert data['phone']=='+37400000000'
+        assert data['profile_photo_file_id']=='photo'
+
+    def test_long_unicode_review_keeps_all_answers_below_telegram_limit(self):
+        import html
+        from app.handlers.registration import _registration_review_text, _review_chunks
+        data={'first_name':'Fixture','last_name':'Applicant','education_work':'&'*255,'occupation':'🧩'*255,
+              'skills':['🧩'*100]*10,'experience':'🧩'*1200,'motivation':'<'*1200}
+        text=_registration_review_text(data)
+        chunks=_review_chunks(text)
+        assert len(chunks)>1
+        assert ''.join(chunk.replace('\n','') for chunk in chunks)==text.replace('\n','')
+        for chunk in chunks:
+            plain=html.unescape(chunk.replace('<b>','').replace('</b>',''))
+            assert len(plain.encode('utf-16-le'))//2<=4096
+            assert chunk.count('<b>')==chunk.count('</b>')
 
     async def test_no_consent_creates_no_profile(self):
         await self.complete_quick_form()

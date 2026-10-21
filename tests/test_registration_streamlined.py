@@ -20,9 +20,11 @@ def test_user_profile_has_country_and_region_columns() -> None:
     assert "region" in User.__table__.columns
 
 
-def test_registration_no_longer_requires_photo_or_social_link() -> None:
+def test_complete_registration_requires_photo_and_keeps_social_link_optional() -> None:
     source = Path("app/handlers/registration.py").read_text(encoding="utf-8")
-    assert "Для регистрации нужны фото профиля и ссылка на соцсеть" not in source
+    assert "async def _ensure_complete" in source
+    assert "('profile_photo_file_id', RegistrationStates.profile_photo" in source
+    assert "reg:social:skip" in source
     assert 'if data.get("social_url"):' in source
 
 

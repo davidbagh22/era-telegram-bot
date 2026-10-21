@@ -107,7 +107,7 @@ async def create_user_from_registration(
         region=data.get("region"),
         city=data.get("city") or data.get("region"),
         education_work=data.get("education_work"),
-        occupation=data.get("occupation") or data.get("education_work"),
+        occupation=data.get("occupation"),
         skills=data.get("skills", []),
         experience=data.get("experience"),
         motivation=data.get("motivation"),
@@ -163,7 +163,7 @@ async def resubmit_user_registration(session: AsyncSession, *, telegram_id: int,
         or target.application_status not in {ApplicationStatus.REJECTED, ApplicationStatus.NEEDS_INFO}):
         return target, False
     fields = ('first_name', 'last_name', 'age', 'country', 'region', 'city', 'email',
-              'education_work', 'occupation', 'experience', 'motivation', 'available_time', 'desired_path')
+              'education_work', 'occupation', 'skills', 'experience', 'motivation', 'available_time', 'desired_path')
     old = {'application_status': target.application_status}
     for key in fields:
         if data.get(key) is not None:
