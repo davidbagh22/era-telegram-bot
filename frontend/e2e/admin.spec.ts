@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 const ADMIN_TELEGRAM_ID = 900003;
 
@@ -54,6 +55,39 @@ test("analytics expands from overview instead of a separate control hub", async 
   await expect(page.getByRole("heading", { name: "Главное" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Все показатели" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Вовлечённость.*показателей/ })).toBeVisible();
+});
+
+test("analytics exports selected custom period as a complete PDF", async ({ page }) => {
+  await enterAdminWorkspace(page);
+  await page.getByRole("button", { name: /Аналитика/ }).click();
+  await page.getByLabel("Период отчёта").selectOption("custom");
+  const downloadButton = page.getByRole("button", { name: "↓ Скачать отчёт PDF" });
+  await expect(downloadButton).toBeDisabled();
+  await page.getByLabel("Начало периода").fill("2026-01-01");
+  await page.getByLabel("Конец периода").fill("2026-10-21");
+  const responsePromise = page.waitForResponse((response) =>
+    response.request().method() === "GET" && response.url().includes("executive-report.pdf"));
+  const downloadPromise = page.waitForEvent("download");
+  await downloadButton.click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toContain("application/pdf");
+  expect(response.url()).toContain("start_date=2026-01-01");
+  expect(response.url()).toContain("end_date=2026-10-21");
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("ERA_analytics_2026-01-01_2026-10-21.pdf");
+  const path = await download.path();
+  expect(path).not.toBeNull();
+  const pdf = await readFile(path!);
+  expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+  expect(pdf.length).toBeGreaterThan(10_000);
+  await expect(downloadButton).toBeEnabled();
+  for (const width of [320, 430, 768]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const heading = await page.getByRole("heading", { name: "ЭРА одним взглядом" }).boundingBox();
+    expect(heading?.width).toBeGreaterThan(200);
+  }
 });
 
 test("overview KPI opens exact underlying rows", async ({ page }) => {

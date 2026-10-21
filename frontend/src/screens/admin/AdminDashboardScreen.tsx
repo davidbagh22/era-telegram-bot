@@ -8,7 +8,9 @@ import {
   fetchOrganizationHealth,
   type AnalyticsDetailSection,
   type HealthMetric,
+  type ExecutiveReportPeriod,
 } from "../../api/adminAnalytics";
+import "./adminAnalytics.css";
 import { fetchAdminAnalyticsSummary, fetchAdminDashboard } from "../../api/client";
 import { fetchMediaAnalytics } from "../../api/media";
 import { Card } from "../../components/Card";
@@ -254,6 +256,52 @@ function MetricRow({ metric }: { metric: HealthMetric }) {
   );
 }
 
+
+function AnalyticsReportPanel() {
+  const [period, setPeriod] = useState<ExecutiveReportPeriod>("30d");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [busy, setBusy] = useState<"pdf" | "xlsx" | null>(null);
+  const toast = useToast();
+  const invalid = period === "custom" && (!start || !end || start > end);
+  const download = async (format: "pdf" | "xlsx") => {
+    if (invalid || busy) return;
+    setBusy(format);
+    try {
+      const blob = await downloadFullAnalyticsReport(period, start, end, format);
+      // Keep the established Excel filename; PDF carries the selected dates.
+      saveBlob(blob, format === "xlsx" ? "ERA_full_report.xlsx" :
+        `ERA_analytics_${period === "custom" ? `${start}_${end}` : period}.pdf`);
+      toast.show("Отчёт готов к сохранению.", "success");
+    } catch {
+      toast.show("Не удалось сформировать отчёт. Попробуйте ещё раз.", "error");
+    } finally { setBusy(null); }
+  };
+  return (
+    <section className="era-analytics-report" aria-label="Экспорт аналитики">
+      <span className="era-analytics-eyebrow">ЭРА · ОТЧЁТ РУКОВОДИТЕЛЯ</span>
+      <h3>Вся картина. В одном PDF.</h3>
+      <p>Сводка, приоритеты и подробности по всем разделам — в документе, который удобно читать и отправлять.</p>
+      <label htmlFor="analytics-report-period">Период отчёта</label>
+      <select id="analytics-report-period" value={period} disabled={busy !== null} onChange={(event) => setPeriod(event.target.value as ExecutiveReportPeriod)}>
+        <option value="30d">Последние 30 дней</option><option value="3m">Последние 90 дней</option>
+        <option value="6m">Последние 180 дней</option><option value="1y">Последние 365 дней</option>
+        <option value="custom">Свои даты</option>
+      </select>
+      {period === "custom" && <div className="era-analytics-dates">
+        <label>С даты<input aria-label="Начало периода" type="date" value={start} max={end || undefined} disabled={busy !== null} onChange={(e) => setStart(e.target.value)} /></label>
+        <label>По дату<input aria-label="Конец периода" type="date" value={end} min={start || undefined} disabled={busy !== null} onChange={(e) => setEnd(e.target.value)} /></label>
+      </div>}
+      {invalid && <p role="status">Укажите начало и конец периода по порядку.</p>}
+      <div className="era-analytics-export-actions">
+        <button className="era-btn-primary" disabled={invalid || busy !== null} onClick={() => void download("pdf")}>{busy === "pdf" ? "Готовим PDF…" : "↓ Скачать отчёт PDF"}</button>
+        <button disabled={invalid || busy !== null} onClick={() => void download("xlsx")}>{busy === "xlsx" ? "Готовим Excel…" : "Excel"}</button>
+      </div>
+      <small>Даты применяются к отчёту. На экране — текущий состав и показатели со своими периодами, указанными в пояснениях.</small>
+    </section>
+  );
+}
+
 function DetailView({ section, onBack }: { section: AnalyticsDetailSection; onBack: () => void }) {
   const state = useAsync(() => fetchAdminAnalyticsDetails(section), [section]);
   const meta = SECTION_META[section];
@@ -271,16 +319,6 @@ function DetailView({ section, onBack }: { section: AnalyticsDetailSection; onBa
     }
   };
 
-  const downloadFull = async () => {
-    setDownloading(true);
-    try {
-      saveBlob(await downloadFullAnalyticsReport(), "ERA_full_report.xlsx");
-    } catch {
-      toast.show("Не удалось собрать полный отчёт.", "error");
-    } finally {
-      setDownloading(false);
-    }
-  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
@@ -292,7 +330,7 @@ function DetailView({ section, onBack }: { section: AnalyticsDetailSection; onBa
       </Card>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
         <button type="button" disabled={downloading} onClick={() => void downloadTable()}>↓ XLSX</button>
-        <button type="button" className="era-btn-primary" disabled={downloading} onClick={() => void downloadFull()}>↓ Полный XLSX</button>
+        <button type="button" onClick={onBack}>Обзор и PDF →</button>
       </div>
       {state.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>}
       {state.status === "error" && <EmptyState text="Не удалось загрузить записи." />}
@@ -332,7 +370,7 @@ export function AdminDashboardScreen() {
   const health = useAsync(() => fetchOrganizationHealth(), []);
   const mediaAnalytics = useAsync(() => fetchMediaAnalytics(), []);
   const [selectedSection, setSelectedSection] = useState<AnalyticsDetailSection | null>(null);
-  const [downloadingSection, setDownloadingSection] = useState<AnalyticsDetailSection | "all" | "health" | null>(null);
+  const [downloadingSection, setDownloadingSection] = useState<AnalyticsDetailSection | "health" | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(() => new Set());
   const toast = useToast();
 
@@ -353,17 +391,6 @@ export function AdminDashboardScreen() {
       saveBlob(await downloadOrganizationHealthReport(), "ERA_organization_health.xlsx");
     } catch {
       toast.show("Не удалось собрать здоровье организации.", "error");
-    } finally {
-      setDownloadingSection(null);
-    }
-  }, [toast]);
-
-  const handleFullReport = useCallback(async () => {
-    setDownloadingSection("all");
-    try {
-      saveBlob(await downloadFullAnalyticsReport(), "ERA_full_report.xlsx");
-    } catch {
-      toast.show("Не удалось собрать полный отчёт.", "error");
     } finally {
       setDownloadingSection(null);
     }
@@ -409,14 +436,20 @@ export function AdminDashboardScreen() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+    <div className="era-analytics" style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+      <AnalyticsReportPanel />
+      <nav className="era-analytics-jump" aria-label="Разделы аналитики">
+        <a href="#analytics-main">Главное</a><a href="#analytics-risks">Внимание</a>
+        <a href="#analytics-metrics">Показатели</a><a href="#analytics-actions">Рекомендации</a>
+        <a href="#analytics-records">Записи</a>
+      </nav>
       <Card style={{ padding: "0.95rem", background: "radial-gradient(circle at 95% 0%, rgba(99,44,255,.14), transparent 44%), var(--era-surface)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "0.7rem" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "0.5rem" }}>
           <div>
             <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Админ · сейчас</p>
             <h2 style={{ margin: "0.15rem 0 0", fontSize: "var(--era-text-2xl)" }}>ЭРА одним взглядом</h2>
           </div>
-          <StatusBadge label={health.data.period_label} tone="violet" />
+          <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.68rem", lineHeight: 1.45 }}>{health.data.period_label}</p>
         </div>
         <div style={{ display: "grid", gap: "0.7rem", marginTop: "0.8rem" }}>
           <HeroScore score={efficiency.data.score} label="Эффективность" sublabel={efficiency.data.label} />
@@ -432,20 +465,21 @@ export function AdminDashboardScreen() {
         </p>
       </Card>
 
-      <section>
+      <section id="analytics-main">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: "0.75rem", marginBottom: "0.45rem" }}>
           <div>
             <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>8 ключевых</p>
             <h3 style={{ margin: "0.1rem 0 0" }}>Главное</h3>
           </div>
-          <span style={{ color: "var(--era-text-muted)", fontSize: "0.68rem" }}>без лишнего</span>
+          <span style={{ color: "var(--era-text-muted)", fontSize: "0.68rem" }}>Текущий срез</span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "0.45rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: "0.6rem" }}>
           {executiveMetrics.map((metric) => <ExecutiveMetric key={metric.key} metric={metric} />)}
         </div>
       </section>
 
-      {health.data.risks.length > 0 && (
+      <section id="analytics-risks" aria-label="Зоны внимания">
+      {health.data.risks.length > 0 ? (
         <Card style={{ padding: "0.8rem 0.85rem", borderLeft: "3px solid var(--era-red)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.7rem" }}>
             <strong>Требует внимания</strong>
@@ -460,7 +494,9 @@ export function AdminDashboardScreen() {
             ))}
           </div>
         </Card>
-      )}
+      ) : <Card><strong>Зоны внимания</strong><p>По доступным показателям отдельных сигналов нет.</p></Card>}
+
+      </section>
 
       {!health.data.pulse_suppressed && health.data.vector_dimensions.length > 0 && (
         <section>
@@ -487,11 +523,14 @@ export function AdminDashboardScreen() {
       <section>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: "0.75rem", marginBottom: "0.45rem" }}>
           <div>
-            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Ничего не удалено</p>
-            <h3 style={{ margin: "0.1rem 0 0" }}>Все показатели</h3>
+            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Подробный обзор</p>
+            <h3 id="analytics-metrics" style={{ margin: "0.1rem 0 0" }}>Все показатели</h3>
           </div>
           <StatusBadge label={`${health.data.metrics.length}`} tone="gold" />
         </div>
+        <button type="button" className="era-analytics-expand" onClick={() => setExpandedCategories(
+          expandedCategories.size === groupedMetrics.length ? new Set() : new Set(groupedMetrics.map((group) => group.category))
+        )}>{expandedCategories.size === groupedMetrics.length ? "Свернуть показатели" : "Развернуть все показатели"}</button>
         <p style={{ margin: "0 0 0.45rem", color: "var(--era-text-muted)", fontSize: "0.68rem", lineHeight: 1.35 }}>
           Категории свёрнуты. Нажмите на нужную — внутри все показатели и пояснения.
         </p>
@@ -557,7 +596,7 @@ export function AdminDashboardScreen() {
 
       <section>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: "0.75rem", marginBottom: "0.45rem" }}>
-          <div><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Эта неделя</p><h3 style={{ margin: "0.1rem 0 0" }}>Что делать дальше</h3></div>
+          <div><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Рекомендации</p><h3 id="analytics-actions" style={{ margin: "0.1rem 0 0" }}>Что делать дальше</h3></div>
           <StatusBadge label={`${efficiency.data.recommendations.length}`} tone="violet" />
         </div>
         <div style={{ display: "grid", gap: "0.45rem" }}>
@@ -576,7 +615,7 @@ export function AdminDashboardScreen() {
 
       {analytics.status === "ready" && (
         <section>
-          <div style={{ marginBottom: "0.45rem" }}><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Данные по объектам</p><h3 style={{ margin: "0.1rem 0 0" }}>Открыть или выгрузить</h3></div>
+          <div style={{ marginBottom: "0.45rem" }}><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Данные по объектам</p><h3 id="analytics-records" style={{ margin: "0.1rem 0 0" }}>Открыть или выгрузить</h3></div>
           <div style={{ display: "grid", gap: "0.45rem" }}>
             {(Object.keys(SECTION_META) as AnalyticsDetailSection[]).map((section) => {
               const meta = SECTION_META[section];
@@ -587,7 +626,7 @@ export function AdminDashboardScreen() {
                       <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1.25rem" }}>{analytics.data[meta.value]}</strong>
                       <span style={{ marginLeft: "0.45rem", fontWeight: 800, fontSize: "0.78rem" }}>{meta.label}</span>
                     </button>
-                    <button type="button" disabled={downloadingSection !== null} onClick={() => void handleSectionDownload(section)} style={{ padding: "0.45rem 0.6rem", minHeight: "2.2rem" }}>{downloadingSection === section ? "…" : "↓"}</button>
+                    <button type="button" aria-label={`Скачать Excel: ${meta.label}`} disabled={downloadingSection !== null} onClick={() => void handleSectionDownload(section)} style={{ padding: "0.45rem 0.6rem", minHeight: "2.2rem" }}>{downloadingSection === section ? "…" : "↓"}</button>
                   </div>
                 </Card>
               );
@@ -598,7 +637,7 @@ export function AdminDashboardScreen() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.45rem" }}>
         <button type="button" className="era-btn-primary" disabled={downloadingSection !== null} onClick={() => void handleHealthReport()} style={{ minHeight: "2.8rem", fontSize: "0.72rem" }}>{downloadingSection === "health" ? "…" : "↓ Здоровье"}</button>
-        <button type="button" disabled={downloadingSection !== null} onClick={() => void handleFullReport()} style={{ minHeight: "2.8rem", fontSize: "0.72rem" }}>{downloadingSection === "all" ? "…" : "↓ Весь отчёт"}</button>
+        <span style={{ fontSize: "0.72rem", color: "var(--era-text-muted)", alignSelf: "center" }}>Полный PDF и Excel — в начале раздела</span>
       </div>
 
       {dashboard.status === "ready" && (

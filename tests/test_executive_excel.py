@@ -47,7 +47,7 @@ class ExecutiveWorkbookTests(unittest.IsolatedAsyncioTestCase):
             users=[],
             events=[],
             projects=[],
-            department_stats=[],
+            department_stats=[SimpleNamespace(name="=Название отдела", members=1, active_goals=0, done_goals=0)],
             direction_stats=[],
         )
         health = SimpleNamespace(
@@ -92,6 +92,9 @@ class ExecutiveWorkbookTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("aggregate only", rendered)
         self.assertIn("meaningful activity", rendered)
         self.assertEqual(len(wb.sheetnames), 13)
+        self.assertEqual(wb[SHEET_NAMES[3]]["A2"].value, "=Название отдела")
+        literal_wb = load_workbook(BytesIO(content), data_only=False)
+        self.assertEqual(literal_wb[SHEET_NAMES[3]]["A2"].data_type, "s")
 
 
 if __name__ == "__main__":

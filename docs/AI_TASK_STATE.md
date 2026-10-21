@@ -1,3 +1,13 @@
+## 2026-10-21 · Admin analytics / PDF release candidate
+
+- Admin analytics: prominent PDF export, 30/90/180/365-day and custom report dates, accessible navigation, expand-all metrics, explicit empty risks and Excel fallback.
+- PDF uses the existing executive workbook facts and all 13 sections, plus current organization/goal lists and separately permission-checked media aggregates; adds health metrics, priorities, cohort-safe vector bars, period caveats, page numbers and Unicode font. No separate business formulas or raw vector answers.
+- Endpoint shares the existing dashboard-access dependency, validates format/dates, uses Yerevan report day and private/no-store responses; PDF layout runs outside the event loop.
+- Local: frontend build/typecheck passed; executive PDF/Excel + privacy tests passed (12 tests, 5 subtests). PDF pages rendered and visually checked. Browser PDF export E2E added for CI.
+- UI follow-up: long period labels no longer squeeze the heading; added admin export/heading overflow checks at 320/430/768 px.
+- Review follow-up: preserve formula-looking titles as literal text in Excel/PDF (regression tests); short appendix sections flow continuously. Isolated seeded integration generated all 13 sections; no production writes.
+- Pending: full CI/review, merge, automatic deployment, authenticated production download and release observation. These changes are not production evidence.
+
 # Актуальный checkpoint защиты данных — 21.10.2026
 
 Следующий этап по запросу владельца: `docs/RELEASE_ACCEPTANCE_TZ_2026_10_21.md` — критерии завершения вместо субъективной оценки7/10. Ветка `fix/telegram-miniapp-readiness-20261021` поверх #363 меняет framing Mini App на CSP с точным origin Telegram Web и возвращает430/768px в обязательный E2E. Адресные тесты заголовков/доступа/сессий:21passed,5subtests. До полногоCI/merge/auto deploy/реального открытия это не production. Юридический проект #364 отдельно остаётся draft; реквизиты организации и аудиторияРА получены от владельца, секреты и личные идентификаторы в проект не включены. Автоматическую смену раскрытых паролей и юридическую приёмку не заявлять.

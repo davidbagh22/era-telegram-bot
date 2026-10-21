@@ -151,11 +151,12 @@ export function downloadFullAnalyticsReport(
   period: ExecutiveReportPeriod = "30d",
   startDate?: string,
   endDate?: string,
+  format: "xlsx" | "pdf" = "xlsx",
 ): Promise<Blob> {
   const params = new URLSearchParams({ period });
   if (period === "custom" && startDate && endDate) {
     params.set("start_date", startDate);
     params.set("end_date", endDate);
   }
-  return adminBlob(`/api/v1/admin/analytics/executive-report.xlsx?${params.toString()}`);
+  return adminBlob(`/api/v1/admin/analytics/executive-report.${format}?${params.toString()}`);
 }
