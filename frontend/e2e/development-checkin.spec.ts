@@ -27,11 +27,28 @@ async function currentSurface(page: Page): Promise<"question" | "context" | "res
   return "question";
 }
 
+async function answerAndWaitForAdvance(page: Page) {
+  const counter = page.getByText(/\d+ из \d+ · ещё около/);
+  const before = await counter.textContent();
+  const saved = page.waitForResponse((response) =>
+    response.request().method() === "PATCH" &&
+    response.url().includes("/api/v1/development/checkin/current/answers"));
+  await page.getByRole("button", { name: "Скорее да", exact: true }).click();
+  expect((await saved).status()).toBe(200);
+  // A response alone does not mean React has advanced. In particular the last
+  // answer removes the answer buttons, so never queue another click on them.
+  await expect.poll(async () => {
+    if (await page.getByRole("heading", { name: "Контекст месяца" }).isVisible()) return true;
+    if (await page.getByText("ТВОЙ ФОКУС МЕСЯЦА").isVisible()) return true;
+    return (await counter.textContent({ timeout: 500 }).catch(() => before)) !== before;
+  }).toBe(true);
+}
+
 async function finishRemainingQuestions(page: Page): Promise<"context" | "result"> {
   for (let index = 0; index < 16; index += 1) {
     const surface = await currentSurface(page);
     if (surface === "context" || surface === "result") return surface;
-    await page.getByRole("button", { name: "Скорее да", exact: true }).click();
+    await answerAndWaitForAdvance(page);
   }
   throw new Error("Check-in did not reach context/result within the expected question limit");
 }
@@ -49,7 +66,7 @@ test("monthly check-in resumes from server answers and produces one focus", asyn
     for (let index = 0; index < 2; index += 1) {
       const surface = await currentSurface(page);
       if (surface !== "question") break;
-      await page.getByRole("button", { name: "Скорее да", exact: true }).click();
+      await answerAndWaitForAdvance(page);
     }
 
     const surfaceBeforeLeave = await currentSurface(page);
