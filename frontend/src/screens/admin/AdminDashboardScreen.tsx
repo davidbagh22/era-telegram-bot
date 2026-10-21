@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { downloadAnalyticsSectionTable, downloadFullAnalyticsReport, fetchAdminAnalyticsDetails,
   fetchEraEfficiency, fetchOrganizationHealth, fetchAnalyticsV2, checkAnalyticsSources, fetchAnalyticsReports,
-  type AnalyticsDetailSection, type HealthMetric, type TelegramAnalyticsSource } from "../../api/adminAnalytics";
+  type AnalyticsDetailSection, type HealthMetric, type TelegramAnalyticsSource, type AnalyticsV2Snapshot } from "../../api/adminAnalytics";
 import { fetchAdminAnalyticsSummary } from "../../api/client";
 import { fetchMediaAnalytics } from "../../api/media";
 import { Card } from "../../components/Card";
@@ -214,7 +214,14 @@ export function AdminDashboardScreen({ onAction }: { onAction?: (action: Analyti
   const analytics = useAsync(() => fetchAdminAnalyticsSummary(), []);
   const media = useAsync(() => fetchMediaAnalytics(), []);
   const reports = useAsync(() => fetchAnalyticsReports(), [refresh]);
-  const data = snapshot.status === "ready" ? snapshot.data : null;
+  const requestKey = `${period}/${start}/${end}`;
+  const previousSnapshot = useRef<{ key: string; data: AnalyticsV2Snapshot | null } | null>(null);
+  useEffect(() => {
+    if (snapshot.status === 'ready') previousSnapshot.current = { key: requestKey, data: snapshot.data };
+    // Do not re-label a previous period's ready snapshot when only the filter changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot]);
+  const data = snapshot.status === "ready" ? snapshot.data : snapshot.status === 'loading' && previousSnapshot.current?.key === requestKey ? previousSnapshot.current.data : null;
   const metricGroups = new Map<string, HealthMetric[]>();
   if (health.status === "ready") for (const metric of health.data.metrics) {
     const values = metricGroups.get(metric.category) ?? []; values.push(metric); metricGroups.set(metric.category, values);
