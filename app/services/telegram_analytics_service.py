@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Date, String, cast, func, literal, select
+from sqlalchemy import Date, String, cast, func, literal, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
@@ -19,6 +19,13 @@ _checked_in_process = set()
 
 def mark_coverage_gap(chat_id):
     _coverage_gaps[chat_id] = _coverage_gaps.get(chat_id, 0) + 1
+
+
+async def persist_coverage_gap(session, chat_id):
+    """Durable invalidation, visible to report requests in every worker."""
+    mark_coverage_gap(chat_id)
+    await session.execute(update(TelegramAnalyticsSource).where(TelegramAnalyticsSource.chat_id == chat_id).values(
+        status='unverified', coverage_since=None, detail='observation_gap'))
 
 
 def utc(value):
@@ -81,6 +88,7 @@ async def refresh_sources(session, bot, settings, *, now=None):
             settings.era_channel_id = chat.id
         except Exception:
             pass
+    acknowledgements = []
     for kind, chat_id in source_targets(settings).items():
         gap_version = _coverage_gaps.get(chat_id)
         first_check = chat_id not in _checked_in_process
@@ -109,15 +117,23 @@ async def refresh_sources(session, bot, settings, *, now=None):
             row.coverage_since = None
         row.status, row.detail, row.checked_at = status, detail, now
         await session.flush()
+        acknowledgements.append((chat_id, gap_version))
+    return acknowledgements
+
+
+def confirm_sources_refresh(acknowledgements):
+    # A flushed probe is not durable until the caller's commit succeeds.
+    for chat_id, version in acknowledgements:
         _checked_in_process.add(chat_id)
-        if _coverage_gaps.get(chat_id) == gap_version:
+        if _coverage_gaps.get(chat_id) == version:
             _coverage_gaps.pop(chat_id, None)
 
 
 async def refresh_sources_job(bot, settings, session_factory):
     async with session_factory() as session:
-        await refresh_sources(session, bot, settings)
+        acknowledgements = await refresh_sources(session, bot, settings)
         await session.commit()
+        confirm_sources_refresh(acknowledgements)
 
 
 def report_window(*, days=30, start_date=None, end_date=None, timezone_name='Asia/Yerevan', now=None):
@@ -150,6 +166,8 @@ async def telegram_snapshot(session, settings, *, start, end, now=None):
         if src and src.status == 'collecting' and src.checked_at:
             state = ('stale' if utc(src.checked_at) < now - timedelta(minutes=15) else
                      'valid' if coverage and coverage <= utc(start) else 'insufficient')
+        if chat_id in _coverage_gaps:
+            state, coverage = 'insufficient', None
         # Grouping the first immutable album timestamp before filtering prevents midnight splits.
         identity = (func.coalesce(TelegramMessageFact.media_group_id,
                     literal('message:') + cast(TelegramMessageFact.message_id, String))

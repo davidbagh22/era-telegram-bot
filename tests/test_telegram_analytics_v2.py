@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.database.base import Base
 from app.database.models import User
 from app.database.telegram_analytics import TelegramAnalyticsSource, TelegramMessageFact
-from app.services.telegram_analytics_service import observe_message, refresh_sources, report_window, telegram_snapshot
+from app.services.telegram_analytics_service import observe_message, refresh_sources, report_window, telegram_snapshot, persist_coverage_gap, _coverage_gaps
 from app.services.telegram_analytics_export import add_telegram_sheets
 
 NOW = datetime(2026, 10, 21, 12, tzinfo=timezone.utc)
@@ -31,6 +31,7 @@ def message(id=1, *, channel=True, at=NOW, bot=False, **kwargs):
 
 class TelegramFactsTests(IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        _coverage_gaps.clear()
         self.engine = create_async_engine('sqlite+aiosqlite:///:memory:')
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
@@ -126,6 +127,45 @@ class TelegramFactsTests(IsolatedAsyncioTestCase):
         await refresh_sources(self.session, bot, SETTINGS, now=NOW+timedelta(minutes=21))
         self.assertEqual(row.coverage_since, NOW+timedelta(minutes=21))
 
+    async def test_gap_invalidation_is_visible_after_worker_state_is_lost(self):
+        await self.source()
+        await self.session.commit()
+        async with self.factory() as writer:
+            await persist_coverage_gap(writer, SETTINGS.era_channel_id)
+            await writer.commit()
+        _coverage_gaps.clear()  # Another worker has no in-memory signal.
+        async with self.factory() as reader:
+            result = await telegram_snapshot(reader, SETTINGS, start=self.start, end=self.end, now=NOW)
+        self.assertEqual(result['sources'][0]['connection_status'], 'unverified')
+        self.assertIsNone(result['sources'][0]['coverage_since'])
+        self.assertIsNone(result['sources'][0]['value'])
+
+    async def test_pending_gap_cannot_certify_underreported_counts(self):
+        from app.services.telegram_analytics_service import mark_coverage_gap
+        await self.source()
+        mark_coverage_gap(SETTINGS.era_channel_id)
+        source = (await self.snapshot())['sources'][0]
+        self.assertEqual(source['data_state'], 'insufficient')
+        self.assertIsNone(source['value'])
+        self.assertTrue(all(day['value'] is None for day in source['daily']))
+
+    async def test_probe_does_not_clear_pending_gap_before_commit(self):
+        from app.services.telegram_analytics_service import mark_coverage_gap, confirm_sources_refresh
+        await self.source()
+        mark_coverage_gap(SETTINGS.era_channel_id)
+        bot = NS(id=99, get_chat_member=AsyncMock(return_value=NS(status='administrator')))
+        acknowledgements = await refresh_sources(self.session, bot, SETTINGS, now=NOW)
+        self.assertIn(SETTINGS.era_channel_id, _coverage_gaps)
+        await self.session.commit()
+        confirm_sources_refresh(acknowledgements)
+        self.assertNotIn(SETTINGS.era_channel_id, _coverage_gaps)
+        # A later gap must survive acknowledgement of an older probe.
+        acknowledgements = await refresh_sources(self.session, bot, SETTINGS, now=NOW+timedelta(minutes=1))
+        mark_coverage_gap(SETTINGS.era_channel_id)
+        await self.session.commit()
+        confirm_sources_refresh(acknowledgements)
+        self.assertIn(SETTINGS.era_channel_id, _coverage_gaps)
+
     async def test_real_roster_and_all_profiles_have_distinct_definitions(self):
         from app.services.admin_analytics_v2_service import build_v2_snapshot
         self.session.add_all([User(telegram_id=i, first_name='Fixture', application_status='approved' if i < 68 else 'pending') for i in range(1,69)])
@@ -190,6 +230,23 @@ class WindowTests(TestCase):
 
 
 class AnalyticsAccessTests(IsolatedAsyncioTestCase):
+    async def test_actual_query_string_periods_and_custom_dates_are_accepted(self):
+        from app.api.v1 import admin_analytics_v2 as api
+        app=FastAPI(); app.include_router(api.router)
+        app.dependency_overrides[api.require_admin]=lambda: NS(id=1)
+        app.dependency_overrides[api.get_session]=lambda: None
+        app.dependency_overrides[api.get_settings]=lambda: SETTINGS
+        client=TestClient(app)
+        with patch.object(api, 'build_v2_snapshot', AsyncMock(return_value={'ok': True})) as build:
+            for days in (7,30,90):
+                response=client.get(f'/admin/analytics/v2?days={days}')
+                self.assertEqual(response.status_code,200,response.text)
+                self.assertEqual((build.call_args.kwargs['end']-build.call_args.kwargs['start']).days,days)
+            self.assertEqual(client.get('/admin/analytics/v2?days=8').status_code,422)
+            response=client.get('/admin/analytics/v2?days=30&start_date=2026-01-01&end_date=2026-10-21')
+            self.assertEqual(response.status_code,200,response.text)
+            self.assertEqual(build.call_args.kwargs['start'].date(),date(2026,1,1))
+
     async def test_category_grant_does_not_open_any_v2_endpoint(self):
         from app.api.v1 import admin_analytics_v2 as api
         app=FastAPI(); app.include_router(api.router)

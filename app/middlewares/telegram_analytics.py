@@ -3,7 +3,7 @@ import asyncio
 from aiogram import BaseMiddleware, Router
 from aiogram.dispatcher.event.bases import UNHANDLED
 from aiogram.types import Update
-from app.services.telegram_analytics_service import observe_message, source_targets, mark_coverage_gap
+from app.services.telegram_analytics_service import observe_message, source_targets, mark_coverage_gap, persist_coverage_gap
 
 logger = logging.getLogger(__name__)
 router = Router(name='telegram-analytics-observer')
@@ -58,6 +58,7 @@ class TelegramAnalyticsMiddleware(BaseMiddleware):
                     except Exception:
                         mark_coverage_gap(message.chat.id)
                         logger.exception('Telegram analytics observation failed')
+                        await _invalidate_gap(self.session_factory, message.chat.id)
         return await handler(event, data)
 
 
@@ -86,6 +87,8 @@ class TelegramSentAnalyticsMiddleware(BaseRequestMiddleware):
                 if len(_sent_observations) >= 1000:
                     mark_coverage_gap(message.chat.id)
                     logger.error('Telegram sent-observation queue is full')
+                    # Bound acquisition: a sender may still hold a DB connection.
+                    await _invalidate_gap(self.session_factory, message.chat.id)
                     continue
                 task = asyncio.create_task(self._record(message))
                 _sent_observations.add(task)
@@ -101,6 +104,7 @@ class TelegramSentAnalyticsMiddleware(BaseRequestMiddleware):
         except Exception:
             mark_coverage_gap(message.chat.id)
             logger.exception('Sent channel analytics observation failed')
+            await _invalidate_gap(self.session_factory, message.chat.id)
 
 
 _sent_observations = set()
@@ -113,3 +117,16 @@ async def drain_sent_observations():
             task.cancel()
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
+
+
+async def _invalidate_gap(session_factory, chat_id):
+    mark_coverage_gap(chat_id)
+    try:
+        async with asyncio.timeout(2):
+            async with session_factory() as session:
+                await persist_coverage_gap(session, chat_id)
+                await session.commit()
+    except Exception:
+        # DB downtime cannot be papered over: the local pending marker keeps reports
+        # unavailable until the source probe persists a fresh continuous boundary.
+        logger.exception('Telegram coverage invalidation pending')
