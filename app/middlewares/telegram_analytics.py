@@ -53,8 +53,10 @@ class TelegramAnalyticsMiddleware(BaseMiddleware):
                         # Separate transaction: business handler rollbacks must not lose observations,
                         # and analytics failures must not break registration, games or webhook routing.
                         async with self.session_factory() as session:
-                            await observe_message(session, message, kind=kind)
+                            recorded = await observe_message(session, message, kind=kind)
                             await session.commit()
+                            if recorded:
+                                logger.info('Telegram analytics observation committed: kind=%s', kind)
                     except Exception:
                         mark_coverage_gap(message.chat.id)
                         logger.exception('Telegram analytics observation failed')

@@ -112,6 +112,27 @@ test("analytics quick action opens the actual tasks workspace", async ({ page })
   await expect(page.getByRole("heading", { name: "Дать работу или проверить результат" })).toBeVisible();
 });
 
+test("analytics shows observed zero counters and excludes personal-list shortcuts", async ({ page }) => {
+  await page.route('**/api/v1/admin/analytics/v2?*', async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    payload.sources = payload.sources.map((source: { id: string }) => ({ ...source, started_at: '2026-10-21T22:10:00Z',
+      observed_value: 0, value: null, data_state: 'insufficient', connection_status: 'collecting',
+      rolling_counts: [7,30,90].map((days) => ({ days, observed: 0, complete: false })) }));
+    await route.fulfill({ response, json: payload });
+  });
+  await enterAdminWorkspace(page);
+  await page.getByRole("button", { name: /Аналитика/ }).click();
+  await expect(page.getByLabel("Период отчёта")).toHaveValue("month");
+  const source = page.locator('.era-card').filter({ has: page.getByRole('heading', { name: 'Публикации канала', exact: true }) });
+  await expect(source.locator('.analytics-number')).toHaveText('0');
+  await expect(source).toContainText('Фактически учтено');
+  await expect(source).toContainText('7 дней');
+  await page.getByRole('tab', { name: 'Люди', exact: true }).click();
+  await expect(page.getByText('Только сводные числа.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Все профили в базе/ })).toHaveCount(0);
+});
+
 test("overview KPI opens exact underlying rows", async ({ page }) => {
   await enterAdminWorkspace(page);
 

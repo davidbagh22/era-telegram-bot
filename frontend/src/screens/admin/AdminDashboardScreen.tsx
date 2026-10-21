@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { downloadAnalyticsSectionTable, downloadFullAnalyticsReport, fetchAdminAnalyticsDetails,
   fetchEraEfficiency, fetchOrganizationHealth, fetchAnalyticsV2, checkAnalyticsSources, fetchAnalyticsReports,
   type AnalyticsDetailSection, type HealthMetric, type TelegramAnalyticsSource } from "../../api/adminAnalytics";
@@ -172,19 +172,22 @@ function DailyChart({ title, days }: { title: string; days: TelegramAnalyticsSou
 function SourceCard({ source, compare }: { source: TelegramAnalyticsSource; compare: boolean }) {
   return <Card style={{ padding: ".85rem" }}>
     <div className="analytics-source-title"><h3>{source.label}</h3><span className={`analytics-state analytics-state-${source.data_state}`}>{DATA_LABELS[source.data_state] ?? "Нет данных"}</span></div>
-    <strong className="analytics-number">{source.value ?? (source.observed_value > 0 ? `${source.observed_value} учтено` : "Нет данных")}</strong>
+    <strong className="analytics-number">{source.started_at || source.observed_value > 0 ? source.observed_value : "—"}</strong>
+    <p>{source.value === null ? 'Фактически учтено за выбранные даты · история неполная' : 'За выбранный период'}</p>
+    <p>Подключение: {source.connection_status === 'collecting' ? 'сбор включён' : 'требует проверки'} · последнее поступление: {dateLabel(source.last_event_at)}</p>
+    <div className="analytics-kpis">{source.rolling_counts?.map((item) => <div key={item.days}><strong>{item.observed}</strong><small> · {item.days} дней{item.complete ? '' : ' · учтено'}</small></div>)}</div>
     {compare && <p>{source.delta === null ? "Сравнение пока недоступно: нет полного предыдущего периода." : `${source.delta > 0 ? "+" : ""}${source.delta} к предыдущему равному периоду (${source.previous_value}).`}</p>}
     <p>{source.explanation}</p>
     <details><summary>Источник и покрытие</summary><p>Сбор начат: {dateLabel(source.started_at)}. Непрерывное покрытие: {dateLabel(source.coverage_since)}.</p>
       <p>Учтено с начала сбора: {source.total_observed}. Последнее событие: {dateLabel(source.last_event_at)}. Проверка прав: {dateLabel(source.checked_at)}.</p><p>{source.history_note}</p>
     </details>
-    <DailyChart title={`${source.label} · по дням`} days={source.daily} />
+    <details><summary>Динамика по дням</summary><DailyChart title={`${source.label} · по дням`} days={source.daily} /></details>
   </Card>;
 }
 
 export function AdminDashboardScreen({ onAction }: { onAction?: (action: AnalyticsAction) => void }) {
   const [tab, setTab] = useState<AnalyticsTab>("Обзор");
-  const [period, setPeriod] = useState("30");
+  const [period, setPeriod] = useState("month");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [compare, setCompare] = useState(true);
@@ -192,10 +195,19 @@ export function AdminDashboardScreen({ onAction }: { onAction?: (action: Analyti
   const [busy, setBusy] = useState<"pdf" | "xlsx" | "sources" | null>(null);
   const [selectedSection, setSelectedSection] = useState<AnalyticsDetailSection | null>(null);
   const toast = useToast();
+  useEffect(() => {
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') setRefresh((value) => value + 1); }, 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Yerevan', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const [year, month] = today.split('-').map(Number);
+  const calendarStart = period === 'last_month' ? new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 10) : `${today.slice(0, 7)}-01`;
+  const calendarEnd = period === 'last_month' ? new Date(Date.UTC(year, month - 1, 0)).toISOString().slice(0, 10) : today;
+  const calendarPeriod = period === 'month' || period === 'last_month';
   const validDates = period !== "custom" || Boolean(start && end && start <= end);
   const snapshot = useAsync(() => {
     if (!validDates) return Promise.resolve(null);
-    return fetchAnalyticsV2(period === "custom" ? 30 : Number(period), period === "custom" ? start : undefined, period === "custom" ? end : undefined);
+    return fetchAnalyticsV2(period === "custom" || calendarPeriod ? 30 : Number(period), calendarPeriod ? calendarStart : period === "custom" ? start : undefined, calendarPeriod ? calendarEnd : period === "custom" ? end : undefined);
   }, [period, start, end, refresh]);
   const health = useAsync(() => fetchOrganizationHealth(), []);
   const efficiency = useAsync(() => fetchEraEfficiency(), []);
@@ -228,7 +240,7 @@ export function AdminDashboardScreen({ onAction }: { onAction?: (action: Analyti
     <header><p className="era-analytics-eyebrow">ЭРА · УПРАВЛЕНИЕ</p><h2>ЭРА одним взглядом</h2></header>
     <section className="analytics-toolbar" aria-label="Период и отчёты">
       <label htmlFor="analytics-report-period">Период отчёта<select id="analytics-report-period" value={period} onChange={(e) => setPeriod(e.target.value)}>
-        <option value="7">7 дней</option><option value="30">30 дней</option><option value="90">90 дней</option><option value="custom">Свои даты</option>
+        <option value="month">Этот месяц</option><option value="last_month">Прошлый месяц</option><option value="7">7 дней</option><option value="30">30 дней</option><option value="90">90 дней</option><option value="custom">Свои даты</option>
       </select></label>
       {period === "custom" && <div className="era-analytics-dates"><label>С даты<input aria-label="Начало периода" type="date" max={end || undefined} value={start} onChange={(e) => setStart(e.target.value)} /></label><label>По дату<input aria-label="Конец периода" type="date" min={start || undefined} value={end} onChange={(e) => setEnd(e.target.value)} /></label></div>}
       <label className="analytics-compare"><input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} /> Сравнить с предыдущим равным периодом</label>
@@ -240,7 +252,7 @@ export function AdminDashboardScreen({ onAction }: { onAction?: (action: Analyti
     <section id="analytics-tab-panel" role="tabpanel" aria-label={tab}>
       {snapshot.status === "loading" && <p role="status">Обновляем показатели…</p>}
       {snapshot.status === "error" && <EmptyState text="Не удалось получить данные за период. Значения не подменяются нулями." />}
-      {(tab === "Обзор" || tab === "Люди") && data && <section><h3>Главное</h3><div className="analytics-kpis">{data.metrics.map((metric) => <Card key={metric.id} style={{ padding: ".8rem", minWidth: 0 }}><strong className="analytics-number">{metric.value ?? "Нет данных"}</strong><h4>{metric.label}</h4><small>{metric.period}</small>{compare && metric.delta !== null && <p>{metric.delta > 0 ? "+" : ""}{metric.delta} · ранее {metric.previous_value}</p>}<details><summary>Как считается</summary><p>{metric.explanation}</p>{metric.denominator !== null && <p>База: {metric.denominator} человек.</p>}</details></Card>)}</div></section>}
+      {(tab === "Обзор" || tab === "Люди" || tab === "Деятельность") && data && <section><h3>Главное</h3><div className="analytics-kpis">{data.metrics.filter((metric) => tab === 'Обзор' || (tab === 'Деятельность' ? ['events','projects','tasks'].includes(metric.id) : !['events','projects','tasks'].includes(metric.id))).map((metric) => <Card key={metric.id} style={{ padding: ".8rem", minWidth: 0 }}><strong className="analytics-number">{metric.value ?? "Нет данных"}</strong><h4>{metric.label}</h4><small>{metric.period}</small>{compare && metric.delta !== null && <p>{metric.delta > 0 ? "+" : ""}{metric.delta} · ранее {metric.previous_value}</p>}<details><summary>Как считается</summary><p>{metric.explanation}</p>{metric.denominator !== null && <p>База: {metric.denominator} человек.</p>}</details></Card>)}</div></section>}
       {tab === "Обзор" && data && <><div className="analytics-sources">{data.sources.map((source) => <SourceCard source={source} key={source.id} compare={compare} />)}</div><button disabled={busy !== null} onClick={() => void checkSources()}>{busy === "sources" ? "Проверяем…" : "Проверить права и подключение Telegram"}</button></>}
       {tab === "Обзор" && health.status === "ready" && <>
         <section><h3>Требует внимания</h3>{health.data.risks.length ? <ul>{health.data.risks.map((risk) => <li key={risk}>{risk}</li>)}</ul> : <p>По доступным правилам отдельных сигналов нет.</p>}
@@ -254,7 +266,8 @@ export function AdminDashboardScreen({ onAction }: { onAction?: (action: Analyti
       {tab === "Команда" && media.status === "ready" && <Card><h3>Контент-план и задачи медиа</h3><p>Опубликовано по контент-плану: {media.data.published}. Все публикации канала считаются отдельно в «Обзоре».</p><p>Подтверждённо выполнено задач: {media.data.tasks_completed} из {media.data.tasks_created}.</p><p>Вышло вовремя: {media.data.on_time_rate === null ? "Нет публикаций со сроком" : `${media.data.on_time_rate}%`}.</p></Card>}
       {tab === "Команда" && efficiency.status === "ready" && <details className="analytics-metric-group"><summary>Условный операционный индекс · методика</summary><p>Это индекс действий, зафиксированных в платформе, а не объективная оценка организации.</p><p>Вовлечённость — 45%, выпуск — 35%, отзывы — 20%. При отсутствии отзывов первые веса: 56,25% и 43,75%. Целевые ориентиры: 4 события и 2 проекта в месяц.</p><p>{data?.metrics.find((item) => item.id === "roster")?.value ? `${efficiency.data.score}/100` : "Нет базы для расчёта"}. {efficiency.data.period_label}</p><p>{efficiency.data.data_note}</p></details>}
       {tab === "Обзор" && efficiency.status === "ready" && <section><h3>Что делать дальше</h3>{efficiency.data.recommendations.map((item) => <details key={item.title} className="analytics-metric-group"><summary>{item.title}</summary><p>{item.reason}</p><p>{item.action}</p><small>Рекомендация · {item.priority === "high" ? "высокий приоритет" : "плановое улучшение"}</small></details>)}</section>}
-      {analytics.status === "ready" && tab !== "Обзор" && <section><h3>{tab === "Отчёты" ? "Выгрузки по разделам" : "Открыть записи"}</h3><div className="analytics-actions">{(Object.keys(SECTION_META) as AnalyticsDetailSection[]).filter((key) => tab === "Отчёты" || (tab === "Люди" ? key === "users" : tab === "Деятельность" ? ["events","projects"].includes(key) : tab === "Возможности" ? key === "contacts" : key === "goals")).map((key) => <button key={key} onClick={() => setSelectedSection(key)}>{key === "users" ? "Все профили в базе" : SECTION_META[key].label} · {analytics.data[SECTION_META[key].value]} →</button>)}</div></section>}
+      {analytics.status === "ready" && tab !== "Обзор" && tab !== "Люди" && <section><h3>{tab === "Отчёты" ? "Выгрузки по разделам" : "Открыть записи"}</h3><div className="analytics-actions">{(Object.keys(SECTION_META) as AnalyticsDetailSection[]).filter((key) => key !== 'users' && (tab === "Отчёты" || (tab === "Деятельность" ? ["events","projects"].includes(key) : tab === "Возможности" ? key === "contacts" : key === "goals"))).map((key) => <button key={key} onClick={() => setSelectedSection(key)}>{SECTION_META[key].label} · {analytics.data[SECTION_META[key].value]} →</button>)}</div></section>}
+      {tab === 'Люди' && <p className="analytics-note">Только сводные числа. Персональные списки и анкеты не входят в аналитику и общий отчёт.</p>}
       {tab === "Отчёты" && <section><h3>Журнал моих отчётов</h3><p>PDF и Excel формируются кнопками над вкладками с выбранными датами. В журнале — факт генерации, не прочтения файла.</p>{reports.status === "ready" && (reports.data.items.length ? <ul>{reports.data.items.map((item, i) => <li key={i}>{dateLabel(item.generated_at)} · {item.format.toUpperCase()} · {item.start}–{item.end}</li>)}</ul> : <p>Отчётов, сформированных после обновления, пока нет.</p>)}</section>}
     </section>
   </div>;

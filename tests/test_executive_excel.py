@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import date
+from datetime import date, datetime, timezone
 from io import BytesIO
 from types import SimpleNamespace
 
@@ -41,6 +41,38 @@ class ExecutiveWorkbookTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self) -> None:
         await self.engine.dispose()
+
+    async def test_report_has_old_project_work_and_no_personal_rows(self):
+        from app.database.models import User, Project, ProjectMember, ProjectMilestone, PortfolioItem
+        async with self.session_factory() as session:
+            person = User(telegram_id=7654321, first_name='PRIVATE_NAME', username='PRIVATE_USERNAME', application_status='approved')
+            session.add(person)
+            await session.flush()
+            project = Project(author_id=person.id, title='Постоянный проект', short_description='PRIVATE_DESCRIPTION',
+                created_at=datetime(2026,9,1,tzinfo=timezone.utc), status='in_progress')
+            session.add(project)
+            await session.flush()
+            session.add_all([
+                ProjectMember(project_id=project.id, user_id=person.id, contribution_status='confirmed',
+                    contribution_confirmed_at=datetime(2026,10,10,tzinfo=timezone.utc), contribution_summary='PRIVATE_CONTRIBUTION'),
+                ProjectMilestone(project_id=project.id, title='Этап', status='completed', completed_at=datetime(2026,10,11,tzinfo=timezone.utc)),
+                PortfolioItem(user_id=person.id, title='PRIVATE_ACHIEVEMENT', item_type='certificate', status='issued',
+                    created_at=datetime(2026,10,12,tzinfo=timezone.utc)),
+            ])
+            await session.flush()
+            content = await build_executive_workbook(session,
+                analytics=SimpleNamespace(users=[person], events=[], projects=[project], department_stats=[], direction_stats=[]),
+                health=SimpleNamespace(pulse=None, pulse_label='Нет данных', pulse_coverage=0, pulse_sample_size=0, vector_dimensions=[]),
+                efficiency=SimpleNamespace(score=0, label='Нет данных'),
+                start_date=date(2026,10,1), end_date=date(2026,10,31), period_label='Октябрь')
+        wb = load_workbook(BytesIO(content))
+        row = list(wb[SHEET_NAMES[7]].values)[1]
+        self.assertEqual(row[0], 'Постоянный проект')
+        self.assertEqual(row[3:5], (1,1))
+        rendered = str([list(sheet.values) for sheet in wb.worksheets])
+        for secret in ['PRIVATE_NAME', 'PRIVATE_USERNAME', 'PRIVATE_DESCRIPTION', 'PRIVATE_CONTRIBUTION', 'PRIVATE_ACHIEVEMENT', '7654321']:
+            self.assertNotIn(secret, rendered)
+        self.assertEqual(list(wb[SHEET_NAMES[10]].values)[1], ('certificate', 'issued', 1))
 
     async def test_exact_13_sheet_contract_and_vector_privacy(self) -> None:
         analytics = SimpleNamespace(

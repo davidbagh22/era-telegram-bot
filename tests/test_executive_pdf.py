@@ -12,7 +12,7 @@ from pypdf import PdfReader
 from app.services.executive_pdf_service import build_executive_pdf
 
 
-def fixture():
+def fixture(project_count=35):
     wb = Workbook()
     ws = wb.active
     ws.title = '01 · Сводка'
@@ -21,6 +21,11 @@ def fixture():
     ws.append([])
     ws.append(['Показатель', 'Значение', 'Описание', 'Источник'])
     ws.append(['Текущий состав', 66, 'Одобренные участники', 'User'])
+    ws.append(['Новые за период', 8, 'Первые одобрения за выбранные даты', 'AuditLog'])
+    ws.append(['События за период', 1, 'По календарной дате', 'Event'])
+    ws.append(['Проекты за период', project_count + 1, 'Созданы или имеют подтверждённую работу', 'Project'])
+    ws.append(['Подтверждённых посещений', 19, 'Подтверждённая явка', 'EventRegistration'])
+    ws.append(['Verified task results', 4, 'Приняты по аудиту', 'AuditLog'])
     ws = wb.create_sheet('02 · Люди')
     ws.append(['Участник', 'Статус'])
     ws.append(['Имя <script> & текст', 'Одобрено'])
@@ -31,13 +36,21 @@ def fixture():
     ws = wb.create_sheet('04 · Длинные записи')
     ws.append(['Запись', 'Описание'])
     ws.append(['Подробности', 'Очень длинный текст <без разметки> ' * 700])
+    ws = wb.create_sheet('08 · Проекты')
+    ws.append(['Проект', 'Текущий статус', 'Создан', 'Подтверждённых вкладов за период', 'Завершено этапов за период', 'Основание включения'])
+    ws.append(['=Название проекта <script> & текст', 'in_progress', date(2026,10,1), 3, 2, 'Новый проект'])
+    for i in range(project_count):
+        ws.append([f'Проект {i} / Очень длинный текст ' + 'содержательная инициатива ' * 8, 'approved', date(2026,10,2), 0, 0, 'Новый проект'])
+    ws = wb.create_sheet('07 · События')
+    ws.append(['Событие', 'Дата', 'Статус', 'Регистраций', 'Посетили'])
+    ws.append(['Встреча ЭРА', date(2026,10,20), 'completed', 24, 19])
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
 
 
-def report():
-    return build_executive_pdf(fixture(), period_label='01.10.2026–21.10.2026',
+def report(project_count=35):
+    return build_executive_pdf(fixture(project_count), period_label='01.10.2026–21.10.2026',
         health=NS(risks=['Сроки требуют внимания'], metrics=[], period_label='30 дней'),
         efficiency=NS(recommendations=[], period_label='7 дней'),
         analytics=NS(contacts=[NS(organization_name='Партнёр ЭРА', email='PRIVATE_EMAIL', phone='PRIVATE_PHONE', notes='PRIVATE_NOTE')],
@@ -52,11 +65,10 @@ class ExecutivePDFTests(TestCase):
         pdf = PdfReader(BytesIO(content))
         text = '\n'.join(page.extract_text() for page in pdf.pages)
         for expected in ['Текущий состав', '66', 'Приоритеты руководителя',
-                         'Имя <script> & текст', '=Имя участника', '=Название проекта', 'Данных за выбранный период нет',
-                         '01.10.2026', 'Сроки требуют внимания', 'Очень длинный текст',
-                         'Партнёр ЭРА', 'Цель организации', 'Выполнение: 3/5', 'Опубликовано: 12']:
+                         '=Название проекта <script> & текст', 'Проекты за период',
+                         '01.10.2026', 'Очень длинный текст', 'Встреча ЭРА', 'Посетили: 19', 'Завершено этапов: 2']:
             self.assertIn(expected, text)
-        for secret in ['PRIVATE_EMAIL', 'PRIVATE_PHONE', 'PRIVATE_NOTE']:
+        for secret in ['PRIVATE_EMAIL', 'PRIVATE_PHONE', 'PRIVATE_NOTE', 'Имя <script> & текст', '=Имя участника']:
             self.assertNotIn(secret, text)
         self.assertGreater(len(pdf.pages), 4)
         self.assertTrue(all('Для внутреннего использования' in page.extract_text() for page in pdf.pages))

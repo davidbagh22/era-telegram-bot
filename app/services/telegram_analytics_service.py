@@ -53,6 +53,12 @@ def _insert(session, model):
     return (pg_insert if session.bind.dialect.name == 'postgresql' else sqlite_insert)(model)
 
 
+def publication_identity(kind):
+    return (func.coalesce(TelegramMessageFact.media_group_id,
+            literal('message:') + cast(TelegramMessageFact.message_id, String))
+            if kind == 'channel' else cast(TelegramMessageFact.message_id, String))
+
+
 async def observe_message(session, message, *, kind, observed_at=None):
     """Conflict-safe replay/edit handling. An album is one channel post, messages stay individual."""
     if not any(getattr(message, name, None) for name in CONTENT):
@@ -140,8 +146,12 @@ async def refresh_sources_job(bot, settings, session_factory):
         # Operational evidence contains only source kind/state, never messages, users or credentials.
         for kind, chat_id in source_targets(settings).items():
             source = await session.get(TelegramAnalyticsSource, chat_id)
+            total = await session.scalar(select(func.count(func.distinct(publication_identity(kind)))).where(
+                TelegramMessageFact.chat_id == chat_id))
             logger.info('Telegram analytics source: kind=%s status=%s coverage_since=%s detail=%s',
                 kind, source.status, source.coverage_since, source.detail)
+            logger.info('Telegram analytics ledger: kind=%s total_observed=%s last_event_at=%s',
+                        kind, total, source.last_event_at)
 
 
 def report_window(*, days=30, start_date=None, end_date=None, timezone_name='Asia/Yerevan', now=None):
@@ -177,16 +187,17 @@ async def telegram_snapshot(session, settings, *, start, end, now=None):
         if chat_id in _coverage_gaps:
             state, coverage = 'insufficient', None
         # Grouping the first immutable album timestamp before filtering prevents midnight splits.
-        identity = (func.coalesce(TelegramMessageFact.media_group_id,
-                    literal('message:') + cast(TelegramMessageFact.message_id, String))
-                    if kind == 'channel' else cast(TelegramMessageFact.message_id, String))
+        identity = publication_identity(kind)
         query = (select(func.min(TelegramMessageFact.published_at).label('published_at'))
                  .where(TelegramMessageFact.chat_id == chat_id).group_by(identity)).subquery()
         timestamp = query.c.published_at
-        total, observed, previous, latest = (await session.execute(select(
+        total, observed, previous, latest, *rolling = (await session.execute(select(
             func.count(), func.count().filter(timestamp >= utc(start), timestamp < effective_end),
             func.count().filter(timestamp >= utc(previous_start), timestamp < previous_end),
-            func.max(timestamp)).select_from(query))).one()
+            func.max(timestamp),
+            *(func.count().filter(timestamp >= utc(report_window(days=days, timezone_name=settings.timezone, now=now)[0]),
+                                  timestamp < utc(now)) for days in (7, 30, 90))
+        ).select_from(query))).one()
         previous_valid = state == 'valid' and coverage is not None and coverage <= utc(previous_start)
         if session.bind.dialect.name == 'postgresql':
             local_day = cast(func.timezone(settings.timezone, timestamp), Date)
@@ -207,6 +218,9 @@ async def telegram_snapshot(session, settings, *, start, end, now=None):
         result['sources'].append({
             'id': kind, 'label': title, 'data_state': state, 'value': observed if state == 'valid' else None,
             'observed_value': observed, 'unit': 'публикаций' if kind == 'channel' else 'сообщений',
+            'rolling_counts': [{'days': days, 'observed': count,
+                'complete': bool(state in ('valid', 'insufficient') and coverage and coverage <= utc(report_window(days=days, timezone_name=settings.timezone, now=now)[0]))}
+                for days, count in zip((7, 30, 90), rolling)],
             'previous_value': previous if previous_valid else None,
             'delta': observed - previous if previous_valid else None,
             'total_observed': total, 'started_at': src.started_at.isoformat() if src else None,

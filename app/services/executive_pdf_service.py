@@ -1,196 +1,179 @@
-"""Readable executive PDF, using the exact workbook facts (no parallel formulas)."""
-from __future__ import annotations
-
+"""Organizational report using shared workbook facts, without personal lists."""
 from datetime import date, datetime
-from zoneinfo import ZoneInfo
 from html import escape
 from io import BytesIO
+from zoneinfo import ZoneInfo
 
 from openpyxl import load_workbook
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, PageBreak, KeepTogether, CondPageBreak, Table, TableStyle,
-)
-
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, CondPageBreak, Table, TableStyle
+from reportlab.graphics.shapes import Drawing, Line, Rect, String
 from app.services.career_pdf_service import _register_font
+
+STATUS = {'draft': 'Черновик', 'initial_review': 'На рассмотрении', 'review': 'На проверке',
+    'approved': 'Одобрен', 'in_progress': 'В работе', 'completed': 'Завершён',
+    'cancelled': 'Отменён', 'rejected': 'Отклонён', 'pending': 'Ожидает',
+    'published': 'Опубликовано', 'registration_open': 'Регистрация открыта',
+    'registration_closed': 'Регистрация закрыта', 'report_submitted': 'Отчёт подан',
+    'new': 'Новый', 'overdue': 'Просрочено', 'done': 'Выполнено', 'active': 'Активно'}
 
 
 def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficiency, analytics=None, media=None, telegram=None) -> bytes:
     _register_font()
-    ink = colors.HexColor('#202032')
-    muted = colors.HexColor('#656575')
-    accent = colors.HexColor('#632CFF')
-    styles = {
-        key: ParagraphStyle(key, fontName='ERAUnicode', fontSize=size, leading=leading,
-                            textColor=color, spaceAfter=after, splitLongWords=True)
-        for key, size, leading, color, after in [
-            ('title', 28, 34, ink, 16), ('heading', 18, 24, ink, 14),
-            ('body', 10, 15, ink, 8), ('small', 8, 12, muted, 5),
-            ('value', 24, 30, accent, 4), ('eyebrow', 9, 13, accent, 10),
-        ]
-    }
-    styles['heading'].keepWithNext = True
-    def p(value, style='body'):
+    ink, muted, accent = (colors.HexColor(value) for value in ('#202126', '#71717B', '#632CFF'))
+    styles = {key: ParagraphStyle(key, fontName='ERAUnicode', fontSize=size, leading=leading,
+        textColor=color, spaceAfter=after, splitLongWords=True) for key, size, leading, color, after in [
+        ('title', 30, 38, ink, 12), ('h', 18, 24, ink, 12), ('item', 12, 17, ink, 5),
+        ('body', 10, 15, ink, 6), ('small', 8, 12, muted, 5), ('value', 26, 32, ink, 5),
+        ('eyebrow', 9, 13, accent, 8)]}
+    styles['h'].keepWithNext = True
+    styles['item'].keepWithNext = True
+
+    def text(value):
         if value is None:
-            value = '—'
-        elif isinstance(value, (date, datetime)):
-            value = value.strftime('%d.%m.%Y')
-        return Paragraph(escape(str(value)).replace('\n', '<br/>'), styles[style])
+            return 'Нет данных'
+        return value.strftime('%d.%m.%Y') if isinstance(value, (date, datetime)) else str(value)
+
+    def p(value, style='body'):
+        return Paragraph(escape(text(value)).replace('\n', '<br/>'), styles[style])
 
     output = BytesIO()
-    from reportlab.graphics.shapes import Drawing, Rect, String, Line
-
     doc = SimpleDocTemplate(output, pagesize=A4, rightMargin=20*mm, leftMargin=20*mm,
-                            topMargin=23*mm, bottomMargin=21*mm,
-                            title='ЭРА · Аналитический отчёт', author='ЭРА')
+        topMargin=24*mm, bottomMargin=22*mm, title='ЭРА - Отчёт о деятельности', author='ЭРА')
+
     def page(canvas, document):
         canvas.saveState()
         width, height = A4
-        canvas.setStrokeColor(accent)
-        canvas.setLineWidth(2)
-        canvas.line(20*mm, height-15*mm, width-20*mm, height-15*mm)
+        canvas.setStrokeColor(colors.HexColor('#DADAE0'))
+        canvas.line(20*mm, height-17*mm, width-20*mm, height-17*mm)
         canvas.setFont('ERAUnicode', 8)
         canvas.setFillColor(muted)
-        canvas.drawString(20*mm, height-11*mm, 'ЭРА / Аналитический отчёт')
-        canvas.setFillColor(muted)
-        canvas.drawString(20*mm, 12*mm, 'ЭРА · Для внутреннего использования')
-        canvas.drawRightString(width-20*mm, 12*mm, str(document.page))
+        canvas.drawString(20*mm, height-12*mm, 'ЭРА / ОТЧЁТ О ДЕЯТЕЛЬНОСТИ')
+        canvas.drawString(20*mm, 12*mm, 'Для внутреннего использования · Без персональных списков')
+        canvas.drawRightString(width-20*mm, 12*mm, f'{document.page:02d}')
         canvas.restoreState()
 
     wb = load_workbook(BytesIO(workbook), read_only=True, data_only=False)
-    story = [p('ЭРА / АНАЛИТИКА', 'eyebrow'), p('Организация\nв цифрах', 'title'),
-             p(period_label, 'heading'),
-             p('Главные результаты, зоны внимания и полный обзор разделов.', 'small')]
-    # Large metric tiles instead of a spreadsheet pasted into a PDF.
-    rows = list(wb.worksheets[0].values)[4:]
-    tiles = []
-    for row in rows:
-        tiles.append([p(row[1], 'value'), p(row[0]), p(row[2], 'small')])
-    for i in range(0, len(tiles), 2):
-        pair = tiles[i:i+2]
-        if len(pair) == 1:
-            pair.append('')
-        table = Table([pair], colWidths=[83*mm, 83*mm], hAlign='LEFT')
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F3F0FA')),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 12),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-            ('TOPPADDING', (0, 0), (-1, -1), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-        ]))
-        story.extend([table, Spacer(1, 3*mm)])
-    if telegram:
-        story.extend([Spacer(1, 4*mm), p('Канал и общий чат', 'heading')])
-        labels = {'valid': 'Период покрыт наблюдениями', 'insufficient': 'Неполная история',
-                  'unavailable': 'Источник не подтверждён', 'stale': 'Проверка устарела'}
+    sheets = {sheet.title.split(' · ')[0]: sheet for sheet in wb.worksheets}
+
+    def records(key):
+        sheet = sheets.get(key)
+        if sheet is None:
+            return []
+        values = iter(sheet.values)
+        headers = next(values, ())
+        return [dict(zip(headers, row)) for row in values if row and row[0] is not None
+            and str(row[0]) != 'Данных за выбранный период нет']
+
+    summary = {row[0]: (row[1], row[2]) for row in list(wb.worksheets[0].values)[4:] if len(row) >= 3 and row[0]}
+    projects, events, tasks = records('08'), records('07'), records('09')
+    story = [p('ИТОГИ ВЫБРАННОГО ПЕРИОДА', 'eyebrow'), p('Что сделала ЭРА', 'title'),
+        p(period_label, 'h'), p('Проекты, мероприятия, задания и коммуникации. Только факты платформы; без анкет и списков людей.', 'small'), Spacer(1, 5*mm)]
+    tiles = [[p(summary.get(name, ('Нет данных', 'Источник не предоставлен'))[0], 'value'), p(name),
+        p(summary.get(name, ('', 'Источник не предоставлен'))[1], 'small')]
+        for name in ['Текущий состав', 'Новые за период', 'События за период', 'Проекты за период']]
+    table = Table([tiles[:2], tiles[2:]], colWidths=[85*mm, 85*mm], hAlign='LEFT')
+    table.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F4F3F7')),
+        ('VALIGN',(0,0),(-1,-1),'TOP'), ('INNERGRID',(0,0),(-1,-1),5,colors.white),
+        ('LEFTPADDING',(0,0),(-1,-1),12),('RIGHTPADDING',(0,0),(-1,-1),12),
+        ('TOPPADDING',(0,0),(-1,-1),12),('BOTTOMPADDING',(0,0),(-1,-1),12)]))
+    story.extend([table, Spacer(1, 6*mm), p('Результаты в одном абзаце', 'h'),
+        p(f'В отчёт вошли: {len(projects)} проектов с созданием или подтверждённой работой, '
+          f'{len(events)} мероприятий по календарной дате и {len(tasks)} новых заданий. '
+          f'Подтверждённых посещений: {summary.get("Подтверждённых посещений", ("Нет данных",))[0]}. '
+          f'Принятых результатов заданий: {summary.get("Verified task results", ("Нет данных",))[0]}.'),
+        p('Ниже - перечни с датами и результатами. Статусы записей показаны на момент формирования, а не на конец выбранного месяца.', 'small'), PageBreak()])
+
+    def section(title, note):
+        story.extend([Spacer(1, 5*mm), CondPageBreak(45*mm), p(title, 'h'), p(note, 'small')])
+
+    section('01 / Проекты за период', 'Новые проекты и проекты с подтверждённым вкладом или завершённым этапом за выбранные даты. Без авторов и списков участников.')
+    if not projects:
+        story.append(p('Проектов с зафиксированной работой за выбранные даты нет.'))
+    for i, row in enumerate(projects, 1):
+        status = row.get('Текущий статус', row.get('Статус'))
+        story.extend([CondPageBreak(29*mm), p(f'{i:02d}. {row.get("Проект", "Проект")}', 'item'),
+            p(f'{STATUS.get(status, text(status))} · создан {text(row.get("Создан"))}', 'small'),
+            p(f'Подтверждённых вкладов: {row.get("Подтверждённых вкладов за период", 0)}. Завершено этапов: {row.get("Завершено этапов за период", 0)}.'),
+            p(row.get('Основание включения', 'Создан в выбранном периоде'), 'small'), Spacer(1, 3*mm)])
+    section('02 / Мероприятия', 'Перечень по дате мероприятия. Регистрация и фактическое посещение - разные показатели.')
+    if not events:
+        story.append(p('Мероприятий на выбранные даты в платформе нет.'))
+    for i, row in enumerate(events, 1):
+        status = row.get('Статус')
+        story.extend([CondPageBreak(25*mm), p(f'{i:02d}. {row.get("Событие", "Мероприятие")}', 'item'),
+            p(f'{text(row.get("Дата"))} · {STATUS.get(status, text(status))}', 'small'),
+            p(f'Зарегистрировано: {text(row.get("Регистраций"))}. Посетили: {text(row.get("Посетили"))}.'), Spacer(1, 3*mm)])
+    section('03 / Задания', 'Созданы за выбранные даты. Без исполнителей и текстов персональных ответов.')
+    if not tasks:
+        story.append(p('Новых заданий за выбранные даты нет.'))
+    for i, row in enumerate(tasks, 1):
+        status = row.get('Статус')
+        story.extend([CondPageBreak(22*mm), p(f'{i:02d}. {row.get("Задание", "Задание")}', 'item'),
+            p(f'{STATUS.get(status, text(status))} · создано {text(row.get("Создано"))} · срок {text(row.get("Дедлайн"))}', 'small')])
+
+    section('04 / Канал и общий чат', 'Фактически полученные сообщения Telegram, а не план публикаций. Тексты и личности авторов не сохраняются в счётчике.')
+    if not telegram or not telegram.get('sources'):
+        story.append(p('Источники Telegram в этом отчёте не предоставлены.'))
+    for source in (telegram or {}).get('sources', []):
         def source_date(value):
-            if not value:
-                return 'не подтверждено'
-            parsed = datetime.fromisoformat(value)
-            return parsed.astimezone(ZoneInfo(telegram.get('timezone', 'Asia/Yerevan'))).strftime('%d.%m.%Y %H:%M')
-        for source in telegram['sources']:
-            source_start = len(story)
-            story.append(p(source['label'], 'eyebrow'))
-            value = source['value']
-            story.append(p(value if value is not None else f"{source['observed_value']} учтено" if source['observed_value'] else "Нет данных", 'value'))
-            story.append(p(labels.get(source['data_state'], 'Нет данных'), 'small'))
-            if source['delta'] is not None:
-                story.append(p(f"Изменение: {source['delta']:+g}; предыдущий равный период: {source['previous_value']}"))
-            story.append(p(source['explanation'], 'small'))
-            story.append(p(f"Начало сбора: {source_date(source['started_at'])}. Непрерывное покрытие: {source_date(source['coverage_since'])}", 'small'))
-            days = source['daily']
-            if days:
-                maximum = max(1, *(day['value'] if day['value'] is not None else day['observed'] for day in days))
-                chart = Drawing(460, 100)
-                chart.add(Line(24, 22, 458, 22, strokeColor=muted, strokeWidth=.4))
-                chart.add(String(0, 22, '0', fontName='ERAUnicode', fontSize=7, fillColor=muted))
-                chart.add(String(0, 84, str(maximum), fontName='ERAUnicode', fontSize=7, fillColor=muted))
-                width = 430 / len(days)
-                for i, day in enumerate(days):
-                    count = day['value'] if day['value'] is not None else day['observed']
-                    chart.add(Rect(25+i*width, 22, max(.4, width-1), count/maximum*62,
-                        fillColor=accent if day['value'] is not None else colors.HexColor('#B8A1EF'), strokeColor=None))
-                chart.add(String(24, 6, days[0]['date'], fontName='ERAUnicode', fontSize=7, fillColor=muted))
-                chart.add(String(458, 6, days[-1]['date'], textAnchor='end', fontName='ERAUnicode', fontSize=7, fillColor=muted))
-                story.append(chart)
-            story.append(p(source['history_note'], 'small'))
-            # Keep a source title, count, coverage and its chart on the same page.
-            story[source_start:] = [KeepTogether(story[source_start:])]
-    story.extend([p('Как читать отчёт', 'heading'), p(
-        'События, проекты и результаты отфильтрованы по выбранным датам. '
-        'Состав, организации и цели — текущий срез. Эффективность и пульс имеют собственные '
-        'окна расчёта; их нельзя интерпретировать как оценку выбранного периода.', 'small'),
-        p(f'Период пульса: {getattr(health, "period_label", "текущее окно")}', 'small'),
-        p(f'Период эффективности: {getattr(efficiency, "period_label", "текущее окно")}', 'small'),
-        PageBreak(), p('Приоритеты руководителя', 'heading')])
-    risks = getattr(health, 'risks', [])
-    story.extend(p(risk) for risk in risks)
-    recommendations = getattr(efficiency, 'recommendations', [])
-    for item in recommendations:
-        story.extend([p(item.title, 'eyebrow'), p(item.reason), p(item.action)])
-    if not risks and not recommendations:
-        story.append(p('В доступных данных нет отдельных сигналов или рекомендаций.'))
-    if not getattr(health, 'pulse_suppressed', True):
-        story.append(p('Пульс по направлениям', 'heading'))
-        story.append(p(f"Выборка: {getattr(health, 'pulse_sample_size', 0)}; охват: {getattr(health, 'pulse_coverage', 0)}%. Это опрос, а не объективная оценка организации.", 'small'))
-        for item in getattr(health, 'vector_dimensions', []):
-            delta = getattr(item, 'delta', None)
-            change = ' · нет сравнения' if delta is None else f' · изменение {delta:+g}'
-            story.append(p(f'{item.label}: {item.value}{change}'))
-            bar = Drawing(460, 16)
-            bar.add(Rect(0, 4, 460, 6, fillColor=colors.HexColor('#EDEAF4'), strokeColor=None))
-            bar.add(Rect(0, 4, 460 * max(0, min(100, item.value)) / 100, 6,
-                         fillColor=accent, strokeColor=None))
-            story.append(bar)
-    story.extend([p('Все показатели', 'heading')])
-    for metric in getattr(health, 'metrics', []):
-        story.append(KeepTogether([p(f'{metric.label} · {metric.display}'), p(metric.note, 'small')]))
-    story.append(p('Подробные разделы', 'heading'))
-    story.extend(p(sheet.title, 'small') for sheet in wb.worksheets[1:])
-    for sheet in wb.worksheets[1:]:
-        story.extend([Spacer(1, 6*mm), CondPageBreak(55*mm), p(sheet.title, 'heading')])
-        iterator = iter(sheet.values)
-        headers = next(iterator, ())
-        for number, row in enumerate(iterator, 1):
-            if not any(value is not None for value in row):
-                continue
-            # Paragraphs can split across pages even for unusually long user content.
-            story.append(p(f'{number:02d} / {row[0] if row[0] is not None else "—"}', 'eyebrow'))
-            for label, value in zip(headers[1:], row[1:]):
-                if value is not None and value != '':
-                    display = value.strftime('%d.%m.%Y') if isinstance(value, (date, datetime)) else value
-                    story.append(p(f'{label}: {display}'))
-            story.append(Spacer(1, 3*mm))
-    if analytics is not None:
-        story.extend([Spacer(1, 6*mm), CondPageBreak(55*mm), p('Организации · текущая база', 'heading')])
-        contacts = getattr(analytics, 'contacts', [])
-        for contact in contacts:
-            # Deliberately omit private contact details and free-form notes.
-            story.append(p(contact.organization_name))
-        if not contacts:
-            story.append(p('Организаций в базе пока нет.', 'small'))
-        story.extend([Spacer(1, 6*mm), CondPageBreak(55*mm), p('Цели · текущий срез', 'heading')])
-        goals = getattr(analytics, 'goals', [])
-        for goal in goals:
-            story.extend([p(goal.title, 'eyebrow'), p(f'{goal.scope_name} · {goal.month}'),
-                          p(f'Выполнение: {goal.current_value}/{goal.target_value} · {goal.status}')])
-        if not goals:
-            story.append(p('Целей в доступных данных пока нет.', 'small'))
-    if media is not None:
-        story.extend([Spacer(1, 6*mm), CondPageBreak(55*mm), p('Медиа · контент-план', 'heading'),
-                      p('Публикации контент-плана и задачи — текущие итоги; сообщения медиа-чата — 30 дней. Это отдельный источник от общего чата ЭРА.', 'small')])
-        for key, label in [('planned', 'В контент-плане'), ('published', 'Опубликовано'),
-                           ('failed', 'Ошибки публикации'), ('on_time_rate', 'Вовремя, %'),
-                           ('tasks_created', 'Создано задач'), ('tasks_completed', 'Выполнено задач'),
-                           ('channel_posts_period', 'Публикаций контент-плана за 30 дней'),
-                           ('chat_messages_period', 'Сообщений медиа-чата за 30 дней'),
-                           ('chat_active_authors_period', 'Активных авторов за 30 дней')]:
-            value = getattr(media, key, None)
-            story.append(p(f'{label}: {value if value is not None else "—"}'))
+            return datetime.fromisoformat(value).astimezone(ZoneInfo(telegram.get('timezone', 'Asia/Yerevan'))).strftime('%d.%m.%Y %H:%M') if value else 'ещё нет'
+        story.extend([p(source['label'], 'item'), p(f'{source["observed_value"]} учтено', 'value'),
+            p('Полный период' if source['data_state'] == 'valid' else 'Неполная история: учтённое количество, не полный итог периода.', 'small'),
+            p(f'Подключение: {"сбор включён" if source.get("connection_status") == "collecting" else "требует проверки"}. Последнее поступление: {source_date(source.get("last_event_at"))}.', 'small'),
+            p(f'Непрерывное покрытие с {source_date(source.get("coverage_since"))}.', 'small')])
+        if source.get('rolling_counts'):
+            story.append(p('Последние периоды на дату формирования: ' + ' / '.join(f'{item["days"]} дней: {item["observed"]} учтено' for item in source['rolling_counts'])))
+        if source.get('delta') is not None:
+            story.append(p(f'Изменение к предыдущему равному периоду: {source["delta"]:+g}.'))
+        days = source.get('daily', [])
+        if days:
+            chart = Drawing(470, 105)
+            maximum = max(1, *(day['observed'] for day in days))
+            chart.add(Line(25,22,468,22,strokeColor=muted,strokeWidth=.4))
+            for y, label in [(22,'0'),(86,str(maximum))]:
+                chart.add(String(0,y,label,fontName='ERAUnicode',fontSize=7,fillColor=muted))
+            step = 440 / len(days)
+            for i, day in enumerate(days):
+                chart.add(Rect(26+i*step,22,max(.4,step-1),day['observed']/maximum*62,
+                    fillColor=accent if day['value'] is not None else colors.HexColor('#C5B7EB'),strokeColor=None))
+            for x, day, anchor in [(25,days[0],'start'),(467,days[-1],'end')]:
+                chart.add(String(x,6,day['date'],fontName='ERAUnicode',fontSize=7,fillColor=muted,textAnchor=anchor))
+            story.append(chart)
+        story.extend([p(source['explanation'], 'small'), p(source['history_note'], 'small'), Spacer(1, 4*mm)])
+    section('05 / Команда и возможности', 'Обезличенные итоги. Департаменты и направления - текущий срез; достижения и заявки - за выбранные даты.')
+    for key, title, fields in [('04','Департаменты',['Департамент','Участников','Активных целей','Выполнено целей']),
+        ('05','Направления',['Направление','Департамент','Участников']),
+        ('10','Заявки на возможности',['Статус заявки','Количество']),
+        ('11','Достижения',['Тип достижения','Статус','Количество'])]:
+        story.extend([CondPageBreak(24*mm), p(title, 'item')])
+        safe_rows = [row for row in records(key) if fields[0] in row]
+        if not safe_rows:
+            story.append(p('Нет записей в доступном срезе.', 'small'))
+        for row in safe_rows:
+            story.append(p(' · '.join(f'{label}: {text(row.get(label))}' for label in fields)))
+    section('06 / Партнёрства и цели', 'Текущий организационный срез, не историческая оценка за месяц. Без контактных лиц и персональных целей.')
+    contacts = getattr(analytics, 'contacts', []) if analytics else []
+    story.append(p(f'Организаций в базе: {len(contacts)}.'))
+    for contact in contacts:
+        story.append(p(contact.organization_name))
+    goals = [goal for goal in (getattr(analytics, 'goals', []) if analytics else [])
+        if getattr(goal, 'scope_type', None) in ('organization', 'global', 'department', 'direction')]
+    for goal in goals:
+        story.extend([p(goal.title, 'item'), p(f'{goal.scope_name} · {goal.month} · выполнение {goal.current_value}/{goal.target_value}')])
+    section('07 / Приоритеты руководителя', 'Сводка сигналов без персональных решений и свободных комментариев.')
+    counts = {}
+    for row in records('12'):
+        status = row.get('Статус', 'не указан')
+        counts[status] = counts.get(status, 0) + 1
+    story.append(p('Сигналы за период: ' + (', '.join(f'{STATUS.get(key, key)} - {value}' for key, value in counts.items()) or 'нет записей')))
+    section('Как читать отчёт', 'Методика и границы данных')
+    story.append(p('Состав команды - на дату формирования. Проекты отобраны по созданию и подтверждённой работе; мероприятия - по календарной дате; задания - по созданию. '
+        'Статусы текущие, не исторические. Telegram считает наблюдения с момента подключения: недоступная история не заменяется нулём. '
+        'PDF и Excel используют один набор фактов. Индивидуальные данные и анкеты в этот отчёт не входят.', 'small'))
     wb.close()
     doc.build(story, onFirstPage=page, onLaterPages=page)
     return output.getvalue()

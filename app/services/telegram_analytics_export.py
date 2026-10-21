@@ -7,11 +7,14 @@ def add_telegram_sheets(content: bytes, snapshot: dict) -> bytes:
     wb = load_workbook(BytesIO(content))
     ws = wb.create_sheet('Telegram · источники')
     ws.append(['Показатель', 'Значение за период', 'Учтено за период', 'Предыдущий период', 'Изменение',
-               'Статус данных', 'Начало сбора', 'Непрерывное покрытие с', 'Период', 'Методика'])
+               'Статус данных', 'Начало сбора', 'Непрерывное покрытие с', 'Период', 'Методика',
+               'Учтено за 7 дней', 'Учтено за 30 дней', 'Учтено за 90 дней', 'Последнее поступление'])
     for src in snapshot['sources']:
         ws.append([src['label'], src['value'], src['observed_value'], src['previous_value'], src['delta'],
                    src['data_state'], src['started_at'], src['coverage_since'], f"{snapshot['start']}–{snapshot['end']}",
-                   src['explanation'] + ' ' + src['history_note']])
+                   src['explanation'] + ' ' + src['history_note'],
+                   *[next((item['observed'] for item in src.get('rolling_counts', []) if item['days'] == days), None) for days in (7,30,90)],
+                   src.get('last_event_at')])
     days = wb.create_sheet('Telegram · по дням')
     days.append(['Источник', 'Дата', 'Значение', 'Учтено', 'Покрытие'])
     for src in snapshot['sources']:

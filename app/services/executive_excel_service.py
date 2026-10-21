@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.analytics_snapshot_service import count_new_members, verified_users_between
@@ -18,10 +18,12 @@ from app.database.models import (
     LeadershipAttentionItem,
     PortfolioItem,
     ProjectMember,
+    ProjectMilestone,
     RewardRedemption,
     Task,
     TaskSubmission,
     User,
+    AuditLog,
 )
 from app.database.participation_models import ParticipationLifecycle
 from app.utils.constants import ApplicationStatus
@@ -68,18 +70,19 @@ def resolve_report_period(
     return start, end, {"30d": "30 дней", "3m": "3 месяца", "6m": "6 месяцев", "1y": "1 год"}[period]
 
 
-def _date_of(value: Any) -> date | None:
+def _date_of(value: Any, timezone_name: str = 'Asia/Yerevan') -> date | None:
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value.date()
+        aware = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return aware.astimezone(ZoneInfo(timezone_name)).date()
     if isinstance(value, date):
         return value
     return None
 
 
-def _in_period(value: Any, start: date, end: date) -> bool:
-    day = _date_of(value)
+def _in_period(value: Any, start: date, end: date, timezone_name: str = 'Asia/Yerevan') -> bool:
+    day = _date_of(value, timezone_name)
     return day is not None and start <= day <= end
 
 
@@ -161,7 +164,6 @@ async def build_executive_workbook(
     """
 
     users = list(analytics.users)
-    user_by_id = {user.id: user for user in users}
     approved = [u for u in users if u.application_status == ApplicationStatus.APPROVED]
 
     lifecycles = list((await session.scalars(select(ParticipationLifecycle))).all())
@@ -187,8 +189,8 @@ async def build_executive_workbook(
     ]
 
     registrations = list((await session.scalars(select(EventRegistration))).all())
-    task_submissions = list((await session.scalars(select(TaskSubmission))).all())
     project_members = list((await session.scalars(select(ProjectMember))).all())
+    milestones = list((await session.scalars(select(ProjectMilestone))).all())
     tasks = list((await session.scalars(select(Task))).all())
     portfolio = list((await session.scalars(select(PortfolioItem))).all())
     rewards = list((await session.scalars(select(RewardRedemption))).all())
@@ -198,13 +200,20 @@ async def build_executive_workbook(
     event_ids = {event.id for event in period_events}
     period_regs = [row for row in registrations if row.event_id in event_ids]
     attended = [row for row in period_regs if _enum(row.status) == "attended"]
-    period_projects = [project for project in analytics.projects if _in_period(project.created_at, start_date, end_date)]
-    period_project_ids = {project.id for project in period_projects}
-    period_tasks = [task for task in tasks if _in_period(task.created_at, start_date, end_date)]
-    completed_task_submissions = [
-        row for row in task_submissions
-        if _in_period(row.created_at, start_date, end_date) and _enum(row.status) in {"approved", "completed"}
-    ]
+    in_period = lambda value: _in_period(value, start_date, end_date, timezone_name)
+    confirmed_members = [row for row in project_members if row.contribution_status == 'confirmed' and in_period(row.contribution_confirmed_at)]
+    completed_milestones = [row for row in milestones if row.status == 'completed' and in_period(row.completed_at)]
+    contributor_counts = Counter(row.project_id for row in confirmed_members)
+    milestone_counts = Counter(row.project_id for row in completed_milestones)
+    new_projects = [project for project in analytics.projects if in_period(project.created_at)]
+    period_projects = [project for project in analytics.projects if in_period(project.created_at)
+        or contributor_counts[project.id] or milestone_counts[project.id]]
+    period_tasks = [task for task in tasks if in_period(task.created_at)]
+    accepted_results = int(await session.scalar(select(func.count(func.distinct(TaskSubmission.id))).join(AuditLog,
+        (AuditLog.entity_type == 'task_submission') & (AuditLog.entity_id == TaskSubmission.id)).where(
+        TaskSubmission.status == 'approved', AuditLog.action == 'task.submission_approve',
+        AuditLog.created_at >= datetime.combine(start_date, datetime.min.time(), tzinfo=zone),
+        AuditLog.created_at < datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=zone))) or 0)
 
     wb = Workbook()
     wb.remove(wb.active)
@@ -220,27 +229,20 @@ async def build_executive_workbook(
         ["Вернулись за период", len(returned), "Зафиксированный возврат после снижения активности", "ParticipationLifecycle.returned_at"],
         ["События за период", len(period_events), "События с датой внутри выбранного периода", "Event.event_date"],
         ["Attendance rate", round(len(attended) * 100 / len(period_regs), 1) if period_regs else None, "Подтверждённые посещения / регистрации выбранных событий", "EventRegistration"],
-        ["Проекты за период", len(period_projects), "Проекты, созданные в выбранном периоде", "Project.created_at"],
-        ["Verified task results", len(completed_task_submissions), "Только подтверждённые результаты задач", "TaskSubmission"],
+        ["Проекты за период", len(period_projects), "Созданы или имеют подтверждённый вклад/завершённый этап в периоде", "Project + confirmations + milestones"],
+        ["Создано проектов", len(new_projects), "Новые проекты за выбранные даты", "Project.created_at"],
+        ["Создано заданий", len(period_tasks), "Новые задания за выбранные даты", "Task.created_at"],
+        ["Подтверждённых посещений", len(attended), "Записи attended выбранных событий", "EventRegistration"],
+        ["Verified task results", accepted_results, "Distinct approved результаты с audit принятия в выбранном периоде", "TaskSubmission + AuditLog"],
         ["Условный операционный индекс", efficiency.score if current_roster else None, efficiency.label if current_roster else "Нет базы для расчёта", "ERA efficiency: эвристика платформы, собственное окно 7/30 дней; не объективная оценка организации"],
         ["Пульс Мой вектор", health.pulse if health.pulse is not None else "—", health.pulse_label, "Безопасный агрегат; cohort suppression"],
     ]
     _summary_sheet(wb[SHEET_NAMES[0]], period_label=period_label, rows=summary_rows)
 
-    people_rows = []
-    for user in current_roster:
-        lifecycle = lifecycle_by_user.get(user.id)
-        people_rows.append([
-            _name(user),
-            _telegram(user),
-            user.city or "—",
-            _enum(user.participation_status),
-            getattr(lifecycle, "participation_mode", "ACTIVE"),
-            getattr(lifecycle, "activity_state", "ADAPTATION"),
-            _date_of(user.created_at),
-            _date_of(getattr(lifecycle, "last_meaningful_at", None)),
-        ])
-    _append_table(wb[SHEET_NAMES[1]], ["Участник", "Telegram", "Город", "Ранг", "Режим", "Состояние", "В ЭРА с", "Последнее meaningful действие"], people_rows)
+    _append_table(wb[SHEET_NAMES[1]], ["Показатель", "Количество"], [
+        ["Текущий состав", len(current_roster)], ["С подтверждённым результатом за период", len(active_base)],
+        ["Новые одобрения за период", new_members], ["Возвраты за период", len(returned)],
+    ])
 
     rank_counts = Counter(_enum(user.participation_status) for user in current_roster)
     state_counts = Counter(getattr(lifecycle_by_user.get(user.id), "activity_state", "ADAPTATION") for user in current_roster)
@@ -277,15 +279,12 @@ async def build_executive_workbook(
         event_rows.append([event.title, event.event_date, _enum(event.status), total, came, round(came * 100 / total, 1) if total else None])
     _append_table(wb[SHEET_NAMES[6]], ["Событие", "Дата", "Статус", "Регистраций", "Посетили", "Attendance, %"], event_rows)
 
-    contributor_counts: Counter[int] = Counter(
-        member.project_id
-        for member in project_members
-        if member.project_id in period_project_ids and getattr(member, "contribution_status", None) == "confirmed"
-    )
     _append_table(
         wb[SHEET_NAMES[7]],
-        ["Проект", "Статус", "Создан", "Verified contributors"],
-        [[project.title, _enum(project.status), _date_of(project.created_at), contributor_counts.get(project.id, 0)] for project in period_projects],
+        ["Проект", "Текущий статус", "Создан", "Подтверждённых вкладов за период", "Завершено этапов за период", "Основание включения"],
+        [[project.title, _enum(project.status), _date_of(project.created_at, timezone_name), contributor_counts[project.id],
+          milestone_counts[project.id], 'Новый проект' if in_period(project.created_at) else 'Подтверждённая работа за период']
+         for project in sorted(period_projects, key=lambda item: (str(item.created_at), item.id), reverse=True)],
     )
 
     task_rows = []
@@ -293,26 +292,22 @@ async def build_executive_workbook(
         task_rows.append([task.title, _enum(task.status), _date_of(task.created_at), _date_of(task.deadline), getattr(task, "points", 0), "командное" if getattr(task, "team_mode", None) == "TEAM" else "обычное"])
     _append_table(wb[SHEET_NAMES[8]], ["Задание", "Статус", "Создано", "Дедлайн", "Баллы", "Тип"], task_rows)
 
-    reward_rows = []
-    for row in rewards:
-        if not _in_period(row.created_at, start_date, end_date):
-            continue
-        reward_rows.append([_name(user_by_id.get(row.user_id)), _enum(row.status), _date_of(row.created_at), "Заявка на возможность / документ"])
-    _append_table(wb[SHEET_NAMES[9]], ["Участник", "Статус", "Дата", "Тип записи"], reward_rows)
+    reward_counts = Counter(_enum(row.status) for row in rewards if in_period(row.created_at))
+    _append_table(wb[SHEET_NAMES[9]], ["Статус заявки", "Количество"], [[key, count] for key, count in sorted(reward_counts.items())])
 
-    portfolio_rows = []
+    portfolio_counts = Counter()
     for item in portfolio:
         if not _in_period(item.created_at, start_date, end_date) and not _in_period(getattr(item, "issued_at", None), start_date, end_date):
             continue
-        portfolio_rows.append([_name(user_by_id.get(item.user_id)), item.title, _enum(item.item_type), _enum(item.status), _date_of(getattr(item, "issued_at", None) or item.created_at)])
-    _append_table(wb[SHEET_NAMES[10]], ["Участник", "Достижение", "Тип", "Статус", "Дата"], portfolio_rows)
+        portfolio_counts[(_enum(item.item_type), _enum(item.status))] += 1
+    _append_table(wb[SHEET_NAMES[10]], ["Тип достижения", "Статус", "Количество"], [[kind, status, count] for (kind, status), count in sorted(portfolio_counts.items())])
 
     decision_rows = []
     for item in decisions:
         if not _in_period(item.created_at, start_date, end_date):
             continue
-        decision_rows.append([_enum(item.type), _enum(item.severity), _enum(item.scope_type), _enum(item.status), getattr(item, "resolution", None) or "—", _date_of(item.created_at)])
-    _append_table(wb[SHEET_NAMES[11]], ["Сигнал / решение", "Критичность", "Scope", "Статус", "Решение", "Дата"], decision_rows)
+        decision_rows.append([_enum(item.type), _enum(item.severity), _enum(item.scope_type), _enum(item.status), _date_of(item.created_at)])
+    _append_table(wb[SHEET_NAMES[11]], ["Сигнал / решение", "Критичность", "Область", "Статус", "Дата"], decision_rows)
 
     method_rows = [
         ["Период отчёта", period_label, "Фильтр применяется к временным сущностям; current roster/Active Base показываются на дату формирования."],
@@ -321,7 +316,7 @@ async def build_executive_workbook(
         ["Verified result", "Только подтверждённый результат", "Task/Event/Project scoring идёт через единый idempotent verified-activity gateway."],
         ["Мой вектор", "Aggregate only", "Raw ответы, personal notes и индивидуальные психологические оценки в workbook не попадают."],
         ["Technical IDs", "Не экспортируются", "В таблицах используются названия/имена; database ids и Telegram numeric ids скрыты по умолчанию."],
-        ["PII", "Минимизация", "Телефон/email не входят в executive workbook; отдельные операционные exports имеют свой permission scope."],
+        ["Персональные данные", "Только обезличенные итоги", "Списки людей, имена, контакты, анкеты и индивидуальное портфолио исключены из общего PDF/Excel."],
     ]
     _append_table(wb[SHEET_NAMES[12]], ["Правило", "Как считается", "Ограничение / смысл"], method_rows)
 
