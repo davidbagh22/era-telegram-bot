@@ -49,6 +49,9 @@ def test_reviewed_quiz_prompts_do_not_confuse_instruments_or_geographic_units():
     asia = next(item for item in QUESTIONS if item[1] == ('Азия', 'Африка', 'Европа'))
     assert asia[0] == 'Какая часть света занимает наибольшую площадь?'
     assert asia[1][asia[2]] == 'Азия'
+    for mode in (GameMode.SOLO_QUIZ, GameMode.TEAM_QUIZ, GameMode.TEAM_DUEL):
+        item = next(item for item in items_for_mode(mode) if item.challenge.prompt == asia[0])
+        assert item.category == 'География'
 
 
 def test_quiz_themes_cover_requested_subjects():

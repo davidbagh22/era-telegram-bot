@@ -715,7 +715,7 @@ def _quiz_items(mode: GameMode) -> tuple[GameItem, ...]:
             category = "Наука"
         elif any(term in normalized_prompt for term in ("истори", "основан", "византий", "столет", "древн")):
             category = "История"
-        elif any(term in normalized_prompt for term in ("столиц", "океан", "материк", "озер", "рек", "гор", "стране", "страна")):
+        elif any(term in normalized_prompt for term in ("столиц", "океан", "материк", "часть света", "озер", "рек", "гор", "стране", "страна")):
             category = "География"
         elif any(term in normalized_prompt for term in ("написал", "автор", "роман", "книгу", "писател")):
             category = "Литература"
