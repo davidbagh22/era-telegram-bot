@@ -52,7 +52,7 @@ def fixture(project_count=35):
 def report(project_count=35):
     return build_executive_pdf(fixture(project_count), period_label='01.10.2026–21.10.2026',
         health=NS(risks=['Сроки требуют внимания'], metrics=[], period_label='30 дней'),
-        efficiency=NS(recommendations=[], period_label='7 дней'),
+        efficiency=NS(recommendations=[NS(title='Проверить сроки проектов', reason='Есть просроченные этапы', action='Обновить план работ')], period_label='7 дней'),
         analytics=NS(contacts=[NS(organization_name='Партнёр ЭРА', email='PRIVATE_EMAIL', phone='PRIVATE_PHONE', notes='PRIVATE_NOTE')],
                      goals=[NS(title='Цель организации', scope_name='ЭРА', month='2026-10', current_value=3, target_value=5, status='active')]),
         media=NS(published=12))
@@ -66,7 +66,8 @@ class ExecutivePDFTests(TestCase):
         text = '\n'.join(page.extract_text() for page in pdf.pages)
         for expected in ['Текущий состав', '66', 'Приоритеты руководителя',
                          '=Название проекта <script> & текст', 'Проекты за период',
-                         '01.10.2026', 'Очень длинный текст', 'Встреча ЭРА', 'Посетили: 19', 'Завершено этапов: 2']:
+                         '01.10.2026', 'Очень длинный текст', 'Встреча ЭРА', 'Посетили: 19', 'Завершено этапов: 2',
+                         'Сроки требуют внимания', 'Проверить сроки проектов', 'Есть просроченные этапы', 'Обновить план работ']:
             self.assertIn(expected, text)
         for secret in ['PRIVATE_EMAIL', 'PRIVATE_PHONE', 'PRIVATE_NOTE', 'Имя <script> & текст', '=Имя участника']:
             self.assertNotIn(secret, text)

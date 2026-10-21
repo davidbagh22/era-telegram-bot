@@ -174,6 +174,15 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
         status = row.get('Статус', 'не указан')
         counts[status] = counts.get(status, 0) + 1
     story.append(p('Сигналы за период: ' + (', '.join(f'{STATUS.get(key, key)} - {value}' for key, value in counts.items()) or 'нет записей')))
+    risks = getattr(health, 'risks', [])
+    recommendations = getattr(efficiency, 'recommendations', [])
+    if risks or recommendations:
+        story.append(p('Дополнительно - текущие агрегированные сигналы платформы. Их окна расчёта могут отличаться от периода отчёта.', 'small'))
+    for risk in risks:
+        story.append(p(risk))
+    for recommendation in recommendations:
+        story.extend([CondPageBreak(30*mm), p(recommendation.title, 'item'),
+            p(recommendation.reason), p(recommendation.action)])
     section('Как читать отчёт', 'Методика и границы данных')
     story.append(p('Состав команды - на дату формирования. Проекты отобраны по созданию и подтверждённой работе; мероприятия - по календарной дате; задания - по созданию. '
         'Статусы текущие, не исторические. Telegram считает наблюдения с момента подключения: недоступная история не заменяется нулём. '
