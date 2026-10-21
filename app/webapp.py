@@ -566,7 +566,15 @@ async def security_headers_middleware(request: Request, call_next):
     # API responses include session tokens, contact details and downloadable
     # personal-data exports. Never let browsers/shared proxies retain them,
     # including authentication errors. Static hashed assets keep their cache.
-    if request.url.path == "/api" or request.url.path.startswith("/api/"):
+    poster_id = request.url.path.removeprefix("/api/v1/event-posters/")
+    public_poster = (
+        request.url.path.startswith("/api/v1/event-posters/")
+        and poster_id.isascii() and poster_id.isdecimal()
+        and response.status_code == 200
+        and response.headers.get("Content-Type", "").startswith("image/")
+        and response.headers.get("Cache-Control") == "public, max-age=300"
+    )
+    if (request.url.path == "/api" or request.url.path.startswith("/api/")) and not public_poster:
         response.headers["Cache-Control"] = "no-store, private"
         response.headers["Pragma"] = "no-cache"
     response.headers["X-Content-Type-Options"] = "nosniff"

@@ -92,3 +92,21 @@ class ApiCachePrivacyTests(unittest.TestCase):
             self.assertEqual(response.headers["cache-control"], "no-store, private")
             self.assertEqual(response.headers["pragma"], "no-cache")
         self.assertIn("immutable", client.get("/app/assets/bundle.js").headers["cache-control"])
+
+
+class PublicPosterCacheTests(unittest.TestCase):
+    def test_only_successful_public_image_posters_keep_cache(self):
+        app = FastAPI()
+        app.middleware("http")(security_headers_middleware)
+
+        @app.get("/api/v1/event-posters/{poster_id}")
+        def poster(poster_id: str):
+            from starlette.responses import Response
+            if poster_id == "2":
+                return Response("private", media_type="application/json", headers={"Cache-Control": "public, max-age=300"})
+            return Response(b"image", media_type="image/png", headers={"Cache-Control": "public, max-age=300"})
+
+        client = TestClient(app)
+        self.assertEqual(client.get("/api/v1/event-posters/1").headers["cache-control"], "public, max-age=300")
+        for path in ("/api/v1/event-posters/2", "/api/v1/event-posters/not-a-number", "/api/v1/event-posters/1/private"):
+            self.assertEqual(client.get(path).headers["cache-control"], "no-store, private")
