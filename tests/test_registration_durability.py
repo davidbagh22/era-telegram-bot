@@ -23,6 +23,7 @@ def _registration_data() -> dict:
         "phone": "+37400000000",
         "email": "new@example.com",
         "city": "Ереван",
+        "country": "Армения",
         "education_work": "Университет",
         "occupation": "Студент",
         "skills": ["Организация мероприятий", "SMM"],

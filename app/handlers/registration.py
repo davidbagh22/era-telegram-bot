@@ -549,6 +549,9 @@ def _registration_review_text(data: dict) -> str:
         f"Страна: {html.escape(str(data.get('country') or '—'))}\n"
         f"Регион / город: {html.escape(str(data.get('region') or '—'))}\n"
         f"Email: {html.escape(str(data.get('email') or '—'))}\n"
+        + (f"Соцсеть / портфолио: {html.escape(str(data['social_url']))}\n" if data.get('social_url') else "")
+        + (f"Телефон: {html.escape(str(data['phone']))}\n" if data.get('phone') else "")
+        +
         f"Учёба / работа: {html.escape(str(data.get('education_work') or '—'))}\n"
         f"Занятие: {html.escape(str(data.get('occupation') or '—'))}\n"
         f"Навыки: {html.escape(', '.join(data.get('skills') or []) or '—')}\n"
@@ -642,6 +645,8 @@ async def _ensure_complete(message, state, data):
         ('first_name', RegistrationStates.full_name, texts.REGISTRATION_INTRO),
         ('last_name', RegistrationStates.full_name, texts.REGISTRATION_INTRO),
         ('age', RegistrationStates.age, texts.REG_AGE),
+        ('country', RegistrationStates.country, texts.REG_COUNTRY),
+        ('region', RegistrationStates.region, texts.REG_REGION),
         ('email', RegistrationStates.email, texts.REG_EMAIL),
         ('education_work', RegistrationStates.education_work, texts.REG_EDUCATION),
         ('occupation', RegistrationStates.occupation, texts.REG_OCCUPATION),
@@ -653,7 +658,8 @@ async def _ensure_complete(message, state, data):
         ('profile_photo_file_id', RegistrationStates.profile_photo, _PHOTO_PROMPT),
     ]
     for key, target, prompt in requirements:
-        if not data.get(key):
+        present = data.get('region') or data.get('city') if key == 'region' else data.get(key)
+        if not present:
             await state.set_state(target)
             markup = time_keyboard() if key == 'available_time' else desired_path_keyboard() if key == 'desired_path' else None
             await message.answer('Перед отправкой нужно дополнить анкету. Сохранённые ответы остаются в ней.')

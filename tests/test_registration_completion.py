@@ -180,7 +180,7 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
             async with self.sessions() as session:
                 await registration.finish_registration(self.call, self.state, session, self.bot, self.settings)
             create.assert_not_awaited()
-        assert await self.state.get_state() == RegistrationStates.education_work.state
+        assert await self.state.get_state() == RegistrationStates.country.state
         assert (await self.state.get_data())['referral_code'] == '123456'
         assert (await self.state.get_data())['email'] == 'fixture@example.test'
 
@@ -217,6 +217,28 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
             plain=html.unescape(chunk.replace('<b>','').replace('</b>',''))
             assert len(plain.encode('utf-16-le'))//2<=4096
             assert chunk.count('<b>')==chunk.count('</b>')
+
+    async def test_legacy_city_is_valid_location_but_missing_country_is_requested(self):
+        await self.complete_quick_form()
+        data=await self.state.get_data()
+        data.pop('region')
+        await self.state.set_data(data)
+        assert await registration._ensure_complete(self.call.message,self.state,data)
+        data.pop('country')
+        await self.state.set_data(data)
+        assert not await registration._ensure_complete(self.call.message,self.state,data)
+        assert await self.state.get_state()==RegistrationStates.country.state
+        assert (await self.state.get_data())['city']=='Ереван'
+        data['country']='Армения'
+        data.pop('city')
+        await self.state.set_data(data)
+        assert not await registration._ensure_complete(self.call.message,self.state,data)
+        assert await self.state.get_state()==RegistrationStates.region.state
+
+    def test_review_includes_normalized_optional_contacts(self):
+        text=registration._registration_review_text({'social_url':'https://example.test/?a=1&b=2','phone':'+37400000000'})
+        assert 'https://example.test/?a=1&amp;b=2' in text
+        assert '+37400000000' in text
 
     async def test_no_consent_creates_no_profile(self):
         await self.complete_quick_form()
