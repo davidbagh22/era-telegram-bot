@@ -53,8 +53,14 @@ test("analytics expands from overview instead of a separate control hub", async 
 
   await expect(page.getByRole("heading", { name: "ЭРА одним взглядом" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Главное" })).toBeVisible();
+  for (const name of ["Обзор", "Люди", "Деятельность", "Команда", "Возможности", "Отчёты"]) {
+    await expect(page.getByRole("tab", { name, exact: true })).toBeVisible();
+  }
+  await expect(page.getByText("Публикации канала", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Люди", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Все показатели" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Вовлечённость.*показателей/ })).toBeVisible();
+  await page.locator("summary").filter({ hasText: /Вовлечённость.*показателей/ }).click();
+  await expect(page.getByText("Числитель:", { exact: false }).first()).toBeVisible();
 });
 
 test("analytics exports selected custom period as a complete PDF", async ({ page }) => {
@@ -88,6 +94,13 @@ test("analytics exports selected custom period as a complete PDF", async ({ page
     const heading = await page.getByRole("heading", { name: "ЭРА одним взглядом" }).boundingBox();
     expect(heading?.width).toBeGreaterThan(200);
   }
+});
+
+test("analytics quick action opens the actual tasks workspace", async ({ page }) => {
+  await enterAdminWorkspace(page);
+  await page.getByRole("button", { name: /Аналитика/ }).click();
+  await page.getByRole("button", { name: "Открыть задания →", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Дать работу или проверить результат" })).toBeVisible();
 });
 
 test("overview KPI opens exact underlying rows", async ({ page }) => {

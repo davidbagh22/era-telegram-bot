@@ -1,17 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
-import {
-  downloadAnalyticsSectionTable,
-  downloadFullAnalyticsReport,
-  downloadOrganizationHealthReport,
-  fetchAdminAnalyticsDetails,
-  fetchEraEfficiency,
-  fetchOrganizationHealth,
-  type AnalyticsDetailSection,
-  type HealthMetric,
-  type ExecutiveReportPeriod,
-} from "../../api/adminAnalytics";
-import "./adminAnalytics.css";
-import { fetchAdminAnalyticsSummary, fetchAdminDashboard } from "../../api/client";
+import { useState } from "react";
+import { downloadAnalyticsSectionTable, downloadFullAnalyticsReport, fetchAdminAnalyticsDetails,
+  fetchEraEfficiency, fetchOrganizationHealth, fetchAnalyticsV2, checkAnalyticsSources, fetchAnalyticsReports,
+  type AnalyticsDetailSection, type HealthMetric, type TelegramAnalyticsSource } from "../../api/adminAnalytics";
+import { fetchAdminAnalyticsSummary } from "../../api/client";
 import { fetchMediaAnalytics } from "../../api/media";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
@@ -19,6 +10,7 @@ import { StatusBadge } from "../../components/StatusBadge";
 import { useToast } from "../../components/Toast";
 import { useAsync } from "../../hooks/useAsync";
 import type { AnalyticsSummary } from "../../types/admin";
+import "./adminAnalytics.css";
 
 const SECTION_META: Record<
   AnalyticsDetailSection,
@@ -74,19 +66,6 @@ const STATUS_LABELS: Record<string, string> = {
   done: "Готово",
 };
 
-// These are the metrics an administrator should be able to read in one glance.
-// The complete metric set is preserved below in compact category drill-downs.
-const EXECUTIVE_KEYS = [
-  "approved",
-  "active_30d",
-  "new_30d",
-  "retention_30d",
-  "growth_conversion",
-  "attendance_rate",
-  "active_projects",
-  "overdue_tasks",
-] as const;
-
 function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -96,212 +75,6 @@ function saveBlob(blob: Blob, filename: string) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function priorityLabel(priority: string): string {
-  if (priority === "high") return "Сделать сейчас";
-  if (priority === "medium") return "Усилить";
-  return "Возможность";
-}
-
-function priorityTone(priority: string): "red" | "violet" | "gold" {
-  if (priority === "high") return "red";
-  if (priority === "medium") return "violet";
-  return "gold";
-}
-
-function scoreTone(score: number): string {
-  if (score >= 70) return "var(--era-gold-ink)";
-  if (score >= 40) return "var(--era-gold)";
-  return "var(--era-red-bright)";
-}
-
-function MiniRing({
-  score,
-  size,
-  accent,
-  showValue = true,
-}: {
-  score: number | null;
-  size: number;
-  accent: string;
-  showValue?: boolean;
-}) {
-  const safeScore = Math.max(0, Math.min(100, score ?? 0));
-  return (
-    <div
-      aria-hidden={!showValue}
-      style={{
-        width: size,
-        height: size,
-        flexShrink: 0,
-        borderRadius: "50%",
-        padding: Math.max(3, Math.round(size * 0.065)),
-        background:
-          score === null
-            ? "var(--era-ring-track)"
-            : `conic-gradient(${accent} 0 ${safeScore}%, var(--era-ring-track) ${safeScore}% 100%)`,
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          borderRadius: "50%",
-          background: "var(--era-surface)",
-          display: "grid",
-          placeItems: "center",
-        }}
-      >
-        {showValue && (
-          <strong
-            style={{
-              fontFamily: "var(--era-font-display)",
-              fontSize: size * 0.29,
-              lineHeight: 1,
-            }}
-          >
-            {score ?? "—"}
-          </strong>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function HeroScore({ score, label, sublabel }: { score: number | null; label: string; sublabel: string }) {
-  const accent = score === null ? "var(--era-text-muted)" : scoreTone(score);
-  return (
-    <div
-      aria-label={`${label}: ${score ?? "нет данных"}${score === null ? "" : " из 100"}`}
-      style={{ display: "grid", gridTemplateColumns: "72px 1fr", alignItems: "center", gap: "0.7rem" }}
-    >
-      <MiniRing score={score} size={72} accent={accent} />
-      <div style={{ minWidth: 0 }}>
-        <strong style={{ display: "block", fontSize: "0.95rem" }}>{label}</strong>
-        <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: "0.7rem", lineHeight: 1.35 }}>
-          {sublabel}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function ScoreLine({ score }: { score: number }) {
-  const safeScore = Math.max(0, Math.min(100, score));
-  return (
-    <div style={{ height: 4, borderRadius: 999, background: "var(--era-ring-track)", overflow: "hidden" }}>
-      <div
-        style={{
-          width: `${safeScore}%`,
-          height: "100%",
-          borderRadius: 999,
-          background: scoreTone(score),
-          transition: "width .25s ease",
-        }}
-      />
-    </div>
-  );
-}
-
-function ExecutiveMetric({ metric }: { metric: HealthMetric }) {
-  const hasValue = metric.value !== null && !/нет данных|нет заявок/i.test(metric.display);
-  const isZero = hasValue && metric.value === 0;
-  return (
-    <div
-      style={{
-        minWidth: 0,
-        padding: "0.65rem 0.7rem",
-        border: "1px solid var(--era-border)",
-        borderRadius: "calc(var(--era-radius-card) * .72)",
-        background: "var(--era-surface-2)",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minHeight: 38 }}>
-        {metric.score !== null && !isZero && <MiniRing score={metric.score} size={36} accent={scoreTone(metric.score)} />}
-        <strong
-          style={{
-            display: "block",
-            fontFamily: "var(--era-font-display)",
-            fontSize: metric.score === null ? "1.45rem" : "1.05rem",
-            lineHeight: 1.05,
-          }}
-        >
-          {hasValue ? metric.display : "Нет данных"}
-        </strong>
-      </div>
-      <span style={{ display: "block", marginTop: "0.4rem", fontSize: "0.72rem", fontWeight: 800, lineHeight: 1.25 }}>
-        {metric.label}
-      </span>
-    </div>
-  );
-}
-
-function MetricRow({ metric }: { metric: HealthMetric }) {
-  return (
-    <div style={{ padding: "0.62rem 0", borderTop: "1px solid var(--era-border)" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: "0.7rem", alignItems: "baseline" }}>
-        <span style={{ minWidth: 0, fontSize: "0.78rem", fontWeight: 750, lineHeight: 1.25 }}>{metric.label}</span>
-        <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1rem", whiteSpace: "nowrap" }}>{metric.display}</strong>
-      </div>
-      {metric.score !== null && metric.value !== 0 && (
-        <div style={{ marginTop: "0.38rem" }}>
-          <ScoreLine score={metric.score} />
-        </div>
-      )}
-      {metric.note && (
-        <span style={{ display: "block", marginTop: "0.28rem", color: "var(--era-text-muted)", fontSize: "0.63rem", lineHeight: 1.3 }}>
-          {metric.note}
-        </span>
-      )}
-    </div>
-  );
-}
-
-
-function AnalyticsReportPanel() {
-  const [period, setPeriod] = useState<ExecutiveReportPeriod>("30d");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
-  const [busy, setBusy] = useState<"pdf" | "xlsx" | null>(null);
-  const toast = useToast();
-  const invalid = period === "custom" && (!start || !end || start > end);
-  const download = async (format: "pdf" | "xlsx") => {
-    if (invalid || busy) return;
-    setBusy(format);
-    try {
-      const blob = await downloadFullAnalyticsReport(period, start, end, format);
-      // Keep the established Excel filename; PDF carries the selected dates.
-      saveBlob(blob, format === "xlsx" ? "ERA_full_report.xlsx" :
-        `ERA_analytics_${period === "custom" ? `${start}_${end}` : period}.pdf`);
-      toast.show("Отчёт готов к сохранению.", "success");
-    } catch {
-      toast.show("Не удалось сформировать отчёт. Попробуйте ещё раз.", "error");
-    } finally { setBusy(null); }
-  };
-  return (
-    <section className="era-analytics-report" aria-label="Экспорт аналитики">
-      <span className="era-analytics-eyebrow">ЭРА · ОТЧЁТ РУКОВОДИТЕЛЯ</span>
-      <h3>Вся картина. В одном PDF.</h3>
-      <p>Сводка, приоритеты и подробности по всем разделам — в документе, который удобно читать и отправлять.</p>
-      <label htmlFor="analytics-report-period">Период отчёта</label>
-      <select id="analytics-report-period" value={period} disabled={busy !== null} onChange={(event) => setPeriod(event.target.value as ExecutiveReportPeriod)}>
-        <option value="30d">Последние 30 дней</option><option value="3m">Последние 90 дней</option>
-        <option value="6m">Последние 180 дней</option><option value="1y">Последние 365 дней</option>
-        <option value="custom">Свои даты</option>
-      </select>
-      {period === "custom" && <div className="era-analytics-dates">
-        <label>С даты<input aria-label="Начало периода" type="date" value={start} max={end || undefined} disabled={busy !== null} onChange={(e) => setStart(e.target.value)} /></label>
-        <label>По дату<input aria-label="Конец периода" type="date" value={end} min={start || undefined} disabled={busy !== null} onChange={(e) => setEnd(e.target.value)} /></label>
-      </div>}
-      {invalid && <p role="status">Укажите начало и конец периода по порядку.</p>}
-      <div className="era-analytics-export-actions">
-        <button className="era-btn-primary" disabled={invalid || busy !== null} onClick={() => void download("pdf")}>{busy === "pdf" ? "Готовим PDF…" : "↓ Скачать отчёт PDF"}</button>
-        <button disabled={invalid || busy !== null} onClick={() => void download("xlsx")}>{busy === "xlsx" ? "Готовим Excel…" : "Excel"}</button>
-      </div>
-      <small>Даты применяются к отчёту. На экране — текущий состав и показатели со своими периодами, указанными в пояснениях.</small>
-    </section>
-  );
 }
 
 function DetailView({ section, onBack }: { section: AnalyticsDetailSection; onBack: () => void }) {
@@ -365,298 +138,124 @@ function DetailView({ section, onBack }: { section: AnalyticsDetailSection; onBa
   );
 }
 
-export function AdminDashboardScreen() {
-  const dashboard = useAsync(() => fetchAdminDashboard(), []);
-  const analytics = useAsync(() => fetchAdminAnalyticsSummary(), []);
-  const efficiency = useAsync(() => fetchEraEfficiency(), []);
-  const health = useAsync(() => fetchOrganizationHealth(), []);
-  const mediaAnalytics = useAsync(() => fetchMediaAnalytics(), []);
+type AnalyticsTab = "Обзор" | "Люди" | "Деятельность" | "Команда" | "Возможности" | "Отчёты";
+export type AnalyticsAction = "people" | "applications" | "events" | "projects" | "tasks" | "offers";
+const TABS: AnalyticsTab[] = ["Обзор", "Люди", "Деятельность", "Команда", "Возможности", "Отчёты"];
+const DATA_LABELS: Record<string, string> = { valid: "Данные за период", insufficient: "Частичное покрытие", unavailable: "Источник недоступен", stale: "Проверка устарела" };
+function categoryTab(category: string): AnalyticsTab {
+  if (/Люди|Вовлечённость/.test(category)) return "Люди";
+  if (/События|Проекты|Исполнение/.test(category)) return "Деятельность";
+  if (/Рост|Карьер|Возможности|Партнёр|Экосистем/.test(category)) return "Возможности";
+  return "Команда";
+}
+function dateLabel(value: string | null) {
+  return value ? new Date(value).toLocaleString("ru-RU", { timeZone: "Asia/Yerevan" }) : "Ещё нет";
+}
+function DailyChart({ title, days }: { title: string; days: TelegramAnalyticsSource["daily"] }) {
+  const max = Math.max(1, ...days.map((day) => day.value ?? day.observed));
+  return <figure className="analytics-chart">
+    <figcaption>{title}</figcaption>
+    <svg viewBox="0 0 360 110" role="img" aria-label={`${title}. Максимум ${max}. Данные по дням доступны ниже.`}>
+      <text x="0" y="12" className="analytics-axis">{max}</text><text x="0" y="92" className="analytics-axis">0</text>
+      <line x1="25" y1="90" x2="357" y2="90" stroke="currentColor" opacity=".25" />
+      {days.map((day, i) => { const value = day.value ?? day.observed; const width = 330 / Math.max(days.length, 1); return <rect key={day.date}
+        x={26 + i * width} y={90 - value / max * 70} width={Math.max(.4, width - 1)} height={value / max * 70}
+        fill="var(--era-violet, #632cff)" opacity={day.value === null ? .35 : .9}>
+        <title>{day.date}: {value}{day.value === null ? " учтено, покрытие неполное" : ""}</title></rect>; })}
+    </svg>
+    <div className="analytics-chart-dates"><span>{days[0]?.date}</span><span>{days[days.length - 1]?.date}</span></div>
+    <details><summary>Числа по дням · светлый цвет означает неполное покрытие</summary>
+      <dl className="analytics-daily-values">{days.map((day) => <div key={day.date}><dt>{day.date}</dt><dd>{day.value ?? `${day.observed} учтено · частично`}</dd></div>)}</dl>
+    </details>
+  </figure>;
+}
+function SourceCard({ source, compare }: { source: TelegramAnalyticsSource; compare: boolean }) {
+  return <Card style={{ padding: ".85rem" }}>
+    <div className="analytics-source-title"><h3>{source.label}</h3><span className={`analytics-state analytics-state-${source.data_state}`}>{DATA_LABELS[source.data_state] ?? "Нет данных"}</span></div>
+    <strong className="analytics-number">{source.value ?? (source.observed_value > 0 ? `${source.observed_value} учтено` : "Нет данных")}</strong>
+    {compare && <p>{source.delta === null ? "Сравнение пока недоступно: нет полного предыдущего периода." : `${source.delta > 0 ? "+" : ""}${source.delta} к предыдущему равному периоду (${source.previous_value}).`}</p>}
+    <p>{source.explanation}</p>
+    <details><summary>Источник и покрытие</summary><p>Сбор начат: {dateLabel(source.started_at)}. Непрерывное покрытие: {dateLabel(source.coverage_since)}.</p>
+      <p>Учтено с начала сбора: {source.total_observed}. Последнее событие: {dateLabel(source.last_event_at)}. Проверка прав: {dateLabel(source.checked_at)}.</p><p>{source.history_note}</p>
+    </details>
+    <DailyChart title={`${source.label} · по дням`} days={source.daily} />
+  </Card>;
+}
+
+export function AdminDashboardScreen({ onAction }: { onAction?: (action: AnalyticsAction) => void }) {
+  const [tab, setTab] = useState<AnalyticsTab>("Обзор");
+  const [period, setPeriod] = useState("30");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [compare, setCompare] = useState(true);
+  const [refresh, setRefresh] = useState(0);
+  const [busy, setBusy] = useState<"pdf" | "xlsx" | "sources" | null>(null);
   const [selectedSection, setSelectedSection] = useState<AnalyticsDetailSection | null>(null);
-  const [downloadingSection, setDownloadingSection] = useState<AnalyticsDetailSection | "health" | null>(null);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(() => new Set());
   const toast = useToast();
-
-  const handleSectionDownload = useCallback(async (section: AnalyticsDetailSection) => {
-    setDownloadingSection(section);
+  const validDates = period !== "custom" || Boolean(start && end && start <= end);
+  const snapshot = useAsync(() => {
+    if (!validDates) return Promise.resolve(null);
+    return fetchAnalyticsV2(period === "custom" ? 30 : Number(period), period === "custom" ? start : undefined, period === "custom" ? end : undefined);
+  }, [period, start, end, refresh]);
+  const health = useAsync(() => fetchOrganizationHealth(), []);
+  const efficiency = useAsync(() => fetchEraEfficiency(), []);
+  const analytics = useAsync(() => fetchAdminAnalyticsSummary(), []);
+  const media = useAsync(() => fetchMediaAnalytics(), []);
+  const reports = useAsync(() => fetchAnalyticsReports(), [refresh]);
+  const data = snapshot.status === "ready" ? snapshot.data : null;
+  const metricGroups = new Map<string, HealthMetric[]>();
+  if (health.status === "ready") for (const metric of health.data.metrics) {
+    const values = metricGroups.get(metric.category) ?? []; values.push(metric); metricGroups.set(metric.category, values);
+  }
+  const download = async (format: "pdf" | "xlsx") => {
+    if (!data || busy) return;
+    setBusy(format);
     try {
-      saveBlob(await downloadAnalyticsSectionTable(section), `ERA_${section}.xlsx`);
-    } catch {
-      toast.show("Не удалось собрать Excel-таблицу.", "error");
-    } finally {
-      setDownloadingSection(null);
-    }
-  }, [toast]);
-
-  const handleHealthReport = useCallback(async () => {
-    setDownloadingSection("health");
-    try {
-      saveBlob(await downloadOrganizationHealthReport(), "ERA_organization_health.xlsx");
-    } catch {
-      toast.show("Не удалось собрать здоровье организации.", "error");
-    } finally {
-      setDownloadingSection(null);
-    }
-  }, [toast]);
-
-  const executiveMetrics = useMemo(() => {
-    if (health.status !== "ready") return [] as HealthMetric[];
-    const byKey = new Map(health.data.metrics.map((metric) => [metric.key, metric]));
-    return EXECUTIVE_KEYS
-      .map((key) => byKey.get(key))
-      .filter((metric): metric is HealthMetric => metric !== undefined)
-      .slice(0, 8);
-  }, [health]);
-
-  const groupedMetrics = useMemo(() => {
-    if (health.status !== "ready") return [] as { category: string; metrics: HealthMetric[]; avgScore: number | null }[];
-    const groups = new Map<string, HealthMetric[]>();
-    health.data.metrics.forEach((metric) => groups.set(metric.category, [...(groups.get(metric.category) ?? []), metric]));
-    return Array.from(groups.entries()).map(([category, metrics]) => {
-      const scored = metrics.map((metric) => metric.score).filter((score): score is number => score !== null);
-      const avgScore = scored.length ? Math.round(scored.reduce((sum, score) => sum + score, 0) / scored.length) : null;
-      return { category, metrics, avgScore };
-    });
-  }, [health]);
-
-  const toggleCategory = (category: string) => {
-    setExpandedCategories((current) => {
-      const next = new Set(current);
-      if (next.has(category)) next.delete(category);
-      else next.add(category);
-      return next;
-    });
+      const blob = await downloadFullAnalyticsReport("custom", data.start, data.end, format);
+      saveBlob(blob, format === "xlsx" ? "ERA_full_report.xlsx" : `ERA_analytics_${data.start}_${data.end}.pdf`);
+      toast.show("Отчёт сформирован.", "success"); setRefresh((value) => value + 1);
+    } catch { toast.show("Не удалось собрать отчёт. Попробуйте ещё раз.", "error"); }
+    finally { setBusy(null); }
   };
-
+  const checkSources = async () => {
+    setBusy("sources");
+    try { await checkAnalyticsSources(); setRefresh((value) => value + 1); }
+    catch { toast.show("Не удалось проверить источники Telegram.", "error"); }
+    finally { setBusy(null); }
+  };
   if (selectedSection) return <DetailView section={selectedSection} onBack={() => setSelectedSection(null)} />;
-
-  // The executive picture should not wait for secondary admin/export/media requests.
-  if (efficiency.status === "loading" || health.status === "loading") {
-    return <p style={{ color: "var(--era-text-muted)" }}>Собираем главное по ЭРА…</p>;
-  }
-  if (efficiency.status === "error" || health.status === "error") {
-    return <EmptyState text="Не удалось загрузить ключевую аналитику. Данные не подменяются — попробуйте ещё раз." />;
-  }
-
-  return (
-    <div className="era-analytics" style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
-      <nav className="era-analytics-jump" aria-label="Разделы аналитики">
-        <a href="#analytics-main">Главное</a><a href="#analytics-risks">Внимание</a>
-        <a href="#analytics-metrics">Показатели</a><a href="#analytics-actions">Рекомендации</a>
-        <a href="#analytics-records">Записи</a>
-      </nav>
-      <Card style={{ padding: "0.95rem", background: "radial-gradient(circle at 95% 0%, rgba(99,44,255,.14), transparent 44%), var(--era-surface)" }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "0.5rem" }}>
-          <div>
-            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Админ · сейчас</p>
-            <h2 style={{ margin: "0.15rem 0 0", fontSize: "var(--era-text-2xl)" }}>ЭРА одним взглядом</h2>
-          </div>
-          <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.68rem", lineHeight: 1.45 }}>{health.data.period_label}</p>
-        </div>
-        <div style={{ display: "grid", gap: "0.7rem", marginTop: "0.8rem" }}>
-          <HeroScore score={efficiency.data.score} label="Эффективность" sublabel={efficiency.data.label} />
-          <div style={{ height: 1, background: "var(--era-border)" }} />
-          <HeroScore
-            score={health.data.pulse_suppressed ? null : health.data.pulse}
-            label="Пульс сообщества"
-            sublabel={health.data.pulse_suppressed ? "Недостаточно данных" : health.data.pulse_label}
-          />
-        </div>
-        <p style={{ margin: "0.65rem 0 0", color: "var(--era-text-muted)", fontSize: "0.65rem" }}>
-          Пульс: охват {health.data.pulse_coverage}% · выборка {health.data.pulse_sample_size} человек. При выборке меньше 5 показатель скрывается. Индекс описывает только доступные ответы, а не всю деятельность ЭРА.
-        </p>
-      </Card>
-
-      <section id="analytics-main">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: "0.75rem", marginBottom: "0.45rem" }}>
-          <div>
-            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>8 ключевых</p>
-            <h3 style={{ margin: "0.1rem 0 0" }}>Главное</h3>
-          </div>
-          <span style={{ color: "var(--era-text-muted)", fontSize: "0.68rem" }}>Текущий срез</span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: "0.6rem" }}>
-          {executiveMetrics.map((metric) => <ExecutiveMetric key={metric.key} metric={metric} />)}
-        </div>
-      </section>
-
-      <AnalyticsReportPanel />
-      <section id="analytics-risks" aria-label="Зоны внимания">
-      {health.data.risks.length > 0 ? (
-        <Card style={{ padding: "0.8rem 0.85rem", borderLeft: "3px solid var(--era-red)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.7rem" }}>
-            <strong>Требует внимания</strong>
-            <StatusBadge label={`${health.data.risks.length}`} tone="red" />
-          </div>
-          <div style={{ marginTop: "0.45rem", display: "grid", gap: "0.35rem" }}>
-            {health.data.risks.map((risk, index) => (
-              <div key={`${risk}-${index}`} style={{ display: "grid", gridTemplateColumns: "8px 1fr", gap: "0.45rem", alignItems: "start" }}>
-                <span style={{ width: 6, height: 6, marginTop: 6, borderRadius: "50%", background: "var(--era-red)" }} />
-                <span style={{ fontSize: "0.75rem", lineHeight: 1.38 }}>{risk}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      ) : <Card><strong>Зоны внимания</strong><p>По доступным показателям отдельных сигналов нет.</p></Card>}
-
-      </section>
-
-      {!health.data.pulse_suppressed && health.data.vector_dimensions.length > 0 && (
-        <section>
-          <div style={{ marginBottom: "0.45rem" }}>
-            <h3 style={{ margin: 0 }}>Пульс по направлениям</h3>
-            <p style={{ margin: "0.15rem 0 0", color: "var(--era-text-muted)", fontSize: "0.68rem" }}>Пять состояний — одной линией на каждое.</p>
-          </div>
-          <Card style={{ padding: "0.2rem 0.85rem" }}>
-            {health.data.vector_dimensions.map((item, index) => (
-              <div key={item.key} style={{ padding: "0.65rem 0", borderTop: index === 0 ? 0 : "1px solid var(--era-border)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "0.7rem", alignItems: "baseline" }}>
-                  <strong style={{ fontSize: "0.76rem" }}>{item.label}</strong>
-                  <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "0.95rem" }}>
-                    {item.value}{item.delta === null ? "" : ` ${item.delta > 0 ? "↑" : item.delta < 0 ? "↓" : "→"}`}
-                  </strong>
-                </div>
-                <div style={{ marginTop: "0.35rem" }}><ScoreLine score={item.value} /></div>
-              </div>
-            ))}
-          </Card>
+  return <div className="era-analytics analytics-v2">
+    <header><p className="era-analytics-eyebrow">ЭРА · УПРАВЛЕНИЕ</p><h2>ЭРА одним взглядом</h2></header>
+    <section className="analytics-toolbar" aria-label="Период и отчёты">
+      <label htmlFor="analytics-report-period">Период отчёта<select id="analytics-report-period" value={period} onChange={(e) => setPeriod(e.target.value)}>
+        <option value="7">7 дней</option><option value="30">30 дней</option><option value="90">90 дней</option><option value="custom">Свои даты</option>
+      </select></label>
+      {period === "custom" && <div className="era-analytics-dates"><label>С даты<input aria-label="Начало периода" type="date" max={end || undefined} value={start} onChange={(e) => setStart(e.target.value)} /></label><label>По дату<input aria-label="Конец периода" type="date" min={start || undefined} value={end} onChange={(e) => setEnd(e.target.value)} /></label></div>}
+      <label className="analytics-compare"><input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} /> Сравнить с предыдущим равным периодом</label>
+      <div className="era-analytics-export-actions"><button className="era-btn-primary" disabled={!validDates || !data || busy !== null} onClick={() => void download("pdf")}>{busy === "pdf" ? "Готовим PDF…" : "↓ Скачать отчёт PDF"}</button><button disabled={!data || busy !== null} onClick={() => void download("xlsx")}>{busy === "xlsx" ? "Готовим Excel…" : "Excel"}</button></div>
+      {!validDates && <p role="status">Укажите начало и конец периода по порядку.</p>}
+      {data && <small>{data.start} — {data.end} · обновлено {dateLabel(data.updated_at)}. Остальные показатели подписаны своими окнами.</small>}
+    </section>
+    <div className="analytics-tabs" role="tablist" aria-label="Разделы аналитики">{TABS.map((name) => <button key={name} role="tab" aria-selected={tab === name} aria-controls="analytics-tab-panel" tabIndex={tab === name ? 0 : -1} onKeyDown={(event) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); const index = event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : (TABS.indexOf(name) + (event.key === "ArrowRight" ? 1 : -1) + TABS.length) % TABS.length; setTab(TABS[index]); (event.currentTarget.parentElement?.children[index] as HTMLButtonElement)?.focus(); } }} onClick={() => setTab(name)}>{name}</button>)}</div>
+    <section id="analytics-tab-panel" role="tabpanel" aria-label={tab}>
+      {snapshot.status === "loading" && <p role="status">Обновляем показатели…</p>}
+      {snapshot.status === "error" && <EmptyState text="Не удалось получить данные за период. Значения не подменяются нулями." />}
+      {(tab === "Обзор" || tab === "Люди") && data && <section><h3>Главное</h3><div className="analytics-kpis">{data.metrics.map((metric) => <Card key={metric.id} style={{ padding: ".8rem", minWidth: 0 }}><strong className="analytics-number">{metric.value ?? "Нет данных"}</strong><h4>{metric.label}</h4><small>{metric.period}</small>{compare && metric.delta !== null && <p>{metric.delta > 0 ? "+" : ""}{metric.delta} · ранее {metric.previous_value}</p>}<details><summary>Как считается</summary><p>{metric.explanation}</p>{metric.denominator !== null && <p>База: {metric.denominator} человек.</p>}</details></Card>)}</div></section>}
+      {tab === "Обзор" && data && <><div className="analytics-sources">{data.sources.map((source) => <SourceCard source={source} key={source.id} compare={compare} />)}</div><button disabled={busy !== null} onClick={() => void checkSources()}>{busy === "sources" ? "Проверяем…" : "Проверить права и подключение Telegram"}</button></>}
+      {tab === "Обзор" && health.status === "ready" && <>
+        <section><h3>Требует внимания</h3>{health.data.risks.length ? <ul>{health.data.risks.map((risk) => <li key={risk}>{risk}</li>)}</ul> : <p>По доступным правилам отдельных сигналов нет.</p>}
+          <small>Источник: факты и правила платформы; это не оценка всей деятельности ЭРА.</small>
         </section>
-      )}
-
-      <section>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: "0.75rem", marginBottom: "0.45rem" }}>
-          <div>
-            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Подробный обзор</p>
-            <h3 id="analytics-metrics" style={{ margin: "0.1rem 0 0" }}>Все показатели</h3>
-          </div>
-          <StatusBadge label={`${health.data.metrics.length}`} tone="gold" />
-        </div>
-        <button type="button" className="era-analytics-expand" onClick={() => setExpandedCategories(
-          expandedCategories.size === groupedMetrics.length ? new Set() : new Set(groupedMetrics.map((group) => group.category))
-        )}>{expandedCategories.size === groupedMetrics.length ? "Свернуть показатели" : "Развернуть все показатели"}</button>
-        <p style={{ margin: "0 0 0.45rem", color: "var(--era-text-muted)", fontSize: "0.68rem", lineHeight: 1.35 }}>
-          Откройте интересующую категорию, чтобы увидеть определения и источники. Ноль означает отсутствие зафиксированного результата, но не обязательно отсутствие работы.
-        </p>
-        <div style={{ display: "grid", gap: "0.45rem" }}>
-          {groupedMetrics.map(({ category, metrics, avgScore }) => {
-            const expanded = expandedCategories.has(category);
-            return (
-              <Card key={category} style={{ padding: "0.2rem 0.8rem" }}>
-                <button
-                  type="button"
-                  onClick={() => toggleCategory(category)}
-                  aria-expanded={expanded}
-                  style={{
-                    width: "100%",
-                    minHeight: 52,
-                    padding: "0.45rem 0",
-                    border: 0,
-                    background: "transparent",
-                    color: "inherit",
-                    display: "grid",
-                    gridTemplateColumns: avgScore === null ? "1fr auto" : "34px 1fr auto",
-                    gap: "0.55rem",
-                    alignItems: "center",
-                    textAlign: "left",
-                  }}
-                >
-                  {avgScore !== null && <MiniRing score={avgScore} size={32} accent={scoreTone(avgScore)} showValue={false} />}
-                  <div style={{ minWidth: 0 }}>
-                    <strong style={{ display: "block", fontSize: "0.8rem", lineHeight: 1.2 }}>{category}</strong>
-                    <span style={{ display: "block", marginTop: 2, color: "var(--era-text-muted)", fontSize: "0.64rem" }}>
-                      {metrics.length} показателей{avgScore === null ? "" : ` · индекс ${avgScore}`}
-                    </span>
-                  </div>
-                  <span style={{ color: "var(--era-text-muted)", fontSize: "1rem", transform: expanded ? "rotate(180deg)" : "none", transition: "transform .2s ease" }}>⌄</span>
-                </button>
-                {expanded && (
-                  <div style={{ paddingBottom: "0.2rem" }}>
-                    {metrics.map((metric) => <MetricRow key={metric.key} metric={metric} />)}
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
-      </section>
-
-      {mediaAnalytics.status === "ready" && (
-        <section>
-          <div style={{ marginBottom: "0.45rem" }}>
-            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Подразделение</p>
-            <h3 style={{ margin: "0.1rem 0 0" }}>Медиа</h3>
-          </div>
-          <Card style={{ padding: "0.7rem 0.8rem" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "0.65rem" }}>
-              <div><strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.25rem" }}>{mediaAnalytics.data.published}</strong><span style={{ fontSize: "0.68rem" }}>публикаций</span></div>
-              <div><strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.25rem" }}>{mediaAnalytics.data.chat_messages_period}</strong><span style={{ fontSize: "0.68rem" }}>сообщений / 30 дней</span></div>
-              <div><strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.25rem" }}>{mediaAnalytics.data.tasks_completed}/{mediaAnalytics.data.tasks_created}</strong><span style={{ fontSize: "0.68rem" }}>задач выполнено</span></div>
-              <div><strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "1.25rem" }}>{mediaAnalytics.data.on_time_rate == null ? "—" : `${mediaAnalytics.data.on_time_rate}%`}</strong><span style={{ fontSize: "0.68rem" }}>вышло вовремя</span></div>
-            </div>
-          </Card>
-        </section>
-      )}
-
-      <section>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: "0.75rem", marginBottom: "0.45rem" }}>
-          <div><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Рекомендации</p><h3 id="analytics-actions" style={{ margin: "0.1rem 0 0" }}>Что делать дальше</h3></div>
-          <StatusBadge label={`${efficiency.data.recommendations.length}`} tone="violet" />
-        </div>
-        <div style={{ display: "grid", gap: "0.45rem" }}>
-          {efficiency.data.recommendations.slice(0, 3).map((item, index) => (
-            <Card key={`${item.title}-${index}`} style={{ padding: "0.75rem 0.8rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.55rem", alignItems: "flex-start" }}>
-                <strong style={{ fontSize: "0.86rem" }}>{item.title}</strong>
-                <StatusBadge label={priorityLabel(item.priority)} tone={priorityTone(item.priority)} />
-              </div>
-              <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "0.7rem", lineHeight: 1.4 }}>{item.reason}</p>
-              <p style={{ margin: "0.4rem 0 0", fontSize: "0.75rem", lineHeight: 1.4 }}><strong>→ {item.action}</strong></p>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      {analytics.status === "ready" && (
-        <section>
-          <div style={{ marginBottom: "0.45rem" }}><p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Данные по объектам</p><h3 id="analytics-records" style={{ margin: "0.1rem 0 0" }}>Открыть или выгрузить</h3></div>
-          <div style={{ display: "grid", gap: "0.45rem" }}>
-            {(Object.keys(SECTION_META) as AnalyticsDetailSection[]).map((section) => {
-              const meta = SECTION_META[section];
-              return (
-                <Card key={section} style={{ padding: "0.7rem 0.8rem", borderLeft: `3px solid ${meta.accent}` }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "0.65rem", alignItems: "center" }}>
-                    <button type="button" onClick={() => setSelectedSection(section)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", color: "inherit", minHeight: 0 }}>
-                      <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1.25rem" }}>{analytics.data[meta.value]}</strong>
-                      <span style={{ marginLeft: "0.45rem", fontWeight: 800, fontSize: "0.78rem" }}>{meta.label}</span>
-                    </button>
-                    <button type="button" aria-label={`Скачать Excel: ${meta.label}`} disabled={downloadingSection !== null} onClick={() => void handleSectionDownload(section)} style={{ padding: "0.45rem 0.6rem", minHeight: "2.2rem" }}>{downloadingSection === section ? "…" : "↓"}</button>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.45rem" }}>
-        <button type="button" className="era-btn-primary" disabled={downloadingSection !== null} onClick={() => void handleHealthReport()} style={{ minHeight: "2.8rem", fontSize: "0.72rem" }}>{downloadingSection === "health" ? "…" : "↓ Здоровье"}</button>
-        <span style={{ fontSize: "0.72rem", color: "var(--era-text-muted)", alignSelf: "center" }}>PDF и Excel доступны после главных показателей</span>
-      </div>
-
-      {dashboard.status === "ready" && (
-        <Card style={{ padding: "0.7rem 0.8rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "center" }}>
-            <div>
-              <strong>{dashboard.data.attention_total > 0 ? "Есть решения на очереди" : "Очередь чистая"}</strong>
-              <p style={{ margin: "0.15rem 0 0", color: "var(--era-text-muted)", fontSize: "0.68rem" }}>
-                {dashboard.data.attention_total > 0 ? "Откройте «Обзор», чтобы разобрать очередь." : "Ничего не ждёт проверки или ответа."}
-              </p>
-            </div>
-            <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1.4rem" }}>{dashboard.data.attention_total}</strong>
-          </div>
-        </Card>
-      )}
-
-      <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.62rem", lineHeight: 1.4 }}>{health.data.data_note}</p>
-    </div>
-  );
+        <Card><h3>Опросный пульс</h3><strong className="analytics-number">{health.data.pulse_suppressed || health.data.pulse === null ? "Недостаточно данных" : `${health.data.pulse}/100`}</strong><p>Ответили {health.data.pulse_sample_size} человек · охват {health.data.pulse_coverage}% текущего состава.</p><p>{health.data.pulse_coverage < 30 ? "Низкий охват: результат не представляет всё сообщество." : "Показатель отражает ответы доступной выборки."}</p><details><summary>Методика и ограничения</summary><p>{health.data.period_label}. При выборке меньше 5 человек агрегат скрыт.</p><p>{health.data.data_note}</p></details></Card>
+      </>}
+      {tab === "Обзор" && onAction && <section><h3>Быстрые действия</h3><div className="analytics-actions">{([['tasks','Открыть задания'],['events','Открыть мероприятия'],['projects','Открыть проекты'],['applications','Рассмотреть заявки']] as const).map(([action,label]) => <button key={action} onClick={() => onAction(action)}>{label} →</button>)}</div></section>}
+      {tab !== "Обзор" && tab !== "Отчёты" && <section><h3>Все показатели</h3><p className="analytics-note">Периоды 7/30/90 дней и текущие срезы указаны в названиях и пояснениях. Это не пересчёт всех метрик на выбранные даты.</p>{Array.from(metricGroups).filter(([category]) => categoryTab(category) === tab).map(([category, metrics]) => <details key={category} className="analytics-metric-group"><summary>{category} · {metrics.length} показателей</summary>{metrics.map((metric) => <div className="analytics-metric" key={metric.key}><strong>{metric.label}</strong><span>{metric.value === null || metric.data_state === "unavailable" ? "Нет данных" : metric.display}</span><small>{metric.period} · {metric.note}</small>{metric.denominator !== undefined && metric.denominator !== null && <small>{metric.unit === "rating" ? `Отзывов: ${metric.denominator}` : `Числитель: ${metric.numerator ?? "—"}; знаменатель: ${metric.denominator}`}</small>}</div>)}</details>)}</section>}
+      {tab === "Люди" && data && <Card><h3>Приток по подтверждённым одобрениям</h3><p>Первые одобрения среди текущего состава. Старые записи без аудита не восстановлены; график не является историей общего состава.</p><DailyChart title="Новые участники по дням" days={data.member_growth} /></Card>}
+      {tab === "Команда" && media.status === "ready" && <Card><h3>Контент-план и задачи медиа</h3><p>Опубликовано по контент-плану: {media.data.published}. Все публикации канала считаются отдельно в «Обзоре».</p><p>Подтверждённо выполнено задач: {media.data.tasks_completed} из {media.data.tasks_created}.</p><p>Вышло вовремя: {media.data.on_time_rate === null ? "Нет публикаций со сроком" : `${media.data.on_time_rate}%`}.</p></Card>}
+      {tab === "Команда" && efficiency.status === "ready" && <details className="analytics-metric-group"><summary>Условный операционный индекс · методика</summary><p>Это индекс действий, зафиксированных в платформе, а не объективная оценка организации.</p><p>Вовлечённость — 45%, выпуск — 35%, отзывы — 20%. При отсутствии отзывов первые веса: 56,25% и 43,75%. Целевые ориентиры: 4 события и 2 проекта в месяц.</p><p>{data?.metrics.find((item) => item.id === "roster")?.value ? `${efficiency.data.score}/100` : "Нет базы для расчёта"}. {efficiency.data.period_label}</p><p>{efficiency.data.data_note}</p></details>}
+      {tab === "Обзор" && efficiency.status === "ready" && <section><h3>Что делать дальше</h3>{efficiency.data.recommendations.map((item) => <details key={item.title} className="analytics-metric-group"><summary>{item.title}</summary><p>{item.reason}</p><p>{item.action}</p><small>Рекомендация · {item.priority === "high" ? "высокий приоритет" : "плановое улучшение"}</small></details>)}</section>}
+      {analytics.status === "ready" && tab !== "Обзор" && <section><h3>{tab === "Отчёты" ? "Выгрузки по разделам" : "Открыть записи"}</h3><div className="analytics-actions">{(Object.keys(SECTION_META) as AnalyticsDetailSection[]).filter((key) => tab === "Отчёты" || (tab === "Люди" ? key === "users" : tab === "Деятельность" ? ["events","projects"].includes(key) : tab === "Возможности" ? key === "contacts" : key === "goals")).map((key) => <button key={key} onClick={() => setSelectedSection(key)}>{key === "users" ? "Все профили в базе" : SECTION_META[key].label} · {analytics.data[SECTION_META[key].value]} →</button>)}</div></section>}
+      {tab === "Отчёты" && <section><h3>Журнал моих отчётов</h3><p>PDF и Excel формируются кнопками над вкладками с выбранными датами. В журнале — факт генерации, не прочтения файла.</p>{reports.status === "ready" && (reports.data.items.length ? <ul>{reports.data.items.map((item, i) => <li key={i}>{dateLabel(item.generated_at)} · {item.format.toUpperCase()} · {item.start}–{item.end}</li>)}</ul> : <p>Отчётов, сформированных после обновления, пока нет.</p>)}</section>}
+    </section>
+  </div>;
 }

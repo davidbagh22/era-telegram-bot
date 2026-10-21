@@ -1,3 +1,7 @@
+## Активный этап · 21.10.2026
+
+Analytics 2.0: `docs/ANALYTICS_V2_SPEC.md`; реализация `telegram_analytics_service.py` / `admin_analytics_v2_service.py`, таблицы `telegram_analytics.py`, миграция0064, update/send middleware, admin API v2, `telegram_analytics_export.py`, `AdminDashboardScreen.tsx`. Регистрация+карточка — следующий отдельный этап, без сброса старых заявок. Фактические проверки/ограничения — в верхнем checkpoint `AI_TASK_STATE.md`.
+
 # Карта точечной работы ЭРА
 
 Актуальный checkpoint: docs/AI_TASK_STATE.md. Сначала сверять фактический SHA; не повторять reset/релизы. Исторические сведения ниже не заменяют live-проверку.

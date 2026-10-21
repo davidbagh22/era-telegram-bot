@@ -67,7 +67,11 @@ export function AdminOverviewScreen({
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
         <button type="button" onClick={() => setShowAnalytics(false)} style={{ alignSelf: "flex-start" }}>← Пульт</button>
-        <AdminDashboardScreen />
+        <AdminDashboardScreen onAction={(action) => {
+          const actions = { people: onOpenPeople, applications: onOpenApplications, events: onOpenEvents,
+            projects: onOpenProjects, tasks: onOpenTasks, offers: onOpenOffers };
+          setShowAnalytics(false); actions[action]();
+        }} />
       </div>
     );
   }

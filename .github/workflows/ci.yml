@@ -94,6 +94,8 @@ jobs:
         run: python scripts/postgres_support_migration_probe.py
       - name: Run the real startup seed path and verify timestamp defaults
         run: python scripts/postgres_migration_smoke.py
+      - name: Prove Telegram observation idempotency on PostgreSQL
+        run: python scripts/postgres_telegram_analytics_probe.py
       - name: Prove concurrent point idempotency on PostgreSQL
         run: python scripts/postgres_points_race.py
       - name: Prove game room and reward concurrency on PostgreSQL

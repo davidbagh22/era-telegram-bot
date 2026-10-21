@@ -51,10 +51,10 @@ def test_admin_health_endpoints_and_ui_are_exposed() -> None:
     assert '@router.get("/health-report.xlsx")' in api
     assert '@router.get("/full-report.xlsx")' in api
     assert "build_extended_organization_health" in api
-    assert "Пульс сообщества" in dashboard
-    assert "ERA_organization_health.xlsx" in dashboard
+    assert "Опросный пульс" in dashboard
+    assert "ERA_full_report.xlsx" in dashboard
     assert "Все показатели" in dashboard
-    assert "<AdminDashboardScreen />" in overview
+    assert "<AdminDashboardScreen onAction=" in overview
     assert "<SystemPanel />" not in overview
     assert "Аналитика" in overview
     assert "Динамика, удержание и эффективность" in overview
@@ -92,7 +92,7 @@ def test_admin_overview_replaces_separate_maintenance_and_analytics_hubs() -> No
     assert 'label: "Контроль"' not in nav
     assert 'label: "Аналитика"' not in nav
     assert 'label: "Обслуживание"' not in nav
-    assert "<AdminDashboardScreen />" in overview
+    assert "<AdminDashboardScreen onAction=" in overview
     assert "<SystemPanel />" not in overview
     assert "Пульт руководителя" in overview
     assert "Нужно решить" in overview

@@ -23,7 +23,7 @@ class AdminWorkspaceContractTests(unittest.TestCase):
         self.assertNotIn("ControlSection", screen)
         self.assertNotIn("AdminMaintenanceScreen", screen)
         self.assertNotIn("CONTROL_SECTIONS", screen)
-        self.assertIn("<AdminDashboardScreen />", overview)
+        self.assertIn("<AdminDashboardScreen onAction=", overview)
         self.assertNotIn("<SystemPanel />", overview)
         self.assertIn("Пульт руководителя", overview)
         self.assertIn("Нужно решить", overview)

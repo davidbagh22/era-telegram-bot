@@ -396,7 +396,7 @@ async def lifespan(app: FastAPI):
 
 
 
-    bot = create_bot(settings)
+    bot = create_bot(settings, session_factory)
     dispatcher = create_dispatcher(settings, session_factory)
     app.state.settings = settings
     app.state.engine = engine
@@ -535,6 +535,8 @@ async def lifespan(app: FastAPI):
         if scheduler is not None:
             scheduler.shutdown(wait=False)
         await dispatcher.storage.close()
+        from app.middlewares.telegram_analytics import drain_sent_observations
+        await drain_sent_observations()
         await bot.session.close()
         await engine.dispose()
 

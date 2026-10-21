@@ -8,6 +8,7 @@ from app.api.v1 import (
     activity,
     admin,
     admin_analytics_details,
+    admin_analytics_v2,
     admin_application_decisions,
     admin_applications,
     admin_autocontent,
@@ -117,3 +118,5 @@ api_router.include_router(leadership.router)
 api_router.include_router(positions.router, dependencies=[Depends(require_feature(Feature.ROLE_RECRUITMENT))])
 
 api_router.include_router(leaders_workspace.router)
+
+api_router.include_router(admin_analytics_v2.router)

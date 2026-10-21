@@ -210,7 +210,7 @@ async def build_extended_organization_health(
             f"{referral_registration_conversion:.1f}%",
             f"награда регистрации подтверждена у {referral_registered_total} из {referral_total} приглашённых",
             _cap(referral_registration_conversion),
-        ),
+         numerator=referral_registered_total, denominator=referral_total, unit="%"),
         HealthMetric(
             "referral_event_conversion",
             "Рост",
@@ -219,7 +219,7 @@ async def build_extended_organization_health(
             f"{referral_event_conversion:.1f}%",
             f"до первого подтверждённого события дошли {referral_first_event_total} из {referral_registered_total} получивших стартовую награду",
             _cap(referral_event_conversion),
-        ),
+         numerator=referral_first_event_total, denominator=referral_registered_total, unit="%"),
         HealthMetric(
             "referral_rewards_30d",
             "Рост",
@@ -251,7 +251,7 @@ async def build_extended_organization_health(
             opportunities_per_partner,
             f"{opportunities_per_partner:.1f}",
             "среднее число доступных предложений на одного активного партнёра",
-        ),
+         numerator=active_opportunities, denominator=active_partners, unit="ratio"),
         HealthMetric(
             "opportunity_saves_30d",
             "Возможности",
@@ -276,7 +276,7 @@ async def build_extended_organization_health(
             f"{opportunity_reach_rate:.1f}%",
             "доля одобренного сообщества, подавшая хотя бы одну заявку за 30 дней",
             _cap(opportunity_reach_rate) if approved_total else None,
-        ),
+         numerator=opportunity_applicants_30d, denominator=approved_total, unit="%"),
         HealthMetric(
             "opportunity_applications_30d",
             "Возможности",
@@ -301,7 +301,7 @@ async def build_extended_organization_health(
             f"{opportunity_approval_rate:.1f}%" if opportunity_applications_30d else "Нет заявок",
             f"одобрено {opportunity_approved_30d} из {opportunity_applications_30d} заявок за 30 дней",
             _cap(opportunity_approval_rate) if opportunity_applications_30d else None,
-        ),
+         numerator=opportunity_approved_30d, denominator=opportunity_applications_30d, unit="%"),
         HealthMetric(
             "career_profile_adoption",
             "Портфолио",
@@ -310,7 +310,7 @@ async def build_extended_organization_health(
             f"{career_profiles} · {_pct(career_profiles, approved_total):.1f}%",
             "доля сообщества, начавшая собирать профессиональный профиль",
             _cap(_pct(career_profiles, approved_total)) if approved_total else None,
-        ),
+         numerator=career_profiles, denominator=approved_total, unit="%"),
         HealthMetric(
             "portfolio_total",
             "Портфолио",
@@ -326,7 +326,7 @@ async def build_extended_organization_health(
             portfolio_per_profile,
             f"{portfolio_per_profile:.1f}",
             "средняя глубина заполнения карьерного профиля",
-        ),
+         numerator=portfolio_total, denominator=career_profiles, unit="ratio"),
         HealthMetric(
             "portfolio_verified",
             "Портфолио",
@@ -351,7 +351,7 @@ async def build_extended_organization_health(
             f"{portfolio_verification_rate:.1f}%" if portfolio_verified + portfolio_rejected else "Нет решений",
             f"подтверждено {portfolio_verified} · отклонено {portfolio_rejected}",
             _cap(portfolio_verification_rate) if portfolio_verified + portfolio_rejected else None,
-        ),
+         numerator=portfolio_verified, denominator=portfolio_verified + portfolio_rejected, unit="%"),
         HealthMetric(
             "portfolio_pending",
             "Портфолио",
@@ -396,7 +396,9 @@ async def build_extended_organization_health(
 
     return replace(
         base,
-        metrics=[*base.metrics, *added],
+        metrics=[*base.metrics, *[
+            replace(item, value=None, display="Нет данных", score=None, data_state="unavailable")
+            if item.unit != "count" and not item.denominator else item for item in added]],
         risks=risks[:10],
         data_note=(
             base.data_note

@@ -17,7 +17,7 @@ from reportlab.platypus import (
 from app.services.career_pdf_service import _register_font
 
 
-def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficiency, analytics=None, media=None) -> bytes:
+def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficiency, analytics=None, media=None, telegram=None) -> bytes:
     _register_font()
     ink = colors.HexColor('#202032')
     muted = colors.HexColor('#656575')
@@ -40,7 +40,7 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
         return Paragraph(escape(str(value)).replace('\n', '<br/>'), styles[style])
 
     output = BytesIO()
-    from reportlab.graphics.shapes import Drawing, Rect
+    from reportlab.graphics.shapes import Drawing, Rect, String, Line
 
     doc = SimpleDocTemplate(output, pagesize=A4, rightMargin=20*mm, leftMargin=20*mm,
                             topMargin=23*mm, bottomMargin=21*mm,
@@ -82,6 +82,35 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
             ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
         ]))
         story.extend([table, Spacer(1, 3*mm)])
+    if telegram:
+        story.extend([Spacer(1, 4*mm), p('Канал и общий чат', 'heading')])
+        labels = {'valid': 'Период покрыт наблюдениями', 'insufficient': 'Неполная история',
+                  'unavailable': 'Источник не подтверждён', 'stale': 'Проверка устарела'}
+        for source in telegram['sources']:
+            story.append(p(source['label'], 'eyebrow'))
+            value = source['value']
+            story.append(p(value if value is not None else f"{source['observed_value']} учтено · неполные данные", 'value'))
+            story.append(p(labels.get(source['data_state'], 'Нет данных'), 'small'))
+            if source['delta'] is not None:
+                story.append(p(f"Изменение: {source['delta']:+g}; предыдущий равный период: {source['previous_value']}"))
+            story.append(p(source['explanation'], 'small'))
+            story.append(p(f"Начало сбора: {source['started_at'] or 'не подключён'}. Непрерывное покрытие: {source['coverage_since'] or 'не подтверждено'}", 'small'))
+            days = source['daily']
+            if days:
+                maximum = max(1, *(day['value'] if day['value'] is not None else day['observed'] for day in days))
+                chart = Drawing(460, 100)
+                chart.add(Line(24, 22, 458, 22, strokeColor=muted, strokeWidth=.4))
+                chart.add(String(0, 22, '0', fontName='ERAUnicode', fontSize=7, fillColor=muted))
+                chart.add(String(0, 84, str(maximum), fontName='ERAUnicode', fontSize=7, fillColor=muted))
+                width = 430 / len(days)
+                for i, day in enumerate(days):
+                    count = day['value'] if day['value'] is not None else day['observed']
+                    chart.add(Rect(25+i*width, 22, max(.4, width-1), count/maximum*62,
+                        fillColor=accent if day['value'] is not None else colors.HexColor('#B8A1EF'), strokeColor=None))
+                chart.add(String(24, 6, days[0]['date'], fontName='ERAUnicode', fontSize=7, fillColor=muted))
+                chart.add(String(458, 6, days[-1]['date'], textAnchor='end', fontName='ERAUnicode', fontSize=7, fillColor=muted))
+                story.append(chart)
+            story.append(p(source['history_note'], 'small'))
     story.extend([p('Как читать отчёт', 'heading'), p(
         'События, проекты и результаты отфильтрованы по выбранным датам. '
         'Состав, организации и цели — текущий срез. Эффективность и пульс имеют собственные '
@@ -98,6 +127,7 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
         story.append(p('В доступных данных нет отдельных сигналов или рекомендаций.'))
     if not getattr(health, 'pulse_suppressed', True):
         story.append(p('Пульс по направлениям', 'heading'))
+        story.append(p(f"Выборка: {getattr(health, 'pulse_sample_size', 0)}; охват: {getattr(health, 'pulse_coverage', 0)}%. Это опрос, а не объективная оценка организации.", 'small'))
         for item in getattr(health, 'vector_dimensions', []):
             delta = getattr(item, 'delta', None)
             change = ' · нет сравнения' if delta is None else f' · изменение {delta:+g}'
@@ -142,13 +172,13 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
         if not goals:
             story.append(p('Целей в доступных данных пока нет.', 'small'))
     if media is not None:
-        story.extend([Spacer(1, 6*mm), CondPageBreak(55*mm), p('Медиа', 'heading'),
-                      p('Публикации и задачи — текущие итоги; сообщения и авторы — последние 30 дней.', 'small')])
+        story.extend([Spacer(1, 6*mm), CondPageBreak(55*mm), p('Медиа · контент-план', 'heading'),
+                      p('Публикации контент-плана и задачи — текущие итоги; сообщения медиа-чата — 30 дней. Это отдельный источник от общего чата ЭРА.', 'small')])
         for key, label in [('planned', 'В контент-плане'), ('published', 'Опубликовано'),
                            ('failed', 'Ошибки публикации'), ('on_time_rate', 'Вовремя, %'),
                            ('tasks_created', 'Создано задач'), ('tasks_completed', 'Выполнено задач'),
-                           ('channel_posts_period', 'Публикаций за 30 дней'),
-                           ('chat_messages_period', 'Сообщений за 30 дней'),
+                           ('channel_posts_period', 'Публикаций контент-плана за 30 дней'),
+                           ('chat_messages_period', 'Сообщений медиа-чата за 30 дней'),
                            ('chat_active_authors_period', 'Активных авторов за 30 дней')]:
             value = getattr(media, key, None)
             story.append(p(f'{label}: {value if value is not None else "—"}'))

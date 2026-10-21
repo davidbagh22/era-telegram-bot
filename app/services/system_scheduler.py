@@ -7,6 +7,7 @@ from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import Settings
+from app.services.telegram_analytics_service import refresh_sources_job, mark_coverage_gap, source_targets
 from app.services.application_review_service import deliver_application_notices
 from app.services.project_review_notice_service import deliver_project_review_notices
 from app.services.chat_permissions_service import enforce_general_chat_writable
@@ -51,6 +52,10 @@ def add_system_jobs(
 ) -> None:
     """Attach production-health jobs and durable infrastructure maintenance."""
     now = datetime.now(ZoneInfo(settings.timezone))
+    # A restart interrupts verifiable continuous coverage, even when permissions persist.
+    for chat_id in source_targets(settings).values():
+        mark_coverage_gap(chat_id)
+    scheduler.add_job(refresh_sources_job, "interval", minutes=5, args=(bot, settings, session_factory), id="telegram-analytics-sources", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
 
     scheduler.add_job(send_review_sla_reminders, 'interval', minutes=15, args=(bot, settings, session_factory), id='review-sla-reminders', replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(deliver_support_answers, 'interval', minutes=1, args=(bot, settings, session_factory), id='support-answer-delivery', replace_existing=True, max_instances=1, coalesce=True)

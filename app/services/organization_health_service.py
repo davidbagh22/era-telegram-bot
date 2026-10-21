@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, or_, select
@@ -48,6 +48,10 @@ class HealthMetric:
     display: str
     note: str
     score: int | None = None
+    numerator: float | None = None
+    denominator: float | None = None
+    unit: str = "count"
+    data_state: str = "valid"
 
 
 @dataclass(frozen=True)
@@ -348,20 +352,20 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
         HealthMetric("new_30d", "Люди", "Новые за 30 дней", new_30d, f"+{new_30d}", "первое одобрение по аудиту; текущая база, старые записи без истории не восстановлены"),
         HealthMetric("leaders", "Люди", "Лидеров и руководителей", leaders, str(leaders), f"{_pct(leaders, approved_total):.1f}% текущего состава"),
         HealthMetric("activists", "Люди", "Роль «Активист»", activists, str(activists), "организационная роль, а не показатель активной базы"),
-        HealthMetric("growth_conversion", "Люди", "Доля активных/управленческих ролей", _pct(progressed, approved_total), f"{_pct(progressed, approved_total):.1f}%", "текущие роли; не историческая конверсия", _cap(_pct(progressed, approved_total))),
-        HealthMetric("department_coverage", "Люди", "Выбрали департамент", _pct(department_users, approved_total), f"{_pct(department_users, approved_total):.1f}%", "структурная включённость"),
-        HealthMetric("direction_coverage", "Люди", "Выбрали направление", _pct(direction_users, approved_total), f"{_pct(direction_users, approved_total):.1f}%", "предметная включённость"),
+        HealthMetric("growth_conversion", "Люди", "Доля активных/управленческих ролей", _pct(progressed, approved_total), f"{_pct(progressed, approved_total):.1f}%", "текущие роли; не историческая конверсия", _cap(_pct(progressed, approved_total)), numerator=progressed, denominator=approved_total, unit="%"),
+        HealthMetric("department_coverage", "Люди", "Выбрали департамент", _pct(department_users, approved_total), f"{_pct(department_users, approved_total):.1f}%", "структурная включённость", numerator=department_users, denominator=approved_total, unit="%"),
+        HealthMetric("direction_coverage", "Люди", "Выбрали направление", _pct(direction_users, approved_total), f"{_pct(direction_users, approved_total):.1f}%", "предметная включённость", numerator=direction_users, denominator=approved_total, unit="%"),
         HealthMetric("active_7d", "Вовлечённость", "Активность за 7 дней", active_7d, f"{active_7d} · {_pct(active_7d, active_denominator):.1f}%", "только подтверждённые результаты; должности отдельно"),
         HealthMetric("active_30d", "Вовлечённость", "Активность за 30 дней", active_30d, f"{active_30d} · {_pct(active_30d, active_denominator):.1f}%", "цифровая активность не считается реальным действием", _cap(_pct(active_30d, active_denominator))),
         HealthMetric("active_90d", "Вовлечённость", "Активность за 90 дней", active_90d, f"{active_90d} · {_pct(active_90d, active_denominator):.1f}%", "широкий контур реальной активности"),
-        HealthMetric("retention_30d", "Вовлечённость", "30-дневное удержание", (_pct(retained_30d, retention_denominator) if retention_denominator else None), (f"{_pct(retained_30d, retention_denominator):.1f}%" if retention_denominator else "Нет данных"), "вернувшиеся из подтверждённо активной когорты предыдущих 30 дней; текущий состав", (_cap(_pct(retained_30d, retention_denominator)) if retention_denominator else None)),
+        HealthMetric("retention_30d", "Вовлечённость", "30-дневное удержание", (_pct(retained_30d, retention_denominator) if retention_denominator else None), (f"{_pct(retained_30d, retention_denominator):.1f}%" if retention_denominator else "Нет данных"), "вернувшиеся из подтверждённо активной когорты предыдущих 30 дней; текущий состав", (_cap(_pct(retained_30d, retention_denominator)) if retention_denominator else None), numerator=retained_30d, denominator=retention_denominator, unit="%"),
         HealthMetric("dormant_30d", "Вовлечённость", "Без активности 30 дней", dormant_30d, str(dormant_30d), "текущие approved участники без blocked/archived и режима «Вышел»"),
         HealthMetric("events_30d", "События", "Мероприятий за 30 дней", events_30d, str(events_30d), "завершённые события за полные локальные дни"),
         HealthMetric("upcoming_14d", "События", "Событий на 14 дней", upcoming_14d, str(upcoming_14d), "запланированный ритм"),
         HealthMetric("event_registrations", "События", "Регистраций за 30 дней", event_registrations_30d, str(event_registrations_30d), "по событиям последнего месяца"),
-        HealthMetric("attendance_rate", "События", "Явка", attendance_rate, (f"{attendance_rate:.1f}%" if attendance_rate is not None else "Нет данных"), f"пришли {attended_30d} · зарегистрировано {event_registrations_30d}", (_cap(attendance_rate) if attendance_rate is not None else None)),
-        HealthMetric("feedback", "События", "Оценка мероприятий", feedback_avg, f"{feedback_avg:.1f}/5" if feedback_count else "Нет данных", f"{feedback_count} отзывов", _cap((feedback_avg / 5) * 100) if feedback_count else None),
-        HealthMetric("feedback_rate", "События", "Охват обратной связью", feedback_rate, (f"{feedback_rate:.1f}%" if feedback_rate is not None else "Нет данных"), "доля посетивших, оставивших отзыв"),
+        HealthMetric("attendance_rate", "События", "Явка", attendance_rate, (f"{attendance_rate:.1f}%" if attendance_rate is not None else "Нет данных"), f"пришли {attended_30d} · зарегистрировано {event_registrations_30d}", (_cap(attendance_rate) if attendance_rate is not None else None), numerator=attended_30d, denominator=event_registrations_30d, unit="%"),
+        HealthMetric("feedback", "События", "Оценка мероприятий", feedback_avg, f"{feedback_avg:.1f}/5" if feedback_count else "Нет данных", f"{feedback_count} отзывов", _cap((feedback_avg / 5) * 100) if feedback_count else None, numerator=None, denominator=feedback_count, unit="rating"),
+        HealthMetric("feedback_rate", "События", "Охват обратной связью", feedback_rate, (f"{feedback_rate:.1f}%" if feedback_rate is not None else "Нет данных"), "доля посетивших, оставивших отзыв", numerator=event_metrics['feedback_coverage'].numerator, denominator=attended_30d, unit="%"),
         HealthMetric("active_projects", "Проекты", "Действующие проекты", active_projects, str(active_projects), "статусы approved/in_progress; без черновиков и завершённых"),
         HealthMetric("new_projects_30d", "Проекты", "Новых проектов за 30 дней", new_projects_30d, str(new_projects_30d), "новый проектный поток"),
         HealthMetric("completed_projects", "Проекты", "Завершено проектов", completed_projects, str(completed_projects), "накопленный подтверждённый результат"),
@@ -369,15 +373,18 @@ async def build_organization_health(session: AsyncSession) -> OrganizationHealth
         HealthMetric("open_tasks", "Исполнение", "Открытых заданий", open_tasks, str(open_tasks), "новые, опубликованные, в работе или на проверке"),
         HealthMetric("completed_tasks_30d", "Исполнение", "Заданий завершено за 30 дней", completed_tasks_30d, str(completed_tasks_30d), "реальный операционный выпуск"),
         HealthMetric("overdue_tasks", "Исполнение", "Просроченных заданий", overdue_tasks, str(overdue_tasks), "срок прошёл, задача не закрыта"),
-        HealthMetric("task_acceptance", "Исполнение", "Принято результатов заданий", _pct(task_approved_30d, task_submissions_30d), f"{_pct(task_approved_30d, task_submissions_30d):.1f}%", f"{task_approved_30d} из {task_submissions_30d} отправок за 30 дней"),
-        HealthMetric("activity_acceptance", "Исполнение", "Принято активностей событий", _pct(activity_approved_30d, activity_submissions_30d), f"{_pct(activity_approved_30d, activity_submissions_30d):.1f}%", f"{activity_approved_30d} из {activity_submissions_30d} отправок за 30 дней"),
+        HealthMetric("task_acceptance", "Исполнение", "Принято результатов заданий", _pct(task_approved_30d, task_submissions_30d), f"{_pct(task_approved_30d, task_submissions_30d):.1f}%", f"{task_approved_30d} из {task_submissions_30d} отправок за 30 дней", numerator=task_approved_30d, denominator=task_submissions_30d, unit="%"),
+        HealthMetric("activity_acceptance", "Исполнение", "Принято активностей событий", _pct(activity_approved_30d, activity_submissions_30d), f"{_pct(activity_approved_30d, activity_submissions_30d):.1f}%", f"{activity_approved_30d} из {activity_submissions_30d} отправок за 30 дней", numerator=activity_approved_30d, denominator=activity_submissions_30d, unit="%"),
         HealthMetric("point_actions", "Исполнение", "Подтверждённых реальных действий", point_actions_30d, str(point_actions_30d), f"{points_30d:+d} баллов за подтверждённые реальные действия за 30 дней"),
         HealthMetric("queue", "Операции", "На очереди решений", queues.attention_total, str(queues.attention_total), "заявки, модерация, результаты, вопросы и отчёты"),
         HealthMetric("department_apps", "Операции", "Заявок в департаменты", pending_department_apps, str(pending_department_apps), "ждут решения"),
         HealthMetric("data_rights", "Операции", "Запросов по данным", pending_data_rights, str(pending_data_rights), "запросы на удаление/анонимизацию ждут обработки"),
-        HealthMetric("task_delivery", "Операции", "Доставка заданий", _pct(sent_deliveries_30d, delivery_total), f"{_pct(sent_deliveries_30d, delivery_total):.1f}%" if delivery_total else "Нет отправок", f"успешно {sent_deliveries_30d} · ошибок {failed_deliveries_30d}"),
+        HealthMetric("task_delivery", "Операции", "Доставка заданий", _pct(sent_deliveries_30d, delivery_total), f"{_pct(sent_deliveries_30d, delivery_total):.1f}%" if delivery_total else "Нет отправок", f"успешно {sent_deliveries_30d} · ошибок {failed_deliveries_30d}", numerator=sent_deliveries_30d, denominator=delivery_total, unit="%"),
         HealthMetric("broadcasts", "Операции", "Рассылок за 30 дней", broadcasts_30d, str(broadcasts_30d), "отправленные рассылки"),
     ]
+
+    metrics = [replace(item, value=None, display="Нет данных", score=None, data_state="unavailable")
+               if item.unit != "count" and not item.denominator else item for item in metrics]
 
     risks: list[str] = []
     if _pct(active_30d, active_denominator) < 35 and active_denominator:
