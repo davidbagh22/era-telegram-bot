@@ -59,8 +59,9 @@ test("analytics expands from overview instead of a separate control hub", async 
   await expect(page.getByText("Публикации канала", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Люди", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Все показатели" })).toBeVisible();
-  await page.locator("summary").filter({ hasText: /Вовлечённость.*показателей/ }).click();
-  await expect(page.getByText("Числитель:", { exact: false }).first()).toBeVisible();
+  const engagement = page.locator("details.analytics-metric-group").filter({ has: page.locator("summary", { hasText: /Вовлечённость.*показателей/ }) });
+  await engagement.locator("summary").click();
+  await expect(engagement.getByText("Числитель:", { exact: false }).first()).toBeVisible();
 });
 
 test("analytics exports selected custom period as a complete PDF", async ({ page }) => {

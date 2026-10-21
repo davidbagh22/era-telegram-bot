@@ -1,4 +1,5 @@
 """One source for Telegram screen/export facts. No invented pre-collection history."""
+import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -7,6 +8,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.database.telegram_analytics import TelegramAnalyticsSource, TelegramMessageFact
+
+logger = logging.getLogger(__name__)
 
 CONTENT = ('text', 'caption', 'photo', 'video', 'animation', 'document', 'voice',
            'video_note', 'audio', 'sticker', 'poll', 'dice', 'contact', 'location',
@@ -134,6 +137,11 @@ async def refresh_sources_job(bot, settings, session_factory):
         acknowledgements = await refresh_sources(session, bot, settings)
         await session.commit()
         confirm_sources_refresh(acknowledgements)
+        # Operational evidence contains only source kind/state, never messages, users or credentials.
+        for kind, chat_id in source_targets(settings).items():
+            source = await session.get(TelegramAnalyticsSource, chat_id)
+            logger.info('Telegram analytics source: kind=%s status=%s coverage_since=%s detail=%s',
+                kind, source.status, source.coverage_since, source.detail)
 
 
 def report_window(*, days=30, start_date=None, end_date=None, timezone_name='Asia/Yerevan', now=None):
