@@ -4,6 +4,7 @@
 - PDF uses the existing executive workbook facts and all 13 sections; adds health metrics, priorities, cohort-safe vector bars, period caveats, page numbers and Unicode font. No separate business formulas or raw vector answers.
 - Endpoint shares the existing dashboard-access dependency, validates format/dates, uses Yerevan report day and private/no-store responses; PDF layout runs outside the event loop.
 - Local: frontend build/typecheck passed; executive PDF/Excel + privacy tests passed (11 tests, 5 subtests). PDF pages rendered and visually checked. Browser PDF export E2E added for CI.
+- Review follow-up: preserve formula-looking titles as literal text in Excel/PDF (regression tests); short appendix sections flow continuously. Isolated seeded integration generated all 13 sections; no production writes.
 - Pending: full CI/review, merge, automatic deployment, authenticated production download and release observation. These changes are not production evidence.
 
 # Актуальный checkpoint защиты данных — 21.10.2026

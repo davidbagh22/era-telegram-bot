@@ -269,7 +269,7 @@ function AnalyticsReportPanel() {
     setBusy(format);
     try {
       const blob = await downloadFullAnalyticsReport(period, start, end, format);
-      saveBlob(blob, `ERA_analytics_${period}.${format}`);
+      saveBlob(blob, `ERA_analytics_${period === "custom" ? `${start}_${end}` : period}.${format}`);
       toast.show("Отчёт готов к сохранению.", "success");
     } catch {
       toast.show("Не удалось сформировать отчёт. Попробуйте ещё раз.", "error");

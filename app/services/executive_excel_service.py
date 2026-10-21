@@ -326,6 +326,12 @@ async def build_executive_workbook(
     _append_table(wb[SHEET_NAMES[12]], ["Правило", "Как считается", "Ограничение / смысл"], method_rows)
 
     for ws in wb.worksheets:
+        # This report contains facts, never Excel formulas. User-provided names
+        # and titles starting with '=' must remain text in both XLSX and PDF.
+        for row in ws.iter_rows():
+            for cell in row:
+                if isinstance(cell.value, str):
+                    cell.data_type = "s"
         ws.sheet_view.showGridLines = False
         ws.sheet_properties.pageSetUpPr.fitToPage = True
         ws.page_setup.fitToWidth = 1

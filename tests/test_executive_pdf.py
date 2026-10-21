@@ -24,6 +24,7 @@ def fixture():
     ws = wb.create_sheet('02 · Люди')
     ws.append(['Участник', 'Статус'])
     ws.append(['Имя <script> & текст', 'Одобрено'])
+    ws.append(['=Имя участника', '=Название проекта'])
     ws = wb.create_sheet('03 · Пустой раздел')
     ws.append(['Запись', 'Статус'])
     ws.append(['Данных за выбранный период нет', ''])
@@ -48,7 +49,7 @@ class ExecutivePDFTests(TestCase):
         pdf = PdfReader(BytesIO(content))
         text = '\n'.join(page.extract_text() for page in pdf.pages)
         for expected in ['Текущий состав', '66', 'Приоритеты руководителя',
-                         'Имя <script> & текст', 'Данных за выбранный период нет',
+                         'Имя <script> & текст', '=Имя участника', '=Название проекта', 'Данных за выбранный период нет',
                          '01.10.2026', 'Сроки требуют внимания', 'Очень длинный текст']:
             self.assertIn(expected, text)
         self.assertGreater(len(pdf.pages), 4)

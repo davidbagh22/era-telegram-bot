@@ -11,7 +11,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, PageBreak, KeepTogether, Table, TableStyle,
+    SimpleDocTemplate, Paragraph, Spacer, PageBreak, KeepTogether, CondPageBreak, Table, TableStyle,
 )
 
 from app.services.career_pdf_service import _register_font
@@ -31,6 +31,7 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
             ('value', 24, 30, accent, 4), ('eyebrow', 9, 13, accent, 10),
         ]
     }
+    styles['heading'].keepWithNext = True
     def p(value, style='body'):
         if value is None:
             value = '—'
@@ -58,7 +59,7 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
         canvas.drawRightString(width-20*mm, 12*mm, str(document.page))
         canvas.restoreState()
 
-    wb = load_workbook(BytesIO(workbook), read_only=True, data_only=True)
+    wb = load_workbook(BytesIO(workbook), read_only=True, data_only=False)
     story = [p('ЭРА / АНАЛИТИКА', 'eyebrow'), p('Организация\nв цифрах', 'title'),
              p(period_label, 'heading'),
              p('Главные результаты, зоны внимания и полный обзор разделов.', 'small')]
@@ -112,7 +113,7 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
     story.append(p('Подробные разделы', 'heading'))
     story.extend(p(sheet.title, 'small') for sheet in wb.worksheets[1:])
     for sheet in wb.worksheets[1:]:
-        story.extend([PageBreak(), p(sheet.title, 'heading')])
+        story.extend([Spacer(1, 6*mm), CondPageBreak(55*mm), p(sheet.title, 'heading')])
         iterator = iter(sheet.values)
         headers = next(iterator, ())
         for number, row in enumerate(iterator, 1):
@@ -122,7 +123,8 @@ def build_executive_pdf(workbook: bytes, *, period_label: str, health, efficienc
             story.append(p(f'{number:02d} / {row[0] if row[0] is not None else "—"}', 'eyebrow'))
             for label, value in zip(headers[1:], row[1:]):
                 if value is not None and value != '':
-                    story.append(p(f'{label}: {value}'))
+                    display = value.strftime('%d.%m.%Y') if isinstance(value, (date, datetime)) else value
+                    story.append(p(f'{label}: {display}'))
             story.append(Spacer(1, 3*mm))
     wb.close()
     doc.build(story, onFirstPage=page, onLaterPages=page)
