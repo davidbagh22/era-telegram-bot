@@ -10,12 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
 from app.database.models import User, UserQuestion
-from app.services.staff_access_service import can_operate_queue
+from app.services.staff_access_service import (allowed_support_categories,
+    can_operate_queue, can_operate_support_category)
 from app.services.audit_service import audit
 from app.services.notification_service import safe_answer_media
 from app.services.scheduler_service import deliver_support_answers
 from app.services.support_service import (CATEGORIES, append_support_message, support_thread,
-    update_support_thread, deliver_support_thread_messages, support_assignees,
+    update_support_thread, deliver_support_thread_messages, support_category_assignees,
     support_attachment, support_message_input)
 from app.services.feature_flags import Feature, feature_enabled
 from app.handlers.support_thread_views import show_support_thread, STATUS_LABELS as THREAD_LABELS
@@ -44,10 +45,15 @@ async def _guard(event, user, settings, session):
     return False
 
 
-async def show_inbox(message, session, *, page=0):
-    total = int(await session.scalar(select(func.count()).select_from(UserQuestion)) or 0)
+async def show_inbox(message, session, user, settings, *, page=0):
+    categories = await allowed_support_categories(session, user, settings, telegram_id=message.chat.id)
+    if not categories:
+        await message.answer(texts.NO_ACCESS)
+        return
+    condition = func.coalesce(UserQuestion.category, 'general').in_(categories)
+    total = int(await session.scalar(select(func.count()).select_from(UserQuestion).where(condition)) or 0)
     page = min(max(0, page), max(0, (total-1)//PAGE_SIZE))
-    items = list((await session.scalars(select(UserQuestion).order_by(
+    items = list((await session.scalars(select(UserQuestion).where(condition).order_by(
         UserQuestion.status.in_(('new', 'open', 'thread_waiting')).desc(), UserQuestion.created_at, UserQuestion.id)
         .offset(page*PAGE_SIZE).limit(PAGE_SIZE))).all())
     rows = [[InlineKeyboardButton(text=f'#{item.id} · {STATUS_LABELS.get(item.status, item.status)}',
@@ -67,7 +73,7 @@ async def show_inbox(message, session, *, page=0):
 @router.message(Command('support_admin'))
 async def support_command(message: Message, user: User | None, settings: Settings, session: AsyncSession):
     if await _guard(message, user, settings, session):
-        await show_inbox(message, session)
+        await show_inbox(message, session, user, settings)
 
 
 @router.callback_query(F.data == 'admin:questions')
@@ -76,7 +82,8 @@ async def support_list(call: CallbackQuery, user: User | None, settings: Setting
     if not await _guard(call, user, settings, session):
         return
     await call.answer()
-    await show_inbox(call.message, session, page=int(call.data.rsplit(':', 1)[-1]) if ':page:' in call.data else 0)
+    await show_inbox(call.message, session, user, settings,
+        page=int(call.data.rsplit(':', 1)[-1]) if ':page:' in call.data else 0)
 
 
 @router.callback_query(F.data.regexp(r'^admin:support:(item|reply|file):\d+$'))
@@ -86,6 +93,9 @@ async def support_item(call: CallbackQuery, user: User | None, settings: Setting
     item = await session.get(UserQuestion, int(call.data.rsplit(':', 1)[-1]))
     if item is None:
         await call.answer('Обращение не найдено.', show_alert=True)
+        return
+    if not await can_operate_support_category(session, user, settings, item.category or 'general'):
+        await call.answer(texts.NO_ACCESS, show_alert=True)
         return
     await call.answer()
     owner = await session.get(User, item.user_id)
@@ -171,6 +181,11 @@ async def support_answer(message: Message, user: User | None, settings: Settings
         return
     item = await session.scalar(select(UserQuestion).where(UserQuestion.id == item_id).with_for_update()
                                 .execution_options(populate_existing=True))
+    if item and not await can_operate_support_category(session, user, settings, item.category or 'general'):
+        await session.rollback()
+        await state.clear()
+        await message.answer(texts.NO_ACCESS)
+        return
     if not item or item.status not in {'new', 'open'} or item.admin_answer:
         await state.clear()
         await message.answer('Ответ уже сохранён другим администратором. Обновите карточку.')
@@ -209,9 +224,11 @@ async def support_thread_action(call: CallbackQuery, user: User | None, settings
             await state.update_data(support_question_id=item.id, support_thread_revision=revision)
             await call.message.answer(f'Ответ на обращение #{item.id}: текст до 1500 символов, фото или документ с подписью.\n/cancel — отменить.')
         elif action == 'categories':
+            allowed = [key for key in CATEGORIES if await can_operate_support_category(
+                session, user, settings, key)]
             await call.message.answer('Выберите тему обращения:', reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text=label, callback_data=f'admin:support:thread:category:{item.id}:{revision}:{key}')]
-                for key, label in CATEGORIES.items()]))
+                for key, label in CATEGORIES.items() if key in allowed]))
         else:
             await update_support_thread(session, settings, question_id=item.id, actor_id=user.id,
                 expected_revision=revision, action=action, category=parts[6] if action == 'category' else None)
@@ -241,7 +258,7 @@ async def support_assign(call: CallbackQuery, user: User | None, settings: Setti
             await state.clear()
             await show_support_thread(call.message, session, settings, question_id=question_id, actor_id=user.id, staff=True)
         else:
-            assignees = await support_assignees(session, settings)
+            assignees = await support_category_assignees(session, settings, item.category or 'general')
             page = min(target, max(0, (len(assignees)-1)//8))
             rows = [[InlineKeyboardButton(text=(f'{actor.first_name} {actor.last_name or ""}'.strip())[:45],
                 callback_data=f'admin:support:thread:assign:{item.id}:{revision}:{actor.id}')]

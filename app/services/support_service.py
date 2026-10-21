@@ -7,7 +7,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 
 from app.database.models import AppSetting, SupportMessage, User, UserQuestion
-from app.services.staff_access_service import can_operate_queue
+from app.services.staff_access_service import can_operate_queue, can_operate_support_category
 from app.services.feature_flags import Feature, feature_enabled
 from app.services.audit_service import audit
 from app.services.notification_service import admin_notification_recipients, safe_send_once
@@ -34,6 +34,8 @@ async def support_thread(session, question_id, actor_id, settings, *, staff=Fals
     item = await session.scalar(query.with_for_update() if lock else query)
     if item is None or not staff and item.user_id != actor.id:
         raise PermissionError('support_access_denied')
+    if staff and not await can_operate_support_category(session, actor, settings, item.category or 'general'):
+        raise PermissionError('support_category_access_denied')
     if staff and lock:
         owner = await session.get(User, item.user_id)
         if owner is None or not feature_enabled(settings, Feature.SUPPORT_THREADS, owner.telegram_id):
@@ -96,6 +98,12 @@ async def support_assignees(session, settings):
             and await can_operate_queue(session, actor, settings, "support.manage")]
 
 
+async def support_category_assignees(session, settings, category):
+    candidates = await support_assignees(session, settings)
+    return [actor for actor in candidates if await can_operate_support_category(
+        session, actor, settings, category)]
+
+
 async def append_support_message(session, settings, *, question_id, actor_id, staff, text, source_key, expected_revision, file_id=None):
     """One row lock protects the conversation and stale admin reply snapshots."""
     text = text.strip()
@@ -142,8 +150,14 @@ async def update_support_thread(session, settings, *, question_id, actor_id, exp
         # Recheck the target at submission time, including revoked access and
         # rollout changes since the selector was opened.
         target = await support_actor(session, assignee_id, settings, staff=True)
+        if not await can_operate_support_category(session, target, settings, item.category or 'general'):
+            raise PermissionError('support_assignee_category_denied')
         if item.status == 'thread_closed':
             raise ValueError('closed_thread')
+    if action == 'category':
+        actor = await support_actor(session, actor_id, settings, staff=True)
+        if not await can_operate_support_category(session, actor, settings, category):
+            raise PermissionError('support_category_access_denied')
     await _convert_thread(session, item)
     if action == 'claim':
         if item.assigned_to not in {None, actor_id}:
@@ -206,7 +220,7 @@ async def deliver_support_thread_messages(bot, settings, session_factory):
                 assignee = await session.get(User, item.assigned_to) if item.assigned_to else None
                 if (assignee and not assignee.is_blocked and not assignee.is_archived
                         and assignee.application_status == ApplicationStatus.APPROVED
-                        and await can_operate_queue(session, assignee, settings, "support.manage")):
+                        and await can_operate_support_category(session, assignee, settings, item.category or 'general')):
                     recipients = {assignee.telegram_id}
                 else:
                     recipients = {int(i) for i in await admin_notification_recipients(settings) if int(i) > 0}
@@ -244,7 +258,7 @@ async def _deliver_support_assignments(bot, settings, session_factory):
             if (not item or item.status == 'thread_closed' or item.assigned_to != data['assignee_id']
                     or not target or target.is_blocked or target.is_archived
                     or target.application_status != ApplicationStatus.APPROVED
-                    or not await can_operate_queue(session, target, settings, "support.manage")):
+                    or not await can_operate_support_category(session, target, settings, item.category or 'general')):
                 await session.delete(row)
                 await session.commit()
                 continue
