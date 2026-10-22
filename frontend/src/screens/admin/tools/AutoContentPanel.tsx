@@ -497,7 +497,7 @@ export function AutoContentPanel() {
         <Card>
           <strong>Добавить дату</strong>
           <p style={{ margin: "0.25rem 0 0.65rem", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-            Формат MM-DD для ежегодной даты или YYYY-MM-DD для одного конкретного года.
+            Для ежегодной даты укажите месяц и день: 10-22. Для даты с годом: 2026-10-22.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             <input

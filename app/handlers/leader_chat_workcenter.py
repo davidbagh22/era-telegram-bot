@@ -105,9 +105,9 @@ async def connect_pulse_from_deep_link(
         is_member=getattr(member, "is_member", None),
     )
     await message.answer(
-        "Готово. Аккаунт связан с чатом «ЛИДЕРЫ». Откройте Weekly Pulse в приложении ЭРА.",
+        "Готово. Аккаунт связан с чатом «ЛИДЕРЫ». Откройте еженедельный опрос в приложении ЭРА.",
         reply_markup=open_app_button(
-            settings.effective_miniapp_url, "Открыть Weekly Pulse"
+            settings.effective_miniapp_url, "Открыть еженедельный опрос"
         ),
     )
 

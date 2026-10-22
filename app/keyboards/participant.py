@@ -246,7 +246,7 @@ def profile_settings_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Телефон", callback_data="profile:phone"),
             ],
             [
-                InlineKeyboardButton(text="Email", callback_data="profile:email"),
+                InlineKeyboardButton(text="Эл. почта", callback_data="profile:email"),
                 InlineKeyboardButton(text="Город", callback_data="profile:edit:city"),
             ],
             [InlineKeyboardButton(text="Учёба / работа", callback_data="profile:edit:education_work")],

@@ -73,6 +73,22 @@ class EventActivityServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(parsed, [])
         self.assertEqual(rejected, 3)
 
+    def test_russian_types_preserve_canonical_storage_and_english_input(self) -> None:
+        for russian, canonical in {
+            "фото": "photo", "ссылка": "link", "текст": "text",
+            "файл": "file", "проверка": "manual", "видео": "video",
+        }.items():
+            with self.subTest(submission_type=russian):
+                localized, rejected = svc.parse_bulk_lines(f"Участие | 30 | {russian.upper()} | Результат")
+                existing, _ = svc.parse_bulk_lines(f"Участие | 30 | {canonical} | Результат")
+                self.assertEqual(rejected, 0)
+                self.assertEqual(localized, existing)
+                self.assertEqual(localized[0]["submission_type"], canonical)
+
+        parsed, rejected = svc.parse_bulk_lines("A | -1 | фото\nB | 1001 | текст\nC | 10 | неизвестно")
+        self.assertEqual(parsed, [])
+        self.assertEqual(rejected, 3)
+
     # -- admin: create / send --
 
     async def test_create_activities_bulk(self) -> None:

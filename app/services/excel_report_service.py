@@ -158,7 +158,7 @@ def add_health_sheets(content: bytes, health, efficiency) -> bytes:
     ws["D5"] = health.pulse_label
     ws["A6"] = "Охват Пульса"
     ws["B6"] = health.pulse_coverage / 100
-    ws["C6"] = f"{health.pulse_sample_size} Check-in"
+    ws["C6"] = f"{health.pulse_sample_size} отметок"
     ws["D6"] = "показывается только при безопасной выборке ≥5"
     ws["B6"].number_format = "0%"
     for r in (4, 5, 6):
@@ -226,7 +226,7 @@ def add_health_sheets(content: bytes, health, efficiency) -> bytes:
                 "агрегат текущего состояния; не характеристика личности",
             ])
     else:
-        pulse_ws.append(["—", "—", "—", "Недостаточно Check-in для безопасной групповой аналитики"])
+        pulse_ws.append(["—", "—", "—", "Недостаточно ежемесячных отметок для безопасной групповой аналитики"])
     pulse_ws.freeze_panes = "A8"
     pulse_ws.column_dimensions["A"].width = 24
     pulse_ws.column_dimensions["B"].width = 22

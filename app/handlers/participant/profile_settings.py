@@ -227,7 +227,7 @@ async def email_start(call: CallbackQuery, user: User | None, state: FSMContext)
         return
     await state.set_state(ProfileSettingsStates.email)
     await call.message.answer(
-        f"Email\n\nСейчас: {user.email or 'не указан'}\n\nОтправьте новый email\n\n/cancel — отменить"
+        f"Электронная почта\n\nСейчас: {user.email or 'не указана'}\n\nОтправьте новый адрес\n\n/cancel — отменить"
     )
 
 

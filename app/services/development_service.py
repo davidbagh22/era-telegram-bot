@@ -636,9 +636,9 @@ def _change_text(
         code = max(delta, key=lambda item: abs(delta[item]))
         change = delta[code]
         if change > 0:
-            return f"Сильнее всего с прошлого Check-in выросла область «{STATE_LABELS[code]}»: +{change}."
+            return f"Сильнее всего с предыдущей отметки выросла область «{STATE_LABELS[code]}»: +{change}."
         if change < 0:
-            return f"Сильнее всего с прошлого Check-in изменилась область «{STATE_LABELS[code]}»: {change}."
+            return f"Сильнее всего с предыдущей отметки изменилась область «{STATE_LABELS[code]}»: {change}."
     if baseline:
         differences = {
             code: state[code] - int(baseline.get(code, state[code])) for code in STATE_DIMENSIONS
@@ -964,5 +964,5 @@ async def community_analytics(session: AsyncSession, period_days: int = 30) -> d
         "suppressed": False,
         "state": state,
         "index": vector_index(state),
-        "disclaimer": "Агрегат добровольных Check-in. Не используется для рейтинга или автоматического отбора участников.",
+        "disclaimer": "Сводка добровольных отметок. Не используется для рейтинга или автоматического отбора участников.",
     }

@@ -35,7 +35,7 @@ export function AdminDevelopmentProfileCard({ userId }: { userId: number }) {
       <div>
         <h2 style={{ margin: 0, fontSize: "var(--era-text-xl)" }}>Развитие</h2>
         <p style={{ margin: ".25rem 0 0", color: "var(--era-text-muted)" }}>
-          Только разрешённые участником показатели. Не KPI и не критерий ценности.
+          Только показатели, которыми участник разрешил поделиться. Они не определяют ценность человека.
         </p>
       </div>
 
@@ -48,7 +48,7 @@ export function AdminDevelopmentProfileCard({ userId }: { userId: number }) {
             </div>
           </div>
           <div>
-            <strong>Последний Check-in</strong>
+            <strong>Последняя ежемесячная отметка</strong>
             <p style={{ margin: ".25rem 0 0", color: "var(--era-text-muted)" }}>
               {data.last_checkin_at ? new Date(data.last_checkin_at).toLocaleDateString("ru-RU") : "ещё не завершён"}
             </p>

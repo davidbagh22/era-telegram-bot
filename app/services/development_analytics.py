@@ -156,7 +156,7 @@ async def community_analytics(session: AsyncSession, period_days: int = 30) -> d
         "interests": interests,
         "recommendation": _organization_recommendation(state, delta, wants),
         "disclaimer": (
-            "Агрегат добровольных Check-in с учётом настроек приватности. "
+            "Сводка добровольных отметок с учётом настроек приватности. "
             "Не используется для психологического рейтинга, автоматического отбора "
             "или назначения ролей."
         ),

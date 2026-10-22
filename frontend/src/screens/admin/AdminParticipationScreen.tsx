@@ -13,9 +13,9 @@ import { StatusBanner } from "../../components/StatusBanner";
 const STATE_LABELS: Record<string, string> = {
   ADAPTATION: "Адаптация",
   ACTIVE: "Активные",
-  COOLING: "Cooling",
+  COOLING: "Снижение активности",
   INACTIVE: "Неактивные",
-  DORMANT: "Dormant",
+  DORMANT: "Длительное отсутствие",
   ARCHIVE_CANDIDATE: "Кандидаты на архив",
 };
 
@@ -83,10 +83,10 @@ export function AdminParticipationScreen() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
       <Card gradient>
-        <MonoLabel tone="violet">LIFECYCLE</MonoLabel>
+        <MonoLabel tone="violet">УЧАСТИЕ В ЭРА</MonoLabel>
         <h2 style={{ margin: ".35rem 0 0" }}>Состояние участников</h2>
         <p style={{ margin: ".45rem 0 0", color: "var(--era-text-secondary)" }}>
-          Режим выбирает человек. Activity State система считает только по подтверждённым действиям и текущей ответственности.
+          Режим выбирает человек. Состояние активности система определяет по подтверждённым действиям и текущей ответственности.
         </p>
       </Card>
 
@@ -102,7 +102,7 @@ export function AdminParticipationScreen() {
       </div>
 
       <section>
-        <MonoLabel>ACTIVITY STATE</MonoLabel>
+        <MonoLabel>СОСТОЯНИЕ АКТИВНОСТИ</MonoLabel>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: ".45rem", marginTop: ".55rem" }}>
           {Object.entries(STATE_LABELS).map(([key, label]) => (
             <button key={key} type="button" className="era-btn-secondary" onClick={() => void open({ label, state: key })} style={{ justifyContent: "space-between" }}>
@@ -157,7 +157,7 @@ export function AdminParticipationScreen() {
       </section>
 
       <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: ".75rem" }}>
-        Historical approved: {summary.historical_approved}. EXITED сохраняются в истории, но не входят в текущий состав. PAUSED/OBSERVER не входят в Active Base.
+        Всего одобрено за всё время: {summary.historical_approved}. Вышедшие сохраняются в истории и исключены из текущего состава. Участники на паузе и наблюдатели не входят в активную базу.
       </p>
     </div>
   );

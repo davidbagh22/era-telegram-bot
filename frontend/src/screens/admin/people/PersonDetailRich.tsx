@@ -413,7 +413,7 @@ export function PersonDetail({ userId, onBack }: PersonDetailProps) {
               <InfoRow label="Дата рождения" value={`${formatDate(person.birth_date)}${person.age ? ` · ${person.age} лет` : ""}`} />
               <InfoRow label="Город" value={person.city ?? "—"} />
               <InfoRow label="Телефон" value={person.phone ?? "—"} />
-              <InfoRow label="Email" value={person.email ?? "—"} />
+              <InfoRow label="Эл. почта" value={person.email ?? "—"} />
               <InfoRow label="Учёба / работа" value={person.education_work ?? "—"} />
               <InfoRow label="Занятие" value={person.occupation ?? "—"} />
               <InfoRow label="Навыки" value={person.skills.length ? person.skills.join(", ") : "—"} />

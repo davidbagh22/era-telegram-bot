@@ -32,7 +32,7 @@ type InitialAdminRoute = {
 
 const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
   { value: "participants", label: "Участники", description: "Люди, роли и состояние сообщества" },
-  { value: "verification", label: "Проверка состава", description: "Community Verification, напоминания и ручные решения" },
+  { value: "verification", label: "Проверка состава", description: "Проверка состава, напоминания и ручные решения" },
   { value: "development", label: "Состояние и развитие", description: "Добровольные ежемесячные отметки, охват и потребности сообщества" },
   { value: "career", label: "Портфолио и рекомендации", description: "Проверка достижений и утверждение официальных рекомендательных писем" },
   { value: "applications", label: "Заявки", description: "Новые регистрации и решения по ним" },
@@ -50,7 +50,7 @@ const WORK_SECTIONS: SectionOption<WorkSection>[] = [
 
 const COMMS_SECTIONS: SectionOption<CommsSection>[] = [
   { value: "surveys", label: "Опросы", description: "Обратная связь и активные опросы" },
-  { value: "tools", label: "Центр связи", description: "Чаты, FAQ, приветствия, рассылки и автоконтент" },
+  { value: "tools", label: "Центр связи", description: "Чаты, вопросы и ответы, приветствия, рассылки и автоконтент" },
 ];
 
 function positiveId(value: string | null): number | null {

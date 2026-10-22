@@ -56,7 +56,7 @@ def _back_keyboard() -> InlineKeyboardMarkup:
 
 
 def _vector_home_keyboard(*, completed: bool, started: bool, miniapp_url: str) -> InlineKeyboardMarkup:
-    label = "Посмотреть результат" if completed else ("Продолжить Check-in" if started else "Проверить состояние")
+    label = "Посмотреть результат" if completed else ("Продолжить отметку" if started else "Проверить состояние")
     rows = [
         [InlineKeyboardButton(text=label, callback_data="vector:start")],
         [InlineKeyboardButton(text="⚡ Быстрый пульс", callback_data="vector:pulse:start")],
@@ -187,11 +187,11 @@ async def _show_home(
     completed = checkin.status == "completed"
 
     if completed:
-        status = f"Check-in месяца завершён · индекс {checkin.index_value or 0}/100"
+        status = f"Отметка месяца завершена · индекс {checkin.index_value or 0}/100"
     elif answered:
-        status = f"Check-in начат · {answered}/{len(questions)}"
+        status = f"Отметка начата · {answered}/{len(questions)}"
     else:
-        status = "Новый Check-in готов"
+        status = "Новая отметка месяца доступна"
 
     await message.answer(
         "🧭 Мой вектор\n\n"
@@ -339,7 +339,7 @@ async def vector_consent(
         target_user_id=user.id,
     )
     await call.message.answer(
-        "Готово. Начнём с короткого Check-in — обычно это занимает несколько минут."
+        "Готово. Начнём с короткой отметки состояния — обычно это занимает несколько минут."
     )
     checkin = await _current_checkin(session, user.id)
     await _send_next_question(call.message, user, session, settings, checkin)
@@ -364,7 +364,7 @@ async def vector_start(
         previous_goal = await _unreviewed_previous_goal(session, user.id, checkin.month)
         if previous_goal is not None:
             await call.message.answer(
-                "Перед новым Check-in — один короткий вопрос.\n\n"
+                "Перед новой отметкой — один короткий вопрос.\n\n"
                 f"В прошлом месяце твой фокус был:\n«{previous_goal.title}»\n\n"
                 "Что с ним произошло?",
                 reply_markup=_goal_review_keyboard(previous_goal.id),

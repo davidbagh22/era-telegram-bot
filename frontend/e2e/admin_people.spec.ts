@@ -13,7 +13,7 @@ test("admin opens a rich participant profile and awards points", async ({ page }
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: "Люди" }).click();
   await page.getByRole("button", { name: "Участники" }).click();
-  await page.getByPlaceholder("Имя, username или Telegram ID").fill("E2E Participant");
+  await page.getByPlaceholder("Имя, имя пользователя или ID Telegram").fill("E2E Participant");
   await page.getByText("E2E Participant").click();
 
   await expect(page.getByText("Карточка участника")).toBeVisible();

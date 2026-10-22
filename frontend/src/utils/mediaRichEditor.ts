@@ -100,7 +100,7 @@ export function openMediaRichEditor(initialValue: string): Promise<string | null
     });
 
     const heading = document.createElement("div");
-    heading.innerHTML = '<div style="font-size:12px;font-weight:800;opacity:.58;text-transform:uppercase">Media Desk</div><div style="font-size:22px;font-weight:900;margin-top:2px">Публикация в Telegram</div><div style="font-size:13px;opacity:.65;margin-top:5px;line-height:1.4">Отредактируйте текст и сразу проверьте, как он будет читаться в канале.</div>';
+    heading.innerHTML = '<div style="font-size:12px;font-weight:800;opacity:.58;text-transform:uppercase">Редакция</div><div style="font-size:22px;font-weight:900;margin-top:2px">Публикация в Telegram</div><div style="font-size:13px;opacity:.65;margin-top:5px;line-height:1.4">Отредактируйте текст и сразу проверьте, как он будет читаться в канале.</div>';
 
     const toolbar = document.createElement("div");
     Object.assign(toolbar.style, { display: "flex", flexWrap: "wrap", gap: "7px" });

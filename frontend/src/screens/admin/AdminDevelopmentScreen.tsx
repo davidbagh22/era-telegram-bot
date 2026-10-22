@@ -41,7 +41,7 @@ export function AdminDevelopmentScreen() {
         </p>
         <h2 style={{ margin: ".35rem 0 0", fontSize: "var(--era-text-2xl)" }}>Мой вектор · сообщество</h2>
         <p style={{ margin: ".5rem 0 0", color: "var(--era-text-secondary)" }}>
-          Добровольные Check-in помогают видеть потребности сообщества. Это не рейтинг людей и не основание для автоматических решений.
+          Добровольные ежемесячные отметки помогают видеть потребности сообщества. Это не рейтинг людей и не основание для автоматических решений.
         </p>
       </Card>
 
@@ -82,7 +82,7 @@ export function AdminDevelopmentScreen() {
         <strong>Охват</strong>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: ".75rem", marginTop: ".75rem" }}>
           <Metric value={`${data.sample_size} / ${data.eligible_profiles}`} label="ответили / участников" />
-          <Metric value={`${data.coverage_percent}%`} label="охват Check-in" />
+          <Metric value={`${data.coverage_percent}%`} label="охват ежемесячных отметок" />
         </div>
         <small style={{ display: "block", marginTop: ".75rem", color: "var(--era-text-muted)" }}>
           Минимальная безопасная группа: {data.minimum_cohort} человек.
@@ -108,7 +108,7 @@ export function AdminDevelopmentScreen() {
               </div>
               <div>
                 <strong>Состояние сообщества</strong>
-                <p style={{ margin: ".35rem 0 0", color: "var(--era-text-muted)" }}>На основе добровольных Check-in выбранного периода.</p>
+                <p style={{ margin: ".35rem 0 0", color: "var(--era-text-muted)" }}>На основе добровольных отметок выбранного периода.</p>
               </div>
             </div>
           </Card>
