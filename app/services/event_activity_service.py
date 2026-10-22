@@ -23,6 +23,14 @@ from app.utils.validators import clean_text
 # ordinary Tasks and Projects so metrics/rank/lifecycle cannot drift.
 
 ALLOWED_SUBMISSION_TYPES = {"photo", "link", "text", "file", "manual", "video"}
+SUBMISSION_TYPE_ALIASES = {
+    "фото": "photo",
+    "ссылка": "link",
+    "текст": "text",
+    "файл": "file",
+    "проверка": "manual",
+    "видео": "video",
+}
 REVIEWABLE_STATUSES = {"pending", "leader_approved"}
 SENT_MARKER = "[ERA_ACTIVITIES_SENT]"
 ACTIVE_REGISTRATION_STATUSES = {
@@ -49,6 +57,7 @@ def parse_bulk_lines(raw_text: str) -> tuple[list[dict], int]:
             rejected += 1
             continue
         submission_type = (clean_text(parts[2], 32) or "").lower()
+        submission_type = SUBMISSION_TYPE_ALIASES.get(submission_type, submission_type)
         description = clean_text(parts[3], 1000) if len(parts) > 3 else title
         if not title or submission_type not in ALLOWED_SUBMISSION_TYPES or not 0 <= points <= 1000:
             rejected += 1

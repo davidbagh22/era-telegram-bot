@@ -145,7 +145,7 @@ export function AdminMaintenanceScreen({ onOpen }: AdminMaintenanceScreenProps) 
         <h3 style={{ margin: "0 0 0.55rem" }}>Люди и развитие</h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
           <QueueAction title="Участники" description={`База, роли и статусы${metrics.users_total !== undefined ? ` · ${metrics.users_total}` : ""}`} onClick={() => onOpen("participants")} />
-          <QueueAction title="Состояние и развитие" description="Безопасные сводки «Моего вектора», охват Check-in и потребности" onClick={() => onOpen("development")} />
+          <QueueAction title="Состояние и развитие" description="Безопасные сводки «Моего вектора», охват ежемесячных отметок и потребности" onClick={() => onOpen("development")} />
           <QueueAction title="Должности и структура" description="Роли, руководители и организационная структура" onClick={() => onOpen("offices")} />
         </div>
       </section>
@@ -154,7 +154,7 @@ export function AdminMaintenanceScreen({ onOpen }: AdminMaintenanceScreenProps) 
         <h3 style={{ margin: "0 0 0.55rem" }}>Коммуникация</h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
           <QueueAction title="Опросы и обратная связь" description="Создать опрос, посмотреть ответы и понять реакцию сообщества" onClick={() => onOpen("surveys")} />
-          <QueueAction title="Центр связи" description="Чаты, FAQ, приветствия, рассылки и автоконтент" onClick={() => onOpen("tools")} />
+          <QueueAction title="Центр связи" description="Чаты, вопросы и ответы, приветствия, рассылки и автоконтент" onClick={() => onOpen("tools")} />
         </div>
       </section>
 

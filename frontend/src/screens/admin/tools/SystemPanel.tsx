@@ -83,7 +83,7 @@ export function SystemPanel() {
           <strong>{latest ? statusLabel(latest.status) : "нет данных"}</strong>
         </div>
         <p style={{ margin: "0.6rem 0 0", color: "var(--era-text-secondary)", fontSize: "var(--era-text-sm)" }}>
-          Heartbeat: {formatDate(latest?.created_at)} · Full: {formatDate(latestFull?.created_at)}
+          Проверка связи: {formatDate(latest?.created_at)} · полная проверка: {formatDate(latestFull?.created_at)}
         </p>
       </Card>
 
@@ -94,7 +94,7 @@ export function SystemPanel() {
         </Card>
         <Card>
           <strong style={{ fontSize: "var(--era-text-lg)" }}>{latestBackup ? statusLabel(latestBackup.status) : "нет данных"}</strong>
-          <span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>последний backup</span>
+          <span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>последняя резервная копия</span>
         </Card>
       </div>
 
@@ -155,9 +155,9 @@ export function SystemPanel() {
       </section>
 
       <section>
-        <h3 style={{ margin: "0.25rem 0 0.65rem" }}>Backup History</h3>
+        <h3 style={{ margin: "0.25rem 0 0.65rem" }}>Резервные копии</h3>
         {backups.length === 0 ? (
-          <EmptyState text="История backup пока не поступала от workflow." />
+          <EmptyState text="Данные резервного копирования ещё не поступили." />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             {backups.slice(0, 10).map((backup) => (
@@ -169,7 +169,7 @@ export function SystemPanel() {
                   </span>
                 </div>
                 <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>
-                  {formatDate(backup.completed_at)} · restore: {backup.restore_verified_at ? "проверен" : "нет"}
+                  {formatDate(backup.completed_at)} · восстановление: {backup.restore_verified_at ? "проверен" : "нет"}
                 </p>
               </Card>
             ))}

@@ -40,11 +40,11 @@ export function AdminMetricDetailScreen({ metric, expectedTotal, onBack, onOpenE
         <>
           <Card>
             <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
-              Точный drill-down
+              Данные показателя
             </p>
             <h1 style={{ margin: "0.35rem 0 0", fontSize: "var(--era-text-2xl)" }}>{data.data.label}</h1>
             <p style={{ margin: "0.45rem 0 0", color: "var(--era-text-muted)" }}>
-              В показателе: <strong>{data.data.total}</strong>. Список построен тем же правилом, что и KPI на главной.
+              В показателе: <strong>{data.data.total}</strong>. Список построен тем же правилом, что и показатель на главной.
             </p>
             {expectedTotal !== data.data.total && (
               <p role="alert" style={{ margin: "0.55rem 0 0", color: "var(--era-error)", fontWeight: 800 }}>

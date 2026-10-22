@@ -81,7 +81,7 @@ async def send_monthly_development_reminders(
                 bot,
                 user.telegram_id,
                 emoji="🧭",
-                title="Твой новый Check-in готов",
+                title="Новая отметка месяца доступна",
                 body=(
                     "Прошёл ещё один месяц. За несколько минут можно увидеть, "
                     "что изменилось, и выбрать один фокус на следующий шаг."

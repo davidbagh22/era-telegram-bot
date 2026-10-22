@@ -691,7 +691,7 @@ async def open_weekly_pulses_job(
                     chat_id=settings.leaders_chat_id,
                     message_thread_id=await topic_id(session, settings.leaders_chat_id, "pulse"),
                     text=(
-                        f"📊 <b>Открылся Weekly Pulse · неделя {cycle.week_number}</b>\n\n"
+                        f"📊 <b>Открыт еженедельный опрос · неделя {cycle.week_number}</b>\n\n"
                         f"Ответили: {cycle.submitted_count} / {cycle.eligible_count}\n"
                         f"Заполните короткий отчёт до "
                         f"{cycle_deadline:%d.%m %H:%M}. "
@@ -735,7 +735,7 @@ async def open_weekly_pulses_job(
                 bot,
                 user.telegram_id,
                 emoji="📊",
-                title="Weekly Pulse открыт",
+                title="Еженедельный опрос открыт",
                 body=(
                     "Система уже собрала факты по вашей зоне. Добавьте короткий итог недели, "
                     "оцените темп, ясность и нагрузку и зафиксируйте следующий приоритет."
@@ -900,7 +900,7 @@ async def _check_weekly_cycle(
             if user is None:
                 continue
             action = (
-                PrimaryAction(label="Заполнить Weekly Pulse", web_app_url=settings.effective_miniapp_url)
+                PrimaryAction(label="Заполнить еженедельный опрос", web_app_url=settings.effective_miniapp_url)
                 if settings.effective_miniapp_url
                 else None
             )
@@ -908,7 +908,7 @@ async def _check_weekly_cycle(
                 bot,
                 user.telegram_id,
                 emoji="⏳",
-                title="Weekly Pulse ждёт итог",
+                title="Еженедельный опрос ждёт итог",
                 body="Отчёт недели ещё не отправлен. Системные факты уже заполнены — остаётся ваша короткая оценка.",
                 action=action,
                 settings=settings,
@@ -958,7 +958,7 @@ async def _check_weekly_cycle(
             return
         if missing_names:
             summary = (
-                f"Weekly Pulse · неделя {cycle.week_number}\n"
+                f"Еженедельный опрос · неделя {cycle.week_number}\n"
                 f"Ответили: {cycle.submitted_count} / {cycle.eligible_count}.\n\n"
                 "Не отправили отчёт:\n" + "\n".join(f"• {name}" for name in missing_names)
             )
@@ -966,7 +966,7 @@ async def _check_weekly_cycle(
                 await send_bot_notification(
                     bot,
                     admin_id,
-                    title="Список неответивших по Weekly Pulse",
+                    title="Не ответили на еженедельный опрос",
                     body=summary,
                     settings=settings,
                     delivery_key=f"leadership-pulse-missing:{cycle.id}:{admin_id}",

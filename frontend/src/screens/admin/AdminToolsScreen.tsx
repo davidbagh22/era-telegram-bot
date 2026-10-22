@@ -16,7 +16,7 @@ const SECTIONS: { value: ToolsSection; group: ToolGroup; label: string; descript
   { value: "goals", group: "team", label: "Цели месяца", description: "Что команда должна довести до результата сейчас", icon: "◎" },
   { value: "contacts", group: "team", label: "Организации", description: "Партнёры, контакты и рабочие отношения ЭРА", icon: "◇" },
   { value: "structure", group: "team", label: "Структура", description: "Департаменты, направления и устройство команды", icon: "⌘" },
-  { value: "chats", group: "communication", label: "Чаты", description: "Привязка, доступ, FAQ и техническое состояние", icon: "#" },
+  { value: "chats", group: "communication", label: "Чаты", description: "Привязка, доступ, вопросы и ответы, состояние системы", icon: "#" },
   { value: "greetings", group: "communication", label: "Приветствия", description: "Как ЭРА встречает новых участников в рабочих чатах", icon: "✦" },
   { value: "broadcast", group: "communication", label: "Рассылки", description: "Личные сообщения и выбранные организационные чаты", icon: "↗" },
   { value: "autocontent", group: "communication", label: "Автоконтент", description: "09:00, 18:00, вызовы недели, темы месяца и праздники", icon: "◉" },

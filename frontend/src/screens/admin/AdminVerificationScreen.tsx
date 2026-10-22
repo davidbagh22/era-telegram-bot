@@ -144,7 +144,7 @@ export function AdminVerificationScreen() {
           </Card>
         )}
         <Card gradient>
-          <MonoLabel tone="violet">COMMUNITY VERIFICATION</MonoLabel>
+          <MonoLabel tone="violet">ПРОВЕРКА СОСТАВА</MonoLabel>
           <h2 style={{ margin: ".4rem 0 0" }}>Проверить актуальный состав</h2>
           <p style={{ margin: ".5rem 0 0", color: "var(--era-text-secondary)" }}>
             Система отправит одно сообщение в общий чат и личные сообщения известным участникам. После окончания периода никто не удаляется автоматически.
@@ -158,7 +158,7 @@ export function AdminVerificationScreen() {
           ))}
         </div>
         <label style={{ display: "flex", flexDirection: "column", gap: ".3rem" }}>
-          <span style={{ fontWeight: 800 }}>Custom, часов</span>
+          <span style={{ fontWeight: 800 }}>Свой срок, часов</span>
           <input type="number" min={1} max={720} value={customDuration} onChange={(event) => setCustomDuration(event.target.value)} placeholder="Например, 96" />
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: ".55rem" }}>
@@ -219,7 +219,7 @@ export function AdminVerificationScreen() {
                     <div style={{ minWidth: 0 }}>
                       <strong style={{ overflowWrap: "anywhere" }}>{row.name}</strong>
                       <span style={{ display: "block", marginTop: ".2rem", color: "var(--era-text-muted)", fontSize: ".75rem" }}>
-                        {statusLabel(row.registration_status)} · DM: {statusLabel(row.delivery_status)}
+                        {statusLabel(row.registration_status)} · личные сообщения: {statusLabel(row.delivery_status)}
                       </span>
                     </div>
                     <span aria-hidden="true">{checked ? "✓" : "○"}</span>
@@ -243,7 +243,7 @@ export function AdminVerificationScreen() {
           ) : (
             <div style={{ marginTop: ".65rem", paddingTop: ".65rem", borderTop: "1px solid var(--era-border)" }}>
               <strong>Подтвердить массовое удаление?</strong>
-              <p style={{ margin: ".3rem 0 .6rem", color: "var(--era-text-muted)", fontSize: ".78rem" }}>Это ручное решение. Профиль и история в ERA Platform не удаляются.</p>
+              <p style={{ margin: ".3rem 0 .6rem", color: "var(--era-text-muted)", fontSize: ".78rem" }}>Это ручное решение. Профиль и история в ЭРА не удаляются.</p>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem" }}>
                 <button type="button" className="era-btn-secondary" onClick={() => setConfirmRemove(false)}>Отмена</button>
                 <button type="button" className="era-btn-primary" disabled={busy} onClick={() => void runSelection("remove")}>Подтвердить</button>

@@ -573,7 +573,7 @@ async def create_content_tasks(
         task = Task(
             title=f"Медиа · {MEDIA_TASK_KINDS[task_kind]} · {item.rubric or 'Контент'}",
             description=(
-                "Подготовь материал для Media Desk ЭРА. Результат отправляется "
+                "Подготовь материал для редакции ЭРА. Результат отправляется "
                 "через стандартную сдачу задачи и после проверки учитывается в Медиа."
             ),
             creator_id=creator_id,
@@ -855,7 +855,7 @@ async def _notify_publish_failed(
             "Публикация не вышла\n\n"
             f"{item.rubric or item.theme or 'Материал'}\n"
             f"Причина: {reason}\n\n"
-            "Откройте Media Desk, чтобы посмотреть и исправить вручную."
+            "Откройте редакцию, чтобы посмотреть и исправить вручную."
         ),
     )
 

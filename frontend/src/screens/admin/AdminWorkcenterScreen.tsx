@@ -44,7 +44,7 @@ export function AdminWorkcenterScreen(){
   {error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
   {tab==='team'&&<>
    <p>Должность и статус лидера учитываются отдельно. Назначение лидером сохраняет историю и не выдаёт административные права.</p>
-   <label>Поиск участника<input style={inputStyle} value={query} onChange={e=>setQuery(e.target.value)} placeholder="Имя, фамилия или @username"/></label>
+   <label>Поиск участника<input style={inputStyle} value={query} onChange={e=>setQuery(e.target.value)} placeholder="Имя, фамилия или @имя_пользователя"/></label>
    <div><button disabled={busy} onClick={()=>{setSearch(query);setCandidates(true);setPage(0);}}>Найти / назначить лидера</button><button onClick={()=>{setSearch('');setQuery('');setCandidates(false);setPage(0);}}>Состав команды</button></div>
    {team.status==='loading'&&<p>Загружаем команду…</p>}{team.status==='error'&&<p role="alert">Не удалось загрузить команду. Попробуйте обновить.</p>}
    {team.status==='ready'&&team.data.items.length===0&&<p>Участники не найдены.</p>}

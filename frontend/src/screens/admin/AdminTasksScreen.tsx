@@ -35,7 +35,7 @@ export function AdminTasksScreen() {
         </Card>
         <ActionCell title="Создать задание" description="Открыть задачу, назначить аудиторию, срок и баллы" leading="＋" onClick={() => setSection("create")} />
         <ActionCell title="Проверить результаты" description="Принять работу, отправить на доработку или отклонить" leading="✓" onClick={() => setSection("review")} />
-        <ActionCell title="Community Missions" description="Запустить 26 авторских заданий как реальные задачи" leading="◎" onClick={() => setSection("missions")} />
+        <ActionCell title="Задачи сообщества" description="Запустить 26 авторских заданий как реальные задачи" leading="◎" onClick={() => setSection("missions")} />
       </div>
     );
   }
@@ -43,7 +43,7 @@ export function AdminTasksScreen() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <button type="button" onClick={() => setSection(null)} style={{ alignSelf: "flex-start" }}>← К заданиям</button>
-      <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{section === "create" ? "Создать задание" : section === "review" ? "Проверить результаты" : "Community Missions"}</h2>
+      <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{section === "create" ? "Создать задание" : section === "review" ? "Проверить результаты" : "Задачи сообщества"}</h2>
       {section === "create" && <OpenTasksTab />}
       {section === "review" && <TaskSubmissionReview />}
       {section === "missions" && <MissionTemplatesPanel />}

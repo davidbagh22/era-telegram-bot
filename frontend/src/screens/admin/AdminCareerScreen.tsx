@@ -90,7 +90,7 @@ export function AdminCareerScreen() {
   };
 
   if (loading) return <div style={{ display: "grid", gap: "0.75rem" }}><SkeletonCard /><SkeletonCard /></div>;
-  if (error) return <StatusBanner title="Не удалось загрузить проверки" description="Проверьте доступ portfolio.review и обновите страницу." />;
+  if (error) return <StatusBanner title="Не удалось загрузить проверки" description="Проверьте права на проверку портфолио и обновите страницу." />;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>

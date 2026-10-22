@@ -113,7 +113,7 @@ def _my_data_text(user: User, stats: dict[str, int]) -> str:
 Возраст: {age}
 Город: {user.city or 'не указан'}
 Телефон: {user.phone or 'не указан'}
-Email: {user.email or 'не указан'}
+Эл. почта: {user.email or 'не указана'}
 Статус: {status}
 Баланс: {stats['points']} баллов
 Направления: {_directions_text(user)}"""

@@ -79,13 +79,13 @@ export function EventActivitiesPanel({ eventId, onBack }: EventActivitiesPanelPr
         <p style={{ margin: "0.25rem 0 0.5rem", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
           Одна строка — одна активность. Формат: Название | баллы | тип | описание
           <br />
-          Типы: photo, link, text, file, manual, video
+          Типы: фото, ссылка, текст, файл, проверка, видео
         </p>
         <textarea
           value={lines}
           onChange={(event) => setLines(event.target.value)}
           rows={4}
-          placeholder={"Выложить сторис | 30 | link | Отправьте ссылку на публикацию\nПомочь на регистрации | 40 | manual | Проверка организатором"}
+          placeholder={"Выложить сторис | 30 | ссылка | Отправьте ссылку на публикацию\nПомочь на регистрации | 40 | проверка | Проверка организатором"}
           style={{
             width: "100%",
             fontFamily: "var(--era-font-body)",

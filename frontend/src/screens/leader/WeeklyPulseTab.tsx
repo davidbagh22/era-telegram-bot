@@ -216,7 +216,7 @@ export function WeeklyPulseTab() {
           Обратная связь
         </h2>
         {feedback.length === 0 ? (
-          <EmptyState text="Обратной связи по этому Pulse пока нет." />
+          <EmptyState text="Обратной связи по этому опросу пока нет." />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             {feedback.map((item) => (

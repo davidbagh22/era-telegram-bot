@@ -157,7 +157,7 @@ async def _process_observer_checkins(bot: Bot, session, now: datetime) -> None:
             delivery,
             chat_id=user.telegram_id,
             text=(
-                "Небольшой check-in от ЭРА.\n\n"
+                "Короткий вопрос от ЭРА.\n\n"
                 "Вы остаетесь в режиме наблюдателя — регулярных задач и напоминаний нет. "
                 "Если захочется снова включиться, в профиле можно выбрать активный или лёгкий режим."
             ),

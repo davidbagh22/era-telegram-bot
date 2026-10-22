@@ -149,7 +149,7 @@ function ApplicationCard({
         <Section title="Контакты">
           <ValueRow label="Telegram" value={telegram} />
           <ValueRow label="Телефон" value={application.phone} />
-          <ValueRow label="Email" value={application.email} />
+          <ValueRow label="Эл. почта" value={application.email} />
           {application.social_links.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", paddingTop: "0.5rem" }}>
               <span style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>Соцсети</span>

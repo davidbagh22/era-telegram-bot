@@ -114,7 +114,7 @@ def test_my_vector_home_resumes_existing_checkin() -> None:
         )
     )
 
-    assert labels[0] == "Продолжить Check-in"
+    assert labels[0] == "Продолжить отметку"
     assert "⚡ Быстрый пульс" in labels
     assert "Моя карта года" in labels
 

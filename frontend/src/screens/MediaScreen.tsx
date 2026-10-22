@@ -289,7 +289,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
     try {
       await submitMediaIdea(text);
       setIdea("");
-      setIdeaStatus("Идея попала в Media Desk.");
+      setIdeaStatus("Идея отправлена в редакцию.");
     } catch (cause) {
       setIdeaStatus(cause instanceof Error ? cause.message : "Не удалось отправить идею");
     } finally {
@@ -469,17 +469,17 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
       <div style={{ display: "grid", gap: 10 }}>
         <Card style={{ display: "grid", gap: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-            <div><strong>AUTO</strong><div style={{ color: "var(--era-text-muted)", fontSize: 12, marginTop: 3 }}>Только утверждённый 26-недельный пакет</div></div>
-            <span style={{ fontWeight: 900 }}>{config?.auto_enabled ? "ON" : "OFF"}</span>
+            <div><strong>Автопубликация</strong><div style={{ color: "var(--era-text-muted)", fontSize: 12, marginTop: 3 }}>Только утверждённый 26-недельный пакет</div></div>
+            <span style={{ fontWeight: 900 }}>{config?.auto_enabled ? "Включена" : "Выключена"}</span>
           </div>
-          <button disabled={busy} type="button" style={buttonStyle(Boolean(!config?.auto_enabled))} onClick={() => void updateConfig("auto")}>{config?.auto_enabled ? "Выключить AUTO" : "Включить AUTO"}</button>
+          <button disabled={busy} type="button" style={buttonStyle(Boolean(!config?.auto_enabled))} onClick={() => void updateConfig("auto")}>{config?.auto_enabled ? "Выключить автопубликацию" : "Включить автопубликацию"}</button>
         </Card>
         <Card style={{ display: "grid", gap: 10 }}>
           <strong>Пауза публикаций</strong>
           <div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>{config?.paused_indefinitely ? "Публикации остановлены" : config?.paused_until ? `Пауза до ${formatDate(config.paused_until)}` : "Паузы нет"}</div>
           {config?.paused_indefinitely || config?.paused_until ? <button disabled={busy} type="button" style={buttonStyle(true)} onClick={() => void updateConfig("resume")}>Продолжить</button> : <button disabled={busy} type="button" style={buttonStyle(false)} onClick={() => void updateConfig("pause")}>Поставить на паузу</button>}
         </Card>
-        <Card><strong>Защита от дублей включена</strong><div style={{ color: "var(--era-text-muted)", marginTop: 5, fontSize: 12, lineHeight: 1.5 }}>Перед отправкой создаётся durable delivery claim. При неоднозначной ошибке AUTO не публикует повторно без решения человека.</div></Card>
+        <Card><strong>Защита от дублей включена</strong><div style={{ color: "var(--era-text-muted)", marginTop: 5, fontSize: 12, lineHeight: 1.5 }}>Перед отправкой бот сохраняет попытку публикации. Если результат отправки неясен, повторную публикацию подтверждает редактор.</div></Card>
       </div>
     );
   } else {
@@ -507,7 +507,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
         <Card style={{ display: "grid", gap: 9 }}>
           <strong>Есть идея?</strong>
           <textarea value={idea} onChange={(event) => setIdea(event.target.value)} placeholder="Что можно снять, рассказать или попробовать?" rows={4} style={{ width: "100%", resize: "vertical", boxSizing: "border-box", borderRadius: 14, border: "1px solid var(--era-border)", background: "var(--era-surface-2)", color: "var(--era-text)", padding: "0.8rem", font: "inherit" }} />
-          <button disabled={busy} type="button" onClick={() => void submitIdea()} style={buttonStyle(true)}>Отправить в Media Desk</button>
+          <button disabled={busy} type="button" onClick={() => void submitIdea()} style={buttonStyle(true)}>Отправить в редакцию</button>
           {ideaStatus ? <div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>{ideaStatus}</div> : null}
         </Card>
 
@@ -519,7 +519,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
 
         {hub.can_manage ? (
           <Card style={{ display: "grid", gap: 10 }}>
-            <div><div style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 900, color: "var(--era-text-muted)" }}>Управление</div><h2 style={{ margin: "0.2rem 0 0" }}>Media Desk</h2></div>
+            <div><div style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 900, color: "var(--era-text-muted)" }}>Управление</div><h2 style={{ margin: "0.2rem 0 0" }}>Редакция</h2></div>
             {([
               ["today", "Сегодня", "Что выходит и что должно быть готово", "●"],
               ["plan", "Контент-план", "26 недель + ручные публикации", "▦"],
@@ -529,7 +529,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
               ["channel", "Канал", "Права бота и @era_leaders1", "↗"],
               ["files", "Файлы", "Шаблоны и гайды", "◫"],
               ["analytics", "Аналитика", "Публикации, сроки, выполнение", "↗"],
-              ["settings", "Настройки", "AUTO, пауза и безопасность", "⚙"],
+              ["settings", "Настройки", "Автопубликация, пауза и безопасность", "⚙"],
             ] as const).map(([key, title, description, icon]) => (
               <ActionCell key={key} title={title} description={description} leading={<span>{icon}</span>} onClick={() => setView(key)} />
             ))}

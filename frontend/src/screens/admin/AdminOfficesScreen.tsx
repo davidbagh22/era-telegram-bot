@@ -347,7 +347,7 @@ export function AdminOfficesScreen() {
                   {assigningOfficeId === office.id ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: ".45rem" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: ".45rem" }}>
-                        <input placeholder="Имя, username или Telegram ID" value={query} onChange={(event) => setQuery(event.target.value)} style={inputStyle} />
+                        <input placeholder="Имя, имя пользователя или ID Telegram" value={query} onChange={(event) => setQuery(event.target.value)} style={inputStyle} />
                         <button type="button" disabled={searching || !query.trim()} onClick={() => void handleSearch()}>Найти</button>
                       </div>
                       {candidates.map((candidate) => <button key={candidate.id} type="button" onClick={() => void runAction(office.id, async () => { await assignOffice(office.id, candidate.id); setAssigningOfficeId(null); })} style={{ textAlign: "left" }}>{candidate.first_name} {candidate.last_name ?? ""}</button>)}

@@ -37,7 +37,7 @@ export function ProgressScreen({ onBack, onOpenProjects, onOpenTasks, onOpenEven
 
       <Card gradient style={{ padding: "1.25rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
-          <div><span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, letterSpacing: ".08em" }}>ERA SCORE</span><strong style={{ display: "block", marginTop: ".15rem", fontSize: "3.25rem", lineHeight: 1 }}>{data.points_balance}</strong><p style={{ margin: ".55rem 0 0", color: "var(--era-text-muted)" }}>Текущий статус: {data.growth.label}</p></div>
+          <div><span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, letterSpacing: ".08em" }}>БАЛЛЫ ЭРА</span><strong style={{ display: "block", marginTop: ".15rem", fontSize: "3.25rem", lineHeight: 1 }}>{data.points_balance}</strong><p style={{ margin: ".55rem 0 0", color: "var(--era-text-muted)" }}>Текущий статус: {data.growth.label}</p></div>
           <div style={{ position: "relative", width: 108, height: 108 }}><ProgressRing percent={percent} size={108} /><div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", textAlign: "center" }}><div><strong style={{ display: "block", fontSize: "1.2rem" }}>{Math.round(percent * 100)}%</strong><span style={{ fontSize: ".68rem", color: "var(--era-text-muted)" }}>путь уровня</span></div></div></div>
         </div>
       </Card>

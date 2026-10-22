@@ -22,13 +22,13 @@ export function MediaRequestButton({ sourceType, sourceId }: MediaRequestButtonP
       setStatus(
         result.status === "open"
           ? "Медиа-пакет создан: текст, дизайн, фото, видео, монтаж и Stories разложены на задачи."
-          : "Запрос уже есть в Media Desk — второй пакет не создаём.",
+          : "Запрос уже есть в редакции — второй пакет не создаём.",
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : "request_failed";
       setStatus(
         message.includes("403") || message.includes("forbidden")
-          ? "Запросить Медиа может автор проекта/мероприятия или участник Media Desk."
+          ? "Запросить медиа может автор проекта/мероприятия или участник редакции."
           : "Не удалось создать медиа-пакет. Попробуйте ещё раз.",
       );
     } finally {
