@@ -315,8 +315,8 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
     }
   };
 
-  if (loading) return <div className="era-page" style={{ padding: "1.25rem" }}>Загружаем Media Hub…</div>;
-  if (!hub) return <div className="era-page" style={{ padding: "1.25rem" }}>{error || "Media Hub недоступен"}</div>;
+  if (loading) return <div className="era-page" style={{ padding: "1.25rem" }}>Загружаем раздел «Медиа»…</div>;
+  if (!hub) return <div className="era-page" style={{ padding: "1.25rem" }}>{error || "Раздел «Медиа» недоступен"}</div>;
 
   // ToR §28: NO_ACCESS / PENDING never see internal Media tools -- just the
   // public blurb + apply CTA, or a waiting state once applied.
@@ -359,7 +359,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
         <div style={{ fontSize: "0.72rem", color: "var(--era-text-muted)", fontWeight: 900, textTransform: "uppercase" }}>ЭРА · Медиа</div>
         <h1 style={{ margin: "0.15rem 0 0", fontSize: "var(--era-text-3xl)", lineHeight: 1.05 }}>
           {/* "guide" returns its own MediaGuideScreen above before header is built. */}
-          {view === "home" ? "Media Hub" : view === "today" ? "Сегодня" : view === "plan" ? "Контент-план" : view === "tasks" ? "Задачи" : view === "team" ? "Команда" : view === "chat" ? "Media Chat" : view === "channel" ? "Канал" : view === "files" ? "Файлы" : view === "analytics" ? "Аналитика" : "Настройки"}
+          {view === "home" ? "Медиа" : view === "today" ? "Сегодня" : view === "plan" ? "План публикаций" : view === "tasks" ? "Задачи" : view === "team" ? "Команда" : view === "chat" ? "Чат отдела медиа" : view === "channel" ? "Канал" : view === "files" ? "Файлы" : view === "analytics" ? "Статистика" : "Настройки"}
         </h1>
       </div>
     </div>
@@ -414,7 +414,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
       </div>
     );
   } else if (view === "chat") {
-    body = <ActionCell title="Открыть Media Chat" description="Координация, задачи и материалы команды" leading={<span>💬</span>} onClick={() => openExternal(hub.chat_url)} />;
+    body = <ActionCell title="Открыть чат отдела медиа" description="Координация, задачи и материалы команды" leading={<span>💬</span>} onClick={() => openExternal(hub.chat_url)} />;
   } else if (view === "channel") {
     body = (
       <div style={{ display: "grid", gap: 10 }}>
@@ -458,7 +458,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
         </div>
         <Card>
           <div style={{ fontSize: 28, fontWeight: 950 }}>{analytics.chat_messages_period}</div>
-          <div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>сообщений в Media Chat за 30 дней</div>
+          <div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>сообщений в чате отдела медиа за 30 дней</div>
           <div style={{ color: "var(--era-text-muted)", fontSize: 11, marginTop: 3 }}>{analytics.chat_active_authors_period} активных участников</div>
         </Card>
         {analytics.failed > 0 ? <Card><strong>Требуют внимания: {analytics.failed}</strong><div style={{ color: "var(--era-text-muted)", marginTop: 5 }}>Система не делает слепой повтор, чтобы не создать дубль публикации.</div></Card> : null}
@@ -512,7 +512,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
         </Card>
 
         <div style={{ display: "grid", gap: 10 }}>
-          <ActionCell title="Media Chat" description="Рабочая координация и команда" leading={<span>💬</span>} onClick={() => openExternal(hub.chat_url)} />
+          <ActionCell title="Чат отдела медиа" description="Рабочая координация и команда" leading={<span>💬</span>} onClick={() => openExternal(hub.chat_url)} />
           <ActionCell title="Канал ЭРА" description="Смотри, что выходит в публичное пространство" leading={<span>↗</span>} onClick={() => openExternal(hub.channel_url)} />
           <ActionCell title="Шаблоны и файлы" description="Canva, гайды и рабочие материалы" leading={<span>◫</span>} onClick={() => setView("files")} />
         </div>
@@ -525,7 +525,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
               ["plan", "Контент-план", "26 недель + ручные публикации", "▦"],
               ["tasks", "Задачи", "Свободные и взятые материалы", "✓"],
               ["team", "Команда", "Рабочий поток через задачи", "◎"],
-              ["chat", "Чат", "Media Chat", "💬"],
+              ["chat", "Чат", "Чат медиа-команды", "💬"],
               ["channel", "Канал", "Права бота и @era_leaders1", "↗"],
               ["files", "Файлы", "Шаблоны и гайды", "◫"],
               ["analytics", "Аналитика", "Публикации, сроки, выполнение", "↗"],

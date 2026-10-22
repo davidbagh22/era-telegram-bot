@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { fetchDailyQuote } from "../api/client";
 import { Avatar } from "../components/Avatar";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
@@ -59,10 +60,20 @@ export function HomeScreen({
   onOpenEvent,
   onOpenProject,
   onOpenTask,
+  onOpenTasks,
   onOpenCommunity,
   onOpenOpportunity,
 }: HomeScreenProps) {
   const home = useHome();
+  const [dailyQuote, setDailyQuote] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void fetchDailyQuote().then((item) => {
+      if (active) setDailyQuote(item.text);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   if (home.status === "loading") {
     return (
@@ -102,6 +113,8 @@ export function HomeScreen({
       : data.activity.portfolio_items > 0
         ? `${data.activity.portfolio_items} подтверждённых записей`
         : null;
+  const nextStepIsTask = data.next_step?.kind === "task"
+    && data.next_step.entity_id === data.active_task?.id;
 
   return (
     <div className="era-page era-stagger" style={{ padding: "1rem 1rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
@@ -135,6 +148,40 @@ export function HomeScreen({
           </Card>
         )}
       </section>
+
+      {(data.active_task || data.tasks_available_count > 0 || data.tasks_in_progress_count > 0) && (
+        <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
+            <MonoLabel>Мои задачи</MonoLabel>
+            {onOpenTasks && <button type="button" className="era-btn-ghost" onClick={onOpenTasks}>Все задачи →</button>}
+          </div>
+          {data.active_task && !nextStepIsTask ? (
+            <Card onClick={onOpenTask ? () => onOpenTask(data.active_task!.id) : undefined}>
+              <div style={{ display: "flex", alignItems: "center", gap: ".75rem" }}>
+                <IconBubble tone="violet"><TaskIcon width={18} height={18} /></IconBubble>
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ display: "block" }}>{data.active_task.title}</strong>
+                  <span style={{ display: "block", marginTop: ".25rem", color: "var(--era-text-secondary)", fontSize: ".82rem" }}>
+                    До {formatDate(data.active_task.deadline)} · {data.active_task.points} баллов
+                  </span>
+                </div>
+              </div>
+            </Card>
+          ) : (
+            <Card onClick={onOpenTasks}>
+              <strong>{data.tasks_in_progress_count > 0 ? `В работе: ${data.tasks_in_progress_count} задач` : `Доступно задач: ${data.tasks_available_count}`}</strong>
+              <p style={{ margin: ".3rem 0 0", color: "var(--era-text-secondary)", fontSize: ".85rem" }}>Открой список и выбери, за что взяться дальше.</p>
+            </Card>
+          )}
+        </section>
+      )}
+
+      {dailyQuote && (
+        <Card style={{ borderLeft: "3px solid var(--era-violet)", padding: "1rem" }}>
+          <MonoLabel>Мысль дня</MonoLabel>
+          <p style={{ margin: ".45rem 0 0", lineHeight: 1.55, color: "var(--era-text-secondary)" }}>«{dailyQuote}»</p>
+        </Card>
+      )}
 
       <Card onClick={user.features.vector ? onOpenDevelopment : undefined} style={{ padding: "1rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: ".8rem", alignItems: "center" }}>

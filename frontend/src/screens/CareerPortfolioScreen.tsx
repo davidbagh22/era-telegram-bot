@@ -3,6 +3,7 @@ import {
   createCareerItem,
   deleteCareerItem,
   downloadCareerResume,
+  sendCareerResume,
   downloadOfficialRecommendation,
   fetchCareerDashboard,
   requestOfficialRecommendation,
@@ -169,6 +170,7 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [sendingResume, setSendingResume] = useState(false);
   const toast = useToast();
   const [certificates, setCertificates] = useState<IssuedCertificate[]>([]);
   const [certificateError, setCertificateError] = useState(false);
@@ -266,12 +268,24 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
   const downloadResume = async () => {
     setDownloading(true);
     try {
-      saveBlob(await downloadCareerResume(purpose), `ERA_CV_${purpose}.pdf`);
+      saveBlob(await downloadCareerResume(purpose), "Резюме_ЭРА.pdf");
       toast.show("Резюме готово", "success");
     } catch {
       toast.show("Не удалось сформировать резюме", "error");
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const sendResume = async () => {
+    setSendingResume(true);
+    try {
+      await sendCareerResume(purpose);
+      toast.show("PDF отправлен в чат с ботом", "success");
+    } catch {
+      toast.show("Не удалось отправить PDF. Попробуйте ещё раз.", "error");
+    } finally {
+      setSendingResume(false);
     }
   };
 
@@ -370,11 +384,20 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
         <button
           type="button"
           className="era-btn-primary"
-          disabled={downloading}
-          onClick={() => void downloadResume()}
+          disabled={sendingResume}
+          onClick={() => void sendResume()}
           style={{ width: "100%" }}
         >
-          {downloading ? "Формируем…" : "Выгрузить резюме PDF"}
+          {sendingResume ? "Отправляем…" : "Отправить резюме в чат с ботом"}
+        </button>
+        <button
+          type="button"
+          className="era-btn-secondary"
+          disabled={downloading}
+          onClick={() => void downloadResume()}
+          style={{ width: "100%", marginTop: "0.55rem" }}
+        >
+          {downloading ? "Формируем…" : "Скачать резюме PDF"}
         </button>
 
         <Card style={{ marginTop: "0.75rem" }}>

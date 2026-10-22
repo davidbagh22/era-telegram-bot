@@ -290,6 +290,32 @@ async def download_resume(
     )
 
 
+@router.post("/resume/send")
+async def send_resume_to_bot_chat(
+    payload: PurposeIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot = Depends(get_bot),
+) -> dict[str, bool]:
+    if payload.purpose not in career_service.RESUME_PURPOSES:
+        raise HTTPException(status_code=400, detail="invalid_purpose")
+    profile = await career_service.get_or_create_profile(session, user.id)
+    items = await career_service.list_items(session, user.id)
+    portfolio = await build_portfolio_data(session, user)
+    pdf = build_career_resume(user, profile, portfolio, items, purpose=payload.purpose)
+    try:
+        sent = await bot.send_document(
+            user.telegram_id,
+            BufferedInputFile(pdf, filename="Резюме_ЭРА.pdf"),
+            caption="Твоё резюме из портфолио ЭРА.",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="resume_delivery_unavailable") from exc
+    if sent.document is None:
+        raise HTTPException(status_code=502, detail="resume_delivery_unavailable")
+    return {"sent": True}
+
+
 @router.get("/recommendation/automatic")
 async def read_automatic_recommendation(
     user: User = Depends(get_current_user),

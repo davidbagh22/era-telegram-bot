@@ -59,7 +59,7 @@ import type {
   UserListItem,
   UserListResult,
 } from "../types/admin";
-import type { HomeSnapshot } from "../types/home";
+import type { DailyQuote, HomeSnapshot } from "../types/home";
 import type { Leaderboard } from "../types/leaderboard";
 import type {
   ActivitySubmission,
@@ -258,6 +258,10 @@ export function fetchMe(): Promise<MiniAppUserSummary> {
 
 export function fetchHome(): Promise<HomeSnapshot> {
   return authorizedGet<HomeSnapshot>("/api/v1/home");
+}
+
+export function fetchDailyQuote(): Promise<DailyQuote> {
+  return authorizedGet<DailyQuote>("/api/v1/home/daily-quote");
 }
 
 // Mini App equivalent of the Bot's "🏆 Рейтинг" (cabinet:rating) — see
