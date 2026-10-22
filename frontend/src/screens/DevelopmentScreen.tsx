@@ -391,7 +391,7 @@ function CheckinScreen({
   }
 
   return (
-    <div className="era-page" style={{ padding: "1.2rem", display: "grid", gap: 10 }}>
+    <div className="era-page" style={{ padding: "1.2rem 1.2rem var(--era-page-bottom-safe)", display: "grid", gap: 10 }}>
       <Header title="Контекст месяца" onBack={onBack} />
       <p>Что сильнее всего повлияло на этот месяц? Выбери до 3 вариантов.</p>
       <ChipGrid values={home.context_options} selected={factors} max={3} onChange={setFactors} />

@@ -13,7 +13,7 @@ async function openVector(page: Page) {
 }
 
 async function openCurrentCheckin(page: Page) {
-  await page.getByRole("button", { name: /Посмотрим, что изменилось|Посмотреть результат месяца|Начать check-in/ }).click();
+  await page.getByRole("button", { name: /Посмотрим, что изменилось|Посмотреть результат месяца|Начать отметку/ }).click();
 }
 
 async function currentSurface(page: Page): Promise<"question" | "context" | "result"> {
@@ -98,9 +98,19 @@ test("monthly check-in resumes from server answers and produces one focus", asyn
     const finalSurface = resumedSurface === "result" ? "result" : await finishRemainingQuestions(page);
 
     if (finalSurface === "context") {
-      await page.getByRole("button", { name: "учёба", exact: true }).click();
+      const study = page.getByRole("button", { name: "учёба", exact: true });
+      await study.click();
+      await expect(study).toHaveAttribute("aria-pressed", "true");
+      await study.click();
+      await expect(study).toHaveAttribute("aria-pressed", "false");
+      await study.click();
+      await page.getByRole("button", { name: "работа", exact: true }).click();
+      await page.getByRole("button", { name: "семья", exact: true }).click();
       await page.getByRole("button", { name: "уверенность", exact: true }).click();
-      await page.getByRole("button", { name: "Получить мой результат", exact: true }).click();
+      const finish = page.getByRole("button", { name: "Получить мой результат", exact: true });
+      await finish.scrollIntoViewIfNeeded();
+      await expect(finish).toBeInViewport();
+      await finish.click();
     }
   }
 
