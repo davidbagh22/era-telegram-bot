@@ -1,12 +1,14 @@
-## Активный этап · 21.10.2026
+## Активный этап · 22.10.2026
 
-Analytics 2.0: `docs/ANALYTICS_V2_SPEC.md`; реализация `telegram_analytics_service.py` / `admin_analytics_v2_service.py`, таблицы `telegram_analytics.py`, миграция0064, update/send middleware, admin API v2, `telegram_analytics_export.py`, `AdminDashboardScreen.tsx`. Регистрация+карточка — следующий отдельный этап, без сброса старых заявок. Фактические проверки/ограничения — в верхнем checkpoint `AI_TASK_STATE.md`.
+Main/prod на проверке: `3e58841`, #360–#363 и #365–#372 уже выпущены; #364 остаётся юридическим draft. Analytics 2.0 и регистрация/фото/компактная карточка завершены технически. Приём новых Telegram-событий подтверждён ledger: 2 публикации / 20 сообщений. Общие PDF/Excel содержат списки деятельности без персональных строк. PostgreSQL private-only и свежее изолированное восстановление backup подтверждены. Текущий этап #373 — оставшиеся русские подписи и ввод типов активностей; до merge/LIVE не считать выпущенным. Реальная приёмка, согласования, смена раскрытых паролей и 24 часа остаются отдельными условиями. Фактические проверки — в верхнем checkpoint `AI_TASK_STATE.md` и Conversation #373.
+
+Analytics: `docs/ANALYTICS_V2_SPEC.md`; `telegram_analytics_service.py` / `admin_analytics_v2_service.py`, `telegram_analytics.py`, миграция0064, update/send middleware, admin API v2, `telegram_analytics_export.py`, `AdminDashboardScreen.tsx`. Регистрацию повторно не сбрасывать.
 
 # Карта точечной работы ЭРА
 
 Актуальный checkpoint: docs/AI_TASK_STATE.md. Сначала сверять фактический SHA; не повторять reset/релизы. Исторические сведения ниже не заменяют live-проверку.
 
-# Актуальная точка — 21.10.2026
+# Историческая точка — 21.10.2026 (не текущий backlog)
 
 Текущий main: `9d815e65d2fcdbc3bca34a273bc57bc8645dab88` (#359 merged). PR #360 открыт. Render deploy LIVE на main SHA; `/health` и `/ready` = 200. Основной `@ERA_1bot` работает через webhook; отдельный Commission `@MVKSRS_bot` через polling. Старое заключение о неверном BOT_TOKEN опровергнуто кодом и live logs; секрет не менять. После трёх исправлений review/кнопки адресные тесты 46 passed, 17 subtests; требуется полный CI точного финального SHA.
 
