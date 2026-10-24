@@ -41,6 +41,7 @@ class MediaPermissionsOut(BaseModel):
 
 class MediaHubOut(BaseModel):
     access_level: Literal["no_access", "pending", "member", "leader", "admin"]
+    media_role: Literal["media_leader", "media_member"] | None = None
     permissions: MediaPermissionsOut
     chat_url: str
     channel_url: str
@@ -271,6 +272,7 @@ async def read_media_hub(
         access_level=level,
         permissions=permissions,
         chat_url=settings.media_chat_url,
+        media_role="media_leader" if level == "leader" else "media_member" if level == "member" else None,
         channel_url=settings.era_channel_url,
         open_tasks=[_task_out(task) for task in open_tasks if task.id not in my_ids],
         my_tasks=[_task_out(task) for task in my_tasks],
@@ -293,6 +295,26 @@ async def apply_to_media(
         await media_service.apply_for_media(session, user)
     except ValueError as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
+    return await read_media_hub(user=user, session=session, settings=settings)
+
+
+@router.post("/join", response_model=MediaHubOut)
+async def join_media(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    bot: Bot | None = Depends(get_bot),
+) -> MediaHubOut:
+    from app.services.media_membership_service import request_join, send_welcome
+    if user.application_status != ApplicationStatus.APPROVED:
+        raise HTTPException(403, "media_join_requires_approved_registration")
+    try:
+        await request_join(session, user.telegram_id, user)
+    except ValueError as exc:
+        raise HTTPException(403 if str(exc) != "media_direction_missing" else 503, str(exc)) from exc
+    await session.commit()
+    if bot is not None:
+        await send_welcome(bot, settings, user)
     return await read_media_hub(user=user, session=session, settings=settings)
 
 

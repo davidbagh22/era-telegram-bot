@@ -150,6 +150,8 @@ async def create_user_from_registration(
         )
     except ValueError:
         pass
+    from app.services.media_membership_service import complete_join
+    await complete_join(session, user)
     return user, True
 
 
@@ -177,6 +179,8 @@ async def resubmit_user_registration(session: AsyncSession, *, telegram_id: int,
                          source='bot_resubmission', policy_version=str(data['consent_policy_version']))
     await audit(session, actor_id=target.id, action='user.resubmitted', entity_type='user', entity_id=target.id,
                 old_value=old, new_value={'application_status': ApplicationStatus.PENDING})
+    from app.services.media_membership_service import complete_join
+    await complete_join(session, target)
     return target, True
 
 

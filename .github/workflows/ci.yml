@@ -117,6 +117,8 @@ jobs:
         run: python scripts/postgres_project_review_race.py
       - name: Prove certificate issuance and ranking season races on PostgreSQL
         run: python scripts/postgres_certificate_season_race.py
+      - name: Prove media invitation and leadership concurrency on PostgreSQL
+        run: python scripts/postgres_media_membership_race.py
 
   frontend:
     runs-on: ubuntu-latest

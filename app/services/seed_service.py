@@ -84,7 +84,7 @@ GREETING_DEFAULTS = {
 async def seed_reference_data(session: AsyncSession, settings: Settings) -> None:
     stored_settings = (await session.scalars(select(AppSetting))).all()
     for item in stored_settings:
-        if hasattr(settings, item.key):
+        if item.key != "era_chair_user_id" and hasattr(settings, item.key):
             value = (
                 int(item.value)
                 if item.key.endswith("_id") and str(item.value).lstrip("-").isdigit()

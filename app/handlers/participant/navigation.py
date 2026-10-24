@@ -98,6 +98,7 @@ async def _send_main_menu(message: Message, user: User | None, settings: Setting
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
+    from app.services.media_leadership_service import is_media_chair
     await message.answer(
         ux_texts.MAIN_INLINE_MENU,
         parse_mode=ParseMode.HTML,
@@ -105,6 +106,7 @@ async def _send_main_menu(message: Message, user: User | None, settings: Setting
             leaders=has_leaders_entry(user),
             miniapp_url=settings.effective_miniapp_url if settings else "",
             admin=user.role == Role.ADMIN or bool(settings and getattr(user, 'telegram_id', None) in getattr(settings, 'admin_ids', [])),
+            media_chair=bool(settings and is_media_chair(user, settings)),
         ),
     )
 

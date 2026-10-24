@@ -69,7 +69,7 @@ def main_inline_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def main_reply_keyboard(miniapp_url: str = "", *, admin: bool = False, leaders: bool = False) -> ReplyKeyboardMarkup:
+def main_reply_keyboard(miniapp_url: str = "", *, admin: bool = False, leaders: bool = False, media_chair: bool = False) -> ReplyKeyboardMarkup:
     """Persistent quick-access menu shown above the Telegram input field."""
     rows: list[list[KeyboardButton]] = []
     if miniapp_url:
@@ -93,6 +93,8 @@ def main_reply_keyboard(miniapp_url: str = "", *, admin: bool = False, leaders: 
         ])
     if leaders or admin:
         rows.append([KeyboardButton(text="🧭 Лидеры")])
+    if media_chair:
+        rows.append([KeyboardButton(text="🎬 Руководитель медиа")])
     rows.append([
         KeyboardButton(text="💬 Связь"),
         KeyboardButton(text="🎲 Досуг"),

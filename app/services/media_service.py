@@ -131,6 +131,14 @@ async def can_manage_media(
 ) -> bool:
     if user is None:
         return False
+    if settings.era_chair_user_id is not None:
+        from app.services.media_leadership_service import is_media_chair
+        if user.is_blocked or user.is_archived or user.application_status != ApplicationStatus.APPROVED:
+            return False
+        if is_media_chair(user, settings):
+            return True
+        return await session.scalar(select(Direction.id).where(
+            Direction.name == MEDIA_DIRECTION_NAME, Direction.leader_id == user.id)) is not None
     if is_full_admin(user, settings, user.telegram_id):
         return True
     if user.is_blocked or user.is_archived:
@@ -171,7 +179,8 @@ async def media_access_level(
         or user.application_status != ApplicationStatus.APPROVED
     ):
         return "no_access"
-    if is_full_admin(user, settings, user.telegram_id):
+    from app.services.media_leadership_service import is_media_chair
+    if is_media_chair(user, settings) or (settings.era_chair_user_id is None and is_full_admin(user, settings, user.telegram_id)):
         return "admin"
     if await can_manage_media(session, user, settings):
         return "leader"

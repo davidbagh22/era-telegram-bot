@@ -26,7 +26,10 @@ const ATTENTION_ORDER = Object.keys(ATTENTION_LABELS) as AttentionKey[];
 
 function openNativeQueue(payload: "admin_task_attention" | "admin_question_attention") {
   const url = `https://t.me/ERA_1bot?start=${payload}`;
-  if (window.Telegram?.WebApp?.openTelegramLink) window.Telegram.WebApp.openTelegramLink(url);
+  if (window.Telegram?.WebApp?.openTelegramLink) {
+    window.Telegram.WebApp.openTelegramLink(url);
+    window.Telegram.WebApp.close?.();
+  }
   else window.open(url, "_blank", "noopener,noreferrer");
 }
 

@@ -263,6 +263,22 @@ async def rescue_start(
     session: AsyncSession,
     command: CommandObject | None = None,
 ) -> None:
+    if command and command.args == "media_join":
+        from app.services.media_membership_service import request_join, send_welcome
+        try:
+            joined = await request_join(session, message.from_user.id, user)
+        except ValueError as exc:
+            await message.answer({
+                "media_join_forbidden": "Вступление в медиаотдел недоступно для этого профиля.",
+                "media_invitation_disabled": "Приглашение в медиаотдел сейчас отключено.",
+            }.get(str(exc), "Медиаотдел временно недоступен. Попробуйте позже."))
+            return
+        await session.commit()
+        if joined in {"joined", "already_joined"}:
+            await send_welcome(bot, settings, user)
+            if joined == "already_joined":
+                await message.answer("Вы уже состоите в медиаотделе. Откройте раздел «Медиа» в приложении ЭРА.")
+            return
     if command and command.args and command.args.startswith("spy_"):
         from app.handlers.era_spyfall import activate_private
         await activate_private(message, command.args, session, user)

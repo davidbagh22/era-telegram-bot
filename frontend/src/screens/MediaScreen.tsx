@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActionCell } from "../components/ActionCell";
 import { Card } from "../components/Card";
 import {
-  applyToMedia,
+  joinMedia,
   createMediaTasks,
   decideMediaApplicant,
   fetchMediaAnalytics,
@@ -254,7 +254,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
     setBusy(true);
     setApplyStatus(null);
     try {
-      const nextHub = await applyToMedia();
+      const nextHub = await joinMedia();
       setHub(nextHub);
       setApplyStatus(null);
     } catch (cause) {
@@ -330,11 +330,15 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
           <div style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 900, color: "var(--era-text-secondary)" }}>Медиа ЭРА</div>
           <h2 style={{ margin: 0, fontSize: "var(--era-text-3xl)" }}>Тексты, фото, видео, Reels, визуал и работа с каналом</h2>
           {hub.access_level === "pending" ? (
-            <p style={{ margin: 0, color: "var(--era-text-secondary)", lineHeight: 1.5 }}>Заявка рассматривается. Как только руководитель Медиа её одобрит, здесь появятся задачи, чат и материалы команды.</p>
+            <>
+              <p style={{ margin: 0, color: "var(--era-text-secondary)", lineHeight: 1.5 }}>Теперь в медиаотдел можно вступить сразу. Другие департаменты останутся в вашем профиле.</p>
+              <button disabled={busy} type="button" onClick={() => void apply()} style={buttonStyle(true)}>Присоединиться к медиаотделу</button>
+              {applyStatus ? <div role="alert">{applyStatus}</div> : null}
+            </>
           ) : (
             <>
               <p style={{ margin: 0, color: "var(--era-text-secondary)", lineHeight: 1.5 }}>Возьми задачу, сделай материал, попади в команду и собери портфолио внутри ЭРА.</p>
-              <button disabled={busy} type="button" onClick={() => void apply()} style={buttonStyle(true)}>Подать заявку</button>
+              <button disabled={busy} type="button" onClick={() => void apply()} style={buttonStyle(true)}>Присоединиться к медиаотделу</button>
               {applyStatus ? <div style={{ color: "var(--era-text-muted)", fontSize: 12 }}>{applyStatus}</div> : null}
             </>
           )}
@@ -519,7 +523,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
 
         {hub.can_manage ? (
           <Card style={{ display: "grid", gap: 10 }}>
-            <div><div style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 900, color: "var(--era-text-muted)" }}>Управление</div><h2 style={{ margin: "0.2rem 0 0" }}>Редакция</h2></div>
+            <div><div style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 900, color: "var(--era-text-muted)" }}>Редакция</div><h2 style={{ margin: "0.2rem 0 0" }}>Управление медиа</h2></div>
             {([
               ["today", "Сегодня", "Что выходит и что должно быть готово", "●"],
               ["plan", "Контент-план", "26 недель + ручные публикации", "▦"],
