@@ -64,6 +64,13 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
             chat = await bot.get_chat(chat_id)
             me = await bot.get_me()
             member = await bot.get_chat_member(chat_id, me.id)
+            # A previously valid binding can lose its permissions or be changed
+            # to a different Telegram chat type after /bind leaders.
+            # Never create topics or send panels before revalidating the live chat.
+            if chat.type not in {"group", "supergroup"}:
+                return {"status": "invalid_chat_type", "chat_id": chat_id}
+            if member.status not in {"administrator", "creator"}:
+                return {"status": "missing_admin_rights", "chat_id": chat_id}
             if not chat.is_forum:
                 existing=await session.scalar(select(AppSetting).where(AppSetting.key==f'leaders_forum:{chat_id}:tasks'))
                 data=(json.loads(existing.value) if isinstance(existing.value,str) else existing.value) if existing else {}
