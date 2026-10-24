@@ -61,3 +61,75 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bot.send_message.await_count, 3)
         settings.leaders_chat_id = settings.general_chat_id
         self.assertEqual((await setup_leaders_topics(bot, settings, self.factory))['status'], 'not_configured')
+
+    async def test_group_task_never_falls_back_to_an_unrelated_forum_thread(self):
+        from app.database.models import User
+        from app.handlers.leader_chat_workcenter import begin_group_task
+        from app.utils.constants import ApplicationStatus, Role
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001, general_chat_id=-1002, admin_ids=[1001])
+        async with self.factory() as session:
+            admin = User(telegram_id=1001, first_name='Admin', role=Role.ADMIN, application_status=ApplicationStatus.APPROVED)
+            session.add(admin)
+            await session.flush()
+            state = SimpleNamespace(clear=AsyncMock(), update_data=AsyncMock(), set_state=AsyncMock())
+            message = SimpleNamespace(
+                chat=SimpleNamespace(id=-1001),
+                from_user=SimpleNamespace(id=1001),
+                reply_to_message=SimpleNamespace(text='Prepare the report', caption=None, message_id=17),
+                message_thread_id=999,
+                reply=AsyncMock(),
+            )
+            await begin_group_task(message, state, admin, settings, session)
+            state.update_data.assert_not_awaited()
+            self.assertIn('не настроена', message.reply.await_args.args[0])
+
+            from app.database.models import AppSetting
+            session.add(AppSetting(key='leaders_forum:-1001:tasks', value='{"thread_id":7}'))
+            await session.flush()
+            await begin_group_task(message, state, admin, settings, session)
+            self.assertEqual(state.update_data.await_args.kwargs['task_thread_id'], 7)
+
+    async def test_revoked_assignee_cannot_be_selected_or_confirmed(self):
+        from app.database.models import User, AppSetting, Task
+        from app.handlers.leader_chat_workcenter import choose_group_task_assignee, finish_group_task
+        from app.states.task import LeadersChatTaskStates
+        from app.utils.constants import ApplicationStatus, Role
+        from sqlalchemy import func, select
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001, general_chat_id=-1002, admin_ids=[1001])
+        async with self.factory() as session:
+            admin = User(telegram_id=1001, first_name='Admin', role=Role.ADMIN, application_status=ApplicationStatus.APPROVED)
+            revoked = User(telegram_id=1002, first_name='Revoked', application_status=ApplicationStatus.APPROVED, is_blocked=True)
+            session.add_all([admin, revoked])
+            session.add(AppSetting(key='leaders_forum:-1001:tasks', value='{"thread_id":7}'))
+            await session.flush()
+
+            state = SimpleNamespace(
+                get_state=AsyncMock(return_value=LeadersChatTaskStates.assignee.state),
+                get_data=AsyncMock(return_value={'task_creator_id': admin.id}),
+                clear=AsyncMock(), update_data=AsyncMock(), set_state=AsyncMock(),
+            )
+            call = SimpleNamespace(
+                data=f'leaders_task:assign:{revoked.id}', answer=AsyncMock(),
+                message=SimpleNamespace(chat=SimpleNamespace(id=-1001), answer=AsyncMock()),
+            )
+            await choose_group_task_assignee(call, state, session, settings, admin, SimpleNamespace(id=1001))
+            state.update_data.assert_not_awaited()
+            self.assertIn('недоступен', call.message.answer.await_args.args[0])
+
+            # A previously selected user may lose approval before the deadline step.
+            state.get_data.return_value = {
+                'task_creator_id': admin.id, 'task_assignee_id': revoked.id,
+                'task_title': 'Report', 'task_description': 'Prepare report',
+                'task_chat_id': -1001, 'task_thread_id': 7,
+            }
+            message = SimpleNamespace(
+                chat=SimpleNamespace(id=-1001), from_user=SimpleNamespace(id=1001),
+                text='30.12.2027 18:00', reply=AsyncMock(),
+            )
+            bot = AsyncMock()
+            await finish_group_task(message, state, session, settings, admin, bot)
+            self.assertEqual(await session.scalar(select(func.count()).select_from(Task)), 0)
+            bot.send_message.assert_not_awaited()
+            self.assertIn('недоступен', message.reply.await_args.args[0])
