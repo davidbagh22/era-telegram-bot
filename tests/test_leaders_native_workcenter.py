@@ -196,9 +196,9 @@ class LeadersWorkcenterTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_plain_chat_setup_is_reusable_without_forum_topics(self):
         bot=AsyncMock()
-        bot.get_chat.return_value=SimpleNamespace(is_forum=False)
+        bot.get_chat.return_value=SimpleNamespace(type='supergroup',is_forum=False)
         bot.get_me.return_value=SimpleNamespace(id=99,username='test_bot')
-        bot.get_chat_member.return_value=SimpleNamespace(can_pin_messages=True)
+        bot.get_chat_member.return_value=SimpleNamespace(status='administrator',can_pin_messages=True)
         bot.send_message.return_value=SimpleNamespace(message_id=55)
         for _ in range(2):
             self.assertEqual((await setup_leaders_topics(bot,self.settings,self.sessions))['status'],'ready_plain')
