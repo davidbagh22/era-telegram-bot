@@ -267,6 +267,22 @@ async def rescue_start(
         from app.handlers.era_spyfall import activate_private
         await activate_private(message, command.args, session, user)
         return
+    if command and command.args in {"admin_task_attention", "admin_question_attention"}:
+        from app.services.admin_dashboard_service import has_dashboard_access
+        if not has_dashboard_access(user, settings, message.from_user.id):
+            await message.answer("Доступ отсутствует.")
+            return
+        is_task_queue = command.args == "admin_task_attention"
+        await message.answer(
+            "Рабочая очередь: задачи требуют внимания." if is_task_queue else "Рабочая очередь: обращения.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="Открыть задачи" if is_task_queue else "Открыть обращения",
+                    callback_data="admin:taskattention:page:0" if is_task_queue else "admin:questions",
+                )
+            ]]),
+        )
+        return
     from app.handlers.registration import offer_registration_resume
     if (user is None or user.application_status in {'rejected', 'needs_info'}) and await offer_registration_resume(message, state):
         return

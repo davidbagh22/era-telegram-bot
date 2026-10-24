@@ -55,6 +55,26 @@ test("admin overview is a simple leader control surface", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Контроль" })).toHaveCount(0);
 });
 
+test("overview shows task and support queues and opens their native resolver", async ({ page, context }) => {
+  await page.route("**/api/v1/admin/dashboard", route => route.fulfill({ json: {
+    metrics: { current_roster: 69, tasks_attention: 7, questions: 1 }, attention_total: 8,
+  } }));
+  await context.route("https://t.me/**", route => route.fulfill({ body: "Queue entry", contentType: "text/html" }));
+  await enterAdminWorkspace(page);
+  await expect(page.getByText("8 требуют внимания", { exact: true })).toBeVisible();
+  await expect(page.getByText("Очередь чистая ✓", { exact: true })).toHaveCount(0);
+  for (const [title, payload] of [
+    ["7 · Задачи требуют внимания", "admin_task_attention"],
+    ["1 · Обращения ждут ответа", "admin_question_attention"],
+  ]) {
+    const opened = page.waitForEvent("popup");
+    await page.getByRole("button", { name: new RegExp(title) }).click();
+    const popup = await opened;
+    await expect(popup).toHaveURL(`https://t.me/ERA_1bot?start=${payload}`);
+    await popup.close();
+  }
+});
+
 test("analytics expands from overview instead of a separate control hub", async ({ page }) => {
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: /Аналитика/ }).click();
