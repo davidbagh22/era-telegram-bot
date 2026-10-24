@@ -232,6 +232,9 @@ async def handle_leaders_task_card_action(
             await call.answer()
             await call.message.reply("Напишите результат выполнения одним сообщением.")
             return
+        if task.status not in {TaskStatus.NEW, TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS}:
+            await call.answer("Задача уже изменила статус.", show_alert=True)
+            return
         await state.clear()
         await state.update_data(leaders_task_id=task.id, leaders_task_chat_id=call.message.chat.id)
         await state.set_state(LeadersChatTaskStates.blocker)
@@ -300,8 +303,13 @@ async def save_leaders_task_result(
         return
     task = await session.get(Task, data.get("leaders_task_id"))
     text = (message.text or message.caption or "").strip()
-    if task is None or task.assignee_id != user.id or not text:
-        await message.reply("Не удалось сохранить результат. Начните сдачу из карточки задачи.")
+    if (
+        task is None
+        or task.assignee_id != user.id
+        or task.status not in {TaskStatus.NEW, TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS}
+        or not text
+    ):
+        await message.reply("Задача уже изменилась или результат пуст. Начните сдачу из актуальной карточки.")
         await state.clear()
         return
     previous = await session.scalar(
@@ -345,6 +353,7 @@ async def save_leaders_task_blocker(
         or not _eligible_assignee(user)
         or task is None
         or task.assignee_id != user.id
+        or task.status not in {TaskStatus.NEW, TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS}
         or not blocker
     ):
         await state.clear()
@@ -397,7 +406,10 @@ async def return_leaders_task_result(
     )
     assignee = await session.get(User, task.assignee_id) if task and task.assignee_id else None
     comment = (message.text or "").strip()
-    if task is None or submission is None or assignee is None or not comment:
+    if (
+        task is None or task.status != TaskStatus.REVIEW
+        or submission is None or assignee is None or not comment
+    ):
         await state.clear()
         await message.reply("Не удалось вернуть результат. Проверьте задачу и отправьте комментарий снова.")
         return
