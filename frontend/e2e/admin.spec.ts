@@ -95,6 +95,21 @@ test("analytics expands from overview instead of a separate control hub", async 
   await expect(engagement.getByText("Числитель:", { exact: false }).first()).toBeVisible();
 });
 
+test("analytics sends the selected report through the authenticated bot delivery endpoint", async ({ page }) => {
+  await page.route("**/api/v1/admin/analytics/executive-report/send", route => route.fulfill({ json: { sent: true } }));
+  await enterAdminWorkspace(page);
+  await page.getByRole("button", { name: /Аналитика/ }).click();
+  const requestPromise = page.waitForRequest(request => request.method() === "POST" && request.url().endsWith("/executive-report/send"));
+  await page.getByRole("button", { name: "PDF в чат с ботом", exact: true }).click();
+  const request = await requestPromise;
+  const body = request.postDataJSON();
+  expect(body.format).toBe("pdf");
+  expect(body.period).toBe("custom");
+  expect(body.request_key.length).toBeGreaterThanOrEqual(16);
+  expect(body.chat_id).toBeUndefined();
+  await expect(page.getByText("Отчёт отправлен в личный чат с ботом ЭРА.", { exact: true })).toBeVisible();
+});
+
 test("analytics exports selected custom period as a complete PDF", async ({ page }) => {
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: /Аналитика/ }).click();

@@ -46,6 +46,37 @@ class DurableNotificationDeliveryTests(unittest.IsolatedAsyncioTestCase):
         _session_factory.cache_clear()
         self.tmp.cleanup()
 
+    async def test_documents_use_the_same_durable_receipt_and_payload_guard(self):
+        from aiogram.types import BufferedInputFile
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        bot = SimpleNamespace(send_document=AsyncMock(return_value=SimpleNamespace(message_id=77, document=object())))
+        first = await safe_send_once(bot, self.settings, 900001, "Report", delivery_key="document:once",
+                                    document=BufferedInputFile(b"%PDF-report", filename="report.pdf"))
+        replay = await safe_send_once(bot, self.settings, 900001, "Report", delivery_key="document:once",
+                                     document=BufferedInputFile(b"%PDF-report", filename="report.pdf"))
+        conflict = await safe_send_once(bot, self.settings, 900001, "Report", delivery_key="document:once",
+                                       document=BufferedInputFile(b"other", filename="report.pdf"))
+        self.assertTrue(first.sent)
+        self.assertTrue(replay.sent)
+        self.assertTrue(replay.duplicate)
+        self.assertEqual(conflict.status, "conflict")
+        bot.send_document.assert_awaited_once()
+
+    async def test_unconfirmed_document_is_not_retried(self):
+        from aiogram.types import BufferedInputFile
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        bot = SimpleNamespace(send_document=AsyncMock(return_value=SimpleNamespace(message_id=77, document=None)))
+        result = await safe_send_once(bot, self.settings, 900001, "Report", delivery_key="document:uncertain",
+                                     document=BufferedInputFile(b"PDF", filename="report.pdf"))
+        self.assertFalse(result.sent)
+        self.assertEqual(result.status, "uncertain")
+        replay = await safe_send_once(bot, self.settings, 900001, "Report", delivery_key="document:uncertain",
+                                     document=BufferedInputFile(b"PDF", filename="report.pdf"))
+        self.assertFalse(replay.sent)
+        bot.send_document.assert_awaited_once()
+
     async def test_same_delivery_key_sends_exactly_once(self) -> None:
         bot = FakeBot()
         first = await safe_send_once(

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { downloadAnalyticsSectionTable, downloadFullAnalyticsReport, fetchAdminAnalyticsDetails,
-  fetchEraEfficiency, fetchOrganizationHealth, fetchAnalyticsV2, checkAnalyticsSources, fetchAnalyticsReports,
+  fetchEraEfficiency, fetchOrganizationHealth, fetchAnalyticsV2, checkAnalyticsSources, fetchAnalyticsReports, sendAnalyticsReportToChat,
   type AnalyticsDetailSection, type HealthMetric, type TelegramAnalyticsSource, type AnalyticsV2Snapshot } from "../../api/adminAnalytics";
 import { fetchAdminAnalyticsSummary } from "../../api/client";
 import { fetchMediaAnalytics } from "../../api/media";
@@ -192,7 +192,9 @@ export function AdminDashboardScreen({ onAction }: { onAction?: (action: Analyti
   const [end, setEnd] = useState("");
   const [compare, setCompare] = useState(true);
   const [refresh, setRefresh] = useState(0);
-  const [busy, setBusy] = useState<"pdf" | "xlsx" | "sources" | null>(null);
+  const [busy, setBusy] = useState<"pdf" | "xlsx" | "sources" | "send-pdf" | "send-xlsx" | null>(null);
+  const deliveryRequest = useRef<{ signature: string; key: string } | null>(null);
+  const sendingReport = useRef(false);
   const [selectedSection, setSelectedSection] = useState<AnalyticsDetailSection | null>(null);
   const toast = useToast();
   useEffect(() => {
@@ -236,6 +238,21 @@ export function AdminDashboardScreen({ onAction }: { onAction?: (action: Analyti
     } catch { toast.show("Не удалось собрать отчёт. Попробуйте ещё раз.", "error"); }
     finally { setBusy(null); }
   };
+  const sendToChat = async (format: "pdf" | "xlsx") => {
+    if (!data || busy || sendingReport.current) return;
+    const signature = `${format}:${data.start}:${data.end}`;
+    if (deliveryRequest.current?.signature !== signature) deliveryRequest.current = { signature, key: crypto.randomUUID() };
+    sendingReport.current = true;
+    setBusy(format === "pdf" ? "send-pdf" : "send-xlsx");
+    try {
+      await sendAnalyticsReportToChat(format, data.start, data.end, deliveryRequest.current.key);
+      deliveryRequest.current = null;
+      toast.show("Отчёт отправлен в личный чат с ботом ЭРА.", "success");
+      setRefresh(value => value + 1);
+    } catch {
+      toast.show("Не удалось подтвердить отправку. Проверьте чат с ботом перед повторной попыткой.", "error");
+    } finally { sendingReport.current = false; setBusy(null); }
+  };
   const checkSources = async () => {
     setBusy("sources");
     try { await checkAnalyticsSources(); setRefresh((value) => value + 1); }
@@ -251,7 +268,13 @@ export function AdminDashboardScreen({ onAction }: { onAction?: (action: Analyti
       </select></label>
       {period === "custom" && <div className="era-analytics-dates"><label>С даты<input aria-label="Начало периода" type="date" max={end || undefined} value={start} onChange={(e) => setStart(e.target.value)} /></label><label>По дату<input aria-label="Конец периода" type="date" min={start || undefined} value={end} onChange={(e) => setEnd(e.target.value)} /></label></div>}
       <label className="analytics-compare"><input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} /> Сравнить с предыдущим равным периодом</label>
-      <div className="era-analytics-export-actions"><button className="era-btn-primary" disabled={!validDates || !data || busy !== null} onClick={() => void download("pdf")}>{busy === "pdf" ? "Готовим PDF…" : "↓ Скачать отчёт PDF"}</button><button disabled={!data || busy !== null} onClick={() => void download("xlsx")}>{busy === "xlsx" ? "Готовим Excel…" : "Excel"}</button></div>
+      <div className="era-analytics-export-actions">
+        <button className="era-btn-primary" disabled={!validDates || !data || busy !== null} onClick={() => void sendToChat("pdf")}>{busy === "send-pdf" ? "Отправляем PDF…" : "PDF в чат с ботом"}</button>
+        <button disabled={!validDates || !data || busy !== null} onClick={() => void sendToChat("xlsx")}>{busy === "send-xlsx" ? "Отправляем Excel…" : "Excel в чат с ботом"}</button>
+        <button disabled={!validDates || !data || busy !== null} onClick={() => void download("pdf")}>{busy === "pdf" ? "Готовим PDF…" : "↓ Скачать отчёт PDF"}</button>
+        <button disabled={!data || busy !== null} onClick={() => void download("xlsx")}>{busy === "xlsx" ? "Готовим Excel…" : "Excel"}</button>
+      </div>
+      <small>В Telegram Web удобнее получить файл в личном чате с ботом.</small>
       {!validDates && <p role="status">Укажите начало и конец периода по порядку.</p>}
       {data && <small>{data.start} — {data.end} · обновлено {dateLabel(data.updated_at)}. Остальные показатели подписаны своими окнами.</small>}
     </section>
