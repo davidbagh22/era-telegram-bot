@@ -74,12 +74,14 @@ async def send_executive_report(
             raise HTTPException(409, "report_delivery_conflict")
         if receipt.status == "sent":
             return {"sent": True, "duplicate": True}
-        raise HTTPException(409, "report_delivery_requires_check")
+        if receipt.status != "failed" or receipt.error_code not in {"telegram_retry_after", "telegram_bad_request"}:
+            raise HTTPException(409, "report_delivery_requires_check")
     response = await export_executive_report(payload.format, "custom", start, end, admin, session, settings)
     result = await safe_send_once(
         bot, settings, admin.telegram_id, f"ЭРА · отчёт о деятельности за {start:%d.%m.%Y}–{end:%d.%m.%Y}",
         delivery_key=key, notification_type="analytics_report",
         document=BufferedInputFile(response.body, filename=f"ERA_{start:%Y%m%d}_{end:%Y%m%d}.{payload.format}"),
+        refresh_failed_payload=True,
     )
     if not result.sent:
         raise HTTPException(502, "report_delivery_unavailable")

@@ -148,6 +148,7 @@ async def _claim_delivery(
     chat_id: int,
     notification_type: str,
     payload_hash: str,
+    refresh_failed_payload: bool = False,
 ) -> NotificationDeliveryResult | None:
     """Atomically claim a delivery or return an existing terminal/in-flight result.
 
@@ -190,7 +191,13 @@ async def _claim_delivery(
                     await session.rollback()
                     continue
 
-            if row.payload_hash != payload_hash or int(row.chat_id) != int(chat_id):
+            refresh_allowed = (
+                refresh_failed_payload and row.status == "failed"
+                and row.error_code in {"telegram_retry_after", "telegram_bad_request"}
+                and row.notification_type == notification_type
+                and int(row.chat_id) == int(chat_id)
+            )
+            if (row.payload_hash != payload_hash and not refresh_allowed) or int(row.chat_id) != int(chat_id):
                 logger.error(
                     "Notification delivery key reused with different payload/recipient key=%s",
                     delivery_key,
@@ -238,6 +245,7 @@ async def _claim_delivery(
                 )
 
             row.status = "pending"
+            row.payload_hash = payload_hash
             row.error_code = None
             row.attempt_count += 1
             row.last_attempt_at = now
@@ -314,6 +322,7 @@ async def safe_send_once(
     message_thread_id: int | None = None,
     photo=None,
     document=None,
+    refresh_failed_payload: bool = False,
 ) -> NotificationDeliveryResult:
     """Send one automatic notification durably and idempotently.
 
@@ -343,6 +352,7 @@ async def safe_send_once(
             chat_id=chat_id,
             notification_type=notification_type,
             payload_hash=content_hash,
+            refresh_failed_payload=refresh_failed_payload,
         )
     except Exception:
         logger.exception("Could not claim durable notification key=%s", delivery_key)

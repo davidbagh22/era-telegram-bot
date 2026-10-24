@@ -57,6 +57,15 @@ class AdminReportDeliveryTests(IsolatedAsyncioTestCase):
                 await api.send_executive_report(self.payload(), NS(id=1, telegram_id=100), session, NS(timezone="Asia/Yerevan"), NS())
         self.assertEqual(caught.exception.status_code, 502)
 
+    async def test_definitive_failure_allows_safe_retry(self):
+        session = AsyncMock()
+        session.scalar.return_value = NS(status="failed", chat_id=100, error_code="telegram_retry_after")
+        with patch.object(api, "export_executive_report", AsyncMock(return_value=Response(b"new report"))), \
+             patch.object(api, "safe_send_once", AsyncMock(return_value=NS(sent=True, duplicate=False))) as sender:
+            result = await api.send_executive_report(self.payload(), NS(id=1, telegram_id=100), session, NS(timezone="Asia/Yerevan"), NS())
+        self.assertTrue(result["sent"])
+        self.assertTrue(sender.call_args.kwargs["refresh_failed_payload"])
+
     def test_client_cannot_supply_another_recipient(self):
         from pydantic import ValidationError
         with self.assertRaises(ValidationError):
