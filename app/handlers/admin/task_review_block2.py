@@ -67,10 +67,13 @@ async def _send_file(message: Message, file_id: str) -> None:
         await message.answer("Файл прикреплён, но Telegram не дал открыть его повторно.")
 
 
-async def _send_submission_card(message: Message, session: AsyncSession, submission_id: int) -> None:
+async def _send_submission_card(message: Message, session: AsyncSession, submission_id: int, user=None, settings=None) -> None:
     submission, task, participant = await _context(session, submission_id)
     if not submission or not task or not participant:
         await message.answer("Результат не найден")
+        return
+    if not await task_review_service.can_review_task(session, user, settings, task):
+        await message.answer(texts.NO_ACCESS)
         return
     telegram = f"@{participant.username}" if participant.username else str(participant.telegram_id)
     status = {"pending": "на проверке", "approved": "одобрено", "rejected": "отклонено", "needs_revision": "на доработке"}.get(submission.status, submission.status)
@@ -101,13 +104,13 @@ async def tasks_menu(call: CallbackQuery, user: User | None, settings: Settings)
 async def task_submissions(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not await _guard(call, user, settings):
         return
-    submissions = await task_review_service.list_pending_submissions(session)
+    submissions = await task_review_service.list_pending_submissions(session, reviewer=user, settings=settings)
     if not submissions:
         await call.message.answer("Результатов заданий на проверке пока нет.", reply_markup=_task_menu())
         return
     await call.message.answer(f"Результаты на проверке: {len(submissions)}")
     for submission in submissions:
-        await _send_submission_card(call.message, session, submission.id)
+        await _send_submission_card(call.message, session, submission.id, user, settings)
 
 
 @router.callback_query(F.data.startswith("admin:tasksub:approve:"))
@@ -118,8 +121,11 @@ async def approve_submission(call: CallbackQuery, user: User | None, settings: S
     if not submission or not task or not participant:
         await call.message.answer("Результат не найден")
         return
+    if not await task_review_service.can_review_task(session, user, settings, task):
+        await call.message.answer(texts.NO_ACCESS)
+        return
     result = await task_review_service.decide_submission(
-        session, submission, task, participant, action="approve", comment="", actor=user
+        session, submission, task, participant, action="approve", comment="", actor=user, settings=settings
     )
     await session.commit()
     if result.participant_notice:
@@ -146,12 +152,15 @@ async def revision_finish(message: Message, user: User | None, settings: Setting
         await state.clear()
         await message.answer("Результат не найден")
         return
+    if not await task_review_service.can_review_task(session, user, settings, task):
+        await message.answer(texts.NO_ACCESS)
+        return
     comment = (message.text or "").strip()[:2000]
     if not comment:
         await message.answer("Комментарий обязателен")
         return
     result = await task_review_service.decide_submission(
-        session, submission, task, participant, action="revision", comment=comment, actor=user
+        session, submission, task, participant, action="revision", comment=comment, actor=user, settings=settings
     )
     await session.commit()
     if result.participant_notice:
@@ -179,12 +188,15 @@ async def reject_finish(message: Message, user: User | None, settings: Settings,
         await state.clear()
         await message.answer("Результат не найден")
         return
+    if not await task_review_service.can_review_task(session, user, settings, task):
+        await message.answer(texts.NO_ACCESS)
+        return
     comment = (message.text or "").strip()[:2000]
     if not comment:
         await message.answer("Причина обязательна")
         return
     result = await task_review_service.decide_submission(
-        session, submission, task, participant, action="reject", comment=comment, actor=user
+        session, submission, task, participant, action="reject", comment=comment, actor=user, settings=settings
     )
     await session.commit()
     if result.participant_notice:

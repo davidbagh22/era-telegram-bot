@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Task, TaskParticipant, User
+from app.database.models import Direction, Task, TaskParticipant, User, UserDirection
 
 ARCHIVE_STATUSES = {"completed", "cancelled", "rejected"}
 ACTIVE_MEMBERSHIP_STATUSES = {"pending", "accepted", "joined"}
@@ -25,7 +25,23 @@ async def get_membership(
     )
 
 
-async def can_view(session: AsyncSession, task: Task, user: User) -> bool:
+async def media_team_access(session: AsyncSession, user: User) -> bool:
+    """Read current DB membership, never a cached profile or Telegram-group presence."""
+    member = select(UserDirection.id).join(Direction, Direction.id == UserDirection.direction_id).where(
+        UserDirection.user_id == user.id, UserDirection.status == "approved", Direction.name == "Медиа").exists()
+    leader = select(Direction.id).where(Direction.name == "Медиа", Direction.leader_id == user.id).exists()
+    return await session.scalar(select(User.id).where(User.id == user.id, User.is_blocked.is_(False),
+        User.is_archived.is_(False), User.application_status == "approved", or_(member, leader))) is not None
+
+
+async def can_view(session: AsyncSession, task: Task, user: User, settings=None) -> bool:
+    if _is_media_task(task):
+        if settings is not None:
+            from app.services.media_service import can_manage_media
+            if await can_manage_media(session, user, settings):
+                return True
+        if not await media_team_access(session, user):
+            return False
     if task.assignee_id == user.id:
         return True
     membership = await get_membership(session, task.id, user.id)
@@ -39,6 +55,8 @@ async def can_view(session: AsyncSession, task: Task, user: User) -> bool:
 
 
 async def can_submit(session: AsyncSession, task: Task, user: User) -> bool:
+    if _is_media_task(task) and not await media_team_access(session, user):
+        return False
     if task.assignee_id == user.id:
         return True
     membership = await get_membership(session, task.id, user.id)
@@ -86,12 +104,13 @@ async def list_for_user(session: AsyncSession, user: User) -> list[Task]:
             if task:
                 tasks_by_id[task.id] = task
     tasks = sorted(tasks_by_id.values(), key=lambda item: (item.deadline is None, item.deadline.isoformat() if item.deadline else '', item.id))
+    media_allowed = await media_team_access(session, user) if any(_is_media_task(task) for task in tasks) else False
     return [
         task
         for task in tasks
-        if task.assignee_id == user.id
+        if (not _is_media_task(task) or media_allowed) and (task.assignee_id == user.id
         or task.id in joined_ids
-        or matches_task_audience(task, user)
+        or matches_task_audience(task, user))
     ]
 
 
@@ -189,6 +208,9 @@ async def claim(
     ):
         return None, "closed"
 
+    if _is_media_task(task) and not await media_team_access(session, user):
+        return None, "closed"
+
     current = (
         await session.scalars(
             select(TaskParticipant).where(TaskParticipant.task_id == task.id)
@@ -214,6 +236,9 @@ async def claim(
             await _sync_mission_squad(session, task, user)
             return existing, None
         if self_service and existing.status == "pending":
+            occupied = sum(item.status in ACCEPTED_MEMBERSHIP_STATUSES and item.user_id != user.id for item in current)
+            if task.max_participants and occupied >= task.max_participants:
+                return None, "full"
             existing.status = "joined"
             await session.flush()
             await _sync_mission_squad(session, task, user)

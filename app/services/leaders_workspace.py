@@ -204,7 +204,7 @@ async def change_task(session, settings, task, user, action, value=None):
         from app.services.task_review_service import decide_submission
         assignee = await session.get(User, submission.user_id)
         await decide_submission(session, submission, task, assignee,
-            action='approve' if action == 'accept' else 'revision', comment=value or '', actor=user)
+            action='approve' if action == 'accept' else 'revision', comment=value or '', actor=user, settings=settings)
         if action == 'accept':
             task.status = TaskStatus.COMPLETED
             set_meta(task, completed_at=datetime.now(timezone.utc).isoformat(), blocked=False)

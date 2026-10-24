@@ -1505,8 +1505,9 @@ async def require_task_reviewer(
 async def read_task_submissions(
     _reviewer: User = Depends(require_task_reviewer),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> list[TaskSubmissionOut]:
-    submissions = await task_review_service.list_pending_submissions(session)
+    submissions = await task_review_service.list_pending_submissions(session, reviewer=_reviewer, settings=settings)
     result: list[TaskSubmissionOut] = []
     for submission in submissions:
         task = await session.get(Task, submission.task_id)
@@ -1550,9 +1551,10 @@ async def decide_task_submission_endpoint(
             action=payload.action,
             comment=payload.comment,
             actor=reviewer,
+            settings=settings,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=403 if str(exc) == "media_review_access_required" else 422, detail=str(exc)) from exc
     await session.commit()
     if bot is not None and result.participant_notice:
         keyboard = open_app_button(miniapp_task_url(settings.effective_miniapp_url, task.id))
