@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     media_chat_id: int | None = None
     media_chat_url: str = "https://t.me/+f03ksvhCMKc5NDBi"
     media_manager_ids: IdList = Field(default_factory=list)
+    # Immutable registered account ID; never inferred from a mutable name or username.
+    era_chair_user_id: int | None = Field(default=None, gt=0)
     admin_ids: IdList = Field(default_factory=list)
 
     # One feature-flag mechanism for participant-facing optional modules.

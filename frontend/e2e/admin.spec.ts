@@ -66,6 +66,7 @@ test("overview shows task and support queues and opens their native resolver", a
     window.Telegram.WebApp.openTelegramLink = (url: string) => {
       document.body.dataset.nativeQueueUrl = url;
     };
+    window.Telegram.WebApp.close = () => { document.body.dataset.nativeQueueClosed = "true"; };
   });
   await expect(page.getByText("8 требуют внимания", { exact: true })).toBeVisible();
   await expect(page.getByText("Очередь чистая ✓", { exact: true })).toHaveCount(0);
@@ -75,6 +76,7 @@ test("overview shows task and support queues and opens their native resolver", a
   ]) {
     await page.getByRole("button", { name: new RegExp(title) }).click();
     await expect(page.locator("body")).toHaveAttribute("data-native-queue-url", `https://t.me/ERA_1bot?start=${payload}`);
+    await expect(page.locator("body")).toHaveAttribute("data-native-queue-closed", "true");
   }
 });
 

@@ -850,6 +850,12 @@ async def finish_registration(
     await session.commit()
     await state.clear()
 
+    from app.services.media_membership_service import intent_key, send_welcome
+    from app.database.models import AppSetting
+    media_intent = await session.scalar(select(AppSetting).where(AppSetting.key == intent_key(user.telegram_id)))
+    if media_intent and isinstance(media_intent.value, dict) and media_intent.value.get("status") == "joined":
+        await send_welcome(bot, settings, user)
+
     if user.application_status == ApplicationStatus.APPROVED:
         await call.message.answer(texts.APPLICATION_APPROVED)
         await call.message.answer(

@@ -159,6 +159,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const fetchMediaHub = () => request<MediaHub>("/api/v1/media/hub");
 export const applyToMedia = () => request<MediaHub>("/api/v1/media/apply", { method: "POST" });
+export const joinMedia = () => request<MediaHub>("/api/v1/media/join", { method: "POST" });
 export const fetchMediaLibrary = () => request<MediaLibraryItem[]>("/api/v1/media/library");
 export const fetchMediaGuide = () => request<MediaGuide>("/api/v1/media/guide");
 export const fetchMediaApplications = () => request<MediaApplicant[]>("/api/v1/media/team/applications");

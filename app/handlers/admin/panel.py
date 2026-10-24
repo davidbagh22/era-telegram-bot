@@ -3170,6 +3170,10 @@ async def department_applications(
 ) -> None:
     if not await _guard(call, user, settings):
         return
+    from app.services.media_leadership_service import is_media_chair
+    if is_media_chair(user, settings):
+        await call.message.answer("Департаменты ЭРА", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Медиа → Руководитель", callback_data="media:leader")]]))
     items = (
         await session.scalars(
             select(DepartmentApplication)
