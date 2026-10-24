@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
@@ -113,3 +115,71 @@ async def bind_current_chat(
     await message.reply(
         f"✅ {title} привязан. Настройка сохранена в ЭРА и применяется без перезапуска."
     )
+
+
+@router.message(Command("leaders_diag"), F.chat.type == "private")
+async def leaders_readonly_diagnostics(
+    message: Message,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+    bot: Bot,
+) -> None:
+    """Admin-only, read-only view of the Leaders binding and saved forum IDs.
+
+    Telegram does not provide a reliable list-forum-topics endpoint, so a
+    persisted thread ID must never be presented as a live-verified topic.
+    This command never creates topics, sends to the group, or changes settings.
+    """
+    if not message.from_user or not _can_bind(user, settings, message.from_user.id):
+        await message.answer("Диагностика чата лидеров доступна только администратору ЭРА.")
+        return
+
+    chat_id = settings.leaders_chat_id
+    if not chat_id or chat_id == settings.general_chat_id:
+        await message.answer("Чат лидеров не привязан отдельно от общего чата. Используйте /bind leaders в нужной группе.")
+        return
+
+    lines = ["Чат лидеров · диагностика (только чтение)", f"chat_id: {chat_id}"]
+    try:
+        chat = await bot.get_chat(chat_id)
+        member = await bot.get_chat_member(chat_id, bot.id)
+    except TelegramAPIError as exc:
+        lines.append(f"Telegram: не удалось проверить ({type(exc).__name__}).")
+        lines.append("Сохранённые ID ниже не подтверждают существование тем.")
+    else:
+        forum = bool(getattr(chat, "is_forum", False))
+        lines.append(f"Тип: {getattr(chat, 'type', 'неизвестно')}")
+        lines.append(f"Форум: {'да' if forum else 'нет'}")
+        lines.append(f"Бот администратор: {'да' if member.status in {'administrator', 'creator'} else 'нет'}")
+        if forum:
+            lines.append(f"Управление темами: {'да' if getattr(member, 'can_manage_topics', False) else 'нет'}")
+        lines.append("Telegram API не подтверждает существование темы по сохранённому ID.")
+
+    for key, label in (("tasks", "Задачи"), ("pulse", "Пульс"), ("important", "Важно")):
+        row = await session.scalar(
+            select(AppSetting).where(AppSetting.key == f"leaders_forum:{chat_id}:{key}")
+        )
+        try:
+            data = json.loads(row.value) if row and isinstance(row.value, str) else (row.value if row else {})
+            if not isinstance(data, dict):
+                data = {}
+        except (ValueError, TypeError):
+            data = {}
+        thread_id = data.get("thread_id")
+        state = data.get("thread_state")
+        if thread_id:
+            status = f"thread_id={thread_id} (из БД, не проверен в Telegram)"
+        elif state == "creating":
+            status = "создание не подтверждено; нужна ручная сверка, не создавать повторно"
+        elif data.get("mode") == "plain":
+            status = "обычная группа, отдельной темы нет"
+        else:
+            status = "тема не настроена"
+        lines.append(f"{label}: {status}")
+        if data.get("message_state") in {"sending", "uncertain"}:
+            lines.append("  Карточка: доставка не подтверждена, требуется сверка.")
+        elif data.get("message_id"):
+            lines.append(f"  Карточка message_id={data['message_id']} (из БД).")
+
+    await message.answer("\n".join(lines))
