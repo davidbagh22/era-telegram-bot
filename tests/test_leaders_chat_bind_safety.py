@@ -1,4 +1,5 @@
 """Regression tests for read-only Leaders chat binding validation."""
+from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
@@ -21,6 +22,18 @@ class LeadersChatBindSafetyTests(unittest.TestCase):
         self.assertIsNotNone(_leaders_permission_error(forum, ordinary))
         self.assertIsNotNone(_leaders_permission_error(forum, no_topics))
         self.assertIsNone(_leaders_permission_error(forum, admin))
+
+    def test_forwarded_binding_checks_before_persisting(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "app" / "handlers" / "admin" / "chat_binding_stability.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("_binding_conflict(str(key), chat.id, settings)", source)
+        self.assertIn("_leaders_permission_error(actual_chat, member)", source)
+        self.assertLess(
+            source.index("_leaders_permission_error(actual_chat, member)"),
+            source.index("    await _save_binding(", source.index("async def bind_chat_finish_stable")),
+        )
 
     def test_plain_group_supported_and_channel_rejected(self):
         plain = SimpleNamespace(type="supergroup", is_forum=False)
