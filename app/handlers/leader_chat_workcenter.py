@@ -5,7 +5,6 @@ from html import escape
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
-from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
@@ -23,11 +22,7 @@ from app.config import Settings
 from app.database.models import Task, TaskDelivery, TaskSubmission, User
 from app.services.audit_service import audit
 from app.services import task_review_service
-from app.services.leaders_workcenter_service import (
-    card_snapshot,
-    render_task_card,
-    task_card_keyboard,
-)
+from app.services.leaders_workcenter_service import sync_one_card
 from app.services.weekly_pulse_cycle_service import upsert_leader_membership
 from app.services.leaders_topics_service import delivery_topic
 from app.states.task import LeadersChatTaskStates
@@ -571,46 +566,44 @@ async def finish_group_task(
     )
     session.add(task)
     await session.flush()
-    mention = _mention(assignee)
-    card = None
-    delivery_error = None
-    try:
-        card = await bot.send_message(
-            chat_id=data["task_chat_id"],
-            message_thread_id=task_thread_id,
-            text=render_task_card(task, assignee),
-            parse_mode=ParseMode.HTML,
-            reply_markup=task_card_keyboard(task, settings),
-        )
-    except TelegramAPIError as exc:
-        delivery_error = str(exc)[:2000]
-    session.add(
-        TaskDelivery(
-            task_id=task.id,
-            chat_key="leaders",
-            chat_id=data["task_chat_id"],
-            telegram_message_id=card.message_id if card else None,
-            message_thread_id=task_thread_id,
-            status="sent" if card else "failed",
-            error=delivery_error,
-            sent_at=datetime.now().astimezone() if card else None,
-            reminder_count=0,
-            remind_at=(deadline - timedelta(hours=24)) if card else None,
-            last_card_snapshot=card_snapshot(task, assignee) if card else {},
-        )
+    delivery = TaskDelivery(
+        task_id=task.id,
+        chat_key="leaders",
+        chat_id=data["task_chat_id"],
+        message_thread_id=task_thread_id,
+        status="pending",
+        reminder_count=0,
+        remind_at=deadline - timedelta(hours=24),
     )
+    session.add(delivery)
     await audit(
         session,
         actor_id=creator.id,
         action="task.created_from_leaders_chat",
         entity_type="task",
         entity_id=task.id,
-        new_value={
-            "chat_id": data["task_chat_id"],
-            "message_id": card.message_id if card else None,
-            "delivery_error": delivery_error,
-        },
+        new_value={"chat_id": data["task_chat_id"], "delivery_status": "pending"},
     )
-    suffix = "Карточка опубликована в рабочем чате." if card else "Задача сохранена, но карточку не удалось отправить."
-    await message.reply(f"Задача #{task.id} создана. Исполнитель: {mention}. {suffix}")
+    # Commit the task and its delivery row BEFORE calling Telegram. The shared
+    # card synchronizer claims a durable notification key before sending.
+    await session.commit()
+    task_id = task.id
     await state.clear()
+    try:
+        await sync_one_card(session, bot, settings, task)
+        await session.commit()
+    except Exception:
+        # The Telegram result may be unknown. Never retry a direct send here.
+        await session.rollback()
+        await message.reply(
+            f"Задача #{task_id} сохранена. Статус доставки неясен; "
+            "проверьте карточку перед повторной отправкой."
+        )
+        return
+    if delivery.status == "sent" and delivery.telegram_message_id:
+        suffix = "Карточка опубликована в рабочем чате."
+    elif delivery.status == "review_required":
+        suffix = "Доставка требует проверки, чтобы не создать дубликат."
+    else:
+        suffix = "Задача сохранена, но карточку пока не удалось отправить."
+    await message.reply(f"Задача #{task_id} создана. Исполнитель: {_mention(assignee)}. {suffix}")
