@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
 from aiogram.types import Message
 from sqlalchemy import select
@@ -30,12 +31,33 @@ def _can_bind(user: User | None, settings: Settings, telegram_id: int) -> bool:
     )
 
 
+def _binding_conflict(key: str, chat_id: int, settings: Settings) -> str | None:
+    """Never reuse the general chat as the Leaders workcenter, or vice versa."""
+    if key == "leaders" and chat_id == settings.general_chat_id:
+        return "Это общий чат ЭРА. Чат лидеров должен быть отдельным."
+    if key == "general" and chat_id == settings.leaders_chat_id:
+        return "Это чат лидеров. Нельзя назначить его общим чатом ЭРА."
+    return None
+
+
+def _leaders_permission_error(chat, member) -> str | None:
+    """Read-only Telegram preflight before persisting a Leaders chat binding."""
+    if chat.type not in {"group", "supergroup"}:
+        return "Чат лидеров должен быть группой или супергруппой Telegram."
+    if member.status not in {"administrator", "creator"}:
+        return "Сделайте бота администратором чата лидеров и повторите /bind leaders."
+    if chat.is_forum and not getattr(member, "can_manage_topics", False):
+        return "Для форума лидеров дайте боту право управлять темами и повторите /bind leaders."
+    return None
+
+
 @router.message(Command("bind"), ~F.chat.type.in_({"private"}))
 async def bind_current_chat(
     message: Message,
     user: User | None,
     settings: Settings,
     session: AsyncSession,
+    bot: Bot,
 ) -> None:
     if not message.from_user or not _can_bind(user, settings, message.from_user.id):
         await message.reply("Привязать чат может только администратор ЭРА")
@@ -50,6 +72,22 @@ async def bind_current_chat(
 
     raw_key = parts[1].strip().lower()
     setting_key, greeting_key, title = CHAT_KEYS[raw_key]
+
+    conflict = _binding_conflict(raw_key, message.chat.id, settings)
+    if conflict:
+        await message.reply(conflict)
+        return
+    if raw_key == "leaders":
+        try:
+            chat = await bot.get_chat(message.chat.id)
+            member = await bot.get_chat_member(message.chat.id, bot.id)
+        except TelegramAPIError:
+            await message.reply("Не удалось проверить права бота в чате лидеров. Повторите привязку позже.")
+            return
+        permission_error = _leaders_permission_error(chat, member)
+        if permission_error:
+            await message.reply(permission_error)
+            return
 
     stored = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
     if stored is None:
