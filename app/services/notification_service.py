@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
 from aiogram import Bot
+from aiogram.methods import SendDocument
 from aiogram.exceptions import (
     TelegramAPIError,
     TelegramBadRequest,
@@ -147,6 +148,7 @@ async def _claim_delivery(
     chat_id: int,
     notification_type: str,
     payload_hash: str,
+    refresh_failed_payload: bool = False,
 ) -> NotificationDeliveryResult | None:
     """Atomically claim a delivery or return an existing terminal/in-flight result.
 
@@ -189,7 +191,13 @@ async def _claim_delivery(
                     await session.rollback()
                     continue
 
-            if row.payload_hash != payload_hash or int(row.chat_id) != int(chat_id):
+            refresh_allowed = (
+                refresh_failed_payload and row.status == "failed"
+                and row.error_code in {"telegram_retry_after", "telegram_bad_request"}
+                and row.notification_type == notification_type
+                and int(row.chat_id) == int(chat_id)
+            )
+            if (row.payload_hash != payload_hash and not refresh_allowed) or int(row.chat_id) != int(chat_id):
                 logger.error(
                     "Notification delivery key reused with different payload/recipient key=%s",
                     delivery_key,
@@ -237,6 +245,7 @@ async def _claim_delivery(
                 )
 
             row.status = "pending"
+            row.payload_hash = payload_hash
             row.error_code = None
             row.attempt_count += 1
             row.last_attempt_at = now
@@ -312,6 +321,8 @@ async def safe_send_once(
     max_attempts: int = 3,
     message_thread_id: int | None = None,
     photo=None,
+    document=None,
+    refresh_failed_payload: bool = False,
 ) -> NotificationDeliveryResult:
     """Send one automatic notification durably and idempotently.
 
@@ -324,6 +335,12 @@ async def safe_send_once(
     contract. Message text and reply markup are never stored.
     """
     content_hash = _payload_hash(text)
+    if document is not None:
+        if photo is not None:
+            raise ValueError("Only one attachment is allowed")
+        document_data = getattr(document, "data", None)
+        document_hash = hashlib.sha256(document_data).hexdigest() if isinstance(document_data, bytes) else _payload_hash(str(document))
+        content_hash = _payload_hash(f"{text}\0document:{document_hash}")
     if photo is not None:
         photo_data = getattr(photo, "data", None)
         photo_hash = hashlib.sha256(photo_data).hexdigest() if isinstance(photo_data, bytes) else _payload_hash(str(photo))
@@ -335,6 +352,7 @@ async def safe_send_once(
             chat_id=chat_id,
             notification_type=notification_type,
             payload_hash=content_hash,
+            refresh_failed_payload=refresh_failed_payload,
         )
     except Exception:
         logger.exception("Could not claim durable notification key=%s", delivery_key)
@@ -357,7 +375,11 @@ async def safe_send_once(
                 kwargs["message_thread_id"] = message_thread_id
             if parse_mode is not None:
                 kwargs["parse_mode"] = parse_mode
-            if photo is None:
+            if document is not None:
+                sent_message = await bot.send_document(chat_id, document, caption=text, **kwargs)
+                if getattr(sent_message, "document", None) is None:
+                    raise TelegramServerError(method=SendDocument(chat_id=chat_id, document=document), message="document_confirmation_missing")
+            elif photo is None:
                 sent_message = await bot.send_message(chat_id, text, **kwargs)
             else:
                 sent_message = await bot.send_photo(chat_id, photo, caption=text, **kwargs)

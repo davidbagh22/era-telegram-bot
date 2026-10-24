@@ -46,6 +46,61 @@ class DurableNotificationDeliveryTests(unittest.IsolatedAsyncioTestCase):
         _session_factory.cache_clear()
         self.tmp.cleanup()
 
+    async def test_documents_use_the_same_durable_receipt_and_payload_guard(self):
+        from aiogram.types import BufferedInputFile
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        bot = SimpleNamespace(send_document=AsyncMock(return_value=SimpleNamespace(message_id=77, document=object())))
+        first = await safe_send_once(bot, self.settings, 900001, "Report", delivery_key="document:once",
+                                    document=BufferedInputFile(b"%PDF-report", filename="report.pdf"))
+        replay = await safe_send_once(bot, self.settings, 900001, "Report", delivery_key="document:once",
+                                     document=BufferedInputFile(b"%PDF-report", filename="report.pdf"))
+        conflict = await safe_send_once(bot, self.settings, 900001, "Report", delivery_key="document:once",
+                                       document=BufferedInputFile(b"other", filename="report.pdf"))
+        self.assertTrue(first.sent)
+        self.assertTrue(replay.sent)
+        self.assertTrue(replay.duplicate)
+        self.assertEqual(conflict.status, "conflict")
+        bot.send_document.assert_awaited_once()
+
+    async def test_unconfirmed_document_is_not_retried(self):
+        from aiogram.types import BufferedInputFile
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        bot = SimpleNamespace(send_document=AsyncMock(return_value=SimpleNamespace(message_id=77, document=None)))
+        result = await safe_send_once(bot, self.settings, 900001, "Report", delivery_key="document:uncertain",
+                                     document=BufferedInputFile(b"PDF", filename="report.pdf"))
+        self.assertFalse(result.sent)
+        self.assertEqual(result.status, "uncertain")
+        replay = await safe_send_once(bot, self.settings, 900001, "Report", delivery_key="document:uncertain",
+                                     document=BufferedInputFile(b"PDF", filename="report.pdf"))
+        self.assertFalse(replay.sent)
+        bot.send_document.assert_awaited_once()
+
+    async def test_definitive_rate_limit_can_retry_regenerated_report_without_duplicates(self):
+        from aiogram.exceptions import TelegramRetryAfter
+        from aiogram.methods import SendDocument
+        from aiogram.types import BufferedInputFile
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        bot = SimpleNamespace(send_document=AsyncMock(side_effect=TelegramRetryAfter(
+            method=SendDocument(chat_id=900001, document="file"), message="limited", retry_after=0)))
+        async def send(data):
+            return await safe_send_once(bot, self.settings, 900001, "Report", delivery_key="report:retry",
+                notification_type="analytics_report", max_attempts=1, refresh_failed_payload=True,
+                document=BufferedInputFile(data, filename="report.pdf"))
+        first = await send(b"old PDF")
+        self.assertEqual(first.status, "failed")
+        bot.send_document.side_effect = None
+        bot.send_document.return_value = SimpleNamespace(message_id=78, document=object())
+        retried = await send(b"regenerated PDF")
+        self.assertTrue(retried.sent)
+        replay = await send(b"regenerated PDF")
+        self.assertTrue(replay.duplicate)
+        changed = await send(b"different after success")
+        self.assertEqual(changed.status, "conflict")
+        self.assertEqual(bot.send_document.await_count, 2)
+
     async def test_same_delivery_key_sends_exactly_once(self) -> None:
         bot = FakeBot()
         first = await safe_send_once(

@@ -166,6 +166,21 @@ export function downloadFullAnalyticsReport(
   return adminBlob(`/api/v1/admin/analytics/executive-report.${format}?${params.toString()}`);
 }
 
+export async function sendAnalyticsReportToChat(format: "pdf" | "xlsx", start: string, end: string, requestKey: string): Promise<void> {
+  const token = await adminToken();
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/analytics/executive-report/send`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ format, period: "custom", start_date: start, end_date: end, request_key: requestKey }),
+  });
+  if (!response.ok) {
+    if (response.status === 401) tokenPromise = null;
+    throw new ApiError(response.status, "report_delivery_unavailable");
+  }
+  const result = await response.json() as { sent?: boolean };
+  if (result.sent !== true) throw new ApiError(502, "report_delivery_unavailable");
+}
+
 export interface TelegramAnalyticsSource {
   id: string; label: string; value: number | null; observed_value: number;
   previous_value: number | null; delta: number | null; data_state: string;

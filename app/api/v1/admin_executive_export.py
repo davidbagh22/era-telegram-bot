@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
+import hashlib
+
+from aiogram import Bot
+from aiogram.types import BufferedInputFile
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 
 from starlette.concurrency import run_in_threadpool
 from typing import Literal
@@ -9,7 +15,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_session, get_settings
+from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.config import Settings
 from app.database.models import User
 from app.services import media_service
@@ -21,10 +27,21 @@ from app.services.telegram_analytics_export import add_telegram_sheets
 from app.services.telegram_analytics_service import report_window, telegram_snapshot
 from app.services.executive_pdf_service import build_executive_pdf
 from app.services.organization_health_extended_service import build_extended_organization_health
+from app.database.system_models import NotificationDelivery
+from app.services.notification_service import safe_send_once
 
 router = APIRouter(prefix="/admin/analytics", tags=["admin-executive-export"])
 
 ReportPeriod = Literal["30d", "3m", "6m", "1y", "custom"]
+
+
+class ReportSendIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    format: Literal["pdf", "xlsx"] = "pdf"
+    period: ReportPeriod = "30d"
+    start_date: date | None = None
+    end_date: date | None = None
+    request_key: str = Field(min_length=16, max_length=80)
 
 
 async def require_admin(
@@ -34,6 +51,41 @@ async def require_admin(
     if not has_dashboard_access(user, settings, user.telegram_id):
         raise HTTPException(status_code=403, detail="admin_access_required")
     return user
+
+
+@router.post("/executive-report/send")
+async def send_executive_report(
+    payload: ReportSendIn,
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    bot: Bot = Depends(get_bot),
+) -> dict:
+    try:
+        start, end, _ = resolve_report_period(payload.period, start_date=payload.start_date,
+            end_date=payload.end_date, today=datetime.now(ZoneInfo(settings.timezone)).date())
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    identity = f"{admin.id}:{payload.format}:{start}:{end}:{payload.request_key}"
+    key = "analytics-report:" + hashlib.sha256(identity.encode()).hexdigest()
+    receipt = await session.scalar(select(NotificationDelivery).where(NotificationDelivery.delivery_key == key))
+    if receipt is not None:
+        if receipt.chat_id != admin.telegram_id:
+            raise HTTPException(409, "report_delivery_conflict")
+        if receipt.status == "sent":
+            return {"sent": True, "duplicate": True}
+        if receipt.status != "failed" or receipt.error_code not in {"telegram_retry_after", "telegram_bad_request"}:
+            raise HTTPException(409, "report_delivery_requires_check")
+    response = await export_executive_report(payload.format, "custom", start, end, admin, session, settings)
+    result = await safe_send_once(
+        bot, settings, admin.telegram_id, f"ЭРА · отчёт о деятельности за {start:%d.%m.%Y}–{end:%d.%m.%Y}",
+        delivery_key=key, notification_type="analytics_report",
+        document=BufferedInputFile(response.body, filename=f"ERA_{start:%Y%m%d}_{end:%Y%m%d}.{payload.format}"),
+        refresh_failed_payload=True,
+    )
+    if not result.sent:
+        raise HTTPException(502, "report_delivery_unavailable")
+    return {"sent": True, "duplicate": result.duplicate}
 
 
 @router.get("/executive-report.{format}")
