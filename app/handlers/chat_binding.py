@@ -140,7 +140,7 @@ async def leaders_readonly_diagnostics(
         await message.answer("Чат лидеров не привязан отдельно от общего чата. Используйте /bind leaders в нужной группе.")
         return
 
-    lines = [f"Чат лидеров · диагностика (только чтение)", f"chat_id: {chat_id}"]
+    lines = ["Чат лидеров · диагностика (только чтение)", f"chat_id: {chat_id}"]
     try:
         chat = await bot.get_chat(chat_id)
         member = await bot.get_chat_member(chat_id, bot.id)
