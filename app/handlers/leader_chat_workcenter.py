@@ -29,7 +29,7 @@ from app.services.leaders_workcenter_service import (
     task_card_keyboard,
 )
 from app.services.weekly_pulse_cycle_service import upsert_leader_membership
-from app.services.leaders_topics_service import topic_id
+from app.services.leaders_topics_service import delivery_topic
 from app.states.task import LeadersChatTaskStates
 from app.keyboards.participant import open_app_button
 from app.utils.constants import ApplicationStatus, TaskStatus
@@ -48,6 +48,15 @@ def _mention(user: User) -> str:
     if user.username:
         return f"@{escape(user.username)}"
     return f'<a href="tg://user?id={user.telegram_id}">{label}</a>'
+
+
+def _eligible_assignee(user: User | None) -> bool:
+    return bool(
+        user
+        and user.application_status == ApplicationStatus.APPROVED
+        and not user.is_archived
+        and not user.is_blocked
+    )
 
 
 def _can_create(user, settings, telegram_id):
@@ -135,12 +144,17 @@ async def begin_group_task(
     if not title:
         await message.reply("Ответьте командой /task на сообщение с поручением.")
         return
+    try:
+        task_thread_id = await delivery_topic(session, message.chat.id, "tasks")
+    except ValueError:
+        await message.reply("Тема «Задачи» ещё не настроена. Попросите администратора проверить привязку чата.")
+        return
     await state.clear()
     await state.update_data(
         task_title=title[:255],
         task_description=title[:2000],
         task_chat_id=message.chat.id,
-        task_thread_id=await topic_id(session, message.chat.id, "tasks") or message.message_thread_id,
+        task_thread_id=task_thread_id,
         task_reply_message_id=source.message_id,
         task_creator_id=user.id,
     )
@@ -498,9 +512,8 @@ async def choose_group_task_assignee(
     except (TypeError, ValueError):
         return
     assignee = await session.get(User, assignee_id)
-    if assignee is None:
-        await call.message.answer("Участник больше недоступен. Начните создание задачи заново.")
-        await state.clear()
+    if not _eligible_assignee(assignee):
+        await call.message.answer("Участник больше недоступен. Выберите другого исполнителя.")
         return
     await state.update_data(task_assignee_id=assignee.id)
     await state.set_state(LeadersChatTaskStates.deadline)
@@ -537,9 +550,14 @@ async def finish_group_task(
         return
     creator = await session.get(User, data.get("task_creator_id"))
     assignee = await session.get(User, data.get("task_assignee_id"))
-    if creator is None or assignee is None:
+    if creator is None or not _eligible_assignee(assignee):
         await state.clear()
-        await message.reply("Не удалось подтвердить автора или исполнителя. Создайте задачу заново.")
+        await message.reply("Автор или исполнитель больше недоступен. Создайте задачу заново.")
+        return
+    try:
+        task_thread_id = await delivery_topic(session, message.chat.id, "tasks")
+    except ValueError:
+        await message.reply("Тема «Задачи» ещё не настроена. Попросите администратора проверить привязку чата.")
         return
     task = Task(
         title=data["task_title"],
@@ -559,7 +577,7 @@ async def finish_group_task(
     try:
         card = await bot.send_message(
             chat_id=data["task_chat_id"],
-            message_thread_id=data.get("task_thread_id"),
+            message_thread_id=task_thread_id,
             text=render_task_card(task, assignee),
             parse_mode=ParseMode.HTML,
             reply_markup=task_card_keyboard(task, settings),
@@ -572,7 +590,7 @@ async def finish_group_task(
             chat_key="leaders",
             chat_id=data["task_chat_id"],
             telegram_message_id=card.message_id if card else None,
-            message_thread_id=data.get("task_thread_id"),
+            message_thread_id=task_thread_id,
             status="sent" if card else "failed",
             error=delivery_error,
             sent_at=datetime.now().astimezone() if card else None,
