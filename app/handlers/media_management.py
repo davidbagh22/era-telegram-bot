@@ -1,6 +1,7 @@
 import secrets
 
 from aiogram import F, Router
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
@@ -45,11 +46,15 @@ async def leader_menu(call: CallbackQuery, user: User | None, session: AsyncSess
     if not await guard(call, user, session, settings):
         return
     await call.answer()
+    await render_leader_menu(call.message, session, settings)
+
+
+async def render_leader_menu(message: Message, session: AsyncSession, settings: Settings):
     direction, _ = await leadership.leadership_state(session)
     current = await session.get(User, direction.leader_id) if direction.leader_id else None
     config = await media_config(session)
     enabled = bool(config.get("join_enabled", True))
-    await call.message.answer(
+    await message.answer(
         "Управление → Департаменты → Медиа → Руководитель\n\n"
         + (f"Руководитель: {current.first_name} {current.last_name or ''} · Telegram ID {current.telegram_id}"
            if current else "Руководитель пока не назначен.")
@@ -59,6 +64,14 @@ async def leader_menu(call: CallbackQuery, user: User | None, session: AsyncSess
             [("Снять", "media:leader:remove"), ("Посмотреть руководителя", "media:leader")],
             [("Отключить приглашение" if enabled else "Включить приглашение", f"media:invite:{'off' if enabled else 'on'}")],
         ]))
+
+
+@router.message(Command("media_leader"))
+@router.message(F.text == "🎬 Руководитель медиа")
+async def leader_command(message: Message, user: User | None, session: AsyncSession, settings: Settings):
+    if not await guard(message, user, session, settings):
+        return
+    await render_leader_menu(message, session, settings)
 
 
 @router.callback_query(F.data == "media:leader:choose")
@@ -101,6 +114,12 @@ async def remove_leader(call: CallbackQuery, user: User | None, state: FSMContex
     await state.update_data(media_leader_target=None, media_leader_revision=revision, media_leader_confirmation=nonce)
     await call.message.answer("Снять руководителя медиа? Управленческий доступ закроется сразу.",
                              reply_markup=keyboard([[("Подтвердить снятие", f"media:leader:confirm:{nonce}")]]))
+
+
+@router.message(MediaLeaderStates.target, F.text, ~F.text.startswith("/"))
+async def invalid_target(message: Message, user: User | None, session: AsyncSession, settings: Settings):
+    if await guard(message, user, session, settings):
+        await message.answer("Нужен числовой Telegram ID зарегистрированного участника. /cancel — отменить.")
 
 
 @router.callback_query(F.data.startswith("media:leader:confirm:"))

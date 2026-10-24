@@ -272,7 +272,7 @@ async def read_media_hub(
         access_level=level,
         permissions=permissions,
         chat_url=settings.media_chat_url,
-        media_role="media_leader" if level in ("leader", "admin") else "media_member",
+        media_role="media_leader" if level == "leader" else "media_member" if level == "member" else None,
         channel_url=settings.era_channel_url,
         open_tasks=[_task_out(task) for task in open_tasks if task.id not in my_ids],
         my_tasks=[_task_out(task) for task in my_tasks],

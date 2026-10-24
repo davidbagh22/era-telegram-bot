@@ -8,7 +8,7 @@ from app.utils.constants import ApplicationStatus
 
 
 def is_media_chair(user: User | None, settings: Settings) -> bool:
-    return bool(user and settings.era_chair_user_id and user.id == settings.era_chair_user_id
+    return bool(user and getattr(settings, "era_chair_user_id", None) and user.id == settings.era_chair_user_id
                 and not user.is_blocked and not user.is_archived
                 and user.application_status == ApplicationStatus.APPROVED)
 

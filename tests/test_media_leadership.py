@@ -106,3 +106,24 @@ class MediaLeadershipTests(IsolatedAsyncioTestCase):
                 change.assert_not_awaited()
                 state.get_data.assert_not_awaited()
                 state.clear.assert_not_awaited()
+
+    async def test_non_admin_chair_has_a_native_entry_without_global_admin_permissions(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from app.handlers.media_management import leader_command
+        from app.handlers.participant.navigation import _send_main_menu
+        from app.services.admin_dashboard_service import has_dashboard_access
+        async with self.factory() as session:
+            chair, _, _, _, settings = await self.seed(session)
+            chair.role = "participant"
+            await session.flush()
+            message = SimpleNamespace(from_user=SimpleNamespace(id=chair.telegram_id), answer=AsyncMock())
+            await _send_main_menu(message, chair, settings)
+            markup = message.answer.call_args.kwargs["reply_markup"]
+            buttons = [button.text for row in markup.keyboard for button in row]
+            self.assertIn("🎬 Руководитель медиа", buttons)
+            self.assertNotIn("📊 Статистика", buttons)
+            self.assertFalse(has_dashboard_access(chair, settings, chair.telegram_id))
+            await leader_command(message, chair, session, settings)
+            native = message.answer.call_args.kwargs["reply_markup"]
+            self.assertTrue(any(button.callback_data == "media:leader:choose" for row in native.inline_keyboard for button in row))
