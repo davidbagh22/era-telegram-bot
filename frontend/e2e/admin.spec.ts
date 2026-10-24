@@ -55,6 +55,29 @@ test("admin overview is a simple leader control surface", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Контроль" })).toHaveCount(0);
 });
 
+test("overview shows task and support queues and opens their native resolver", async ({ page }) => {
+  await page.route("**/api/v1/admin/dashboard", route => route.fulfill({ json: {
+    metrics: { current_roster: 69, tasks_attention: 7, questions: 1 }, attention_total: 8,
+  } }));
+  await enterAdminWorkspace(page);
+  // The Telegram SDK exists in the test browser, but has no native host.
+  // Capture the host call instead of waiting for an unrelated browser popup.
+  await page.evaluate(() => {
+    window.Telegram.WebApp.openTelegramLink = (url: string) => {
+      document.body.dataset.nativeQueueUrl = url;
+    };
+  });
+  await expect(page.getByText("8 требуют внимания", { exact: true })).toBeVisible();
+  await expect(page.getByText("Очередь чистая ✓", { exact: true })).toHaveCount(0);
+  for (const [title, payload] of [
+    ["7 · Задачи требуют внимания", "admin_task_attention"],
+    ["1 · Обращения ждут ответа", "admin_question_attention"],
+  ]) {
+    await page.getByRole("button", { name: new RegExp(title) }).click();
+    await expect(page.locator("body")).toHaveAttribute("data-native-queue-url", `https://t.me/ERA_1bot?start=${payload}`);
+  }
+});
+
 test("analytics expands from overview instead of a separate control hub", async ({ page }) => {
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: /Аналитика/ }).click();

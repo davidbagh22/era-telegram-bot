@@ -23,7 +23,7 @@ from app.database.models import (
 )
 from app.database.participation_models import ParticipationLifecycle
 from app.services.authorization_service import is_full_admin
-from app.services.analytics_snapshot_service import ACTIVE_PROJECT_STATUSES, count_verified_users
+from app.services.analytics_snapshot_service import ACTIVE_PROJECT_STATUSES, count_verified_users, task_attention_condition
 from app.services.participation_lifecycle_service import (
     MODE_EXITED,
 )
@@ -37,14 +37,15 @@ from app.utils.constants import (
 )
 
 # Only counters with a real admin flow that can resolve the item belong in
-# "Нужно решить" / attention_total. Raw metrics for reports, questions and
+# "Нужно решить" / attention_total. Raw metrics for reports and
 # department applications stay available, but must not create dead-end tasks.
 ATTENTION_KEYS = (
     "users_pending",
     "projects_review",
     "events_pending",
     "event_waitlist",
-    "task_results",
+    "tasks_attention",
+    "questions",
     "activity_results",
     "rewards",
     "portfolio",
@@ -169,6 +170,7 @@ async def dashboard_metrics(session: AsyncSession) -> DashboardMetrics:
             Task.status.in_([TaskStatus.NEW, TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS, TaskStatus.REVIEW]),
         ),
         "task_results": await _count(session, TaskSubmission, TaskSubmission.status == "pending"),
+        "tasks_attention": await _count(session, Task, task_attention_condition(now)),
         "activity_results": await _count(
             session,
             EventActivitySubmission,

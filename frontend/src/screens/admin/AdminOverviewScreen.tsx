@@ -14,7 +14,8 @@ const ATTENTION_LABELS = {
   users_pending: "Новые регистрации",
   projects_review: "Проекты на проверке",
   events_pending: "События на согласовании",
-  task_results: "Результаты заданий",
+  tasks_attention: "Задачи требуют внимания",
+  questions: "Обращения ждут ответа",
   activity_results: "Результаты активностей",
   rewards: "Заявки на возможности",
   portfolio: "Портфолио на проверке",
@@ -22,6 +23,12 @@ const ATTENTION_LABELS = {
 
 type AttentionKey = keyof typeof ATTENTION_LABELS;
 const ATTENTION_ORDER = Object.keys(ATTENTION_LABELS) as AttentionKey[];
+
+function openNativeQueue(payload: "admin_task_attention" | "admin_question_attention") {
+  const url = `https://t.me/ERA_1bot?start=${payload}`;
+  if (window.Telegram?.WebApp?.openTelegramLink) window.Telegram.WebApp.openTelegramLink(url);
+  else window.open(url, "_blank", "noopener,noreferrer");
+}
 
 interface AdminOverviewScreenProps {
   onOpenPeople: () => void;
@@ -90,7 +97,8 @@ export function AdminOverviewScreen({
     users_pending: onOpenApplications,
     projects_review: onOpenProjects,
     events_pending: onOpenEvents,
-    task_results: onOpenTasks,
+    tasks_attention: () => openNativeQueue("admin_task_attention"),
+    questions: () => openNativeQueue("admin_question_attention"),
     activity_results: onOpenEvents,
     rewards: onOpenOffers,
     portfolio: onOpenCareer,
@@ -130,8 +138,7 @@ export function AdminOverviewScreen({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: ".45rem" }}>
             {(metrics.event_waitlist ?? 0) > 0 && <ActionCell title={`${metrics.event_waitlist} · лист ожидания`} description="Проверить места на событиях" leading="!" onClick={onOpenEvents} />}
-            {attentionItems.slice(0, 5).map((item) => <ActionCell key={item.key} title={`${item.value} · ${item.label}`} description="Открыть и решить" leading="!" onClick={attentionActions[item.key]} />)}
-            {attentionItems.length > 5 && <span style={{ color: "var(--era-text-muted)", fontSize: ".78rem" }}>Ещё {attentionItems.length - 5} пунктов доступны в соответствующих разделах.</span>}
+            {attentionItems.map((item) => <ActionCell key={item.key} title={`${item.value} · ${item.label}`} description={item.key === "tasks_attention" || item.key === "questions" ? "Открыть рабочую очередь в боте" : "Открыть и решить"} leading="!" onClick={attentionActions[item.key]} />)}
           </div>
         )}
       </section>
