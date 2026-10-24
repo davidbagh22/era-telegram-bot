@@ -134,6 +134,96 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
             bot.send_message.assert_not_awaited()
             self.assertIn('недоступен', message.reply.await_args.args[0])
 
+    async def _finish_chat_task_with_durable_delivery(self, *, sent, status, message_id):
+        from sqlalchemy import select
+        from app.database.models import AppSetting, Task, TaskDelivery, User
+        from app.handlers.leader_chat_workcenter import finish_group_task
+        from app.services.leaders_workcenter_service import sync_one_card
+        from app.utils.constants import ApplicationStatus, Role
+
+        settings = Settings(
+            bot_token='1234567890:test-token',
+            leaders_chat_id=-1001,
+            general_chat_id=-1002,
+            admin_ids=[1001],
+        )
+        async with self.factory() as session:
+            creator = User(
+                telegram_id=1001, first_name='Creator', role=Role.ADMIN,
+                application_status=ApplicationStatus.APPROVED,
+            )
+            assignee = User(
+                telegram_id=1002, first_name='Assignee', role=Role.LEADER,
+                application_status=ApplicationStatus.APPROVED,
+            )
+            session.add_all([creator, assignee])
+            session.add(AppSetting(
+                key='leaders_forum:-1001:tasks', value='{"thread_id":7}',
+            ))
+            await session.flush()
+            state = SimpleNamespace(
+                get_data=AsyncMock(return_value={
+                    'task_creator_id': creator.id,
+                    'task_assignee_id': assignee.id,
+                    'task_title': 'Prepare report',
+                    'task_description': 'Report to the team',
+                    'task_chat_id': -1001,
+                }),
+                clear=AsyncMock(),
+            )
+            message = SimpleNamespace(
+                chat=SimpleNamespace(id=-1001),
+                from_user=SimpleNamespace(id=1001),
+                text='30.12.2027 18:00',
+                reply=AsyncMock(),
+            )
+            bot = AsyncMock()
+            result = SimpleNamespace(
+                sent=sent, status=status, message_id=message_id,
+                error_code='telegram_network' if status == 'uncertain' else None,
+            )
+            with patch(
+                'app.services.notification_service.safe_send_once',
+                new=AsyncMock(return_value=result),
+            ) as safe:
+                await finish_group_task(
+                    message, state, session, settings, creator, bot,
+                )
+                task = await session.scalar(select(Task))
+                delivery = await session.scalar(select(TaskDelivery))
+                self.assertIsNotNone(task)
+                self.assertEqual(delivery.task_id, task.id)
+                self.assertEqual(delivery.message_thread_id, 7)
+                self.assertEqual(safe.await_count, 1)
+                self.assertEqual(
+                    safe.await_args.kwargs['delivery_key'],
+                    f'leaders-card:{delivery.id}:0',
+                )
+                self.assertEqual(safe.await_args.kwargs['message_thread_id'], 7)
+                # The direct, untracked send must never be used.
+                bot.send_message.assert_not_awaited()
+                state.clear.assert_awaited_once()
+                if status == 'uncertain':
+                    await sync_one_card(session, bot, settings, task)
+                    safe.assert_awaited_once()
+                return delivery.status, delivery.telegram_message_id, message.reply.await_args.args[0]
+
+    async def test_group_task_uncertain_send_requires_review_without_resend(self):
+        status, message_id, reply = await self._finish_chat_task_with_durable_delivery(
+            sent=False, status='uncertain', message_id=None,
+        )
+        self.assertEqual(status, 'review_required')
+        self.assertIsNone(message_id)
+        self.assertIn('требует проверки', reply)
+
+    async def test_group_task_confirmed_send_keeps_message_id(self):
+        status, message_id, reply = await self._finish_chat_task_with_durable_delivery(
+            sent=True, status='sent', message_id=987,
+        )
+        self.assertEqual(status, 'sent')
+        self.assertEqual(message_id, 987)
+        self.assertIn('опубликована', reply)
+
     async def test_revoked_assignee_cannot_use_old_task_card_actions(self):
         from app.handlers.leader_chat_workcenter import handle_leaders_task_card_action
         from app.utils.constants import ApplicationStatus, TaskStatus
