@@ -107,7 +107,7 @@ test("analytics sends the selected report through the authenticated bot delivery
   expect(body.period).toBe("custom");
   expect(body.request_key.length).toBeGreaterThanOrEqual(16);
   expect(body.chat_id).toBeUndefined();
-  await expect(page.getByText("Отчёт отправлен в личный чат с ботом ЭРА.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Готово: Отчёт отправлен в личный чат с ботом ЭРА.", exact: true })).toBeVisible();
 });
 
 test("analytics exports selected custom period as a complete PDF", async ({ page }) => {
