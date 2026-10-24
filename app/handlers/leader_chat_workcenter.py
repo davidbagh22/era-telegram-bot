@@ -208,7 +208,7 @@ async def handle_leaders_task_card_action(
         await call.answer("Карточка задачи больше недоступна.", show_alert=True)
         return
     if action in {"start", "submit", "block"}:
-        if user is None or task.assignee_id != user.id:
+        if not _eligible_assignee(user) or task.assignee_id != user.id:
             await call.answer("Это действие доступно исполнителю задачи.", show_alert=True)
             return
         if action == "start":
@@ -299,7 +299,7 @@ async def save_leaders_task_result(
         not settings.leaders_chat_id
         or message.chat.id != settings.leaders_chat_id
         or data.get("leaders_task_chat_id") != message.chat.id
-        or not user
+        or not _eligible_assignee(user)
     ):
         await state.clear()
         return
@@ -347,7 +347,7 @@ async def save_leaders_task_blocker(
         not settings.leaders_chat_id
         or message.chat.id != settings.leaders_chat_id
         or data.get("leaders_task_chat_id") != message.chat.id
-        or not user
+        or not _eligible_assignee(user)
         or task is None
         or task.assignee_id != user.id
         or not blocker

@@ -1,6 +1,6 @@
 from datetime import date
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 import unittest
 
 from aiogram.types import Message, Chat, User as TelegramUser, CallbackQuery
@@ -133,3 +133,64 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await session.scalar(select(func.count()).select_from(Task)), 0)
             bot.send_message.assert_not_awaited()
             self.assertIn('недоступен', message.reply.await_args.args[0])
+
+    async def test_revoked_assignee_cannot_use_old_task_card_actions(self):
+        from app.handlers.leader_chat_workcenter import handle_leaders_task_card_action
+        from app.utils.constants import ApplicationStatus, TaskStatus
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001)
+        revoked = SimpleNamespace(
+            id=7, telegram_id=1002, application_status=ApplicationStatus.APPROVED,
+            is_archived=False, is_blocked=True,
+        )
+        task = SimpleNamespace(id=42, assignee_id=7, status=TaskStatus.NEW)
+        state = SimpleNamespace(clear=AsyncMock(), update_data=AsyncMock(), set_state=AsyncMock())
+        message = SimpleNamespace(chat=SimpleNamespace(id=-1001), reply=AsyncMock())
+        with patch(
+            'app.handlers.leader_chat_workcenter._card_task',
+            new=AsyncMock(return_value=task),
+        ):
+            for action in ('start', 'submit', 'block'):
+                call = SimpleNamespace(
+                    data=f'leaders_task:{action}:42', message=message, answer=AsyncMock(),
+                )
+                await handle_leaders_task_card_action(
+                    call, state, AsyncMock(), settings, revoked,
+                    SimpleNamespace(id=1002), AsyncMock(),
+                )
+                self.assertTrue(call.answer.await_args.kwargs.get('show_alert'))
+        self.assertEqual(task.status, TaskStatus.NEW)
+        state.clear.assert_not_awaited()
+        message.reply.assert_not_awaited()
+
+    async def test_revoked_assignee_cannot_submit_result_or_blocker(self):
+        from app.handlers.leader_chat_workcenter import (
+            save_leaders_task_result, save_leaders_task_blocker,
+        )
+        from app.utils.constants import ApplicationStatus, TaskStatus
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001)
+        revoked = SimpleNamespace(
+            id=7, telegram_id=1002, application_status=ApplicationStatus.APPROVED,
+            is_archived=False, is_blocked=True,
+        )
+        task = SimpleNamespace(id=42, assignee_id=7, status=TaskStatus.NEW, comment='')
+        state = SimpleNamespace(
+            get_data=AsyncMock(return_value={
+                'leaders_task_id': 42, 'leaders_task_chat_id': -1001,
+            }),
+            clear=AsyncMock(),
+        )
+        session = AsyncMock()
+        session.get.return_value = task
+        message = SimpleNamespace(
+            chat=SimpleNamespace(id=-1001), text='Result or blocker',
+            caption=None, reply=AsyncMock(),
+        )
+        await save_leaders_task_result(message, state, session, settings, revoked)
+        await save_leaders_task_blocker(message, state, session, settings, revoked)
+        self.assertEqual(task.status, TaskStatus.NEW)
+        self.assertEqual(task.comment, '')
+        session.scalar.assert_not_awaited()
+        session.add.assert_not_called()
+        self.assertEqual(state.clear.await_count, 2)
