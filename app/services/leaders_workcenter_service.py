@@ -77,6 +77,10 @@ async def sync_one_card(session, bot, settings, task):
         TaskDelivery.chat_key == "leaders", TaskDelivery.chat_id == settings.leaders_chat_id).with_for_update())
     if delivery is None:
         return
+    # A previous Telegram send may have succeeded despite a lost response.
+    # Review the original message instead of attempting a new send.
+    if delivery.status == "review_required" and not delivery.telegram_message_id:
+        return
     from app.services.leaders_topics_service import topic_id
     from datetime import datetime, timezone
     assignee = await session.get(User, task.assignee_id) if task.assignee_id else None
