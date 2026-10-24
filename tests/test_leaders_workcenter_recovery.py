@@ -284,3 +284,94 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         session.scalar.assert_not_awaited()
         session.add.assert_not_called()
         self.assertEqual(state.clear.await_count, 2)
+
+    async def test_stale_fsm_cannot_reopen_terminal_task(self):
+        from app.handlers.leader_chat_workcenter import (
+            save_leaders_task_result, save_leaders_task_blocker,
+        )
+        from app.utils.constants import ApplicationStatus, TaskStatus
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001)
+        assignee = SimpleNamespace(
+            id=7, telegram_id=1002, application_status=ApplicationStatus.APPROVED,
+            is_archived=False, is_blocked=False,
+        )
+        state = SimpleNamespace(
+            get_data=AsyncMock(return_value={
+                'leaders_task_id': 42, 'leaders_task_chat_id': -1001,
+            }),
+            clear=AsyncMock(),
+        )
+        message = SimpleNamespace(
+            chat=SimpleNamespace(id=-1001), text='Old result',
+            caption=None, reply=AsyncMock(),
+        )
+        for status in (TaskStatus.CANCELLED, TaskStatus.COMPLETED, TaskStatus.REVIEW):
+            task = SimpleNamespace(id=42, assignee_id=7, status=status, comment='')
+            session = AsyncMock()
+            session.get.return_value = task
+            await save_leaders_task_result(message, state, session, settings, assignee)
+            await save_leaders_task_blocker(message, state, session, settings, assignee)
+            self.assertEqual(task.status, status)
+            self.assertEqual(task.comment, '')
+            session.scalar.assert_not_awaited()
+            session.add.assert_not_called()
+        self.assertEqual(state.clear.await_count, 6)
+
+    async def test_stale_blocker_callback_does_not_open_fsm(self):
+        from app.handlers.leader_chat_workcenter import handle_leaders_task_card_action
+        from app.utils.constants import ApplicationStatus, TaskStatus
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001)
+        assignee = SimpleNamespace(
+            id=7, telegram_id=1002, application_status=ApplicationStatus.APPROVED,
+            is_archived=False, is_blocked=False,
+        )
+        task = SimpleNamespace(id=42, assignee_id=7, status=TaskStatus.COMPLETED)
+        state = SimpleNamespace(clear=AsyncMock(), update_data=AsyncMock(), set_state=AsyncMock())
+        message = SimpleNamespace(chat=SimpleNamespace(id=-1001), reply=AsyncMock())
+        call = SimpleNamespace(
+            data='leaders_task:block:42', message=message, answer=AsyncMock(),
+        )
+        with patch(
+            'app.handlers.leader_chat_workcenter._card_task',
+            new=AsyncMock(return_value=task),
+        ):
+            await handle_leaders_task_card_action(
+                call, state, AsyncMock(), settings, assignee,
+                SimpleNamespace(id=1002), AsyncMock(),
+            )
+        self.assertTrue(call.answer.await_args.kwargs.get('show_alert'))
+        state.set_state.assert_not_awaited()
+        message.reply.assert_not_awaited()
+
+    async def test_stale_review_fsm_cannot_return_completed_task(self):
+        from app.handlers.leader_chat_workcenter import return_leaders_task_result
+        from app.utils.constants import TaskStatus
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001)
+        task = SimpleNamespace(id=42, assignee_id=7, status=TaskStatus.COMPLETED)
+        session = AsyncMock()
+        session.get.return_value = task
+        session.scalar.return_value = SimpleNamespace(id=5, status='pending')
+        state = SimpleNamespace(
+            get_data=AsyncMock(return_value={
+                'leaders_task_id': 42, 'leaders_task_chat_id': -1001,
+            }),
+            clear=AsyncMock(),
+        )
+        message = SimpleNamespace(
+            chat=SimpleNamespace(id=-1001), text='Please revise',
+            reply=AsyncMock(),
+        )
+        with patch('app.handlers.leader_chat_workcenter._can_create', return_value=True), patch(
+            'app.handlers.leader_chat_workcenter.task_review_service.decide_submission',
+            new=AsyncMock(),
+        ) as decide:
+            await return_leaders_task_result(
+                message, state, session, settings, SimpleNamespace(id=1),
+                SimpleNamespace(id=1001), AsyncMock(),
+            )
+            decide.assert_not_awaited()
+        self.assertEqual(task.status, TaskStatus.COMPLETED)
+        state.clear.assert_awaited_once()
