@@ -73,7 +73,10 @@ class WeeklyReportView:
 
 
 def week_bounds(day: date | None = None) -> tuple[date, date]:
-    day = day or date.today()
+    # Weekly reports use Yerevan calendar weeks. UTC may still be Sunday
+    # when Monday has already begun for the organization.
+    if day is None:
+        day = datetime.now(ZoneInfo("Asia/Yerevan")).date()
     start = day - timedelta(days=day.weekday())
     return start, start + timedelta(days=6)
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import date, datetime, timedelta, timezone
+from unittest.mock import patch
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -152,6 +153,26 @@ class LeadershipWeeklyLoopTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 len((await session.scalars(select(LeadershipFeedback))).all()), 2
             )
+
+    def test_default_week_uses_yerevan_monday_during_utc_sunday(self) -> None:
+        # 20:15 UTC Sunday is already 00:15 Monday in Yerevan.
+        instant = datetime(2026, 10, 25, 20, 15, tzinfo=timezone.utc)
+        with (
+            patch.object(leadership_weekly_service, "date") as mocked_date,
+            patch.object(leadership_weekly_service, "datetime") as mocked_datetime,
+        ):
+            mocked_date.today.return_value = date(2026, 10, 25)
+            mocked_datetime.now.side_effect = lambda zone: instant.astimezone(zone)
+            self.assertEqual(
+                leadership_weekly_service.week_bounds(),
+                (date(2026, 10, 26), date(2026, 11, 1)),
+            )
+
+    def test_explicit_week_date_remains_unchanged(self) -> None:
+        self.assertEqual(
+            leadership_weekly_service.week_bounds(date(2026, 10, 25)),
+            (date(2026, 10, 19), date(2026, 10, 25)),
+        )
 
     async def test_missed_report_signal_is_idempotent(self) -> None:
         week_start, _ = leadership_weekly_service.week_bounds()
