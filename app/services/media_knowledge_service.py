@@ -31,10 +31,26 @@ async def revision(session, ident):
         AuditLog.entity_type == "media_library", AuditLog.entity_id == ident)) or 0)
 
 
-async def item_out(session, item):
+async def item_out(session, item, *, revision_value=None):
     return {"id": item.id, "kind": item.kind, "category": item.category, "title": item.title,
         "description": item.description, "url": item.url, "destination_type": item.destination_type,
-        "is_active": item.is_active, "pinned": item.sort_order < 100, "revision": await revision(session, item.id)}
+        "is_active": item.is_active, "pinned": item.sort_order < 100,
+        "revision": await revision(session, item.id) if revision_value is None else revision_value}
+
+
+async def list_items_out(session, *, include_archived=False):
+    """Return the catalogue with revisions in two queries, not one query per item."""
+    items = await list_items(session, include_archived=include_archived)
+    if not items:
+        return []
+    latest = (select(AuditLog.entity_id, func.max(AuditLog.id))
+        .join(MediaLibraryItem, MediaLibraryItem.id == AuditLog.entity_id)
+        .where(AuditLog.action.in_(ACTIONS), AuditLog.entity_type == "media_library")
+        .group_by(AuditLog.entity_id))
+    if not include_archived:
+        latest = latest.where(MediaLibraryItem.is_active.is_(True))
+    revisions = {ident: int(value) for ident, value in (await session.execute(latest)).all()}
+    return [await item_out(session, item, revision_value=revisions.get(item.id, 0)) for item in items]
 
 
 def validate(values):
