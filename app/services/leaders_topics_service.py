@@ -32,7 +32,7 @@ async def topic_id(session, chat_id: int, key: str) -> int | None:
     row = await session.scalar(select(AppSetting).where(AppSetting.key == f"leaders_forum:{chat_id}:{key}"))
     data = _topic_data(row)
     thread_id = data.get('thread_id')
-    if data.get('mode') == 'plain' or type(thread_id) is not int or thread_id <= 0:
+    if data.get('mode') not in (None, 'forum') or type(thread_id) is not int or thread_id <= 0:
         return None
     return thread_id
 
@@ -41,10 +41,15 @@ async def delivery_topic(session, chat_id, key):
     """Fail closed unless an explicit plain mode or a valid forum thread is saved."""
     row = await session.scalar(select(AppSetting).where(AppSetting.key == f'leaders_forum:{chat_id}:{key}'))
     data = _topic_data(row)
-    if data.get('mode') == 'plain':
+    mode = data.get('mode')
+    if mode == 'plain':
         if data.get('thread_id') is not None:
             raise ValueError('Настройки чата лидеров противоречат друг другу. Проверьте темы.')
         return None
+    # An unknown persisted mode is not proof that the saved thread belongs
+    # to this forum. Never route a task into a potentially unrelated topic.
+    if mode not in (None, 'forum'):
+        raise ValueError('Режим темы лидеров повреждён. Требуется ручная сверка.')
     thread_id = data.get('thread_id')
     if type(thread_id) is not int or thread_id <= 0:
         raise ValueError('Рабочая тема не настроена. Проверьте привязку чата лидеров.')
