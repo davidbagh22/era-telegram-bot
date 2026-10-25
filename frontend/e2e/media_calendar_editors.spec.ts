@@ -8,12 +8,15 @@ test("calendar editor confirmation limits editing to one area and revocation clo
   };
   const editorHeaders = await auth(900020);
   expect((await request.post("/api/v1/media/join", { headers: editorHeaders })).ok()).toBeTruthy();
+  const adminHeaders = await auth(900003);
+  const prior = await (await request.get("/api/v1/media/workspaces/era/editors", { headers: adminHeaders })).json();
+  const assigned = prior.editors.find((item: { name: string }) => item.name === "E2E Media Editor");
+  if (assigned) expect((await request.post("/api/v1/media/workspaces/era/editors", { headers: adminHeaders, data: { user_id: assigned.id, enabled: false, revision: prior.revision } })).ok()).toBeTruthy();
   await page.goto("/app/?devTelegramId=900003#/media/era");
   await page.getByRole("button", { name: "Редакторы календаря", exact: true }).click();
   await page.getByLabel("Новый редактор", { exact: true }).selectOption({ label: "E2E Media Editor" });
   await page.getByRole("button", { name: "Назначить редактора", exact: true }).click();
   await expect(page.getByRole("group", { name: "Подтверждение полномочий" })).toContainText("Предоставить доступ к календарю ЭРА: E2E Media Editor?");
-  const adminHeaders = await auth(900003);
   expect((await (await request.get("/api/v1/media/workspaces/era/editors", { headers: adminHeaders })).json()).editors).toEqual([]);
   await page.getByRole("button", { name: "Подтвердить полномочия", exact: true }).click();
   const revoke = page.getByRole("button", { name: "Снять доступ: E2E Media Editor", exact: true });
