@@ -4,15 +4,17 @@ from __future__ import annotations
 import asyncio
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
+from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy.engine import make_url
 
 from app.config import get_settings
 from app.database.base import Base
 from app.database.event_attendance import EventAttendanceSession  # noqa: F401
 from app.database.event_experience import EventExperience, EventReminderDelivery  # noqa: F401
 from app.database.leadership_models import LeaderChatMembership, WeeklyPulseCycle, WeeklyPulseSchedule
-from app.database.models import Badge, Event, EventActivity, EventActivitySubmission, PointTransaction, PermissionGrant, User, UserBadge
+from app.database.models import Badge, Event, EventActivity, EventActivitySubmission, EventRegistration, PointTransaction, PermissionGrant, PortfolioItem, Project, User, UserBadge
 from app.database.session import create_engine_and_sessionmaker
 from app.services.participation_lifecycle_service import complete_onboarding
 from app.utils.constants import ApplicationStatus, EventStatus, Role
@@ -25,9 +27,14 @@ PENDING_SYNC_APPLICANT_TELEGRAM_ID = 900005
 AUCTION_BIDDER_TELEGRAM_ID = 900006
 REWARD_REDEEMER_TELEGRAM_ID = 900007
 ACTIVITY_SUBMITTER_TELEGRAM_ID = 900008
+UNCONFIRMED_RESULTS_TELEGRAM_ID = 900019
 
 async def seed() -> None:
     settings = get_settings()
+    url = make_url(settings.database_url)
+    if (settings.is_render_deployment or not settings.dev_auth_enabled
+            or url.get_backend_name() != "sqlite" or "e2e" not in Path(url.database or "").name.lower()):
+        raise RuntimeError("E2E fixtures require an isolated e2e SQLite database in developer mode, never production")
     engine, session_factory = create_engine_and_sessionmaker(settings.database_url)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -40,8 +47,18 @@ async def seed() -> None:
         bidder = User(telegram_id=AUCTION_BIDDER_TELEGRAM_ID, first_name="E2E Auction Bidder", role=Role.PARTICIPANT, application_status=ApplicationStatus.APPROVED)
         redeemer = User(telegram_id=REWARD_REDEEMER_TELEGRAM_ID, first_name="E2E Reward Redeemer", role=Role.PARTICIPANT, application_status=ApplicationStatus.APPROVED)
         activity_submitter = User(telegram_id=ACTIVITY_SUBMITTER_TELEGRAM_ID, first_name="E2E Activity Submitter", role=Role.PARTICIPANT, application_status=ApplicationStatus.APPROVED)
-        session.add_all([participant, leader, admin, pending, pending_sync, bidder, redeemer, activity_submitter])
+        results_user = User(telegram_id=UNCONFIRMED_RESULTS_TELEGRAM_ID, first_name="E2E Unconfirmed", role=Role.PARTICIPANT, application_status=ApplicationStatus.APPROVED)
+        session.add_all([participant, leader, admin, pending, pending_sync, bidder, redeemer, activity_submitter, results_user])
         await session.flush()
+        session.add_all([
+            Project(author_id=results_user.id, title="Отменённый тестовый проект", short_description="Изолированная проверка", status="cancelled"),
+            PortfolioItem(user_id=results_user.id, title="Непроверенная тестовая запись", item_type="other", status="pending"),
+        ])
+        unconfirmed_event = Event(title="Регистрация без посещения", description="Изолированная проверка", event_date=date.today() + timedelta(days=2),
+            event_time=time(18), location="E2E", format="offline", created_by=admin.id)
+        session.add(unconfirmed_event)
+        await session.flush()
+        session.add(EventRegistration(user_id=results_user.id, event_id=unconfirmed_event.id, status="registered"))
         session.add(PermissionGrant(user_id=leader.id,permission='tasks.manage',scope_type='global',scope_id=0,granted_by=admin.id))
 
         if settings.leaders_chat_id:
@@ -75,7 +92,7 @@ async def seed() -> None:
                 ]
             )
 
-        e2e_telegram_ids = (PARTICIPANT_TELEGRAM_ID, LEADER_TELEGRAM_ID, ADMIN_TELEGRAM_ID, PENDING_APPLICANT_TELEGRAM_ID, PENDING_SYNC_APPLICANT_TELEGRAM_ID, AUCTION_BIDDER_TELEGRAM_ID, REWARD_REDEEMER_TELEGRAM_ID, ACTIVITY_SUBMITTER_TELEGRAM_ID)
+        e2e_telegram_ids = (PARTICIPANT_TELEGRAM_ID, LEADER_TELEGRAM_ID, ADMIN_TELEGRAM_ID, PENDING_APPLICANT_TELEGRAM_ID, PENDING_SYNC_APPLICANT_TELEGRAM_ID, AUCTION_BIDDER_TELEGRAM_ID, REWARD_REDEEMER_TELEGRAM_ID, ACTIVITY_SUBMITTER_TELEGRAM_ID, UNCONFIRMED_RESULTS_TELEGRAM_ID)
         e2e_users = (await session.scalars(select(User).where(User.telegram_id.in_(e2e_telegram_ids)))).all()
         for seeded_user in e2e_users:
             await complete_onboarding(session, seeded_user)

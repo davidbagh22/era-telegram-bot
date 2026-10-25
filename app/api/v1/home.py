@@ -32,6 +32,9 @@ class ActivityStatsOut(BaseModel):
     projects: int
     completed_tasks: int
     portfolio_items: int
+    completed_projects: int = 0
+    verified_portfolio_items: int = 0
+    attended_events: int = 0
 
 
 class NextStepOut(BaseModel):

@@ -232,6 +232,12 @@ async def user_stats(session: AsyncSession, user_id: int) -> dict[str, int]:
             Task, (Task.assignee_id == user_id) & (Task.status == "completed")
         ),
         "portfolio": await count(PortfolioItem, PortfolioItem.user_id == user_id),
+        "verified_portfolio": await count(
+            PortfolioItem, (PortfolioItem.user_id == user_id) & (PortfolioItem.status == "verified")
+        ),
+        "attended_events": await count(
+            EventRegistration, (EventRegistration.user_id == user_id) & (EventRegistration.status == "attended")
+        ),
     }
 
 

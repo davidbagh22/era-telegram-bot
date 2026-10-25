@@ -331,6 +331,30 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
             # could drift).
             self.assertEqual(snapshot.points_balance, snapshot.activity.points)
 
+    async def test_confirmed_results_exclude_cancelled_projects_and_pending_portfolio(self):
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            session.add_all([
+                Project(author_id=user.id, title="Отменён", short_description="d", status=ProjectStatus.CANCELLED),
+                Project(author_id=user.id, title="Черновик", short_description="d", status=ProjectStatus.DRAFT),
+                Project(author_id=user.id, title="Готов", short_description="d", status=ProjectStatus.COMPLETED),
+                PortfolioItem(user_id=user.id, title="На проверке", item_type="other", status="pending"),
+                PortfolioItem(user_id=user.id, title="Подтверждён", item_type="other", status="verified"),
+            ])
+            events = [Event(title=f"Событие {i}", description="d", event_date=date.today(), event_time=time(18),
+                            location="HQ", format="offline", created_by=user.id) for i in range(2)]
+            session.add_all(events)
+            await session.flush()
+            for event, status in zip(events, (RegistrationStatus.REGISTERED, RegistrationStatus.ATTENDED)):
+                session.add(EventRegistration(event_id=event.id, user_id=user.id, status=status))
+            await session.flush()
+            snapshot = await build_home_snapshot(session, user)
+            self.assertEqual(snapshot.activity.projects, 3)  # Existing total remains compatible.
+            self.assertEqual(snapshot.activity.completed_projects, 1)
+            self.assertEqual(snapshot.activity.portfolio_items, 2)
+            self.assertEqual(snapshot.activity.verified_portfolio_items, 1)
+            self.assertEqual(snapshot.activity.attended_events, 1)
+
     async def test_snapshot_carries_task_counts_and_vector_summary(self) -> None:
         async with self.session_factory() as session:
             user = await self._make_user(session)

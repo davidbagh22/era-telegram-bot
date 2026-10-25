@@ -63,6 +63,9 @@ export interface ActivityStats {
   projects: number;
   completed_tasks: number;
   portfolio_items: number;
+  completed_projects?: number;
+  verified_portfolio_items?: number;
+  attended_events?: number;
 }
 
 export interface VectorAreaSignal {

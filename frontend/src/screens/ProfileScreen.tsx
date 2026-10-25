@@ -140,7 +140,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "0.6rem", marginTop: "1rem" }}>
           <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{data.stats.points ?? 0}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.75rem" }}>баллов</span></div>
-          <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{totalResults}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.75rem" }}>результатов</span></div>
+          <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{totalResults}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.75rem" }}>записей в обзоре</span></div>
           <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{data.growth.level_index + 1}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.75rem" }}>этап пути</span></div>
         </div>
       </Card>
