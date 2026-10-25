@@ -199,6 +199,11 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
   const [applyStatus, setApplyStatus] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<"era" | "ksoors" | null>(initialView === "era" || initialView === "ksoors" ? initialView : null);
 
+  useEffect(() => {
+    setWorkspace(initialView === "era" || initialView === "ksoors" ? initialView : null);
+    setView(initialView === "guide" ? "guide" : "home");
+  }, [initialView]);
+
   // DELTA ToR §28: NO_ACCESS/PENDING never reach the library endpoint (it
   // 403s below MEDIA_MEMBER) -- fetching it unconditionally would turn a
   // normal "not a member yet" state into a hard error screen.
@@ -350,7 +355,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
   }
 
   if (view === "guide") return <MediaGuideScreen onBack={() => setView("home")} />;
-  if (workspace) return <MediaWorkspaceScreen area={workspace} onBack={() => setWorkspace(null)} />;
+  if (workspace) return <MediaWorkspaceScreen key={workspace} area={workspace} onBack={() => setWorkspace(null)} />;
 
   const header = (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

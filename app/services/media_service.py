@@ -253,13 +253,18 @@ async def apply_for_media(session: AsyncSession, user: User) -> MediaAccessLevel
 
 
 async def decide_media_application(
-    session: AsyncSession, target_user_id: int, action: Literal["approve", "reject", "revoke"]
+    session: AsyncSession, target_user_id: int, action: Literal["approve", "reject", "revoke"],
+    *, actor: User | None = None, settings: Settings | None = None
 ) -> None:
     """ToR §31 "Команда" approve/reject/revoke. Reject and revoke both land
     on status="rejected" -- the distinction that matters to the user (never
     applied vs. applied and declined) isn't meaningful to the ACL check,
     only to whoever is looking at the applications list."""
-    direction = await _media_direction(session)
+    await session.scalar(select(User.id).where(User.id == target_user_id).with_for_update())
+    direction = await session.scalar(select(Direction).where(Direction.name == MEDIA_DIRECTION_NAME).with_for_update())
+    if actor is not None and settings is not None:
+        from app.services.media_scope_service import require_manager
+        await require_manager(session, actor, settings)
     if direction is None:
         raise ValueError("media_direction_missing")
     row = await session.scalar(
@@ -273,6 +278,9 @@ async def decide_media_application(
         session.add(UserDirection(user_id=target_user_id, direction_id=direction.id, status="approved"))
     else:
         row.status = "approved" if action == "approve" else "rejected"
+    if action != "approve":
+        from app.services.media_scope_service import revoke_editor_grants
+        await revoke_editor_grants(session, target_user_id, direction.id, actor_id=actor.id if actor else None)
     await session.flush()
 
 

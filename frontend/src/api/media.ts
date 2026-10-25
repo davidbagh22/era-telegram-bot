@@ -164,6 +164,7 @@ export interface MediaWorkspace {
   platforms: Record<string, string>;
   topic_url: string;
   can_manage: boolean;
+  can_assign_editors: boolean;
 }
 export interface MediaCalendarEntry {
   id: number;
@@ -185,6 +186,10 @@ export const fetchMediaCalendar = (area: string, beforeId?: number, statusGroup:
   if (beforeId) params.set("before_id", String(beforeId));
   return request<MediaCalendarEntry[]>(`/api/v1/media/workspaces/${area}/calendar?${params.toString()}`);
 };
+export interface MediaCalendarEditors { revision: number; editors: MediaMember[] }
+export const fetchMediaCalendarTeam = (area: string) => request<MediaMember[]>(`/api/v1/media/workspaces/${area}/team`);
+export const fetchMediaCalendarEditors = (area: string) => request<MediaCalendarEditors>(`/api/v1/media/workspaces/${area}/editors`);
+export const changeMediaCalendarEditor = (area: string, payload: { user_id: number; enabled: boolean; revision: number }) => request<MediaCalendarEditors>(`/api/v1/media/workspaces/${area}/editors`, { method: "POST", body: JSON.stringify(payload) });
 export const createMediaCalendarEntry = (area: string, payload: object) => request<MediaCalendarEntry>(`/api/v1/media/workspaces/${area}/calendar`, { method: "POST", body: JSON.stringify(payload) });
 export const updateMediaCalendarEntry = (area: string, id: number, payload: object) => request<MediaCalendarEntry>(`/api/v1/media/workspaces/${area}/calendar/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 export const applyToMedia = () => request<MediaHub>("/api/v1/media/apply", { method: "POST" });
