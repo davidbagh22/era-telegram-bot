@@ -12,6 +12,8 @@ ACTION = "media.calendar_scope_changed"
 
 
 async def current_user(session, user):
+    if user is None:
+        return None
     return await session.scalar(select(User).where(User.id == user.id).execution_options(populate_existing=True))
 
 
@@ -62,7 +64,7 @@ async def scope_state(session, user, settings, area):
 async def set_editor(session, user, settings, area, target_id, enabled, expected_revision):
     if area not in AREA_IDS:
         raise ValueError("Неизвестное направление")
-    target = await session.scalar(select(User).where(User.id == target_id).with_for_update()
+    target = await session.scalar(select(User).where(User.id == target_id).with_for_update(key_share=True)
                                   .execution_options(populate_existing=True))
     direction = await session.scalar(select(Direction).where(Direction.name == "Медиа").with_for_update()
                                      .execution_options(populate_existing=True))
@@ -76,8 +78,9 @@ async def set_editor(session, user, settings, area, target_id, enabled, expected
         PermissionGrant.scope_type == "media_area", PermissionGrant.scope_id == AREA_IDS[area])
         .with_for_update().execution_options(populate_existing=True))
     active = bool(grant and grant.is_active)
-    valid_grantor = bool(grant and await media_service.can_manage_media(session,
-        await session.get(User, grant.granted_by), settings))
+    grantor = await session.scalar(select(User).where(User.id == grant.granted_by)
+        .execution_options(populate_existing=True)) if grant else None
+    valid_grantor = await media_service.can_manage_media(session, grantor, settings)
     current_revision = await revision(session, direction.id)
     if current_revision != expected_revision:
         if active == enabled and (not enabled or valid_grantor):

@@ -25,6 +25,9 @@ PLATFORMS = {"telegram", "instagram", "facebook", "tiktok", "youtube", "website"
 
 async def require_access(session, user, settings, *, write=False, area=None):
     if write:
+        # Match membership/assignment's User -> Direction ordering. NO KEY
+        # UPDATE still serializes access changes without blocking FK checks.
+        await session.scalar(select(User.id).where(User.id == user.id).with_for_update(key_share=True))
         await session.scalar(select(Direction.id).where(Direction.name == "Медиа").with_for_update())
     from app.services.media_scope_service import can_edit_calendar
     # Refresh the identity on every operation, including an unfinished form.

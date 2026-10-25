@@ -1,12 +1,56 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "../components/Card";
-import { createMediaCalendarEntry, fetchMediaCalendar, fetchMediaMembers, fetchMediaWorkspaces, updateMediaCalendarEntry, type MediaCalendarEntry, type MediaMember, type MediaWorkspace } from "../api/media";
+import { changeMediaCalendarEditor, createMediaCalendarEntry, fetchMediaCalendar, fetchMediaCalendarEditors, fetchMediaCalendarTeam, fetchMediaWorkspaces, updateMediaCalendarEntry, type MediaCalendarEditors, type MediaCalendarEntry, type MediaMember, type MediaWorkspace } from "../api/media";
 
 const statuses: Record<string, string> = { idea: "Идея", planned: "В подготовке", assigned: "Назначено", in_progress: "В работе", review: "На согласовании", ready: "Готово", scheduled: "Запланировано", published: "Опубликовано", skipped: "Отменено", failed: "Ошибка доставки" };
 const platforms: Record<string, string> = { telegram: "Telegram", instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube" };
 const button: React.CSSProperties = { border: "1px solid var(--era-border)", background: "var(--era-surface-2)", color: "var(--era-text)", borderRadius: 12, padding: ".7rem .9rem", fontWeight: 700, cursor: "pointer" };
 const input: React.CSSProperties = { width: "100%", boxSizing: "border-box", background: "var(--era-surface-2)", color: "var(--era-text)", border: "1px solid var(--era-border)", borderRadius: 10, padding: ".7rem", font: "inherit" };
 const dateLabel = (value: string | null) => value ? new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Yerevan", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "Без даты";
+
+function Editors({ area, members }: { area: string; members: MediaMember[] }) {
+  const [state, setState] = useState<MediaCalendarEditors | null>(null);
+  const [target, setTarget] = useState("");
+  const [confirmation, setConfirmation] = useState<{ member: MediaMember; enabled: boolean; revision: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let alive = true;
+    void fetchMediaCalendarEditors(area).then(value => { if (alive) setState(value); })
+      .catch(cause => { if (alive) setError(cause instanceof Error ? cause.message : "Не удалось загрузить редакторов"); });
+    return () => { alive = false; };
+  }, [area]);
+  const confirm = async () => {
+    if (!confirmation) return;
+    setBusy(true); setError("");
+    try {
+      setState(await changeMediaCalendarEditor(area, { user_id: confirmation.member.id, enabled: confirmation.enabled, revision: confirmation.revision }));
+      setConfirmation(null); setTarget("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось изменить полномочия");
+      setConfirmation(null);
+      try { setState(await fetchMediaCalendarEditors(area)); } catch { setState(null); }
+    } finally { setBusy(false); }
+  };
+  const selected = members.find(member => String(member.id) === target);
+  return <Card style={{ display: "grid", gap: 12 }}>
+    <strong>Редакторы календаря · {area === "era" ? "ЭРА" : "КСООРС"}</strong>
+    <small>Редактор ведёт календарь выбранного направления. Назначать редакторов может руководитель медиа или председатель.</small>
+    {!state && !error && <p>Загружаем полномочия…</p>}
+    {state && <>
+      {!state.editors.length && <p style={{ margin: 0 }}>Редакторы пока не назначены.</p>}
+      {state.editors.map(member => <div key={member.id} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}><span>{member.name}</span><button style={button} disabled={busy} onClick={() => setConfirmation({ member, enabled: false, revision: state.revision })}>Снять доступ: {member.name}</button></div>)}
+      <label>Новый редактор<select aria-label="Новый редактор" style={input} value={target} disabled={busy} onChange={event => { setTarget(event.target.value); setConfirmation(null); }}><option value="">Выберите участника медиа</option>{members.filter(member => !state.editors.some(editor => editor.id === member.id)).map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
+      <button style={button} disabled={busy || !selected} onClick={() => selected && setConfirmation({ member: selected, enabled: true, revision: state.revision })}>Назначить редактора</button>
+    </>}
+    {confirmation && <div role="group" aria-label="Подтверждение полномочий" style={{ display: "grid", gap: 10 }}>
+      <p style={{ margin: 0 }}>{confirmation.enabled ? "Предоставить" : "Снять"} доступ к календарю {area === "era" ? "ЭРА" : "КСООРС"}: {confirmation.member.name}?</p>
+      <button style={button} disabled={busy} onClick={() => void confirm()}>{busy ? "Сохраняем…" : "Подтвердить полномочия"}</button>
+      <button style={button} disabled={busy} onClick={() => setConfirmation(null)}>Отмена</button>
+    </div>}
+    {error && <p role="alert">{error}</p>}
+  </Card>;
+}
 
 function Entry({ item, area, manager, members, onChanged }: { item: MediaCalendarEntry; area: string; manager: boolean; members: MediaMember[]; onChanged: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
@@ -63,6 +107,7 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [showEditors, setShowEditors] = useState(false);
   const [busy, setBusy] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -79,7 +124,7 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
       try {
         const workspaces = await fetchMediaWorkspaces();
         const current = workspaces.find(item => item.id === area) ?? null;
-        const [entries, team] = await Promise.all([fetchMediaCalendar(area), current?.can_manage ? fetchMediaMembers() : Promise.resolve([])]);
+        const [entries, team] = await Promise.all([fetchMediaCalendar(area), fetchMediaCalendarTeam(area)]);
         if (alive) { setWorkspace(current); setItems(entries); setMembers(team); }
       } catch (cause) { if (alive) setError(cause instanceof Error ? cause.message : "Не удалось открыть календарь"); }
       finally { if (alive) setLoading(false); }
@@ -101,6 +146,8 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
     {error && <p role="alert">{error}</p>}
     {workspace && <>
       <Card><strong>Площадки направления</strong><div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 10 }}>{Object.entries(workspace.platforms).map(([key, url]) => <a key={key} href={url} target="_blank" rel="noopener noreferrer">{platforms[key]} ↗</a>)}</div></Card>
+      {workspace.can_assign_editors && <button style={button} onClick={() => setShowEditors(!showEditors)}>{showEditors ? "Закрыть полномочия" : "Редакторы календаря"}</button>}
+      {showEditors && workspace.can_assign_editors && <Editors key={area} area={area} members={members} />}
       {workspace.can_manage && <button style={button} onClick={() => setShowForm(!showForm)}>{showForm ? "Закрыть форму" : "+ Добавить материал"}</button>}
       {showForm && workspace.can_manage && <Card><form onSubmit={event => void save(event)} style={{ display: "grid", gap: 12 }}>
         <label>Название<input required minLength={2} maxLength={255} value={title} onChange={event => setTitle(event.target.value)} style={input} /></label>
