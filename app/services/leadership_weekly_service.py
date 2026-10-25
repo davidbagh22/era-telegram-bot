@@ -612,10 +612,16 @@ async def run_missed_report_signals(
     return created
 
 
+async def _pulse_delivery_topic(session, settings):
+    if not settings.leaders_chat_id or settings.leaders_chat_id == settings.general_chat_id:
+        raise ValueError("Чат лидеров должен быть привязан отдельно от общего чата")
+    return await delivery_topic(session, settings.leaders_chat_id, "pulse")
+
+
 async def _send_cycle_announcement(session, bot, settings, cycle, cycle_deadline):
     """Freeze the group announcement and use the existing durable delivery ledger."""
     try:
-        thread_id = await delivery_topic(session, settings.leaders_chat_id, "pulse")
+        thread_id = await _pulse_delivery_topic(session, settings)
     except ValueError:
         logging.getLogger(__name__).warning("Pulse topic needs reconciliation; announcement withheld")
         return False
@@ -779,7 +785,7 @@ async def open_weekly_pulses_job(
         )
         cycle.submitted_count = int(submitted or 0)
         try:
-            await delivery_topic(session, settings.leaders_chat_id, "pulse")
+            await _pulse_delivery_topic(session, settings)
             route_valid = True
         except ValueError:
             route_valid = False

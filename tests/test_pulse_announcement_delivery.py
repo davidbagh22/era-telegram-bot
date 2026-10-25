@@ -71,6 +71,13 @@ class PulseAnnouncementDeliveryTests(IsolatedAsyncioTestCase):
             self.assertTrue(await _send_cycle_announcement(session, self.bot, self.settings, self.cycle, self.deadline))
             self.assertNotIn("message_thread_id", self.bot.send_message.await_args.kwargs)
 
+    async def test_general_chat_is_never_used_as_the_leaders_destination(self):
+        async with self.factory() as session:
+            await self.topic(session, {"mode": "forum", "thread_id": 7})
+            self.settings.general_chat_id = self.settings.leaders_chat_id
+            self.assertFalse(await _send_cycle_announcement(session, self.bot, self.settings, self.cycle, self.deadline))
+            self.bot.send_message.assert_not_awaited()
+
     async def test_corrupt_saved_snapshot_never_sends(self):
         async with self.factory() as session:
             await self.topic(session, {"mode": "plain", "thread_id": None})
