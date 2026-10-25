@@ -28,7 +28,7 @@ async def require_access(session, user, settings, *, write=False):
     current = await session.scalar(select(User).where(User.id == user.id).execution_options(populate_existing=True))
     level = await media_service.media_access_level(session, current, settings)
     if not media_service.can_use_media_hub(level) or (write and not await media_service.can_manage_media(session, current, settings)):
-        raise PermissionError("media_workspace_access_required")
+        raise PermissionError("Доступ к календарю медиаотдела закрыт. Проверьте полномочия и обновите страницу.")
 
 
 def area_of(item):

@@ -38,7 +38,7 @@ function Entry({ item, area, manager, members, onChanged }: { item: MediaCalenda
       {editing && <div style={{ display: "grid", gap: 10 }}>
         <label>Название материала<input style={input} value={title} maxLength={255} onChange={event => setTitle(event.target.value)} /></label>
         <label>Текст материала<textarea style={input} value={body} maxLength={4096} onChange={event => setBody(event.target.value)} /></label>
-        <label>Новый ответственный<select style={input} value={responsible} onChange={event => setResponsible(event.target.value)}><option value="">Пока не назначен</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
+        <label>Новый ответственный<select aria-label="Новый ответственный" style={input} value={responsible} onChange={event => setResponsible(event.target.value)}><option value="">Пока не назначен</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
         <button style={button} disabled={busy || title.trim().length < 2} onClick={() => void change({ title: title.trim(), body, responsible_id: responsible ? Number(responsible) : null })}>Сохранить изменения</button>
       </div>}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -105,13 +105,13 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
       {showForm && workspace.can_manage && <Card><form onSubmit={event => void save(event)} style={{ display: "grid", gap: 12 }}>
         <label>Название<input required minLength={2} maxLength={255} value={title} onChange={event => setTitle(event.target.value)} style={input} /></label>
         <label>Текст / замысел<textarea maxLength={4096} rows={4} value={body} onChange={event => setBody(event.target.value)} style={input} /></label>
-        <label>Площадка<select value={platform} onChange={event => setPlatform(event.target.value)} style={input}>{Object.entries(platforms).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
+        <label>Площадка<select aria-label="Площадка" value={platform} onChange={event => setPlatform(event.target.value)} style={input}>{Object.entries(platforms).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
         <label>Дата и время · Ереван<input type="datetime-local" value={date} onChange={event => setDate(event.target.value)} style={input} /></label>
-        <label>Ответственный<select value={responsible} onChange={event => setResponsible(event.target.value)} style={input}><option value="">Пока не назначен</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
+        <label>Ответственный<select aria-label="Ответственный" value={responsible} onChange={event => setResponsible(event.target.value)} style={input}><option value="">Пока не назначен</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
         <label>Материалы и ссылки<textarea maxLength={3000} value={materials} onChange={event => setMaterials(event.target.value)} style={input} /></label>
         <button style={button} disabled={busy || title.trim().length < 2} type="submit">{busy ? "Сохраняем…" : "Сохранить в календаре"}</button>
       </form></Card>}
-      <label>Показать<select style={input} value={filter} onChange={event => setFilter(event.target.value)}><option value="active">В работе</option><option value="published">Опубликованные</option><option value="all">Все материалы</option></select></label>
+      <label>Показать<select aria-label="Показать" style={input} value={filter} onChange={event => setFilter(event.target.value)}><option value="active">В работе</option><option value="published">Опубликованные</option><option value="all">Все материалы</option></select></label>
       {items.filter(item => filter === "all" || (filter === "published" ? item.status === "published" : !["published", "skipped"].includes(item.status))).map(item => <Entry key={item.id} area={area} item={item} manager={workspace.can_manage} members={members} onChanged={reload} />)}
       {!items.length && <Card>Материалов пока нет. Руководитель может добавить первый.</Card>}
       <small>Показаны последние 100 материалов. Публикации во внешние сервисы автоматически не отправляются.</small>
