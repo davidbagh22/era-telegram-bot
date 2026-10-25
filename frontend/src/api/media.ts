@@ -158,6 +158,31 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const fetchMediaHub = () => request<MediaHub>("/api/v1/media/hub");
+export interface MediaWorkspace {
+  id: "era" | "ksoors";
+  title: string;
+  platforms: Record<string, string>;
+  topic_url: string;
+  can_manage: boolean;
+}
+export interface MediaCalendarEntry {
+  id: number;
+  area: string;
+  title: string;
+  body: string;
+  platform: string;
+  status: string;
+  scheduled_at: string | null;
+  responsible_id: number | null;
+  materials: string;
+  publication_url: string | null;
+  publication_evidence: string | null;
+  revision: number;
+}
+export const fetchMediaWorkspaces = () => request<MediaWorkspace[]>("/api/v1/media/workspaces");
+export const fetchMediaCalendar = (area: string) => request<MediaCalendarEntry[]>(`/api/v1/media/workspaces/${area}/calendar`);
+export const createMediaCalendarEntry = (area: string, payload: object) => request<MediaCalendarEntry>(`/api/v1/media/workspaces/${area}/calendar`, { method: "POST", body: JSON.stringify(payload) });
+export const updateMediaCalendarEntry = (area: string, id: number, payload: object) => request<MediaCalendarEntry>(`/api/v1/media/workspaces/${area}/calendar/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 export const applyToMedia = () => request<MediaHub>("/api/v1/media/apply", { method: "POST" });
 export const joinMedia = () => request<MediaHub>("/api/v1/media/join", { method: "POST" });
 export const fetchMediaLibrary = () => request<MediaLibraryItem[]>("/api/v1/media/library");

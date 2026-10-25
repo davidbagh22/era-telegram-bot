@@ -31,6 +31,7 @@ from app.database.models import AppSetting, Direction, Event, Project, Task, Use
 from app.services.authorization_service import is_full_admin
 from app.services.chat_registry_service import check_chats_health
 from app.services.media_chat_activity_service import chat_activity_summary
+from app.services.media_pipeline_service import is_calendar_managed
 from app.utils.constants import ApplicationStatus, TaskStatus
 
 MEDIA_SETTINGS_KEY = "media_os_settings"
@@ -535,6 +536,8 @@ async def create_idea(session: AsyncSession, user: User, text: str) -> MediaCont
 async def reschedule_content(
     session: AsyncSession, item: MediaContentItem, scheduled_at: datetime
 ) -> MediaContentItem:
+    if is_calendar_managed(item):
+        raise ValueError("Используйте календарь выбранного направления")
     if item.status == "published":
         raise ValueError("already_published")
     item.scheduled_at = scheduled_at.astimezone(timezone.utc)
@@ -544,6 +547,8 @@ async def reschedule_content(
 
 
 async def skip_content(session: AsyncSession, item: MediaContentItem) -> MediaContentItem:
+    if is_calendar_managed(item):
+        raise ValueError("Используйте календарь выбранного направления")
     if item.status == "published":
         raise ValueError("already_published")
     item.status = "skipped"
@@ -748,6 +753,11 @@ async def publish_content(
     """Publish exactly once unless a human explicitly retries a known-safe failure."""
     if item.status == "published":
         return PublishResult(False, "already_published", item.telegram_message_id)
+    workspace = item.metadata_json or {}
+    if workspace.get("media_area", "era") != "era" or workspace.get("platform", "telegram") != "telegram":
+        return PublishResult(False, "external_publication_requires_authorized_integration")
+    if is_calendar_managed(item) and (not manual or item.status != "ready"):
+        return PublishResult(False, "editorial_approval_required")
     if not manual and item.source_kind != "authored_pack":
         return PublishResult(False, "auto_authored_only")
 
@@ -1065,6 +1075,8 @@ async def analytics(session: AsyncSession, settings: Settings | None = None) -> 
             select(func.count()).select_from(MediaContentItem).where(
                 MediaContentItem.status == "published",
                 MediaContentItem.published_at >= period_start,
+                func.coalesce(MediaContentItem.metadata_json["media_area"].as_string(), "era") == "era",
+                func.coalesce(MediaContentItem.metadata_json["platform"].as_string(), "telegram") == "telegram",
             )
         )
         or 0

@@ -40,7 +40,7 @@ interface DeepLink {
   userId: number | null;
   specialScreen: SpecialScreen | null;
   developmentRoute: DevelopmentRoute | null;
-  mediaRoute: "guide" | null;
+  mediaRoute: "guide" | "era" | "ksoors" | null;
   invalid: boolean;
 }
 
@@ -183,6 +183,7 @@ function parseDeepLink(): DeepLink | null {
   }
 
   if (route === "media/guide") return link({ tab: "community", communitySection: "media", mediaRoute: "guide" });
+  if (route === "media/era" || route === "media/ksoors") return link({ tab: "community", communitySection: "media", mediaRoute: route === "media/era" ? "era" : "ksoors" });
 
   if (route === "progress") return link({ tab: "home", specialScreen: "progress" });
   if (route === "leaderboard") return link({ tab: "community", communitySection: "leaderboard" });
@@ -216,7 +217,7 @@ function renderTab(
   initialActivitySection: LegacyActivitySection | null,
   initialCommunitySection: CommunitySection | null,
   initialItemId: number | null,
-  initialMediaRoute: "guide" | null,
+  initialMediaRoute: "guide" | "era" | "ksoors" | null,
   isDeepLinkedTab: boolean,
   onTabChange: (tab: TabKey) => void,
 ) {

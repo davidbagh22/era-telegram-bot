@@ -443,6 +443,8 @@ async def update_media_content(
         raise HTTPException(status_code=404, detail="content_not_found")
     if item.status == "published":
         raise HTTPException(status_code=409, detail="already_published")
+    if media_service.is_calendar_managed(item):
+        raise HTTPException(status_code=409, detail="Используйте календарь выбранного направления")
     changes = payload.model_dump(exclude_unset=True)
     if "body" in changes:
         item.body = changes["body"].strip() if changes["body"] else None
