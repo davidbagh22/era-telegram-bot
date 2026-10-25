@@ -82,6 +82,7 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
                 self.assertEqual(repeat.json()["id"], first.json()["id"])
                 listing = await client.get("/media/workspaces/ksoors/calendar")
                 self.assertEqual(len(listing.json()), 1)
+                self.assertTrue(listing.json()[0]["scheduled_at"].endswith("+00:00"))
                 self.assertEqual((await client.get("/media/workspaces/era/calendar")).json(), [])
                 app.dependency_overrides[get_current_user] = lambda: member
                 self.assertEqual((await client.get("/media/workspaces/ksoors/calendar")).status_code, 200)

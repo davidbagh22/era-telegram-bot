@@ -37,9 +37,12 @@ def area_of(item):
 
 def item_out(item):
     data = item.metadata_json or {}
+    scheduled_at = item.scheduled_at
+    if scheduled_at is not None and scheduled_at.tzinfo is None:
+        scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
     return {"id": item.id, "area": area_of(item), "title": item.title or item.rubric or "Материал",
         "body": item.body or "", "platform": data.get("platform", "telegram"), "status": item.status,
-        "scheduled_at": item.scheduled_at.isoformat() if item.scheduled_at else None,
+        "scheduled_at": scheduled_at.isoformat() if scheduled_at else None,
         "responsible_id": data.get("responsible_id"), "materials": data.get("materials", ""),
         "publication_url": data.get("publication_url"), "publication_evidence": data.get("publication_evidence"),
         "revision": data.get("workspace_revision", 0)}
