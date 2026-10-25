@@ -28,6 +28,7 @@ AUCTION_BIDDER_TELEGRAM_ID = 900006
 REWARD_REDEEMER_TELEGRAM_ID = 900007
 ACTIVITY_SUBMITTER_TELEGRAM_ID = 900008
 UNCONFIRMED_RESULTS_TELEGRAM_ID = 900019
+MEDIA_EDITOR_TELEGRAM_ID = 900020
 
 async def seed() -> None:
     settings = get_settings()
@@ -48,7 +49,8 @@ async def seed() -> None:
         redeemer = User(telegram_id=REWARD_REDEEMER_TELEGRAM_ID, first_name="E2E Reward Redeemer", role=Role.PARTICIPANT, application_status=ApplicationStatus.APPROVED)
         activity_submitter = User(telegram_id=ACTIVITY_SUBMITTER_TELEGRAM_ID, first_name="E2E Activity Submitter", role=Role.PARTICIPANT, application_status=ApplicationStatus.APPROVED)
         results_user = User(telegram_id=UNCONFIRMED_RESULTS_TELEGRAM_ID, first_name="E2E Unconfirmed", role=Role.PARTICIPANT, application_status=ApplicationStatus.APPROVED)
-        session.add_all([participant, leader, admin, pending, pending_sync, bidder, redeemer, activity_submitter, results_user])
+        media_editor = User(telegram_id=MEDIA_EDITOR_TELEGRAM_ID, first_name="E2E Media Editor", application_status=ApplicationStatus.APPROVED)
+        session.add_all([participant, leader, admin, pending, pending_sync, bidder, redeemer, activity_submitter, results_user, media_editor])
         await session.flush()
         session.add_all([
             Project(author_id=results_user.id, title="Отменённый тестовый проект", short_description="Изолированная проверка", status="cancelled"),
@@ -92,7 +94,7 @@ async def seed() -> None:
                 ]
             )
 
-        e2e_telegram_ids = (PARTICIPANT_TELEGRAM_ID, LEADER_TELEGRAM_ID, ADMIN_TELEGRAM_ID, PENDING_APPLICANT_TELEGRAM_ID, PENDING_SYNC_APPLICANT_TELEGRAM_ID, AUCTION_BIDDER_TELEGRAM_ID, REWARD_REDEEMER_TELEGRAM_ID, ACTIVITY_SUBMITTER_TELEGRAM_ID, UNCONFIRMED_RESULTS_TELEGRAM_ID)
+        e2e_telegram_ids = (PARTICIPANT_TELEGRAM_ID, LEADER_TELEGRAM_ID, ADMIN_TELEGRAM_ID, PENDING_APPLICANT_TELEGRAM_ID, PENDING_SYNC_APPLICANT_TELEGRAM_ID, AUCTION_BIDDER_TELEGRAM_ID, REWARD_REDEEMER_TELEGRAM_ID, ACTIVITY_SUBMITTER_TELEGRAM_ID, UNCONFIRMED_RESULTS_TELEGRAM_ID, MEDIA_EDITOR_TELEGRAM_ID)
         e2e_users = (await session.scalars(select(User).where(User.telegram_id.in_(e2e_telegram_ids)))).all()
         for seeded_user in e2e_users:
             await complete_onboarding(session, seeded_user)

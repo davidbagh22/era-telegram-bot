@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.database.media_models import MediaContentItem
-from app.database.models import User
+from app.database.models import Direction, User
 from app.services import media_service
 from app.services.audit_service import audit
 from app.services.media_pipeline_service import can_transition
@@ -23,11 +23,17 @@ AREAS = {
 PLATFORMS = {"telegram", "instagram", "facebook", "tiktok", "youtube", "website"}
 
 
-async def require_access(session, user, settings, *, write=False):
+async def require_access(session, user, settings, *, write=False, area=None):
+    if write:
+        # Match membership/assignment's User -> Direction ordering. NO KEY
+        # UPDATE still serializes access changes without blocking FK checks.
+        await session.scalar(select(User.id).where(User.id == user.id).with_for_update(key_share=True))
+        await session.scalar(select(Direction.id).where(Direction.name == "Медиа").with_for_update())
+    from app.services.media_scope_service import can_edit_calendar
     # Refresh the identity on every operation, including an unfinished form.
     current = await session.scalar(select(User).where(User.id == user.id).execution_options(populate_existing=True))
     level = await media_service.media_access_level(session, current, settings)
-    if not media_service.can_use_media_hub(level) or (write and not await media_service.can_manage_media(session, current, settings)):
+    if not media_service.can_use_media_hub(level) or (write and not await can_edit_calendar(session, current, settings, area)):
         raise PermissionError("Доступ к календарю медиаотдела закрыт. Проверьте полномочия и обновите страницу.")
 
 
@@ -85,15 +91,27 @@ def _publication_url(value, platform):
         raise ValueError("Нужна HTTPS-ссылка на опубликованный материал выбранной платформы")
     if platform == "telegram":
         parts = parsed.path.strip("/").split("/")
-        if len(parts) < 2 or not parts[-1].isdigit():
-            raise ValueError("Укажите ссылку на публикацию, а не на канал")
+        # A channel post is /channel/message_id or /c/chat_id/message_id.
+        # A channel link (/c/chat_id), an extra path component, or message 0
+        # is not evidence that the scheduled material was published.
+        is_public_post = (
+            len(parts) == 2 and parts[0] != "c"
+            and bool(parts[0]) and parts[1].isascii() and parts[1].isdecimal()
+            and int(parts[1]) > 0
+        )
+        is_private_post = (
+            len(parts) == 3 and parts[0] == "c"
+            and all(part.isascii() and part.isdecimal() and int(part) > 0 for part in parts[1:])
+        )
+        if not (is_public_post or is_private_post):
+            raise ValueError("Укажите прямую ссылку на сообщение Telegram, а не на канал или тему")
     return value
 
 
 async def create_entry(session, user, settings, area, values, request_key):
     if area not in AREAS:
         raise ValueError("Неизвестное направление")
-    await require_access(session, user, settings, write=True)
+    await require_access(session, user, settings, write=True, area=area)
     await _validate_responsible(session, values.get("responsible_id"))
     fingerprint = hashlib.sha256(json.dumps(values, sort_keys=True, default=str).encode()).hexdigest()
     key = f"workspace:{user.id}:{request_key}"
@@ -121,7 +139,7 @@ async def create_entry(session, user, settings, area, values, request_key):
 
 
 async def update_entry(session, user, settings, area, item_id, values, revision):
-    await require_access(session, user, settings, write=True)
+    await require_access(session, user, settings, write=True, area=area)
     item = await session.scalar(select(MediaContentItem).where(MediaContentItem.id == item_id)
         .with_for_update().execution_options(populate_existing=True))
     if item is None or area_of(item) != area:

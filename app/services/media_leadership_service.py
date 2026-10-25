@@ -56,6 +56,9 @@ async def change_leader(session: AsyncSession, actor: User, settings: Settings, 
     if direction.leader_id == target_id:
         return target
     previous = direction.leader_id
+    if previous is not None:
+        from app.services.media_scope_service import revoke_editor_grants
+        await revoke_editor_grants(session, previous, direction.id, actor_id=actor.id, include_delegations=True)
     direction.leader_id = target_id
     await audit(session, actor_id=actor.id, action="media.leader_changed", entity_type="direction",
                 entity_id=direction.id, old_value={"leader_id": previous}, new_value={"leader_id": target_id})
