@@ -346,9 +346,12 @@ async def decide_media_applicant(
     payload: MediaDecisionIn,
     _user: User = Depends(require_media_desk),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, str]:
     try:
-        await media_service.decide_media_application(session, user_id, payload.action)
+        await media_service.decide_media_application(session, user_id, payload.action, actor=_user, settings=settings)
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     return {"status": "ok"}
