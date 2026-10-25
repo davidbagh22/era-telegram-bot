@@ -265,6 +265,14 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
             )
             session.add_all([manager, member])
             await session.flush()
+            department = Department(name="Внешние связи")
+            session.add(department)
+            await session.flush()
+            direction = Direction(name="Медиа", department_id=department.id)
+            session.add(direction)
+            await session.flush()
+            session.add(UserDirection(user_id=member.id, direction_id=direction.id, status="approved"))
+            await session.flush()
             item = await media_service.create_content(
                 session,
                 creator_id=manager.id,

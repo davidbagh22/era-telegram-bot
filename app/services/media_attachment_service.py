@@ -73,13 +73,13 @@ async def confirm_attachment(
         raise ValueError("attachment_not_found")
     if attachment.uploader_id != user.id:
         raise PermissionError("attachment_owner_required")
+    task = await session.get(Task, attachment.target_id)
+    if task is None or not await task_service.can_submit(session, task, user):
+        raise PermissionError("task_not_owned")
     if attachment.status == "attached":
         return attachment
     if attachment.status != "pending":
         raise ValueError("attachment_not_pending")
-    task = await session.get(Task, attachment.target_id)
-    if task is None or not await task_service.can_submit(session, task, user):
-        raise PermissionError("task_not_owned")
     attachment.status = "attached"
     attachment.confirmed_at = datetime.now(timezone.utc)
     await session.flush()

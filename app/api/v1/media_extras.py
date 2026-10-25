@@ -256,7 +256,7 @@ async def read_my_media_task_attachments(
     session: AsyncSession = Depends(get_session),
 ) -> list[AttachmentOut]:
     task = await session.get(Task, task_id)
-    if task is None or not await task_service.can_view(session, task, user):
+    if task is None or not await task_service.can_submit(session, task, user):
         raise HTTPException(status_code=404, detail="task_not_found")
     return [
         _attachment_out(item)
