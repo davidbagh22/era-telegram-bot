@@ -135,6 +135,44 @@ async def task_id_for_replied_card(
     )
 
 
+TELEGRAM_MESSAGE_MAX_UTF16_UNITS = 4096
+MEDIA_TASK_CARD_TRUNCATED = "\n… (текст сокращён, полное описание — в Mini App)"
+
+
+def _utf16_units(value: str) -> int:
+    # Emoji can occupy two UTF-16 units. Count both so the Telegram limit
+    # cannot be exceeded by an emoji-heavy task description.
+    return len(value.encode("utf-16-le")) // 2
+
+
+def _media_task_card_text(task: Task) -> str:
+    header = "🎬 Медиа-задача\n\n"
+    deadline = (
+        task.deadline.astimezone(timezone.utc).strftime("%d.%m %H:%M")
+        if task.deadline else "Без срока"
+    )
+    footer = (
+        f"\n\nДедлайн: {deadline}\n"
+        f"Баллы после проверки: +{task.points}\n\n"
+        "Возьмите задачу в Mini App. Если отправляете файл сюда — "
+        "ответьте именно на эту карточку. Бот отдельно спросит подтверждение."
+    )
+    body = f"{task.title or 'Без названия'}\n\n{task.description or 'Без описания'}"
+    available = TELEGRAM_MESSAGE_MAX_UTF16_UNITS - _utf16_units(header + footer)
+    if _utf16_units(body) > available:
+        budget = available - _utf16_units(MEDIA_TASK_CARD_TRUNCATED)
+        # Binary search by UTF-16 units for emoji-heavy descriptions.
+        lo, hi = 0, len(body)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if _utf16_units(body[:mid]) <= budget:
+                lo = mid
+            else:
+                hi = mid - 1
+        body = body[:lo].rstrip() + MEDIA_TASK_CARD_TRUNCATED
+    return header + body + footer
+
+
 async def post_missing_media_task_cards(
     bot: Bot,
     settings: Settings,
@@ -177,15 +215,7 @@ async def post_missing_media_task_cards(
             )
             if exists:
                 continue
-            text = (
-                "🎬 Медиа-задача\n\n"
-                f"{task.title}\n\n"
-                f"{task.description}\n\n"
-                f"Дедлайн: {task.deadline.astimezone(timezone.utc).strftime('%d.%m %H:%M') if task.deadline else 'Без срока'}\n"
-                f"Баллы после проверки: +{task.points}\n\n"
-                "Возьмите задачу в Mini App. Если отправляете файл сюда — "
-                "ответьте именно на эту карточку. Бот отдельно спросит подтверждение."
-            )
+            text = _media_task_card_text(task)
             # Claim the unique notice key *before* Telegram I/O. A timeout
             # may mean Telegram published the card; retrying without a durable
             # claim can spam the chat or attach replies to the wrong card.

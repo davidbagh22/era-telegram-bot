@@ -251,5 +251,40 @@ class MediaTaskCardDeliveryTests(unittest.IsolatedAsyncioTestCase):
         bot.send_message.assert_not_awaited()
 
 
+    async def test_long_description_is_truncated_without_losing_instructions(self):
+        async with self.factory() as session:
+            task = await session.get(Task, self.task_id)
+            task.description = "Подробности " * 1000
+            await session.commit()
+        bot = SimpleNamespace(send_message=AsyncMock(
+            return_value=SimpleNamespace(message_id=910),
+        ))
+        await post_missing_media_task_cards(bot, self.settings, self.factory)
+        bot.send_message.assert_awaited_once()
+        text = bot.send_message.await_args.args[1]
+        self.assertLessEqual(len(text.encode("utf-16-le")) // 2, 4096)
+        self.assertIn("текст сокращён", text)
+        self.assertIn("Без срока", text)
+        self.assertIn("ответьте именно на эту карточку", text)
+        self.assertEqual((await self.notice()).telegram_message_id, 910)
+
+    async def test_emoji_heavy_task_does_not_exceed_telegram_utf16_limit(self):
+        async with self.factory() as session:
+            task = await session.get(Task, self.task_id)
+            task.title = "🎬" * 3000
+            task.description = "📸" * 3000
+            await session.commit()
+        bot = SimpleNamespace(send_message=AsyncMock(
+            return_value=SimpleNamespace(message_id=911),
+        ))
+        await post_missing_media_task_cards(bot, self.settings, self.factory)
+        bot.send_message.assert_awaited_once()
+        text = bot.send_message.await_args.args[1]
+        self.assertLessEqual(len(text.encode("utf-16-le")) // 2, 4096)
+        self.assertIn("текст сокращён", text)
+        self.assertIn("Баллы после проверки", text)
+        self.assertEqual((await self.notice()).telegram_message_id, 911)
+
+
 if __name__ == "__main__":
     unittest.main()
