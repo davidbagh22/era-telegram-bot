@@ -92,6 +92,8 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
             if not chat.is_forum:
                 existing=await session.scalar(select(AppSetting).where(AppSetting.key==f'leaders_forum:{chat_id}:tasks'))
                 data = _topic_data(existing)
+                if data.get('thread_id'):
+                    return {'status':'forum_disabled','chat_id':chat_id}
                 if existing is not None:
                     # A legacy, damaged or uncertain panel record may already
                     # correspond to a Telegram message. Never post a replacement
