@@ -27,6 +27,7 @@ class LeadersTaskReminderDeliveryTests(IsolatedAsyncioTestCase):
             await conn.run_sync(Base.metadata.create_all)
         self.factory = async_sessionmaker(self.engine, expire_on_commit=False)
         self.bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=42)))
+        self.deadline = datetime(2026, 10, 26, 19, tzinfo=timezone.utc)
         self.delivery = SimpleNamespace(id=1, chat_id=-1001, message_thread_id=7)
 
     async def asyncTearDown(self):
@@ -39,7 +40,7 @@ class LeadersTaskReminderDeliveryTests(IsolatedAsyncioTestCase):
         await session.commit()
 
     async def send(self, session):
-        return await _send_leaders_task_reminder(session, self.bot, self.settings, self.delivery, stage=1, text="Срок задачи")
+        return await _send_leaders_task_reminder(session, self.bot, self.settings, self.delivery, stage=1, deadline=self.deadline, text="Срок задачи")
 
     async def test_replay_after_lost_business_ack_sends_only_once(self):
         async with self.factory() as session:
@@ -122,3 +123,16 @@ class LeadersTaskReminderDeliveryTests(IsolatedAsyncioTestCase):
             await session.commit()
         await send_task_reminders(self.bot, self.settings, self.factory)
         self.bot.send_message.assert_not_awaited()
+
+    async def test_rescheduled_deadline_starts_new_cycle_but_replays_do_not_duplicate(self):
+        async with self.factory() as session:
+            await self.configure(session, {"mode": "forum", "thread_id": 7})
+            self.assertTrue(await self.send(session))
+            self.deadline += timedelta(days=1)
+            self.assertTrue(await self.send(session))
+            self.assertTrue(await self.send(session))
+            self.assertEqual(self.bot.send_message.await_count, 2)
+            # SQLite may restore UTC deadlines without timezone metadata.
+            self.deadline = self.deadline.replace(tzinfo=None)
+            self.assertTrue(await self.send(session))
+            self.assertEqual(self.bot.send_message.await_count, 2)

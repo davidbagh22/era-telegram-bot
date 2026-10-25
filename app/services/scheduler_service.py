@@ -419,7 +419,7 @@ async def send_project_venue_reminders(
         await session.commit()
 
 
-async def _send_leaders_task_reminder(session, bot, settings, delivery, *, stage, text):
+async def _send_leaders_task_reminder(session, bot, settings, delivery, *, stage, deadline, text):
     """A stale card cannot redirect reminders; uncertain delivery never resends."""
     from app.services.leaders_topics_service import delivery_topic
 
@@ -435,9 +435,11 @@ async def _send_leaders_task_reminder(session, bot, settings, delivery, *, stage
     if delivery.message_thread_id != thread_id:
         logger.warning("Leaders reminder blocked: stale destination, delivery=%s", delivery.id)
         return False
+    deadline = deadline.replace(tzinfo=ZoneInfo("UTC")) if deadline.tzinfo is None else deadline
+    cycle = deadline.astimezone(ZoneInfo("UTC")).isoformat()
     result = await safe_send_once(
         bot, settings, delivery.chat_id, text,
-        delivery_key=f"leaders-task-reminder:{delivery.id}:{stage}",
+        delivery_key=f"leaders-task-reminder:{delivery.id}:{cycle}:{stage}",
         notification_type="leaders_task_reminder",
         message_thread_id=thread_id, parse_mode="HTML",
     )
@@ -561,7 +563,7 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
                 stage = delivery.reminder_count + 1
                 expected_recipients += 1
                 if not await _send_leaders_task_reminder(
-                    session, bot, settings, delivery, stage=stage,
+                    session, bot, settings, delivery, stage=stage, deadline=task.deadline,
                     text=(
                         f"⏳ <b>Напоминание по задаче #{task.id} · {stage}/5</b>\n"
                         f"{mention}, срок: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}.\n"
