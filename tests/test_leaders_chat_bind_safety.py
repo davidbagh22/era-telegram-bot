@@ -55,7 +55,11 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         self.message = SimpleNamespace(
             from_user=SimpleNamespace(id=1001), answer=AsyncMock(),
         )
-        self.session = SimpleNamespace(scalar=AsyncMock(), commit=AsyncMock())
+        self.session = SimpleNamespace(
+            scalar=AsyncMock(),
+            execute=AsyncMock(return_value=SimpleNamespace(all=lambda: [])),
+            commit=AsyncMock(),
+        )
         self.bot = SimpleNamespace(
             id=77,
             get_chat=AsyncMock(return_value=SimpleNamespace(
@@ -106,6 +110,25 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         self.bot.get_chat.assert_not_awaited()
         self.session.scalar.assert_not_awaited()
         self.assertIn("не привязан отдельно", self.message.answer.await_args.args[0])
+
+    async def test_diagnostics_count_uncertain_task_deliveries_without_mutations(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.session.scalar.side_effect = [None, None, None]
+        self.session.execute.return_value = SimpleNamespace(
+            all=lambda: [("sent", 4), ("pending", 1), ("review_required", 2), ("failed", 3)]
+        )
+        await leaders_readonly_diagnostics(
+            self.message, None, self.settings, self.session, self.bot,
+        )
+        result = self.message.answer.await_args.args[0]
+        self.assertIn("отправлено 4", result)
+        self.assertIn("ожидает 1", result)
+        self.assertIn("требует сверки 2", result)
+        self.assertIn("ошибки 3", result)
+        self.assertIn("Не повторяйте отправку", result)
+        self.session.execute.assert_awaited_once()
+        self.session.commit.assert_not_awaited()
 
     async def test_plain_chat_mode_is_distinguished_from_forum_topic(self):
         from app.handlers.chat_binding import leaders_readonly_diagnostics
