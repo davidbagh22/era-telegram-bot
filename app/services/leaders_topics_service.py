@@ -17,20 +17,38 @@ TOPICS = {
 }
 
 
+def _topic_data(row) -> dict:
+    """Treat damaged or unexpected stored settings as unconfigured, never as a thread."""
+    if row is None:
+        return {}
+    try:
+        data = json.loads(row.value) if isinstance(row.value, str) else row.value
+    except (ValueError, TypeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 async def topic_id(session, chat_id: int, key: str) -> int | None:
     row = await session.scalar(select(AppSetting).where(AppSetting.key == f"leaders_forum:{chat_id}:{key}"))
-    return (json.loads(row.value) if isinstance(row.value,str) else row.value).get('thread_id') if row else None
+    data = _topic_data(row)
+    thread_id = data.get('thread_id')
+    if data.get('mode') == 'plain' or type(thread_id) is not int or thread_id <= 0:
+        return None
+    return thread_id
 
 
 async def delivery_topic(session, chat_id, key):
-    """Distinguish an explicitly configured plain chat from a missing forum topic."""
+    """Fail closed unless an explicit plain mode or a valid forum thread is saved."""
     row = await session.scalar(select(AppSetting).where(AppSetting.key == f'leaders_forum:{chat_id}:{key}'))
-    data = (json.loads(row.value) if isinstance(row.value, str) else row.value) if row else {}
+    data = _topic_data(row)
     if data.get('mode') == 'plain':
+        if data.get('thread_id') is not None:
+            raise ValueError('Настройки чата лидеров противоречат друг другу. Проверьте темы.')
         return None
-    if not data.get('thread_id'):
+    thread_id = data.get('thread_id')
+    if type(thread_id) is not int or thread_id <= 0:
         raise ValueError('Рабочая тема не настроена. Проверьте привязку чата лидеров.')
-    return data['thread_id']
+    return thread_id
 
 
 async def panel(session, chat_id, key, username):
