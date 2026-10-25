@@ -132,26 +132,30 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                 setting_key = f"leaders_forum:{chat_id}:{key}"
                 row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
                 data = _topic_data(row)
-                # A group converted from plain mode to a forum needs an explicit
-                # reconciliation; do not silently create a second panel/topic.
-                if data.get('mode') == 'plain':
-                    return {'status':'topic_needs_review','chat_id':chat_id,'topic':key}
-                if not data.get('thread_id') and data.get('thread_state')=='creating':
-                    return {'status':'topic_needs_review','chat_id':chat_id,'topic':key}
-                if not data.get("thread_id"):
-                    if row is None:
-                        row=AppSetting(key=setting_key,value=json.dumps({'thread_state':'creating'}))
-                        session.add(row)
-                    else:
-                        row.value=json.dumps({**data,'thread_state':'creating'})
+                # A stored row may represent a topic created just before a
+                # Telegram timeout. Never create a replacement automatically,
+                # even if its JSON or thread ID is damaged.
+                if row is not None:
+                    thread_id = data.get("thread_id")
+                    if (
+                        data.get("mode") not in (None, "forum")
+                        or data.get("thread_state") == "creating"
+                        or type(thread_id) is not int
+                        or thread_id <= 0
+                    ):
+                        return {"status": "topic_needs_review", "chat_id": chat_id, "topic": key}
+                else:
+                    row = AppSetting(key=setting_key, value=json.dumps({"thread_state": "creating"}))
+                    session.add(row)
                     await session.commit()
                     topic = await bot.create_forum_topic(chat_id, name=name)
-                    data = {"thread_id": topic.message_thread_id}
-                    if row is None:
-                        row = AppSetting(key=setting_key, value=json.dumps(data))
-                        session.add(row)
-                    else:
-                        row.value = json.dumps(data)
+                    thread_id = getattr(topic, "message_thread_id", None)
+                    if type(thread_id) is not int or thread_id <= 0:
+                        # Keep the durable creating marker: the Telegram call
+                        # may have created a real topic despite a bad response.
+                        return {"status": "topic_needs_review", "chat_id": chat_id, "topic": key}
+                    data = {"thread_id": thread_id}
+                    row.value = json.dumps(data)
                     await session.commit()
                 text, keyboard = await panel(session, chat_id, key, me.username)
                 snapshot = {"text": text, "keyboard": keyboard.model_dump(mode="json") if keyboard else None}

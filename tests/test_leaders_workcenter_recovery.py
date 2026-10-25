@@ -66,6 +66,59 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         bot.create_forum_topic.assert_not_awaited()
         bot.send_message.assert_not_awaited()
 
+    async def test_damaged_existing_topic_requires_review_without_creating_duplicate(self):
+        from sqlalchemy import delete
+        from app.database.models import AppSetting
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001, general_chat_id=-1002)
+        bot = AsyncMock()
+        bot.get_chat.return_value = SimpleNamespace(type='supergroup', is_forum=True)
+        bot.get_me.return_value = SimpleNamespace(id=100, username='era_test')
+        bot.get_chat_member.return_value = SimpleNamespace(
+            status='administrator', can_manage_topics=True, can_pin_messages=True,
+        )
+        damaged = (
+            'not-json', '[]', '{}', '{"thread_id":"7"}',
+            '{"thread_id":true}', '{"thread_id":0}',
+            '{"thread_state":"creating"}', '{"mode":"plain","thread_id":7}',
+        )
+        for value in damaged:
+            with self.subTest(value=value):
+                async with self.factory() as session:
+                    await session.execute(delete(AppSetting))
+                    session.add(AppSetting(key='leaders_forum:-1001:tasks', value=value))
+                    await session.commit()
+                result = await setup_leaders_topics(bot, settings, self.factory)
+                self.assertEqual(result['status'], 'topic_needs_review')
+                self.assertEqual(result['topic'], 'tasks')
+                bot.create_forum_topic.assert_not_awaited()
+                bot.send_message.assert_not_awaited()
+
+    async def test_invalid_telegram_topic_id_never_triggers_duplicate_creation(self):
+        from sqlalchemy import select
+        from app.database.models import AppSetting
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001, general_chat_id=-1002)
+        bot = AsyncMock()
+        bot.get_chat.return_value = SimpleNamespace(type='supergroup', is_forum=True)
+        bot.get_me.return_value = SimpleNamespace(id=100, username='era_test')
+        bot.get_chat_member.return_value = SimpleNamespace(
+            status='administrator', can_manage_topics=True, can_pin_messages=True,
+        )
+        bot.create_forum_topic.return_value = SimpleNamespace(message_thread_id=0)
+        first = await setup_leaders_topics(bot, settings, self.factory)
+        self.assertEqual(first['status'], 'topic_needs_review')
+        self.assertEqual(first['topic'], 'tasks')
+        second = await setup_leaders_topics(bot, settings, self.factory)
+        self.assertEqual(second['status'], 'topic_needs_review')
+        self.assertEqual(bot.create_forum_topic.await_count, 1)
+        bot.send_message.assert_not_awaited()
+        async with self.factory() as session:
+            row = await session.scalar(select(AppSetting).where(
+                AppSetting.key == 'leaders_forum:-1001:tasks',
+            ))
+            self.assertIn('"creating"', row.value)
+
     async def test_topics_created_only_once_and_never_in_general(self):
         settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001, general_chat_id=-1002)
         bot = AsyncMock()
