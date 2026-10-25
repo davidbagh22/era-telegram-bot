@@ -102,7 +102,8 @@ class HomeApiTests(unittest.TestCase):
         self.assertEqual(body["points_month"], 12)
         self.assertEqual(
             body["activity"],
-            {"points": 15, "projects": 2, "completed_tasks": 3, "portfolio_items": 4},
+            {"points": 15, "projects": 2, "completed_tasks": 3, "portfolio_items": 4,
+             "completed_projects": 0, "verified_portfolio_items": 0, "attended_events": 0},
         )
         self.assertIsNone(body["new_opportunity"])
         self.assertIsNone(body["almost_opportunity"])
