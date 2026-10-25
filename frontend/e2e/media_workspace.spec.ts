@@ -12,6 +12,7 @@ test("media calendars keep KSOORS separate and require approval and a publicatio
   await page.getByRole("button", { name: "Сохранить в календаре", exact: true }).click();
   await expect(page.getByText(title, { exact: true })).toBeVisible();
   await expect(page.getByText(/1 ноября.*19:00/)).toBeVisible();
+  await page.getByRole("button", { name: "Открыть материал", exact: true }).click();
   // The newly created calendar entry is the only interactive publication card.
   await page.getByRole("button", { name: "На согласование", exact: true }).click();
   await expect(page.getByText("На согласовании", { exact: true })).toBeVisible();

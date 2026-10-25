@@ -8,11 +8,16 @@ const button: React.CSSProperties = { border: "1px solid var(--era-border)", bac
 const input: React.CSSProperties = { width: "100%", boxSizing: "border-box", background: "var(--era-surface-2)", color: "var(--era-text)", border: "1px solid var(--era-border)", borderRadius: 10, padding: ".7rem", font: "inherit" };
 const dateLabel = (value: string | null) => value ? new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Yerevan", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "Без даты";
 
-function Entry({ item, area, manager, onChanged }: { item: MediaCalendarEntry; area: string; manager: boolean; onChanged: () => Promise<void> }) {
+function Entry({ item, area, manager, members, onChanged }: { item: MediaCalendarEntry; area: string; manager: boolean; members: MediaMember[]; onChanged: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [url, setUrl] = useState("");
   const [date, setDate] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(item.title);
+  const [body, setBody] = useState(item.body);
+  const [responsible, setResponsible] = useState(String(item.responsible_id ?? ""));
   const terminal = ["published", "skipped"].includes(item.status);
   const change = async (values: object) => {
     setBusy(true); setError("");
@@ -23,10 +28,19 @@ function Entry({ item, area, manager, onChanged }: { item: MediaCalendarEntry; a
   return <Card style={{ display: "grid", gap: ".75rem" }}>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}><strong>{item.title}</strong><span style={{ color: "var(--era-text-muted)", fontSize: ".8rem" }}>{statuses[item.status] ?? "Неизвестный статус"}</span></div>
     <div style={{ color: "var(--era-text-secondary)", fontSize: ".85rem" }}>{dateLabel(item.scheduled_at)} · {platforms[item.platform] ?? item.platform}</div>
-    {item.body && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{item.body}</p>}
-    {item.materials && <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--era-text-secondary)" }}>Материалы: {item.materials}</p>}
+    {item.body && <p style={{ margin: 0, whiteSpace: "pre-wrap", maxHeight: expanded ? undefined : "4.5em", overflow: "hidden" }}>{item.body}</p>}
+    <small>Ответственный: {members.find(member => member.id === item.responsible_id)?.name ?? (item.responsible_id ? "назначен" : "пока не назначен")}</small>
+    <button style={button} onClick={() => setExpanded(!expanded)}>{expanded ? "Свернуть материал" : "Открыть материал"}</button>
+    {expanded && item.materials && <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--era-text-secondary)" }}>Материалы: {item.materials}</p>}
     {item.publication_url && <><a href={item.publication_url} target="_blank" rel="noopener noreferrer">Открыть публикацию ↗</a><small>Ссылка подтверждена руководителем. Это не автоматическая проверка внешнего сервиса.</small></>}
-    {manager && !terminal && <>
+    {manager && !terminal && expanded && <>
+      <button style={button} disabled={busy} onClick={() => setEditing(!editing)}>{editing ? "Закрыть редактор" : "Изменить материал / ответственного"}</button>
+      {editing && <div style={{ display: "grid", gap: 10 }}>
+        <label>Название материала<input style={input} value={title} maxLength={255} onChange={event => setTitle(event.target.value)} /></label>
+        <label>Текст материала<textarea style={input} value={body} maxLength={4096} onChange={event => setBody(event.target.value)} /></label>
+        <label>Новый ответственный<select style={input} value={responsible} onChange={event => setResponsible(event.target.value)}><option value="">Пока не назначен</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
+        <button style={button} disabled={busy || title.trim().length < 2} onClick={() => void change({ title: title.trim(), body, responsible_id: responsible ? Number(responsible) : null })}>Сохранить изменения</button>
+      </div>}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {["planned", "assigned", "idea"].includes(item.status) && <button style={button} disabled={busy} onClick={() => void change({ status: item.status === "idea" ? "planned" : "in_progress" })}>{item.status === "idea" ? "В подготовку" : "Начать работу"}</button>}
         {["planned", "assigned", "in_progress"].includes(item.status) && <button style={button} disabled={busy} onClick={() => void change({ status: "review" })}>На согласование</button>}
@@ -98,7 +112,7 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
         <button style={button} disabled={busy || title.trim().length < 2} type="submit">{busy ? "Сохраняем…" : "Сохранить в календаре"}</button>
       </form></Card>}
       <label>Показать<select style={input} value={filter} onChange={event => setFilter(event.target.value)}><option value="active">В работе</option><option value="published">Опубликованные</option><option value="all">Все материалы</option></select></label>
-      {items.filter(item => filter === "all" || (filter === "published" ? item.status === "published" : !["published", "skipped"].includes(item.status))).map(item => <Entry key={item.id} area={area} item={item} manager={workspace.can_manage} onChanged={reload} />)}
+      {items.filter(item => filter === "all" || (filter === "published" ? item.status === "published" : !["published", "skipped"].includes(item.status))).map(item => <Entry key={item.id} area={area} item={item} manager={workspace.can_manage} members={members} onChanged={reload} />)}
       {!items.length && <Card>Материалов пока нет. Руководитель может добавить первый.</Card>}
       <small>Показаны последние 100 материалов. Публикации во внешние сервисы автоматически не отправляются.</small>
     </>}
