@@ -36,7 +36,16 @@ def verify_init_data(
     if not init_data:
         raise InitDataError("empty_init_data")
 
-    pairs = parse_qsl(init_data, keep_blank_values=True, strict_parsing=False)
+    # Bound work before parsing untrusted query strings. Telegram initData has
+    # a small fixed set of fields; oversized input must not exhaust resources.
+    if len(init_data) > 16_384:
+        raise InitDataError("init_data_too_large")
+    try:
+        pairs = parse_qsl(
+            init_data, keep_blank_values=True, strict_parsing=False, max_num_fields=64
+        )
+    except ValueError as exc:
+        raise InitDataError("invalid_fields") from exc
     data = dict(pairs)
     # Duplicate parameters are ambiguous across clients and must never be
     # accepted as Telegram-authenticated identity fields.
