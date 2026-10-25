@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
@@ -13,6 +14,8 @@ from app.database.media_models import MediaAttachment, MediaChatNotice, MediaCon
 from app.database.models import Task, User
 from app.services import task_service
 from app.utils.constants import TaskStatus
+
+logger = logging.getLogger(__name__)
 
 
 async def create_pending_task_attachment(
@@ -195,13 +198,18 @@ async def post_missing_media_task_cards(
                 raise
             try:
                 message = await bot.send_message(settings.media_chat_id, text)
-            except TelegramAPIError:
+            except TelegramAPIError as exc:
                 # Keep the claim even for network errors: the message might
                 # already exist. An administrator must reconcile it manually.
+                logger.warning(
+                    "Media task card delivery needs review: %s (%s)",
+                    notice_key, type(exc).__name__,
+                )
                 continue
             message_id = getattr(message, "message_id", None)
             if type(message_id) is not int or message_id <= 0:
                 # Telegram may have delivered the card despite a bad response.
+                logger.warning("Media task card response needs review: %s", notice_key)
                 continue
             notice.telegram_message_id = message_id
             notice.sent_at = datetime.now(timezone.utc)
