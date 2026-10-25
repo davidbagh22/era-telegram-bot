@@ -35,6 +35,7 @@ from app.services.notification_service import (
     broadcast_detailed_once,
     safe_send_once,
 )
+from app.services.task_service import _is_media_task, can_view
 from app.services.survey_service import (
     MONTHLY_SURVEY_DESCRIPTION,
     MONTHLY_SURVEY_QUESTIONS,
@@ -484,6 +485,8 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
                 target = await session.get(User, user_id)
                 if target is None or target.is_blocked or target.is_archived:
                     continue
+                if _is_media_task(task) and not await can_view(session, task, target, settings):
+                    continue
                 expected_recipients += 1
                 sent = await send_bot_notification(
                     bot,
@@ -503,7 +506,9 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
                 completed_recipients += int(sent)
 
             creator = await session.get(User, task.creator_id)
-            if creator is not None and creator.id not in participant_ids and not creator.is_blocked and not creator.is_archived:
+            if (creator is not None and creator.id not in participant_ids
+                    and not creator.is_blocked and not creator.is_archived
+                    and (not _is_media_task(task) or await can_view(session, task, creator, settings))):
                 expected_recipients += 1
                 sent = await send_bot_notification(
                     bot,

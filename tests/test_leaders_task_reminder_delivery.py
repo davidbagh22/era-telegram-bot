@@ -108,3 +108,17 @@ class LeadersTaskReminderDeliveryTests(IsolatedAsyncioTestCase):
         async with self.factory() as session:
             self.assertEqual((await session.get(Task, task_id)).reminder_count, 0)
             self.assertEqual((await session.get(TaskDelivery, delivery_id)).reminder_count, 0)
+
+    async def test_revoked_media_membership_blocks_private_reminder_to_old_assignee(self):
+        async with self.factory() as session:
+            owner = User(telegram_id=998, first_name="Former leader", application_status="approved")
+            member = User(telegram_id=999, first_name="Former member", application_status="approved")
+            session.add_all([owner, member])
+            await session.flush()
+            now = datetime.now(timezone.utc)
+            session.add(Task(title="Private media task", description="Restricted", creator_id=owner.id,
+                             assignee_id=member.id, status="in_progress", reward_json={"media_task": True},
+                             deadline=now + timedelta(hours=2), remind_at=now - timedelta(minutes=1)))
+            await session.commit()
+        await send_task_reminders(self.bot, self.settings, self.factory)
+        self.bot.send_message.assert_not_awaited()
