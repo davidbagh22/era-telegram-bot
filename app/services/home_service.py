@@ -93,6 +93,9 @@ class ActivityStats:
     projects: int
     completed_tasks: int
     portfolio_items: int
+    completed_projects: int = 0
+    verified_portfolio_items: int = 0
+    attended_events: int = 0
 
 
 @dataclass(frozen=True)
@@ -453,6 +456,9 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
         projects=stats["projects"],
         completed_tasks=stats["tasks"],
         portfolio_items=stats["portfolio"],
+        completed_projects=stats["completed_projects"],
+        verified_portfolio_items=stats["verified_portfolio"],
+        attended_events=stats["attended_events"],
     )
     rank = _rank_progress(user)
     available_opportunity, almost_opportunity, locked_opportunity = await _recognition_progress(

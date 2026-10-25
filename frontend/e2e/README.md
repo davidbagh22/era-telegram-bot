@@ -21,7 +21,7 @@ is a no-op against the real deployed bot regardless of what a URL contains.
 cd frontend && npm run build && cd ..
 
 # 2. Seed a throwaway SQLite DB with the fixture users/event these specs use.
-DATABASE_URL="sqlite+aiosqlite:///./e2e.db" PYTHONPATH=. python scripts/e2e_seed.py
+DATABASE_URL="sqlite+aiosqlite:///./e2e.db" DEV_AUTH_ENABLED=true BOT_TOKEN="0000000000:E2ETESTTOKEN" PYTHONPATH=. python scripts/e2e_seed.py
 
 # 3. Start the real server against that DB (needs a local Redis for FSM storage).
 DATABASE_URL="sqlite+aiosqlite:///./e2e.db" \

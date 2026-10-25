@@ -107,12 +107,14 @@ export function HomeScreen({
   })();
 
   const confirmedResult = data.activity.completed_tasks > 0
-    ? `${data.activity.completed_tasks} завершённых задач`
-    : data.activity.projects > 0
-      ? `${data.activity.projects} проектов в опыте`
-      : data.activity.portfolio_items > 0
-        ? `${data.activity.portfolio_items} подтверждённых записей`
-        : null;
+    ? `Выполнено заданий: ${data.activity.completed_tasks}`
+    : (data.activity.attended_events ?? 0) > 0
+      ? `Подтверждено посещений: ${data.activity.attended_events}`
+      : (data.activity.completed_projects ?? 0) > 0
+        ? `Завершено проектов: ${data.activity.completed_projects}`
+        : (data.activity.verified_portfolio_items ?? 0) > 0
+          ? `Подтверждено записей: ${data.activity.verified_portfolio_items}`
+          : null;
   const nextStepIsTask = data.next_step?.kind === "task"
     && data.next_step.entity_id === data.active_task?.id;
 
