@@ -168,12 +168,19 @@ async def leaders_readonly_diagnostics(
             data = {}
         thread_id = data.get("thread_id")
         state = data.get("thread_state")
-        if thread_id:
-            status = f"thread_id={thread_id} (из БД, не проверен в Telegram)"
-        elif state == "creating":
+        # A saved numeric ID alone is not evidence of a ready topic.
+        # Prioritize uncertain/damaged durable states in read-only diagnostics.
+        if state not in (None, "ready"):
             status = "создание не подтверждено; нужна ручная сверка, не создавать повторно"
+        elif data.get("mode") not in (None, "forum", "plain"):
+            status = "режим темы повреждён; нужна ручная сверка, не создавать повторно"
         elif data.get("mode") == "plain":
-            status = "обычная группа, отдельной темы нет"
+            status = ("настройки обычной группы противоречат друг другу; нужна ручная сверка"
+                      if thread_id is not None else "обычная группа, отдельной темы нет")
+        elif type(thread_id) is int and thread_id > 0:
+            status = f"thread_id={thread_id} (из БД, не проверен в Telegram)"
+        elif row is not None:
+            status = "настройка темы повреждена; нужна ручная сверка, не создавать повторно"
         else:
             status = "тема не настроена"
         lines.append(f"{label}: {status}")
