@@ -5,7 +5,7 @@ import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
-from sqlalchemy import select
+from sqlalchemy import String, cast, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -148,13 +148,26 @@ async def post_missing_media_task_cards(
             await session.execute(
                 select(Task, MediaContentTask)
                 .join(MediaContentTask, MediaContentTask.task_id == Task.id)
+                # Exclude already-claimed cards in SQL *before* LIMIT. If we
+                # limit first, 100 old tasks with notices can permanently starve
+                # every newer task, even though the worker runs each minute.
+                .outerjoin(
+                    MediaChatNotice,
+                    MediaChatNotice.notice_key == (
+                        "media-task-card:" + cast(Task.id, String)
+                    ),
+                )
                 .where(
                     Task.status.in_(
                         [TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS, TaskStatus.REVIEW]
-                    )
+                    ),
+                    MediaChatNotice.id.is_(None),
                 )
                 .order_by(Task.created_at, Task.id)
-                .limit(100)
+                # Do not flood Media Chat when an old backlog is unblocked.
+                # This scheduler runs every minute: release at most one card
+                # per tick while still eventually reaching newer tasks.
+                .limit(1)
             )
         ).all()
         for task, link in rows:
