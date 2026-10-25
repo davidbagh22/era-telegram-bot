@@ -75,28 +75,29 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
   const [requestKey, setRequestKey] = useState(() => crypto.randomUUID());
   const [filter, setFilter] = useState("active");
   const reload = useCallback(async () => {
-    const entries = await fetchMediaCalendar(area);
+    const entries = await fetchMediaCalendar(area, undefined, filter as "all" | "active" | "published");
     setItems(entries);
     setHasMore(entries.length === 100);
-  }, [area]);
+  }, [area, filter]);
   useEffect(() => {
     let alive = true;
+    setLoading(true); setError(""); setItems([]); setHasMore(false);
     void (async () => {
       try {
         const workspaces = await fetchMediaWorkspaces();
         const current = workspaces.find(item => item.id === area) ?? null;
-        const [entries, team] = await Promise.all([fetchMediaCalendar(area), current?.can_manage ? fetchMediaMembers() : Promise.resolve([])]);
+        const [entries, team] = await Promise.all([fetchMediaCalendar(area, undefined, filter as "all" | "active" | "published"), current?.can_manage ? fetchMediaMembers() : Promise.resolve([])]);
         if (alive) { setWorkspace(current); setItems(entries); setHasMore(entries.length === 100); setMembers(team); }
       } catch (cause) { if (alive) setError(cause instanceof Error ? cause.message : "Не удалось открыть календарь"); }
       finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; };
-  }, [area]);
+  }, [area, filter]);
   const loadMore = async () => {
     if (!hasMore || loadingMore || !items.length) return;
     setLoadingMore(true); setError("");
     try {
-      const next = await fetchMediaCalendar(area, items[items.length - 1].id);
+      const next = await fetchMediaCalendar(area, items[items.length - 1].id, filter as "all" | "active" | "published");
       setItems(current => {
         const known = new Set(current.map(item => item.id));
         return [...current, ...next.filter(item => !known.has(item.id))];
@@ -131,8 +132,8 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
         <button style={button} disabled={busy || title.trim().length < 2} type="submit">{busy ? "Сохраняем…" : "Сохранить в календаре"}</button>
       </form></Card>}
       <label>Показать<select aria-label="Показать" style={input} value={filter} onChange={event => setFilter(event.target.value)}><option value="active">В работе</option><option value="published">Опубликованные</option><option value="all">Все материалы</option></select></label>
-      {items.filter(item => filter === "all" || (filter === "published" ? item.status === "published" : !["published", "skipped"].includes(item.status))).map(item => <Entry key={item.id} area={area} item={item} manager={workspace.can_manage} members={members} onChanged={updated => setItems(current => current.map(entry => entry.id === updated.id ? updated : entry))} />)}
-      {!items.length && <Card>Материалов пока нет. Руководитель может добавить первый.</Card>}
+      {items.map(item => <Entry key={item.id} area={area} item={item} manager={workspace.can_manage} members={members} onChanged={updated => setItems(current => current.map(entry => entry.id === updated.id ? updated : entry))} />)}
+      {!loading && !items.length && <Card>{filter === "all" ? "Материалов пока нет. Руководитель может добавить первый." : "В выбранном разделе материалов пока нет."}</Card>}
       {hasMore && <button style={button} disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Загружаем…" : "Показать ещё материалы"}</button>}
       <small>Загружено материалов: {items.length}. Публикации во внешние сервисы автоматически не отправляются.</small>
     </>}
