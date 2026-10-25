@@ -746,6 +746,11 @@ async def publish_content(
     manual: bool,
 ) -> PublishResult:
     """Publish exactly once unless a human explicitly retries a known-safe failure."""
+    workspace = item.metadata_json or {}
+    if workspace.get("media_area", "era") != "era" or workspace.get("platform", "telegram") != "telegram":
+        return PublishResult(False, "external_publication_requires_authorized_integration")
+    if item.source_kind == "media_workspace" and item.status != "ready":
+        return PublishResult(False, "editorial_approval_required")
     if item.status == "published":
         return PublishResult(False, "already_published", item.telegram_message_id)
     if not manual and item.source_kind != "authored_pack":
@@ -1065,6 +1070,8 @@ async def analytics(session: AsyncSession, settings: Settings | None = None) -> 
             select(func.count()).select_from(MediaContentItem).where(
                 MediaContentItem.status == "published",
                 MediaContentItem.published_at >= period_start,
+                func.coalesce(MediaContentItem.metadata_json["media_area"].as_string(), "era") == "era",
+                func.coalesce(MediaContentItem.metadata_json["platform"].as_string(), "telegram") == "telegram",
             )
         )
         or 0

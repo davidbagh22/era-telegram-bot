@@ -108,7 +108,7 @@ function parentRoute(route: string): string | null {
   if (/^users\/\d+$/.test(route)) return "opportunities";
   if (/^(opportunities|auctions|rewards|surveys|media)\/\d+$/.test(route)) return "opportunities";
   if (["auctions", "rewards", "surveys", "media", "leaderboard"].includes(route)) return "opportunities";
-  if (route === "media/guide") return "media";
+  if (["media/guide", "media/era", "media/ksoors"].includes(route)) return "media";
 
   if (route.startsWith("leader/")) return "leader";
   return "home";

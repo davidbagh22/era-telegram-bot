@@ -43,6 +43,7 @@ from app.api.v1 import (
     me,
     media,
     media_extras,
+    media_workspace,
     media_rich_publish,
     opportunities,
     participation,
@@ -89,6 +90,7 @@ api_router.include_router(opportunities.router)
 api_router.include_router(media_rich_publish.router)
 api_router.include_router(media.router, dependencies=[Depends(require_feature(Feature.MEDIA))])
 api_router.include_router(media_extras.router, dependencies=[Depends(require_feature(Feature.MEDIA))])
+api_router.include_router(media_workspace.router, dependencies=[Depends(require_feature(Feature.MEDIA))])
 api_router.include_router(auctions.router, dependencies=[Depends(require_feature(Feature.AUCTIONS))])
 api_router.include_router(rewards.router, dependencies=[Depends(require_feature(Feature.REWARDS))])
 api_router.include_router(surveys.router, dependencies=[Depends(require_feature(Feature.SURVEYS))])

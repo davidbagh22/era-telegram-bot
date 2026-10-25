@@ -149,6 +149,11 @@ async def reconcile_content_state(
             item.status = MediaContentStatus.FAILED.value
             return item
 
+    # Workspace calendars have an explicit editorial approval workflow. A
+    # scheduler tick must not turn a reviewed/ready entry into scheduled.
+    if item.source_kind == "media_workspace":
+        return item
+
     tasks = await _linked_tasks(session, item.id)
     if not tasks:
         if item.source_kind == "idea" and item.scheduled_at is None:

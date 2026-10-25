@@ -30,11 +30,12 @@ import {
   type MediaTask,
 } from "../api/media";
 import { MediaGuideScreen } from "./MediaGuideScreen";
+import { MediaWorkspaceScreen } from "./MediaWorkspaceScreen";
 
 interface MediaScreenProps {
   onBack?: () => void;
   /** Deep-linked destination inside Media, e.g. from `#/media/guide`. */
-  initialView?: "guide" | null;
+  initialView?: "guide" | "era" | "ksoors" | null;
 }
 
 type DeskView =
@@ -191,11 +192,12 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
   const [members, setMembers] = useState<MediaMember[]>([]);
   const [idea, setIdea] = useState("");
   const [ideaStatus, setIdeaStatus] = useState<string | null>(null);
-  const [view, setView] = useState<DeskView>(initialView ?? "home");
+  const [view, setView] = useState<DeskView>(initialView === "guide" ? "guide" : "home");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [applyStatus, setApplyStatus] = useState<string | null>(null);
+  const [workspace, setWorkspace] = useState<"era" | "ksoors" | null>(initialView === "era" || initialView === "ksoors" ? initialView : null);
 
   // DELTA ToR §28: NO_ACCESS/PENDING never reach the library endpoint (it
   // 403s below MEDIA_MEMBER) -- fetching it unconditionally would turn a
@@ -348,6 +350,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
   }
 
   if (view === "guide") return <MediaGuideScreen onBack={() => setView("home")} />;
+  if (workspace) return <MediaWorkspaceScreen area={workspace} onBack={() => setWorkspace(null)} />;
 
   const header = (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -546,6 +549,10 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
   return (
     <div className="era-page" style={{ padding: "1.25rem 1.25rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
       {header}
+      {view === "home" && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <button type="button" style={{ ...buttonStyle(false), textAlign: "left" }} onClick={() => setWorkspace("era")}><strong>ЭРА →</strong><small style={{ display: "block", marginTop: 6 }}>Контент-план и площадки</small></button>
+        <button type="button" style={{ ...buttonStyle(false), textAlign: "left" }} onClick={() => setWorkspace("ksoors")}><strong>КСООРС →</strong><small style={{ display: "block", marginTop: 6 }}>Контент-план и площадки</small></button>
+      </div>}
       {error ? <Card><strong>Нужно внимание</strong><div style={{ color: "var(--era-text-muted)", marginTop: 5 }}>{error}</div></Card> : null}
       {body}
     </div>

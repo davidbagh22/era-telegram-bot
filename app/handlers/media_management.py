@@ -21,6 +21,27 @@ class MediaLeaderStates(StatesGroup):
     target = State()
 
 
+@router.message(Command("media_calendar"))
+async def calendar_command(message: Message, user: User | None, session: AsyncSession, settings: Settings):
+    from app.services.media_workspace_service import require_access
+    from app.utils.deep_links import miniapp_path_url
+    if user is None or message.from_user.id != user.telegram_id:
+        await message.answer("Сначала войдите в ЭРА и присоединитесь к медиаотделу.")
+        return
+    try:
+        await require_access(session, user, settings)
+    except PermissionError:
+        await message.answer("Календарь доступен действующим участникам медиаотдела.")
+        return
+    if not settings.effective_miniapp_url:
+        await message.answer("Мини-приложение временно недоступно.")
+        return
+    await message.answer("Контент-план медиаотдела\n\nВыберите направление. Время публикаций — по Еревану.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=title, web_app=WebAppInfo(url=miniapp_path_url(settings.effective_miniapp_url, f"media/{area}")))
+            for area, title in (("era", "ЭРА"), ("ksoors", "КСООРС"))]]))
+
+
 def keyboard(rows):
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text=text, callback_data=value) for text, value in row] for row in rows])
