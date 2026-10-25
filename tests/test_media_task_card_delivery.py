@@ -109,6 +109,51 @@ class MediaTaskCardDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 bot.send_message.assert_awaited_once()
                 self.assertIsNone((await self.notice()).telegram_message_id)
 
+    async def test_backlog_is_rate_limited_to_one_card_per_tick(self):
+        async with self.factory() as session:
+            owner = await session.scalar(
+                select(User).where(User.telegram_id == 1234)
+            )
+            later_task = Task(
+                title="Second queued card",
+                description="Do not flood the chat",
+                creator_id=owner.id,
+                status="published",
+                deadline=None,
+            )
+            item = MediaContentItem(
+                source_kind="manual", source_key="second-queued-card",
+                kind="text", body="Do not flood the chat", status="assigned",
+            )
+            session.add_all([later_task, item])
+            await session.flush()
+            later_id = later_task.id
+            session.add(MediaContentTask(
+                content_id=item.id, task_id=later_id, task_kind="design",
+            ))
+            await session.commit()
+        bot = SimpleNamespace(send_message=AsyncMock(side_effect=[
+            SimpleNamespace(message_id=801),
+            SimpleNamespace(message_id=802),
+        ]))
+        await post_missing_media_task_cards(bot, self.settings, self.factory)
+        self.assertEqual(bot.send_message.await_count, 1)
+        await post_missing_media_task_cards(bot, self.settings, self.factory)
+        self.assertEqual(bot.send_message.await_count, 2)
+        async with self.factory() as session:
+            self.assertEqual(
+                await task_id_for_replied_card(
+                    session, telegram_message_id=801,
+                ),
+                self.task_id,
+            )
+            self.assertEqual(
+                await task_id_for_replied_card(
+                    session, telegram_message_id=802,
+                ),
+                later_id,
+            )
+
     async def test_claimed_backlog_does_not_starve_newer_task_cards(self):
         # The worker's batch size is 100. Old claims must be excluded
         # *before* LIMIT or a new task can remain invisible forever.
