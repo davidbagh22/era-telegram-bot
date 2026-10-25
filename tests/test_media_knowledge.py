@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.deps import get_current_user, get_session, get_settings
@@ -112,6 +112,43 @@ class MediaKnowledgeTests(IsolatedAsyncioTestCase):
             item = await session.get(MediaLibraryItem, item_id)
             self.assertEqual(item.title, "Новые шаблоны команды")
             self.assertFalse(item.is_active)
+
+    async def test_catalogue_bulk_revisions_include_archived_and_avoid_n_plus_one(self):
+        async with self.factory() as session:
+            first = await self.create(session, key="bulk-first")
+            second = await self.create(session, {
+                "kind": "text", "category": "texts", "title": "Тексты команды",
+                "description": "Правила публикации",
+            }, key="bulk-second")
+            third = await self.create(session, {
+                "kind": "text", "category": "design", "title": "Визуальные правила",
+                "description": "Размеры и шрифты",
+            }, key="bulk-third")
+            leader = await session.get(User, self.ids[1])
+            second_revision = await knowledge.revision(session, second.id)
+            await knowledge.update_item(session, leader, self.settings, second.id,
+                {"is_active": False, "pinned": True}, second_revision)
+            await session.flush()
+
+            selects = []
+            def count_select(conn, cursor, statement, parameters, context, executemany):
+                if statement.lstrip().upper().startswith("SELECT"):
+                    selects.append(statement)
+            event.listen(self.engine.sync_engine, "before_cursor_execute", count_select)
+            try:
+                active = await knowledge.list_items_out(session)
+            finally:
+                event.remove(self.engine.sync_engine, "before_cursor_execute", count_select)
+            self.assertEqual(len(selects), 2, "Catalogue must not query revisions for each item")
+            self.assertEqual({row["id"] for row in active}, {first.id, third.id})
+            self.assertTrue(all(row["revision"] > 0 for row in active))
+
+            all_items = await knowledge.list_items_out(session, include_archived=True)
+            self.assertEqual({row["id"] for row in all_items}, {first.id, second.id, third.id})
+            hidden = next(row for row in all_items if row["id"] == second.id)
+            self.assertFalse(hidden["is_active"])
+            self.assertTrue(hidden["pinned"])
+            self.assertEqual(hidden["revision"], await knowledge.revision(session, second.id))
 
     async def test_http_catalogue_and_archived_access(self):
         app = FastAPI()
