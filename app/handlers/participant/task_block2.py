@@ -1,0 +1,273 @@
+from app.services.leaders_workspace import deadline_label
+from aiogram import F, Bot, Router
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+from app.config import Settings
+from app.database.models import Task, TaskSubmission, User
+from app.keyboards.participant import open_app_button, tasks_keyboard
+from app.services import task_service
+from app.services.notification_service import (
+    notify_admins,
+    safe_answer_media,
+    safe_send_document,
+    safe_send_photo,
+    safe_send_video,
+)
+from app.states.growth import TaskSubmissionStates
+from app.utils import texts, ux_texts
+from app.utils.constants import ApplicationStatus, TASK_STATUS_LABELS
+from app.utils.validators import clean_text
+
+router = Router(name="participant_task_block2")
+ARCHIVE_STATUSES = task_service.ARCHIVE_STATUSES
+
+
+def _approved(user: User | None) -> bool:
+    return bool(user and user.application_status == ApplicationStatus.APPROVED and not user.is_blocked and not user.is_archived)
+
+
+def _task_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🟢 Задачи в работе", callback_data="tasks:list:active")],
+        [InlineKeyboardButton(text="🌐 Общие задачи", callback_data="tasks:list:open")],
+        [InlineKeyboardButton(text="🗂 Архив задач", callback_data="tasks:list:archive")],
+        [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
+    ])
+
+def _submission_confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Подтвердить отправку", callback_data="task_submit:confirm")],
+        [InlineKeyboardButton(text="✏️ Отправить заново", callback_data="task_submit:edit")],
+    ])
+
+
+async def _send_task_file(call: CallbackQuery, task: Task) -> None:
+    if not task.file_id:
+        return
+    if not await safe_answer_media(call.message, task.file_id, caption="Материал к заданию"):
+        await call.message.answer("К заданию прикреплён файл, но Telegram не дал открыть его повторно.")
+
+
+@router.message(F.text == "✅ Задачи")
+async def tasks_reply_button(message: Message, user: User | None, state: FSMContext) -> None:
+    await state.clear()
+    if not _approved(user):
+        await message.answer(texts.APPLICATION_PENDING)
+        return
+    await message.answer("✅ Мои задачи\n\nВыберите раздел:", reply_markup=_task_menu())
+
+
+@router.callback_query(F.data == "tasks:hub")
+async def tasks_root(call: CallbackQuery, user: User | None) -> None:
+    """Enhanced task hub; legacy cabinet:tasks keeps its single owner in cabinet.py."""
+    await call.answer()
+    if not _approved(user):
+        await call.message.answer(texts.APPLICATION_PENDING)
+        return
+    await call.message.answer(ux_texts.TASKS_MENU, reply_markup=_task_menu())
+
+
+@router.callback_query(F.data.in_({"tasks:list:active", "tasks:list:open", "tasks:list:archive"}))
+async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+    await call.answer()
+    if not _approved(user):
+        await call.message.answer(texts.APPLICATION_PENDING)
+        return
+    mode = call.data.rsplit(":", 1)[-1]
+    all_tasks = await task_service.list_for_user(session, user)
+    joined_ids = await task_service.joined_task_ids(session, user, all_tasks)
+    completed_ids = await task_service.completed_task_ids(session, user, all_tasks)
+    if mode == "archive":
+        tasks = [
+            task
+            for task in all_tasks
+            if (
+                task.status in ARCHIVE_STATUSES
+                and task_service.is_joined_or_assigned(task, joined_ids, user)
+            )
+            or task.id in completed_ids
+        ]
+        title = "🗂 Архив задач"
+        empty = ux_texts.TASKS_EMPTY_ARCHIVE
+    elif mode == "open":
+        tasks = [
+            task
+            for task in all_tasks
+            if task.id not in completed_ids
+            and task_service.is_open_public_task(task, joined_ids, user)
+        ]
+        title = "🌐 Общие задачи"
+        empty = "Сейчас нет открытых общих задач. Как только команда опубликует набор, он появится здесь."
+    else:
+        tasks = [
+            task
+            for task in all_tasks
+            if task.status not in ARCHIVE_STATUSES
+            and task_service.is_joined_or_assigned(task, joined_ids, user)
+        ]
+        title = "🟢 Задачи в работе"
+        empty = ux_texts.TASKS_EMPTY_ACTIVE
+    body = "\n".join(
+        f"• {task.title} — {'Выполнено' if task.id in completed_ids else TASK_STATUS_LABELS.get(task.status, task.status)}, до {deadline_label(task.deadline, '%d.%m.%Y')} · {task.points} баллов"
+        for task in tasks
+    ) or empty
+    await call.message.answer(
+        f"{title}\n\n{body}",
+        reply_markup=tasks_keyboard(tasks, joined_ids | completed_ids) if tasks else _task_menu(),
+    )
+
+
+@router.callback_query(F.data.startswith("task:join:"))
+async def task_join(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+    await call.answer()
+    if not _approved(user):
+        return
+    task = await session.get(Task, int(call.data.rsplit(":", 1)[-1]))
+    membership, reason = await task_service.claim(session, task, user)
+    back_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="← Мои задачи", callback_data="tasks:hub")]]
+    )
+    if reason == "closed":
+        await call.message.answer("Набор на это задание уже закрыт")
+        return
+    if reason == "full":
+        await call.message.answer("Команда уже набрана")
+        return
+    if reason == "already_pending":
+        await call.message.answer("Ваша заявка уже у лидера на рассмотрении.", reply_markup=back_keyboard)
+        return
+    if reason == "already_joined":
+        await call.message.answer("Вы уже в команде этой задачи.", reply_markup=back_keyboard)
+        return
+    if reason == "completed":
+        await call.message.answer("✅ Ваш результат по этому заданию уже принят. Баллы начислены.", reply_markup=back_keyboard)
+        return
+    if membership and membership.status == 'joined':
+        await call.message.answer('✅ Задание в работе. Когда закончите, отправьте результат.', reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='📤 Отправить результат', callback_data=f'task:result:{task.id}')]]))
+        return
+    await call.message.answer(
+        "Заявка отправлена лидеру 🙌\n\nЕсли лидер примет Вас в команду, задача появится как активная в личном кабинете.",
+        reply_markup=back_keyboard,
+    )
+
+
+@router.callback_query(F.data.startswith("task:view:"))
+async def task_view(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+    await call.answer()
+    if not _approved(user):
+        return
+    task = await session.get(Task, int(call.data.rsplit(":", 1)[-1]))
+    if task is None or not await task_service.can_view(session, task, user):
+        await call.message.answer(texts.NO_ACCESS)
+        return
+    membership = await task_service.get_membership(session, task.id, user.id)
+    rows = []
+    completed = bool(membership and membership.status == "completed")
+    if completed:
+        rows.append([InlineKeyboardButton(text="✅ Результат принят", callback_data="tasks:list:archive")])
+    elif await task_service.can_submit(session, task, user) and task.status not in ARCHIVE_STATUSES:
+        rows.append([InlineKeyboardButton(text="📤 Отправить результат", callback_data=f"task:result:{task.id}")])
+    elif membership and membership.status == "pending":
+        rows.append([InlineKeyboardButton(text="⏳ Заявка на рассмотрении", callback_data="tasks:hub")])
+    elif task.task_type == "challenge" and task.status == "published":
+        rows.append([InlineKeyboardButton(text="🙌 Хочу помочь", callback_data=f"task:join:{task.id}")])
+    if task.chat_url and await task_service.can_submit(session, task, user):
+        rows.append([InlineKeyboardButton(text="💬 Чат команды", url=task.chat_url)])
+    rows.append([InlineKeyboardButton(text="← Мои задачи", callback_data="tasks:hub")])
+    await call.message.answer(
+        f"✅ {task.title}\n\n{task.description}\n\nСрок: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}\nНаграда: {task.points} баллов\nСтатус: {'Выполнено' if completed else TASK_STATUS_LABELS.get(task.status, task.status)}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+    await _send_task_file(call, task)
+
+
+@router.callback_query(F.data.startswith("task:result:"))
+async def task_result_start(call: CallbackQuery, user: User | None, state: FSMContext, session: AsyncSession) -> None:
+    await call.answer()
+    if not _approved(user):
+        return
+    task = await session.get(Task, int(call.data.rsplit(":", 1)[-1]))
+    if task is None or task.status in ARCHIVE_STATUSES or not await task_service.can_submit(session, task, user):
+        await call.message.answer(texts.NO_ACCESS)
+        return
+    await state.set_state(TaskSubmissionStates.result)
+    await state.update_data(task_id=task.id)
+    await call.message.answer("Отправьте результат текстом, фотографией, видео или файлом\n\nАдмин сможет принять, вернуть на доработку или отклонить результат.")
+
+
+@router.message(TaskSubmissionStates.result)
+async def task_result_save(message: Message, user: User, session: AsyncSession, state: FSMContext, bot: Bot, settings: Settings) -> None:
+    data = await state.get_data()
+    task = await session.get(Task, int(data["task_id"]))
+    if not _approved(user) or task is None or task.status in ARCHIVE_STATUSES or not await task_service.can_submit(session, task, user):
+        await state.clear()
+        await message.answer(texts.NO_ACCESS)
+        return
+    text_value = clean_text(message.text or message.caption or "", 3000) or None
+    file_id = None
+    file_type = None
+    if message.photo:
+        file_id = message.photo[-1].file_id
+        file_type = "photo"
+    elif message.video:
+        file_id = message.video.file_id
+        file_type = "video"
+    elif message.document:
+        file_id = message.document.file_id
+        file_type = "document"
+    if not text_value and not file_id:
+        await message.answer("Добавьте текст или прикрепите материал")
+        return
+    await state.update_data(draft_text=text_value, draft_file_id=file_id, draft_file_type=file_type)
+    await state.set_state(TaskSubmissionStates.confirm)
+    await message.answer("Проверьте результат перед отправкой администратору. После подтверждения его можно будет проверить и начислить баллы.", reply_markup=_submission_confirm_keyboard())
+
+@router.callback_query(TaskSubmissionStates.confirm, F.data == "task_submit:edit")
+async def task_result_edit(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    await state.set_state(TaskSubmissionStates.result)
+    await call.message.answer("Отправьте исправленный текст, фото, видео или файл.")
+
+@router.callback_query(TaskSubmissionStates.confirm, F.data == "task_submit:confirm")
+async def task_result_confirm(call: CallbackQuery, user: User, session: AsyncSession, state: FSMContext, bot: Bot, settings: Settings) -> None:
+    await call.answer()
+    data = await state.get_data()
+    task = await session.scalar(select(Task).where(Task.id == int(data.get('task_id', 0))).with_for_update())
+    if not _approved(user) or task is None or task.status in ARCHIVE_STATUSES or not await task_service.can_submit(session, task, user):
+        await state.clear(); await call.message.answer(texts.NO_ACCESS); return
+    previous = await session.scalar(select(TaskSubmission).where(TaskSubmission.task_id == task.id, TaskSubmission.user_id == user.id, TaskSubmission.status.in_(['pending', 'approved'])))
+    if previous or not (data.get('draft_text') or data.get('draft_file_id')):
+        await state.clear()
+        await call.message.answer('Результат уже отправлен или черновик пуст. Откройте карточку задания.')
+        return
+    submission = TaskSubmission(task_id=task.id, user_id=user.id, text=data.get("draft_text"), file_id=data.get("draft_file_id"), status="pending")
+    session.add(submission)
+    if not (task.reward_json or {}).get('public_task'):
+        task.status = 'review'
+    await session.commit()
+    await state.clear()
+    await call.message.answer("✅ Результат подтверждён и отправлен на проверку. После решения админа Вы получите уведомление.")
+    telegram = f"@{user.username}" if user.username else str(user.telegram_id)
+    await notify_admins(
+        bot,
+        settings,
+        f"📥 Новый результат задания\n\n{task.title}\nУчастник: {user.first_name} {user.last_name or ''}\nTelegram: {telegram}\n\n{submission.text or 'Материал прикреплён файлом'}\n\nПроверка — в приложении ЭРА.",
+        reply_markup=open_app_button(settings.effective_miniapp_url),
+    )
+    file_id = submission.file_id
+    if file_id:
+        media_sent = media_failed = 0
+        for chat_id in set(settings.admin_ids):
+            if data.get("draft_file_type") == "photo":
+                ok = await safe_send_photo(bot, chat_id, file_id, caption="Файл результата")
+            elif data.get("draft_file_type") == "video":
+                ok = await safe_send_video(bot, chat_id, file_id, caption="Файл результата")
+            else:
+                ok = await safe_send_document(bot, chat_id, file_id, caption="Файл результата")
+            media_sent += int(ok)
+            media_failed += int(not ok)
+        if media_failed:
+            await notify_admins(bot, settings, f"Не удалось доставить файл результата задания части админов. Доставлено: {media_sent}. Ошибок: {media_failed}.")

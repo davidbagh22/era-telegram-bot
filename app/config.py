@@ -1,0 +1,193 @@
+import hashlib
+from functools import lru_cache
+from typing import Annotated
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+from pydantic import BeforeValidator, Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _parse_ids(value: object) -> list[int]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        return [int(item) for item in value]
+    return [int(item.strip()) for item in str(value).split(",") if item.strip()]
+
+
+def _with_release_cache_buster(url: str, release: str) -> str:
+    normalized_release = release.strip()
+    if not url or not normalized_release:
+        return url
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["v"] = normalized_release[:12]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+IdList = Annotated[list[int], BeforeValidator(_parse_ids)]
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    bot_token: str = Field(min_length=10)
+    public_base_url: str = ""
+    webhook_secret: str = ""
+    render_external_hostname: str = ""
+    render_git_commit: str = ""
+    dev_auth_enabled: bool = False
+    init_data_max_age_seconds: int = 3600
+    miniapp_url: str = ""
+    miniapp_auth_secret: str = ""
+    bot_username: str = ""
+    database_url: str = "postgresql+asyncpg://era:era@db:5432/era"
+    redis_url: str = "redis://redis:6379/0"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-5.5"
+
+    era_channel_id: int | str = ""
+    era_channel_url: str = "https://t.me/era_leaders1"
+    era_channel_username: str = "era_leaders1"
+    general_chat_id: int | None = None
+    general_chat_url: str = "https://t.me/+Q6MzTrnR21dmZjgy"
+    internal_department_chat_id: int | None = None
+    internal_department_chat_url: str = "https://t.me/+zV8olVtkdc8yMWVi"
+    external_department_chat_id: int | None = None
+    external_department_chat_url: str = "https://t.me/+PsEYN685g1w5ZmEy"
+    leaders_chat_id: int | None = None
+    leaders_chat_url: str = "https://t.me/+V3OkO1PNwmhiY2Ni"
+    media_chat_id: int | None = None
+    media_chat_url: str = "https://t.me/+f03ksvhCMKc5NDBi"
+    media_manager_ids: IdList = Field(default_factory=list)
+    # Immutable registered account ID; never inferred from a mutable name or username.
+    era_chair_user_id: int | None = Field(default=None, gt=0)
+    admin_ids: IdList = Field(default_factory=list)
+
+    # One feature-flag mechanism for participant-facing optional modules.
+    # Valid values: OFF / TESTERS / ALL. Testers are explicit and never
+    # inferred from administrator privileges.
+    games_rewards_enabled: bool = False  # Enable only after ledger QA
+    feature_management_reports: str = "OFF"
+    feature_quick_registration: str = "OFF"
+    quick_registration_tester_ids: IdList = Field(default_factory=list)
+    feature_review_reminders: str = "OFF"
+    feature_support_threads: str = "OFF"
+    support_thread_tester_ids: IdList = Field(default_factory=list)
+    review_reminder_recipient_ids: IdList = Field(default_factory=list)
+    feature_native_event_composer: str = "OFF"
+    native_event_composer_tester_ids: IdList = Field(default_factory=list)
+    feature_attendance_qr: str = "OFF"
+    attendance_qr_tester_ids: IdList = Field(default_factory=list)
+    management_report_hour: int = Field(default=9, ge=0, le=23)
+    management_report_minute: int = Field(default=0, ge=0, le=59)
+    management_report_recipient_ids: IdList = Field(default_factory=list)
+    feature_games: str = "OFF"  # OFF until production smoke test and content review 
+    feature_auctions: str = "ALL"
+    feature_rewards: str = "ALL"
+    feature_era_pro: str = "ALL"
+    feature_surveys: str = "ALL"
+    feature_vector: str = "ALL"
+    feature_referrals: str = "ALL"
+    feature_media: str = "ALL"
+    feature_role_recruitment: str = "ALL"
+    feature_tester_ids: IdList = Field(default_factory=list)
+
+    timezone: str = "Asia/Yerevan"
+    log_level: str = "INFO"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: object) -> object:
+        if isinstance(value, str) and value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return value
+
+    @field_validator("bot_token", "miniapp_auth_secret", "webhook_secret", mode="before")
+    @classmethod
+    def strip_secret_whitespace(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator(
+        "feature_games", 
+        "feature_auctions",
+        "feature_rewards",
+        "feature_era_pro",
+        "feature_surveys",
+        "feature_vector",
+        "feature_referrals",
+        "feature_media",
+        "feature_role_recruitment",
+        mode="before",
+    )
+    @classmethod
+    def normalize_feature_mode(cls, value: object) -> str:
+        mode = str(value or "ALL").strip().upper()
+        if mode not in {"OFF", "TESTERS", "ALL"}:
+            raise ValueError("feature flag mode must be OFF, TESTERS or ALL")
+        return mode
+
+    @field_validator("feature_management_reports", "feature_quick_registration", "feature_review_reminders", "feature_support_threads", "feature_attendance_qr", "feature_native_event_composer", mode="before")
+    @classmethod
+    def normalize_new_feature_mode(cls, value: object) -> str:
+        return cls.normalize_feature_mode(value or "OFF")
+
+    @property
+    def chat_ids(self) -> set[int]:
+        return {
+            chat_id
+            for chat_id in (
+                self.general_chat_id,
+                self.internal_department_chat_id,
+                self.external_department_chat_id,
+                self.leaders_chat_id,
+                self.media_chat_id,
+            )
+            if chat_id is not None
+        }
+
+    @property
+    def effective_base_url(self) -> str:
+        if self.public_base_url:
+            return self.public_base_url.rstrip("/")
+        if self.render_external_hostname:
+            return f"https://{self.render_external_hostname}".rstrip("/")
+        return ""
+
+    @property
+    def effective_miniapp_url(self) -> str:
+        if not self.miniapp_auth_secret:
+            return ""
+        if self.miniapp_url:
+            base_url = self.miniapp_url.rstrip("/")
+        elif self.effective_base_url:
+            base_url = f"{self.effective_base_url}/app/"
+        else:
+            return ""
+        return _with_release_cache_buster(base_url, self.render_git_commit)
+
+    @property
+    def effective_webhook_secret(self) -> str:
+        if not self.webhook_secret:
+            return ""
+        return hashlib.sha256(self.webhook_secret.encode()).hexdigest()
+
+    @property
+    def is_render_deployment(self) -> bool:
+        return bool(self.render_external_hostname)
+
+    def assert_safe_for_deployment(self) -> None:
+        if self.dev_auth_enabled and self.is_render_deployment:
+            raise RuntimeError(
+                "DEV_AUTH_ENABLED=true on a Render deployment would let anyone "
+                "bypass Telegram initData verification by posting an arbitrary "
+                "devTelegramId to /api/v1/miniapp/auth. Refusing to start — "
+                "unset DEV_AUTH_ENABLED in the Render service environment."
+            )
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

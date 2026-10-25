@@ -1,0 +1,79 @@
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+#root,
+.era-page,
+.era-page > * {
+  min-width: 0;
+}
+
+.era-page {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+:root {
+  /* DELTA ToR §56/60: the last card on a scrollable page must never end
+     up under the fixed bottom nav or the floating context-help "i"
+     (ContextHelp.tsx sits at bottom: 5.5rem, ~2.75rem tall, i.e. its top
+     edge is ~8.25rem from the viewport bottom) -- confirmed live: without
+     this, Home's last "Для тебя" card scrolls in underneath the FAB.
+     10rem clears the FAB with the ToR's "+24px" buffer on top; screens
+     that render ContextHelp should use this for their bottom padding. */
+  --era-page-bottom-safe: calc(10rem + env(safe-area-inset-bottom, 0px));
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+/*
+ * ERA visual refinement layer, light/signal identity. Imported after
+ * tokens.css. Nav-specific tokens live here since FloatingNav is the only
+ * consumer; everything else comes from tokens.css.
+ */
+:root {
+  --era-nav-border: rgba(17, 17, 24, 0.06);
+  --era-nav-muted: var(--era-text-faint);
+  --era-nav-glass: rgba(255, 255, 255, 0.78);
+}
+
+.era-bottom-nav {
+  box-shadow:
+    0 20px 50px rgba(17, 17, 24, 0.12),
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+}
+
+.era-bottom-nav::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  inset: 0.35rem 12% auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent);
+  z-index: 2;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .era-bottom-nav {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--era-surface) !important;
+  }
+}
+/* Native modal keeps focus and scrolling inside the event composer on mobile. */
+.era-event-dialog::backdrop {
+  background: rgba(12, 10, 20, 0.75);
+}
+.era-event-dialog {
+  overscroll-behavior: contain;
+}

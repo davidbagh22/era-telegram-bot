@@ -1,0 +1,30 @@
+import type { ReactNode } from "react";
+import { FloatingNav, type TabKey } from "../components/FloatingNav";
+import { OnboardingGate } from "../components/OnboardingGate";
+import { ParticipationModeControl } from "../components/ParticipationModeControl";
+
+interface UserLayoutProps {
+  children: ReactNode;
+  activeTab: TabKey;
+  onTabChange: (tab: TabKey) => void;
+}
+
+export function UserLayout({ children, activeTab, onTabChange }: UserLayoutProps) {
+  return (
+    <OnboardingGate>
+      <div
+        style={{
+          minHeight: "100dvh",
+          display: "flex",
+          flexDirection: "column",
+          paddingTop: "env(safe-area-inset-top, 0px)",
+          paddingBottom: "var(--era-bottom-nav-clearance, calc(6rem + env(safe-area-inset-bottom, 0px)))",
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
+        <ParticipationModeControl />
+        <FloatingNav active={activeTab} onChange={onTabChange} />
+      </div>
+    </OnboardingGate>
+  );
+}

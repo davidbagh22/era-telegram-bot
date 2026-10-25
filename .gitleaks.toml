@@ -1,0 +1,9 @@
+title = "ERA gitleaks configuration"
+
+[allowlist]
+description = "Retired one-time campaign run-token commits. The temporary routes were removed from the current tree; keep all other history scanned."
+commits = [
+  "1bb87655790302a5ba8f9bd34ed302a89da487b3",
+  "816733b8d18c994eb1f309acb4c6db31b34d403e",
+  "03bd4badf0bc418f801dade89e3e051b2f6eda0e",
+]

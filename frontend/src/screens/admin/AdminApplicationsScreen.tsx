@@ -1,0 +1,397 @@
+import { useCallback, useState } from "react";
+import {
+  approveApplication,
+  describeActionError,
+  fetchAdminApplications,
+  rejectApplication,
+  requestApplicationInfo,
+  setUserArchived,
+} from "../../api/client";
+import { Card } from "../../components/Card";
+import { EmptyState } from "../../components/EmptyState";
+import { InitialsAvatar } from "../../components/InitialsAvatar";
+import { useAsync } from "../../hooks/useAsync";
+import type { PendingApplication } from "../../types/admin";
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: "На рассмотрении",
+  needs_info: "Нужна информация",
+};
+
+function formatDate(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ru-RU").format(date);
+}
+
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function Answer({ text }: { text: string }) {
+  if (text.length <= 180) return <span>{text}</span>;
+  return <><span style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{text}</span>
+    <details style={{ marginTop: ".4rem" }}><summary>Полный ответ</summary><p style={{ whiteSpace: "pre-wrap", margin: ".5rem 0" }}>{text}</p></details></>;
+}
+
+function ValueRow({ label, value }: { label: string; value: string | number | null | undefined }) {
+  if (value === null || value === undefined || value === "" || value === "—") return null;
+  const shown = String(value);
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(5.5rem, 0.8fr) minmax(0, 1.6fr)",
+        gap: "0.75rem",
+        padding: "0.45rem 0",
+        borderBottom: "1px solid var(--era-border)",
+        alignItems: "start",
+      }}
+    >
+      <span style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>{label}</span>
+      <div style={{ minWidth: 0, overflowWrap: "anywhere", fontSize: "0.875rem" }}><Answer text={shown} /></div>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+      <h3
+        style={{
+          margin: "0 0 0.35rem",
+          fontSize: "0.75rem",
+          color: "var(--era-text-muted)",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+        }}
+      >
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+function ApplicationCard({
+  application,
+  busy,
+  comment,
+  onComment,
+  onApprove,
+  onRequestInfo,
+  onReject,
+  onDelete,
+  focused = false,
+}: {
+  application: PendingApplication;
+  busy: boolean;
+  comment: string;
+  onComment: (value: string) => void;
+  onApprove: () => void;
+  onRequestInfo: () => void;
+  onReject: () => void;
+  onDelete: () => void;
+  focused?: boolean;
+}) {
+  const fullName = `${application.first_name} ${application.last_name ?? ""}`.trim();
+  const telegram = application.username ? `@${application.username}` : `ID ${application.telegram_id}`;
+  const departments = application.departments.length ? application.departments.join(", ") : "";
+  const directions = application.directions.length ? application.directions.join(", ") : "";
+  const skills = application.skills.length ? application.skills.join(", ") : "";
+
+  return (
+    <Card style={{ borderLeft: focused ? "4px solid var(--era-red)" : "3px solid var(--era-gold)", overflow: "hidden" }}>
+      {focused && (
+        <p style={{ margin: "0 0 0.65rem", color: "var(--era-red)", fontSize: "0.75rem", fontWeight: 850, textTransform: "uppercase" }}>
+          Заявка из уведомления
+        </p>
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.85rem" }}>
+        <InitialsAvatar firstName={application.first_name} lastName={application.last_name} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <strong style={{ display: "block", fontSize: "1rem", overflowWrap: "anywhere" }}>{fullName}</strong>
+          <span style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+            Заявка #{application.id} · {STATUS_LABELS[application.application_status] ?? application.application_status}
+          </span>
+        </div>
+      </div>
+
+      {application.photo_data_url ? (
+        <details style={{ marginBottom: ".8rem" }}>
+          <summary style={{ display: "flex", gap: ".65rem", alignItems: "center", cursor: "pointer" }}>
+            <img src={application.photo_data_url} alt={`Фото участника ${fullName}`} width={72} height={72}
+              style={{ objectFit: "cover", borderRadius: ".8rem" }} />
+            <span>Открыть фотографию</span>
+          </summary>
+          <img src={application.photo_data_url} alt="Фотография в полном размере" style={{ width: "100%", maxHeight: "24rem", objectFit: "contain", marginTop: ".75rem", borderRadius: ".8rem" }} />
+        </details>
+      ) : <p style={{ color: "var(--era-text-muted)", fontSize: ".8125rem", margin: "0 0 .8rem" }}>
+        {application.photo_attached ? "Фото прикреплено, но временно не загрузилось. Обновите экран позже." : "Фотография не приложена. При необходимости запросите её у участника."}
+      </p>}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <Section title="Личные данные">
+          <ValueRow label="Дата рождения" value={application.birth_date ? formatDate(application.birth_date) : null} />
+          <ValueRow label="Возраст" value={application.age} />
+          <ValueRow label="Город" value={application.city} />
+        </Section>
+
+        <Section title="Контакты">
+          <ValueRow label="Telegram" value={telegram} />
+          <ValueRow label="Телефон" value={application.phone} />
+          <ValueRow label="Эл. почта" value={application.email} />
+          {application.social_links.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", paddingTop: "0.5rem" }}>
+              <span style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>Соцсети</span>
+              {application.social_links.map((link) => (
+                <a
+                  key={`${link.platform}:${link.url}`}
+                  href={link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ overflowWrap: "anywhere" }}
+                >
+                  {link.platform}: {link.url}
+                </a>
+              ))}
+            </div>
+          ) : null}
+        </Section>
+
+        <Section title="Учёба и деятельность">
+          <ValueRow label="Учёба / работа" value={application.education_work} />
+          <ValueRow label="Занятие" value={application.occupation === application.education_work ? null : application.occupation} />
+          <ValueRow label="Навыки" value={skills} />
+          {application.experience && <ValueRow label="Опыт" value={application.experience} />}
+        </Section>
+
+        <Section title="Интерес к ЭРА">
+          <ValueRow label="Департамент" value={departments} />
+          <ValueRow label="Направления" value={directions} />
+          <ValueRow label="Доступное время" value={application.available_time} />
+          <ValueRow label="Желаемый путь" value={application.desired_path} />
+        </Section>
+
+        {application.motivation && <Section title="Мотивация">
+          <div
+            style={{
+              margin: 0,
+              padding: "0.85rem",
+              borderRadius: "0.75rem",
+              background: "var(--era-bg)",
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+              lineHeight: 1.55,
+            }}
+          >
+            <Answer text={application.motivation} />
+          </div>
+        </Section>}
+
+        <Section title="Согласие и подача">
+          <ValueRow label="Обработка данных" value={application.personal_data_consent ? "Согласие получено" : "Нет согласия"} />
+          <ValueRow label="Дата подачи" value={formatDateTime(application.created_at)} />
+        </Section>
+        <details style={{ color: "var(--era-text-muted)", fontSize: ".8125rem" }}>
+          <summary>Служебные сведения</summary>
+          <ValueRow label="Telegram ID" value={application.telegram_id} />
+          <ValueRow label="Версия условий" value={application.consent_policy_version} />
+        </details>
+      </div>
+
+      <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--era-border)" }}>
+        <textarea
+          placeholder="Комментарий (для отклонения или запроса информации)"
+          value={comment}
+          onChange={(event) => onComment(event.target.value)}
+          rows={3}
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            fontFamily: "var(--era-font-body)",
+            padding: "0.75rem",
+            borderRadius: "0.75rem",
+            border: "1px solid var(--era-border)",
+            background: "var(--era-bg)",
+            color: "var(--era-text)",
+            marginBottom: "0.65rem",
+            resize: "vertical",
+          }}
+        />
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <button type="button" className="era-btn-primary" disabled={busy} onClick={onApprove}>
+            Одобрить
+          </button>
+          <button type="button" disabled={busy || !comment.trim()} onClick={onRequestInfo}>
+            Запросить информацию
+          </button>
+          <button type="button" disabled={busy || !comment.trim()} onClick={onReject}>
+            Отклонить
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onDelete}
+            style={{ color: "var(--era-error)", borderColor: "var(--era-error)" }}
+          >
+            Удалить анкету
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+export function AdminApplicationsScreen({ initialApplicationId = null }: { initialApplicationId?: number | null }) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const state = useAsync(() => fetchAdminApplications(), [refreshKey]);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [comments, setComments] = useState<Record<number, string>>({});
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
+
+  const handleApprove = useCallback(
+    async (userId: number) => {
+      setBusyId(userId);
+      setActionError(null);
+      try {
+        await approveApplication(userId);
+        refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [refresh],
+  );
+
+  const handleReject = useCallback(
+    async (userId: number) => {
+      const comment = (comments[userId] ?? "").trim();
+      if (!comment) return;
+      setBusyId(userId);
+      setActionError(null);
+      try {
+        await rejectApplication(userId, comment);
+        refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [comments, refresh],
+  );
+
+  const handleRequestInfo = useCallback(
+    async (userId: number) => {
+      const comment = (comments[userId] ?? "").trim();
+      if (!comment) return;
+      setBusyId(userId);
+      setActionError(null);
+      try {
+        await requestApplicationInfo(userId, comment);
+        refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [comments, refresh],
+  );
+
+  const handleDelete = useCallback(
+    async (userId: number, fullName: string) => {
+      const confirmed = window.confirm(
+        `Удалить анкету ${fullName}? Она исчезнет из очереди заявок.`,
+      );
+      if (!confirmed) return;
+
+      setBusyId(userId);
+      setActionError(null);
+      try {
+        await setUserArchived(userId, true);
+        setComments((previous) => {
+          const next = { ...previous };
+          delete next[userId];
+          return next;
+        });
+        refresh();
+      } catch (error) {
+        setActionError(describeActionError(error));
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [refresh],
+  );
+
+  if (state.status === "loading") {
+    return <p style={{ color: "var(--era-text-muted)" }}>Загрузка полной анкеты и фотографии…</p>;
+  }
+  if (state.status === "error") {
+    return <EmptyState text="Не удалось загрузить заявки." />;
+  }
+  if (state.data.length === 0) {
+    return <EmptyState text="Новых заявок нет." />;
+  }
+
+  const focusedExists = initialApplicationId !== null && state.data.some((item) => item.id === initialApplicationId);
+  const applications = initialApplicationId === null
+    ? state.data
+    : [...state.data].sort((left, right) => {
+        if (left.id === initialApplicationId) return -1;
+        if (right.id === initialApplicationId) return 1;
+        return 0;
+      });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem", minWidth: 0 }}>
+      <div>
+        <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+          Показаны все данные, которые участник отправил при регистрации, включая фотографию и соцсети.
+        </p>
+        {initialApplicationId !== null && !focusedExists && (
+          <p style={{ margin: "0.45rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+            Заявка #{initialApplicationId} уже обработана или больше не находится в очереди. Ниже показаны актуальные заявки.
+          </p>
+        )}
+      </div>
+      {actionError && (
+        <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
+      )}
+      {applications.map((application) => {
+        const fullName = `${application.first_name} ${application.last_name ?? ""}`.trim();
+        return (
+          <ApplicationCard
+            key={application.id}
+            application={application}
+            focused={application.id === initialApplicationId}
+            busy={busyId === application.id}
+            comment={comments[application.id] ?? ""}
+            onComment={(value) =>
+              setComments((previous) => ({ ...previous, [application.id]: value }))
+            }
+            onApprove={() => handleApprove(application.id)}
+            onRequestInfo={() => handleRequestInfo(application.id)}
+            onReject={() => handleReject(application.id)}
+            onDelete={() => handleDelete(application.id, fullName)}
+          />
+        );
+      })}
+    </div>
+  );
+}

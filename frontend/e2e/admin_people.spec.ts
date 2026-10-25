@@ -1,0 +1,40 @@
+import { expect, test } from "@playwright/test";
+
+const ADMIN_TELEGRAM_ID = 900003;
+
+async function enterAdminWorkspace(page: import("@playwright/test").Page) {
+  await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
+  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: /Управление ЭРА/ }).click();
+  await expect(page.getByText("Управление", { exact: true })).toBeVisible();
+}
+
+test("admin opens a rich participant profile and awards points", async ({ page }) => {
+  await enterAdminWorkspace(page);
+  await page.getByRole("button", { name: "Люди" }).click();
+  await page.getByRole("button", { name: "Участники" }).click();
+  await page.getByPlaceholder("Имя, имя пользователя или ID Telegram").fill("E2E Participant");
+  await page.getByText("E2E Participant").click();
+
+  await expect(page.getByText("Карточка участника")).toBeVisible();
+  await expect(page.getByText("Анкета при регистрации")).toBeVisible();
+  await expect(page.getByText("Показатели участника")).toBeVisible();
+
+  const balanceCard = page.getByText("Баллов сейчас").locator("..");
+  const pointsBefore = Number((await balanceCard.locator("strong").textContent())?.trim());
+  expect(Number.isFinite(pointsBefore)).toBeTruthy();
+
+  await page.getByRole("button", { name: "Управление", exact: true }).click();
+  await expect(page.getByText("Роль и статус доступа")).toBeVisible();
+  await expect(page.getByText("Баллы", { exact: true })).toBeVisible();
+
+  await page.getByPlaceholder("± баллы").fill("15");
+  await page.getByPlaceholder("Причина ручной корректировки").fill("E2E проверка начисления баллов");
+  await page.getByRole("button", { name: "Применить вручную" }).click();
+
+  // The Admin workspace itself also has an "Обзор" destination in its bottom
+  // navigation. The first exact match is the local participant-profile tab.
+  await expect(page.getByText("Роль и статус доступа")).toBeVisible();
+  await page.getByTestId("participant-profile-tabs").getByRole("button", { name: "Обзор", exact: true }).click();
+  await expect(balanceCard.locator("strong")).toHaveText(String(pointsBefore + 15));
+});
