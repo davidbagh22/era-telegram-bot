@@ -147,5 +147,59 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("обычная группа, отдельной темы нет", result)
         self.session.commit.assert_not_awaited()
 
+
+class LeadersTopicRoutingSafetyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_corrupt_or_invalid_thread_ids_never_become_routing_targets(self):
+        from app.services.leaders_topics_service import delivery_topic, topic_id
+
+        for stored in (None, "not-json", "[]", '{"thread_id":"7"}',
+                       '{"thread_id":true}', '{"thread_id":0}',
+                       '{"mode":"plain","thread_id":7}'):
+            with self.subTest(stored=stored):
+                row = SimpleNamespace(value=stored) if stored is not None else None
+                session = SimpleNamespace(scalar=AsyncMock(return_value=row))
+                self.assertIsNone(await topic_id(session, -1001, "tasks"))
+                with self.assertRaises(ValueError):
+                    await delivery_topic(session, -1001, "tasks")
+
+    async def test_valid_forum_thread_and_explicit_plain_mode(self):
+        from app.services.leaders_topics_service import delivery_topic, topic_id
+
+        for value, expected in (('{"thread_id":7}', 7), ('{"mode":"plain"}', None)):
+            with self.subTest(value=value):
+                session = SimpleNamespace(scalar=AsyncMock(
+                    return_value=SimpleNamespace(value=value),
+                ))
+                self.assertEqual(await topic_id(session, -1001, "tasks"), expected)
+                self.assertEqual(await delivery_topic(session, -1001, "tasks"), expected)
+
+    async def test_card_sync_never_sends_into_default_topic_when_setting_is_corrupt(self):
+        from unittest.mock import patch
+
+        from app.services.leaders_workcenter_service import sync_one_card
+        from app.utils.constants import TaskStatus
+
+        task = SimpleNamespace(
+            id=1, title="Проверить отчёт", assignee_id=None, deadline=None,
+            status=TaskStatus.NEW, comment=None, reward_json={},
+        )
+        delivery = SimpleNamespace(
+            id=10, task_id=1, chat_id=-1001, status="pending",
+            telegram_message_id=None, last_card_snapshot=None, error=None,
+        )
+        session = SimpleNamespace(scalar=AsyncMock(side_effect=[
+            delivery, SimpleNamespace(value="not-json"),
+        ]))
+        bot = SimpleNamespace(send_message=AsyncMock(), edit_message_text=AsyncMock())
+        settings = SimpleNamespace(leaders_chat_id=-1001)
+        with patch("app.services.notification_service.safe_send_once",
+                   new_callable=AsyncMock) as safe:
+            await sync_one_card(session, bot, settings, task)
+            safe.assert_not_awaited()
+        bot.send_message.assert_not_awaited()
+        self.assertEqual(delivery.status, "pending")
+        self.assertIn("не настроена", delivery.error)
+
+
 if __name__ == "__main__":
     unittest.main()
