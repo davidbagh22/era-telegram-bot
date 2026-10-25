@@ -82,6 +82,52 @@ class MediaKnowledgeTests(IsolatedAsyncioTestCase):
                 with self.subTest(values=values), self.assertRaises(ValueError):
                     await self.create(session, values)
 
+    async def test_malformed_links_fail_consistently_without_creating_records(self):
+        malformed = (
+            "https://example.org:abc/doc",
+            "https://example.org:99999/doc",
+            "https://[broken/doc",
+            "https://example.org\\@evil.example/doc",
+        )
+        async with self.factory() as session:
+            for index, url in enumerate(malformed):
+                with self.subTest(url=url), self.assertRaisesRegex(
+                    ValueError, "^Укажите HTTPS-ссылку на материал$"
+                ):
+                    await self.create(
+                        session, {"kind": "link", "title": "Материал", "url": url},
+                        key=f"invalid-link-{index}",
+                    )
+            self.assertEqual(await session.scalar(select(func.count(MediaLibraryItem.id))), 0)
+            item = await self.create(
+                session,
+                {"kind": "link", "title": "Материал", "url": "https://example.org:443/doc"},
+                key="valid-https-port",
+            )
+            self.assertEqual(item.url, "https://example.org:443/doc")
+
+    async def test_http_malformed_link_has_safe_localized_validation_error(self):
+        app = FastAPI()
+        app.include_router(extras)
+        async def session_override():
+            async with self.factory() as session:
+                yield session
+                await session.commit()
+        app.dependency_overrides[get_session] = session_override
+        app.dependency_overrides[get_settings] = lambda: self.settings
+        async with self.factory() as session:
+            leader = await session.get(User, self.ids[1])
+        app.dependency_overrides[get_current_user] = lambda: leader
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            result = await client.post("/media/desk/library", json={
+                "kind": "link", "title": "Материал", "url": "https://example.org:abc/doc",
+                "request_key": "00000000-0000-4000-8000-000000000002",
+            })
+        self.assertEqual(result.status_code, 409)
+        self.assertEqual(result.json()["detail"], "Укажите HTTPS-ссылку на материал")
+        async with self.factory() as session:
+            self.assertEqual(await session.scalar(select(func.count(MediaLibraryItem.id))), 0)
+
     async def test_member_and_old_leader_form_cannot_edit(self):
         async with self.factory() as session:
             item = await self.create(session)
