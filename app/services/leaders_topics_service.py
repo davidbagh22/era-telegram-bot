@@ -91,11 +91,22 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                 return {"status": "missing_admin_rights", "chat_id": chat_id}
             if not chat.is_forum:
                 existing=await session.scalar(select(AppSetting).where(AppSetting.key==f'leaders_forum:{chat_id}:tasks'))
-                data=(json.loads(existing.value) if isinstance(existing.value,str) else existing.value) if existing else {}
+                data = _topic_data(existing)
                 if data.get('thread_id'):
                     return {'status':'forum_disabled','chat_id':chat_id}
-                if data.get('message_state') in {'sending','uncertain'}:
-                    return {'status':'panel_needs_review','chat_id':chat_id}
+                if existing is not None:
+                    # A legacy, damaged or uncertain panel record may already
+                    # correspond to a Telegram message. Never post a replacement
+                    # into the group's main feed without manual reconciliation.
+                    message_id = data.get('message_id')
+                    if (
+                        data.get('mode') != 'plain'
+                        or data.get('thread_id') is not None
+                        or type(message_id) is not int
+                        or message_id <= 0
+                        or data.get('message_state') != 'sent'
+                    ):
+                        return {'status':'panel_needs_review','chat_id':chat_id}
                 text,keyboard=await panel(session,chat_id,'tasks',me.username)
                 if not data.get('message_id'):
                     if existing is None:

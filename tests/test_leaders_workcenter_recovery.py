@@ -47,6 +47,65 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(again.leader_chat_id, -1002)
             self.assertIsNone(again.announcement_message_id)
 
+    async def test_plain_panel_damaged_state_never_resends_into_main_feed(self):
+        from sqlalchemy import delete, select
+        from app.database.models import AppSetting
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001, general_chat_id=-1002)
+        bot = AsyncMock()
+        bot.get_chat.return_value = SimpleNamespace(type='supergroup', is_forum=False)
+        bot.get_me.return_value = SimpleNamespace(id=100, username='era_test')
+        bot.get_chat_member.return_value = SimpleNamespace(
+            status='administrator', can_manage_topics=True, can_pin_messages=True,
+        )
+        damaged = (
+            'not-json', '[]', '{}', '{"mode":"plain"}',
+            '{"mode":"plain","message_id":"8","message_state":"sent"}',
+            '{"mode":"forum","message_id":8,"message_state":"sent"}',
+            '{"mode":"plain","message_id":8,"message_state":"sending"}',
+            '{"mode":"plain","message_id":8,"message_state":"uncertain"}',
+            '{"mode":"plain","message_id":0,"message_state":"sent"}',
+        )
+        for value in damaged:
+            with self.subTest(value=value):
+                async with self.factory() as session:
+                    await session.execute(delete(AppSetting))
+                    session.add(AppSetting(key='leaders_forum:-1001:tasks', value=value))
+                    await session.commit()
+                result = await setup_leaders_topics(bot, settings, self.factory)
+                self.assertEqual(result['status'], 'panel_needs_review')
+                bot.send_message.assert_not_awaited()
+                bot.edit_message_text.assert_not_awaited()
+                bot.pin_chat_message.assert_not_awaited()
+                async with self.factory() as session:
+                    row = await session.scalar(select(AppSetting).where(
+                        AppSetting.key == 'leaders_forum:-1001:tasks',
+                    ))
+                    self.assertEqual(row.value, value)
+
+    async def test_plain_panel_first_send_is_durable_and_subsequent_setup_reuses_it(self):
+        from sqlalchemy import select
+        from app.database.models import AppSetting
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001, general_chat_id=-1002)
+        bot = AsyncMock()
+        bot.get_chat.return_value = SimpleNamespace(type='supergroup', is_forum=False)
+        bot.get_me.return_value = SimpleNamespace(id=100, username='era_test')
+        bot.get_chat_member.return_value = SimpleNamespace(
+            status='administrator', can_manage_topics=True, can_pin_messages=True,
+        )
+        bot.send_message.return_value = SimpleNamespace(message_id=8)
+        self.assertEqual((await setup_leaders_topics(bot, settings, self.factory))['status'], 'ready_plain')
+        self.assertEqual((await setup_leaders_topics(bot, settings, self.factory))['status'], 'ready_plain')
+        self.assertEqual(bot.send_message.await_count, 1)
+        self.assertEqual(bot.pin_chat_message.await_count, 1)
+        async with self.factory() as session:
+            row = await session.scalar(select(AppSetting).where(
+                AppSetting.key == 'leaders_forum:-1001:tasks',
+            ))
+            self.assertIn('"message_id": 8', row.value)
+            self.assertIn('"message_state": "sent"', row.value)
+
     async def test_forum_setup_requires_review_of_old_plain_group_settings(self):
         from app.database.models import AppSetting
 
