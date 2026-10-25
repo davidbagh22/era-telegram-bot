@@ -73,6 +73,52 @@ class VerifyInitDataTests(unittest.TestCase):
         with self.assertRaises(InitDataError):
             verify_init_data(stale, bot_token=BOT_TOKEN, max_age_seconds=86400)
 
+    def test_duplicate_signed_fields_are_rejected(self) -> None:
+        # A duplicate query parameter is not a second authenticated identity.
+        valid = _signed_init_data()
+        with self.assertRaisesRegex(InitDataError, "duplicate_field"):
+            verify_init_data(
+                valid + "&auth_date=1", bot_token=BOT_TOKEN, max_age_seconds=86400
+            )
+
+    def test_future_auth_date_is_rejected_but_small_clock_skew_is_allowed(self) -> None:
+        now = int(time.time())
+        with self.assertRaisesRegex(InitDataError, "future_auth_date"):
+            verify_init_data(
+                _signed_init_data(auth_date=now + 3600),
+                bot_token=BOT_TOKEN,
+                max_age_seconds=86400,
+            )
+        result = verify_init_data(
+            _signed_init_data(auth_date=now + 30),
+            bot_token=BOT_TOKEN,
+            max_age_seconds=86400,
+        )
+        self.assertEqual(result.telegram_id, 555)
+
+    def test_invalid_signed_user_ids_are_rejected(self) -> None:
+        for invalid_id in (True, 0, -1):
+            with self.subTest(telegram_id=invalid_id), self.assertRaisesRegex(
+                InitDataError, "missing_user_id"
+            ):
+                verify_init_data(
+                    _signed_init_data(telegram_id=invalid_id),
+                    bot_token=BOT_TOKEN,
+                    max_age_seconds=86400,
+                )
+
+    def test_signed_non_object_user_is_rejected(self) -> None:
+        fields = {"auth_date": str(int(time.time())), "user": "null"}
+        check_string = "\\n".join(f"{key}={value}" for key, value in sorted(fields.items()))
+        secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+        fields["hash"] = hmac.new(
+            secret_key, check_string.encode(), hashlib.sha256
+        ).hexdigest()
+        with self.assertRaisesRegex(InitDataError, "missing_user"):
+            verify_init_data(
+                urlencode(fields), bot_token=BOT_TOKEN, max_age_seconds=86400
+            )
+
     def test_max_age_zero_disables_freshness_check(self) -> None:
         stale = _signed_init_data(auth_date=int(time.time()) - 999_999)
         result = verify_init_data(stale, bot_token=BOT_TOKEN, max_age_seconds=0)
