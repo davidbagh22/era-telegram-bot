@@ -50,9 +50,9 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_topics_created_only_once_and_never_in_general(self):
         settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001, general_chat_id=-1002)
         bot = AsyncMock()
-        bot.get_chat.return_value = SimpleNamespace(is_forum=True)
+        bot.get_chat.return_value = SimpleNamespace(type='supergroup', is_forum=True)
         bot.get_me.return_value = SimpleNamespace(id=100, username='era_test')
-        bot.get_chat_member.return_value = SimpleNamespace(can_manage_topics=True, can_pin_messages=True)
+        bot.get_chat_member.return_value = SimpleNamespace(status='administrator', can_manage_topics=True, can_pin_messages=True)
         bot.create_forum_topic.side_effect = [SimpleNamespace(message_thread_id=x) for x in (2,3,4)]
         bot.send_message.return_value = SimpleNamespace(message_id=5)
         self.assertEqual((await setup_leaders_topics(bot, settings, self.factory))['status'], 'ready')
@@ -61,6 +61,42 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bot.send_message.await_count, 3)
         settings.leaders_chat_id = settings.general_chat_id
         self.assertEqual((await setup_leaders_topics(bot, settings, self.factory))['status'], 'not_configured')
+
+    async def test_topics_setup_refuses_revoked_bot_admin_before_any_send(self):
+        from sqlalchemy import func, select
+        from app.database.models import AppSetting
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001, general_chat_id=-1002)
+        bot = AsyncMock()
+        bot.get_chat.return_value = SimpleNamespace(type='supergroup', is_forum=True)
+        bot.get_me.return_value = SimpleNamespace(id=100, username='era_test')
+        bot.get_chat_member.return_value = SimpleNamespace(
+            status='member', can_manage_topics=True, can_pin_messages=True,
+        )
+        result = await setup_leaders_topics(bot, settings, self.factory)
+        self.assertEqual(result['status'], 'missing_admin_rights')
+        bot.create_forum_topic.assert_not_awaited()
+        bot.send_message.assert_not_awaited()
+        async with self.factory() as session:
+            self.assertEqual(await session.scalar(select(func.count()).select_from(AppSetting)), 0)
+
+    async def test_topics_setup_refuses_channel_binding_before_any_send(self):
+        from sqlalchemy import func, select
+        from app.database.models import AppSetting
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001, general_chat_id=-1002)
+        bot = AsyncMock()
+        bot.get_chat.return_value = SimpleNamespace(type='channel', is_forum=False)
+        bot.get_me.return_value = SimpleNamespace(id=100, username='era_test')
+        bot.get_chat_member.return_value = SimpleNamespace(
+            status='administrator', can_manage_topics=True, can_pin_messages=True,
+        )
+        result = await setup_leaders_topics(bot, settings, self.factory)
+        self.assertEqual(result['status'], 'invalid_chat_type')
+        bot.create_forum_topic.assert_not_awaited()
+        bot.send_message.assert_not_awaited()
+        async with self.factory() as session:
+            self.assertEqual(await session.scalar(select(func.count()).select_from(AppSetting)), 0)
 
     async def test_group_task_never_falls_back_to_an_unrelated_forum_thread(self):
         from app.database.models import User
