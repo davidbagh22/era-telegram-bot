@@ -8,7 +8,7 @@ const button: React.CSSProperties = { border: "1px solid var(--era-border)", bac
 const input: React.CSSProperties = { width: "100%", boxSizing: "border-box", background: "var(--era-surface-2)", color: "var(--era-text)", border: "1px solid var(--era-border)", borderRadius: 10, padding: ".7rem", font: "inherit" };
 const dateLabel = (value: string | null) => value ? new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Yerevan", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "Без даты";
 
-function Entry({ item, area, manager, members, onChanged }: { item: MediaCalendarEntry; area: string; manager: boolean; members: MediaMember[]; onChanged: () => Promise<void> }) {
+function Entry({ item, area, manager, members, onChanged }: { item: MediaCalendarEntry; area: string; manager: boolean; members: MediaMember[]; onChanged: (updated: MediaCalendarEntry) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [url, setUrl] = useState("");
@@ -21,7 +21,7 @@ function Entry({ item, area, manager, members, onChanged }: { item: MediaCalenda
   const terminal = ["published", "skipped"].includes(item.status);
   const change = async (values: object) => {
     setBusy(true); setError("");
-    try { await updateMediaCalendarEntry(area, item.id, { revision: item.revision, ...values }); await onChanged(); }
+    try { const updated = await updateMediaCalendarEntry(area, item.id, { revision: item.revision, ...values }); onChanged(updated); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось сохранить"); }
     finally { setBusy(false); }
   };
@@ -131,7 +131,7 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
         <button style={button} disabled={busy || title.trim().length < 2} type="submit">{busy ? "Сохраняем…" : "Сохранить в календаре"}</button>
       </form></Card>}
       <label>Показать<select aria-label="Показать" style={input} value={filter} onChange={event => setFilter(event.target.value)}><option value="active">В работе</option><option value="published">Опубликованные</option><option value="all">Все материалы</option></select></label>
-      {items.filter(item => filter === "all" || (filter === "published" ? item.status === "published" : !["published", "skipped"].includes(item.status))).map(item => <Entry key={item.id} area={area} item={item} manager={workspace.can_manage} members={members} onChanged={reload} />)}
+      {items.filter(item => filter === "all" || (filter === "published" ? item.status === "published" : !["published", "skipped"].includes(item.status))).map(item => <Entry key={item.id} area={area} item={item} manager={workspace.can_manage} members={members} onChanged={updated => setItems(current => current.map(entry => entry.id === updated.id ? updated : entry))} />)}
       {!items.length && <Card>Материалов пока нет. Руководитель может добавить первый.</Card>}
       {hasMore && <button style={button} disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Загружаем…" : "Показать ещё материалы"}</button>}
       <small>Загружено материалов: {items.length}. Публикации во внешние сервисы автоматически не отправляются.</small>
