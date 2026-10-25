@@ -189,28 +189,39 @@ async def reconcile_content_state(
 async def reconcile_media_pipeline_job(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
+    # A fixed first-page LIMIT silently starves every item after the first 500
+    # whenever those older items remain non-terminal (for example, planned
+    # workspace entries). Walk the full backlog using a stable ID cursor.
     async with session_factory() as session:
-        items = list(
-            (
-                await session.scalars(
-                    select(MediaContentItem)
-                    .where(
-                        MediaContentItem.status.notin_(
-                            [
-                                MediaContentStatus.PUBLISHED.value,
-                                MediaContentStatus.SKIPPED.value,
-                            ]
+        last_id = 0
+        while True:
+            items = list(
+                (
+                    await session.scalars(
+                        select(MediaContentItem)
+                        .where(
+                            MediaContentItem.id > last_id,
+                            MediaContentItem.status.notin_(
+                                [
+                                    MediaContentStatus.PUBLISHED.value,
+                                    MediaContentStatus.SKIPPED.value,
+                                ]
+                            ),
                         )
+                        .order_by(MediaContentItem.id)
+                        .limit(500)
                     )
-                    .order_by(MediaContentItem.id)
-                    .limit(500)
-                )
-            ).all()
-        )
-        changed = False
-        for item in items:
-            before = normalize_status(item.status)
-            await reconcile_content_state(session, item)
-            changed = changed or normalize_status(item.status) != before
-        if changed:
-            await session.commit()
+                ).all()
+            )
+            if not items:
+                break
+            changed = False
+            for item in items:
+                before = normalize_status(item.status)
+                await reconcile_content_state(session, item)
+                changed = normalize_status(item.status) != before or changed
+            last_id = items[-1].id
+            if changed:
+                await session.commit()
+            if len(items) < 500:
+                break

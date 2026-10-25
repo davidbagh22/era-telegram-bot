@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,7 @@ from app.services import media_scope_service as scopes
 router = APIRouter(prefix="/media/workspaces", tags=["media"])
 Area = Literal["era", "ksoors"]
 Platform = Literal["telegram", "instagram", "facebook", "tiktok", "youtube"]
+CalendarStatusGroup = Literal["all", "active", "published"]
 
 
 class CalendarCreate(BaseModel):
@@ -74,13 +75,15 @@ async def workspaces(user: User = Depends(get_current_user), session: AsyncSessi
 
 
 @router.get("/{area}/calendar")
-async def calendar(area: Area, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session),
+async def calendar(area: Area, before_id: int | None = Query(default=None, gt=0),
+                   status_group: CalendarStatusGroup = Query(default="all"),
+                   user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session),
                    settings: Settings = Depends(get_settings)):
     try:
         await service.require_access(session, user, settings)
     except PermissionError as error:
         raise _error(error) from error
-    return await service.calendar(session, area)
+    return await service.calendar(session, area, before_id=before_id, status_group=status_group)
 
 
 @router.post("/{area}/calendar")

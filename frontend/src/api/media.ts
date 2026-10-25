@@ -181,7 +181,11 @@ export interface MediaCalendarEntry {
   revision: number;
 }
 export const fetchMediaWorkspaces = () => request<MediaWorkspace[]>("/api/v1/media/workspaces");
-export const fetchMediaCalendar = (area: string) => request<MediaCalendarEntry[]>(`/api/v1/media/workspaces/${area}/calendar`);
+export const fetchMediaCalendar = (area: string, beforeId?: number, statusGroup: "all" | "active" | "published" = "all") => {
+  const params = new URLSearchParams({ status_group: statusGroup });
+  if (beforeId) params.set("before_id", String(beforeId));
+  return request<MediaCalendarEntry[]>(`/api/v1/media/workspaces/${area}/calendar?${params.toString()}`);
+};
 export interface MediaCalendarEditors { revision: number; editors: MediaMember[] }
 export const fetchMediaCalendarTeam = (area: string) => request<MediaMember[]>(`/api/v1/media/workspaces/${area}/team`);
 export const fetchMediaCalendarEditors = (area: string) => request<MediaCalendarEditors>(`/api/v1/media/workspaces/${area}/editors`);
