@@ -196,6 +196,23 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
             with self.assertRaises(ValueError):
                 await workspace.update_entry(session, leader, settings, "era", item.id, {"title": "После выпуска"}, 3)
 
+    def test_telegram_publication_evidence_must_be_a_real_post_permalink(self):
+        for url in (
+            "https://t.me/era_leaders1/123",
+            "https://t.me/c/123456789/456",
+        ):
+            self.assertEqual(workspace._publication_url(url, "telegram"), url)
+        for url in (
+            "https://t.me/c/123456789",
+            "https://t.me/c/not-a-chat/456",
+            "https://t.me/c/123456789/0",
+            "https://t.me/era_leaders1/0",
+            "https://t.me/era_leaders1/123/456",
+            "https://t.me/era_leaders1/not-a-message",
+        ):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                workspace._publication_url(url, "telegram")
+
     async def test_legacy_publisher_never_sends_ksoors_or_unapproved_workspace_to_era(self):
         async with self.factory() as session:
             settings, _, leader, _, _, _ = await self.seed(session)
