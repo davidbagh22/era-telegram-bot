@@ -48,9 +48,11 @@ def item_out(item):
         "revision": data.get("workspace_revision", 0)}
 
 
-async def calendar(session, area):
+async def calendar(session, area, *, before_id: int | None = None):
     query = select(MediaContentItem).where(func.coalesce(
         MediaContentItem.metadata_json["media_area"].as_string(), "era") == area)
+    if before_id is not None:
+        query = query.where(MediaContentItem.id < before_id)
     rows = (await session.scalars(query.order_by(MediaContentItem.id.desc()).limit(100))).all()
     return [item_out(item) for item in rows]
 
