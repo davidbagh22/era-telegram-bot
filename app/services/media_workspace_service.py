@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
@@ -21,6 +22,8 @@ AREAS = {
     "ksoors": {"title": "КСООРС", "platforms": {"telegram": "https://t.me/ksoors_arm", "instagram": "https://www.instagram.com/ksoors_arm", "facebook": "https://www.facebook.com/share/17Xm3jbF9h/"}, "topic_url": "https://t.me/c/2970786578/1433"},
 }
 PLATFORMS = {"telegram", "instagram", "facebook", "tiktok", "youtube", "website"}
+# Telegram uses these paths for invitations, sharing and other actions, not public posts.
+TELEGRAM_RESERVED_PATHS = {"joinchat", "share", "boost", "addstickers", "addemoji", "login", "proxy", "socks", "bg", "setlanguage", "invoice", "confirmphone", "iv", "s", "c"}
 
 
 async def require_access(session, user, settings, *, write=False):
@@ -89,8 +92,9 @@ def _publication_url(value, platform):
         # A channel link (/c/chat_id), an extra path component, or message 0
         # is not evidence that the scheduled material was published.
         is_public_post = (
-            len(parts) == 2 and parts[0] != "c"
-            and bool(parts[0]) and parts[1].isascii() and parts[1].isdecimal()
+            len(parts) == 2 and parts[0].lower() not in TELEGRAM_RESERVED_PATHS
+            and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{4,31}", parts[0]) is not None
+            and parts[1].isascii() and parts[1].isdecimal()
             and int(parts[1]) > 0
         )
         is_private_post = (
