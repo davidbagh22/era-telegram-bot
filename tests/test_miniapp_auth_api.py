@@ -187,6 +187,9 @@ class MiniAppAuthRateLimitTests(unittest.TestCase):
     confirms the development limit survives a realistic E2E
     burst from one IP, and that it's still an actual limit, not disabled."""
 
+    @patch("app.api.rate_limit.time.time", new=lambda: 1_000_000.0)
+    # Keep requests in one fixed-window bucket: a CI run can otherwise
+    # cross a real minute boundary and split the 241-request assertion.
     def test_a_full_e2e_suite_sized_burst_from_one_ip_all_succeed(self) -> None:
         settings = _settings()
         app = _build_app_with_rate_limiting(settings)
@@ -201,6 +204,7 @@ class MiniAppAuthRateLimitTests(unittest.TestCase):
                 )
                 self.assertEqual(response.status_code, 200)
 
+    @patch("app.api.rate_limit.time.time", new=lambda: 1_000_000.0)
     def test_the_limit_is_still_a_real_limit(self) -> None:
         settings = _settings()
         app = _build_app_with_rate_limiting(settings)

@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from aiogram import Router
+from aiogram import Bot, Router
+from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.handlers.chat_binding import _binding_conflict, _leaders_permission_error
 from app.database.models import AppSetting, ChatGreeting, User
 from app.states.admin import AdminSettingsStates
 from app.utils import texts
@@ -95,6 +97,7 @@ async def bind_chat_finish_stable(
     settings: Settings,
     state: FSMContext,
     session: AsyncSession,
+    bot: Bot,
 ) -> None:
     if not await _guard(message, user, settings):
         return
@@ -121,6 +124,21 @@ async def bind_chat_finish_stable(
         return
 
     setting_key, greeting_key, title = binding
+    conflict = _binding_conflict(str(key), chat.id, settings)
+    if conflict:
+        await message.answer(conflict)
+        return
+    if key == "leaders":
+        try:
+            actual_chat = await bot.get_chat(chat.id)
+            member = await bot.get_chat_member(chat.id, bot.id)
+        except TelegramAPIError:
+            await message.answer("Не удалось проверить права бота в чате лидеров. Повторите привязку позже.")
+            return
+        permission_error = _leaders_permission_error(actual_chat, member)
+        if permission_error:
+            await message.answer(permission_error)
+            return
     await _save_binding(
         session=session,
         settings=settings,

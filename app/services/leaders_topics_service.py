@@ -17,20 +17,38 @@ TOPICS = {
 }
 
 
+def _topic_data(row) -> dict:
+    """Treat damaged or unexpected stored settings as unconfigured, never as a thread."""
+    if row is None:
+        return {}
+    try:
+        data = json.loads(row.value) if isinstance(row.value, str) else row.value
+    except (ValueError, TypeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 async def topic_id(session, chat_id: int, key: str) -> int | None:
     row = await session.scalar(select(AppSetting).where(AppSetting.key == f"leaders_forum:{chat_id}:{key}"))
-    return (json.loads(row.value) if isinstance(row.value,str) else row.value).get('thread_id') if row else None
+    data = _topic_data(row)
+    thread_id = data.get('thread_id')
+    if data.get('mode') == 'plain' or type(thread_id) is not int or thread_id <= 0:
+        return None
+    return thread_id
 
 
 async def delivery_topic(session, chat_id, key):
-    """Distinguish an explicitly configured plain chat from a missing forum topic."""
+    """Fail closed unless an explicit plain mode or a valid forum thread is saved."""
     row = await session.scalar(select(AppSetting).where(AppSetting.key == f'leaders_forum:{chat_id}:{key}'))
-    data = (json.loads(row.value) if isinstance(row.value, str) else row.value) if row else {}
+    data = _topic_data(row)
     if data.get('mode') == 'plain':
+        if data.get('thread_id') is not None:
+            raise ValueError('Настройки чата лидеров противоречат друг другу. Проверьте темы.')
         return None
-    if not data.get('thread_id'):
+    thread_id = data.get('thread_id')
+    if type(thread_id) is not int or thread_id <= 0:
         raise ValueError('Рабочая тема не настроена. Проверьте привязку чата лидеров.')
-    return data['thread_id']
+    return thread_id
 
 
 async def panel(session, chat_id, key, username):
@@ -64,13 +82,31 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
             chat = await bot.get_chat(chat_id)
             me = await bot.get_me()
             member = await bot.get_chat_member(chat_id, me.id)
+            # A previously valid binding can lose its permissions or be changed
+            # to a different Telegram chat type after /bind leaders.
+            # Never create topics or send panels before revalidating the live chat.
+            if chat.type not in {"group", "supergroup"}:
+                return {"status": "invalid_chat_type", "chat_id": chat_id}
+            if member.status not in {"administrator", "creator"}:
+                return {"status": "missing_admin_rights", "chat_id": chat_id}
             if not chat.is_forum:
                 existing=await session.scalar(select(AppSetting).where(AppSetting.key==f'leaders_forum:{chat_id}:tasks'))
-                data=(json.loads(existing.value) if isinstance(existing.value,str) else existing.value) if existing else {}
+                data = _topic_data(existing)
                 if data.get('thread_id'):
                     return {'status':'forum_disabled','chat_id':chat_id}
-                if data.get('message_state') in {'sending','uncertain'}:
-                    return {'status':'panel_needs_review','chat_id':chat_id}
+                if existing is not None:
+                    # A legacy, damaged or uncertain panel record may already
+                    # correspond to a Telegram message. Never post a replacement
+                    # into the group's main feed without manual reconciliation.
+                    message_id = data.get('message_id')
+                    if (
+                        data.get('mode') != 'plain'
+                        or data.get('thread_id') is not None
+                        or type(message_id) is not int
+                        or message_id <= 0
+                        or data.get('message_state') != 'sent'
+                    ):
+                        return {'status':'panel_needs_review','chat_id':chat_id}
                 text,keyboard=await panel(session,chat_id,'tasks',me.username)
                 if not data.get('message_id'):
                     if existing is None:
@@ -84,7 +120,13 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                         existing.value=json.dumps({'mode':'plain','thread_id':None,'message_state':'uncertain'})
                         await session.commit()
                         raise
-                    data={'mode':'plain','thread_id':None,'message_id':sent.message_id,'message_state':'sent'}
+                    # Telegram may return a malformed message object even if a
+                    # panel was published. Keep the durable sending marker and
+                    # require reconciliation rather than retrying the send.
+                    message_id = getattr(sent, 'message_id', None)
+                    if type(message_id) is not int or message_id <= 0:
+                        return {'status': 'panel_needs_review', 'chat_id': chat_id}
+                    data={'mode':'plain','thread_id':None,'message_id':message_id,'message_state':'sent'}
                 else:
                     try:
                         await bot.edit_message_text(chat_id=chat_id,message_id=data['message_id'],text=text,reply_markup=keyboard)
@@ -106,23 +148,31 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
             for key, (name, description) in TOPICS.items():
                 setting_key = f"leaders_forum:{chat_id}:{key}"
                 row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
-                data = (json.loads(row.value) if isinstance(row.value,str) else row.value) if row else {}
-                if not data.get('thread_id') and data.get('thread_state')=='creating':
-                    return {'status':'topic_needs_review','chat_id':chat_id,'topic':key}
-                if not data.get("thread_id"):
-                    if row is None:
-                        row=AppSetting(key=setting_key,value=json.dumps({'thread_state':'creating'}))
-                        session.add(row)
-                    else:
-                        row.value=json.dumps({**data,'thread_state':'creating'})
+                data = _topic_data(row)
+                # A stored row may represent a topic created just before a
+                # Telegram timeout. Never create a replacement automatically,
+                # even if its JSON or thread ID is damaged.
+                if row is not None:
+                    thread_id = data.get("thread_id")
+                    if (
+                        data.get("mode") not in (None, "forum")
+                        or data.get("thread_state") == "creating"
+                        or type(thread_id) is not int
+                        or thread_id <= 0
+                    ):
+                        return {"status": "topic_needs_review", "chat_id": chat_id, "topic": key}
+                else:
+                    row = AppSetting(key=setting_key, value=json.dumps({"thread_state": "creating"}))
+                    session.add(row)
                     await session.commit()
                     topic = await bot.create_forum_topic(chat_id, name=name)
-                    data = {"thread_id": topic.message_thread_id}
-                    if row is None:
-                        row = AppSetting(key=setting_key, value=json.dumps(data))
-                        session.add(row)
-                    else:
-                        row.value = json.dumps(data)
+                    thread_id = getattr(topic, "message_thread_id", None)
+                    if type(thread_id) is not int or thread_id <= 0:
+                        # Keep the durable creating marker: the Telegram call
+                        # may have created a real topic despite a bad response.
+                        return {"status": "topic_needs_review", "chat_id": chat_id, "topic": key}
+                    data = {"thread_id": thread_id}
+                    row.value = json.dumps(data)
                     await session.commit()
                 text, keyboard = await panel(session, chat_id, key, me.username)
                 snapshot = {"text": text, "keyboard": keyboard.model_dump(mode="json") if keyboard else None}
@@ -133,7 +183,11 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                     row.value=json.dumps(data)
                     await session.commit()
                     message = await bot.send_message(chat_id, text=text, message_thread_id=data["thread_id"], reply_markup=keyboard)
-                    data["message_id"] = message.message_id
+                    message_id = getattr(message, 'message_id', None)
+                    if type(message_id) is not int or message_id <= 0:
+                        # The send may have succeeded; never retry blindly.
+                        return {'status': 'panel_needs_review', 'chat_id': chat_id, 'topic': key}
+                    data["message_id"] = message_id
                     data["message_state"] = "sent"
                     data["panel"] = snapshot
                     row.value = json.dumps(data)

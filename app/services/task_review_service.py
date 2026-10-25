@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import PointTransaction, PortfolioItem, Task, TaskParticipant, TaskSubmission, User
@@ -33,21 +33,19 @@ async def can_review_task(session: AsyncSession, actor: User | None, settings, t
 
 
 async def list_pending_submissions(session: AsyncSession, *, reviewer: User | None = None, settings=None) -> list[TaskSubmission]:
-    rows = await session.scalars(
-        select(TaskSubmission)
-        .where(TaskSubmission.status == "pending")
-        .order_by(TaskSubmission.created_at.desc())
-        .limit(30)
-    )
-    items = list(rows.all())
-    if reviewer is None:
-        return items
-    visible = []
-    for item in items:
-        task = await session.get(Task, item.task_id)
-        if task is not None and await can_review_task(session, reviewer, settings, task):
-            visible.append(item)
-    return visible
+    query = select(TaskSubmission).join(Task, Task.id == TaskSubmission.task_id).where(
+        TaskSubmission.status == "pending")
+    if reviewer is not None:
+        from app.services.media_service import can_manage_media
+        current = await session.scalar(select(User).where(User.id == reviewer.id)
+            .execution_options(populate_existing=True))
+        media_allowed = settings is not None and current is not None and await can_manage_media(session, current, settings)
+        if not media_allowed:
+            # Apply visibility in SQL before the page limit: a full page of
+            # media work must not hide older ordinary submissions.
+            query = query.where(func.coalesce(Task.reward_json["media_task"].as_boolean(), False).is_(False))
+    return list((await session.scalars(query.order_by(
+        TaskSubmission.created_at.desc(), TaskSubmission.id.desc()).limit(30))).all())
 
 
 async def _already_awarded(session: AsyncSession, user_id: int, task_id: int) -> bool:

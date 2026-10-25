@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -21,6 +21,33 @@ class TaskReviewServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self) -> None:
         await self.engine.dispose()
+
+    async def test_media_queue_visibility_is_applied_before_page_limit(self):
+        from app.config import Settings
+        async with self.session_factory() as session:
+            reviewer = await self._make_user(session, telegram_id=9001)
+            participant = await self._make_user(session, telegram_id=9002)
+            settings = Settings(bot_token="0000000000:CITESTTOKEN", era_chair_user_id=reviewer.id)
+            ordinary = self._task(creator_id=reviewer.id)
+            media = self._task(creator_id=reviewer.id, reward_json={"media_task": True})
+            session.add_all([ordinary, media])
+            await session.flush()
+            now = datetime.now(timezone.utc)
+            older = self._submission(task_id=ordinary.id, user_id=participant.id,
+                created_at=now - timedelta(days=1))
+            session.add(older)
+            for index in range(35):
+                session.add(self._submission(task_id=media.id, user_id=participant.id,
+                    created_at=now + timedelta(seconds=index)))
+            await session.flush()
+            # Chair sees a full newest page of media work.
+            allowed = await task_review_service.list_pending_submissions(session, reviewer=reviewer, settings=settings)
+            self.assertEqual(len(allowed), 30)
+            self.assertTrue(all(item.task_id == media.id for item in allowed))
+            # With no media authority, the older ordinary result stays reachable.
+            settings.era_chair_user_id = participant.id
+            visible = await task_review_service.list_pending_submissions(session, reviewer=reviewer, settings=settings)
+            self.assertEqual([item.id for item in visible], [older.id])
 
     async def _make_user(self, session, telegram_id: int, **overrides) -> User:
         defaults = dict(

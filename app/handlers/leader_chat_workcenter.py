@@ -5,7 +5,6 @@ from html import escape
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
-from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
@@ -23,11 +22,7 @@ from app.config import Settings
 from app.database.models import Task, TaskDelivery, TaskSubmission, User
 from app.services.audit_service import audit
 from app.services import task_review_service
-from app.services.leaders_workcenter_service import (
-    card_snapshot,
-    render_task_card,
-    task_card_keyboard,
-)
+from app.services.leaders_workcenter_service import sync_one_card
 from app.services.weekly_pulse_cycle_service import upsert_leader_membership
 from app.services.leaders_topics_service import delivery_topic
 from app.states.task import LeadersChatTaskStates
@@ -208,7 +203,7 @@ async def handle_leaders_task_card_action(
         await call.answer("Карточка задачи больше недоступна.", show_alert=True)
         return
     if action in {"start", "submit", "block"}:
-        if user is None or task.assignee_id != user.id:
+        if not _eligible_assignee(user) or task.assignee_id != user.id:
             await call.answer("Это действие доступно исполнителю задачи.", show_alert=True)
             return
         if action == "start":
@@ -237,6 +232,9 @@ async def handle_leaders_task_card_action(
             await call.answer()
             await call.message.reply("Напишите результат выполнения одним сообщением.")
             return
+        if task.status not in {TaskStatus.NEW, TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS}:
+            await call.answer("Задача уже изменила статус.", show_alert=True)
+            return
         await state.clear()
         await state.update_data(leaders_task_id=task.id, leaders_task_chat_id=call.message.chat.id)
         await state.set_state(LeadersChatTaskStates.blocker)
@@ -245,6 +243,9 @@ async def handle_leaders_task_card_action(
         return
 
     if action in {"accept", "return"}:
+        if task.status != TaskStatus.REVIEW:
+            await call.answer("Результат больше не ожидает проверки.", show_alert=True)
+            return
         if user is None or task.assignee_id == user.id:
             await call.answer('Результат должен проверить другой руководитель.',show_alert=True)
             return
@@ -303,14 +304,19 @@ async def save_leaders_task_result(
         not settings.leaders_chat_id
         or message.chat.id != settings.leaders_chat_id
         or data.get("leaders_task_chat_id") != message.chat.id
-        or not user
+        or not _eligible_assignee(user)
     ):
         await state.clear()
         return
     task = await session.get(Task, data.get("leaders_task_id"))
     text = (message.text or message.caption or "").strip()
-    if task is None or task.assignee_id != user.id or not text:
-        await message.reply("Не удалось сохранить результат. Начните сдачу из карточки задачи.")
+    if (
+        task is None
+        or task.assignee_id != user.id
+        or task.status not in {TaskStatus.NEW, TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS}
+        or not text
+    ):
+        await message.reply("Задача уже изменилась или результат пуст. Начните сдачу из актуальной карточки.")
         await state.clear()
         return
     previous = await session.scalar(
@@ -351,9 +357,10 @@ async def save_leaders_task_blocker(
         not settings.leaders_chat_id
         or message.chat.id != settings.leaders_chat_id
         or data.get("leaders_task_chat_id") != message.chat.id
-        or not user
+        or not _eligible_assignee(user)
         or task is None
         or task.assignee_id != user.id
+        or task.status not in {TaskStatus.NEW, TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS}
         or not blocker
     ):
         await state.clear()
@@ -406,7 +413,10 @@ async def return_leaders_task_result(
     )
     assignee = await session.get(User, task.assignee_id) if task and task.assignee_id else None
     comment = (message.text or "").strip()
-    if task is None or submission is None or assignee is None or not comment:
+    if (
+        task is None or task.status != TaskStatus.REVIEW
+        or submission is None or assignee is None or not comment
+    ):
         await state.clear()
         await message.reply("Не удалось вернуть результат. Проверьте задачу и отправьте комментарий снова.")
         return
@@ -579,46 +589,44 @@ async def finish_group_task(
     )
     session.add(task)
     await session.flush()
-    mention = _mention(assignee)
-    card = None
-    delivery_error = None
-    try:
-        card = await bot.send_message(
-            chat_id=data["task_chat_id"],
-            message_thread_id=task_thread_id,
-            text=render_task_card(task, assignee),
-            parse_mode=ParseMode.HTML,
-            reply_markup=task_card_keyboard(task, settings),
-        )
-    except TelegramAPIError as exc:
-        delivery_error = str(exc)[:2000]
-    session.add(
-        TaskDelivery(
-            task_id=task.id,
-            chat_key="leaders",
-            chat_id=data["task_chat_id"],
-            telegram_message_id=card.message_id if card else None,
-            message_thread_id=task_thread_id,
-            status="sent" if card else "failed",
-            error=delivery_error,
-            sent_at=datetime.now().astimezone() if card else None,
-            reminder_count=0,
-            remind_at=(deadline - timedelta(hours=24)) if card else None,
-            last_card_snapshot=card_snapshot(task, assignee) if card else {},
-        )
+    delivery = TaskDelivery(
+        task_id=task.id,
+        chat_key="leaders",
+        chat_id=data["task_chat_id"],
+        message_thread_id=task_thread_id,
+        status="pending",
+        reminder_count=0,
+        remind_at=deadline - timedelta(hours=24),
     )
+    session.add(delivery)
     await audit(
         session,
         actor_id=creator.id,
         action="task.created_from_leaders_chat",
         entity_type="task",
         entity_id=task.id,
-        new_value={
-            "chat_id": data["task_chat_id"],
-            "message_id": card.message_id if card else None,
-            "delivery_error": delivery_error,
-        },
+        new_value={"chat_id": data["task_chat_id"], "delivery_status": "pending"},
     )
-    suffix = "Карточка опубликована в рабочем чате." if card else "Задача сохранена, но карточку не удалось отправить."
-    await message.reply(f"Задача #{task.id} создана. Исполнитель: {mention}. {suffix}")
+    # Commit the task and its delivery row BEFORE calling Telegram. The shared
+    # card synchronizer claims a durable notification key before sending.
+    await session.commit()
+    task_id = task.id
     await state.clear()
+    try:
+        await sync_one_card(session, bot, settings, task)
+        await session.commit()
+    except Exception:
+        # The Telegram result may be unknown. Never retry a direct send here.
+        await session.rollback()
+        await message.reply(
+            f"Задача #{task_id} сохранена. Статус доставки неясен; "
+            "проверьте карточку перед повторной отправкой."
+        )
+        return
+    if delivery.status == "sent" and delivery.telegram_message_id:
+        suffix = "Карточка опубликована в рабочем чате."
+    elif delivery.status == "review_required":
+        suffix = "Доставка требует проверки, чтобы не создать дубликат."
+    else:
+        suffix = "Задача сохранена, но карточку пока не удалось отправить."
+    await message.reply(f"Задача #{task_id} создана. Исполнитель: {_mention(assignee)}. {suffix}")
