@@ -5,7 +5,6 @@ from html import escape
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import func, or_, select
@@ -35,6 +34,7 @@ from app.services.notification_service import (
     broadcast_detailed_once,
     safe_send_once,
 )
+from app.services.task_service import _is_media_task, can_view
 from app.services.survey_service import (
     MONTHLY_SURVEY_DESCRIPTION,
     MONTHLY_SURVEY_QUESTIONS,
@@ -418,6 +418,33 @@ async def send_project_venue_reminders(
         await session.commit()
 
 
+async def _send_leaders_task_reminder(session, bot, settings, delivery, *, stage, deadline, text):
+    """A stale card cannot redirect reminders; uncertain delivery never resends."""
+    from app.services.leaders_topics_service import delivery_topic
+
+    if (not settings.leaders_chat_id
+            or settings.leaders_chat_id == settings.general_chat_id
+            or delivery.chat_id != settings.leaders_chat_id):
+        return False
+    try:
+        thread_id = await delivery_topic(session, delivery.chat_id, "tasks")
+    except ValueError:
+        logger.warning("Leaders reminder blocked: unconfirmed topic, delivery=%s", delivery.id)
+        return False
+    if delivery.message_thread_id != thread_id:
+        logger.warning("Leaders reminder blocked: stale destination, delivery=%s", delivery.id)
+        return False
+    deadline = deadline.replace(tzinfo=ZoneInfo("UTC")) if deadline.tzinfo is None else deadline
+    cycle = deadline.astimezone(ZoneInfo("UTC")).isoformat()
+    result = await safe_send_once(
+        bot, settings, delivery.chat_id, text,
+        delivery_key=f"leaders-task-reminder:{delivery.id}:{cycle}:{stage}",
+        notification_type="leaders_task_reminder",
+        message_thread_id=thread_id, parse_mode="HTML",
+    )
+    return result.sent
+
+
 async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> None:
     """Send task deadline reminders with durable per-recipient stage keys."""
     now = datetime.now(ZoneInfo(settings.timezone))
@@ -459,6 +486,8 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
                 target = await session.get(User, user_id)
                 if target is None or target.is_blocked or target.is_archived:
                     continue
+                if _is_media_task(task) and not await can_view(session, task, target, settings):
+                    continue
                 expected_recipients += 1
                 sent = await send_bot_notification(
                     bot,
@@ -478,7 +507,9 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
                 completed_recipients += int(sent)
 
             creator = await session.get(User, task.creator_id)
-            if creator is not None and creator.id not in participant_ids and not creator.is_blocked and not creator.is_archived:
+            if (creator is not None and creator.id not in participant_ids
+                    and not creator.is_blocked and not creator.is_archived
+                    and (not _is_media_task(task) or await can_view(session, task, creator, settings))):
                 expected_recipients += 1
                 sent = await send_bot_notification(
                     bot,
@@ -529,20 +560,17 @@ async def send_task_reminders(bot: Bot, settings: Settings, session_factory) -> 
                     )
                 )
                 stage = delivery.reminder_count + 1
-                try:
-                    await bot.send_message(
-                        chat_id=delivery.chat_id,
-                        message_thread_id=delivery.message_thread_id,
-                        text=(
-                            f"⏳ <b>Напоминание по задаче #{task.id} · {stage}/5</b>\n"
-                            f"{mention}, срок: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}.\n"
-                            f"Задача: {escape(task.title)}"
-                        ),
-                        parse_mode="HTML",
-                    )
-                except TelegramAPIError as exc:
-                    logger.warning("Could not send Leaders reminder for task %s: %s", task.id, exc)
+                expected_recipients += 1
+                if not await _send_leaders_task_reminder(
+                    session, bot, settings, delivery, stage=stage, deadline=task.deadline,
+                    text=(
+                        f"⏳ <b>Напоминание по задаче #{task.id} · {stage}/5</b>\n"
+                        f"{mention}, срок: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}.\n"
+                        f"Задача: {escape(task.title)}"
+                    ),
+                ):
                     continue
+                completed_recipients += 1
                 delivery.reminder_count = stage
                 delivery.remind_at = now + timedelta(days=1) if stage < 5 else None
 
