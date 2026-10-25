@@ -36,7 +36,12 @@ def verify_init_data(
     if not init_data:
         raise InitDataError("empty_init_data")
 
-    data = dict(parse_qsl(init_data, keep_blank_values=True, strict_parsing=False))
+    pairs = parse_qsl(init_data, keep_blank_values=True, strict_parsing=False)
+    data = dict(pairs)
+    # Duplicate parameters are ambiguous across clients and must never be
+    # accepted as Telegram-authenticated identity fields.
+    if len(data) != len(pairs):
+        raise InitDataError("duplicate_field")
     received_hash = data.pop("hash", None)
     if not received_hash:
         raise InitDataError("missing_hash")
@@ -53,16 +58,24 @@ def verify_init_data(
         auth_date = int(data["auth_date"])
     except (KeyError, ValueError) as exc:
         raise InitDataError("missing_auth_date") from exc
-    if max_age_seconds > 0 and time.time() - auth_date > max_age_seconds:
-        raise InitDataError("expired")
+    if max_age_seconds > 0:
+        now = time.time()
+        # Telegram initData is issued at login time. Allow modest clock skew,
+        # but reject future timestamps that could extend replay validity.
+        if auth_date > now + 60:
+            raise InitDataError("future_auth_date")
+        if now - auth_date > max_age_seconds:
+            raise InitDataError("expired")
 
     try:
         user_payload = json.loads(data["user"])
     except (KeyError, ValueError) as exc:
         raise InitDataError("missing_user") from exc
 
+    if not isinstance(user_payload, dict):
+        raise InitDataError("missing_user")
     telegram_id = user_payload.get("id")
-    if not isinstance(telegram_id, int):
+    if type(telegram_id) is not int or telegram_id <= 0:
         raise InitDataError("missing_user_id")
 
     return TelegramInitData(
