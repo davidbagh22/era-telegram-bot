@@ -131,7 +131,11 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
             for key, (name, description) in TOPICS.items():
                 setting_key = f"leaders_forum:{chat_id}:{key}"
                 row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
-                data = (json.loads(row.value) if isinstance(row.value,str) else row.value) if row else {}
+                data = _topic_data(row)
+                # A group converted from plain mode to a forum needs an explicit
+                # reconciliation; do not silently create a second panel/topic.
+                if data.get('mode') == 'plain':
+                    return {'status':'topic_needs_review','chat_id':chat_id,'topic':key}
                 if not data.get('thread_id') and data.get('thread_state')=='creating':
                     return {'status':'topic_needs_review','chat_id':chat_id,'topic':key}
                 if not data.get("thread_id"):
