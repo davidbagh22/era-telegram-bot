@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Literal
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -86,21 +87,24 @@ class AttachmentOut(BaseModel):
 
 
 class LibraryCreateIn(BaseModel):
-    kind: Literal["link", "file", "photo", "video", "document", "template", "guide", "brand_asset"]
-    category: Literal[
-        "logos",
-        "canva",
-        "photo",
-        "video",
-        "fonts_visual",
-        "guides",
-        "examples",
-        "partner_materials",
-        "archive",
-    ] = "archive"
+    kind: Literal["text", "link", "file", "photo", "video", "document", "template", "guide", "brand_asset"]
+    category: str = Field(default="archive", max_length=64)
     title: str = Field(min_length=2, max_length=255)
-    description: str | None = Field(default=None, max_length=2000)
-    url: str = Field(min_length=4, max_length=1000)
+    description: str | None = Field(default=None, max_length=6000)
+    url: str = Field(default="", max_length=1000)
+    pinned: bool = False
+    request_key: UUID = Field(default_factory=uuid4)
+
+
+class LibraryUpdateIn(BaseModel):
+    revision: int = Field(ge=0)
+    title: str | None = Field(default=None, min_length=2, max_length=255)
+    description: str | None = Field(default=None, max_length=6000)
+    url: str | None = Field(default=None, max_length=1000)
+    category: str | None = Field(default=None, max_length=64)
+    kind: str | None = Field(default=None, max_length=32)
+    pinned: bool | None = None
+    is_active: bool | None = None
 
 
 async def _hub_user(
@@ -264,28 +268,30 @@ async def read_my_media_task_attachments(
     ]
 
 
+def _library_error(error):
+    return HTTPException(status_code=403 if isinstance(error, PermissionError) else 404 if isinstance(error, LookupError) else 409, detail=str(error))
+
+
 @router.post("/desk/library")
-async def create_media_library_item(
-    payload: LibraryCreateIn,
-    _user: User = Depends(_manager),
-    session: AsyncSession = Depends(get_session),
-) -> dict[str, object]:
-    item = MediaLibraryItem(
-        kind=payload.kind,
-        category=payload.category,
-        title=payload.title.strip(),
-        description=payload.description.strip() if payload.description else None,
-        url=payload.url.strip(),
-        sort_order=100,
-        is_active=True,
-    )
-    session.add(item)
-    await session.flush()
-    return {
-        "id": item.id,
-        "kind": item.kind,
-        "category": item.category,
-        "title": item.title,
-        "description": item.description,
-        "url": item.url,
-    }
+async def create_media_library_item(payload: LibraryCreateIn, user: User = Depends(_manager),
+    session: AsyncSession = Depends(get_session), settings: Settings = Depends(get_settings)):
+    from app.services import media_knowledge_service as knowledge
+    try:
+        item = await knowledge.create_item(session, user, settings, payload.model_dump(exclude={"request_key"}), str(payload.request_key))
+    except (PermissionError, ValueError) as error:
+        raise _library_error(error) from error
+    return await knowledge.item_out(session, item)
+
+
+@router.patch("/desk/library/{item_id}")
+async def update_media_library_item(item_id: int, payload: LibraryUpdateIn, user: User = Depends(_manager),
+    session: AsyncSession = Depends(get_session), settings: Settings = Depends(get_settings)):
+    from app.services import media_knowledge_service as knowledge
+    values = payload.model_dump(exclude_unset=True, exclude={"revision"})
+    if any(value is None for key, value in values.items() if key != "description"):
+        raise HTTPException(status_code=422, detail="Поле не может быть пустым")
+    try:
+        item = await knowledge.update_item(session, user, settings, item_id, values, payload.revision)
+    except (PermissionError, LookupError, ValueError) as error:
+        raise _library_error(error) from error
+    return await knowledge.item_out(session, item)

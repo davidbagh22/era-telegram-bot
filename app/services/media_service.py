@@ -427,22 +427,24 @@ async def seed_media_os(session: AsyncSession, settings: Settings) -> None:
         "media_chat_url": settings.media_chat_url,
         "era_channel_url": settings.era_channel_url,
     }
+    manifest = await session.scalar(select(AppSetting).where(AppSetting.key == "media_library_seed_ids").with_for_update())
+    if manifest is None:
+        manifest = AppSetting(key="media_library_seed_ids", value={})
+        session.add(manifest)
+    seeded_ids = dict(manifest.value or {})
     for kind, title, description, url_template, sort_order in LIBRARY_DEFAULTS:
-        exists = await session.scalar(
-            select(MediaLibraryItem.id).where(MediaLibraryItem.title == title)
-        )
-        if exists:
+        if seeded_ids.get(title) and await session.get(MediaLibraryItem, seeded_ids[title]):
             continue
-        session.add(
-            MediaLibraryItem(
-                kind=kind,
-                title=title,
-                description=description,
-                url=url_template.format(**format_values),
-                sort_order=sort_order,
-                is_active=True,
-            )
-        )
+        exists = await session.scalar(select(MediaLibraryItem.id).where(MediaLibraryItem.title == title))
+        if exists:
+            seeded_ids[title] = exists
+            continue
+        item = MediaLibraryItem(kind=kind, title=title, description=description,
+            url=url_template.format(**format_values), sort_order=sort_order, is_active=True)
+        session.add(item)
+        await session.flush()
+        seeded_ids[title] = item.id
+    manifest.value = seeded_ids
     await session.flush()
 
 
