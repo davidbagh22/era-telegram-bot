@@ -243,6 +243,9 @@ async def handle_leaders_task_card_action(
         return
 
     if action in {"accept", "return"}:
+        if task.status != TaskStatus.REVIEW:
+            await call.answer("Результат больше не ожидает проверки.", show_alert=True)
+            return
         if user is None or task.assignee_id == user.id:
             await call.answer('Результат должен проверить другой руководитель.',show_alert=True)
             return
