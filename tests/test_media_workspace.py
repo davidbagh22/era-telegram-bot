@@ -62,11 +62,15 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
         from httpx import ASGITransport, AsyncClient
         from app.api.deps import get_current_user, get_session, get_settings
         from app.api.v1.media_workspace import router
+        from app.api.v1.media import router as legacy_router
+        from app.api.v1.media_extras import router as extras_router
         async with self.factory() as session:
             settings, _, leader, member, _, _ = await self.seed(session)
             await session.commit()
             app = FastAPI()
             app.include_router(router)
+            app.include_router(legacy_router)
+            app.include_router(extras_router)
             async def session_override():
                 async with self.factory() as current:
                     yield current
@@ -84,6 +88,17 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
                 self.assertEqual(len(listing.json()), 1)
                 self.assertTrue(listing.json()[0]["scheduled_at"].endswith("+00:00"))
                 self.assertEqual((await client.get("/media/workspaces/era/calendar")).json(), [])
+                item_id = first.json()["id"]
+                for method, path, values in (
+                    ("PATCH", f"/media/desk/content/{item_id}", {"body": "Обход версии"}),
+                    ("POST", f"/media/desk/content/{item_id}/reschedule", {"scheduled_at": "2026-11-02T19:00:00+04:00"}),
+                    ("POST", f"/media/desk/content/{item_id}/skip", {}),
+                    ("PATCH", f"/media/desk/content/{item_id}/pipeline", {"status": "PUBLISHED"}),
+                ):
+                    response = await client.request(method, path, json=values)
+                    self.assertEqual(response.status_code, 409, response.text)
+                listing = (await client.get("/media/workspaces/ksoors/calendar")).json()[0]
+                self.assertEqual((listing["revision"], listing["status"]), (0, "planned"))
                 app.dependency_overrides[get_current_user] = lambda: member
                 self.assertEqual((await client.get("/media/workspaces/ksoors/calendar")).status_code, 200)
                 self.assertEqual((await client.patch(f"/media/workspaces/ksoors/calendar/{first.json()['id']}", json={"revision": 0, "status": "ready"})).status_code, 403)
@@ -140,6 +155,23 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
             self.assertEqual(result.code, "editorial_approval_required")
             bot.send_message.assert_not_awaited()
             self.assertEqual(await session.scalar(select(func.count(MediaContentItem.id))), 1)
+
+    async def test_calendar_managed_legacy_state_survives_reconciliation_and_old_mutators(self):
+        from app.services.media_pipeline_service import reconcile_content_state
+        async with self.factory() as session:
+            settings, _, leader, _, _, _ = await self.seed(session)
+            item = MediaContentItem(source_key="old-calendar", source_kind="manual", kind="text", status="planned", title="Старый материал")
+            session.add(item)
+            await session.flush()
+            await workspace.update_entry(session, leader, settings, "era", item.id, {"status": "review"}, 0)
+            await reconcile_content_state(session, item)
+            self.assertEqual(item.status, "review")
+            for managed in (item, await self.create(session, leader, settings)):
+                with self.assertRaises(ValueError):
+                    await media_service.reschedule_content(session, managed, datetime.now(timezone.utc))
+                with self.assertRaises(ValueError):
+                    await media_service.skip_content(session, managed)
+            self.assertEqual(item.metadata_json["workspace_revision"], 1)
 
     def test_dates_require_explicit_timezone_and_convert_yerevan_to_utc(self):
         from pydantic import ValidationError

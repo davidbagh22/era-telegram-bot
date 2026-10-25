@@ -178,7 +178,7 @@ async def update_media_pipeline(
     item = await session.get(MediaContentItem, content_id)
     if item is None:
         raise HTTPException(status_code=404, detail="content_not_found")
-    if item.source_kind == "media_workspace":
+    if media_service.is_calendar_managed(item):
         raise HTTPException(status_code=409, detail="Используйте календарь выбранного направления")
     changes = payload.model_dump(exclude_unset=True)
     if "title" in changes:

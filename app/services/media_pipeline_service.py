@@ -18,6 +18,10 @@ TERMINAL_STATUSES = {
     MediaContentStatus.SKIPPED.value,
 }
 
+
+def is_calendar_managed(item) -> bool:
+    return getattr(item, "source_kind", None) == "media_workspace" or "workspace_revision" in (getattr(item, "metadata_json", None) or {})
+
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     MediaContentStatus.IDEA.value: {
         MediaContentStatus.PLANNED.value,
@@ -151,7 +155,7 @@ async def reconcile_content_state(
 
     # Workspace calendars have an explicit editorial approval workflow. A
     # scheduler tick must not turn a reviewed/ready entry into scheduled.
-    if item.source_kind == "media_workspace":
+    if is_calendar_managed(item):
         return item
 
     tasks = await _linked_tasks(session, item.id)
