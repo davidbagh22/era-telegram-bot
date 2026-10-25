@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
@@ -12,6 +14,8 @@ from app.database.media_models import MediaAttachment, MediaChatNotice, MediaCon
 from app.database.models import Task, User
 from app.services import task_service
 from app.utils.constants import TaskStatus
+
+logger = logging.getLogger(__name__)
 
 
 async def create_pending_task_attachment(
@@ -164,23 +168,49 @@ async def post_missing_media_task_cards(
                 "🎬 Медиа-задача\n\n"
                 f"{task.title}\n\n"
                 f"{task.description}\n\n"
-                f"Дедлайн: {task.deadline.astimezone(timezone.utc).strftime('%d.%m %H:%M')}\n"
+                f"Дедлайн: {task.deadline.astimezone(timezone.utc).strftime('%d.%m %H:%M') if task.deadline else 'Без срока'}\n"
                 f"Баллы после проверки: +{task.points}\n\n"
                 "Возьмите задачу в Mini App. Если отправляете файл сюда — "
                 "ответьте именно на эту карточку. Бот отдельно спросит подтверждение."
             )
+            # Claim the unique notice key *before* Telegram I/O. A timeout
+            # may mean Telegram published the card; retrying without a durable
+            # claim can spam the chat or attach replies to the wrong card.
+            # A NULL message ID means "delivery outcome needs review".
+            notice = MediaChatNotice(
+                notice_key=notice_key,
+                notice_kind="task_card",
+                ref_type="task",
+                ref_id=task.id,
+                telegram_message_id=None,
+                sent_at=datetime.now(timezone.utc),
+            )
+            session.add(notice)
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                # Another worker may have claimed this same card. Do not send.
+                if await session.scalar(
+                    select(MediaChatNotice.id).where(MediaChatNotice.notice_key == notice_key)
+                ) is not None:
+                    continue
+                raise
             try:
                 message = await bot.send_message(settings.media_chat_id, text)
-            except TelegramAPIError:
-                continue
-            session.add(
-                MediaChatNotice(
-                    notice_key=notice_key,
-                    notice_kind="task_card",
-                    ref_type="task",
-                    ref_id=task.id,
-                    telegram_message_id=int(message.message_id),
-                    sent_at=datetime.now(timezone.utc),
+            except TelegramAPIError as exc:
+                # Keep the claim even for network errors: the message might
+                # already exist. An administrator must reconcile it manually.
+                logger.warning(
+                    "Media task card delivery needs review: %s (%s)",
+                    notice_key, type(exc).__name__,
                 )
-            )
+                continue
+            message_id = getattr(message, "message_id", None)
+            if type(message_id) is not int or message_id <= 0:
+                # Telegram may have delivered the card despite a bad response.
+                logger.warning("Media task card response needs review: %s", notice_key)
+                continue
+            notice.telegram_message_id = message_id
+            notice.sent_at = datetime.now(timezone.utc)
             await session.commit()
