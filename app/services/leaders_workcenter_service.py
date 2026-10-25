@@ -81,7 +81,7 @@ async def sync_one_card(session, bot, settings, task):
     # Review the original message instead of attempting a new send.
     if delivery.status == "review_required" and not delivery.telegram_message_id:
         return
-    from app.services.leaders_topics_service import topic_id
+    from app.services.leaders_topics_service import delivery_topic
     from datetime import datetime, timezone
     assignee = await session.get(User, task.assignee_id) if task.assignee_id else None
     snapshot = card_snapshot(task, assignee)
@@ -95,15 +95,13 @@ async def sync_one_card(session, bot, settings, task):
             await bot.edit_message_text(chat_id=delivery.chat_id, message_id=delivery.telegram_message_id,
                 text=render_task_card(task,assignee),reply_markup=task_card_keyboard(task,settings),parse_mode="HTML")
         else:
-            thread_id = await topic_id(session,delivery.chat_id,'tasks')
-            if not thread_id:
-                import json
-                from app.database.models import AppSetting
-                row=await session.scalar(select(AppSetting).where(AppSetting.key==f'leaders_forum:{delivery.chat_id}:tasks'))
-                config=(json.loads(row.value) if isinstance(row.value,str) else row.value) if row else {}
-                if config.get('mode')!='plain':
-                    delivery.error='Раздел Задачи ещё не настроен'
-                    return
+            try:
+                thread_id = await delivery_topic(session, delivery.chat_id, 'tasks')
+            except ValueError as exc:
+                # Never send into the default topic if forum configuration is
+                # missing, corrupt or contradictory. Keep delivery pending.
+                delivery.error = str(exc)
+                return
             from app.services.notification_service import safe_send_once
             from aiogram.types import InlineKeyboardMarkup
             text=stored.get('initial_text') or render_task_card(task,assignee)
