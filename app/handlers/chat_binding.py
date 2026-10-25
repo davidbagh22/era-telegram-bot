@@ -6,7 +6,7 @@ from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
 from aiogram.types import Message
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -181,5 +181,26 @@ async def leaders_readonly_diagnostics(
             lines.append("  Карточка: доставка не подтверждена, требуется сверка.")
         elif data.get("message_id"):
             lines.append(f"  Карточка message_id={data['message_id']} (из БД).")
+
+    # Read-only aggregate: helps distinguish Telegram delivery uncertainty from
+    # successful sends without exposing task text or personal information.
+    from app.database.models import TaskDelivery
+
+    delivery_rows = await session.execute(
+        select(TaskDelivery.status, func.count(TaskDelivery.id))
+        .where(TaskDelivery.chat_key == "leaders", TaskDelivery.chat_id == chat_id)
+        .group_by(TaskDelivery.status)
+    )
+    delivery_counts = dict(delivery_rows.all())
+    if delivery_counts:
+        lines.append(
+            "Доставка задач: "
+            f"отправлено {delivery_counts.get('sent', 0)} · "
+            f"ожидает {delivery_counts.get('pending', 0)} · "
+            f"требует сверки {delivery_counts.get('review_required', 0)} · "
+            f"ошибки {delivery_counts.get('failed', 0)}"
+        )
+        if delivery_counts.get("review_required", 0):
+            lines.append("Не повторяйте отправку до ручной сверки карточек в Telegram.")
 
     await message.answer("\n".join(lines))
