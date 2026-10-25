@@ -85,8 +85,20 @@ def _publication_url(value, platform):
         raise ValueError("Нужна HTTPS-ссылка на опубликованный материал выбранной платформы")
     if platform == "telegram":
         parts = parsed.path.strip("/").split("/")
-        if len(parts) < 2 or not parts[-1].isdigit():
-            raise ValueError("Укажите ссылку на публикацию, а не на канал")
+        # A channel post is /channel/message_id or /c/chat_id/message_id.
+        # A channel link (/c/chat_id), an extra path component, or message 0
+        # is not evidence that the scheduled material was published.
+        is_public_post = (
+            len(parts) == 2 and parts[0] != "c"
+            and bool(parts[0]) and parts[1].isascii() and parts[1].isdecimal()
+            and int(parts[1]) > 0
+        )
+        is_private_post = (
+            len(parts) == 3 and parts[0] == "c"
+            and all(part.isascii() and part.isdecimal() and int(part) > 0 for part in parts[1:])
+        )
+        if not (is_public_post or is_private_post):
+            raise ValueError("Укажите прямую ссылку на сообщение Telegram, а не на канал или тему")
     return value
 
 
