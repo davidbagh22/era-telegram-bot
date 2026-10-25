@@ -28,7 +28,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       BOT_TOKEN: "0000000000:CITESTTOKEN"
     steps:
@@ -121,6 +121,8 @@ jobs:
         run: python scripts/postgres_media_membership_race.py
       - name: Prove media calendar idempotency and stale form concurrency on PostgreSQL
         run: python scripts/postgres_media_calendar_race.py
+      - name: Prove Pulse announcement concurrency without duplicate Telegram delivery
+        run: python scripts/postgres_pulse_announcement_race.py
 
   frontend:
     runs-on: ubuntu-latest

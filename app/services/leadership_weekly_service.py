@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -9,6 +11,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from app.config import Settings
 from app.database.leadership_models import (
@@ -17,6 +20,7 @@ from app.database.leadership_models import (
     LeadershipReportPulse,
 )
 from app.database.models import (
+    AppSetting,
     Event,
     LeadershipAttentionItem,
     LeadershipGoal,
@@ -30,8 +34,9 @@ from app.database.models import (
     UserOffice,
 )
 from app.services.audit_service import audit
-from app.services.leaders_topics_service import topic_id
+from app.services.leaders_topics_service import delivery_topic
 from app.services.bot_notification_service import PrimaryAction, send_bot_notification
+from app.services.notification_service import safe_send_once
 from app.services.leadership_permission_service import is_assignment_active
 from app.database.leadership_models import WeeklyPulseCycle, WeeklyPulseParticipant
 from app.services import leadership_report_service
@@ -607,6 +612,58 @@ async def run_missed_report_signals(
     return created
 
 
+async def _send_cycle_announcement(session, bot, settings, cycle, cycle_deadline):
+    """Freeze the group announcement and use the existing durable delivery ledger."""
+    try:
+        thread_id = await delivery_topic(session, settings.leaders_chat_id, "pulse")
+    except ValueError:
+        logging.getLogger(__name__).warning("Pulse topic needs reconciliation; announcement withheld")
+        return False
+    if cycle.announcement_message_id is not None:
+        return True
+    key = f"pulse-announcement-snapshot:{cycle.id}"
+    row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
+    if row is None:
+        buttons = []
+        try:
+            info = await bot.get_me()
+            if info.username:
+                buttons = [[InlineKeyboardButton(text="Подключить Пульс", url=f"https://t.me/{info.username}?start=pulse_connect")]]
+        except TelegramAPIError:
+            pass
+        payload = {"chat_id": settings.leaders_chat_id, "thread_id": thread_id,
+            "text": f"📊 <b>Открыт еженедельный опрос · неделя {cycle.week_number}</b>\n\n"
+                f"Ответили: {cycle.submitted_count} / {cycle.eligible_count}\n"
+                f"Заполните короткий отчёт до {cycle_deadline:%d.%m %H:%M}. "
+                "Если аккаунт ещё не связан с ЭРА, нажмите «Подключить Пульс».",
+            "markup": InlineKeyboardMarkup(inline_keyboard=buttons).model_dump(mode="json") if buttons else None}
+        try:
+            async with session.begin_nested():
+                row = AppSetting(key=key, value=json.dumps(payload, ensure_ascii=False))
+                session.add(row)
+                await session.flush()
+        except IntegrityError:
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
+        await session.commit()  # Persist cycle + immutable payload before Telegram.
+    try:
+        payload = json.loads(row.value) if isinstance(row.value, str) else row.value
+        if (not isinstance(payload, dict) or not {"chat_id", "thread_id", "text", "markup"}.issubset(payload)
+                or payload.get("chat_id") != settings.leaders_chat_id
+                or payload.get("thread_id") != thread_id or not isinstance(payload.get("text"), str)):
+            return False
+        markup = InlineKeyboardMarkup.model_validate(payload["markup"]) if payload.get("markup") else None
+    except (ValueError, TypeError, AttributeError):
+        return False
+    result = await safe_send_once(bot, settings, settings.leaders_chat_id, payload["text"],
+        delivery_key=f"leadership-pulse-announcement:{cycle.id}", notification_type="leadership_pulse_announcement",
+        message_thread_id=thread_id, reply_markup=markup, parse_mode="HTML")
+    if result.status == "sent" and type(result.message_id) is int and result.message_id > 0:
+        cycle.announcement_message_id = result.message_id
+        await session.flush()
+        return True
+    return False
+
+
 async def open_weekly_pulses_job(
     bot: Bot,
     settings: Settings,
@@ -673,38 +730,7 @@ async def open_weekly_pulses_job(
         from app.services.weekly_pulse_cycle_service import sync_cycle_participants
         await sync_cycle_participants(session,cycle)
 
-        if cycle.announcement_message_id is None:
-            buttons = []
-            try:
-                bot_info = await bot.get_me()
-                if bot_info.username:
-                    buttons.append(
-                        InlineKeyboardButton(
-                            text="Подключить Pulse",
-                            url=f"https://t.me/{bot_info.username}?start=pulse_connect",
-                        )
-                    )
-            except TelegramAPIError:
-                pass
-            try:
-                announcement = await bot.send_message(
-                    chat_id=settings.leaders_chat_id,
-                    message_thread_id=await topic_id(session, settings.leaders_chat_id, "pulse"),
-                    text=(
-                        f"📊 <b>Открыт еженедельный опрос · неделя {cycle.week_number}</b>\n\n"
-                        f"Ответили: {cycle.submitted_count} / {cycle.eligible_count}\n"
-                        f"Заполните короткий отчёт до "
-                        f"{cycle_deadline:%d.%m %H:%M}. "
-                        "Если аккаунт ещё не связан с ЭРА, нажмите «Подключить Pulse»."
-                    ),
-                    parse_mode="HTML",
-                    reply_markup=(
-                        InlineKeyboardMarkup(inline_keyboard=[buttons]) if buttons else None
-                    ),
-                )
-                cycle.announcement_message_id = announcement.message_id
-            except TelegramAPIError:
-                pass
+        await _send_cycle_announcement(session, bot, settings, cycle, cycle_deadline)
 
         seen_users: set[int] = set()
         for member in roster:
@@ -752,7 +778,12 @@ async def open_weekly_pulses_job(
             )
         )
         cycle.submitted_count = int(submitted or 0)
-        if cycle.announcement_message_id is not None:
+        try:
+            await delivery_topic(session, settings.leaders_chat_id, "pulse")
+            route_valid = True
+        except ValueError:
+            route_valid = False
+        if route_valid and cycle.announcement_message_id is not None:
             try:
                 await bot.edit_message_text(
                     chat_id=settings.leaders_chat_id,
