@@ -106,6 +106,60 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('"message_id": 8', row.value)
             self.assertIn('"message_state": "sent"', row.value)
 
+    async def test_plain_panel_invalid_telegram_message_id_requires_review_without_resend(self):
+        from sqlalchemy import select
+        from app.database.models import AppSetting
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001, general_chat_id=-1002)
+        bot = AsyncMock()
+        bot.get_chat.return_value = SimpleNamespace(type='supergroup', is_forum=False)
+        bot.get_me.return_value = SimpleNamespace(id=100, username='era_test')
+        bot.get_chat_member.return_value = SimpleNamespace(
+            status='administrator', can_manage_topics=True, can_pin_messages=True,
+        )
+        bot.send_message.return_value = SimpleNamespace(message_id=0)
+        first = await setup_leaders_topics(bot, settings, self.factory)
+        second = await setup_leaders_topics(bot, settings, self.factory)
+        self.assertEqual(first['status'], 'panel_needs_review')
+        self.assertEqual(second['status'], 'panel_needs_review')
+        self.assertEqual(bot.send_message.await_count, 1)
+        bot.pin_chat_message.assert_not_awaited()
+        async with self.factory() as session:
+            row = await session.scalar(select(AppSetting).where(
+                AppSetting.key == 'leaders_forum:-1001:tasks',
+            ))
+            self.assertIn('"message_state": "sending"', row.value)
+            self.assertNotIn('"message_id"', row.value)
+
+    async def test_forum_panel_invalid_telegram_message_id_requires_review_without_resend(self):
+        from sqlalchemy import select
+        from app.database.models import AppSetting
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001, general_chat_id=-1002)
+        bot = AsyncMock()
+        bot.get_chat.return_value = SimpleNamespace(type='supergroup', is_forum=True)
+        bot.get_me.return_value = SimpleNamespace(id=100, username='era_test')
+        bot.get_chat_member.return_value = SimpleNamespace(
+            status='administrator', can_manage_topics=True, can_pin_messages=True,
+        )
+        bot.create_forum_topic.return_value = SimpleNamespace(message_thread_id=7)
+        bot.send_message.return_value = SimpleNamespace(message_id=0)
+        first = await setup_leaders_topics(bot, settings, self.factory)
+        second = await setup_leaders_topics(bot, settings, self.factory)
+        self.assertEqual(first['status'], 'panel_needs_review')
+        self.assertEqual(first['topic'], 'tasks')
+        self.assertEqual(second['status'], 'panel_needs_review')
+        self.assertEqual(bot.create_forum_topic.await_count, 1)
+        self.assertEqual(bot.send_message.await_count, 1)
+        bot.pin_chat_message.assert_not_awaited()
+        async with self.factory() as session:
+            row = await session.scalar(select(AppSetting).where(
+                AppSetting.key == 'leaders_forum:-1001:tasks',
+            ))
+            self.assertIn('"thread_id": 7', row.value)
+            self.assertIn('"message_state": "sending"', row.value)
+            self.assertNotIn('"message_id"', row.value)
+
     async def test_forum_setup_requires_review_of_old_plain_group_settings(self):
         from app.database.models import AppSetting
 

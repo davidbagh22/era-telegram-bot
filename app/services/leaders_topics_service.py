@@ -120,7 +120,13 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                         existing.value=json.dumps({'mode':'plain','thread_id':None,'message_state':'uncertain'})
                         await session.commit()
                         raise
-                    data={'mode':'plain','thread_id':None,'message_id':sent.message_id,'message_state':'sent'}
+                    # Telegram may return a malformed message object even if a
+                    # panel was published. Keep the durable sending marker and
+                    # require reconciliation rather than retrying the send.
+                    message_id = getattr(sent, 'message_id', None)
+                    if type(message_id) is not int or message_id <= 0:
+                        return {'status': 'panel_needs_review', 'chat_id': chat_id}
+                    data={'mode':'plain','thread_id':None,'message_id':message_id,'message_state':'sent'}
                 else:
                     try:
                         await bot.edit_message_text(chat_id=chat_id,message_id=data['message_id'],text=text,reply_markup=keyboard)
@@ -177,7 +183,11 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                     row.value=json.dumps(data)
                     await session.commit()
                     message = await bot.send_message(chat_id, text=text, message_thread_id=data["thread_id"], reply_markup=keyboard)
-                    data["message_id"] = message.message_id
+                    message_id = getattr(message, 'message_id', None)
+                    if type(message_id) is not int or message_id <= 0:
+                        # The send may have succeeded; never retry blindly.
+                        return {'status': 'panel_needs_review', 'chat_id': chat_id, 'topic': key}
+                    data["message_id"] = message_id
                     data["message_state"] = "sent"
                     data["panel"] = snapshot
                     row.value = json.dumps(data)
