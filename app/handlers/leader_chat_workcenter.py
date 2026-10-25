@@ -268,6 +268,9 @@ async def handle_leaders_task_card_action(
         if submission is None or assignee is None:
             await call.answer("На проверке нет актуального результата.", show_alert=True)
             return
+        if not await task_review_service.can_review_task(session, user, settings, task):
+            await call.answer("Нет доступа к проверке этой работы.", show_alert=True)
+            return
         result = await task_review_service.decide_submission(
             session,
             submission,
@@ -276,6 +279,7 @@ async def handle_leaders_task_card_action(
             action="approve",
             comment="",
             actor=user,
+            settings=settings,
         )
         await call.answer("Результат принят. Баллы начислены по правилам ЭРА.")
         if result.participant_notice:
@@ -416,6 +420,9 @@ async def return_leaders_task_result(
         await state.clear()
         await message.reply("Не удалось вернуть результат. Проверьте задачу и отправьте комментарий снова.")
         return
+    if not await task_review_service.can_review_task(session, user, settings, task):
+        await message.reply("Нет доступа к проверке этой работы.")
+        return
     result = await task_review_service.decide_submission(
         session,
         submission,
@@ -424,6 +431,7 @@ async def return_leaders_task_result(
         action="revision",
         comment=comment[:2000],
         actor=user,
+        settings=settings,
     )
     await audit(
         session,

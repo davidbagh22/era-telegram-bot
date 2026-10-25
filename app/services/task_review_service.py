@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import PointTransaction, PortfolioItem, Task, TaskParticipant, TaskSubmission, User
@@ -22,14 +22,30 @@ class TaskReviewResult:
     changed: bool = True
 
 
-async def list_pending_submissions(session: AsyncSession) -> list[TaskSubmission]:
-    rows = await session.scalars(
-        select(TaskSubmission)
-        .where(TaskSubmission.status == "pending")
-        .order_by(TaskSubmission.created_at.desc())
-        .limit(30)
-    )
-    return list(rows.all())
+async def can_review_task(session: AsyncSession, actor: User | None, settings, task: Task) -> bool:
+    if not (getattr(task, "reward_json", None) or {}).get("media_task"):
+        return True
+    if actor is None or settings is None:
+        return False
+    from app.services.media_service import can_manage_media
+    current = await session.scalar(select(User).where(User.id == actor.id).execution_options(populate_existing=True))
+    return current is not None and await can_manage_media(session, current, settings)
+
+
+async def list_pending_submissions(session: AsyncSession, *, reviewer: User | None = None, settings=None) -> list[TaskSubmission]:
+    query = select(TaskSubmission).join(Task, Task.id == TaskSubmission.task_id).where(
+        TaskSubmission.status == "pending")
+    if reviewer is not None:
+        from app.services.media_service import can_manage_media
+        current = await session.scalar(select(User).where(User.id == reviewer.id)
+            .execution_options(populate_existing=True))
+        media_allowed = settings is not None and current is not None and await can_manage_media(session, current, settings)
+        if not media_allowed:
+            # Apply visibility in SQL before the page limit: a full page of
+            # media work must not hide older ordinary submissions.
+            query = query.where(func.coalesce(Task.reward_json["media_task"].as_boolean(), False).is_(False))
+    return list((await session.scalars(query.order_by(
+        TaskSubmission.created_at.desc(), TaskSubmission.id.desc()).limit(30))).all())
 
 
 async def _already_awarded(session: AsyncSession, user_id: int, task_id: int) -> bool:
@@ -71,6 +87,7 @@ async def decide_submission(
     action: str,
     comment: str,
     actor: User,
+    settings=None,
 ) -> TaskReviewResult:
     if action not in TASK_REVIEW_ACTIONS:
         raise ValueError(f"unknown task review action: {action!r}")
@@ -84,6 +101,8 @@ async def decide_submission(
         .with_for_update().execution_options(populate_existing=True))
     if not task or not submission or submission.task_id != task.id or submission.user_id != participant.id:
         raise ValueError('submission_context_mismatch')
+    if not await can_review_task(session, actor, settings, task):
+        raise ValueError("media_review_access_required")
     if submission.status != 'pending':
         return TaskReviewResult(submission=submission,
             admin_notice=('Этот результат уже одобрен. Повторно баллы не начисляются.'
@@ -119,7 +138,7 @@ async def decide_submission(
         # Verified public missions become a portfolio entry automatically;
         # the unique task/user check keeps retries idempotent.
         reward = task.reward_json or {}
-        if reward.get("public_task") or reward.get("portfolio_on_approval"):
+        if reward.get("public_task") or reward.get("portfolio_on_approval") or reward.get("media_task"):
             portfolio = await session.scalar(select(PortfolioItem).where(PortfolioItem.user_id == participant.id, PortfolioItem.related_task_id == task.id))
             if portfolio is None:
                 session.add(PortfolioItem(user_id=participant.id, title=task.title, item_type="task", description=submission.text or task.description, file_id=submission.file_id, related_task_id=task.id, issued_by=actor.id, verified_by=actor.id, admin_comment=submission.admin_comment, status="verified"))

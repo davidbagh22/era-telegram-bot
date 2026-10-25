@@ -281,7 +281,7 @@ async def read_task(
     settings: Settings = Depends(get_settings),
 ) -> TaskOut:
     task = await session.get(Task, task_id)
-    if task is None or not await task_service.can_view(session, task, user):
+    if task is None or not await task_service.can_view(session, task, user, settings):
         raise HTTPException(status_code=404, detail="task_not_found")
     return await _to_task_out(session, task, user, settings)
 
