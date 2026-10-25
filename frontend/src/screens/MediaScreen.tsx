@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActionCell } from "../components/ActionCell";
 import { Card } from "../components/Card";
 import {
@@ -11,7 +11,6 @@ import {
   fetchMediaConfig,
   fetchMediaContentPlan,
   fetchMediaHub,
-  fetchMediaLibrary,
   fetchMediaMembers,
   fetchMediaToday,
   pauseMedia,
@@ -25,10 +24,10 @@ import {
   type MediaConfig,
   type MediaContent,
   type MediaHub,
-  type MediaLibraryItem,
   type MediaMember,
   type MediaTask,
 } from "../api/media";
+import { MediaKnowledge } from "./MediaKnowledge";
 import { MediaGuideScreen } from "./MediaGuideScreen";
 import { MediaWorkspaceScreen } from "./MediaWorkspaceScreen";
 
@@ -75,23 +74,6 @@ function formatDate(value: string | null): string {
 function openExternal(url: string): void {
   if (!url) return;
   window.open(url, "_blank", "noopener,noreferrer");
-}
-
-/** ToR §32-34/§72: internal ERA pages must stay inside the Mini App (SPA
- * hash navigation) so Telegram initData survives -- only real external
- * resources (Canva, Telegram chat/channel, Google Drive, ...) get
- * window.open, and those show the `↗` "leaving the app" hint. */
-function openLibraryItem(item: MediaLibraryItem, setView: (view: DeskView) => void): void {
-  if (item.destination_type === "external_url") {
-    openExternal(item.url);
-    return;
-  }
-  if (item.url === "media/guide" || item.kind === "guide") {
-    setView("guide");
-    return;
-  }
-  const target = item.url.replace(/^\/+/, "");
-  if (window.location.hash !== `#/${target}`) window.location.hash = `#/${target}`;
 }
 
 function TaskList({ tasks, empty }: { tasks: MediaTask[]; empty: string }) {
@@ -182,7 +164,6 @@ function ContentCard({
 
 export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
   const [hub, setHub] = useState<MediaHub | null>(null);
-  const [library, setLibrary] = useState<MediaLibraryItem[]>([]);
   const [today, setToday] = useState<MediaContent[]>([]);
   const [plan, setPlan] = useState<MediaContent[]>([]);
   const [config, setConfig] = useState<MediaConfig | null>(null);
@@ -204,15 +185,9 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
     setView(initialView === "guide" ? "guide" : "home");
   }, [initialView]);
 
-  // DELTA ToR §28: NO_ACCESS/PENDING never reach the library endpoint (it
-  // 403s below MEDIA_MEMBER) -- fetching it unconditionally would turn a
-  // normal "not a member yet" state into a hard error screen.
   const loadHub = useCallback(async () => {
     const hubResult = await fetchMediaHub();
     setHub(hubResult);
-    if (hubResult.permissions.tools_read) {
-      setLibrary(await fetchMediaLibrary());
-    }
     return hubResult;
   }, []);
 
@@ -283,7 +258,6 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
     }
   };
 
-  const files = useMemo(() => library.filter((item) => item.kind !== "chat" && item.kind !== "channel"), [library]);
 
   const submitIdea = async () => {
     const text = idea.trim();
@@ -371,7 +345,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
         <div style={{ fontSize: "0.72rem", color: "var(--era-text-muted)", fontWeight: 900, textTransform: "uppercase" }}>ЭРА · Медиа</div>
         <h1 style={{ margin: "0.15rem 0 0", fontSize: "var(--era-text-3xl)", lineHeight: 1.05 }}>
           {/* "guide" returns its own MediaGuideScreen above before header is built. */}
-          {view === "home" ? "Медиа" : view === "today" ? "Сегодня" : view === "plan" ? "План публикаций" : view === "tasks" ? "Задачи" : view === "team" ? "Команда" : view === "chat" ? "Чат отдела медиа" : view === "channel" ? "Канал" : view === "files" ? "Файлы" : view === "analytics" ? "Статистика" : "Настройки"}
+          {view === "home" ? "Медиа" : view === "today" ? "Сегодня" : view === "plan" ? "План публикаций" : view === "tasks" ? "Задачи" : view === "team" ? "Команда" : view === "chat" ? "Чат отдела медиа" : view === "channel" ? "Канал" : view === "files" ? "База знаний" : view === "analytics" ? "Статистика" : "Настройки"}
         </h1>
       </div>
     </div>
@@ -440,19 +414,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
       </div>
     );
   } else if (view === "files") {
-    body = (
-      <div style={{ display: "grid", gap: 10 }}>
-        {files.map((item) => (
-          <ActionCell
-            key={item.id}
-            title={item.title}
-            description={item.description || item.kind}
-            leading={<span>{item.destination_type === "external_url" ? "↗" : "◫"}</span>}
-            onClick={() => openLibraryItem(item, setView)}
-          />
-        ))}
-      </div>
-    );
+    body = <MediaKnowledge manager={hub.can_manage} onGuide={() => setView("guide")} />;
   } else if (view === "analytics") {
     // ToR §36: Медиа сейчас -- Публикации (всего + за 30 дней) / В срок /
     // Задачи / Media Chat активность.
@@ -526,7 +488,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
         <div style={{ display: "grid", gap: 10 }}>
           <ActionCell title="Чат отдела медиа" description="Рабочая координация и команда" leading={<span>💬</span>} onClick={() => openExternal(hub.chat_url)} />
           <ActionCell title="Канал ЭРА" description="Смотри, что выходит в публичное пространство" leading={<span>↗</span>} onClick={() => openExternal(hub.channel_url)} />
-          <ActionCell title="Шаблоны и файлы" description="Canva, гайды и рабочие материалы" leading={<span>◫</span>} onClick={() => setView("files")} />
+          <ActionCell title="База знаний" description="Инструкции, шаблоны и рабочие материалы" leading={<span>◫</span>} onClick={() => setView("files")} />
         </div>
 
         {hub.can_manage ? (
@@ -539,7 +501,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
               ["team", "Команда", "Рабочий поток через задачи", "◎"],
               ["chat", "Чат", "Чат медиа-команды", "💬"],
               ["channel", "Канал", "Права бота и @era_leaders1", "↗"],
-              ["files", "Файлы", "Шаблоны и гайды", "◫"],
+              ["files", "База знаний", "Инструкции и шаблоны", "◫"],
               ["analytics", "Аналитика", "Публикации, сроки, выполнение", "↗"],
               ["settings", "Настройки", "Автопубликация, пауза и безопасность", "⚙"],
             ] as const).map(([key, title, description, icon]) => (

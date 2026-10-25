@@ -190,3 +190,55 @@ async def invitation_toggle(call: CallbackQuery, user: User | None, session: Asy
     await session.commit()
     await call.answer("Приглашение обновлено.")
     await leader_menu(call, user, session, settings)
+
+
+async def knowledge_guard(event, user, session, settings):
+    from app.services.media_workspace_service import require_access
+    if user is not None and event.from_user.id == user.telegram_id:
+        try:
+            await require_access(session, user, settings)
+            return True
+        except PermissionError:
+            pass
+    if isinstance(event, CallbackQuery):
+        await event.answer("База знаний доступна участникам медиаотдела.", show_alert=True)
+    else:
+        await event.answer("База знаний доступна участникам медиаотдела.")
+    return False
+
+
+@router.message(Command("media_knowledge"))
+async def knowledge_command(message: Message, user: User | None, session: AsyncSession, settings: Settings):
+    from html import escape
+    from app.services.media_knowledge_service import list_items
+    if not await knowledge_guard(message, user, session, settings):
+        return
+    query = (message.text or "").partition(" ")[2].strip().casefold()
+    items = [item for item in await list_items(session) if item.kind not in {"chat", "channel"}
+        and (not query or query in f"{item.title} {item.description or ''}".casefold())]
+    rows = [[(item.title[:55], f"media:knowledge:{item.id}")] for item in items[:20]]
+    text = "База знаний медиа\n\n" + ("Выберите материал." if items else "По запросу материалов пока нет.")
+    text += "\nПоиск: /media_knowledge слово"
+    if len(items) > 20:
+        text += "\nПоказаны первые 20 материалов. Уточните поиск или откройте каталог в приложении."
+    await message.answer(escape(text), reply_markup=keyboard(rows) if rows else None)
+
+
+@router.callback_query(F.data.regexp(r"^media:knowledge:[0-9]+$"))
+async def knowledge_item(call: CallbackQuery, user: User | None, session: AsyncSession, settings: Settings):
+    from html import escape
+    from app.database.media_models import MediaLibraryItem
+    from app.services.media_knowledge_service import CATEGORIES
+    if not await knowledge_guard(call, user, session, settings):
+        return
+    item = await session.get(MediaLibraryItem, int(call.data.rsplit(":", 1)[-1]))
+    if item is None or not item.is_active or item.kind in {"chat", "channel"}:
+        await call.answer("Материал скрыт или недоступен.", show_alert=True)
+        return
+    await call.answer()
+    text = f"{item.title}\n{CATEGORIES.get(item.category, 'Рабочие материалы')}\n\n{item.description or ''}"
+    for offset in range(0, len(text), 1800):
+        await call.message.answer(escape(text[offset:offset + 1800]))
+    if item.url.startswith("https://"):
+        await call.message.answer("Ссылка на материал", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Открыть материал", url=item.url)]]))

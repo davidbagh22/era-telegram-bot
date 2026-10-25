@@ -55,6 +55,10 @@ export interface MediaLibraryItem {
   // "internal_route" -> an in-app hash route (e.g. "media/guide"), must be
   // opened with SPA navigation, never window.open/openLink (DELTA ToR §32-34).
   destination_type: "internal_route" | "external_url" | "file";
+  category: string;
+  pinned: boolean;
+  is_active: boolean;
+  revision: number;
 }
 
 export interface MediaGuide {
@@ -194,7 +198,9 @@ export const createMediaCalendarEntry = (area: string, payload: object) => reque
 export const updateMediaCalendarEntry = (area: string, id: number, payload: object) => request<MediaCalendarEntry>(`/api/v1/media/workspaces/${area}/calendar/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 export const applyToMedia = () => request<MediaHub>("/api/v1/media/apply", { method: "POST" });
 export const joinMedia = () => request<MediaHub>("/api/v1/media/join", { method: "POST" });
-export const fetchMediaLibrary = () => request<MediaLibraryItem[]>("/api/v1/media/library");
+export const fetchMediaLibrary = (includeArchived = false) => request<MediaLibraryItem[]>(`/api/v1/media/library${includeArchived ? "?include_archived=true" : ""}`);
+export const createMediaLibraryItem = (payload: object) => request<MediaLibraryItem>("/api/v1/media/desk/library", { method: "POST", body: JSON.stringify(payload) });
+export const updateMediaLibraryItem = (id: number, payload: object) => request<MediaLibraryItem>(`/api/v1/media/desk/library/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 export const fetchMediaGuide = () => request<MediaGuide>("/api/v1/media/guide");
 export const fetchMediaApplications = () => request<MediaApplicant[]>("/api/v1/media/team/applications");
 export const fetchMediaMembers = () => request<MediaMember[]>("/api/v1/media/team/members");

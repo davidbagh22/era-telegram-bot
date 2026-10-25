@@ -71,24 +71,29 @@ async def seed_media_guide(session: AsyncSession, settings: Settings) -> None:
     # window.open/Telegram openLink (see MediaScreen's openLibraryItem).
     route = "media/guide"
     description = "Tone of voice, структура постов и Reels, правила визуала."
-    existing = await session.scalar(select(MediaLibraryItem).where(MediaLibraryItem.title == title))
+    from app.database.models import AppSetting
+    marker = await session.scalar(select(AppSetting).where(AppSetting.key == "media_library_guide_id"))
+    existing = await session.get(MediaLibraryItem, marker.value.get("id")) if marker and marker.value.get("id") else None
+    if existing is None:
+        existing = await session.scalar(select(MediaLibraryItem).where(MediaLibraryItem.title == title))
+    if existing is not None:
+        if marker is None:
+            session.add(AppSetting(key="media_library_guide_id", value={"id": existing.id}))
+        else:
+            marker.value = {"id": existing.id}
     if existing is not None:
         if existing.destination_type != "internal_route" or existing.url != route:
             existing.destination_type = "internal_route"
             existing.url = route
         return
-    session.add(
-        MediaLibraryItem(
-            kind="guide",
-            category="guides",
-            title=title,
-            description=description,
-            url=route,
-            destination_type="internal_route",
-            sort_order=25,
-            is_active=True,
-        )
-    )
+    item = MediaLibraryItem(kind="guide", category="guides", title=title, description=description,
+        url=route, destination_type="internal_route", sort_order=25, is_active=True)
+    session.add(item)
+    await session.flush()
+    if marker is None:
+        session.add(AppSetting(key="media_library_guide_id", value={"id": item.id}))
+    else:
+        marker.value = {"id": item.id}
     await session.flush()
 
 

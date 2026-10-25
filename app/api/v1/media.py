@@ -72,6 +72,10 @@ class LibraryItemOut(BaseModel):
     description: str | None
     url: str
     destination_type: Literal["internal_route", "external_url", "file"]
+    category: str = "archive"
+    is_active: bool = True
+    pinned: bool = False
+    revision: int = 0
 
 
 class IdeaIn(BaseModel):
@@ -359,10 +363,15 @@ async def decide_media_applicant(
 
 @router.get("/library", response_model=list[LibraryItemOut])
 async def read_media_library(
-    _user: User = Depends(require_media_hub),
+    include_archived: bool = False,
+    user: User = Depends(require_media_hub),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> list[LibraryItemOut]:
-    return [_library_out(item) for item in await media_service.list_library(session)]
+    from app.services import media_knowledge_service as knowledge
+    if include_archived and not await media_service.can_manage_media(session, user, settings):
+        raise HTTPException(status_code=403, detail="media_desk_access_required")
+    return [await knowledge.item_out(session, item) for item in await knowledge.list_items(session, include_archived=include_archived)]
 
 
 @router.post("/ideas", response_model=ContentOut)
