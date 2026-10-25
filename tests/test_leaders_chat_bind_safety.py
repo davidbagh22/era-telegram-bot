@@ -100,6 +100,46 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.session.scalar.await_count, 3)
         self.session.commit.assert_not_awaited()
 
+    async def test_unconfirmed_thread_state_takes_priority_over_saved_id(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.session.scalar.side_effect = [
+            SimpleNamespace(value=json.dumps({
+                "mode": "forum", "thread_id": 31, "thread_state": "failed",
+            })),
+            SimpleNamespace(value=json.dumps({
+                "mode": "forum", "thread_id": 32, "thread_state": "uncertain",
+            })),
+            None,
+        ]
+        await leaders_readonly_diagnostics(
+            self.message, None, self.settings, self.session, self.bot,
+        )
+        result = self.message.answer.await_args.args[0]
+        self.assertIn("Задачи: создание не подтверждено", result)
+        self.assertIn("Пульс: создание не подтверждено", result)
+        self.assertNotIn("thread_id=31 (из БД", result)
+        self.assertNotIn("thread_id=32 (из БД", result)
+        self.session.commit.assert_not_awaited()
+
+    async def test_damaged_mode_and_thread_id_are_not_reported_ready(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.session.scalar.side_effect = [
+            SimpleNamespace(value=json.dumps({"mode": "broken", "thread_id": 31})),
+            SimpleNamespace(value=json.dumps({"mode": "forum", "thread_id": True})),
+            SimpleNamespace(value=json.dumps({"mode": "plain", "thread_id": 45})),
+        ]
+        await leaders_readonly_diagnostics(
+            self.message, None, self.settings, self.session, self.bot,
+        )
+        result = self.message.answer.await_args.args[0]
+        self.assertIn("Задачи: режим темы повреждён", result)
+        self.assertIn("Пульс: настройка темы повреждена", result)
+        self.assertIn("Важно: настройки обычной группы противоречат", result)
+        self.assertNotIn("thread_id=31 (из БД", result)
+        self.session.commit.assert_not_awaited()
+
     async def test_diagnostics_do_not_read_general_chat_binding(self):
         from app.handlers.chat_binding import leaders_readonly_diagnostics
 
