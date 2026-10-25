@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Literal
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -206,6 +207,26 @@ async def update_media_pipeline(
     }
 
 
+def _validate_external_attachment_url(url: str) -> None:
+    """Reject unsafe or ambiguous links before storing clickable attachments."""
+    detail = "Укажите HTTPS-ссылку на материал"
+    if "\\" in url or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in url):
+        raise HTTPException(status_code=422, detail=detail)
+    try:
+        parsed = urlsplit(url)
+        valid = (
+            parsed.scheme == "https"
+            and bool(parsed.hostname)
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.port in (None, 443)
+        )
+    except ValueError:
+        valid = False
+    if not valid:
+        raise HTTPException(status_code=422, detail=detail)
+
+
 @router.post("/desk/attachments", response_model=AttachmentOut)
 async def create_media_attachment(
     payload: AttachmentCreateIn,
@@ -214,6 +235,8 @@ async def create_media_attachment(
 ) -> AttachmentOut:
     if not payload.external_url and not payload.telegram_file_id:
         raise HTTPException(status_code=422, detail="file_reference_required")
+    if payload.external_url:
+        _validate_external_attachment_url(payload.external_url)
     if payload.target_type == "content" and await session.get(MediaContentItem, payload.target_id) is None:
         raise HTTPException(status_code=404, detail="content_not_found")
     if payload.target_type == "task":
