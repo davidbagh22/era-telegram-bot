@@ -371,7 +371,7 @@ async def read_media_library(
     from app.services import media_knowledge_service as knowledge
     if include_archived and not await media_service.can_manage_media(session, user, settings):
         raise HTTPException(status_code=403, detail="media_desk_access_required")
-    return [await knowledge.item_out(session, item) for item in await knowledge.list_items(session, include_archived=include_archived)]
+    return await knowledge.list_items_out(session, include_archived=include_archived)
 
 
 @router.post("/ideas", response_model=ContentOut)
