@@ -47,6 +47,25 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(again.leader_chat_id, -1002)
             self.assertIsNone(again.announcement_message_id)
 
+    async def test_forum_setup_requires_review_of_old_plain_group_settings(self):
+        from app.database.models import AppSetting
+
+        settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001, general_chat_id=-1002)
+        bot = AsyncMock()
+        bot.get_chat.return_value = SimpleNamespace(type='supergroup', is_forum=True)
+        bot.get_me.return_value = SimpleNamespace(id=100, username='era_test')
+        bot.get_chat_member.return_value = SimpleNamespace(
+            status='administrator', can_manage_topics=True, can_pin_messages=True,
+        )
+        async with self.factory() as session:
+            session.add(AppSetting(key='leaders_forum:-1001:tasks', value='{"mode":"plain"}'))
+            await session.commit()
+        result = await setup_leaders_topics(bot, settings, self.factory)
+        self.assertEqual(result['status'], 'topic_needs_review')
+        self.assertEqual(result['topic'], 'tasks')
+        bot.create_forum_topic.assert_not_awaited()
+        bot.send_message.assert_not_awaited()
+
     async def test_topics_created_only_once_and_never_in_general(self):
         settings = Settings(bot_token='1234567890:test-token', leaders_chat_id=-1001, general_chat_id=-1002)
         bot = AsyncMock()
