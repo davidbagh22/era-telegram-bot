@@ -109,7 +109,7 @@ class VerifyInitDataTests(unittest.TestCase):
 
     def test_signed_non_object_user_is_rejected(self) -> None:
         fields = {"auth_date": str(int(time.time())), "user": "null"}
-        check_string = "\\n".join(f"{key}={value}" for key, value in sorted(fields.items()))
+        check_string = "\n".join(f"{key}={value}" for key, value in sorted(fields.items()))
         secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
         fields["hash"] = hmac.new(
             secret_key, check_string.encode(), hashlib.sha256
