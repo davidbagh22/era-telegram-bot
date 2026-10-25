@@ -164,7 +164,10 @@ async def post_missing_media_task_cards(
                     MediaChatNotice.id.is_(None),
                 )
                 .order_by(Task.created_at, Task.id)
-                .limit(100)
+                # Do not flood Media Chat when an old backlog is unblocked.
+                # This scheduler runs every minute: release at most one card
+                # per tick while still eventually reaching newer tasks.
+                .limit(1)
             )
         ).all()
         for task, link in rows:
