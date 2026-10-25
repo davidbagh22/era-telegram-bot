@@ -180,7 +180,7 @@ export interface MediaCalendarEntry {
   revision: number;
 }
 export const fetchMediaWorkspaces = () => request<MediaWorkspace[]>("/api/v1/media/workspaces");
-export const fetchMediaCalendar = (area: string) => request<MediaCalendarEntry[]>(`/api/v1/media/workspaces/${area}/calendar`);
+export const fetchMediaCalendar = (area: string, beforeId?: number) => request<MediaCalendarEntry[]>(`/api/v1/media/workspaces/${area}/calendar${beforeId ? `?before_id=${beforeId}` : ""}`);
 export const createMediaCalendarEntry = (area: string, payload: object) => request<MediaCalendarEntry>(`/api/v1/media/workspaces/${area}/calendar`, { method: "POST", body: JSON.stringify(payload) });
 export const updateMediaCalendarEntry = (area: string, id: number, payload: object) => request<MediaCalendarEntry>(`/api/v1/media/workspaces/${area}/calendar/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 export const applyToMedia = () => request<MediaHub>("/api/v1/media/apply", { method: "POST" });

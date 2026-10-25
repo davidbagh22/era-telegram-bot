@@ -8,7 +8,7 @@ const button: React.CSSProperties = { border: "1px solid var(--era-border)", bac
 const input: React.CSSProperties = { width: "100%", boxSizing: "border-box", background: "var(--era-surface-2)", color: "var(--era-text)", border: "1px solid var(--era-border)", borderRadius: 10, padding: ".7rem", font: "inherit" };
 const dateLabel = (value: string | null) => value ? new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Yerevan", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "Без даты";
 
-function Entry({ item, area, manager, members, onChanged }: { item: MediaCalendarEntry; area: string; manager: boolean; members: MediaMember[]; onChanged: () => Promise<void> }) {
+function Entry({ item, area, manager, members, onChanged }: { item: MediaCalendarEntry; area: string; manager: boolean; members: MediaMember[]; onChanged: (updated: MediaCalendarEntry) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [url, setUrl] = useState("");
@@ -21,7 +21,7 @@ function Entry({ item, area, manager, members, onChanged }: { item: MediaCalenda
   const terminal = ["published", "skipped"].includes(item.status);
   const change = async (values: object) => {
     setBusy(true); setError("");
-    try { await updateMediaCalendarEntry(area, item.id, { revision: item.revision, ...values }); await onChanged(); }
+    try { const updated = await updateMediaCalendarEntry(area, item.id, { revision: item.revision, ...values }); onChanged(updated); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось сохранить"); }
     finally { setBusy(false); }
   };
@@ -59,6 +59,8 @@ function Entry({ item, area, manager, members, onChanged }: { item: MediaCalenda
 export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors"; onBack: () => void }) {
   const [workspace, setWorkspace] = useState<MediaWorkspace | null>(null);
   const [items, setItems] = useState<MediaCalendarEntry[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [members, setMembers] = useState<MediaMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -72,7 +74,11 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
   const [materials, setMaterials] = useState("");
   const [requestKey, setRequestKey] = useState(() => crypto.randomUUID());
   const [filter, setFilter] = useState("active");
-  const reload = useCallback(async () => { setItems(await fetchMediaCalendar(area)); }, [area]);
+  const reload = useCallback(async () => {
+    const entries = await fetchMediaCalendar(area);
+    setItems(entries);
+    setHasMore(entries.length === 100);
+  }, [area]);
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -80,12 +86,25 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
         const workspaces = await fetchMediaWorkspaces();
         const current = workspaces.find(item => item.id === area) ?? null;
         const [entries, team] = await Promise.all([fetchMediaCalendar(area), current?.can_manage ? fetchMediaMembers() : Promise.resolve([])]);
-        if (alive) { setWorkspace(current); setItems(entries); setMembers(team); }
+        if (alive) { setWorkspace(current); setItems(entries); setHasMore(entries.length === 100); setMembers(team); }
       } catch (cause) { if (alive) setError(cause instanceof Error ? cause.message : "Не удалось открыть календарь"); }
       finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; };
   }, [area]);
+  const loadMore = async () => {
+    if (!hasMore || loadingMore || !items.length) return;
+    setLoadingMore(true); setError("");
+    try {
+      const next = await fetchMediaCalendar(area, items[items.length - 1].id);
+      setItems(current => {
+        const known = new Set(current.map(item => item.id));
+        return [...current, ...next.filter(item => !known.has(item.id))];
+      });
+      setHasMore(next.length === 100);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось загрузить материалы"); }
+    finally { setLoadingMore(false); }
+  };
   const save = async (event: React.FormEvent) => {
     event.preventDefault(); setBusy(true); setError("");
     try {
@@ -112,9 +131,10 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
         <button style={button} disabled={busy || title.trim().length < 2} type="submit">{busy ? "Сохраняем…" : "Сохранить в календаре"}</button>
       </form></Card>}
       <label>Показать<select aria-label="Показать" style={input} value={filter} onChange={event => setFilter(event.target.value)}><option value="active">В работе</option><option value="published">Опубликованные</option><option value="all">Все материалы</option></select></label>
-      {items.filter(item => filter === "all" || (filter === "published" ? item.status === "published" : !["published", "skipped"].includes(item.status))).map(item => <Entry key={item.id} area={area} item={item} manager={workspace.can_manage} members={members} onChanged={reload} />)}
+      {items.filter(item => filter === "all" || (filter === "published" ? item.status === "published" : !["published", "skipped"].includes(item.status))).map(item => <Entry key={item.id} area={area} item={item} manager={workspace.can_manage} members={members} onChanged={updated => setItems(current => current.map(entry => entry.id === updated.id ? updated : entry))} />)}
       {!items.length && <Card>Материалов пока нет. Руководитель может добавить первый.</Card>}
-      <small>Показаны последние 100 материалов. Публикации во внешние сервисы автоматически не отправляются.</small>
+      {hasMore && <button style={button} disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Загружаем…" : "Показать ещё материалы"}</button>}
+      <small>Загружено материалов: {items.length}. Публикации во внешние сервисы автоматически не отправляются.</small>
     </>}
   </div>;
 }

@@ -57,6 +57,26 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
             with self.assertRaises(LookupError):
                 await workspace.update_entry(session, leader, settings, "era", other.id, {"title": "Подмена"}, 0)
 
+    async def test_calendar_paginates_beyond_100_without_crossing_areas(self):
+        async with self.factory() as session:
+            settings, _, leader, _, _, _ = await self.seed(session)
+            session.add_all([
+                MediaContentItem(source_key=f"workspace:era:page:{index}", source_kind="media_workspace",
+                    status="planned", created_by=leader.id, metadata_json={"media_area": "era"})
+                for index in range(105)
+            ] + [
+                MediaContentItem(source_key=f"workspace:ksoors:page:{index}", source_kind="media_workspace",
+                    status="planned", created_by=leader.id, metadata_json={"media_area": "ksoors"})
+                for index in range(3)
+            ])
+            await session.flush()
+            first = await workspace.calendar(session, "era")
+            second = await workspace.calendar(session, "era", before_id=first[-1]["id"])
+            self.assertEqual((len(first), len(second)), (100, 5))
+            self.assertFalse({row["id"] for row in first} & {row["id"] for row in second})
+            self.assertEqual(len(await workspace.calendar(session, "ksoors")), 3)
+            self.assertEqual(await workspace.calendar(session, "era", before_id=second[-1]["id"]), [])
+
     async def test_http_creation_persists_and_member_cannot_mutate(self):
         from fastapi import FastAPI
         from httpx import ASGITransport, AsyncClient
@@ -86,6 +106,8 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
                 self.assertEqual(repeat.json()["id"], first.json()["id"])
                 listing = await client.get("/media/workspaces/ksoors/calendar")
                 self.assertEqual(len(listing.json()), 1)
+                self.assertEqual((await client.get("/media/workspaces/ksoors/calendar?before_id=0")).status_code, 422)
+                self.assertEqual((await client.get(f"/media/workspaces/ksoors/calendar?before_id={listing.json()[0]['id']}")).json(), [])
                 self.assertTrue(listing.json()[0]["scheduled_at"].endswith("+00:00"))
                 self.assertEqual((await client.get("/media/workspaces/era/calendar")).json(), [])
                 item_id = first.json()["id"]
