@@ -209,6 +209,14 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
             "https://t.me/era_leaders1/0",
             "https://t.me/era_leaders1/123/456",
             "https://t.me/era_leaders1/not-a-message",
+            "https://t.me/joinchat/123",  # invitation, not a post
+            "https://t.me/share/123",  # share action, not a post
+            "https://t.me/boost/123",  # boost action, not a post
+            "https://t.me/+inviteCode/123",  # private invite, not a channel
+            "https://t.me/%65ra_leaders1/123",  # encoded path cannot be trusted
+            "https://t.me/a/123",  # not a valid public username
+            "https://t.me/era-leaders/123",  # invalid username characters
+            "https://t.me/12345/123",  # public usernames must start with a letter
         ):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 workspace._publication_url(url, "telegram")
