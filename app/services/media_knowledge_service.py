@@ -69,9 +69,18 @@ def validate(values):
         if url != "media/guide":
             raise ValueError("Неизвестная страница приложения")
     elif url:
-        parsed = urlsplit(url)
+        # urlsplit and .port can raise ValueError for malformed IPv6 hosts,
+        # non-numeric ports and out-of-range ports. Normalize those failures
+        # to the same user-facing validation error as other unsafe links.
+        try:
+            parsed = urlsplit(url)
+            valid_port = parsed.port in (None, 443)
+        except ValueError as exc:
+            raise ValueError("Укажите HTTPS-ссылку на материал") from exc
+        # Backslashes are interpreted as path separators by some clients,
+        # but not by urlsplit; never accept a link with ambiguous authority.
         if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
-                or any(c.isspace() for c in url) or parsed.port not in (None, 443)):
+                or "\\" in url or any(c.isspace() for c in url) or not valid_port):
             raise ValueError("Укажите HTTPS-ссылку на материал")
     elif kind != "text":
         raise ValueError("Добавьте ссылку на материал")
