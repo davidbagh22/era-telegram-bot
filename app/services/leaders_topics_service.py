@@ -176,7 +176,16 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                     await session.commit()
                 text, keyboard = await panel(session, chat_id, key, me.username)
                 snapshot = {"text": text, "keyboard": keyboard.model_dump(mode="json") if keyboard else None}
-                if not data.get('message_id') and data.get('message_state') in {'sending','uncertain'}:
+                # A damaged saved panel ID or ambiguous delivery state must
+                # never trigger a fresh send, edit, or pin. Telegram may already
+                # contain the panel, so require an administrator to reconcile it.
+                message_id = data.get('message_id')
+                message_state = data.get('message_state')
+                if (
+                    (message_id is not None and (type(message_id) is not int or message_id <= 0))
+                    or (message_state == 'sent' and message_id is None)
+                    or message_state not in (None, 'sent')
+                ):
                     return {'status':'panel_needs_review','chat_id':chat_id,'topic':key}
                 if not data.get("message_id"):
                     data['message_state']='sending'
