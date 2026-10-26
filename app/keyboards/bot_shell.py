@@ -74,7 +74,10 @@ def main_reply_keyboard(miniapp_url: str = "", *, admin: bool = False, leaders: 
     rows: list[list[KeyboardButton]] = []
     if miniapp_url:
         rows.append([
-            KeyboardButton(text="🔥 Открыть ЭРА", web_app=WebAppInfo(url=miniapp_url)),
+            # Reply-keyboard WebApps use Telegram's simple mode, which has
+            # no signed initData. Send a normal message so the handler can
+            # offer an authenticated inline WebApp button instead.
+            KeyboardButton(text="🔥 Открыть ЭРА"),
             KeyboardButton(text="🧭 Навигация"),
         ])
     else:

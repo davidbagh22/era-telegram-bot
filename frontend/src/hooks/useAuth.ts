@@ -44,6 +44,9 @@ export function useAuth(): UseAuthResult {
     // user without a real Telegram session.
     const devTelegramIdParam = new URLSearchParams(window.location.search).get("devTelegramId");
     const devTelegramId = devTelegramIdParam ? Number(devTelegramIdParam) : undefined;
+    // Simple-mode reply buttons and ordinary browsers have no signed user
+    // data. Retrying the same empty payload cannot establish a session.
+    if (!initData && !devTelegramId) throw new ApiError(401, "empty_init_data");
     const result = await authenticate(initData, devTelegramId);
     setState({ status: "ready", user: result.user });
   }, []);
