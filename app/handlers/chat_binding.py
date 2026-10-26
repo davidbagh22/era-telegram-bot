@@ -142,6 +142,7 @@ async def leaders_readonly_diagnostics(
 
     lines = ["Чат лидеров · диагностика (только чтение)", f"chat_id: {chat_id}"]
     live_forum: bool | None = None
+    preflight_issue: str | None = None
     try:
         chat = await bot.get_chat(chat_id)
         member = await bot.get_chat_member(chat_id, bot.id)
@@ -151,6 +152,9 @@ async def leaders_readonly_diagnostics(
     else:
         forum = bool(getattr(chat, "is_forum", False))
         live_forum = forum
+        preflight_issue = _leaders_permission_error(chat, member)
+        if preflight_issue:
+            lines.append(f"Приёмка прав/типа чата: НЕ ПРОЙДЕНА — {preflight_issue}")
         lines.append(f"Тип: {getattr(chat, 'type', 'неизвестно')}")
         lines.append(f"Форум: {'да' if forum else 'нет'}")
         lines.append(f"Бот администратор: {'да' if member.status in {'administrator', 'creator'} else 'нет'}")
@@ -216,6 +220,14 @@ async def leaders_readonly_diagnostics(
             status = "настройка темы повреждена; нужна ручная сверка, не создавать повторно"
         else:
             status = "тема не настроена"
+        # A saved route may look structurally valid while the bot has lost
+        # its admin/topic rights or the bound chat is no longer a group.
+        # Do not present such a route as ready during live diagnostics.
+        if preflight_issue and (
+            status == "обычная группа, отдельной темы нет"
+            or status.startswith("thread_id=")
+        ):
+            status = "Telegram: проверка прав/типа чата не пройдена; доставка не подтверждена"
         lines.append(f"{label}: {status}")
         # Corrupt JSON may contain lists/dicts instead of scalar receipt fields.
         # Diagnostics must remain read-only and never crash on those values.
