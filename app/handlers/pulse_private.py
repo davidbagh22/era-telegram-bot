@@ -91,6 +91,39 @@ def first_missing_required(data):
     return None
 
 
+
+def update_activity_followup(data, *, question_index: int, selected: str) -> None:
+    """Change the explanation prompt only for the inactivity answer.
+
+    Preserve the configured result question so navigating back and changing
+    the answer does not leave an unrelated mandatory explanation behind.
+    """
+    questions = data["questions"]
+    if questions[question_index].get("key") != "done":
+        return
+    next_index = question_index + 1
+    if next_index >= len(questions) or questions[next_index].get("key") != "result":
+        return
+
+    previous = data.get("draft", {}).get("done")
+    questions = list(questions)
+    if selected == "Не было активности":
+        if "original_result_question" not in data:
+            data["original_result_question"] = dict(questions[next_index])
+        questions[next_index] = {
+            **questions[next_index],
+            "text": "Почему не было активности? Учёба, работа, поездка, нет задач или блокер?",
+            "required": True,
+        }
+    elif "original_result_question" in data:
+        questions[next_index] = data.pop("original_result_question")
+    data["questions"] = questions
+
+    if previous in {"Всё учтено", "Не было активности"} and previous != selected:
+        data["draft"] = dict(data.get("draft", {}))
+        data["draft"].pop("result", None)
+
+
 def preview_pages(data, max_chars=3500):
     """Keep the review below Telegram's 4096-character HTML message limit."""
     pages = []
@@ -249,10 +282,10 @@ async def pulse_action(
         index = int(parts[4])
         if index >= len(choices):
             return
-        data["draft"] = {**data["draft"], question["key"]: choices[index]}
-        if question["key"] == "done" and choices[index] == "Не было активности":
-            data["questions"] = list(data["questions"])
-            data["questions"][data["index"]+1] = {"key":"result","text":"Почему не было активности? Учёба, работа, поездка, нет задач или блокер?","required":True}
+        selected = choices[index]
+        if question["key"] == "done":
+            update_activity_followup(data, question_index=data["index"], selected=selected)
+        data["draft"] = {**data["draft"], question["key"]: selected}
         data["index"] += 1
         view.pulse.answers_json = data
         await session.flush()
