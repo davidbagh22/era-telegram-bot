@@ -348,6 +348,14 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
             session.add(AppSetting(key='leaders_forum:-1001:tasks', value='{"thread_id":7}'))
             await session.flush()
             await begin_group_task(message, state, admin, settings, session)
+            state.update_data.assert_not_awaited()
+            self.assertIn('теме «Задачи»', message.reply.await_args.args[0])
+
+            # Only a reply originating in the configured Tasks topic may
+            # create a task draft; an unrelated topic must not be rerouted.
+            message.message_thread_id = 7
+            message.reply_to_message.message_thread_id = 7
+            await begin_group_task(message, state, admin, settings, session)
             self.assertEqual(state.update_data.await_args.kwargs['task_thread_id'], 7)
 
     async def test_revoked_assignee_cannot_be_selected_or_confirmed(self):

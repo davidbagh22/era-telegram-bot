@@ -144,6 +144,16 @@ async def begin_group_task(
     except ValueError:
         await message.reply("Тема «Задачи» ещё не настроена. Попросите администратора проверить привязку чата.")
         return
+    # A /task reply from Пульс, Важно or General must never create a
+    # workcenter task associated with the configured Задачи destination.
+    # Both the command and its replied-to message must belong to that topic.
+    # In a plain chat the only valid route is the unthreaded main feed.
+    if (
+        getattr(message, "message_thread_id", None) != task_thread_id
+        or getattr(source, "message_thread_id", None) != task_thread_id
+    ):
+        await message.reply("Создавайте задачи ответом /task в теме «Задачи», а не в другой теме.")
+        return
     await state.clear()
     await state.update_data(
         task_title=title[:255],
