@@ -26,27 +26,27 @@ def keyboard(data, preview=False):
     buttons = []
     if not preview:
         for i, choice in enumerate(data["questions"][data["index"]].get("choices", [])):
-            buttons.append([InlineKeyboardButton(text=choice, callback_data=f"pulse_form:choice:{i}")])
+            buttons.append([InlineKeyboardButton(text=choice, callback_data=f"pulse_form:choice:{data['index']}:{i}")])
     if preview:
         buttons.append(
             [
                 InlineKeyboardButton(
-                    text="Отправить Пульс", callback_data="pulse_form:submit"
+                    text="Отправить Пульс", callback_data=f"pulse_form:submit:{data['index']}"
                 )
             ]
         )
     elif not data["questions"][data["index"]]["required"]:
         buttons.append(
-            [InlineKeyboardButton(text="Пропустить", callback_data="pulse_form:skip")]
+            [InlineKeyboardButton(text="Пропустить", callback_data=f"pulse_form:skip:{data['index']}")]
         )
     if data["index"] > 0:
         buttons.append(
-            [InlineKeyboardButton(text="Назад", callback_data="pulse_form:back")]
+            [InlineKeyboardButton(text="Назад", callback_data=f"pulse_form:back:{data['index']}")]
         )
     buttons.append(
         [
             InlineKeyboardButton(
-                text="Продолжить позже", callback_data="pulse_form:pause"
+                text="Продолжить позже", callback_data=f"pulse_form:pause:{data['index']}"
             )
         ]
     )
@@ -179,23 +179,33 @@ async def answer_pulse(
 async def pulse_action(
     call: CallbackQuery, state: FSMContext, bot, settings, session, user
 ):
-    await call.answer()
     if not await access(call.from_user, bot, settings, session, user):
+        await call.answer("Доступ к Пульсу закрыт.", show_alert=True)
         await state.clear()
         return
     form = await current_form(session, user.id, settings.leaders_chat_id)
     if not form:
+        await call.answer("Срок этой недели завершён.", show_alert=True)
         await state.clear()
         await call.message.answer("Срок этой недели завершён.")
         return
     cycle, view, data = form
     data = dict(data)
-    action = call.data.split(":")[1]
+    parts = call.data.split(":")
+    action = parts[1]
+    if len(parts) < 3 or not parts[2].isdigit() or int(parts[2]) != data["index"]:
+        await call.answer("Это кнопка от предыдущего вопроса. Открой актуальный вопрос ниже.", show_alert=True)
+        await show(call.message, data)
+        return
+    await call.answer()
     if action == "choice" and data["index"] < len(data["questions"]):
         question = data["questions"][data["index"]]
         choices = question.get("choices", [])
-        index = int(call.data.split(":")[-1])
-        if index >= len(choices): return
+        if len(parts) != 4 or not parts[3].isdigit():
+            return
+        index = int(parts[3])
+        if index >= len(choices):
+            return
         data["draft"] = {**data["draft"], question["key"]: choices[index]}
         if question["key"] == "done" and choices[index] == "Не было активности":
             data["questions"] = list(data["questions"])
