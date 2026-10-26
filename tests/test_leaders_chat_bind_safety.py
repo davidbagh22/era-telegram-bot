@@ -288,6 +288,55 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         self.session.execute.assert_awaited_once()
         self.session.commit.assert_not_awaited()
 
+    async def test_telegram_failure_does_not_claim_plain_routing_verified(self):
+        from aiogram.exceptions import TelegramAPIError
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.bot.get_chat.side_effect = TelegramAPIError(
+            method=None, message="temporary Telegram outage",
+        )
+        self.session.scalar.side_effect = [
+            SimpleNamespace(value=json.dumps({
+                "mode": "plain", "message_id": 17, "message_state": "sent",
+            })),
+            SimpleNamespace(value=json.dumps({"mode": "plain"})),
+            SimpleNamespace(value=json.dumps({"mode": "plain"})),
+        ]
+        await leaders_readonly_diagnostics(
+            self.message, None, self.settings, self.session, self.bot,
+        )
+        result = self.message.answer.await_args.args[0]
+        self.assertIn("Telegram: не удалось проверить", result)
+        for label in ("Задачи", "Пульс", "Важно"):
+            self.assertIn(
+                f"{label}: режим обычной группы сохранён, но тип чата в Telegram не подтверждён",
+                result,
+            )
+        self.assertNotIn("обычная группа, отдельной темы нет", result)
+        self.session.commit.assert_not_awaited()
+
+    async def test_unverified_chat_preserves_unconfirmed_task_panel_warning(self):
+        from aiogram.exceptions import TelegramAPIError
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.bot.get_chat.side_effect = TelegramAPIError(
+            method=None, message="temporary Telegram outage",
+        )
+        self.session.scalar.side_effect = [
+            SimpleNamespace(value=json.dumps({
+                "mode": "plain", "message_id": 17, "message_state": "uncertain",
+            })),
+            None,
+            None,
+        ]
+        await leaders_readonly_diagnostics(
+            self.message, None, self.settings, self.session, self.bot,
+        )
+        result = self.message.answer.await_args.args[0]
+        self.assertIn("Задачи: панель задач не подтверждена", result)
+        self.assertIn("Карточка: доставка не подтверждена", result)
+        self.session.commit.assert_not_awaited()
+
     async def test_plain_chat_mode_is_distinguished_from_forum_topic(self):
         from app.handlers.chat_binding import leaders_readonly_diagnostics
 
