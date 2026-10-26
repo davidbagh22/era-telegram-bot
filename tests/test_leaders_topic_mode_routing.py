@@ -103,7 +103,7 @@ class LeadersTopicModeRoutingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_explicit_plain_mode_never_returns_thread(self):
         async with self.factory() as session:
-            session.add(AppSetting(key='leaders_forum:-1001:tasks', value='{"mode":"plain","thread_id":null}'))
+            session.add(AppSetting(key='leaders_forum:-1001:tasks', value='{"mode":"plain","thread_id":null,"message_id":91,"message_state":"sent"}'))
             await session.commit()
             self.assertIsNone(await topic_id(session, -1001, 'tasks'))
             self.assertIsNone(await delivery_topic(session, -1001, 'tasks'))

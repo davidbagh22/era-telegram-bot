@@ -59,6 +59,31 @@ class LeadersDeliveryDuplicateRoutesTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await delivery_topic(session, -1001, "tasks"), 11)
             self.assertEqual(await delivery_topic(session, -1001, "pulse"), 12)
 
+    async def test_uncertain_plain_panel_blocks_reminder_without_writes(self):
+        await self.seed(-1001, "tasks", {
+            "mode": "plain", "thread_id": None,
+            "message_id": 99, "message_state": "uncertain",
+        })
+        bot = SimpleNamespace(send_message=AsyncMock())
+        settings = SimpleNamespace(leaders_chat_id=-1001, general_chat_id=-1002)
+        delivery = SimpleNamespace(id=43, chat_id=-1001, message_thread_id=None)
+        async with self.sessions() as session:
+            before = {
+                row.key: row.value for row in
+                (await session.scalars(select(AppSetting))).all()
+            }
+            self.assertFalse(await _send_leaders_task_reminder(
+                session, bot, settings, delivery, stage=1,
+                deadline=datetime(2026, 10, 27, tzinfo=timezone.utc),
+                text="Тестовое напоминание",
+            ))
+            after = {
+                row.key: row.value for row in
+                (await session.scalars(select(AppSetting))).all()
+            }
+            self.assertEqual(before, after)
+        bot.send_message.assert_not_awaited()
+
     async def test_duplicate_thread_prevents_reminder_without_writes(self):
         await self.seed(-1001, "tasks", {"mode": "forum", "thread_id": 11})
         await self.seed(-1001, "important", {"mode": "forum", "thread_id": 11})
