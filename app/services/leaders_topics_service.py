@@ -62,7 +62,13 @@ async def delivery_topic(session, chat_id, key):
     data = _topic_data(row)
     mode = data.get('mode')
     if mode == 'plain':
-        if data.get('thread_id') is not None:
+        # A leftover forum creation marker is not a valid plain-chat route.
+        # The secondary routes must never carry a panel receipt either.
+        if data.get('thread_id') is not None or data.get('thread_state') is not None:
+            raise ValueError('Настройки чата лидеров противоречат друг другу. Проверьте темы.')
+        if key != 'tasks' and (
+            data.get('message_id') is not None or data.get('message_state') is not None
+        ):
             raise ValueError('Настройки чата лидеров противоречат друг другу. Проверьте темы.')
         # Only the Tasks destination has a durable plain-chat panel receipt.
         # An uncertain/missing panel is not evidence that this chat is ready
@@ -140,6 +146,7 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                     if (
                         data.get('mode') != 'plain'
                         or data.get('thread_id') is not None
+                        or data.get('thread_state') is not None
                         or type(message_id) is not int
                         or message_id <= 0
                         or data.get('message_state') != 'sent'
