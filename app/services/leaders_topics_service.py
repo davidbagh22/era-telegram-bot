@@ -178,6 +178,8 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
             # Reconcile every existing forum route before touching *any*
             # topic. Otherwise a damaged later route could be discovered only
             # after we have created a topic or published/edited an earlier panel.
+            seen_threads = set()
+            seen_messages = set()
             for key in TOPICS:
                 saved = await session.scalar(select(AppSetting).where(
                     AppSetting.key == f"leaders_forum:{chat_id}:{key}"
@@ -200,6 +202,15 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                     or saved_data.get("message_state") != "sent"
                 ):
                     return {"status": "panel_needs_review", "chat_id": chat_id, "topic": key}
+                # Telegram thread and message IDs must be unique within a chat.
+                # Two routes pointing to the same destination could silently
+                # mix tasks, pulse updates and important announcements.
+                if saved_thread in seen_threads:
+                    return {"status": "topic_needs_review", "chat_id": chat_id, "topic": key}
+                if saved_message in seen_messages:
+                    return {"status": "panel_needs_review", "chat_id": chat_id, "topic": key}
+                seen_threads.add(saved_thread)
+                seen_messages.add(saved_message)
             result = {}
             for key, (name, description) in TOPICS.items():
                 setting_key = f"leaders_forum:{chat_id}:{key}"
