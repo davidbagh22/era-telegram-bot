@@ -117,6 +117,27 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                         or data.get('message_state') != 'sent'
                     ):
                         return {'status':'panel_needs_review','chat_id':chat_id}
+                # Validate *all* saved plain-mode routes before editing or
+                # publishing the tasks panel. A legacy forum route for pulse or
+                # important must not survive unnoticed in a non-forum chat.
+                for other_key in ('important', 'pulse'):
+                    other_row = await session.scalar(select(AppSetting).where(
+                        AppSetting.key == f'leaders_forum:{chat_id}:{other_key}'
+                    ))
+                    if other_row is not None:
+                        other_data = _topic_data(other_row)
+                        if (
+                            other_data.get('mode') != 'plain'
+                            or other_data.get('thread_id') is not None
+                            or other_data.get('thread_state') is not None
+                            or other_data.get('message_id') is not None
+                            or other_data.get('message_state') is not None
+                        ):
+                            return {
+                                'status': 'topic_needs_review',
+                                'chat_id': chat_id,
+                                'topic': other_key,
+                            }
                 text,keyboard=await panel(session,chat_id,'tasks',me.username)
                 if not data.get('message_id'):
                     if existing is None:
