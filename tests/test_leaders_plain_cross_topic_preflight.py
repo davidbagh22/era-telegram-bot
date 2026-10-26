@@ -92,6 +92,29 @@ class PlainLeadersRoutePreflightTests(unittest.IsolatedAsyncioTestCase):
         bot.edit_message_text.assert_not_awaited()
         bot.pin_chat_message.assert_not_awaited()
 
+    async def test_stale_forum_state_on_confirmed_plain_tasks_blocks_edits_and_writes(self):
+        original = json.dumps({
+            "mode": "plain", "thread_id": None, "thread_state": "creating",
+            "message_id": 55, "message_state": "sent",
+        })
+        async with self.sessions() as session:
+            session.add(AppSetting(key="leaders_forum:-1001:tasks", value=original))
+            await session.commit()
+        bot = self.bot()
+        result = await setup_leaders_topics(bot, self.settings, self.sessions)
+        self.assertEqual(result, {
+            "status": "panel_needs_review", "chat_id": -1001,
+        })
+        bot.send_message.assert_not_awaited()
+        bot.edit_message_text.assert_not_awaited()
+        bot.pin_chat_message.assert_not_awaited()
+        bot.create_forum_topic.assert_not_awaited()
+        async with self.sessions() as session:
+            rows = (await session.scalars(select(AppSetting))).all()
+            self.assertEqual([(r.key, r.value) for r in rows], [
+                ("leaders_forum:-1001:tasks", original),
+            ])
+
     async def test_valid_secondary_plain_routes_allow_single_panel_send(self):
         async with self.sessions() as session:
             session.add_all([

@@ -75,6 +75,56 @@ class LeadersTopicModeRoutingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await topic_id(session, -1001, 'tasks'), 42)
             self.assertEqual(await delivery_topic(session, -1001, 'tasks'), 42)
 
+    async def test_plain_tasks_with_stale_forum_creation_state_fail_closed(self):
+        from sqlalchemy import delete
+        for state in ("creating", "uncertain", "ready", False):
+            with self.subTest(state=state):
+                async with self.factory() as session:
+                    await session.execute(delete(AppSetting))
+                    session.add(AppSetting(
+                        key="leaders_forum:-1001:tasks",
+                        value=__import__("json").dumps({
+                            "mode": "plain", "thread_id": None,
+                            "thread_state": state, "message_id": 91,
+                            "message_state": "sent",
+                        }),
+                    ))
+                    await session.commit()
+                    with self.assertRaisesRegex(ValueError, "противоречат"):
+                        await delivery_topic(session, -1001, "tasks")
+
+    async def test_plain_secondary_routes_reject_stale_panel_receipts(self):
+        from sqlalchemy import delete
+        for key in ("pulse", "important"):
+            for extra in (
+                {"message_id": 77},
+                {"message_state": "sending"},
+                {"message_state": "uncertain"},
+                {"thread_state": "creating"},
+            ):
+                with self.subTest(key=key, extra=extra):
+                    async with self.factory() as session:
+                        await session.execute(delete(AppSetting))
+                        session.add(AppSetting(
+                            key=f"leaders_forum:-1001:{key}",
+                            value=__import__("json").dumps({
+                                "mode": "plain", "thread_id": None, **extra,
+                            }),
+                        ))
+                        await session.commit()
+                        with self.assertRaisesRegex(ValueError, "противоречат"):
+                            await delivery_topic(session, -1001, key)
+        async with self.factory() as session:
+            await session.execute(delete(AppSetting))
+            for key in ("pulse", "important"):
+                session.add(AppSetting(
+                    key=f"leaders_forum:-1001:{key}",
+                    value='{"mode":"plain","thread_id":null}',
+                ))
+            await session.commit()
+            for key in ("pulse", "important"):
+                self.assertIsNone(await delivery_topic(session, -1001, key))
+
     async def test_setup_does_not_send_or_create_when_thread_state_is_uncertain(self):
         async with self.factory() as session:
             session.add(AppSetting(
