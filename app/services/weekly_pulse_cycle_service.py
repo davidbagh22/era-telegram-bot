@@ -213,3 +213,24 @@ async def sync_cycle_participants(session, cycle):
     cycle.submitted_count=sum(r.status=='submitted' for r in rows)
     await session.flush()
     return rows
+
+async def mark_cycle_participant_submitted(session: AsyncSession, *, cycle: WeeklyPulseCycle, user_id: int) -> None:
+    """Reconcile participation totals immediately after a successful report submission.
+
+    The report handler only calls this after submit_weekly_pulse succeeds.
+    Existing participant rows are reused; the roster is not expanded here.
+    """
+    from app.database.leadership_models import WeeklyPulseParticipant
+
+    participant = await session.scalar(
+        select(WeeklyPulseParticipant).where(
+            WeeklyPulseParticipant.cycle_id == cycle.id,
+            WeeklyPulseParticipant.user_id == user_id,
+        )
+    )
+    if participant is None or participant.override in {"excused", "excluded"}:
+        return
+    participant.status = "submitted"
+    await session.flush()
+    await sync_cycle_participants(session, cycle)
+

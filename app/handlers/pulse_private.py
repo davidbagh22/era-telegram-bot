@@ -11,7 +11,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
 )
 from aiogram.exceptions import TelegramAPIError
-from app.services.weekly_pulse_cycle_service import upsert_leader_membership
+from app.services.weekly_pulse_cycle_service import upsert_leader_membership, mark_cycle_participant_submitted
 from app.services.pulse_questionnaire_service import current_form, create_inboxes
 from app.services.leadership_weekly_service import submit_weekly_pulse
 
@@ -283,10 +283,7 @@ async def pulse_action(
             bot=bot,
             settings=settings,
         )
-        from sqlalchemy import select
-        from app.database.leadership_models import WeeklyPulseParticipant
-        participant = await session.scalar(select(WeeklyPulseParticipant).where(WeeklyPulseParticipant.cycle_id==cycle.id, WeeklyPulseParticipant.user_id==user.id))
-        if participant: participant.status = "submitted"
+        await mark_cycle_participant_submitted(session, cycle=cycle, user_id=user.id)
         await create_inboxes(session, view.report, draft)
         data["submitted"] = dict(draft)
         data["submitted_attachments"] = dict(data.get("attachments", {}))
