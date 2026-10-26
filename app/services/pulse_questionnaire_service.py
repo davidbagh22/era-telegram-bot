@@ -78,6 +78,9 @@ async def current_form(session,owner_id,chat_id):
             qs.insert(0,question('followup','Ранее ты планировал: '+ '; '.join(previous.next_priorities)[:180]+'. Что выполнено, что в процессе и что не получилось?'))
         data={'questions':qs,'draft':{},'index':0,'audiences':sorted(groups)}
         view.pulse.answers_json=data
+    if data.get('cycle_id') != cycle.id:
+        data['cycle_id'] = cycle.id
+        view.pulse.answers_json = data
     return cycle,view,data
 
 

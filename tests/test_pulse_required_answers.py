@@ -9,7 +9,7 @@ from app.handlers.pulse_private import first_missing_required, pulse_action, sho
 
 class PulseRequiredAnswerTests(unittest.IsolatedAsyncioTestCase):
     def test_first_missing_required_finds_unanswered_question(self):
-        data = {
+        data = {"cycle_id": 55,
             "index": 3,
             "questions": [
                 {"key": "done", "required": True},
@@ -21,7 +21,7 @@ class PulseRequiredAnswerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first_missing_required(data), 2)
 
     def test_all_required_answers_are_present(self):
-        data = {
+        data = {"cycle_id": 55,
             "questions": [
                 {"key": "done", "required": True},
                 {"key": "optional", "required": False},
@@ -32,7 +32,7 @@ class PulseRequiredAnswerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_free_text_question_explicitly_requests_a_message(self):
         message = AsyncMock()
-        data = {
+        data = {"cycle_id": 55,
             "index": 0,
             "questions": [{"key": "result", "text": "Какой результат?", "required": True, "choices": []}],
             "draft": {},
@@ -44,7 +44,7 @@ class PulseRequiredAnswerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_choice_question_explains_both_input_methods(self):
         message = AsyncMock()
-        data = {
+        data = {"cycle_id": 55,
             "index": 0,
             "questions": [{"key": "done", "text": "Что сделано?", "required": True, "choices": ["Всё учтено"]}],
             "draft": {},
@@ -53,7 +53,7 @@ class PulseRequiredAnswerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Выбери кнопку ниже или напиши ответ", message.answer.await_args.args[0])
 
     async def test_submit_with_missing_required_answer_returns_to_question(self):
-        data = {
+        data = {"cycle_id": 55,
             "index": 2,
             "questions": [
                 {"key": "done", "text": "Что сделано?", "required": True},
@@ -66,7 +66,7 @@ class PulseRequiredAnswerTests(unittest.IsolatedAsyncioTestCase):
         call = SimpleNamespace(
             from_user=SimpleNamespace(id=11),
             message=AsyncMock(),
-            data="pulse_form:submit:2",
+            data="pulse_form:submit:55:2",
             answer=AsyncMock(),
         )
         session = SimpleNamespace(flush=AsyncMock())
@@ -74,7 +74,7 @@ class PulseRequiredAnswerTests(unittest.IsolatedAsyncioTestCase):
         user = SimpleNamespace(id=9)
         with (
             patch("app.handlers.pulse_private.access", new_callable=AsyncMock, return_value=True),
-            patch("app.handlers.pulse_private.current_form", new_callable=AsyncMock, return_value=(SimpleNamespace(), view, data)),
+            patch("app.handlers.pulse_private.current_form", new_callable=AsyncMock, return_value=(SimpleNamespace(id=55), view, data)),
             patch("app.handlers.pulse_private.show", new_callable=AsyncMock) as show_mock,
         ):
             await pulse_action(call, AsyncMock(), None, settings, session, user)
