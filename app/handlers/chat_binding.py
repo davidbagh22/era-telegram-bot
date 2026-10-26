@@ -204,10 +204,19 @@ async def leaders_readonly_diagnostics(
         else:
             status = "тема не настроена"
         lines.append(f"{label}: {status}")
-        if data.get("message_state") in {"sending", "uncertain"}:
+        # Corrupt JSON may contain lists/dicts instead of scalar receipt fields.
+        # Diagnostics must remain read-only and never crash on those values.
+        message_state = data.get("message_state")
+        message_id = data.get("message_id")
+        if message_state in ("sending", "uncertain"):
             lines.append("  Карточка: доставка не подтверждена, требуется сверка.")
-        elif data.get("message_id"):
-            lines.append(f"  Карточка message_id={data['message_id']} (из БД).")
+        elif (
+            message_state not in (None, "sent")
+            or (message_id is not None and (type(message_id) is not int or message_id <= 0))
+        ):
+            lines.append("  Карточка: данные квитанции повреждены; нужна ручная сверка.")
+        elif type(message_id) is int and message_id > 0:
+            lines.append(f"  Карточка message_id={message_id} (из БД).")
 
     # Read-only aggregate: helps distinguish Telegram delivery uncertainty from
     # successful sends without exposing task text or personal information.

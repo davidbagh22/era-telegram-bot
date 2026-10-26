@@ -215,6 +215,49 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("Задачи: обычная группа, отдельной темы нет", result)
         self.session.commit.assert_not_awaited()
 
+    async def test_malformed_plain_panel_receipts_never_crash_or_claim_delivery(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.bot.get_chat.return_value.is_forum = False
+        for receipt in (
+            {"message_state": ["sending"], "message_id": 17},
+            {"message_state": {"status": "sent"}, "message_id": 17},
+            {"message_state": "sent", "message_id": ["17"]},
+            {"message_state": "sent", "message_id": {"id": 17}},
+        ):
+            with self.subTest(receipt=receipt):
+                self.session.scalar.side_effect = [
+                    SimpleNamespace(value=json.dumps({"mode": "plain", **receipt})),
+                    None, None,
+                ]
+                await leaders_readonly_diagnostics(
+                    self.message, None, self.settings, self.session, self.bot,
+                )
+                result = self.message.answer.await_args.args[0]
+                self.assertIn("Задачи: панель задач не подтверждена", result)
+                self.assertIn("Карточка: данные квитанции повреждены", result)
+                self.assertNotIn("Карточка message_id=17", result)
+        self.session.commit.assert_not_awaited()
+
+    async def test_malformed_forum_card_receipt_is_reported_without_mutations(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.session.scalar.side_effect = [
+            SimpleNamespace(value=json.dumps({
+                "mode": "forum", "thread_id": 31,
+                "message_state": ["uncertain"], "message_id": {"id": 22},
+            })),
+            None, None,
+        ]
+        await leaders_readonly_diagnostics(
+            self.message, None, self.settings, self.session, self.bot,
+        )
+        result = self.message.answer.await_args.args[0]
+        self.assertIn("Задачи: thread_id=31 (из БД, не проверен в Telegram)", result)
+        self.assertIn("Карточка: данные квитанции повреждены", result)
+        self.assertNotIn("Карточка message_id=", result)
+        self.session.commit.assert_not_awaited()
+
     async def test_diagnostics_do_not_read_general_chat_binding(self):
         from app.handlers.chat_binding import leaders_readonly_diagnostics
 
