@@ -172,9 +172,66 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Форум: нет", result)
         self.assertIn("Задачи: Telegram: обычная группа, но сохранён ID темы", result)
         self.assertIn("Пульс: Telegram: обычная группа, но сохранён ID темы", result)
-        self.assertIn("Важно: обычная группа, отдельной темы нет", result)
+        self.assertIn("Важно: настройки обычной группы содержат чужую квитанцию панели", result)
         self.assertNotIn("thread_id=31 (из БД", result)
         self.assertNotIn("thread_id=32 (из БД", result)
+        self.session.commit.assert_not_awaited()
+
+    async def test_plain_secondary_receipts_are_never_reported_as_ready(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.bot.get_chat.return_value.is_forum = False
+        for key, label in (("pulse", "Пульс"), ("important", "Важно")):
+            for extra in (
+                {"message_id": 77},
+                {"message_state": "sending"},
+                {"message_state": "uncertain"},
+                {"message_state": ["sent"]},
+            ):
+                with self.subTest(key=key, extra=extra):
+                    rows = {
+                        "tasks": SimpleNamespace(value=json.dumps({
+                            "mode": "plain", "message_id": 11, "message_state": "sent",
+                        })),
+                        "pulse": SimpleNamespace(value=json.dumps({"mode": "plain"})),
+                        "important": SimpleNamespace(value=json.dumps({"mode": "plain"})),
+                    }
+                    rows[key] = SimpleNamespace(value=json.dumps({
+                        "mode": "plain", "thread_id": None, **extra,
+                    }))
+                    self.session.scalar.side_effect = [
+                        rows["tasks"], rows["pulse"], rows["important"],
+                    ]
+                    await leaders_readonly_diagnostics(
+                        self.message, None, self.settings, self.session, self.bot,
+                    )
+                    result = self.message.answer.await_args.args[0]
+                    self.assertIn(
+                        f"{label}: настройки обычной группы содержат чужую квитанцию панели",
+                        result,
+                    )
+                    self.assertNotIn(f"{label}: обычная группа, отдельной темы нет", result)
+                    self.assertIn("Карточка: чужая квитанция панели, доставка не подтверждена", result)
+                    self.assertNotIn("Карточка message_id=77", result)
+        self.session.commit.assert_not_awaited()
+
+    async def test_clean_plain_secondary_routes_still_report_no_topic(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.bot.get_chat.return_value.is_forum = False
+        self.session.scalar.side_effect = [
+            SimpleNamespace(value=json.dumps({
+                "mode": "plain", "message_id": 11, "message_state": "sent",
+            })),
+            SimpleNamespace(value=json.dumps({"mode": "plain", "thread_id": None})),
+            SimpleNamespace(value=json.dumps({"mode": "plain", "thread_id": None})),
+        ]
+        await leaders_readonly_diagnostics(
+            self.message, None, self.settings, self.session, self.bot,
+        )
+        result = self.message.answer.await_args.args[0]
+        for label in ("Задачи", "Пульс", "Важно"):
+            self.assertIn(f"{label}: обычная группа, отдельной темы нет", result)
         self.session.commit.assert_not_awaited()
 
     async def test_live_forum_never_reports_stale_plain_mode_as_ready(self):
