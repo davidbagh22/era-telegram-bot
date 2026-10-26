@@ -184,6 +184,7 @@ class VersionedPrivateMenuTests(unittest.IsolatedAsyncioTestCase):
     async def test_old_legacy_flag_does_not_block_current_menu_and_next_update_is_silent(self):
         from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
         from app.database.base import Base
+        from app.database.models import AppSetting
         from app.config import Settings
         from app.utils.constants import ApplicationStatus, Role
         engine = create_async_engine('sqlite+aiosqlite:///:memory:')
@@ -197,8 +198,13 @@ class VersionedPrivateMenuTests(unittest.IsolatedAsyncioTestCase):
             bot = FakeBot()
             middleware = LegacyKeyboardCleanupMiddleware()
             async with sessions() as session:
+                session.add(AppSetting(key='private-menu:900001', value={
+                    'version': '2026-10-18-clean', 'admin': True, 'leaders': True,
+                }))
+                await session.commit()
                 data = {'user': user, 'event_chat': SimpleNamespace(id=42, type='private'), 'bot': bot,
-                        'settings': Settings(bot_token='1234567890:test-token'), 'session': session}
+                        'settings': Settings(bot_token='1234567890:test-token', miniapp_auth_secret='test-secret',
+                                             miniapp_url='https://era.example/app/'), 'session': session}
                 for _ in range(3):
                     await middleware(AsyncMock(), object(), data)
                     await session.commit()
@@ -206,5 +212,7 @@ class VersionedPrivateMenuTests(unittest.IsolatedAsyncioTestCase):
             labels = {b.text for row in bot.sent[0][2]['reply_markup'].keyboard for b in row}
             assert '📊 Статистика' in labels and '💬 Связь' in labels
             assert '❓ Вопросы и связь' not in labels
+            assert '🔥 Открыть ЭРА' in labels
+            assert all(b.web_app is None for row in bot.sent[0][2]['reply_markup'].keyboard for b in row)
         finally:
             await engine.dispose()
