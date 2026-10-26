@@ -80,22 +80,34 @@ def first_missing_required(data):
     return None
 
 
+def preview_pages(data, max_chars=3500):
+    """Keep the review below Telegram's 4096-character HTML message limit."""
+    pages = []
+    current = "<b>Проверь свой Пульс</b>"
+    for q in data["questions"]:
+        key = q["key"]
+        question_text = escape(str(q.get("text", ""))[:300])
+        answer = escape(str(data.get("draft", {}).get(key, "—"))[:120])
+        block = f"\n\n{question_text}\n{answer}"
+        if len(current) + len(block) > max_chars:
+            pages.append(current)
+            current = "<b>Пульс · продолжение</b>"
+        current += block
+    pages.append(current)
+    return pages
+
+
 async def show(message, data):
     index = data["index"]
     qs = data["questions"]
     if index >= len(qs):
-        lines = ["<b>Проверь свой Пульс</b>"]
-        for q in qs:
-            lines += [
-                escape(q["text"]),
-                escape(data["draft"].get(q["key"], "—")[:120]),
-                "",
-            ]
-        await message.answer(
-            "\n".join(lines),
-            parse_mode="HTML",
-            reply_markup=keyboard(data, True),
-        )
+        pages = preview_pages(data)
+        for page_index, page in enumerate(pages):
+            await message.answer(
+                page,
+                parse_mode="HTML",
+                reply_markup=keyboard(data, True) if page_index == len(pages) - 1 else None,
+            )
     else:
         q = qs[index]
         await message.answer(
