@@ -211,6 +211,8 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
                         result,
                     )
                     self.assertNotIn(f"{label}: обычная группа, отдельной темы нет", result)
+                    self.assertIn("Карточка: чужая квитанция панели, доставка не подтверждена", result)
+                    self.assertNotIn("Карточка message_id=77", result)
         self.session.commit.assert_not_awaited()
 
     async def test_clean_plain_secondary_routes_still_report_no_topic(self):
