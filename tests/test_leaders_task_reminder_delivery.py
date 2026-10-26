@@ -79,7 +79,7 @@ class LeadersTaskReminderDeliveryTests(IsolatedAsyncioTestCase):
 
     async def test_explicit_plain_mode_is_supported(self):
         async with self.factory() as session:
-            await self.configure(session, {"mode": "plain", "thread_id": None})
+            await self.configure(session, {"mode": "plain", "thread_id": None, "message_id": 91, "message_state": "sent"})
             self.delivery.message_thread_id = None
             self.assertTrue(await self.send(session))
             self.assertNotIn("message_thread_id", self.bot.send_message.await_args.kwargs)
