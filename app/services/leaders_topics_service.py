@@ -175,6 +175,31 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                 return {'status':'ready_plain','chat_id':chat_id}
             if not getattr(member, 'can_manage_topics', False):
                 return {'status': 'missing_manage_topics', 'chat_id': chat_id}
+            # Reconcile every existing forum route before touching *any*
+            # topic. Otherwise a damaged later route could be discovered only
+            # after we have created a topic or published/edited an earlier panel.
+            for key in TOPICS:
+                saved = await session.scalar(select(AppSetting).where(
+                    AppSetting.key == f"leaders_forum:{chat_id}:{key}"
+                ))
+                if saved is None:
+                    continue
+                saved_data = _topic_data(saved)
+                saved_thread = saved_data.get("thread_id")
+                if (
+                    saved_data.get("mode") not in (None, "forum")
+                    or saved_data.get("thread_state") not in (None, "ready")
+                    or type(saved_thread) is not int
+                    or saved_thread <= 0
+                ):
+                    return {"status": "topic_needs_review", "chat_id": chat_id, "topic": key}
+                saved_message = saved_data.get("message_id")
+                if (
+                    type(saved_message) is not int
+                    or saved_message <= 0
+                    or saved_data.get("message_state") != "sent"
+                ):
+                    return {"status": "panel_needs_review", "chat_id": chat_id, "topic": key}
             result = {}
             for key, (name, description) in TOPICS.items():
                 setting_key = f"leaders_forum:{chat_id}:{key}"
