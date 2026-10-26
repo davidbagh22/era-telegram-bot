@@ -195,6 +195,11 @@ async def leaders_readonly_diagnostics(
                 or data.get("message_state") != "sent"
             ):
                 status = "панель задач не подтверждена; нужна ручная сверка, не отправлять повторно"
+            elif live_forum is None:
+                # A saved plain-mode setting is not proof that Telegram still
+                # considers this chat an ordinary group. Network failures must
+                # not make diagnostics present the routing mode as verified.
+                status = "режим обычной группы сохранён, но тип чата в Telegram не подтверждён; нужна ручная сверка"
             else:
                 status = "обычная группа, отдельной темы нет"
         elif type(thread_id) is int and thread_id > 0:
