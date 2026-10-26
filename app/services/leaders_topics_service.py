@@ -28,12 +28,30 @@ def _topic_data(row) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+async def _has_duplicate_thread_route(session, chat_id: int, key: str, thread_id: int) -> bool:
+    """Never route into a thread claimed by another Leaders destination."""
+    other_keys = [
+        f"leaders_forum:{chat_id}:{other}"
+        for other in TOPICS if other != key
+    ]
+    rows = (await session.scalars(
+        select(AppSetting).where(AppSetting.key.in_(other_keys))
+    )).all()
+    for row in rows:
+        other_thread = _topic_data(row).get("thread_id")
+        if type(other_thread) is int and other_thread == thread_id:
+            return True
+    return False
+
+
 async def topic_id(session, chat_id: int, key: str) -> int | None:
     row = await session.scalar(select(AppSetting).where(AppSetting.key == f"leaders_forum:{chat_id}:{key}"))
     data = _topic_data(row)
     thread_id = data.get('thread_id')
     if (data.get('mode') not in (None, 'forum') or data.get('thread_state') not in (None, 'ready')
             or type(thread_id) is not int or thread_id <= 0):
+        return None
+    if await _has_duplicate_thread_route(session, chat_id, key, thread_id):
         return None
     return thread_id
 
@@ -58,6 +76,8 @@ async def delivery_topic(session, chat_id, key):
     thread_id = data.get('thread_id')
     if type(thread_id) is not int or thread_id <= 0:
         raise ValueError('Рабочая тема не настроена. Проверьте привязку чата лидеров.')
+    if await _has_duplicate_thread_route(session, chat_id, key, thread_id):
+        raise ValueError('Темы лидеров используют одинаковый thread_id. Требуется ручная сверка.')
     return thread_id
 
 
