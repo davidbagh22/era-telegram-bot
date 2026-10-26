@@ -73,6 +73,23 @@ class VerifyInitDataTests(unittest.TestCase):
         with self.assertRaises(InitDataError):
             verify_init_data(stale, bot_token=BOT_TOKEN, max_age_seconds=86400)
 
+    def test_excessive_init_data_fields_are_rejected_before_signature_check(self) -> None:
+        # A normal Telegram payload has only a handful of query parameters.
+        oversized = _signed_init_data() + "".join(
+            f"&extra_{index}=x" for index in range(61)
+        )
+        with self.assertRaisesRegex(InitDataError, "invalid_fields"):
+            verify_init_data(
+                oversized, bot_token=BOT_TOKEN, max_age_seconds=86400
+            )
+
+    def test_excessive_init_data_length_is_rejected_before_parsing(self) -> None:
+        oversized = _signed_init_data() + "&padding=" + ("x" * 16_384)
+        with self.assertRaisesRegex(InitDataError, "init_data_too_large"):
+            verify_init_data(
+                oversized, bot_token=BOT_TOKEN, max_age_seconds=86400
+            )
+
     def test_duplicate_signed_fields_are_rejected(self) -> None:
         # A duplicate query parameter is not a second authenticated identity.
         valid = _signed_init_data()
