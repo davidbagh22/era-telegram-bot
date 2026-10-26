@@ -73,7 +73,7 @@ class ShowHomeNoLegacyKeyboardTests(unittest.IsolatedAsyncioTestCase):
         buttons = [button for row in markup.keyboard for button in row]
         entry_button = next((b for b in buttons if b.text == "🔥 Открыть ЭРА"), None)
         self.assertIsNotNone(entry_button, "🔥 Открыть ЭРА missing from /start's reply")
-        self.assertEqual(entry_button.web_app.url, settings.effective_miniapp_url)
+        self.assertIsNone(entry_button.web_app, "Reply buttons must not launch unauthenticated simple WebApps")
 
 
 if __name__ == "__main__":

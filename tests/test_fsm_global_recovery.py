@@ -243,7 +243,45 @@ class FsmRecoveryTests(unittest.IsolatedAsyncioTestCase):
         buttons = [button for row in markup.keyboard for button in row]
         miniapp_button = next((b for b in buttons if b.text == "🔥 Открыть ЭРА"), None)
         self.assertIsNotNone(miniapp_button, "Mini App button missing from the real /start reply")
-        self.assertEqual(miniapp_button.web_app.url, settings.effective_miniapp_url)
+        self.assertIsNone(miniapp_button.web_app)
+
+    async def test_open_era_reply_button_sends_authenticated_inline_launch(self):
+        self.assertIn("🔥 Открыть ЭРА", emergency.MENU_BUTTONS)
+        state = FakeState()
+        state.current = events_block6.EventBlock6States.date
+        message = FakeMessage("🔥 Открыть ЭРА")
+        settings = SimpleNamespace(effective_miniapp_url="https://era.example/app/?v=release")
+        await emergency.rescue_menu_button(message, approved_user(), settings, SimpleNamespace(), state)
+        self.assertEqual(state.clear_count, 1)
+        markup = message.answers[-1][1]["reply_markup"]
+        self.assertEqual(markup.inline_keyboard[0][0].web_app.url, settings.effective_miniapp_url)
+
+    async def test_miniapp_recovery_replaces_old_keyboard_and_sends_inline_launch(self):
+        state = FakeState()
+        message = FakeMessage("/start miniapp")
+        settings = SimpleNamespace(
+            era_channel_url="https://t.me/example",
+            effective_miniapp_url="https://era.example/app/",
+        )
+        with patch.object(emergency, "_subscription_ok", AsyncMock(return_value=True)):
+            await emergency.rescue_start(
+                message, FakeBot(), approved_user(), settings, state, SimpleNamespace(),
+                SimpleNamespace(args="miniapp"),
+            )
+        keyboard = message.answers[-2][1]["reply_markup"]
+        self.assertTrue(all(button.web_app is None for row in keyboard.keyboard for button in row))
+        launch = message.answers[-1][1]["reply_markup"].inline_keyboard[0][0]
+        self.assertEqual(launch.web_app.url, settings.effective_miniapp_url)
+
+    async def test_open_era_reply_button_does_not_bypass_blocked_user(self):
+        user = approved_user()
+        user.is_blocked = True
+        message = FakeMessage("🔥 Открыть ЭРА")
+        await emergency.rescue_menu_button(
+            message, user, SimpleNamespace(effective_miniapp_url="https://era.example/app/"),
+            SimpleNamespace(), FakeState(),
+        )
+        self.assertTrue(all("reply_markup" not in kwargs for _, kwargs in message.answers))
 
     async def test_rescue_start_real_task_submission_deep_link_reaches_fsm(self):
         # Regression test for the deep-link-swallowing bug: rescue_start --

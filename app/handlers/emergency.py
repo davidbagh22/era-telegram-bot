@@ -42,6 +42,7 @@ from app.utils.deep_links import (
 router = Router(name="emergency")
 
 MENU_BUTTONS = {
+    "🔥 Открыть ЭРА",
     "👤 Личный кабинет",
     "📅 Афиша",
     "💡 Проекты",
@@ -61,6 +62,17 @@ async def _subscription_ok(
         return await is_channel_member(bot, telegram_id, settings)
     except SubscriptionCheckError:
         return None
+
+
+async def _send_miniapp_entry(message: Message, user: User, settings: Settings) -> None:
+    url = getattr(settings, "effective_miniapp_url", "")
+    if not url:
+        await _send_main_menu(message, user, settings)
+        return
+    await message.answer(
+        "Нажмите кнопку ниже, чтобы войти в ЭРА через Telegram.",
+        reply_markup=open_app_button(url, label="🔥 Открыть ЭРА"),
+    )
 
 
 @router.message(CommandStart(), F.chat.type != "private")
@@ -329,6 +341,12 @@ async def rescue_start(
         await message.answer(application_status_message(user.application_status), reply_markup=pending_registration_keyboard(
             settings.era_channel_url, can_reapply=not user.is_archived and not user.is_blocked))
         return
+    if command and command.args == "miniapp" and _approved(user):
+        # Recover old simple-mode buttons and replace the persistent keyboard
+        # before offering an inline WebApp launch with signed initData.
+        await _send_main_menu(message, user, settings)
+        await _send_miniapp_entry(message, user, settings)
+        return
     if command and command.args and command.args.startswith('attend2_'):
         from app.services import event_attendance_service
         if not _approved(user) or not event_attendance_service.attendance_v2_enabled(settings, message.from_user.id):
@@ -428,6 +446,9 @@ async def rescue_menu_button(
         return
 
     text = message.text or ""
+    if text == "🔥 Открыть ЭРА":
+        await _send_miniapp_entry(message, user, settings)
+        return
     if text == "👤 Личный кабинет":
         await _send_personal_cabinet(message, user, session, settings)
         return

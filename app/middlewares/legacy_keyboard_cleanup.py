@@ -55,7 +55,9 @@ class LegacyKeyboardCleanupMiddleware(BaseMiddleware):
             )
             session = data.get("session")
             menu_key = f"private-menu:{user.telegram_id}"
-            version = {"version": "2026-10-18-clean", "admin": bool(admin)}
+            # Replace previously cached simple-mode WebApp reply buttons on
+            # the user's next private update, without a proactive broadcast.
+            version = {"version": "2026-10-26-authenticated-launch", "admin": bool(admin)}
             leaders = approved and has_leaders_entry(user)
             if leaders or admin:
                 version["leaders"] = True
