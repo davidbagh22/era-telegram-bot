@@ -8,7 +8,7 @@ from app.handlers.pulse_private import preview_pages, show
 
 class PulseReviewPagesTests(unittest.IsolatedAsyncioTestCase):
     async def test_long_review_is_split_and_submit_only_on_final_page(self):
-        data = {
+        data = {"cycle_id": 55,
             "index": 45,
             "questions": [
                 {"key": f"answer_{i}", "text": f"Вопрос {i}: " + "&" * 260, "required": True}
@@ -24,7 +24,7 @@ class PulseReviewPagesTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(call.kwargs.get("parse_mode") == "HTML" for call in calls))
         self.assertTrue(all(call.kwargs.get("reply_markup") is None for call in calls[:-1]))
         self.assertIsNotNone(calls[-1].kwargs["reply_markup"])
-        self.assertIn("pulse_form:submit:45", [
+        self.assertIn("pulse_form:submit:55:45", [
             button.callback_data
             for row in calls[-1].kwargs["reply_markup"].inline_keyboard
             for button in row
@@ -33,7 +33,7 @@ class PulseReviewPagesTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("<&", calls[0].args[0])
 
     async def test_short_review_has_one_message_and_submit(self):
-        data = {
+        data = {"cycle_id": 55,
             "index": 1,
             "questions": [{"key": "done", "text": "Что сделано?", "required": True}],
             "draft": {"done": "Готово"},
@@ -44,7 +44,7 @@ class PulseReviewPagesTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(message.answer.await_args.kwargs["reply_markup"])
 
     def test_each_page_stays_under_limit_even_with_html_escaping(self):
-        data = {
+        data = {"cycle_id": 55,
             "index": 20,
             "questions": [
                 {"key": str(i), "text": "&" * 1000, "required": True}
