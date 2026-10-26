@@ -70,6 +70,22 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
             )),
         )
 
+    async def test_diagnostics_show_live_pin_rights_without_writes(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.session.scalar.side_effect = [None] * 9
+        member = self.bot.get_chat_member.return_value
+        for can_pin, expected in ((True, "да"), (False, "нет"), (None, "нет")):
+            with self.subTest(can_pin=can_pin):
+                member.can_pin_messages = can_pin
+                await leaders_readonly_diagnostics(
+                    self.message, None, self.settings, self.session, self.bot,
+                )
+                result = self.message.answer.await_args.args[0]
+                self.assertIn(f"Закрепление сообщений: {expected}", result)
+        self.bot.get_chat_member.assert_awaited()
+        self.session.commit.assert_not_awaited()
+
     async def test_only_admin_can_read_diagnostics(self):
         from app.handlers.chat_binding import leaders_readonly_diagnostics
 
