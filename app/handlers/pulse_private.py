@@ -72,6 +72,14 @@ async def access(sender, bot, settings, session, user):
     return row.is_weekly_pulse_eligible
 
 
+def first_missing_required(data):
+    """Return the first unanswered required question, if any."""
+    for index, question in enumerate(data["questions"]):
+        if question.get("required") and not str(data.get("draft", {}).get(question["key"], "")).strip():
+            return index
+    return None
+
+
 async def show(message, data):
     index = data["index"]
     qs = data["questions"]
@@ -91,7 +99,9 @@ async def show(message, data):
     else:
         q = qs[index]
         await message.answer(
-            f"<b>Пульс ЭРА · {index + 1}/{len(qs)}</b>\n\n{escape(q['text'])}\n\nОтвет сохраняется автоматически.",
+            f"<b>Пульс ЭРА · {index + 1}/{len(qs)}</b>\n\n{escape(q['text'])}\n\n"
+            + ("Выбери кнопку ниже или напиши ответ сообщением." if q.get('choices') else "Напиши ответ сообщением в этот чат.")
+            + "\nОтвет сохраняется автоматически.",
             parse_mode="HTML",
             reply_markup=keyboard(data),
         )
@@ -197,6 +207,16 @@ async def pulse_action(
         await call.answer("Это кнопка от предыдущего вопроса. Открой актуальный вопрос ниже.", show_alert=True)
         await show(call.message, data)
         return
+    if action == "submit":
+        missing = first_missing_required(data)
+        if data["index"] < len(data["questions"]) or missing is not None:
+            if missing is not None:
+                data["index"] = missing
+                view.pulse.answers_json = data
+                await session.flush()
+            await call.answer("Чтобы отправить Пульс, ответь на обязательные вопросы.", show_alert=True)
+            await show(call.message, data)
+            return
     await call.answer()
     if action == "choice" and data["index"] < len(data["questions"]):
         question = data["questions"][data["index"]]
