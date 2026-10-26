@@ -152,8 +152,67 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         result = self.message.answer.await_args.args[0]
         self.assertIn("Задачи: режим темы повреждён", result)
         self.assertIn("Пульс: настройка темы повреждена", result)
-        self.assertIn("Важно: настройки обычной группы противоречат", result)
+        self.assertIn("Важно: Telegram: форум, но сохранён режим обычной группы", result)
         self.assertNotIn("thread_id=31 (из БД", result)
+        self.session.commit.assert_not_awaited()
+
+    async def test_live_plain_group_never_reports_stale_forum_ids_as_topics(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.bot.get_chat.return_value.is_forum = False
+        self.session.scalar.side_effect = [
+            SimpleNamespace(value=json.dumps({"mode": "forum", "thread_id": 31})),
+            SimpleNamespace(value=json.dumps({"thread_id": 32})),
+            SimpleNamespace(value=json.dumps({"mode": "plain", "message_id": 10})),
+        ]
+        await leaders_readonly_diagnostics(
+            self.message, None, self.settings, self.session, self.bot,
+        )
+        result = self.message.answer.await_args.args[0]
+        self.assertIn("Форум: нет", result)
+        self.assertIn("Задачи: Telegram: обычная группа, но сохранён ID темы", result)
+        self.assertIn("Пульс: Telegram: обычная группа, но сохранён ID темы", result)
+        self.assertIn("Важно: обычная группа, отдельной темы нет", result)
+        self.assertNotIn("thread_id=31 (из БД", result)
+        self.assertNotIn("thread_id=32 (из БД", result)
+        self.session.commit.assert_not_awaited()
+
+    async def test_live_forum_never_reports_stale_plain_mode_as_ready(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.session.scalar.side_effect = [
+            SimpleNamespace(value=json.dumps({"mode": "plain", "message_id": 10})),
+            None,
+            None,
+        ]
+        await leaders_readonly_diagnostics(
+            self.message, None, self.settings, self.session, self.bot,
+        )
+        result = self.message.answer.await_args.args[0]
+        self.assertIn("Форум: да", result)
+        self.assertIn("Задачи: Telegram: форум, но сохранён режим обычной группы", result)
+        self.assertNotIn("Задачи: обычная группа, отдельной темы нет", result)
+        self.session.commit.assert_not_awaited()
+
+    async def test_plain_tasks_without_confirmed_panel_require_review(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.bot.get_chat.return_value.is_forum = False
+        for payload in (
+            {"mode": "plain"},
+            {"mode": "plain", "message_id": 17, "message_state": "uncertain"},
+            {"mode": "plain", "message_id": True, "message_state": "sent"},
+        ):
+            with self.subTest(payload=payload):
+                self.session.scalar.side_effect = [
+                    SimpleNamespace(value=json.dumps(payload)), None, None,
+                ]
+                await leaders_readonly_diagnostics(
+                    self.message, None, self.settings, self.session, self.bot,
+                )
+                result = self.message.answer.await_args.args[0]
+                self.assertIn("Задачи: панель задач не подтверждена", result)
+                self.assertNotIn("Задачи: обычная группа, отдельной темы нет", result)
         self.session.commit.assert_not_awaited()
 
     async def test_diagnostics_do_not_read_general_chat_binding(self):
@@ -191,7 +250,7 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
 
         self.bot.get_chat.return_value.is_forum = False
         self.session.scalar.side_effect = [
-            SimpleNamespace(value=json.dumps({"mode": "plain"})),
+            SimpleNamespace(value=json.dumps({"mode": "plain", "message_id": 17, "message_state": "sent"})),
             None,
             None,
         ]
