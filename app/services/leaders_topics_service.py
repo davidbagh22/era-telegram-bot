@@ -64,6 +64,14 @@ async def delivery_topic(session, chat_id, key):
     if mode == 'plain':
         if data.get('thread_id') is not None:
             raise ValueError('Настройки чата лидеров противоречат друг другу. Проверьте темы.')
+        # Only the Tasks destination has a durable plain-chat panel receipt.
+        # An uncertain/missing panel is not evidence that this chat is ready
+        # for task cards or reminders. Never silently fall back to the feed.
+        if key == 'tasks':
+            message_id = data.get('message_id')
+            if (type(message_id) is not int or message_id <= 0
+                    or data.get('message_state') != 'sent'):
+                raise ValueError('Панель задач в обычном чате не подтверждена. Требуется ручная сверка.')
         return None
     # An unknown persisted mode is not proof that the saved thread belongs
     # to this forum. Never route a task into a potentially unrelated topic.
