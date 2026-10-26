@@ -191,6 +191,10 @@ export async function authenticate(
   initData: string,
   devTelegramId?: number,
 ): Promise<MiniAppAuthResponse> {
+  // All callers, including background analytics, share this guard. Simple
+  // reply-keyboard launches have no signed identity; repeating an empty
+  // request cannot establish a Telegram session.
+  if (!initData && !devTelegramId) throw new ApiError(401, "empty_init_data");
   const response = await fetch(`${API_BASE_URL}/api/v1/miniapp/auth`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
