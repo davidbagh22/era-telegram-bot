@@ -141,6 +141,7 @@ async def leaders_readonly_diagnostics(
         return
 
     lines = ["Чат лидеров · диагностика (только чтение)", f"chat_id: {chat_id}"]
+    live_forum: bool | None = None
     try:
         chat = await bot.get_chat(chat_id)
         member = await bot.get_chat_member(chat_id, bot.id)
@@ -149,6 +150,7 @@ async def leaders_readonly_diagnostics(
         lines.append("Сохранённые ID ниже не подтверждают существование тем.")
     else:
         forum = bool(getattr(chat, "is_forum", False))
+        live_forum = forum
         lines.append(f"Тип: {getattr(chat, 'type', 'неизвестно')}")
         lines.append(f"Форум: {'да' if forum else 'нет'}")
         lines.append(f"Бот администратор: {'да' if member.status in {'administrator', 'creator'} else 'нет'}")
@@ -178,6 +180,12 @@ async def leaders_readonly_diagnostics(
             status = "создание не подтверждено; нужна ручная сверка, не создавать повторно"
         elif data.get("mode") not in (None, "forum", "plain"):
             status = "режим темы повреждён; нужна ручная сверка, не создавать повторно"
+        elif live_forum is True and data.get("mode") == "plain":
+            status = "Telegram: форум, но сохранён режим обычной группы; нужна ручная сверка"
+        elif live_forum is False and (
+            data.get("mode") == "forum" or (type(thread_id) is int and thread_id > 0)
+        ):
+            status = "Telegram: обычная группа, но сохранён ID темы/режим форума; нужна ручная сверка"
         elif data.get("mode") == "plain":
             status = ("настройки обычной группы противоречат друг другу; нужна ручная сверка"
                       if thread_id is not None else "обычная группа, отдельной темы нет")
