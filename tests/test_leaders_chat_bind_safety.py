@@ -207,9 +207,10 @@ class LeadersTopicRoutingSafetyTests(unittest.IsolatedAsyncioTestCase):
 
         for value, expected in (('{"thread_id":7}', 7), ('{"mode":"plain"}', None)):
             with self.subTest(value=value):
-                session = SimpleNamespace(scalar=AsyncMock(
-                    return_value=SimpleNamespace(value=value),
-                ))
+                session = SimpleNamespace(
+                    scalar=AsyncMock(return_value=SimpleNamespace(value=value)),
+                    scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [])),
+                )
                 self.assertEqual(await topic_id(session, -1001, "tasks"), expected)
                 self.assertEqual(await delivery_topic(session, -1001, "tasks"), expected)
 
