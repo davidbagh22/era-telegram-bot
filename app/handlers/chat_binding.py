@@ -154,6 +154,10 @@ async def leaders_readonly_diagnostics(
         lines.append(f"Бот администратор: {'да' if member.status in {'administrator', 'creator'} else 'нет'}")
         if forum:
             lines.append(f"Управление темами: {'да' if getattr(member, 'can_manage_topics', False) else 'нет'}")
+        # Pinning is optional for initial delivery, but without this right
+        # the Tasks/Pulse/Important panels cannot be pinned for the team.
+        can_pin = member.status == "creator" or bool(getattr(member, "can_pin_messages", False))
+        lines.append(f"Закрепление сообщений: {'да' if can_pin else 'нет'}")
         lines.append("Telegram API не подтверждает существование темы по сохранённому ID.")
 
     for key, label in (("tasks", "Задачи"), ("pulse", "Пульс"), ("important", "Важно")):
