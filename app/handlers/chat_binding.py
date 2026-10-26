@@ -221,7 +221,11 @@ async def leaders_readonly_diagnostics(
         # Diagnostics must remain read-only and never crash on those values.
         message_state = data.get("message_state")
         message_id = data.get("message_id")
-        if message_state in ("sending", "uncertain"):
+        if key != "tasks" and data.get("mode") == "plain" and (
+            message_id is not None or message_state is not None
+        ):
+            lines.append("  Карточка: чужая квитанция панели, доставка не подтверждена.")
+        elif message_state in ("sending", "uncertain"):
             lines.append("  Карточка: доставка не подтверждена, требуется сверка.")
         elif (
             message_state not in (None, "sent")
