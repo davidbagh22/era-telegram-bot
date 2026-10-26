@@ -189,6 +189,14 @@ async def leaders_readonly_diagnostics(
         elif data.get("mode") == "plain":
             if thread_id is not None:
                 status = "настройки обычной группы противоречат друг другу; нужна ручная сверка"
+            elif key != "tasks" and (
+                data.get("message_id") is not None
+                or data.get("message_state") is not None
+            ):
+                # Plain Pulse/Important have no panel receipts. The delivery
+                # router rejects these conflicting settings; diagnostics must
+                # not report a route as ready when actual delivery is blocked.
+                status = "настройки обычной группы содержат чужую квитанцию панели; нужна ручная сверка"
             elif key == "tasks" and (
                 type(data.get("message_id")) is not int
                 or data["message_id"] <= 0
