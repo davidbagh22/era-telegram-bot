@@ -7,6 +7,7 @@ from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import Settings
+from app.services.media_recruitment_service import publish_media_recruitment
 from app.services.telegram_analytics_service import refresh_sources_job, mark_coverage_gap, source_targets
 from app.services.application_review_service import deliver_application_notices
 from app.services.project_review_notice_service import deliver_project_review_notices
@@ -84,6 +85,7 @@ def add_system_jobs(
     scheduler.add_job(sync_event_wizard_tasks_job, "interval", minutes=1, args=(session_factory,), id="event-wizard-task-sync", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(reconcile_project_scoring_job, "interval", minutes=1, args=(session_factory,), id="project-scoring-reconciliation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(process_task_squad_notifications, "interval", minutes=1, args=(bot, settings, session_factory), id="task-squad-notifications", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    scheduler.add_job(publish_media_recruitment, "interval", minutes=5, args=(bot, settings, session_factory), id="media-recruitment-opening", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(reconcile_media_pipeline_job, "interval", minutes=1, args=(session_factory,), id="media-content-pipeline-reconciliation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(publish_due_channel_content, "interval", minutes=1, args=(bot, settings, session_factory), id="media-channel-publication", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(post_missing_media_task_cards, "interval", minutes=1, args=(bot, settings, session_factory), id="media-task-cards", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
