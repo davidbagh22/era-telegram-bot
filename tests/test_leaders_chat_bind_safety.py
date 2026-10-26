@@ -86,6 +86,70 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         self.bot.get_chat_member.assert_awaited()
         self.session.commit.assert_not_awaited()
 
+    async def test_plain_routes_not_ready_when_bot_loses_admin_rights(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.bot.get_chat.return_value.is_forum = False
+        self.bot.get_chat_member.return_value.status = "member"
+        self.session.scalar.side_effect = [
+            SimpleNamespace(value=json.dumps({
+                "mode": "plain", "message_id": 17, "message_state": "sent",
+            })),
+            SimpleNamespace(value=json.dumps({"mode": "plain"})),
+            SimpleNamespace(value=json.dumps({"mode": "plain"})),
+        ]
+        await leaders_readonly_diagnostics(
+            self.message, None, self.settings, self.session, self.bot,
+        )
+        result = self.message.answer.await_args.args[0]
+        self.assertIn("Приёмка прав/типа чата: НЕ ПРОЙДЕНА", result)
+        for label in ("Задачи", "Пульс", "Важно"):
+            self.assertIn(
+                f"{label}: Telegram: проверка прав/типа чата не пройдена",
+                result,
+            )
+            self.assertNotIn(f"{label}: обычная группа, отдельной темы нет", result)
+        self.session.commit.assert_not_awaited()
+
+    async def test_forum_routes_not_ready_without_topic_rights_or_group_type(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        for chat_type, is_forum, can_manage in (
+            ("supergroup", True, False),
+            ("channel", False, True),
+        ):
+            with self.subTest(chat_type=chat_type, is_forum=is_forum):
+                chat = self.bot.get_chat.return_value
+                chat.type, chat.is_forum = chat_type, is_forum
+                member = self.bot.get_chat_member.return_value
+                member.status, member.can_manage_topics = "administrator", can_manage
+                self.session.scalar.side_effect = [
+                    SimpleNamespace(value=json.dumps({
+                        "mode": "forum", "thread_id": index,
+                        "thread_state": "ready",
+                    }))
+                    for index in (31, 32, 33)
+                ] if is_forum else [
+                    SimpleNamespace(value=json.dumps({
+                        "mode": "plain", "message_id": 17, "message_state": "sent",
+                    })),
+                    SimpleNamespace(value=json.dumps({"mode": "plain"})),
+                    SimpleNamespace(value=json.dumps({"mode": "plain"})),
+                ]
+                await leaders_readonly_diagnostics(
+                    self.message, None, self.settings, self.session, self.bot,
+                )
+                result = self.message.answer.await_args.args[0]
+                self.assertIn("Приёмка прав/типа чата: НЕ ПРОЙДЕНА", result)
+                for label in ("Задачи", "Пульс", "Важно"):
+                    self.assertIn(
+                        f"{label}: Telegram: проверка прав/типа чата не пройдена",
+                        result,
+                    )
+                    self.assertNotIn(f"{label}: thread_id=", result)
+                    self.assertNotIn(f"{label}: обычная группа, отдельной темы нет", result)
+        self.session.commit.assert_not_awaited()
+
     async def test_only_admin_can_read_diagnostics(self):
         from app.handlers.chat_binding import leaders_readonly_diagnostics
 
