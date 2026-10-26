@@ -194,6 +194,27 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Задачи: обычная группа, отдельной темы нет", result)
         self.session.commit.assert_not_awaited()
 
+    async def test_plain_tasks_without_confirmed_panel_require_review(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.bot.get_chat.return_value.is_forum = False
+        for payload in (
+            {"mode": "plain"},
+            {"mode": "plain", "message_id": 17, "message_state": "uncertain"},
+            {"mode": "plain", "message_id": True, "message_state": "sent"},
+        ):
+            with self.subTest(payload=payload):
+                self.session.scalar.side_effect = [
+                    SimpleNamespace(value=json.dumps(payload)), None, None,
+                ]
+                await leaders_readonly_diagnostics(
+                    self.message, None, self.settings, self.session, self.bot,
+                )
+                result = self.message.answer.await_args.args[0]
+                self.assertIn("Задачи: панель задач не подтверждена", result)
+                self.assertNotIn("Задачи: обычная группа, отдельной темы нет", result)
+        self.session.commit.assert_not_awaited()
+
     async def test_diagnostics_do_not_read_general_chat_binding(self):
         from app.handlers.chat_binding import leaders_readonly_diagnostics
 
@@ -229,7 +250,7 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
 
         self.bot.get_chat.return_value.is_forum = False
         self.session.scalar.side_effect = [
-            SimpleNamespace(value=json.dumps({"mode": "plain"})),
+            SimpleNamespace(value=json.dumps({"mode": "plain", "message_id": 17, "message_state": "sent"})),
             None,
             None,
         ]
