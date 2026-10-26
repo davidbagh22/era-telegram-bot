@@ -55,3 +55,31 @@ class PulseReviewPagesTests(unittest.IsolatedAsyncioTestCase):
         pages = preview_pages(data)
         self.assertGreater(len(pages), 1)
         self.assertTrue(all(len(page) <= 3500 for page in pages))
+
+    def test_preview_does_not_cut_html_entity_in_answer(self):
+        data = {
+            "cycle_id": 55,
+            "index": 1,
+            "questions": [{"key": "result", "text": "Итог?", "required": True}],
+            "draft": {"result": "x" * 119 + "&" + "hidden"},
+        }
+        page = preview_pages(data)[0]
+        self.assertIn("x" * 119 + "&amp;", page)
+        self.assertNotIn("hidden", page)
+        self.assertNotIn("x" * 119 + "&\\n", page)
+
+    async def test_very_long_custom_question_stays_within_telegram_html_limit(self):
+        data = {
+            "cycle_id": 55,
+            "index": 0,
+            "questions": [{"key": "custom", "text": "&" * 2000, "required": True}],
+            "draft": {},
+        }
+        message = AsyncMock()
+        await show(message, data)
+        message.answer.assert_awaited_once()
+        text = message.answer.await_args.args[0]
+        self.assertLessEqual(len(text), 4096)
+        self.assertIn("&amp;", text)
+        self.assertNotIn("&amp", text.replace("&amp;", ""))
+        self.assertTrue(text.endswith("Ответ сохраняется автоматически."))
