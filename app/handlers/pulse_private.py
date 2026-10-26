@@ -99,7 +99,9 @@ async def show(message, data):
     else:
         q = qs[index]
         await message.answer(
-            f"<b>Пульс ЭРА · {index + 1}/{len(qs)}</b>\n\n{escape(q['text'])}\n\n"\n            + ("Выбери кнопку ниже или напиши ответ сообщением." if q.get('choices') else "Напиши ответ сообщением в этот чат.")\n            + "\nОтвет сохраняется автоматически.",
+            f"<b>Пульс ЭРА · {index + 1}/{len(qs)}</b>\n\n{escape(q['text'])}\n\n"
+            + ("Выбери кнопку ниже или напиши ответ сообщением." if q.get('choices') else "Напиши ответ сообщением в этот чат.")
+            + "\nОтвет сохраняется автоматически.",
             parse_mode="HTML",
             reply_markup=keyboard(data),
         )
