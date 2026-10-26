@@ -70,7 +70,11 @@ class LegacyForumPanelRecoveryTests(unittest.IsolatedAsyncioTestCase):
         bot.create_forum_topic.side_effect = [
             SimpleNamespace(message_thread_id=n) for n in (11, 12, 13)
         ]
-        bot.send_message.return_value = SimpleNamespace(message_id=99)
+        # Telegram message IDs are unique within a chat, including across topics.
+        # Reusing one mock ID for all three panels is not a valid API response.
+        bot.send_message.side_effect = [
+            SimpleNamespace(message_id=n) for n in (101, 102, 103)
+        ]
         result = await setup_leaders_topics(bot, settings, self.factory)
         self.assertEqual(result["status"], "ready")
         self.assertEqual(bot.create_forum_topic.await_count, 3)
