@@ -225,6 +225,10 @@ async def answer_pulse(
     data = dict(data)
     data["draft"] = dict(data["draft"])
     key = data["questions"][data["index"]]["key"]
+    # Text answers are offered alongside buttons: keep the conditional
+    # inactivity follow-up identical for both input methods.
+    if key == "done" and answer in {"Всё учтено", "Не было активности"}:
+        update_activity_followup(data, question_index=data["index"], selected=answer)
     data["draft"][key] = answer
     attachments = dict(data.get("attachments", {}))
     attachments.pop(key, None)
