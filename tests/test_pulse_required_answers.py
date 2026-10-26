@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
-from app.handlers.pulse_private import first_missing_required, show
+from app.handlers.pulse_private import first_missing_required, pulse_action, show
 
 
 class PulseRequiredAnswerTests(unittest.IsolatedAsyncioTestCase):
@@ -50,3 +51,34 @@ class PulseRequiredAnswerTests(unittest.IsolatedAsyncioTestCase):
         }
         await show(message, data)
         self.assertIn("Выбери кнопку ниже или напиши ответ", message.answer.await_args.args[0])
+
+    async def test_submit_with_missing_required_answer_returns_to_question(self):
+        data = {
+            "index": 2,
+            "questions": [
+                {"key": "done", "text": "Что сделано?", "required": True},
+                {"key": "plans", "text": "Что дальше?", "required": True},
+            ],
+            "draft": {"done": "Всё учтено"},
+        }
+        pulse = SimpleNamespace(answers_json=data)
+        view = SimpleNamespace(pulse=pulse)
+        call = SimpleNamespace(
+            from_user=SimpleNamespace(id=11),
+            message=AsyncMock(),
+            data="pulse_form:submit:2",
+            answer=AsyncMock(),
+        )
+        session = SimpleNamespace(flush=AsyncMock())
+        settings = SimpleNamespace(leaders_chat_id=-100123)
+        user = SimpleNamespace(id=9)
+        with (
+            patch("app.handlers.pulse_private.access", new_callable=AsyncMock, return_value=True),
+            patch("app.handlers.pulse_private.current_form", new_callable=AsyncMock, return_value=(SimpleNamespace(), view, data)),
+            patch("app.handlers.pulse_private.show", new_callable=AsyncMock) as show_mock,
+        ):
+            await pulse_action(call, AsyncMock(), None, settings, session, user)
+        self.assertEqual(pulse.answers_json["index"], 1)
+        session.flush.assert_awaited_once()
+        self.assertTrue(call.answer.await_args.kwargs["show_alert"])
+        show_mock.assert_awaited_once()
