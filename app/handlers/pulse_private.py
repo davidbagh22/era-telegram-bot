@@ -26,27 +26,27 @@ def keyboard(data, preview=False):
     buttons = []
     if not preview:
         for i, choice in enumerate(data["questions"][data["index"]].get("choices", [])):
-            buttons.append([InlineKeyboardButton(text=choice, callback_data=f"pulse_form:choice:{data['index']}:{i}")])
+            buttons.append([InlineKeyboardButton(text=choice, callback_data=f"pulse_form:choice:{data['cycle_id']}:{data['index']}:{i}")])
     if preview:
         buttons.append(
             [
                 InlineKeyboardButton(
-                    text="Отправить Пульс", callback_data=f"pulse_form:submit:{data['index']}"
+                    text="Отправить Пульс", callback_data=f"pulse_form:submit:{data['cycle_id']}:{data['index']}"
                 )
             ]
         )
     elif not data["questions"][data["index"]]["required"]:
         buttons.append(
-            [InlineKeyboardButton(text="Пропустить", callback_data=f"pulse_form:skip:{data['index']}")]
+            [InlineKeyboardButton(text="Пропустить", callback_data=f"pulse_form:skip:{data['cycle_id']}:{data['index']}")]
         )
     if data["index"] > 0:
         buttons.append(
-            [InlineKeyboardButton(text="Назад", callback_data=f"pulse_form:back:{data['index']}")]
+            [InlineKeyboardButton(text="Назад", callback_data=f"pulse_form:back:{data['cycle_id']}:{data['index']}")]
         )
     buttons.append(
         [
             InlineKeyboardButton(
-                text="Продолжить позже", callback_data=f"pulse_form:pause:{data['index']}"
+                text="Продолжить позже", callback_data=f"pulse_form:pause:{data['cycle_id']}:{data['index']}"
             )
         ]
     )
@@ -70,6 +70,17 @@ async def access(sender, bot, settings, session, user):
         is_member=getattr(member, "is_member", None),
     )
     return row.is_weekly_pulse_eligible
+
+
+def callback_matches_current_cycle(parts, *, cycle_id: int, index: int) -> bool:
+    """Reject buttons from earlier weeks even when the question index matches."""
+    return (
+        len(parts) in {4, 5}
+        and parts[2].isdigit()
+        and int(parts[2]) == cycle_id
+        and parts[3].isdigit()
+        and int(parts[3]) == index
+    )
 
 
 def first_missing_required(data):
@@ -214,8 +225,8 @@ async def pulse_action(
     cycle, view, data = form
     data = dict(data)
     parts = call.data.split(":")
-    action = parts[1]
-    if len(parts) < 3 or not parts[2].isdigit() or int(parts[2]) != data["index"]:
+    action = parts[1] if len(parts) > 1 else ""
+    if not callback_matches_current_cycle(parts, cycle_id=cycle.id, index=data["index"]):
         await call.answer("Это кнопка от предыдущего вопроса. Открой актуальный вопрос ниже.", show_alert=True)
         await show(call.message, data)
         return
@@ -233,9 +244,9 @@ async def pulse_action(
     if action == "choice" and data["index"] < len(data["questions"]):
         question = data["questions"][data["index"]]
         choices = question.get("choices", [])
-        if len(parts) != 4 or not parts[3].isdigit():
+        if len(parts) != 5 or not parts[4].isdigit():
             return
-        index = int(parts[3])
+        index = int(parts[4])
         if index >= len(choices):
             return
         data["draft"] = {**data["draft"], question["key"]: choices[index]}
