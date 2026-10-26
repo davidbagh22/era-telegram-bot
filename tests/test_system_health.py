@@ -143,6 +143,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "event-wizard-task-sync",
                 "project-scoring-reconciliation",
                 "task-squad-notifications",
+                "media-recruitment-opening",
                 "media-content-pipeline-reconciliation",
                 "media-channel-publication",
                 "media-task-cards",
