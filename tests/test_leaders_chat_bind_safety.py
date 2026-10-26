@@ -205,7 +205,7 @@ class LeadersTopicRoutingSafetyTests(unittest.IsolatedAsyncioTestCase):
     async def test_valid_forum_thread_and_explicit_plain_mode(self):
         from app.services.leaders_topics_service import delivery_topic, topic_id
 
-        for value, expected in (('{"thread_id":7}', 7), ('{"mode":"plain"}', None)):
+        for value, expected in (('{"thread_id":7}', 7), ('{"mode":"plain","message_id":17,"message_state":"sent"}', None)):
             with self.subTest(value=value):
                 session = SimpleNamespace(
                     scalar=AsyncMock(return_value=SimpleNamespace(value=value)),
@@ -213,6 +213,37 @@ class LeadersTopicRoutingSafetyTests(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertEqual(await topic_id(session, -1001, "tasks"), expected)
                 self.assertEqual(await delivery_topic(session, -1001, "tasks"), expected)
+
+    async def test_plain_tasks_require_confirmed_panel_receipt(self):
+        from app.services.leaders_topics_service import delivery_topic, topic_id
+
+        unsafe = (
+            '{"mode":"plain"}',
+            '{"mode":"plain","message_id":17}',
+            '{"mode":"plain","message_id":17,"message_state":"sending"}',
+            '{"mode":"plain","message_id":17,"message_state":"uncertain"}',
+            '{"mode":"plain","message_id":true,"message_state":"sent"}',
+            '{"mode":"plain","message_id":0,"message_state":"sent"}',
+            '{"mode":"plain","message_id":"17","message_state":"sent"}',
+        )
+        for value in unsafe:
+            with self.subTest(value=value):
+                session = SimpleNamespace(scalar=AsyncMock(
+                    return_value=SimpleNamespace(value=value),
+                ))
+                self.assertIsNone(await topic_id(session, -1001, "tasks"))
+                with self.assertRaisesRegex(ValueError, "Панель задач"):
+                    await delivery_topic(session, -1001, "tasks")
+
+    async def test_plain_pulse_and_important_do_not_require_task_panel(self):
+        from app.services.leaders_topics_service import delivery_topic
+
+        for key in ("pulse", "important"):
+            with self.subTest(key=key):
+                session = SimpleNamespace(scalar=AsyncMock(
+                    return_value=SimpleNamespace(value='{"mode":"plain","thread_id":null}'),
+                ))
+                self.assertIsNone(await delivery_topic(session, -1001, key))
 
     async def test_card_sync_never_sends_into_default_topic_when_setting_is_corrupt(self):
         from unittest.mock import patch
