@@ -159,6 +159,7 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                 setting_key = f"leaders_forum:{chat_id}:{key}"
                 row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
                 data = _topic_data(row)
+                created_topic_now = row is None
                 # A stored row may represent a topic created just before a
                 # Telegram timeout. Never create a replacement automatically,
                 # even if its JSON or thread ID is damaged.
@@ -191,6 +192,11 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                 # contain the panel, so require an administrator to reconcile it.
                 message_id = data.get('message_id')
                 message_state = data.get('message_state')
+                # A legacy row may already have a published panel even when
+                # its message ID/state was never saved. Only a topic created
+                # during this invocation can safely send its first panel.
+                if not created_topic_now and message_id is None and message_state is None:
+                    return {'status':'panel_needs_review','chat_id':chat_id,'topic':key}
                 if (
                     (message_id is not None and (type(message_id) is not int or message_id <= 0))
                     or (message_state == 'sent' and message_id is None)
