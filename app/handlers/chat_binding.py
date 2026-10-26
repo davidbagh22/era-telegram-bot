@@ -187,8 +187,16 @@ async def leaders_readonly_diagnostics(
         ):
             status = "Telegram: обычная группа, но сохранён ID темы/режим форума; нужна ручная сверка"
         elif data.get("mode") == "plain":
-            status = ("настройки обычной группы противоречат друг другу; нужна ручная сверка"
-                      if thread_id is not None else "обычная группа, отдельной темы нет")
+            if thread_id is not None:
+                status = "настройки обычной группы противоречат друг другу; нужна ручная сверка"
+            elif key == "tasks" and (
+                type(data.get("message_id")) is not int
+                or data["message_id"] <= 0
+                or data.get("message_state") != "sent"
+            ):
+                status = "панель задач не подтверждена; нужна ручная сверка, не отправлять повторно"
+            else:
+                status = "обычная группа, отдельной темы нет"
         elif type(thread_id) is int and thread_id > 0:
             status = f"thread_id={thread_id} (из БД, не проверен в Telegram)"
         elif row is not None:
