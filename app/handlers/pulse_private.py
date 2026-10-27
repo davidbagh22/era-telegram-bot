@@ -302,6 +302,10 @@ async def pulse_action(
         if question["key"] == "done":
             update_activity_followup(data, question_index=data["index"], selected=selected)
         data["draft"] = {**data["draft"], question["key"]: selected}
+        # A button choice replaces any previously attached answer for this
+        # question. Do not submit a file belonging to the old free-text answer.
+        data["attachments"] = dict(data.get("attachments", {}))
+        data["attachments"].pop(question["key"], None)
         data["index"] += 1
         view.pulse.answers_json = data
         await session.flush()
