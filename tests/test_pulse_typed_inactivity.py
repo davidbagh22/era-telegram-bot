@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from app.handlers.pulse_private import answer_pulse, update_activity_followup
+from app.handlers.pulse_private import answer_pulse, pulse_action, update_activity_followup
 
 
 class PulseTypedInactivityTests(unittest.IsolatedAsyncioTestCase):
@@ -107,3 +107,56 @@ class PulseTypedInactivityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(updated["draft"]["done"], "Завершил важный проект")
         self.assertEqual(updated["draft"]["result"], "Подготовил отчёт")
         self.assertEqual(updated["questions"][1]["text"], "Какой результат?")
+
+    async def test_activity_correction_removes_stale_result_attachment(self):
+        view, data = self._form()
+        update_activity_followup(data, question_index=0, selected="Не было активности")
+        data["draft"] = {"done": "Не было активности", "result": "Был занят"}
+        data["attachments"] = {
+            "done": "old-done-photo", "result": "old-result-file", "media": "other-media",
+        }
+        updated = await self._type_answer(view, "Завершил проект")
+        self.assertNotIn("result", updated["draft"])
+        self.assertNotIn("result", updated["attachments"])
+        self.assertNotIn("done", updated["attachments"])
+        self.assertEqual(updated["attachments"]["media"], "other-media")
+
+    async def test_wording_correction_preserves_result_attachment(self):
+        view, data = self._form()
+        data["draft"] = {"done": "Завершил проект", "result": "Отчёт"}
+        data["attachments"] = {"result": "valid-result-file", "done": "old-done-file"}
+        updated = await self._type_answer(view, "Завершил большой проект")
+        self.assertEqual(updated["draft"]["result"], "Отчёт")
+        self.assertEqual(updated["attachments"]["result"], "valid-result-file")
+        self.assertNotIn("done", updated["attachments"])
+
+    async def test_skipping_optional_answer_removes_its_attachment(self):
+        view, data = self._form()
+        data["questions"][0]["required"] = False
+        data["draft"] = {"done": "Прикреплён материал"}
+        data["attachments"] = {"done": "old-photo", "result": "unrelated-file"}
+        call = SimpleNamespace(
+            data="pulse_form:skip:42:0",
+            from_user=SimpleNamespace(id=77),
+            message=SimpleNamespace(answer=AsyncMock()),
+            answer=AsyncMock(),
+        )
+        session = SimpleNamespace(flush=AsyncMock())
+        state = AsyncMock()
+        with (
+            patch("app.handlers.pulse_private.access", new_callable=AsyncMock, return_value=True),
+            patch("app.handlers.pulse_private.current_form", new_callable=AsyncMock,
+                  return_value=(SimpleNamespace(id=42), view, data)),
+            patch("app.handlers.pulse_private.show", new_callable=AsyncMock) as show,
+        ):
+            await pulse_action(
+                call, state, None, SimpleNamespace(leaders_chat_id=-100123),
+                session, SimpleNamespace(id=9),
+            )
+        updated = view.pulse.answers_json
+        self.assertEqual(updated["index"], 1)
+        self.assertNotIn("done", updated["draft"])
+        self.assertNotIn("done", updated["attachments"])
+        self.assertEqual(updated["attachments"]["result"], "unrelated-file")
+        session.flush.assert_awaited_once()
+        show.assert_awaited_once()
