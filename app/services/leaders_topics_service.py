@@ -28,6 +28,19 @@ def _topic_data(row) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _forum_panel_receipt_is_unsafe(data: dict) -> bool:
+    """An explicit but unconfirmed panel receipt must not authorize routing.
+
+    Legacy thread-only records remain readable until reconciled; once a
+    receipt is present, it must be a complete confirmed Telegram message.
+    """
+    panel_id = data.get("message_id")
+    state = data.get("message_state")
+    if panel_id is None and state is None:
+        return False
+    return state != "sent" or type(panel_id) is not int or panel_id <= 0
+
+
 async def _has_duplicate_thread_route(session, chat_id: int, key: str, thread_id: int) -> bool:
     """Never route into a thread claimed by another Leaders destination."""
     other_keys = [
@@ -50,6 +63,8 @@ async def topic_id(session, chat_id: int, key: str) -> int | None:
     thread_id = data.get('thread_id')
     if (data.get('mode') not in (None, 'forum') or data.get('thread_state') not in (None, 'ready')
             or type(thread_id) is not int or thread_id <= 0):
+        return None
+    if _forum_panel_receipt_is_unsafe(data):
         return None
     if await _has_duplicate_thread_route(session, chat_id, key, thread_id):
         return None
@@ -90,6 +105,8 @@ async def delivery_topic(session, chat_id, key):
     thread_id = data.get('thread_id')
     if type(thread_id) is not int or thread_id <= 0:
         raise ValueError('Рабочая тема не настроена. Проверьте привязку чата лидеров.')
+    if _forum_panel_receipt_is_unsafe(data):
+        raise ValueError('Панель темы лидеров не подтверждена. Требуется ручная сверка.')
     if await _has_duplicate_thread_route(session, chat_id, key, thread_id):
         raise ValueError('Темы лидеров используют одинаковый thread_id. Требуется ручная сверка.')
     return thread_id

@@ -21,9 +21,14 @@ test("media calendars keep KSOORS separate and require approval and a publicatio
   await expect(page.getByRole("button", { name: "Подтвердить публикацию по ссылке", exact: true })).toBeDisabled();
   await page.getByLabel("Ссылка на вышедший материал", { exact: true }).fill("https://t.me/ksoors_arm/123");
   await page.getByRole("button", { name: "Подтвердить публикацию по ссылке", exact: true }).click();
+  // The mutation is asynchronous. Wait for the newly created card to receive
+  // its confirmed publication link before changing filters (which reloads the list).
+  // Other calendar entries can legitimately share the same external URL.
+  const entry = page.getByText(title, { exact: true }).locator("xpath=../..");
+  await expect(entry.getByRole("link", { name: "Открыть публикацию ↗", exact: true })).toHaveAttribute("href", "https://t.me/ksoors_arm/123");
   await page.getByLabel("Показать", { exact: true }).selectOption("published");
   await expect(page.getByText(title, { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Открыть публикацию ↗", exact: true })).toHaveAttribute("href", "https://t.me/ksoors_arm/123");
+  await expect(entry.getByRole("link", { name: "Открыть публикацию ↗", exact: true })).toHaveAttribute("href", "https://t.me/ksoors_arm/123");
   await page.getByRole("button", { name: "← Медиаотдел", exact: true }).click();
   await page.getByRole("button", { name: /^ЭРА →/ }).click();
   await expect(page.getByText(title, { exact: true })).toHaveCount(0);
