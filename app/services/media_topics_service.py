@@ -265,7 +265,12 @@ async def _reopen_topic_once(bot, session_factory, chat_id, key, thread_id):
     try:
         await bot.reopen_forum_topic(chat_id, thread_id)
     except TelegramBadRequest as exc:
-        if "TOPIC_NOT_MODIFIED" not in str(exc).upper():
+        # Telegram commonly reports an already-open topic as
+        # "Bad Request: topic is not modified" (TOPIC_IS_NOT_MODIFIED).
+        # This is a confirmed no-op, not a failed reopen. Preserve support
+        # for the older TOPIC_NOT_MODIFIED spelling as well.
+        error_code = str(exc).upper().replace(" ", "_").replace("-", "_")
+        if not any(code in error_code for code in ("TOPIC_IS_NOT_MODIFIED", "TOPIC_NOT_MODIFIED")):
             # Explicit rejection means Telegram did not reopen the topic.
             async with session_factory() as session:
                 await _lock(session, chat_id)
