@@ -119,7 +119,13 @@ def update_activity_followup(data, *, question_index: int, selected: str) -> Non
         questions[next_index] = data.pop("original_result_question")
     data["questions"] = questions
 
-    if previous in {"Всё учтено", "Не было активности"} and previous != selected:
+    # A previous free-text activity answer must not become the explanation
+    # for a new inactivity choice. Ordinary edits of free text, however,
+    # should keep the participant's already written result.
+    if previous != selected and (
+        previous in {"Всё учтено", "Не было активности"}
+        or selected == "Не было активности"
+    ):
         data["draft"] = dict(data.get("draft", {}))
         data["draft"].pop("result", None)
 
@@ -227,7 +233,10 @@ async def answer_pulse(
     key = data["questions"][data["index"]]["key"]
     # Text answers are offered alongside buttons: keep the conditional
     # inactivity follow-up identical for both input methods.
-    if key == "done" and answer in {"Всё учтено", "Не было активности"}:
+    if key == "done":
+        # Reconcile the follow-up for *every* correction, including free text
+        # and attachment-only answers. Otherwise an old inactivity explanation
+        # remains required after the user changes their activity answer.
         update_activity_followup(data, question_index=data["index"], selected=answer)
     data["draft"][key] = answer
     attachments = dict(data.get("attachments", {}))

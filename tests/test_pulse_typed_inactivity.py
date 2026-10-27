@@ -68,3 +68,42 @@ class PulseTypedInactivityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(updated["draft"]["done"], "Завершил проект")
         self.assertEqual(updated["questions"][1]["text"], "Какой результат?")
         self.assertNotIn("original_result_question", updated)
+
+    async def test_typed_custom_correction_clears_stale_inactivity_reason(self):
+        view, data = self._form()
+        update_activity_followup(data, question_index=0, selected="Не было активности")
+        data["draft"] = {"done": "Не было активности", "result": "Не было задач"}
+        data["index"] = 0
+        updated = await self._type_answer(view, "Завершил проект")
+        self.assertEqual(updated["draft"]["done"], "Завершил проект")
+        self.assertNotIn("result", updated["draft"])
+        self.assertEqual(updated["questions"][1]["text"], "Какой результат?")
+        self.assertNotIn("original_result_question", updated)
+
+    async def test_typed_custom_correction_after_choice_clears_old_result(self):
+        view, data = self._form()
+        data["draft"] = {"done": "Всё учтено", "result": "Старый результат"}
+        data["index"] = 0
+        updated = await self._type_answer(view, "Выполнил новую задачу")
+        self.assertEqual(updated["draft"]["done"], "Выполнил новую задачу")
+        self.assertNotIn("result", updated["draft"])
+        self.assertEqual(updated["questions"][1]["text"], "Какой результат?")
+
+    async def test_typed_inactivity_after_custom_answer_discards_old_result(self):
+        view, data = self._form()
+        data["draft"] = {"done": "Завершил проект", "result": "Старый результат проекта"}
+        data["index"] = 0
+        updated = await self._type_answer(view, "Не было активности")
+        self.assertEqual(updated["draft"]["done"], "Не было активности")
+        self.assertNotIn("result", updated["draft"])
+        self.assertIn("Почему не было активности", updated["questions"][1]["text"])
+        self.assertEqual(updated["original_result_question"]["text"], "Какой результат?")
+
+    async def test_typed_wording_edit_keeps_existing_result(self):
+        view, data = self._form()
+        data["draft"] = {"done": "Завершил проект", "result": "Подготовил отчёт"}
+        data["index"] = 0
+        updated = await self._type_answer(view, "Завершил важный проект")
+        self.assertEqual(updated["draft"]["done"], "Завершил важный проект")
+        self.assertEqual(updated["draft"]["result"], "Подготовил отчёт")
+        self.assertEqual(updated["questions"][1]["text"], "Какой результат?")
