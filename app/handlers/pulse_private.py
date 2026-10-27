@@ -275,6 +275,14 @@ async def pulse_action(
     data = dict(data)
     parts = call.data.split(":")
     action = parts[1] if len(parts) > 1 else ""
+    if action == "submit":
+        # Two simultaneous callback handlers may both load an unsubmitted form.
+        # Serialize their decisions on the persisted pulse row, then reload the
+        # report timestamp and answers before the idempotency check. PostgreSQL
+        # holds this row lock until the request transaction commits/rolls back.
+        await session.refresh(view.pulse, with_for_update=True)
+        await session.refresh(view.report)
+        data = dict(view.pulse.answers_json or {})
     if not callback_matches_current_cycle(parts, cycle_id=cycle.id, index=data["index"]):
         await call.answer("Это кнопка от предыдущего вопроса. Открой актуальный вопрос ниже.", show_alert=True)
         await show(call.message, data)

@@ -30,7 +30,7 @@ class PulseRepeatSubmissionTests(unittest.IsolatedAsyncioTestCase):
         cycle = SimpleNamespace(id=42, date_from=date(2026, 10, 26))
         return cycle, view, data
 
-    async def _submit(self, cycle, view):
+    async def _submit(self, cycle, view, *, refresh_side_effect=None):
         call = SimpleNamespace(
             data="pulse_form:submit:42:2",
             from_user=SimpleNamespace(id=77),
@@ -38,7 +38,9 @@ class PulseRepeatSubmissionTests(unittest.IsolatedAsyncioTestCase):
             answer=AsyncMock(),
         )
         state = SimpleNamespace(clear=AsyncMock())
-        session = SimpleNamespace(flush=AsyncMock())
+        session = SimpleNamespace(
+            flush=AsyncMock(), refresh=AsyncMock(side_effect=refresh_side_effect)
+        )
         with (
             patch("app.handlers.pulse_private.access", new_callable=AsyncMock, return_value=True),
             patch("app.handlers.pulse_private.current_form", new_callable=AsyncMock,
@@ -61,6 +63,10 @@ class PulseRepeatSubmissionTests(unittest.IsolatedAsyncioTestCase):
         mark.assert_not_awaited()
         inbox.assert_not_awaited()
         session.flush.assert_not_awaited()
+        self.assertEqual(session.refresh.await_count, 2)
+        self.assertIs(session.refresh.await_args_list[0].args[0], view.pulse)
+        self.assertEqual(session.refresh.await_args_list[0].kwargs, {"with_for_update": True})
+        self.assertIs(session.refresh.await_args_list[1].args[0], view.report)
         state.clear.assert_not_awaited()
         call.message.answer.assert_not_awaited()
         call.answer.assert_awaited_once_with("Этот Пульс уже отправлен.")
@@ -86,3 +92,41 @@ class PulseRepeatSubmissionTests(unittest.IsolatedAsyncioTestCase):
         mark.assert_awaited_once()
         inbox.assert_awaited_once()
         self.assertEqual(view.pulse.answers_json["submitted"]["result"], "Уточнённый отчёт")
+
+    async def test_concurrent_duplicate_rechecks_persisted_state_under_lock(self):
+        cycle, view, data = self._form()
+        # This callback initially sees an unsubmitted report. Another handler
+        # commits the same draft while the callback waits for the pulse lock.
+        view.report.submitted_at = None
+        data.pop("submitted")
+        data.pop("submitted_attachments")
+
+        async def refresh(obj, **kwargs):
+            if obj is view.pulse:
+                self.assertEqual(kwargs, {"with_for_update": True})
+                data["submitted"] = dict(data["draft"])
+                data["submitted_attachments"] = dict(data["attachments"])
+            elif obj is view.report:
+                view.report.submitted_at = datetime.now(timezone.utc)
+
+        call, state, session, submit, mark, inbox = await self._submit(
+            cycle, view, refresh_side_effect=refresh
+        )
+        self.assertEqual(session.refresh.await_count, 2)
+        submit.assert_not_awaited()
+        mark.assert_not_awaited()
+        inbox.assert_not_awaited()
+        session.flush.assert_not_awaited()
+        state.clear.assert_not_awaited()
+        call.answer.assert_awaited_once_with("Этот Пульс уже отправлен.")
+
+    async def test_changed_draft_after_lock_still_resubmits(self):
+        cycle, view, data = self._form()
+        data["draft"]["result"] = "Уточнение после первой отправки"
+        call, state, session, submit, mark, inbox = await self._submit(cycle, view)
+        self.assertEqual(session.refresh.await_count, 2)
+        submit.assert_awaited_once()
+        mark.assert_awaited_once()
+        inbox.assert_awaited_once()
+        state.clear.assert_awaited_once()
+        call.answer.assert_awaited_once_with()
