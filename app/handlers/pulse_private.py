@@ -119,7 +119,9 @@ def update_activity_followup(data, *, question_index: int, selected: str) -> Non
         questions[next_index] = data.pop("original_result_question")
     data["questions"] = questions
 
-    if previous in {"Всё учтено", "Не было активности"} and previous != selected:
+    # A previous free-text activity answer can also have a result attached.
+    # Never reuse that result as the explanation for a new inactivity choice.
+    if previous and previous != selected:
         data["draft"] = dict(data.get("draft", {}))
         data["draft"].pop("result", None)
 
