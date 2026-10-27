@@ -284,6 +284,16 @@ async def knowledge_item(call: CallbackQuery, user: User | None, session: AsyncS
     text = f"{item.title}\n{CATEGORIES.get(item.category, 'Рабочие материалы')}\n\n{item.description or ''}"
     for offset in range(0, len(text), 1800):
         await call.message.answer(escape(text[offset:offset + 1800]))
-    if item.url.startswith("https://"):
+    if item.destination_type == "internal_route":
+        # Internal Mini App routes must stay inside Telegram's WebApp context:
+        # opening them as ordinary links loses initData on some clients.
+        from app.utils.deep_links import miniapp_path_url
+        if item.url == "media/guide" and settings.effective_miniapp_url:
+            await call.message.answer("Открыть материал", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Открыть в ЭРА",
+                    web_app=WebAppInfo(url=miniapp_path_url(settings.effective_miniapp_url, item.url)))]]))
+        else:
+            await call.message.answer("Материал временно недоступен в мини-приложении.")
+    elif item.url.startswith("https://"):
         await call.message.answer("Ссылка на материал", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="Открыть материал", url=item.url)]]))

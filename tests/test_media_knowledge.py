@@ -242,3 +242,33 @@ class MediaKnowledgeTests(IsolatedAsyncioTestCase):
             await knowledge_item(call, member, session, self.settings)
             call.message.answer.assert_not_awaited()
             call.answer.assert_awaited_with("Материал скрыт или недоступен.", show_alert=True)
+
+    async def test_native_knowledge_internal_route_keeps_telegram_webapp_context(self):
+        from app.handlers.media_management import knowledge_item
+        async with self.factory() as session:
+            item = await self.create(session, {
+                "kind": "guide", "category": "guides", "title": "Гид медиа",
+                "url": "media/guide", "destination_type": "internal_route",
+            }, key="native-internal-guide")
+            member = await session.get(User, self.ids[2])
+            call = SimpleNamespace(
+                from_user=SimpleNamespace(id=member.telegram_id),
+                data=f"media:knowledge:{item.id}",
+                answer=AsyncMock(),
+                message=SimpleNamespace(answer=AsyncMock()),
+            )
+            self.settings.miniapp_url = "https://era.example/app/"
+            self.settings.miniapp_auth_secret = "test-secret"
+            await knowledge_item(call, member, session, self.settings)
+            button = call.message.answer.await_args_list[-1].kwargs["reply_markup"].inline_keyboard[0][0]
+            self.assertIsNone(button.url)
+            self.assertIn("eraPath=media%2Fguide", button.web_app.url)
+            self.assertTrue(button.web_app.url.startswith("https://era.example/app/"))
+
+            # Without a configured Mini App the handler explains the problem,
+            # never emits an external link to an internal route.
+            self.settings.miniapp_auth_secret = ""
+            call.message.answer.reset_mock()
+            await knowledge_item(call, member, session, self.settings)
+            self.assertIn("временно недоступен", call.message.answer.await_args_list[-1].args[0])
+            self.assertNotIn("reply_markup", call.message.answer.await_args_list[-1].kwargs)
