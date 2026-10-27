@@ -936,9 +936,15 @@ async def _send_media_chat_notice(
     )
     if exists:
         return False
-    try:
-        message = await bot.send_message(settings.media_chat_id, text)
-    except TelegramAPIError:
+    from app.services.media_topics_service import delivery_topic
+    from app.services.notification_service import safe_send_once
+    thread_id = await delivery_topic(session, settings.media_chat_id, "tasks")
+    if thread_id is None:
+        return False
+    result = await safe_send_once(bot, settings, settings.media_chat_id, text,
+        delivery_key=f"media-notice:{notice_key}", notification_type="media_notice",
+        message_thread_id=thread_id, max_attempts=1)
+    if not result.sent or not result.message_id:
         return False
     session.add(
         MediaChatNotice(
@@ -946,7 +952,7 @@ async def _send_media_chat_notice(
             notice_kind=notice_kind,
             ref_type=ref_type,
             ref_id=ref_id,
-            telegram_message_id=int(message.message_id),
+            telegram_message_id=result.message_id,
             sent_at=datetime.now(timezone.utc),
         )
     )

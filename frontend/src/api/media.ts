@@ -29,6 +29,7 @@ export interface MediaHub {
   access_level: MediaAccessLevel;
   permissions: MediaPermissions;
   chat_url: string;
+  chat_topics?: { key: string; title: string; url: string }[];
   channel_url: string;
   open_tasks: MediaTask[];
   my_tasks: MediaTask[];

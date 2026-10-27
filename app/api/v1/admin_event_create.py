@@ -6,10 +6,10 @@ from typing import Any, Literal
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.config import Settings
@@ -602,6 +602,17 @@ async def _deliver_publication(bot, settings, session, event, experience) -> Non
     await session.refresh(experience)
 
 
+async def _dispatch_publication(bot, settings, session, event, experience, background_tasks):
+    if background_tasks is None:
+        await _deliver_publication(bot, settings, session, event, experience)
+    else:
+        from app.services.event_publication_service import deliver_event_announcement
+        # Persisted pending status is the outbox; scheduler recovers if this
+        # process exits before the response background task starts.
+        background_tasks.add_task(deliver_event_announcement, bot, settings,
+            async_sessionmaker(session.bind, expire_on_commit=False), event.id)
+
+
 @router.post("/{event_id}/publish", response_model=EventDraftOut)
 async def publish_event(
     event_id: int,
@@ -609,6 +620,7 @@ async def publish_event(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
     bot: Bot | None = Depends(get_bot),
+    background_tasks: BackgroundTasks = None,
 ) -> EventDraftOut:
     event = await _managed_event(session, event_id)
     experience = await _experience(session, event)
@@ -617,7 +629,7 @@ async def publish_event(
     if experience.is_complete and event.status != EventStatus.DRAFT:
         if experience.announcement_status == "pending":
             await session.commit()
-            await _deliver_publication(bot, settings, session, event, experience)
+            await _dispatch_publication(bot, settings, session, event, experience, background_tasks)
         return await _draft_out(session, event, experience)
     _ensure_publish_description(event, experience)
     missing = _validate_publish(event, experience)
@@ -639,7 +651,7 @@ async def publish_event(
     )
     # The outbox and event become durable before contacting Telegram.
     await session.commit()
-    await _deliver_publication(bot, settings, session, event, experience)
+    await _dispatch_publication(bot, settings, session, event, experience, background_tasks)
     return await _draft_out(session, event, experience)
 
 

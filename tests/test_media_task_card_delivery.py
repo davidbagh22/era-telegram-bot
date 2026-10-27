@@ -1,6 +1,7 @@
 """Regression tests for fail-closed Media task card delivery."""
 from __future__ import annotations
 
+import json
 import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.config import Settings
 from app.database.base import Base
 from app.database.media_models import MediaChatNotice, MediaContentItem, MediaContentTask
-from app.database.models import Task, User
+from app.database.models import AppSetting, Task, User
 from app.services.media_attachment_service import (
     post_missing_media_task_cards,
     task_id_for_replied_card,
@@ -31,6 +32,8 @@ class MediaTaskCardDeliveryTests(unittest.IsolatedAsyncioTestCase):
             bot_token="1234567890:test-token", media_chat_id=-100987654321,
         )
         async with self.factory() as session:
+            session.add(AppSetting(key=f"media_forum:{self.settings.media_chat_id}:tasks",
+                value=json.dumps({"thread_id": 42, "state": "ready"})))
             owner = User(telegram_id=1234, first_name="Media manager")
             session.add(owner)
             await session.flush()

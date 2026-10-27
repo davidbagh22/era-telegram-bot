@@ -71,7 +71,7 @@ async def setup_general_topics(bot, settings, session_factory) -> dict:
     return result
 
 
-async def send_general_topic_once(bot, settings, key, text, *, delivery_key, reply_markup=None, parse_mode=None, photo=None) -> NotificationDeliveryResult:
+async def send_general_topic_once(bot, settings, key, text, *, delivery_key, reply_markup=None, parse_mode=None, photo=None, max_attempts=3) -> NotificationDeliveryResult:
     """Expose the durable outcome so callers can stop on payload conflicts."""
     thread_id = await ensure_topic(bot, settings, key)
     if thread_id is None:
@@ -82,6 +82,7 @@ async def send_general_topic_once(bot, settings, key, text, *, delivery_key, rep
         delivery_key=f"general-topic:{key}:{delivery_key}",
         notification_type=f"general_{key}", reply_markup=reply_markup,
         message_thread_id=thread_id, parse_mode=parse_mode,
+        max_attempts=max_attempts,
         **media_kwargs,
     )
 

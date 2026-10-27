@@ -1,6 +1,7 @@
 """Durable event announcements, including uploaded posters and full quick text."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from html import escape
@@ -94,6 +95,7 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
             bot, settings, "announcements", part, parse_mode="HTML",
             reply_markup=markup if index == len(parts) - 1 else None,
             delivery_key=f"event:{event.id}:published" + (f":part:{index}" if index else ""),
+            max_attempts=1,
             **media,
         )
         if result.status == "conflict":
@@ -138,26 +140,37 @@ async def record_announcement_status(session, event_id: int, delivered: bool) ->
         experience.announcement_status = "needs_attention" if attention else "pending"
 
 
+async def deliver_event_announcement(bot, settings, session_factory, event_id) -> None:
+    """One short-lived session per event; independent API/background ownership."""
+    async with session_factory() as session:
+        try:
+            experience = await session.scalar(select(EventExperience).where(
+                EventExperience.event_id == event_id,
+                EventExperience.announcement_status == "pending",
+            ).with_for_update(skip_locked=True))
+            if experience is None:
+                return
+            event = await session.get(Event, event_id)
+            if event is None or event.status not in PUBLIC_STATUSES:
+                return
+            delivered = await publish_event_announcement(bot, settings, session, event, experience)
+            await record_announcement_status(session, event_id, delivered)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            logger.exception("Event announcement retry failed event_id=%s", event_id)
+
+
 async def deliver_pending_event_announcements(bot, settings, session_factory) -> None:
     async with session_factory() as session:
         ids = list((await session.scalars(select(EventExperience.event_id).join(
             Event, Event.id == EventExperience.event_id,
         ).where(EventExperience.announcement_status == "pending", Event.status.in_(PUBLIC_STATUSES))
             .order_by(EventExperience.event_id).limit(20))).all())
-        for event_id in ids:
-            try:
-                experience = await session.scalar(select(EventExperience).where(
-                    EventExperience.event_id == event_id,
-                    EventExperience.announcement_status == "pending",
-                ).with_for_update(skip_locked=True))
-                if experience is None:
-                    continue
-                event = await session.get(Event, event_id)
-                if event.status not in PUBLIC_STATUSES:
-                    continue
-                delivered = await publish_event_announcement(bot, settings, session, event, experience)
-                await record_announcement_status(session, event_id, delivered)
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                logger.exception("Event announcement retry failed event_id=%s", event_id)
+    semaphore = asyncio.Semaphore(4)
+
+    async def deliver(event_id):
+        async with semaphore:
+            await deliver_event_announcement(bot, settings, session_factory, event_id)
+
+    await asyncio.gather(*(deliver(event_id) for event_id in ids))
