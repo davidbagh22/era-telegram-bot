@@ -154,7 +154,11 @@ async def setup_media_topics(bot, settings, session_factory):
         async with session_factory() as session:
             topics = await read_topics(session, chat_id)
         ids = [topic_id(topics.get(key, {})) for key in TOPICS]
-        if not all(ids) or len(set(ids)) != len(TOPICS):
+        # A persisted thread_id alone is not proof that Telegram creation was
+        # acknowledged. Never publish navigation or report readiness while a
+        # route remains in creating/needs_attention state.
+        if (not all(topics.get(key, {}).get("state") == "ready" for key in TOPICS)
+                or not all(ids) or len(set(ids)) != len(TOPICS)):
             logger.warning("Media forum setup needs attention: incomplete_or_conflicting_registry")
             return {"status": "needs_attention", "topics": topics}
         for thread_id in ids:
