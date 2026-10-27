@@ -282,6 +282,14 @@ async def leaders_readonly_diagnostics(
             or (message_id is not None and (type(message_id) is not int or message_id <= 0))
         ):
             lines.append("  Карточка: данные квитанции повреждены; нужна ручная сверка.")
+        elif row is not None and data.get("mode") in (None, "forum") and (
+            message_id is None or message_state is None
+        ):
+            # setup_leaders_topics refuses to reuse a forum route without a
+            # confirmed panel receipt. The read-only diagnostic must expose
+            # the same uncertainty, not silently omit the panel line or show
+            # an unconfirmed message ID as a delivered card.
+            lines.append("  Карточка: подтверждённая панель темы отсутствует; нужна ручная сверка.")
         elif type(message_id) is int and message_id > 0:
             lines.append(f"  Карточка message_id={message_id} (из БД).")
 
