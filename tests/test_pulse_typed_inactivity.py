@@ -68,3 +68,23 @@ class PulseTypedInactivityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(updated["draft"]["done"], "Завершил проект")
         self.assertEqual(updated["questions"][1]["text"], "Какой результат?")
         self.assertNotIn("original_result_question", updated)
+
+    async def test_typed_custom_correction_clears_stale_inactivity_reason(self):
+        view, data = self._form()
+        update_activity_followup(data, question_index=0, selected="Не было активности")
+        data["draft"] = {"done": "Не было активности", "result": "Не было задач"}
+        data["index"] = 0
+        updated = await self._type_answer(view, "Завершил проект")
+        self.assertEqual(updated["draft"]["done"], "Завершил проект")
+        self.assertNotIn("result", updated["draft"])
+        self.assertEqual(updated["questions"][1]["text"], "Какой результат?")
+        self.assertNotIn("original_result_question", updated)
+
+    async def test_typed_custom_correction_after_choice_clears_old_result(self):
+        view, data = self._form()
+        data["draft"] = {"done": "Всё учтено", "result": "Старый результат"}
+        data["index"] = 0
+        updated = await self._type_answer(view, "Выполнил новую задачу")
+        self.assertEqual(updated["draft"]["done"], "Выполнил новую задачу")
+        self.assertNotIn("result", updated["draft"])
+        self.assertEqual(updated["questions"][1]["text"], "Какой результат?")
