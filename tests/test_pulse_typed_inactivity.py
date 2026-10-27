@@ -160,3 +160,51 @@ class PulseTypedInactivityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(updated["attachments"]["result"], "unrelated-file")
         session.flush.assert_awaited_once()
         show.assert_awaited_once()
+
+    async def _choose_done(self, view, choice_index):
+        call = SimpleNamespace(
+            data=f"pulse_form:choice:42:0:{choice_index}",
+            from_user=SimpleNamespace(id=77),
+            message=SimpleNamespace(answer=AsyncMock()),
+            answer=AsyncMock(),
+        )
+        session = SimpleNamespace(flush=AsyncMock())
+        with (
+            patch("app.handlers.pulse_private.access", new_callable=AsyncMock, return_value=True),
+            patch("app.handlers.pulse_private.current_form", new_callable=AsyncMock,
+                  side_effect=lambda *_args: (SimpleNamespace(id=42), view, view.pulse.answers_json)),
+            patch("app.handlers.pulse_private.show", new_callable=AsyncMock) as show,
+        ):
+            await pulse_action(
+                call, AsyncMock(), None, SimpleNamespace(leaders_chat_id=-100123),
+                session, SimpleNamespace(id=9),
+            )
+        session.flush.assert_awaited_once()
+        show.assert_awaited_once()
+        return view.pulse.answers_json
+
+    async def test_choice_replaces_attached_answer_without_leaking_old_file(self):
+        view, data = self._form()
+        data["draft"] = {"done": "Прикреплён материал", "result": "Готовый отчёт"}
+        data["attachments"] = {
+            "done": "stale-photo", "result": "valid-report", "media": "other-file",
+        }
+        updated = await self._choose_done(view, 0)
+        self.assertEqual(updated["draft"]["done"], "Всё учтено")
+        self.assertNotIn("done", updated["attachments"])
+        self.assertEqual(updated["attachments"]["result"], "valid-report")
+        self.assertEqual(updated["attachments"]["media"], "other-file")
+
+    async def test_inactivity_choice_removes_replaced_answer_and_result_files(self):
+        view, data = self._form()
+        data["draft"] = {"done": "Всё учтено", "result": "Старый результат"}
+        data["attachments"] = {
+            "done": "old-activity-photo", "result": "old-result-file", "media": "other-file",
+        }
+        updated = await self._choose_done(view, 1)
+        self.assertEqual(updated["draft"]["done"], "Не было активности")
+        self.assertNotIn("result", updated["draft"])
+        self.assertNotIn("done", updated["attachments"])
+        self.assertNotIn("result", updated["attachments"])
+        self.assertEqual(updated["attachments"]["media"], "other-file")
+        self.assertIn("Почему не было активности", updated["questions"][1]["text"])
