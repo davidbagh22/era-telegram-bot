@@ -199,22 +199,29 @@ async def _pin_navigation_once(bot, session_factory, chat_id, message_id):
 
     try:
         await bot.pin_chat_message(chat_id, message_id, disable_notification=True)
-    except (TelegramBadRequest, TelegramRetryAfter):
-        # A BadRequest or RetryAfter explicitly rejected the pin attempt;
-        # it can be retried after permissions or rate limits recover.
-        async with session_factory() as session:
-            await _lock(session, chat_id)
-            row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
-            if row is not None:
-                try:
-                    current = row.value if isinstance(row.value, dict) else json.loads(row.value)
-                except (TypeError, ValueError):
-                    current = {}
-                if current == {"message_id": message_id, "state": "pinning"}:
-                    row.value = json.dumps({"message_id": message_id, "state": "failed"})
-                    await session.commit()
-        logger.warning("Media navigation pin rejected or rate-limited chat_id=%s", chat_id)
-        return False
+    except (TelegramBadRequest, TelegramRetryAfter) as exc:
+        # Telegram may report an already-pinned message as BadRequest.
+        # That is an explicit confirmation, not a rejected pin operation.
+        # Only this narrow, idempotent error may reach the success receipt.
+        error_code = str(exc).upper().replace(" ", "_").replace("-", "_")
+        already_pinned = isinstance(exc, TelegramBadRequest) and any(
+            code in error_code for code in ("MESSAGE_IS_ALREADY_PINNED", "MESSAGE_ALREADY_PINNED")
+        )
+        if not already_pinned:
+            # An explicit rejection or RetryAfter can be retried after recovery.
+            async with session_factory() as session:
+                await _lock(session, chat_id)
+                row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
+                if row is not None:
+                    try:
+                        current = row.value if isinstance(row.value, dict) else json.loads(row.value)
+                    except (TypeError, ValueError):
+                        current = {}
+                    if current == {"message_id": message_id, "state": "pinning"}:
+                        row.value = json.dumps({"message_id": message_id, "state": "failed"})
+                        await session.commit()
+            logger.warning("Media navigation pin rejected or rate-limited chat_id=%s", chat_id)
+            return False
     except Exception:
         logger.exception("Media navigation pin outcome uncertain chat_id=%s", chat_id)
         return False
