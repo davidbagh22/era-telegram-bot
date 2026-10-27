@@ -35,7 +35,7 @@ import { getTelegramWebApp } from "../telegram/webApp";
 interface MediaScreenProps {
   onBack?: () => void;
   /** Deep-linked destination inside Media, e.g. from `#/media/guide`. */
-  initialView?: "guide" | "era" | "ksoors" | null;
+  initialView?: "guide" | "files" | "era" | "ksoors" | null;
 }
 
 type DeskView =
@@ -179,7 +179,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
   const [members, setMembers] = useState<MediaMember[]>([]);
   const [idea, setIdea] = useState("");
   const [ideaStatus, setIdeaStatus] = useState<string | null>(null);
-  const [view, setView] = useState<DeskView>(initialView === "guide" ? "guide" : "home");
+  const [view, setView] = useState<DeskView>(initialView === "guide" ? "guide" : initialView === "files" ? "files" : "home");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -188,7 +188,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
 
   useEffect(() => {
     setWorkspace(initialView === "era" || initialView === "ksoors" ? initialView : null);
-    setView(initialView === "guide" ? "guide" : "home");
+    setView(initialView === "guide" ? "guide" : initialView === "files" ? "files" : "home");
   }, [initialView]);
 
   const loadHub = useCallback(async () => {

@@ -12,7 +12,7 @@ export type CommunitySection = "opportunities" | "leaderboard" | "surveys" | "me
 interface CommunityScreenProps {
   initialSection?: CommunitySection | null;
   initialItemId?: number | null;
-  initialMediaRoute?: "guide" | "era" | "ksoors" | null;
+  initialMediaRoute?: "guide" | "files" | "era" | "ksoors" | null;
 }
 
 function toOpportunitySection(section: CommunitySection | null): OpportunitiesSection {

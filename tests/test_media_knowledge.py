@@ -272,3 +272,35 @@ class MediaKnowledgeTests(IsolatedAsyncioTestCase):
             await knowledge_item(call, member, session, self.settings)
             self.assertIn("временно недоступен", call.message.answer.await_args_list[-1].args[0])
             self.assertNotIn("reply_markup", call.message.answer.await_args_list[-1].kwargs)
+
+    async def test_native_knowledge_overflow_opens_full_catalogue_directly(self):
+        from app.handlers.media_management import knowledge_command
+        async with self.factory() as session:
+            for index in range(21):
+                await self.create(session, {
+                    "kind": "text", "category": "journalism",
+                    "title": f"Инструкция {index:02d}",
+                    "description": "Проверка полного каталога",
+                }, key=f"overflow-{index}")
+            member = await session.get(User, self.ids[2])
+            message = SimpleNamespace(
+                from_user=SimpleNamespace(id=member.telegram_id),
+                text="/media_knowledge",
+                answer=AsyncMock(),
+            )
+            self.settings.miniapp_url = "https://era.example/app/"
+            self.settings.miniapp_auth_secret = "test-secret"
+            await knowledge_command(message, member, session, self.settings)
+            markup = message.answer.call_args.kwargs["reply_markup"]
+            self.assertEqual(len(markup.inline_keyboard), 21)
+            self.assertIn("Показаны первые 20", message.answer.call_args.args[0])
+            self.assertTrue(markup.inline_keyboard[0][0].callback_data.startswith("media:knowledge:"))
+            button = markup.inline_keyboard[-1][0]
+            self.assertIsNone(button.url)
+            self.assertIn("eraPath=media%2Ffiles", button.web_app.url)
+
+            # Without an authorized Mini App, no dead external link is shown.
+            self.settings.miniapp_auth_secret = ""
+            message.answer.reset_mock()
+            await knowledge_command(message, member, session, self.settings)
+            self.assertEqual(len(message.answer.call_args.kwargs["reply_markup"].inline_keyboard), 20)
