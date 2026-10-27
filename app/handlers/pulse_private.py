@@ -289,6 +289,18 @@ async def pulse_action(
             await call.answer("Чтобы отправить Пульс, ответь на обязательные вопросы.", show_alert=True)
             await show(call.message, data)
             return
+    # A previously submitted preview button can be pressed again. Repeating
+    # the same answers must not rerun report submission or its notifications.
+    # A changed draft or attachment remains eligible for an explicit resubmit.
+    if (
+        action == "submit"
+        and view.report.submitted_at is not None
+        and "submitted" in data
+        and data["submitted"] == data.get("draft")
+        and data.get("submitted_attachments", {}) == data.get("attachments", {})
+    ):
+        await call.answer("Этот Пульс уже отправлен.")
+        return
     await call.answer()
     if action == "choice" and data["index"] < len(data["questions"]):
         question = data["questions"][data["index"]]
