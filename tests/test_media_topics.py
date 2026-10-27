@@ -127,6 +127,28 @@ class MediaTopicsTests(IsolatedAsyncioTestCase):
         self.assertEqual((await self.setup())["status"], "ready")
         self.assertEqual(self.bot.pin_chat_message.await_count, 1)
 
+    async def test_media_topics_command_handles_unconfirmed_pin_and_unknown_status(self):
+        # /media_topics must explain uncertain pinning rather than crash with
+        # KeyError; unknown future statuses must also fail gracefully.
+        from app.handlers.media_management import topics_command
+
+        message = SimpleNamespace(answer=AsyncMock())
+        for status, expected in (
+            ("navigation_pin_unconfirmed", "закрепление не подтверждено"),
+            ("future_status", "Статус настройки требует проверки"),
+        ):
+            with (
+                patch("app.handlers.media_management.guard", new=AsyncMock(return_value=True)),
+                patch("app.services.media_topics_service.setup_media_topics",
+                      new=AsyncMock(return_value={"status": status})),
+                patch("app.services.media_topics_service.read_topics",
+                      new=AsyncMock(return_value={})),
+            ):
+                async with self.factory() as session:
+                    await topics_command(message, None, session, self.settings, self.bot)
+            self.assertIn(expected, message.answer.await_args.args[0])
+        self.assertEqual(message.answer.await_count, 2)
+
     async def test_navigation_pin_explicit_rejection_can_be_retried(self):
         self.bot.pin_chat_message.side_effect = [
             TelegramBadRequest(

@@ -37,9 +37,10 @@ async def topics_command(message: Message, user: User | None, session: AsyncSess
         "missing_topic_or_pin_permissions": "Боту нужны права управления темами и закрепления сообщений.",
         "needs_attention": "Есть неподтверждённое создание темы. Укажите её ссылку через /media_topic ключ ссылка.",
         "navigation_unconfirmed": "Доставка навигации требует проверки.",
+        "navigation_pin_unconfirmed": "Навигация отправлена, но закрепление не подтверждено. Проверьте сообщение и права бота.",
         "telegram_unavailable": "Telegram временно недоступен. Настройка будет проверена повторно.",
     }
-    lines = [statuses[result["status"]], ""]
+    lines = [statuses.get(result["status"], "Статус настройки требует проверки."), ""]
     for key, name in TOPICS.items():
         value = topics.get(key, {})
         lines.append(f"{name} ({key}): {topic_id(value) or 'не подтверждена'}")
