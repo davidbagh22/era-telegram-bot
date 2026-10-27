@@ -75,7 +75,7 @@ class PulseRepeatSubmissionTests(unittest.IsolatedAsyncioTestCase):
         inbox.assert_awaited_once()
         state.clear.assert_awaited_once()
         call.answer.assert_awaited_once_with()
-        self.assertEqual(data["submitted_attachments"]["result"], "photo-2")
+        self.assertEqual(view.pulse.answers_json["submitted_attachments"]["result"], "photo-2")
         call.message.answer.assert_awaited_once()
 
     async def test_changed_answer_allows_explicit_resubmission(self):
@@ -85,4 +85,4 @@ class PulseRepeatSubmissionTests(unittest.IsolatedAsyncioTestCase):
         submit.assert_awaited_once()
         mark.assert_awaited_once()
         inbox.assert_awaited_once()
-        self.assertEqual(data["submitted"]["result"], "Уточнённый отчёт")
+        self.assertEqual(view.pulse.answers_json["submitted"]["result"], "Уточнённый отчёт")
