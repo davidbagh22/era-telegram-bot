@@ -121,6 +121,10 @@ async def _ensure_topic(bot, factory, chat_id, key):
     except (TelegramRetryAfter, TelegramBadRequest):
         # Telegram explicitly rejected creation: retry is safe next cycle.
         async with factory() as session:
+            # Serialize rejected-creation cleanup with an administrator's
+            # bind_topic transaction. Otherwise the repair could commit
+            # between reading "creating" and deleting the row.
+            await _lock(session, chat_id)
             row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
             if row:
                 # An administrator may have repaired this topic while the

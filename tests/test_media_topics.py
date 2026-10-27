@@ -123,6 +123,35 @@ class MediaTopicsTests(IsolatedAsyncioTestCase):
         await self.setup()
         self.assertEqual(self.bot.create_forum_topic.await_count, 8)
 
+    async def test_rejected_creation_cleanup_locks_before_reading_admin_repair(self):
+        # A repair committed at the cleanup lock boundary must survive the
+        # failed Telegram creation; otherwise a stale "creating" row can be
+        # deleted after the administrator has bound the real thread.
+        from app.services.media_topics_service import _ensure_topic, _lock
+
+        original_lock = _lock
+        lock_calls = 0
+
+        async def repair_at_cleanup_lock(session, chat_id):
+            nonlocal lock_calls
+            lock_calls += 1
+            if lock_calls == 2:
+                async with self.factory() as admin_session:
+                    await bind_topic(admin_session, chat_id, "important", 99)
+            await original_lock(session, chat_id)
+
+        self.bot.create_forum_topic.side_effect = TelegramBadRequest(
+            method=CreateForumTopic(chat_id=-10012345, name=TOPICS["important"]),
+            message="not enough rights",
+        )
+        with patch("app.services.media_topics_service._lock", side_effect=repair_at_cleanup_lock):
+            await _ensure_topic(self.bot, self.factory, -10012345, "important")
+        self.assertEqual(lock_calls, 3)  # claim, cleanup, administrator bind
+        async with self.factory() as session:
+            self.assertEqual(await delivery_topic(session, -10012345, "important"), 99)
+        await _ensure_topic(self.bot, self.factory, -10012345, "important")
+        self.assertEqual(self.bot.create_forum_topic.await_count, 1)
+
     async def test_admin_repair_survives_successful_inflight_creation(self):
         next_id = iter(range(10, 18))
 
