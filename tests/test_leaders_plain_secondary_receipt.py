@@ -2,6 +2,7 @@
 import json
 import unittest
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.base import Base
@@ -50,7 +51,9 @@ class PlainSecondaryReceiptTests(unittest.IsolatedAsyncioTestCase):
             {"mode": "plain", "thread_id": None, "message_id": True, "message_state": "sent"},
         ):
             async with self.sessions() as session:
-                row = await session.get(AppSetting, "leaders_forum:-1001:tasks")
+                row = await session.scalar(select(AppSetting).where(
+                    AppSetting.key == "leaders_forum:-1001:tasks"
+                ))
                 if row is None:
                     session.add(AppSetting(key="leaders_forum:-1001:tasks", value=json.dumps(data)))
                 else:
