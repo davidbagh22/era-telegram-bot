@@ -662,6 +662,42 @@ class LeadersTopicRoutingSafetyTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await topic_id(session, -1001, "tasks"), expected)
                 self.assertEqual(await delivery_topic(session, -1001, "tasks"), expected)
 
+    async def test_forum_explicit_uncertain_panel_receipts_block_routing(self):
+        from app.services.leaders_topics_service import delivery_topic, topic_id
+
+        unsafe = (
+            '{"mode":"forum","thread_id":7,"message_state":"sending"}',
+            '{"mode":"forum","thread_id":7,"message_state":"uncertain","message_id":17}',
+            '{"mode":"forum","thread_id":7,"message_state":"sent"}',
+            '{"mode":"forum","thread_id":7,"message_id":17}',
+            '{"mode":"forum","thread_id":7,"message_id":true,"message_state":"sent"}',
+            '{"mode":"forum","thread_id":7,"message_id":"17","message_state":"sent"}',
+            '{"mode":"forum","thread_id":7,"message_id":0,"message_state":"sent"}',
+            '{"mode":"forum","thread_id":7,"message_id":[],"message_state":{}}',
+        )
+        for value in unsafe:
+            with self.subTest(value=value):
+                session = SimpleNamespace(
+                    scalar=AsyncMock(return_value=SimpleNamespace(value=value)),
+                    scalars=AsyncMock(),
+                )
+                self.assertIsNone(await topic_id(session, -1001, "tasks"))
+                with self.assertRaisesRegex(ValueError, "Панель темы"):
+                    await delivery_topic(session, -1001, "tasks")
+                session.scalars.assert_not_awaited()
+
+    async def test_forum_confirmed_panel_receipt_still_allows_routing(self):
+        from app.services.leaders_topics_service import delivery_topic, topic_id
+
+        value = '{"mode":"forum","thread_id":7,"message_id":17,"message_state":"sent"}'
+        session = SimpleNamespace(
+            scalar=AsyncMock(return_value=SimpleNamespace(value=value)),
+            scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [])),
+        )
+        self.assertEqual(await topic_id(session, -1001, "tasks"), 7)
+        self.assertEqual(await delivery_topic(session, -1001, "tasks"), 7)
+
+
     async def test_plain_tasks_require_confirmed_panel_receipt(self):
         from app.services.leaders_topics_service import delivery_topic, topic_id
 
