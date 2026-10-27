@@ -57,6 +57,26 @@ async def _has_duplicate_thread_route(session, chat_id: int, key: str, thread_id
     return False
 
 
+async def _has_duplicate_panel_route(session, chat_id: int, key: str, message_id: int) -> bool:
+    """A panel message claimed by two destinations cannot verify either route.
+
+    Setup validates all panel receipts before making Telegram writes, but
+    delivery must independently fail closed if settings change afterwards.
+    """
+    other_keys = [
+        f"leaders_forum:{chat_id}:{other}"
+        for other in TOPICS if other != key
+    ]
+    rows = (await session.scalars(
+        select(AppSetting).where(AppSetting.key.in_(other_keys))
+    )).all()
+    for row in rows:
+        other_id = _topic_data(row).get("message_id")
+        if type(other_id) is int and other_id == message_id:
+            return True
+    return False
+
+
 async def topic_id(session, chat_id: int, key: str) -> int | None:
     row = await session.scalar(select(AppSetting).where(AppSetting.key == f"leaders_forum:{chat_id}:{key}"))
     data = _topic_data(row)
@@ -67,6 +87,9 @@ async def topic_id(session, chat_id: int, key: str) -> int | None:
     if _forum_panel_receipt_is_unsafe(data):
         return None
     if await _has_duplicate_thread_route(session, chat_id, key, thread_id):
+        return None
+    panel_id = data.get("message_id")
+    if type(panel_id) is int and await _has_duplicate_panel_route(session, chat_id, key, panel_id):
         return None
     return thread_id
 
@@ -109,6 +132,9 @@ async def delivery_topic(session, chat_id, key):
         raise ValueError('Панель темы лидеров не подтверждена. Требуется ручная сверка.')
     if await _has_duplicate_thread_route(session, chat_id, key, thread_id):
         raise ValueError('Темы лидеров используют одинаковый thread_id. Требуется ручная сверка.')
+    panel_id = data.get('message_id')
+    if type(panel_id) is int and await _has_duplicate_panel_route(session, chat_id, key, panel_id):
+        raise ValueError('Темы лидеров используют одинаковый message_id панели. Требуется ручная сверка.')
     return thread_id
 
 
