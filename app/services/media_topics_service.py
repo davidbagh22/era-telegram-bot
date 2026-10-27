@@ -235,6 +235,78 @@ async def _pin_navigation_once(bot, session_factory, chat_id, message_id):
     return True
 
 
+
+async def _reopen_topic_once(bot, session_factory, chat_id, key, thread_id):
+    """Avoid repeated Telegram reopen calls; preserve uncertain outcomes.
+
+    A topic already acknowledged as open does not need a reopen on each
+    scheduler cycle. A durable claim prevents parallel workers from repeating
+    a request whose outcome might be unknown.
+    """
+    setting_key = f"media_forum:{chat_id}:reopen:{key}:{thread_id}:v1"
+    async with session_factory() as session:
+        await _lock(session, chat_id)
+        row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
+        if row is not None:
+            try:
+                current = row.value if isinstance(row.value, dict) else json.loads(row.value)
+            except (TypeError, ValueError):
+                return False
+            if current == {"state": "open"}:
+                return True
+            if current != {"state": "failed"}:
+                # An in-flight or uncertain request must not be repeated.
+                return False
+            row.value = json.dumps({"state": "opening"})
+        else:
+            session.add(AppSetting(key=setting_key, value=json.dumps({"state": "opening"})))
+        await session.commit()
+
+    try:
+        await bot.reopen_forum_topic(chat_id, thread_id)
+    except TelegramBadRequest as exc:
+        if "TOPIC_NOT_MODIFIED" not in str(exc).upper():
+            # Explicit rejection means Telegram did not reopen the topic.
+            async with session_factory() as session:
+                await _lock(session, chat_id)
+                row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
+                if row is not None:
+                    current = row.value if isinstance(row.value, dict) else json.loads(row.value)
+                    if current == {"state": "opening"}:
+                        row.value = json.dumps({"state": "failed"})
+                        await session.commit()
+            return False
+    except TelegramRetryAfter:
+        # Rate limiting explicitly rejects the request; retry on a later run.
+        async with session_factory() as session:
+            await _lock(session, chat_id)
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
+            if row is not None:
+                current = row.value if isinstance(row.value, dict) else json.loads(row.value)
+                if current == {"state": "opening"}:
+                    row.value = json.dumps({"state": "failed"})
+                    await session.commit()
+        return False
+    except Exception:
+        logger.exception("Media topic reopen outcome uncertain key=%s", key)
+        return False
+
+    async with session_factory() as session:
+        await _lock(session, chat_id)
+        row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
+        if row is None:
+            return False
+        try:
+            current = row.value if isinstance(row.value, dict) else json.loads(row.value)
+        except (TypeError, ValueError):
+            return False
+        if current != {"state": "opening"}:
+            return False
+        row.value = json.dumps({"state": "open"})
+        await session.commit()
+    return True
+
+
 async def setup_media_topics(bot, settings, session_factory):
     chat_id = settings.media_chat_id
     if not chat_id or chat_id in {settings.general_chat_id, settings.leaders_chat_id}:
@@ -263,12 +335,9 @@ async def setup_media_topics(bot, settings, session_factory):
                 or not all(ids) or len(set(ids)) != len(TOPICS)):
             logger.warning("Media forum setup needs attention: incomplete_or_conflicting_registry")
             return {"status": "needs_attention", "topics": topics}
-        for thread_id in ids:
-            try:
-                await bot.reopen_forum_topic(chat_id, thread_id)
-            except TelegramBadRequest as exc:
-                if "TOPIC_NOT_MODIFIED" not in str(exc).upper():
-                    return {"status": "needs_attention", "topics": topics}
+        for key, thread_id in zip(TOPICS, ids):
+            if not await _reopen_topic_once(bot, session_factory, chat_id, key, thread_id):
+                return {"status": "needs_attention", "topics": topics}
         lines = ["Медиа ЭРА · навигация", "", "Выберите раздел:"]
         for (key, name), thread_id in zip(TOPICS.items(), ids):
             lines.append(f"{name} — https://t.me/c/{str(chat_id)[4:]}/{thread_id}")
