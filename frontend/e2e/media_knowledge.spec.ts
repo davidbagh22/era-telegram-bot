@@ -27,3 +27,10 @@ test("media knowledge supports real text creation, search, editing, pinning and 
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   }
 });
+
+test("media catalogue deep link opens the full knowledge screen", async ({ page }) => {
+  await page.goto("/app/?devTelegramId=900003&eraPath=media%2Ffiles");
+  await expect(page.getByRole("heading", { name: "База знаний" })).toBeVisible();
+  await expect(page.getByLabel("Поиск в базе знаний", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#\/media\/files$/);
+});
