@@ -103,6 +103,30 @@ class MediaTopicsTests(IsolatedAsyncioTestCase):
         self.assertEqual(self.bot.create_forum_topic.await_count, 8)
         self.assertEqual(self.bot.pin_chat_message.await_count, 1)
 
+    async def test_navigation_pin_already_pinned_is_confirmed_and_reused(self):
+        # A confirmed Telegram no-op must not leave the forum stuck in failed.
+        self.bot.pin_chat_message.side_effect = TelegramBadRequest(
+            method=PinChatMessage(chat_id=-10012345, message_id=90),
+            message="Bad Request: message is already pinned",
+        )
+        self.assertEqual((await self.setup())["status"], "ready")
+        self.assertEqual((await self.setup())["status"], "ready")
+        self.assertEqual(self.bot.pin_chat_message.await_count, 1)
+        async with self.factory() as session:
+            row = await session.scalar(select(AppSetting).where(
+                AppSetting.key == "media_forum:-10012345:navigation_pin:v1"
+            ))
+            self.assertEqual(json.loads(row.value), {"message_id": 90, "state": "pinned"})
+
+    async def test_navigation_pin_already_pinned_machine_code_is_confirmed(self):
+        self.bot.pin_chat_message.side_effect = TelegramBadRequest(
+            method=PinChatMessage(chat_id=-10012345, message_id=90),
+            message="MESSAGE_ALREADY_PINNED",
+        )
+        self.assertEqual((await self.setup())["status"], "ready")
+        self.assertEqual((await self.setup())["status"], "ready")
+        self.assertEqual(self.bot.pin_chat_message.await_count, 1)
+
     async def test_navigation_pin_explicit_rejection_can_be_retried(self):
         self.bot.pin_chat_message.side_effect = [
             TelegramBadRequest(
