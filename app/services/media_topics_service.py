@@ -123,14 +123,39 @@ async def _ensure_topic(bot, factory, chat_id, key):
         async with factory() as session:
             row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
             if row:
-                await session.delete(row)
-                await session.commit()
+                # An administrator may have repaired this topic while the
+                # Telegram request was in flight. Never erase that binding.
+                try:
+                    current = row.value if isinstance(row.value, dict) else json.loads(row.value)
+                except (TypeError, ValueError):
+                    current = {}
+                if isinstance(current, dict) and current.get("state") == "creating":
+                    await session.delete(row)
+                    await session.commit()
         return
     except Exception:
         logger.exception("Media topic creation needs binding key=%s", key)
         return
     async with factory() as session:
-        await bind_topic(session, chat_id, key, thread_id)
+        await _lock(session, chat_id)
+        row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
+        if row is None:
+            logger.warning("Media topic claim disappeared during creation key=%s", key)
+            return
+        try:
+            current = row.value if isinstance(row.value, dict) else json.loads(row.value)
+        except (TypeError, ValueError):
+            current = {}
+        if not isinstance(current, dict) or current.get("state") != "creating":
+            # Do not overwrite an explicit repair made during Telegram I/O.
+            logger.warning("Media topic claim changed during creation key=%s", key)
+            return
+        topics = await read_topics(session, chat_id)
+        if any(other != key and topic_id(value) == thread_id for other, value in topics.items()):
+            logger.warning("Media topic creation ID conflicts with another route key=%s", key)
+            return
+        row.value = json.dumps({"thread_id": thread_id, "state": "ready"})
+        await session.commit()
 
 
 async def setup_media_topics(bot, settings, session_factory):
