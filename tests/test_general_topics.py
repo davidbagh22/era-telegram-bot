@@ -5,6 +5,7 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy import select
 
 from app.config import Settings
 from app.database.base import Base
@@ -68,6 +69,36 @@ class GeneralTopicsTests(IsolatedAsyncioTestCase):
             self.assertFalse(await send_general_topic(self.bot, self.settings, "announcements", "Event"))
         self.bot.create_forum_topic.assert_not_awaited()
         self.bot.send_message.assert_not_awaited()
+
+    async def test_invalid_saved_routes_neither_deliver_nor_create_replacement_topics(self):
+        async with self.sessions() as session:
+            row = AppSetting(key="general_forum:-100123:notifications", value="{}")
+            session.add(row)
+            await session.commit()
+            for value in ("{}", "null", "[]", "{broken", *[
+                json.dumps({"thread_id": thread}) for thread in (True, False, 0, -7, 1.5, "-7", "0", "bad")
+            ]):
+                with self.subTest(value=value):
+                    row.value = value
+                    await session.commit()
+                    with patch("app.services.general_topics_service._session_factory", return_value=self.sessions):
+                        self.assertIsNone(await ensure_topic(self.bot, self.settings, "notifications"))
+                        self.assertFalse(await send_general_topic(self.bot, self.settings, "notifications", "CI", delivery_key="invalid-route"))
+                    await session.refresh(row)
+                    self.assertEqual(row.value, value)
+        self.bot.get_chat.assert_not_awaited()
+        self.bot.create_forum_topic.assert_not_awaited()
+        self.bot.send_message.assert_not_awaited()
+
+    async def test_saved_positive_ids_in_json_string_or_object_remain_usable(self):
+        async with self.sessions() as session:
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == "general_forum:-100123:announcements"))
+            for value in ('{"thread_id":101}', '{"thread_id":"101"}', {"thread_id": 101}):
+                with self.subTest(value=value):
+                    row.value = value
+                    await session.commit()
+                    self.assertEqual(await ensure_topic(self.bot, self.settings, "announcements", session_factory=self.sessions), 101)
+        self.bot.create_forum_topic.assert_not_awaited()
 
     async def test_daily_content_only_targets_channel(self):
         with patch("app.services.daily_public_content_service.datetime") as clock, patch("app.services.daily_public_content_service.scheduled_minute", return_value=540), patch("app.services.daily_public_content_service._deliver_once", new=AsyncMock()) as deliver:
