@@ -265,8 +265,16 @@ async def knowledge_command(message: Message, user: User | None, session: AsyncS
     text = "База знаний медиа\n\n" + ("Выберите материал." if items else "По запросу материалов пока нет.")
     text += "\nПоиск: /media_knowledge слово"
     if len(items) > 20:
-        text += "\nПоказаны первые 20 материалов. Уточните поиск или откройте каталог в приложении."
-    await message.answer(escape(text), reply_markup=keyboard(rows) if rows else None)
+        text += "\nПоказаны первые 20 материалов. Уточните поиск."
+    buttons = [[InlineKeyboardButton(text=label, callback_data=payload) for label, payload in row] for row in rows]
+    if settings.effective_miniapp_url:
+        from app.utils.deep_links import miniapp_path_url
+        buttons.append([InlineKeyboardButton(
+            text="Весь каталог в приложении",
+            web_app=WebAppInfo(url=miniapp_path_url(settings.effective_miniapp_url, "media/files")),
+        )])
+    await message.answer(escape(text),
+                         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None)
 
 
 @router.callback_query(F.data.regexp(r"^media:knowledge:[0-9]+$"))
