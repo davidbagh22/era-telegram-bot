@@ -116,6 +116,10 @@ class LeadersTopicModeRoutingTests(unittest.IsolatedAsyncioTestCase):
                             await delivery_topic(session, -1001, key)
         async with self.factory() as session:
             await session.execute(delete(AppSetting))
+            session.add(AppSetting(
+                key="leaders_forum:-1001:tasks",
+                value='{"mode":"plain","message_id":91,"message_state":"sent"}',
+            ))
             for key in ("pulse", "important"):
                 session.add(AppSetting(
                     key=f"leaders_forum:-1001:{key}",
