@@ -4,7 +4,7 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
 from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
-from aiogram.methods import CreateForumTopic, PinChatMessage
+from aiogram.methods import CreateForumTopic, PinChatMessage, ReopenForumTopic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -51,6 +51,44 @@ class MediaTopicsTests(IsolatedAsyncioTestCase):
         self.assertEqual(call.kwargs["delivery_key"], "media-forum:-10012345:navigation:v1")
         self.bot.pin_chat_message.assert_awaited_with(-10012345, 90, disable_notification=True)
         self.assertEqual(self.bot.pin_chat_message.await_count, 1)
+        self.assertEqual(self.bot.reopen_forum_topic.await_count, 8)
+
+    async def test_reopen_explicit_rejection_retries_once_then_reuses_receipt(self):
+        self.bot.reopen_forum_topic.side_effect = TelegramBadRequest(
+            method=ReopenForumTopic(chat_id=-10012345, message_thread_id=10),
+            message="not enough rights",
+        )
+        self.assertEqual((await self.setup())["status"], "needs_attention")
+        self.send.assert_not_awaited()
+        self.bot.reopen_forum_topic.side_effect = None
+        self.assertEqual((await self.setup())["status"], "ready")
+        self.assertEqual((await self.setup())["status"], "ready")
+        self.assertEqual(self.bot.reopen_forum_topic.await_count, 9)
+        self.assertEqual(self.bot.create_forum_topic.await_count, 8)
+
+    async def test_reopen_network_outcome_is_not_retried(self):
+        self.bot.reopen_forum_topic.side_effect = TelegramNetworkError(
+            method=ReopenForumTopic(chat_id=-10012345, message_thread_id=10),
+            message="timeout",
+        )
+        self.assertEqual((await self.setup())["status"], "needs_attention")
+        self.assertEqual((await self.setup())["status"], "needs_attention")
+        self.assertEqual(self.bot.reopen_forum_topic.await_count, 1)
+        self.send.assert_not_awaited()
+        async with self.factory() as session:
+            row = await session.scalar(select(AppSetting).where(
+                AppSetting.key == "media_forum:-10012345:reopen:important:10:v1"
+            ))
+            self.assertEqual(json.loads(row.value), {"state": "opening"})
+
+    async def test_reopen_topic_not_modified_is_confirmed_once(self):
+        self.bot.reopen_forum_topic.side_effect = TelegramBadRequest(
+            method=ReopenForumTopic(chat_id=-10012345, message_thread_id=10),
+            message="TOPIC_NOT_MODIFIED",
+        )
+        self.assertEqual((await self.setup())["status"], "ready")
+        self.assertEqual((await self.setup())["status"], "ready")
+        self.assertEqual(self.bot.reopen_forum_topic.await_count, 8)
 
     async def test_navigation_pin_explicit_rejection_can_be_retried(self):
         self.bot.pin_chat_message.side_effect = [
