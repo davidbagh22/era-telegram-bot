@@ -199,9 +199,9 @@ async def _pin_navigation_once(bot, session_factory, chat_id, message_id):
 
     try:
         await bot.pin_chat_message(chat_id, message_id, disable_notification=True)
-    except TelegramBadRequest:
-        # Telegram explicitly rejected the request; this is safe to retry
-        # after permissions or chat settings have been repaired.
+    except (TelegramBadRequest, TelegramRetryAfter):
+        # A BadRequest or RetryAfter explicitly rejected the pin attempt;
+        # it can be retried after permissions or rate limits recover.
         async with session_factory() as session:
             await _lock(session, chat_id)
             row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
@@ -213,7 +213,7 @@ async def _pin_navigation_once(bot, session_factory, chat_id, message_id):
                 if current == {"message_id": message_id, "state": "pinning"}:
                     row.value = json.dumps({"message_id": message_id, "state": "failed"})
                     await session.commit()
-        logger.warning("Media navigation pin rejected chat_id=%s", chat_id)
+        logger.warning("Media navigation pin rejected or rate-limited chat_id=%s", chat_id)
         return False
     except Exception:
         logger.exception("Media navigation pin outcome uncertain chat_id=%s", chat_id)
