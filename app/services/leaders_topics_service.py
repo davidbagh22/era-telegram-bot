@@ -217,6 +217,7 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                                 'topic': other_key,
                             }
                 text,keyboard=await panel(session,chat_id,'tasks',me.username)
+                snapshot = {"text": text, "keyboard": keyboard.model_dump(mode="json") if keyboard else None}
                 if not data.get('message_id'):
                     if existing is None:
                         existing=AppSetting(key=f'leaders_forum:{chat_id}:tasks',value='{}')
@@ -235,12 +236,17 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                     message_id = getattr(sent, 'message_id', None)
                     if type(message_id) is not int or message_id <= 0:
                         return {'status': 'panel_needs_review', 'chat_id': chat_id}
-                    data={'mode':'plain','thread_id':None,'message_id':message_id,'message_state':'sent'}
-                else:
+                    data={'mode':'plain','thread_id':None,'message_id':message_id,'message_state':'sent',
+                          'panel':snapshot}
+                elif data.get('panel') != snapshot:
+                    # A confirmed panel with unchanged content needs no Telegram
+                    # edit on the next five-minute reconciliation pass.
                     try:
                         await bot.edit_message_text(chat_id=chat_id,message_id=data['message_id'],text=text,reply_markup=keyboard)
                     except Exception as exc:
                         if 'message is not modified' not in str(exc).lower(): raise
+                    # Legacy receipts without a snapshot are reconciled once.
+                    data['panel'] = snapshot
                 existing.value=json.dumps(data)
                 for key in ('important','pulse'):
                     row=await session.scalar(select(AppSetting).where(AppSetting.key==f'leaders_forum:{chat_id}:{key}'))
