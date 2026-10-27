@@ -128,6 +128,9 @@ def update_activity_followup(data, *, question_index: int, selected: str) -> Non
     ):
         data["draft"] = dict(data.get("draft", {}))
         data["draft"].pop("result", None)
+        # A replaced result must not retain evidence from the old answer.
+        data["attachments"] = dict(data.get("attachments", {}))
+        data["attachments"].pop("result", None)
 
 
 def preview_pages(data, max_chars=3500):
@@ -316,7 +319,10 @@ async def pulse_action(
         and not data["questions"][data["index"]]["required"]
     ):
         data["draft"] = dict(data["draft"])
-        data["draft"].pop(data["questions"][data["index"]]["key"], None)
+        skipped_key = data["questions"][data["index"]]["key"]
+        data["draft"].pop(skipped_key, None)
+        data["attachments"] = dict(data.get("attachments", {}))
+        data["attachments"].pop(skipped_key, None)
         data["index"] += 1
     elif action == "submit":
         if data["index"] < len(data["questions"]) or any(
