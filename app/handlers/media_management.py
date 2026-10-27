@@ -21,6 +21,50 @@ class MediaLeaderStates(StatesGroup):
     target = State()
 
 
+@router.message(Command("media_topics"))
+async def topics_command(message: Message, user: User | None, session: AsyncSession, settings: Settings, bot):
+    if not await guard(message, user, session, settings):
+        return
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from app.services.media_topics_service import TOPICS, read_topics, setup_media_topics, topic_id
+    factory = async_sessionmaker(session.bind, expire_on_commit=False)
+    result = await setup_media_topics(bot, settings, factory)
+    topics = await read_topics(session, settings.media_chat_id) if settings.media_chat_id else {}
+    statuses = {
+        "ready": "Разделы созданы, навигация закреплена.",
+        "chat_not_configured": "Нужна отдельная привязка медиа-чата: /bind media в самом чате.",
+        "forum_disabled": "В медиа-чате необходимо включить темы.",
+        "missing_topic_or_pin_permissions": "Боту нужны права управления темами и закрепления сообщений.",
+        "needs_attention": "Есть неподтверждённое создание темы. Укажите её ссылку через /media_topic ключ ссылка.",
+        "navigation_unconfirmed": "Доставка навигации требует проверки.",
+        "telegram_unavailable": "Telegram временно недоступен. Настройка будет проверена повторно.",
+    }
+    lines = [statuses[result["status"]], ""]
+    for key, name in TOPICS.items():
+        value = topics.get(key, {})
+        lines.append(f"{name} ({key}): {topic_id(value) or 'не подтверждена'}")
+    await message.answer("\n".join(lines))
+
+
+@router.message(Command("media_topic"))
+async def bind_topic_command(message: Message, user: User | None, session: AsyncSession, settings: Settings):
+    if not await guard(message, user, session, settings):
+        return
+    import re
+    from app.services.media_topics_service import bind_topic
+    parts = (message.text or "").split()
+    match = re.fullmatch(r"https://t\.me/c/([1-9][0-9]*)/([1-9][0-9]*)", parts[2]) if len(parts) == 3 else None
+    if not match or int("-100" + match[1]) != settings.media_chat_id:
+        await message.answer("Формат: /media_topic ключ https://t.me/c/чат/тема. Ссылка должна вести в привязанный медиа-чат.")
+        return
+    try:
+        await bind_topic(session, settings.media_chat_id, parts[1], int(match[2]))
+    except ValueError:
+        await message.answer("Неизвестный раздел или тема уже используется другим разделом.")
+        return
+    await message.answer("Тема привязана. /media_topics — проверить настройку.")
+
+
 @router.message(Command("media_calendar"))
 async def calendar_command(message: Message, user: User | None, session: AsyncSession, settings: Settings):
     from app.services.media_workspace_service import require_access

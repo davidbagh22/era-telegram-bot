@@ -39,11 +39,18 @@ class MediaPermissionsOut(BaseModel):
     publications_manage: bool
 
 
+class MediaChatTopicOut(BaseModel):
+    key: str
+    title: str
+    url: str
+
+
 class MediaHubOut(BaseModel):
     access_level: Literal["no_access", "pending", "member", "leader", "admin"]
     media_role: Literal["media_leader", "media_member"] | None = None
     permissions: MediaPermissionsOut
     chat_url: str
+    chat_topics: list[MediaChatTopicOut] = Field(default_factory=list)
     channel_url: str
     open_tasks: list[MediaTaskOut]
     my_tasks: list[MediaTaskOut]
@@ -272,10 +279,12 @@ async def read_media_hub(
     open_tasks = await media_service.media_tasks_for_user(session, user.id, mine=False)
     my_tasks = await media_service.media_tasks_for_user(session, user.id, mine=True)
     my_ids = {task.id for task in my_tasks}
+    from app.services.media_topics_service import topic_links
     return MediaHubOut(
         access_level=level,
         permissions=permissions,
         chat_url=settings.media_chat_url,
+        chat_topics=await topic_links(session, settings.media_chat_id),
         media_role="media_leader" if level == "leader" else "media_member" if level == "member" else None,
         channel_url=settings.era_channel_url,
         open_tasks=[_task_out(task) for task in open_tasks if task.id not in my_ids],

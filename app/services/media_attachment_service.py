@@ -182,6 +182,10 @@ async def post_missing_media_task_cards(
     if settings.media_chat_id is None:
         return
     async with session_factory() as session:
+        from app.services.media_topics_service import delivery_topic
+        thread_id = await delivery_topic(session, settings.media_chat_id, "tasks")
+        if thread_id is None:
+            return
         rows = (
             await session.execute(
                 select(Task, MediaContentTask)
@@ -240,7 +244,7 @@ async def post_missing_media_task_cards(
                     continue
                 raise
             try:
-                message = await bot.send_message(settings.media_chat_id, text)
+                message = await bot.send_message(settings.media_chat_id, text, message_thread_id=thread_id)
             except TelegramAPIError as exc:
                 # Keep the claim even for network errors: the message might
                 # already exist. An administrator must reconcile it manually.

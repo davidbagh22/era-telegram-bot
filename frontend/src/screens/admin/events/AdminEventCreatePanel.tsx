@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   createEventDraft,
+  fetchEventDraft,
   listEventDrafts,
   publishEventDraft,
   removeEventPoster,
@@ -97,6 +98,25 @@ export function AdminEventCreatePanel() {
   const versionRef = useRef(0);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const projectsState = useAsync(() => fetchProjects("open"), []);
+
+  useEffect(() => {
+    if (!draft?.is_complete || draft.announcement_status !== "pending") return;
+    const eventId = draft.id;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      try {
+        const result = await fetchEventDraft(eventId);
+        if (!active) return;
+        setDraft((current) => current?.id === eventId
+          ? { ...current, announcement_status: result.announcement_status } : current);
+        if (result.announcement_status !== "pending") return;
+      } catch { /* The saved event remains visible while the connection recovers. */ }
+      if (active) timer = setTimeout(() => void refresh(), 5000);
+    };
+    timer = setTimeout(() => void refresh(), 2000);
+    return () => { active = false; clearTimeout(timer); };
+  }, [draft?.id, draft?.is_complete, draft?.announcement_status]);
 
   useEffect(() => {
     let active = true;

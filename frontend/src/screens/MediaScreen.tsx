@@ -30,6 +30,7 @@ import {
 import { MediaKnowledge } from "./MediaKnowledge";
 import { MediaGuideScreen } from "./MediaGuideScreen";
 import { MediaWorkspaceScreen } from "./MediaWorkspaceScreen";
+import { getTelegramWebApp } from "../telegram/webApp";
 
 interface MediaScreenProps {
   onBack?: () => void;
@@ -73,6 +74,11 @@ function formatDate(value: string | null): string {
 
 function openExternal(url: string): void {
   if (!url) return;
+  const telegram = getTelegramWebApp();
+  if (url.startsWith("https://t.me/") && telegram?.openTelegramLink) {
+    telegram.openTelegramLink(url);
+    return;
+  }
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
@@ -400,7 +406,10 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
       </div>
     );
   } else if (view === "chat") {
-    body = <ActionCell title="Открыть чат отдела медиа" description="Координация, задачи и материалы команды" leading={<span>💬</span>} onClick={() => openExternal(hub.chat_url)} />;
+    body = <div style={{ display: "grid", gap: 10 }}>
+      <ActionCell title="Открыть чат отдела медиа" description="Координация, задачи и материалы команды" leading={<span>💬</span>} onClick={() => openExternal(hub.chat_url)} />
+      {(hub.chat_topics ?? []).map((topic) => <ActionCell key={topic.key} title={topic.title} description="Открыть раздел в Telegram" onClick={() => openExternal(topic.url)} />)}
+    </div>;
   } else if (view === "channel") {
     body = (
       <div style={{ display: "grid", gap: 10 }}>

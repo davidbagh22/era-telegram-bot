@@ -19,7 +19,7 @@ from app.database.media_models import (
     MediaLibraryItem,
     MediaRequest,
 )
-from app.database.models import Department, Direction, Event, Task, TaskParticipant, User, UserDirection
+from app.database.models import AppSetting, Department, Direction, Event, Task, TaskParticipant, User, UserDirection
 from app.services import media_service, task_service
 from app.services.chat_registry_service import ChatHealthResult
 from app.services.media_chat_activity_service import record_media_chat_message
@@ -38,8 +38,15 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
             era_channel_id=-100123456789,
             media_chat_id=-100987654321,
         )
+        async with self.session_factory() as session:
+            session.add(AppSetting(key="media_forum:-100987654321:tasks",
+                value={"state": "ready", "thread_id": 42}))
+            await session.commit()
+        self.delivery_factory = patch("app.services.notification_service._session_factory", return_value=self.session_factory)
+        self.delivery_factory.start()
 
     async def asyncTearDown(self) -> None:
+        self.delivery_factory.stop()
         await self.engine.dispose()
 
     def test_authored_pack_is_exactly_26_weeks_104_items_and_26_polls(self) -> None:

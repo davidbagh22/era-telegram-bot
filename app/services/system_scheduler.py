@@ -23,6 +23,7 @@ from app.services.leadership_weekly_service import check_weekly_pulses_job, open
 from app.services.leaders_workcenter_service import sync_leaders_task_cards
 from app.services.leaders_topics_service import setup_leaders_topics
 from app.services.general_topics_service import setup_general_topics
+from app.services.media_topics_service import setup_media_topics
 from app.services.weekly_pulse_archive_service import archive_due_cycles
 from app.services.media_attachment_service import post_missing_media_task_cards
 from app.services.media_pipeline_service import reconcile_media_pipeline_job
@@ -130,6 +131,7 @@ def add_system_jobs(
     scheduler.add_job(sync_leaders_task_cards, "interval", minutes=1, args=(bot, settings, session_factory), id="leaders-task-card-sync", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
 
     scheduler.add_job(setup_general_topics, "interval", minutes=5, args=(bot, settings, session_factory), id="general-forum-setup", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    scheduler.add_job(setup_media_topics, "interval", minutes=5, args=(bot, settings, session_factory), id="media-forum-setup", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(expire_game_rooms, "interval", minutes=1, args=(session_factory, bot), id="era-games-expiry", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(publish_games_launch, "interval", minutes=5, args=(bot, settings, session_factory), id="era-games-launch", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(publish_directions_announcement, "interval", minutes=5, args=(bot, settings), id="directions-one-time-announcement", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)

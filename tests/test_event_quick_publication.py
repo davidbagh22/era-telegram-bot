@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import date
 from html import unescape
@@ -7,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
 from aiogram.methods import SendMessage, SendPhoto
+from fastapi import BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -89,6 +91,49 @@ class QuickPublicationTests(IsolatedAsyncioTestCase):
         self.assertTrue(actual.startswith(text.strip() + "\n\n📅 07.11.2026 · "))
         self.assertTrue(actual.endswith("\n📍 Дом Москвы"))
         self.assertIsNotNone(self.bot.send_message.await_args.kwargs["reply_markup"])
+
+    async def test_http_publish_returns_durable_pending_before_telegram(self):
+        event_id = await self.draft()
+        await self.topic()
+        tasks = BackgroundTasks()
+        async with self.sessions() as session:
+            result = await publish_event(event_id, self.admin, session, self.settings, self.bot, tasks)
+        self.assertEqual(result.announcement_status, "pending")
+        self.bot.send_photo.assert_not_awaited()
+        # Request session is closed: the background task owns its own session.
+        await tasks()
+        async with self.sessions() as session:
+            self.assertEqual((await session.get(EventExperience, event_id)).announcement_status, "sent")
+        await tasks()
+        self.bot.send_photo.assert_awaited_once()
+
+    async def test_rate_limit_is_queued_without_sleeping_in_publish(self):
+        event_id = await self.draft()
+        await self.topic()
+        self.bot.send_photo.side_effect = TelegramRetryAfter(
+            method=SendPhoto(chat_id=-100123, photo="x"), message="retry", retry_after=120)
+        with patch("app.services.notification_service.asyncio.sleep", new=AsyncMock()) as sleep:
+            result = await self.publish(event_id)
+        self.assertEqual(result.announcement_status, "pending")
+        sleep.assert_not_awaited()
+        self.bot.send_photo.assert_awaited_once()
+
+    async def test_slow_event_does_not_block_next_pending_announcement(self):
+        first, second = await self.draft(), await self.draft()
+        async with self.sessions() as session:
+            for event_id in (first, second):
+                await publish_event(event_id, self.admin, session, self.settings, self.bot, BackgroundTasks())
+        first_started, second_finished = asyncio.Event(), asyncio.Event()
+        async def deliver(bot, settings, factory, event_id):
+            if event_id == first:
+                first_started.set()
+                await asyncio.wait_for(second_finished.wait(), timeout=2)
+            else:
+                await first_started.wait()
+                second_finished.set()
+        with patch("app.services.event_publication_service.deliver_event_announcement", side_effect=deliver):
+            await deliver_pending_event_announcements(self.bot, self.settings, self.sessions)
+        self.assertTrue(second_finished.is_set())
 
     async def test_missing_existing_topic_queues_delivery_and_recovers_after_restart(self):
         event_id = await self.draft()
