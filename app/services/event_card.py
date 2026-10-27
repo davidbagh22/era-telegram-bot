@@ -6,6 +6,7 @@ from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, Message
 
 from app.services.notification_service import safe_answer_photo, safe_send, safe_send_photo
+from app.services.event_publication_service import escaped_text_parts
 
 
 PHOTO_CAPTION_LIMIT = 1000
@@ -85,15 +86,15 @@ async def send_event_card(
         extra_text=extra_text,
     )
     poster_file_id = getattr(event, "poster_file_id", None)
+    parts = escaped_text_parts(text, PHOTO_CAPTION_LIMIT if poster_file_id else 4000)
     if poster_file_id:
-        if len(text) <= PHOTO_CAPTION_LIMIT:
-            if await safe_answer_photo(target, poster_file_id, caption=text, reply_markup=keyboard):
-                return
+        if await safe_answer_photo(target, poster_file_id, caption=parts[0],
+                                   reply_markup=keyboard if len(parts) == 1 else None, parse_mode="HTML"):
+            parts = parts[1:]
         else:
-            if await safe_answer_photo(target, poster_file_id, caption=event.title):
-                await target.answer(text, reply_markup=keyboard)
-                return
-    await target.answer(text, reply_markup=keyboard)
+            parts = escaped_text_parts(text)
+    for index, text in enumerate(parts):
+        await target.answer(text, reply_markup=keyboard if index == len(parts) - 1 else None, parse_mode="HTML")
 
 
 async def send_event_card_to_chat(
@@ -117,11 +118,17 @@ async def send_event_card_to_chat(
     )
     thread_kwargs = {"message_thread_id": message_thread_id} if message_thread_id is not None else {}
     poster_file_id = getattr(event, "poster_file_id", None)
+    parts = escaped_text_parts(text, PHOTO_CAPTION_LIMIT if poster_file_id else 4000)
     if poster_file_id:
-        if len(text) <= PHOTO_CAPTION_LIMIT:
-            if await safe_send_photo(bot, chat_id, poster_file_id, caption=text, reply_markup=keyboard, **thread_kwargs):
-                return True
+        if await safe_send_photo(bot, chat_id, poster_file_id, caption=parts[0],
+                                 reply_markup=keyboard if len(parts) == 1 else None,
+                                 parse_mode="HTML", **thread_kwargs):
+            parts = parts[1:]
         else:
-            if await safe_send_photo(bot, chat_id, poster_file_id, caption=event.title, **thread_kwargs):
-                return await safe_send(bot, chat_id, text, reply_markup=keyboard, **thread_kwargs)
-    return await safe_send(bot, chat_id, text, reply_markup=keyboard, **thread_kwargs)
+            parts = escaped_text_parts(text)
+    for index, text in enumerate(parts):
+        if not await safe_send(bot, chat_id, text,
+                               reply_markup=keyboard if index == len(parts) - 1 else None,
+                               parse_mode="HTML", **thread_kwargs):
+            return False
+    return True
