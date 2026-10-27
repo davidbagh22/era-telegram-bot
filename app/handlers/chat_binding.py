@@ -166,8 +166,12 @@ async def leaders_readonly_diagnostics(
         lines.append(f"Закрепление сообщений: {'да' if can_pin else 'нет'}")
         lines.append("Telegram API не подтверждает существование темы по сохранённому ID.")
 
-    seen_thread_ids: dict[int, str] = {}
-    seen_panel_ids: dict[int, str] = {}
+    # Read all three persisted routes before displaying any of them. A
+    # single-pass check only warned about the *second* conflicting route,
+    # incorrectly presenting the first route as usable to administrators.
+    saved_routes = []
+    thread_owners: dict[int, list[str]] = {}
+    panel_owners: dict[int, list[str]] = {}
     for key, label in (("tasks", "Задачи"), ("pulse", "Пульс"), ("important", "Важно")):
         row = await session.scalar(
             select(AppSetting).where(AppSetting.key == f"leaders_forum:{chat_id}:{key}")
@@ -178,20 +182,28 @@ async def leaders_readonly_diagnostics(
                 data = {}
         except (ValueError, TypeError):
             data = {}
+        saved_routes.append((key, label, row, data))
+        if data.get("mode") in (None, "forum"):
+            thread_id = data.get("thread_id")
+            panel_id = data.get("message_id")
+            if type(thread_id) is int and thread_id > 0:
+                thread_owners.setdefault(thread_id, []).append(label)
+            if type(panel_id) is int and panel_id > 0:
+                panel_owners.setdefault(panel_id, []).append(label)
+
+    for key, label, row, data in saved_routes:
         thread_id = data.get("thread_id")
         panel_id = data.get("message_id")
-        duplicate_thread = None
-        duplicate_panel = None
-        # Detect conflicts across persisted destinations without writing to
-        # Telegram or the database. The delivery router already rejects
-        # duplicate thread IDs; diagnostics must explain that rejection.
-        if data.get("mode") in (None, "forum"):
-            if type(thread_id) is int and thread_id > 0:
-                duplicate_thread = seen_thread_ids.get(thread_id)
-                seen_thread_ids.setdefault(thread_id, label)
-            if type(panel_id) is int and panel_id > 0:
-                duplicate_panel = seen_panel_ids.get(panel_id)
-                seen_panel_ids.setdefault(panel_id, label)
+        # Every owner of a duplicate is unsafe, including the first one.
+        # Ignore bool and malformed IDs to avoid false positives.
+        duplicate_thread = next(
+            (owner for owner in thread_owners.get(thread_id, []) if owner != label),
+            None,
+        ) if type(thread_id) is int and thread_id > 0 else None
+        duplicate_panel = next(
+            (owner for owner in panel_owners.get(panel_id, []) if owner != label),
+            None,
+        ) if type(panel_id) is int and panel_id > 0 else None
         state = data.get("thread_state")
         # A saved numeric ID alone is not evidence of a ready topic.
         # Prioritize uncertain/damaged durable states in read-only diagnostics.
