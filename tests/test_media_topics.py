@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
-from aiogram.exceptions import TelegramNetworkError
+from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
 from aiogram.methods import CreateForumTopic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -63,6 +63,43 @@ class MediaTopicsTests(IsolatedAsyncioTestCase):
             self.assertEqual(await delivery_topic(session, -10012345, "tasks"), 77)
             with self.assertRaises(ValueError):
                 await bind_topic(session, -10012345, "ideas", 77)
+
+    async def test_admin_repair_survives_rejected_inflight_creation(self):
+        next_id = iter(range(10, 17))
+
+        async def reject_after_repair(chat_id, name):
+            if name == TOPICS["important"]:
+                async with self.factory() as session:
+                    await bind_topic(session, chat_id, "important", 99)
+                raise TelegramBadRequest(
+                    method=CreateForumTopic(chat_id=chat_id, name=name),
+                    message="not enough rights",
+                )
+            return SimpleNamespace(message_thread_id=next(next_id))
+
+        self.bot.create_forum_topic.side_effect = reject_after_repair
+        self.assertEqual((await self.setup())["status"], "ready")
+        async with self.factory() as session:
+            self.assertEqual(await delivery_topic(session, -10012345, "important"), 99)
+        await self.setup()
+        self.assertEqual(self.bot.create_forum_topic.await_count, 8)
+
+    async def test_admin_repair_survives_successful_inflight_creation(self):
+        next_id = iter(range(10, 18))
+
+        async def succeed_after_repair(chat_id, name):
+            thread_id = next(next_id)
+            if name == TOPICS["important"]:
+                async with self.factory() as session:
+                    await bind_topic(session, chat_id, "important", 99)
+            return SimpleNamespace(message_thread_id=thread_id)
+
+        self.bot.create_forum_topic.side_effect = succeed_after_repair
+        self.assertEqual((await self.setup())["status"], "ready")
+        async with self.factory() as session:
+            self.assertEqual(await delivery_topic(session, -10012345, "important"), 99)
+        await self.setup()
+        self.assertEqual(self.bot.create_forum_topic.await_count, 8)
 
     async def test_preflight_refuses_collision_plain_group_and_missing_rights(self):
         self.settings.general_chat_id = self.settings.media_chat_id
