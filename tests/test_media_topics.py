@@ -4,7 +4,7 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
 from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
-from aiogram.methods import CreateForumTopic
+from aiogram.methods import CreateForumTopic, PinChatMessage
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -50,6 +50,45 @@ class MediaTopicsTests(IsolatedAsyncioTestCase):
         self.assertIn("https://t.me/c/12345/11", call.args[3])
         self.assertEqual(call.kwargs["delivery_key"], "media-forum:-10012345:navigation:v1")
         self.bot.pin_chat_message.assert_awaited_with(-10012345, 90, disable_notification=True)
+        self.assertEqual(self.bot.pin_chat_message.await_count, 1)
+
+    async def test_navigation_pin_explicit_rejection_can_be_retried(self):
+        self.bot.pin_chat_message.side_effect = [
+            TelegramBadRequest(
+                method=PinChatMessage(chat_id=-10012345, message_id=90),
+                message="not enough rights",
+            ),
+            None,
+        ]
+        self.assertEqual((await self.setup())["status"], "navigation_pin_unconfirmed")
+        self.assertEqual((await self.setup())["status"], "ready")
+        self.assertEqual((await self.setup())["status"], "ready")
+        self.assertEqual(self.bot.pin_chat_message.await_count, 2)
+        self.assertEqual(self.bot.create_forum_topic.await_count, 8)
+
+    async def test_navigation_pin_ambiguous_result_is_not_retried(self):
+        self.bot.pin_chat_message.side_effect = TelegramNetworkError(
+            method=PinChatMessage(chat_id=-10012345, message_id=90),
+            message="timeout",
+        )
+        self.assertEqual((await self.setup())["status"], "navigation_pin_unconfirmed")
+        self.assertEqual((await self.setup())["status"], "navigation_pin_unconfirmed")
+        self.assertEqual(self.bot.pin_chat_message.await_count, 1)
+        async with self.factory() as session:
+            row = await session.scalar(select(AppSetting).where(
+                AppSetting.key == "media_forum:-10012345:navigation_pin:v1"
+            ))
+            self.assertEqual(json.loads(row.value), {"message_id": 90, "state": "pinning"})
+
+    async def test_navigation_pin_conflicting_receipt_blocks_new_pin(self):
+        async with self.factory() as session:
+            session.add(AppSetting(
+                key="media_forum:-10012345:navigation_pin:v1",
+                value=json.dumps({"message_id": 91, "state": "pinned"}),
+            ))
+            await session.commit()
+        self.assertEqual((await self.setup())["status"], "navigation_pin_unconfirmed")
+        self.bot.pin_chat_message.assert_not_awaited()
 
     async def test_unknown_creation_is_not_repeated_and_can_be_bound(self):
         self.bot.create_forum_topic.side_effect = TelegramNetworkError(
