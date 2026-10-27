@@ -476,6 +476,63 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         self.session.commit.assert_not_awaited()
 
 
+    async def test_duplicate_saved_forum_routes_are_reported_without_writes(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.session.scalar.side_effect = [
+            SimpleNamespace(value=json.dumps({
+                "mode": "forum", "thread_id": 31,
+                "message_id": 101, "message_state": "sent",
+            })),
+            SimpleNamespace(value=json.dumps({
+                "mode": "forum", "thread_id": 31,
+                "message_id": 102, "message_state": "sent",
+            })),
+            SimpleNamespace(value=json.dumps({
+                "mode": "forum", "thread_id": 33,
+                "message_id": 101, "message_state": "sent",
+            })),
+        ]
+        await leaders_readonly_diagnostics(
+            self.message, None, self.settings, self.session, self.bot,
+        )
+        result = self.message.answer.await_args.args[0]
+        self.assertIn("Пульс: конфликт сохранённых маршрутов", result)
+        self.assertIn("thread_id=31 совпадает с «Задачи»", result)
+        self.assertIn("Важно: конфликт сохранённых маршрутов", result)
+        self.assertIn("message_id=101 совпадает с «Задачи»", result)
+        self.assertIn("доставка заблокирована, нужна ручная сверка", result)
+        self.session.commit.assert_not_awaited()
+        self.assertEqual(self.session.scalar.await_count, 3)
+
+    async def test_unique_forum_routes_and_noninteger_ids_do_not_create_false_conflicts(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.session.scalar.side_effect = [
+            SimpleNamespace(value=json.dumps({
+                "mode": "forum", "thread_id": 31,
+                "message_id": 101, "message_state": "sent",
+            })),
+            SimpleNamespace(value=json.dumps({
+                "mode": "forum", "thread_id": True,
+                "message_id": True, "message_state": "sent",
+            })),
+            SimpleNamespace(value=json.dumps({
+                "mode": "forum", "thread_id": 33,
+                "message_id": 103, "message_state": "sent",
+            })),
+        ]
+        await leaders_readonly_diagnostics(
+            self.message, None, self.settings, self.session, self.bot,
+        )
+        result = self.message.answer.await_args.args[0]
+        self.assertIn("Задачи: thread_id=31", result)
+        self.assertIn("Пульс: настройка темы повреждена", result)
+        self.assertIn("Важно: thread_id=33", result)
+        self.assertNotIn("конфликт сохранённых маршрутов", result)
+        self.session.commit.assert_not_awaited()
+
+
 class LeadersTopicRoutingSafetyTests(unittest.IsolatedAsyncioTestCase):
     async def test_corrupt_or_invalid_thread_ids_never_become_routing_targets(self):
         from app.services.leaders_topics_service import delivery_topic, topic_id
