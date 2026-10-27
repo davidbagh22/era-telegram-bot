@@ -98,3 +98,12 @@ class PulseTypedInactivityTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("result", updated["draft"])
         self.assertIn("Почему не было активности", updated["questions"][1]["text"])
         self.assertEqual(updated["original_result_question"]["text"], "Какой результат?")
+
+    async def test_typed_wording_edit_keeps_existing_result(self):
+        view, data = self._form()
+        data["draft"] = {"done": "Завершил проект", "result": "Подготовил отчёт"}
+        data["index"] = 0
+        updated = await self._type_answer(view, "Завершил важный проект")
+        self.assertEqual(updated["draft"]["done"], "Завершил важный проект")
+        self.assertEqual(updated["draft"]["result"], "Подготовил отчёт")
+        self.assertEqual(updated["questions"][1]["text"], "Какой результат?")
