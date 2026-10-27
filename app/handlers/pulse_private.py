@@ -119,9 +119,13 @@ def update_activity_followup(data, *, question_index: int, selected: str) -> Non
         questions[next_index] = data.pop("original_result_question")
     data["questions"] = questions
 
-    # A previous free-text activity answer can also have a result attached.
-    # Never reuse that result as the explanation for a new inactivity choice.
-    if previous and previous != selected:
+    # A previous free-text activity answer must not become the explanation
+    # for a new inactivity choice. Ordinary edits of free text, however,
+    # should keep the participant's already written result.
+    if previous != selected and (
+        previous in {"Всё учтено", "Не было активности"}
+        or selected == "Не было активности"
+    ):
         data["draft"] = dict(data.get("draft", {}))
         data["draft"].pop("result", None)
 
