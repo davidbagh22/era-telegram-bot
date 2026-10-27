@@ -166,6 +166,8 @@ async def leaders_readonly_diagnostics(
         lines.append(f"Закрепление сообщений: {'да' if can_pin else 'нет'}")
         lines.append("Telegram API не подтверждает существование темы по сохранённому ID.")
 
+    seen_thread_ids: dict[int, str] = {}
+    seen_panel_ids: dict[int, str] = {}
     for key, label in (("tasks", "Задачи"), ("pulse", "Пульс"), ("important", "Важно")):
         row = await session.scalar(
             select(AppSetting).where(AppSetting.key == f"leaders_forum:{chat_id}:{key}")
@@ -177,6 +179,19 @@ async def leaders_readonly_diagnostics(
         except (ValueError, TypeError):
             data = {}
         thread_id = data.get("thread_id")
+        panel_id = data.get("message_id")
+        duplicate_thread = None
+        duplicate_panel = None
+        # Detect conflicts across persisted destinations without writing to
+        # Telegram or the database. The delivery router already rejects
+        # duplicate thread IDs; diagnostics must explain that rejection.
+        if data.get("mode") in (None, "forum"):
+            if type(thread_id) is int and thread_id > 0:
+                duplicate_thread = seen_thread_ids.get(thread_id)
+                seen_thread_ids.setdefault(thread_id, label)
+            if type(panel_id) is int and panel_id > 0:
+                duplicate_panel = seen_panel_ids.get(panel_id)
+                seen_panel_ids.setdefault(panel_id, label)
         state = data.get("thread_state")
         # A saved numeric ID alone is not evidence of a ready topic.
         # Prioritize uncertain/damaged durable states in read-only diagnostics.
@@ -228,6 +243,16 @@ async def leaders_readonly_diagnostics(
             or status.startswith("thread_id=")
         ):
             status = "Telegram: проверка прав/типа чата не пройдена; доставка не подтверждена"
+        conflicts = []
+        if duplicate_thread:
+            conflicts.append(f"thread_id={thread_id} совпадает с «{duplicate_thread}»")
+        if duplicate_panel:
+            conflicts.append(f"message_id={panel_id} совпадает с «{duplicate_panel}»")
+        if conflicts:
+            status = (
+                "конфликт сохранённых маршрутов (" + "; ".join(conflicts)
+                + "); доставка заблокирована, нужна ручная сверка"
+            )
         lines.append(f"{label}: {status}")
         # Corrupt JSON may contain lists/dicts instead of scalar receipt fields.
         # Diagnostics must remain read-only and never crash on those values.
