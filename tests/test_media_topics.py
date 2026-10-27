@@ -86,6 +86,27 @@ class MediaTopicsTests(IsolatedAsyncioTestCase):
             await session.commit()
             self.assertIsNone(await delivery_topic(session, -10012345, "tasks"))
 
+    async def test_unconfirmed_topic_with_thread_id_blocks_navigation_and_ready(self):
+        # A partially recovered record may contain an ID but still have no
+        # confirmed Telegram outcome. The route must remain unavailable.
+        async with self.factory() as session:
+            session.add(AppSetting(
+                key="media_forum:-10012345:important",
+                value=json.dumps({"state": "creating", "thread_id": 99}),
+            ))
+            await session.commit()
+            self.assertIsNone(await delivery_topic(session, -10012345, "important"))
+            self.assertEqual(await topic_links(session, -10012345), [])
+
+        first = await self.setup()
+        second = await self.setup()
+        self.assertEqual(first["status"], "needs_attention")
+        self.assertEqual(second["status"], "needs_attention")
+        self.assertEqual(self.bot.create_forum_topic.await_count, 7)
+        self.bot.reopen_forum_topic.assert_not_awaited()
+        self.bot.pin_chat_message.assert_not_awaited()
+        self.send.assert_not_awaited()
+
     async def test_unconfirmed_navigation_is_not_pinned(self):
         self.send.return_value = NotificationDeliveryResult(False, "uncertain", False, 1)
         self.assertEqual((await self.setup())["status"], "navigation_unconfirmed")
