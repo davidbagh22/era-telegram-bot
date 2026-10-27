@@ -196,14 +196,15 @@ async def leaders_readonly_diagnostics(
         panel_id = data.get("message_id")
         # Every owner of a duplicate is unsafe, including the first one.
         # Ignore bool and malformed IDs to avoid false positives.
+        is_forum_route = data.get("mode") in (None, "forum")
         duplicate_thread = next(
             (owner for owner in thread_owners.get(thread_id, []) if owner != label),
             None,
-        ) if type(thread_id) is int and thread_id > 0 else None
+        ) if is_forum_route and type(thread_id) is int and thread_id > 0 else None
         duplicate_panel = next(
             (owner for owner in panel_owners.get(panel_id, []) if owner != label),
             None,
-        ) if type(panel_id) is int and panel_id > 0 else None
+        ) if is_forum_route and type(panel_id) is int and panel_id > 0 else None
         state = data.get("thread_state")
         # A saved numeric ID alone is not evidence of a ready topic.
         # Prioritize uncertain/damaged durable states in read-only diagnostics.
