@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.base import Base
 from app.database.models import AppSetting
-from app.services.leaders_topics_service import setup_leaders_topics
+from app.services.leaders_topics_service import delivery_topic, setup_leaders_topics, topic_id
 
 
 class ForumDuplicateRouteTests(unittest.IsolatedAsyncioTestCase):
@@ -79,6 +79,32 @@ class ForumDuplicateRouteTests(unittest.IsolatedAsyncioTestCase):
             "status": "panel_needs_review", "chat_id": -1001, "topic": "important",
         })
         await self.assert_unchanged(bot, original)
+
+    async def test_duplicate_panel_receipts_block_both_delivery_routes(self):
+        await self.seed("tasks", 11, 101)
+        await self.seed("pulse", 12, 101)
+        original = await self.snapshot()
+        async with self.sessions() as session:
+            for key in ("tasks", "pulse"):
+                with self.subTest(key=key):
+                    self.assertIsNone(await topic_id(session, -1001, key))
+                    with self.assertRaisesRegex(ValueError, "одинаковый message_id"):
+                        await delivery_topic(session, -1001, key)
+        bot = self.bot()
+        self.assertEqual(await setup_leaders_topics(bot, self.settings, self.sessions), {
+            "status": "panel_needs_review", "chat_id": -1001, "topic": "pulse",
+        })
+        await self.assert_unchanged(bot, original)
+
+    async def test_distinct_confirmed_panel_receipts_still_route(self):
+        await self.seed("tasks", 11, 101)
+        await self.seed("pulse", 12, 102)
+        async with self.sessions() as session:
+            self.assertEqual(await topic_id(session, -1001, "tasks"), 11)
+            self.assertEqual(await topic_id(session, -1001, "pulse"), 12)
+            self.assertEqual(await delivery_topic(session, -1001, "tasks"), 11)
+            self.assertEqual(await delivery_topic(session, -1001, "pulse"), 12)
+
 
     async def test_duplicate_later_route_blocks_creating_missing_pulse(self):
         await self.seed("tasks", 11, 101)
