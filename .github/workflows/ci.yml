@@ -125,6 +125,8 @@ jobs:
         run: python scripts/postgres_media_knowledge_race.py
       - name: Prove Pulse announcement concurrency without duplicate Telegram delivery
         run: python scripts/postgres_pulse_announcement_race.py
+      - name: Prove bounded event recovery pages are fair under concurrent workers
+        run: python scripts/postgres_event_announcement_recovery_race.py
 
   frontend:
     runs-on: ubuntu-latest
