@@ -90,6 +90,19 @@ class MediaTopicsTests(IsolatedAsyncioTestCase):
         self.assertEqual((await self.setup())["status"], "ready")
         self.assertEqual(self.bot.reopen_forum_topic.await_count, 8)
 
+    async def test_reopen_topic_is_not_modified_telegram_text_is_confirmed_once(self):
+        # Telegram's human-readable error contains "is", unlike the older
+        # TOPIC_NOT_MODIFIED token. Both indicate the topic is already open.
+        self.bot.reopen_forum_topic.side_effect = TelegramBadRequest(
+            method=ReopenForumTopic(chat_id=-10012345, message_thread_id=10),
+            message="Bad Request: topic is not modified",
+        )
+        self.assertEqual((await self.setup())["status"], "ready")
+        self.assertEqual((await self.setup())["status"], "ready")
+        self.assertEqual(self.bot.reopen_forum_topic.await_count, 8)
+        self.assertEqual(self.bot.create_forum_topic.await_count, 8)
+        self.assertEqual(self.bot.pin_chat_message.await_count, 1)
+
     async def test_navigation_pin_explicit_rejection_can_be_retried(self):
         self.bot.pin_chat_message.side_effect = [
             TelegramBadRequest(
