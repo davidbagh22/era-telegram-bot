@@ -592,6 +592,50 @@ class LeadersReadOnlyDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         self.session.commit.assert_not_awaited()
 
 
+    async def test_forum_route_with_sent_state_but_missing_panel_id_requires_review(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.session.scalar.side_effect = [
+            SimpleNamespace(value=json.dumps({
+                "mode": "forum", "thread_id": 31, "message_state": "sent",
+            })),
+            None, None,
+        ]
+        await leaders_readonly_diagnostics(
+            self.message, None, self.settings, self.session, self.bot,
+        )
+        result = self.message.answer.await_args.args[0]
+        self.assertIn("Задачи: thread_id=31 (из БД, не проверен в Telegram)", result)
+        self.assertIn("Карточка: подтверждённая панель темы отсутствует", result)
+        self.assertNotIn("Карточка message_id=", result)
+        self.assertEqual(self.session.scalar.await_count, 3)
+        self.session.commit.assert_not_awaited()
+
+    async def test_forum_route_with_panel_id_but_missing_state_is_not_confirmed(self):
+        from app.handlers.chat_binding import leaders_readonly_diagnostics
+
+        self.session.scalar.side_effect = [
+            SimpleNamespace(value=json.dumps({
+                "mode": "forum", "thread_id": 31,
+                "message_id": 101,
+            })),
+            SimpleNamespace(value=json.dumps({
+                "mode": "forum", "thread_id": 32,
+                "message_id": 102, "message_state": "sent",
+            })),
+            None,
+        ]
+        await leaders_readonly_diagnostics(
+            self.message, None, self.settings, self.session, self.bot,
+        )
+        result = self.message.answer.await_args.args[0]
+        self.assertIn("Карточка: подтверждённая панель темы отсутствует", result)
+        self.assertNotIn("Карточка message_id=101", result)
+        self.assertIn("Карточка message_id=102 (из БД)", result)
+        self.assertEqual(self.session.scalar.await_count, 3)
+        self.session.commit.assert_not_awaited()
+
+
 class LeadersTopicRoutingSafetyTests(unittest.IsolatedAsyncioTestCase):
     async def test_corrupt_or_invalid_thread_ids_never_become_routing_targets(self):
         from app.services.leaders_topics_service import delivery_topic, topic_id
