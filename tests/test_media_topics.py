@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
-from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
+from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError, TelegramRetryAfter
 from aiogram.methods import CreateForumTopic, PinChatMessage, ReopenForumTopic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -103,6 +103,37 @@ class MediaTopicsTests(IsolatedAsyncioTestCase):
         self.assertEqual((await self.setup())["status"], "ready")
         self.assertEqual(self.bot.pin_chat_message.await_count, 2)
         self.assertEqual(self.bot.create_forum_topic.await_count, 8)
+
+    async def test_navigation_pin_rate_limit_can_retry_and_then_reuses_receipt(self):
+        self.bot.pin_chat_message.side_effect = [
+            TelegramRetryAfter(
+                method=PinChatMessage(chat_id=-10012345, message_id=90),
+                message="Too Many Requests",
+                retry_after=2,
+            ),
+            None,
+        ]
+        self.assertEqual((await self.setup())["status"], "navigation_pin_unconfirmed")
+        async with self.factory() as session:
+            row = await session.scalar(select(AppSetting).where(
+                AppSetting.key == "media_forum:-10012345:navigation_pin:v1"
+            ))
+            self.assertEqual(json.loads(row.value), {"message_id": 90, "state": "failed"})
+        self.assertEqual((await self.setup())["status"], "ready")
+        self.assertEqual((await self.setup())["status"], "ready")
+        self.assertEqual(self.bot.pin_chat_message.await_count, 2)
+        self.assertEqual(self.bot.create_forum_topic.await_count, 8)
+
+    async def test_corrupt_navigation_pin_receipt_fails_closed(self):
+        async with self.factory() as session:
+            session.add(AppSetting(
+                key="media_forum:-10012345:navigation_pin:v1",
+                value="broken-json",
+            ))
+            await session.commit()
+        self.assertEqual((await self.setup())["status"], "navigation_pin_unconfirmed")
+        self.assertEqual((await self.setup())["status"], "navigation_pin_unconfirmed")
+        self.bot.pin_chat_message.assert_not_awaited()
 
     async def test_navigation_pin_ambiguous_result_is_not_retried(self):
         self.bot.pin_chat_message.side_effect = TelegramNetworkError(
