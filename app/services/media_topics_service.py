@@ -158,6 +158,79 @@ async def _ensure_topic(bot, factory, chat_id, key):
         await session.commit()
 
 
+
+async def _pin_navigation_once(bot, session_factory, chat_id, message_id):
+    """Pin a confirmed navigation message once; fail closed on uncertain outcomes.
+
+    A durable claim is written before the Telegram call. An ambiguous network
+    result cannot safely be retried automatically because Telegram may already
+    have pinned the message. Explicitly rejected attempts can be retried.
+    """
+    setting_key = f"media_forum:{chat_id}:navigation_pin:v1"
+    async with session_factory() as session:
+        await _lock(session, chat_id)
+        row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
+        if row is not None:
+            try:
+                current = row.value if isinstance(row.value, dict) else json.loads(row.value)
+            except (TypeError, ValueError):
+                logger.warning("Media navigation pin receipt is invalid chat_id=%s", chat_id)
+                return False
+            if not isinstance(current, dict) or current.get("message_id") != message_id:
+                logger.warning("Media navigation pin receipt conflicts chat_id=%s", chat_id)
+                return False
+            if current.get("state") == "pinned":
+                return True
+            if current.get("state") != "failed":
+                # 'pinning' might already have succeeded before a network or
+                # database failure. Do not blindly pin a second time.
+                return False
+            row.value = json.dumps({"message_id": message_id, "state": "pinning"})
+        else:
+            session.add(AppSetting(
+                key=setting_key,
+                value=json.dumps({"message_id": message_id, "state": "pinning"}),
+            ))
+        await session.commit()
+
+    try:
+        await bot.pin_chat_message(chat_id, message_id, disable_notification=True)
+    except TelegramBadRequest:
+        # Telegram explicitly rejected the request; this is safe to retry
+        # after permissions or chat settings have been repaired.
+        async with session_factory() as session:
+            await _lock(session, chat_id)
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
+            if row is not None:
+                try:
+                    current = row.value if isinstance(row.value, dict) else json.loads(row.value)
+                except (TypeError, ValueError):
+                    current = {}
+                if current == {"message_id": message_id, "state": "pinning"}:
+                    row.value = json.dumps({"message_id": message_id, "state": "failed"})
+                    await session.commit()
+        logger.warning("Media navigation pin rejected chat_id=%s", chat_id)
+        return False
+    except Exception:
+        logger.exception("Media navigation pin outcome uncertain chat_id=%s", chat_id)
+        return False
+
+    async with session_factory() as session:
+        await _lock(session, chat_id)
+        row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
+        if row is None:
+            return False
+        try:
+            current = row.value if isinstance(row.value, dict) else json.loads(row.value)
+        except (TypeError, ValueError):
+            return False
+        if current != {"message_id": message_id, "state": "pinning"}:
+            return False
+        row.value = json.dumps({"message_id": message_id, "state": "pinned"})
+        await session.commit()
+    return True
+
+
 async def setup_media_topics(bot, settings, session_factory):
     chat_id = settings.media_chat_id
     if not chat_id or chat_id in {settings.general_chat_id, settings.leaders_chat_id}:
@@ -201,10 +274,12 @@ async def setup_media_topics(bot, settings, session_factory):
             notification_type="media_navigation", parse_mode=None,
             message_thread_id=ids[0],
         )
-        if result.sent and result.message_id:
-            await bot.pin_chat_message(chat_id, result.message_id, disable_notification=True)
-            logger.info("Media forum ready: topics=8 navigation_message_id=%s", result.message_id)
-        return {"status": "ready" if result.sent and result.message_id else "navigation_unconfirmed", "topics": topics}
+        if not (result.sent and type(result.message_id) is int and result.message_id > 0):
+            return {"status": "navigation_unconfirmed", "topics": topics}
+        if not await _pin_navigation_once(bot, session_factory, chat_id, result.message_id):
+            return {"status": "navigation_pin_unconfirmed", "topics": topics}
+        logger.info("Media forum ready: topics=8 navigation_message_id=%s", result.message_id)
+        return {"status": "ready", "topics": topics}
     except Exception:
         logger.exception("Media forum setup failed")
         return {"status": "telegram_unavailable"}
