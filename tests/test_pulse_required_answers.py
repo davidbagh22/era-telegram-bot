@@ -62,14 +62,14 @@ class PulseRequiredAnswerTests(unittest.IsolatedAsyncioTestCase):
             "draft": {"done": "Всё учтено"},
         }
         pulse = SimpleNamespace(answers_json=data)
-        view = SimpleNamespace(pulse=pulse)
+        view = SimpleNamespace(pulse=pulse, report=SimpleNamespace(submitted_at=None))
         call = SimpleNamespace(
             from_user=SimpleNamespace(id=11),
             message=AsyncMock(),
             data="pulse_form:submit:55:2",
             answer=AsyncMock(),
         )
-        session = SimpleNamespace(flush=AsyncMock())
+        session = SimpleNamespace(flush=AsyncMock(), refresh=AsyncMock())
         settings = SimpleNamespace(leaders_chat_id=-100123)
         user = SimpleNamespace(id=9)
         with (
