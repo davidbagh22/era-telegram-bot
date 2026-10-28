@@ -63,6 +63,9 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
         final_url = exc.geturl()
         exc.close()
     except (URLError, TimeoutError, OSError) as exc:
+        # Even if headers arrived, a transport failure while reading /health
+        # is not a verified response and must never be reported as PASS/FAIL.
+        status = None
         error = type(exc).__name__
 
     # Redirects must not change the HTTPS origin (including port). A 200
