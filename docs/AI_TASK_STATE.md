@@ -1,3 +1,9 @@
+## 28.10.2026 ~14:55 UTC — additional independent security reviews (no production writes)
+
+- PR #486 cancelled-event authenticated details/posters: source/test review comment `5684663309` documents registered-history preservation versus nonregistered historical-link 404 compatibility, and dependency on the separate public poster route #484. Remains DRAFT.
+- PR #475 webhook secret fail-closed: source/test review comment `5684663905` documents required production polling/webhook-mode validation and outage risk before any merge. No secret, Telegram webhook registration, role or chat configuration was accessed or changed. Remains DRAFT.
+- Latest recheck: main `16300a8886d5e68c54fdbd0e9926b0d79566333e`, push CI `40707807279` still **4/5 SUCCESS**, `test` in progress; Render LIVE still `f7209f10c955da2492e324606edfbbcd1019dcee` deploy `dep-dbh0g77b9u1s739f23tg`. No manual deploy, no merge. Only documentation file changed in PR #492 and PR review comments; full Telegram/HTTP device acceptance not performed. Next: exact main 5/5 -> checksPass auto LIVE -> full read-only smoke, then safe independent code tasks. Reproduce: `python scripts/production_readonly_smoke.py --expected-sha 16300a8886d5e68c54fdbd0e9926b0d79566333e` from a network-enabled read-only environment. Keep risky PRs as drafts. Full readiness unconfirmed.
+
 ## 28.10.2026 ~14:50 UTC — independent CI/LIVE recheck, high-risk PR reviews (#492 append-only)
 
 - **Fresh exact GitHub main** (verified by Git ref `refs/heads/main`): `16300a8886d5e68c54fdbd0e9926b0d79566333e` (#488 merged). Main push Bot checks run `40707807279`: **4/5 SUCCESS**, `test` **IN_PROGRESS** at this read; NOT 5/5, not yet production. PR #488 adds private team-task shortcut and compact creation workflow; no new code from this run.
