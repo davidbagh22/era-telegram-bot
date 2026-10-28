@@ -10,7 +10,7 @@ from app.services.media_service import _send_media_deadline_notice
 class MediaDeadlineStageTests(IsolatedAsyncioTestCase):
     def setUp(self):
         self.now = datetime(2026, 10, 28, 8, 0, tzinfo=timezone.utc)
-        self.settings = SimpleNamespace(timezone="Asia/Yerevan")
+        self.settings = SimpleNamespace(timezone="Asia/Yerevan", media_deadline_3h_enabled=True)
         self.bot = object()
         self.session = object()
 
