@@ -272,7 +272,7 @@ async def read_event_poster(
     return Response(
         content=experience.poster_bytes,
         media_type=poster_mime,
-        headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"},
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )
 
 

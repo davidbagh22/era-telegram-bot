@@ -74,7 +74,7 @@ class EventVisibilityApiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.body, b"private-poster-bytes")
             self.assertEqual(response.media_type, "image/png")
-            self.assertEqual(response.headers["cache-control"], "private, max-age=300")
+            self.assertEqual(response.headers["cache-control"], "private, no-store")
             self.assertEqual(response.headers["x-content-type-options"], "nosniff")
 
     async def test_active_content_types_are_not_served_under_miniapp_origin(self):
