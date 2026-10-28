@@ -975,7 +975,10 @@ async def _send_media_deadline_notice(session, bot, settings, task, now: datetim
     remaining = deadline.astimezone(timezone.utc) - now.astimezone(timezone.utc)
     if not timedelta(0) < remaining <= timedelta(hours=24):
         return False
-    stage = "3h" if remaining <= timedelta(hours=3) else "24h"
+    # Default to the existing 24h behavior until the owner authorizes
+    # an additional automated 3h reminder in the real media chat.
+    stage = "3h" if (getattr(settings, "media_deadline_3h_enabled", False)
+                     and remaining <= timedelta(hours=3)) else "24h"
     return await _send_media_chat_notice(
         session, bot, settings,
         notice_key=f"task-{stage}:{task.id}:{task.deadline.isoformat()}",
