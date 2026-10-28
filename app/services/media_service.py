@@ -960,6 +960,35 @@ async def _send_media_chat_notice(
     return True
 
 
+async def _send_media_deadline_notice(session, bot, settings, task, now: datetime) -> bool:
+    """Send only the closest due stage; never burst 24h and 3h together.
+
+    The existing MediaChatNotice/NotificationDelivery keys provide durable
+    idempotency across scheduler restarts and repeated scans. A missed 24h
+    window does not cause a stale 24h message alongside the urgent 3h one.
+    """
+    if task.deadline is None:
+        return False
+    deadline = task.deadline
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+    remaining = deadline.astimezone(timezone.utc) - now.astimezone(timezone.utc)
+    if not timedelta(0) < remaining <= timedelta(hours=24):
+        return False
+    stage = "3h" if remaining <= timedelta(hours=3) else "24h"
+    return await _send_media_chat_notice(
+        session, bot, settings,
+        notice_key=f"task-{stage}:{task.id}:{task.deadline.isoformat()}",
+        notice_kind=f"deadline_{stage}",
+        ref_type="task", ref_id=task.id,
+        text=(
+            f"До дедлайна медиа-задачи меньше {3 if stage == '3h' else 24} часов\n\n"
+            f"{task.title}\n"
+            f"Нужен результат до {deadline.astimezone(ZoneInfo(settings.timezone)).strftime('%d.%m %H:%M')}."
+        ),
+    )
+
+
 async def process_media_chat_automation(
     bot: Bot,
     settings: Settings,
@@ -1011,21 +1040,8 @@ async def process_media_chat_automation(
                 .order_by(Task.deadline)
             )
         ).all()
-        for task, link in rows:
-            await _send_media_chat_notice(
-                session,
-                bot,
-                settings,
-                notice_key=f"task-24h:{task.id}:{(task.deadline.isoformat() if task.deadline else "")}",
-                notice_kind="deadline_24h",
-                ref_type="task",
-                ref_id=task.id,
-                text=(
-                    f"До дедлайна медиа-задачи меньше 24 часов\n\n"
-                    f"{task.title}\n"
-                    f"Нужен результат до {task.deadline.astimezone(ZoneInfo(settings.timezone)).strftime('%d.%m %H:%M')}."
-                ),
-            )
+        for task, _link in rows:
+            await _send_media_deadline_notice(session, bot, settings, task, now)
 
 
 async def analytics(session: AsyncSession, settings: Settings | None = None) -> MediaAnalytics:
