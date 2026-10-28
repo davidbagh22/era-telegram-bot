@@ -26,13 +26,20 @@ def _configured_thresholds(values) -> list[int]:
         return []
     thresholds: set[int] = set()
     for value in values:
-        if isinstance(value, bool):
+        # Do not truncate fractional floats or coerce arbitrary JSON objects:
+        # those can unexpectedly activate real Telegram sends.
+        if type(value) is int:
+            minutes = value
+        elif isinstance(value, str):
+            candidate = value.strip()
+            if not candidate or len(candidate) > 9 or not candidate.isascii() or not candidate.isdigit():
+                continue
+            minutes = int(candidate)
+        else:
             continue
-        try:
-            minutes = int(value)
-        except (TypeError, ValueError, OverflowError):
-            continue
-        if minutes > 0:
+        # Reject nonsensical legacy values and anything outside a one-year
+        # reminder horizon; the DB receipt key stores minutes as an integer.
+        if 0 < minutes <= 525600:
             thresholds.add(minutes)
     return sorted(thresholds)
 
