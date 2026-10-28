@@ -37,6 +37,21 @@ class MediaApplyErrorsTests(IsolatedAsyncioTestCase):
         apply.assert_awaited_once_with(self.session, self.user)
         hub.assert_not_awaited()
 
+    async def test_revoked_applicant_during_lock_is_403(self) -> None:
+        with patch(
+            "app.api.v1.media.media_service.apply_for_media",
+            new_callable=AsyncMock,
+            side_effect=ValueError("media_apply_forbidden"),
+        ):
+            with self.assertRaises(HTTPException) as error:
+                await apply_to_media(
+                    user=self.user, session=self.session, settings=self.settings
+                )
+        self.assertEqual(error.exception.status_code, 403)
+        self.assertEqual(
+            error.exception.detail, "media_apply_requires_approved_membership"
+        )
+
     async def test_unexpected_internal_value_error_is_not_exposed_as_http_detail(self) -> None:
         with patch(
             "app.api.v1.media.media_service.apply_for_media",
