@@ -263,10 +263,16 @@ async def read_event_poster(
     experience = await session.get(EventExperience, event_id)
     if experience is None or not experience.poster_bytes:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
+    # Poster metadata may come from legacy imports or moderator uploads.
+    # Never serve HTML/SVG (including scripts) under the Mini App origin.
+    # Refuse unsupported MIME types rather than reflecting untrusted values.
+    poster_mime = (experience.poster_content_type or "image/jpeg").split(";", 1)[0].strip().lower()
+    if poster_mime not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
+        raise HTTPException(status_code=404, detail="event_poster_not_found")
     return Response(
         content=experience.poster_bytes,
-        media_type=experience.poster_content_type or "image/jpeg",
-        headers={"Cache-Control": "private, max-age=300"},
+        media_type=poster_mime,
+        headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"},
     )
 
 
