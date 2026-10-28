@@ -117,6 +117,10 @@ def create_session_token(
 def decode_session_token(token: str, secret: str) -> SessionTokenPayload:
     if not secret:
         raise SessionTokenError("missing_secret")
+    # Normal signed sessions are under 100 bytes. Bound untrusted Bearer
+    # headers before base64 decoding or HMAC work to avoid resource exhaustion.
+    if not isinstance(token, str) or not token or len(token) > 1024:
+        raise SessionTokenError("malformed_token")
     try:
         encoded_payload, signature = token.split(".", 1)
     except ValueError as exc:
@@ -141,7 +145,11 @@ def decode_session_token(token: str, secret: str) -> SessionTokenPayload:
     except ValueError as exc:
         raise SessionTokenError("malformed_token") from exc
 
-    if time.time() > expires_at:
+    # A valid Telegram account ID is strictly positive. Signed malformed
+    # payloads must not be treated as identities even if the HMAC matches.
+    if telegram_id <= 0:
+        raise SessionTokenError("malformed_token")
+    if time.time() >= expires_at:
         raise SessionTokenError("expired")
 
     return SessionTokenPayload(telegram_id=telegram_id, expires_at=expires_at)
