@@ -1,3 +1,5 @@
+- **Дополнительное production-доказательство webhook режима:** Render app log **2026-10-28 04:06:02.981 UTC**: `Telegram webhook configured: https://era-telegram-bot.onrender.com/telegram/webhook?v=2.1.0` на LIVE `ad47c18...`. Это подтверждает реальную регистрацию webhook, **но не наличие secret_token**. PR #475 остаётся DRAFT до безопасной сверки секрета.
+
 ## Исправление оценки риска 28.10.2026 ~04:38 UTC — PR #475 переведён в DRAFT
 
 - **Архитектурная сверка:** production `app/webapp.py:lifespan` при наличии `effective_base_url` вызывает `bot.set_webhook(webhook_url, secret_token=settings.effective_webhook_secret or None)`. Поэтому прежняя формулировка «production использует polling» **НЕВЕРНА** для webapp. `app/main.py` имеет polling, но Docker `scripts/start_production.py` запускает `uvicorn app.webapp:app`. Если Render `WEBHOOK_SECRET` пуст, действующий endpoint fail-open, а новый fail-closed код #475 после merge **прервал бы законные Telegram обновления**. Нельзя выпускать без подтверждения наличия секрета и корректного Telegram webhook header. Никакие секреты/настройки не читались и не менялись.
