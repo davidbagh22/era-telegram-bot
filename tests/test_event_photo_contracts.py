@@ -29,7 +29,12 @@ class EventPosterContractTests(unittest.TestCase):
     def test_admin_event_cards_use_photo_helper(self) -> None:
         self.assertIn("send_event_card", inspect.getsource(events_block6.events_list))
         self.assertIn("send_event_card", inspect.getsource(events_block6.broadcast_preview))
-        self.assertIn("send_event_card_to_chat", inspect.getsource(events_block6.broadcast_publish))
+        # Legacy broadcast now uses the durable photo-capable topic transport.
+        self.assertIn("_deliver_prepared_announcement", inspect.getsource(events_block6.broadcast_publish))
+        delivery_source = inspect.getsource(events_block6._deliver_prepared_announcement)
+        self.assertIn("send_general_topic_once", delivery_source)
+        self.assertIn("photo=poster if index == 0 else None", delivery_source)
+
 
 
 if __name__ == "__main__":
