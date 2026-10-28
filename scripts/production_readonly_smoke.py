@@ -50,11 +50,16 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
     error: str | None = None
     health_commit: str | None = None
     content_type = ""
+    auth_body: bytes | None = None
     try:
         with urlopen(request, timeout=timeout) as response:
             status = response.status
             final_url = response.geturl()
             content_type = response.headers.get("Content-Type", "")
+            if path.startswith("/api/v1/") and status in expected:
+                # A JSON Content-Type alone can be spoofed by a proxy. FastAPI
+                # HTTPException responses carry a structured detail field.
+                auth_body = response.read(4096)
             if path in ("/health", "/ready"):
                 # A 200 HTML proxy/error page is not proof of a healthy app.
                 # Verify the documented bounded JSON health/readiness body.
@@ -78,7 +83,14 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
         status = exc.code
         final_url = exc.geturl()
         content_type = exc.headers.get("Content-Type", "") if exc.headers else ""
-        exc.close()
+        try:
+            if path.startswith("/api/v1/") and status in expected:
+                auth_body = exc.read(4096) if getattr(exc, "fp", None) is not None else b""
+        except (URLError, TimeoutError, OSError) as read_exc:
+            status = None
+            error = type(read_exc).__name__
+        finally:
+            exc.close()
     except (URLError, TimeoutError, OSError) as exc:
         # Even if headers arrived, a transport failure while reading /health
         # is not a verified response and must never be reported as PASS/FAIL.
@@ -91,6 +103,15 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
         media_type = content_type.split(";", 1)[0].strip().lower()
         if media_type != "application/json" and not media_type.endswith("+json"):
             error = "auth_response_not_json"
+        else:
+            try:
+                payload = json.loads(auth_body or b"")
+            except (ValueError, UnicodeError):
+                error = "auth_payload_unreadable"
+            else:
+                detail = payload.get("detail") if isinstance(payload, dict) else None
+                if not isinstance(detail, (str, list)) or not detail:
+                    error = "auth_payload_invalid"
 
     # Redirects must not change the HTTPS origin (including port). A 200
     # from an unrelated host or an HTTP downgrade proves nothing about ERA.
