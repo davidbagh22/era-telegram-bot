@@ -1,4 +1,5 @@
 """Production acceptance probe must never send credentials or fake success."""
+import json
 import unittest
 from unittest.mock import patch
 from urllib.error import URLError
@@ -7,9 +8,13 @@ from scripts import production_readonly_smoke as smoke
 
 
 class FakeResponse:
-    def __init__(self, url, status):
+    def __init__(self, url, status, body=None):
         self.url = url
         self.status = status
+        self.body = body or b""
+
+    def read(self, size):
+        return self.body[:size]
 
     def geturl(self):
         return self.url
@@ -71,6 +76,28 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
             result = smoke.check(smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0)
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "cross_origin_redirect")
+
+    def test_health_commit_prefix_is_corroboration_not_exact_sha_proof(self):
+        sha = "a88dca9220b246727553b266b0a36786464bfc25"
+
+        def fake_open(request, timeout):
+            body = json.dumps({"status": "ok", "commit": sha[:7]}).encode()
+            return FakeResponse(
+                request.full_url,
+                200 if request.full_url.endswith(("/health", "/ready", "/app/")) else 401,
+                body,
+            )
+
+        with patch.object(smoke, "urlopen", side_effect=fake_open):
+            status, checks = smoke.run(expected_sha=sha)
+        self.assertEqual(status, 0)
+        self.assertEqual(checks[0]["commit_prefix"], sha[:7])
+        with patch.object(smoke, "urlopen", side_effect=fake_open):
+            status, checks = smoke.run(expected_sha="f" * 40)
+        self.assertEqual(status, 1)
+        self.assertEqual(checks[0]["error"], "health_commit_prefix_mismatch")
+        with self.assertRaises(ValueError):
+            smoke.run(expected_sha="a88dca9")
 
     def test_reject_non_https_or_embedded_credentials(self):
         for origin in (
