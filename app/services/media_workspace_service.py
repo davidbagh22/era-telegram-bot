@@ -83,13 +83,21 @@ async def _validate_responsible(session, user_id):
 
 
 def _publication_url(value, platform):
-    parsed = urlsplit(value or "")
+    # urlsplit and its lazy .port property can raise ValueError for malformed
+    # IPv6 hosts, non-numeric ports or out-of-range ports. Treat these as
+    # ordinary validation failures instead of an uncaught API HTTP 500.
+    detail = "Нужна HTTPS-ссылка на опубликованный материал выбранной платформы"
+    try:
+        parsed = urlsplit(value or "")
+        port = parsed.port
+    except ValueError:
+        raise ValueError(detail) from None
     hosts = {"telegram": {"t.me"}, "instagram": {"instagram.com", "www.instagram.com"},
         "facebook": {"facebook.com", "www.facebook.com", "fb.watch"},
         "youtube": {"youtube.com", "www.youtube.com", "youtu.be"},
         "tiktok": {"tiktok.com", "www.tiktok.com", "vm.tiktok.com"}}
     if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
-            or parsed.port not in (None, 443) or parsed.hostname not in hosts.get(platform, set())
+            or port not in (None, 443) or parsed.hostname not in hosts.get(platform, set())
             or not parsed.path.strip("/")):
         raise ValueError("Нужна HTTPS-ссылка на опубликованный материал выбранной платформы")
     if platform == "telegram":
