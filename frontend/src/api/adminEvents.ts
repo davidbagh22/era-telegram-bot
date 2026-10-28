@@ -207,7 +207,8 @@ export async function fetchAdminEventPoster(eventId: number): Promise<Blob> {
     headers: { Authorization: `Bearer ${sessionToken}` },
   });
   if (!response.ok) return parseError(response);
-  if (!(response.headers.get("content-type") ?? "").toLowerCase().startsWith("image/")) {
+  const mime = (response.headers.get("content-type") ?? "").split(";", 1)[0].trim().toLowerCase();
+  if (!new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/heic", "image/heif"]).has(mime)) {
     throw new ApiError(502, "poster_invalid_image");
   }
   return response.blob();
