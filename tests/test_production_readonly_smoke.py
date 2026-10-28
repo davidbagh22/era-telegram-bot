@@ -169,6 +169,33 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "miniapp_root_missing")
 
+    def test_non_html_miniapp_response_cannot_fake_react_mount(self):
+        # A proxy's JSON/plaintext payload containing the expected root
+        # marker is not evidence that the Mini App HTML is being served.
+        for content_type in ("application/json", "text/plain", "application/octet-stream"):
+            with self.subTest(content_type=content_type):
+                response = FakeResponse(
+                    smoke.PRODUCTION_URL + "/app/", 200,
+                    body=b'<div id="root"></div>',
+                )
+                response.headers["Content-Type"] = content_type
+                with patch.object(smoke, "urlopen", return_value=response):
+                    result = smoke.check(
+                        smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0
+                    )
+                self.assertEqual(result["status"], 200)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "miniapp_response_not_html")
+
+    def test_html_charset_miniapp_response_is_accepted(self):
+        response = FakeResponse(smoke.PRODUCTION_URL + "/app/", 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        with patch.object(smoke, "urlopen", return_value=response):
+            result = smoke.check(
+                smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0
+            )
+        self.assertTrue(result["ok"])
+
     def test_miniapp_html_read_failure_is_unverified(self):
         class BrokenApp(FakeResponse):
             def read(self, size):

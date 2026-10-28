@@ -73,12 +73,16 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
                 except (ValueError, UnicodeError):
                     error = "health_payload_unreadable" if path == "/health" else "ready_payload_unreadable"
             elif path == "/app/":
-                # A generic 200 login/error page does not prove that the
-                # Mini App frontend is served. Check the stable React mount.
-                # Only inspect a bounded prefix; never persist page contents.
-                html = response.read(65_536)
-                if b'<div id="root"' not in html:
-                    error = "miniapp_root_missing"
+                # A proxy can return JSON or another payload containing the
+                # React mount string. Require an actual HTML response first.
+                media_type = content_type.split(";", 1)[0].strip().lower()
+                if media_type != "text/html":
+                    error = "miniapp_response_not_html"
+                else:
+                    # Only inspect a bounded prefix; never persist page contents.
+                    html = response.read(65_536)
+                    if b'<div id="root"' not in html:
+                        error = "miniapp_root_missing"
     except HTTPError as exc:
         status = exc.code
         final_url = exc.geturl()
