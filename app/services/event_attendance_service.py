@@ -583,7 +583,11 @@ async def deliver_attendance_notifications(bot: Bot, settings, session_factory) 
             if payload.get('status') != 'pending':
                 continue
             event = await session.get(Event, payload['event_id'])
-            if event is None or event.status == EventStatus.CANCELLED or (payload['phase'] == 'start' and event.status in COMPLETED_STATUSES):
+            if (
+                event is None
+                or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL, EventStatus.CANCELLED}
+                or (payload['phase'] == 'start' and event.status in COMPLETED_STATUSES)
+            ):
                 payload['status'] = 'skipped'
                 row.value = json.dumps(payload, ensure_ascii=False)
                 row.key = key.replace(':pending:', ':'+payload['status']+':', 1)
