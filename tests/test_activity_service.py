@@ -113,6 +113,43 @@ class ActivityServiceTests(unittest.IsolatedAsyncioTestCase):
             rows = await list_events(session, user, "mine")
             self.assertEqual([event.id for event, _ in rows], [event1.id])
 
+    async def test_reverted_unpublished_events_are_hidden_from_participant_tabs(self) -> None:
+        # An event can retain historical registrations after a moderator
+        # returns it to draft or pending approval. Those registrations must
+        # not expose its unpublished content in "mine" or "past".
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            draft = self._event(
+                created_by=user.id, days_offset=-2, status=EventStatus.DRAFT
+            )
+            pending = self._event(
+                created_by=user.id, days_offset=-2, status=EventStatus.PENDING_APPROVAL
+            )
+            published = self._event(
+                created_by=user.id, days_offset=2, status=EventStatus.PUBLISHED
+            )
+            completed = self._event(
+                created_by=user.id, days_offset=-2, status=EventStatus.COMPLETED
+            )
+            session.add_all([draft, pending, published, completed])
+            await session.flush()
+            for event in (draft, pending, published, completed):
+                session.add(EventRegistration(
+                    event_id=event.id,
+                    user_id=user.id,
+                    status=RegistrationStatus.REGISTERED,
+                ))
+            await session.flush()
+
+            mine = await list_events(session, user, "mine")
+            past = await list_events(session, user, "past")
+            self.assertEqual(
+                {event.id for event, _ in mine}, {published.id, completed.id}
+            )
+            self.assertEqual(
+                {event.id for event, _ in past}, {completed.id}
+            )
+
     async def test_past_scope_only_past_dates(self) -> None:
         async with self.session_factory() as session:
             user = await self._make_user(session)
