@@ -43,6 +43,21 @@ class MediaDeadlineStageTests(IsolatedAsyncioTestCase):
         self.assertEqual(send.await_args.kwargs["notice_kind"], "deadline_3h")
         self.assertIn("меньше 3 часов", send.await_args.kwargs["text"])
 
+    async def test_disabled_flag_preserves_existing_24h_behavior(self):
+        self.settings.media_deadline_3h_enabled = False
+        with patch("app.services.media_service._send_media_chat_notice",
+                   new=AsyncMock(return_value=True)) as send:
+            result = await _send_media_deadline_notice(
+                self.session, self.bot, self.settings, self.task(2), self.now,
+            )
+        self.assertTrue(result)
+        self.assertEqual(send.await_count, 1)
+        self.assertEqual(send.await_args.kwargs["notice_kind"], "deadline_24h")
+        self.assertEqual(
+            send.await_args.kwargs["notice_key"],
+            f"task-24h:81:{self.task(2).deadline.isoformat()}",
+        )
+
     async def test_stage_keys_are_distinct_and_stable_for_restart(self):
         task = self.task(12)
         with patch("app.services.media_service._send_media_chat_notice",
