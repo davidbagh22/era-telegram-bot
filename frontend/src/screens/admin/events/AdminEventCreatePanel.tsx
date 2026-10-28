@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import {
   createEventDraft,
   fetchEventDraft,
+  fetchAdminEventPoster,
   listEventDrafts,
   publishEventDraft,
   removeEventPoster,
@@ -95,9 +96,29 @@ export function AdminEventCreatePanel() {
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [customReminder, setCustomReminder] = useState("");
+  const [posterUrl, setPosterUrl] = useState<string | null>(null);
+  const [posterRevision, setPosterRevision] = useState(0);
   const versionRef = useRef(0);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const projectsState = useAsync(() => fetchProjects("open"), []);
+
+  useEffect(() => {
+    setPosterUrl(null);
+    if (!draft?.has_poster) return;
+    let active = true;
+    let objectUrl: string | null = null;
+    void fetchAdminEventPoster(draft.id)
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPosterUrl(objectUrl);
+      })
+      .catch(() => { if (active) setPosterUrl(null); });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [draft?.id, draft?.has_poster, posterRevision]);
 
   useEffect(() => {
     if (!draft?.is_complete || draft.announcement_status !== "pending") return;
@@ -238,6 +259,7 @@ export function AdminEventCreatePanel() {
       const result = file ? await uploadEventPoster(draft.id, file) : await removeEventPoster(draft.id);
       // A poster response must never overwrite text typed during upload.
       setDraft((current) => current ? { ...current, has_poster: result.has_poster } : current);
+      setPosterRevision((current) => current + 1);
     } catch (reason) {
       setError(describeActionError(reason));
     } finally {
@@ -283,7 +305,7 @@ export function AdminEventCreatePanel() {
   }
 
   if (draft.creation_mode === "quick") {
-    return <QuickEventCreateDialog draft={draft} busy={busy} saving={saving} saveLabel={saveLabel} error={error}
+    return <QuickEventCreateDialog draft={draft} posterUrl={posterUrl} busy={busy} saving={saving} saveLabel={saveLabel} error={error}
       onChange={mutate} onClose={leaveDraft} onPublish={publish} onPoster={changePoster}
       onWizard={() => mutate((current) => ({ ...current, creation_mode: "wizard" }))} />;
   }
@@ -352,7 +374,7 @@ export function AdminEventCreatePanel() {
             <Question title="Добавим афишу?" hint="Фото сразу станет главным визуалом карточки и страницы события. До 5 МБ." />
             {draft.has_poster ? (
               <div style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
-                <div style={{ minHeight: 150, borderRadius: "1rem", background: "linear-gradient(135deg,#632CFF,#D71978,#FF6400)", display: "grid", placeItems: "center", fontWeight: 900 }}>Афиша загружена ✓</div>
+                <div style={{ minHeight: 150, borderRadius: "1rem", background: "linear-gradient(135deg,#632CFF,#D71978,#FF6400)", display: "grid", placeItems: "center", fontWeight: 900 }}>{posterUrl ? <img src={posterUrl} alt="Афиша мероприятия" style={{ width: "100%", maxHeight: 250, objectFit: "contain", borderRadius: "1rem" }} /> : "Афиша загружена ✓"}</div>
                 <label className="era-btn-primary" style={{ textAlign: "center", cursor: "pointer" }}>Заменить афишу<input hidden disabled={busy} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void changePoster(file); }} /></label>
                 <button type="button" disabled={busy} onClick={() => void changePoster(null)}>Удалить</button>
               </div>
@@ -451,7 +473,7 @@ export function AdminEventCreatePanel() {
         {step === 10 && (
           <>
             <Question title="Так событие увидят участники" hint="Проверьте главное. Вернуться на любой шаг можно кнопкой «Назад». Рассылка отправится только после публикации." />
-            <div style={{ minHeight: 150, borderRadius: "1rem", background: draft.has_poster ? `url(/api/v1/event-posters/${draft.id}) center/cover` : "linear-gradient(135deg,#632CFF,#D71978,#FF6400)", marginBottom: ".75rem" }} />
+            <div style={{ minHeight: 150, borderRadius: "1rem", background: posterUrl ? `url("${posterUrl}") center/cover` : "linear-gradient(135deg,#632CFF,#D71978,#FF6400)", marginBottom: ".75rem" }} />
             <h2 style={{ margin: "0 0 .35rem", fontSize: "1.55rem" }}>{draft.title}</h2>
             <p style={{ margin: "0 0 .8rem", color: "var(--era-text-muted)" }}>{draft.short_description}</p>
             <Card style={{ padding: ".8rem" }}><strong>📅 {draft.event_date} · {draft.event_time}{draft.end_time ? `–${draft.end_time}` : ""}</strong><p style={{ margin: ".25rem 0 0" }}>📍 {draft.location}</p><p style={{ margin: ".25rem 0 0" }}>{draft.participant_limit ? `${draft.participant_limit} мест` : "Без ограничения мест"} · {draft.points_for_visit} баллов</p></Card>
