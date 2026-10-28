@@ -11,7 +11,11 @@ class FakeResponse:
     def __init__(self, url, status, body=None):
         self.url = url
         self.status = status
-        self.body = body or b""
+        self.body = (
+            b'<!doctype html><html><body><div id="root"></div></body></html>'
+            if body is None and url.endswith("/app/")
+            else body or b""
+        )
 
     def read(self, size):
         return self.body[:size]
@@ -78,6 +82,34 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
         self.assertEqual(status, 2)
         self.assertIsNone(checks[0]["status"])
         self.assertEqual(checks[0]["error"], "OSError")
+
+    def test_generic_200_login_page_is_not_miniapp_acceptance(self):
+        # A same-origin login/error page with HTTP 200 is not the React app.
+        with patch.object(smoke, "urlopen", return_value=FakeResponse(
+            smoke.PRODUCTION_URL + "/app/", 200,
+            body=b"<html><body>Sign in to continue</body></html>",
+        )):
+            result = smoke.check(
+                smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0
+            )
+        self.assertEqual(result["status"], 200)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "miniapp_root_missing")
+
+    def test_miniapp_html_read_failure_is_unverified(self):
+        class BrokenApp(FakeResponse):
+            def read(self, size):
+                raise OSError("connection closed during Mini App response")
+
+        with patch.object(smoke, "urlopen", return_value=BrokenApp(
+            smoke.PRODUCTION_URL + "/app/", 200
+        )):
+            result = smoke.check(
+                smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0
+            )
+        self.assertIsNone(result["status"])
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "OSError")
 
     def test_unprotected_analytics_endpoint_fails(self):
         def fake_open(request, timeout):
