@@ -84,8 +84,8 @@ async def _validate_responsible(session, user_id):
 
 def _publication_url(value, platform):
     # urlsplit and its lazy .port property can raise ValueError for malformed
-    # IPv6 hosts, non-numeric ports or out-of-range ports. Treat these as
-    # ordinary validation failures instead of an uncaught API HTTP 500.
+    # IPv6 hosts, non-numeric ports or out-of-range ports. Normalize the
+    # resulting validation detail instead of exposing parser internals.
     detail = "Нужна HTTPS-ссылка на опубликованный материал выбранной платформы"
     try:
         parsed = urlsplit(value or "")
