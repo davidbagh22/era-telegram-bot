@@ -392,7 +392,7 @@ async def read_event_activities(
     settings: Settings = Depends(get_settings),
 ) -> list[EventActivityOut]:
     event = await session.get(Event, event_id)
-    if event is None:
+    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
         raise HTTPException(status_code=404, detail="event_not_found")
     activities = await event_activity_service.list_activities_for_participant(session, event, user)
     if activities is None:
