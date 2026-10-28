@@ -199,6 +199,7 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
     def test_telegram_publication_evidence_must_be_a_real_post_permalink(self):
         for url in (
             "https://t.me/era_leaders1/123",
+            "https://t.me:443/era_leaders1/123",
             "https://t.me/c/123456789/456",
         ):
             self.assertEqual(workspace._publication_url(url, "telegram"), url)
@@ -217,8 +218,22 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
             "https://t.me/a/123",  # not a valid public username
             "https://t.me/era-leaders/123",  # invalid username characters
             "https://t.me/12345/123",  # public usernames must start with a letter
+            "https://t.me:bad/era_leaders1/123",  # malformed port must not cause HTTP 500
+            "https://t.me:65536/era_leaders1/123",  # out-of-range port
+            "https://[broken/era_leaders1/123",  # malformed IPv6 authority
         ):
             with self.subTest(url=url), self.assertRaises(ValueError):
+                workspace._publication_url(url, "telegram")
+
+    def test_malformed_publication_url_uses_localized_validation_detail(self):
+        for url in (
+            "https://t.me:bad/era_leaders1/123",
+            "https://t.me:65536/era_leaders1/123",
+            "https://[broken/era_leaders1/123",
+        ):
+            with self.subTest(url=url), self.assertRaisesRegex(
+                ValueError, "Нужна HTTPS-ссылка"
+            ):
                 workspace._publication_url(url, "telegram")
 
     async def test_legacy_publisher_never_sends_ksoors_or_unapproved_workspace_to_era(self):
