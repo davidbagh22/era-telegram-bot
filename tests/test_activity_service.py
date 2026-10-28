@@ -421,6 +421,39 @@ class ActivityServiceTests(unittest.IsolatedAsyncioTestCase):
             items = await calendar_items(session, user, days_ahead=30)
             self.assertEqual(items, [])
 
+    async def test_history_hides_reverted_unpublished_attended_events(self) -> None:
+        # Attendance records may survive a moderator returning an event to
+        # draft/review. Do not expose unpublished titles or locations in history.
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            statuses = (
+                (EventStatus.DRAFT, "Hidden draft"),
+                (EventStatus.PENDING_APPROVAL, "Hidden review"),
+                (EventStatus.COMPLETED, "Visible completed"),
+                (EventStatus.CANCELLED, "Visible cancelled history"),
+            )
+            for status, title in statuses:
+                event = self._event(created_by=user.id, days_offset=-3, status=status)
+                event.title = title
+                session.add(event)
+                await session.flush()
+                session.add(
+                    EventRegistration(
+                        event_id=event.id,
+                        user_id=user.id,
+                        status=RegistrationStatus.ATTENDED,
+                    )
+                )
+            await session.flush()
+
+            entries = await history_entries(session, user)
+            attended_titles = {
+                entry.title for entry in entries if entry.kind == "event_attended"
+            }
+            self.assertEqual(
+                attended_titles, {"Visible completed", "Visible cancelled history"}
+            )
+
     async def test_history_includes_attended_events_completed_tasks_points_and_portfolio(
         self,
     ) -> None:
