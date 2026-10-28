@@ -267,7 +267,7 @@ async def read_event_poster(
     # Never serve HTML/SVG (including scripts) under the Mini App origin.
     # Refuse unsupported MIME types rather than reflecting untrusted values.
     poster_mime = (experience.poster_content_type or "image/jpeg").split(";", 1)[0].strip().lower()
-    if poster_mime not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
+    if poster_mime not in {"image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/heic", "image/heif"}:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
     return Response(
         content=experience.poster_bytes,
