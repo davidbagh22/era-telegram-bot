@@ -719,7 +719,7 @@ class LeadersTopicRoutingSafetyTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaisesRegex(ValueError, "Панель задач"):
                     await delivery_topic(session, -1001, "tasks")
 
-    async def test_plain_pulse_and_important_do_not_require_task_panel(self):
+    async def test_plain_pulse_and_important_require_confirmed_task_panel(self):
         from app.services.leaders_topics_service import delivery_topic
 
         for key in ("pulse", "important"):
@@ -727,7 +727,8 @@ class LeadersTopicRoutingSafetyTests(unittest.IsolatedAsyncioTestCase):
                 session = SimpleNamespace(scalar=AsyncMock(
                     return_value=SimpleNamespace(value='{"mode":"plain","thread_id":null}'),
                 ))
-                self.assertIsNone(await delivery_topic(session, -1001, key))
+                with self.assertRaisesRegex(ValueError, "Панель задач"):
+                    await delivery_topic(session, -1001, key)
 
     async def test_card_sync_never_sends_into_default_topic_when_setting_is_corrupt(self):
         from unittest.mock import patch

@@ -27,7 +27,12 @@ async def main():
                           application_status=ApplicationStatus.APPROVED) for i in range(9)]
             candidate = User(telegram_id=uid+9, first_name='CI candidate', role=Role.PARTICIPANT,
                              application_status=ApplicationStatus.APPROVED)
-            session.add_all([*users, candidate, AppSetting(key=f'leaders_forum:{-uid}:important', value='{"mode":"plain"}')])
+            session.add_all([
+                *users, candidate,
+                AppSetting(key=f'leaders_forum:{-uid}:important', value='{"mode":"plain"}'),
+                AppSetting(key=f'leaders_forum:{-uid}:tasks',
+                           value='{"mode":"plain","message_id":55,"message_state":"sent"}'),
+            ])
             await session.commit()
             admin_id, member_ids, candidate_id = users[0].id, [u.id for u in users[1:]], candidate.id
 

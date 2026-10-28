@@ -208,6 +208,11 @@ class LeadersWorkcenterTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_campaign_keeps_one_fixed_queue_and_scope_and_uncertain_send_is_not_replayed(self):
         async with self.sessions() as session:
+            session.add(AppSetting(
+                key='leaders_forum:-100777:tasks',
+                value='{"mode":"plain","message_id":55,"message_state":"sent"}',
+            ))
+            await session.commit()
             admin=await session.get(User,self.admin);head=await session.get(User,self.head)
             with self.assertRaises(PermissionError):
                 await campaigns.create(session,self.settings,head,body='Outside',request_key='scope',mode='dm',department_id=self.other_dept)

@@ -45,6 +45,13 @@ class PulseAnnouncementDeliveryTests(IsolatedAsyncioTestCase):
             session.add(AppSetting(key="leaders_forum:-1001:pulse", value=json.dumps(data)))
         await session.commit()
 
+    async def confirmed_plain_panel(self, session):
+        session.add(AppSetting(
+            key="leaders_forum:-1001:tasks",
+            value='{"mode":"plain","message_id":91,"message_state":"sent"}',
+        ))
+        await session.commit()
+
     async def test_unknown_or_missing_topic_never_sends_to_the_default_topic(self):
         async with self.factory() as session:
             for value in ({}, {"mode": "broken", "thread_id": 7}, {"mode": False, "thread_id": 7}):
@@ -68,8 +75,25 @@ class PulseAnnouncementDeliveryTests(IsolatedAsyncioTestCase):
     async def test_plain_mode_is_explicit_and_uses_no_thread(self):
         async with self.factory() as session:
             await self.topic(session, {"mode": "plain", "thread_id": None})
+            await self.confirmed_plain_panel(session)
             self.assertTrue(await _send_cycle_announcement(session, self.bot, self.settings, self.cycle, self.deadline))
             self.assertNotIn("message_thread_id", self.bot.send_message.await_args.kwargs)
+
+    async def test_unconfirmed_plain_panel_withholds_announcement_before_telegram_or_receipt(self):
+        from app.database.system_models import NotificationDelivery
+
+        async with self.factory() as session:
+            await self.topic(session, {"mode": "plain", "thread_id": None})
+            self.assertFalse(await _send_cycle_announcement(session, self.bot, self.settings, self.cycle, self.deadline))
+            await self.confirmed_plain_panel(session)
+            panel = await session.scalar(select(AppSetting).where(AppSetting.key == "leaders_forum:-1001:tasks"))
+            panel.value = '{"mode":"plain","message_id":91,"message_state":"uncertain"}'
+            await session.commit()
+            self.assertFalse(await _send_cycle_announcement(session, self.bot, self.settings, self.cycle, self.deadline))
+            self.bot.send_message.assert_not_awaited()
+            self.bot.get_me.assert_not_awaited()
+            self.assertIsNone(await session.scalar(select(NotificationDelivery)))
+            self.assertIsNone(self.cycle.announcement_message_id)
 
     async def test_general_chat_is_never_used_as_the_leaders_destination(self):
         async with self.factory() as session:
@@ -81,6 +105,7 @@ class PulseAnnouncementDeliveryTests(IsolatedAsyncioTestCase):
     async def test_corrupt_saved_snapshot_never_sends(self):
         async with self.factory() as session:
             await self.topic(session, {"mode": "plain", "thread_id": None})
+            await self.confirmed_plain_panel(session)
             session.add(AppSetting(key="pulse-announcement-snapshot:1", value=json.dumps({"chat_id": -1001, "text": "Повреждённый снимок"})))
             await session.commit()
             self.assertFalse(await _send_cycle_announcement(session, self.bot, self.settings, self.cycle, self.deadline))

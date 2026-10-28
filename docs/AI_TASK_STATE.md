@@ -1,3 +1,35 @@
+# Актуальная контрольная точка — 28.10.2026, автономное ТЗ владельца
+
+Эта запись приоритетнее исторических записей ниже. Всегда заново сверять GitHub/Render.
+
+## Проверенные факты на 27.10.2026 23:38 UTC (28.10 по Еревану)
+
+- main и подтверждённый Render LIVE: `deeb2efc214a0e52d1d073c519205787d261b0ce` (#460). Main CI: все 5 jobs success. Deploy `dep-dbgj9ca9lscs73bd3aog`, LIVE 23:34:18 UTC. autoDeploy=yes/checksPass; ручной deploy не выполнять.
+- Открыты #461 и юридический draft #364. #461 исходный HEAD `c7bda238e233cd71c751986d7b504cb8ac41e2c6`: 3/6 checks failure (оба test jobs и postgres-migration); не объединять старый HEAD. Остальные e2e/frontend/secret-scan success.
+- Причина CI #461: прежние тесты/PG probe разрешали plain Пульс/Важно без подтверждённой Tasks-панели. Новый fail-closed контракт намеренно требует её. Исправлены старые expectations и положительные fixtures, добавлена интеграционная проверка отсутствия Telegram-вызовов и NotificationDelivery при missing/uncertain панели. Защита runtime не ослаблялась.
+- Локально после исправлений: 66 passed, 68 subtests passed (77.51s), correctness ruff и git diff --check success. До исправления локально воспроизведён конфликт старого контракта; исходные CI logs дополнительно выявили campaign fixture/PG probe.
+- Изменены `tests/test_leaders_chat_bind_safety.py`, `tests/test_leaders_topic_mode_routing.py`, `tests/test_leaders_native_workcenter.py`, `tests/test_pulse_announcement_delivery.py`, `scripts/postgres_leaders_workcenter_race.py` и этот checkpoint. Код #461: `app/services/leaders_topics_service.py`, `tests/test_leaders_plain_secondary_receipt.py`.
+- PostgreSQL ERA `dpg-d91r19vavr4c73fs837g-a`: available, external ipAllowList=[]; metrics 23:00–23:30 UTC 10 connections. Прямой read-only SQL через hosted MCP заблокирован закрытой сетью. Не открывать сеть для диагностики. Состояние commission БД не относится к ERA.
+- Реальная Telegram-приёмка/восстановление backup/роли в клиентах в этом запуске пока не выполнялись. Логи или CI не заменяют фактическую приёмку.
+
+## Продолжить немедленно
+
+1. Обновить #461 исправлениями тестов, дождаться ВСЕХ 6 checks нового точного HEAD. На failure читать конкретные logs; не обходить проверки. После review безопасный merge с expected_head_sha, затем 5 checks main и точный automatic LIVE.
+2. Следующая независимая задача стабильности: очередь `deliver_pending_event_announcements` выбирает только первые 20 pending по event_id; 20 постоянно неудачных ранних событий могут навсегда скрывать новые. Воспроизвести на изолированной БД, сделать ограниченный справедливый обход без повторной отправки/изменения реальных событий, регрессионный тест, PR/CI.
+3. Сверить фактические уже выпущенные медиа-функции по текущему коду (исторические списки ниже устарели); продолжать полный медиа/основное ТЗ, а не повторять выполненные PR. Все критерии полной готовности пока не доказаны.
+
+Команда проверки (подставить свой venv):
+`BOT_TOKEN=0000000000:LOCALTEST python -m pytest -q tests/test_leaders_plain_secondary_receipt.py tests/test_leaders_topic_mode_routing.py tests/test_leaders_chat_bind_safety.py tests/test_leaders_native_workcenter.py tests/test_pulse_announcement_delivery.py`
+PG probe только на изолированной `era_test`: `PYTHONPATH=. DATABASE_URL=<isolated era_test> python scripts/postgres_leaders_workcenter_race.py`. Production БД и личные Telegram-сессии не использовать для тестов.
+
+## Действующие границы автономной работы
+
+Владелец 28.10 разрешил реальные код/ветки/PR/CI, безопасный merge после обязательных проверок и совместимый выпуск штатным процессом. Продолжать несколько циклов до доступного лимита, перед концом обновлять этот файл в GitHub. Высокий риск оставлять в PR. Без отдельного разрешения запрещены удаление реальных данных, изменение баллов/участия, массовые сообщения, публикация объявлений/событий, изменение реальных Telegram-чатов/ролей, секретов, опасные миграции, личные Telegram-сессии, ослабление безопасности. Новое ТЗ отменяет старые разрешения рассылок/настройки чатов из истории ниже.
+
+Существующая automation `6adcbd42ede08191a5c0a946e4147b52` обновлена на новый цикл и ограничения, hourly cadence сохранён; не создавать дубликат. Обычные уведомления только 09:00–19:00 Asia/Yerevan; ночью сохранять результаты и подавлять обычный отчёт. Между запусками не обещать непрерывной работы/обхода лимитов. Дневной монитор остаётся read-only.
+
+---
+
 ## 2026-10-25 · Профиль: подтверждённые результаты и записи обзора
 
 #392 объединён25be292910bb4923c46185aee998c511e040955f, все6 checks95124fcd success:2023 tests/151 subtests/52 browser E2E. Финальный main CI40171804555 выполняется, automatic deploy/LIVE пока не подтверждены. #378 и#391 уже LIVE на2995f368ef570f5b4d6eac845a52e9a719dec79c, dep-dbeqkug473hc739c8v40 25.10 07:07:42UTC; main CI40170655442 все5 success, health/ready200, ошибок послеLIVE не найдено. Backup40167834021 от25.10 success: isolated PG18 restore + encryption/verify/GitHub artifact; optionalS3 skipped.

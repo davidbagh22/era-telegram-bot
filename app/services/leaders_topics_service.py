@@ -108,14 +108,24 @@ async def delivery_topic(session, chat_id, key):
             data.get('message_id') is not None or data.get('message_state') is not None
         ):
             raise ValueError('Настройки чата лидеров противоречат друг другу. Проверьте темы.')
-        # Only the Tasks destination has a durable plain-chat panel receipt.
-        # An uncertain/missing panel is not evidence that this chat is ready
-        # for task cards or reminders. Never silently fall back to the feed.
-        if key == 'tasks':
-            message_id = data.get('message_id')
-            if (type(message_id) is not int or message_id <= 0
-                    or data.get('message_state') != 'sent'):
+        # Plain-chat secondary destinations share the main feed with Tasks.
+        # Do not deliver important notices or Pulse reminders if the Tasks
+        # panel is missing/uncertain: a saved secondary mode alone does not
+        # prove that this chat was fully reconciled.
+        primary = data
+        if key != 'tasks':
+            primary_row = await session.scalar(select(AppSetting).where(
+                AppSetting.key == f'leaders_forum:{chat_id}:tasks'
+            ))
+            primary = _topic_data(primary_row)
+            if (primary.get('mode') != 'plain'
+                    or primary.get('thread_id') is not None
+                    or primary.get('thread_state') is not None):
                 raise ValueError('Панель задач в обычном чате не подтверждена. Требуется ручная сверка.')
+        message_id = primary.get('message_id')
+        if (type(message_id) is not int or message_id <= 0
+                or primary.get('message_state') != 'sent'):
+            raise ValueError('Панель задач в обычном чате не подтверждена. Требуется ручная сверка.')
         return None
     # An unknown persisted mode is not proof that the saved thread belongs
     # to this forum. Never route a task into a potentially unrelated topic.
