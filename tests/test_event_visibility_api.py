@@ -75,6 +75,30 @@ class EventVisibilityApiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.body, b"private-poster-bytes")
             self.assertEqual(response.media_type, "image/png")
             self.assertEqual(response.headers["cache-control"], "private, max-age=300")
+            self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+
+    async def test_active_content_types_are_not_served_under_miniapp_origin(self):
+        async with self.sessions() as session:
+            viewer, event = await self._make_event(session, EventStatus.APPROVED)
+            experience = await session.get(EventExperience, event.id)
+            for unsafe_type in ("text/html", "image/svg+xml", "application/javascript"):
+                with self.subTest(content_type=unsafe_type):
+                    experience.poster_content_type = unsafe_type
+                    await session.flush()
+                    with self.assertRaises(HTTPException) as caught:
+                        await read_event_poster(event.id, _user=viewer, session=session)
+                    self.assertEqual(caught.exception.status_code, 404)
+
+    async def test_normalized_safe_image_content_type_is_allowed(self):
+        async with self.sessions() as session:
+            viewer, event = await self._make_event(session, EventStatus.APPROVED)
+            experience = await session.get(EventExperience, event.id)
+            experience.poster_content_type = " IMAGE/PNG; charset=binary "
+            await session.flush()
+            response = await read_event_poster(event.id, _user=viewer, session=session)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.media_type, "image/png")
+            self.assertEqual(response.headers["x-content-type-options"], "nosniff")
 
     async def test_unknown_poster_is_not_found(self):
         async with self.sessions() as session:
