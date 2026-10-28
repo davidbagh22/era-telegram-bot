@@ -97,6 +97,18 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "cross_origin_redirect")
 
+    def test_same_origin_login_redirect_cannot_fake_protected_route(self):
+        # A 401 from /login is not proof that /media/workspaces enforces auth.
+        with patch.object(smoke, "urlopen", return_value=FakeResponse(
+            smoke.PRODUCTION_URL + "/login", 401
+        )):
+            result = smoke.check(
+                smoke.PRODUCTION_URL, "/api/v1/media/workspaces",
+                frozenset({401, 403}), 3.0,
+            )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "redirected_route")
+
     def test_https_downgrade_redirect_is_not_accepted(self):
         with patch.object(smoke, "urlopen", return_value=FakeResponse(
             "http://era-telegram-bot.onrender.com/app/", 200
