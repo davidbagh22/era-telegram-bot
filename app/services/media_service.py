@@ -230,9 +230,26 @@ def media_permissions(level: MediaAccessLevel) -> dict[str, bool]:
 
 
 async def apply_for_media(session: AsyncSession, user: User) -> MediaAccessLevel:
-    """ToR §28 NO_ACCESS CTA: "Подать заявку". Idempotent -- re-applying
-    while already pending/approved is a no-op, never creates duplicate rows
-    (UserDirection is unique on user_id+direction_id)."""
+    """Apply once per account, serializing concurrent taps on PostgreSQL.
+
+    UserDirection is unique on user_id+direction_id; without a row lock two
+    concurrent requests can both see no membership and one fails on flush.
+    Locking the existing user (before reading the membership) also refreshes
+    approval/block status, so a revoked applicant cannot race the API check.
+    """
+    locked_user = await session.scalar(
+        select(User)
+        .where(User.id == user.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if (
+        locked_user is None
+        or locked_user.is_blocked
+        or locked_user.is_archived
+        or locked_user.application_status != ApplicationStatus.APPROVED
+    ):
+        raise ValueError("media_apply_forbidden")
     direction = await _media_direction(session)
     if direction is None:
         raise ValueError("media_direction_missing")

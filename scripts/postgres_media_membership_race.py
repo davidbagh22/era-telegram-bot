@@ -12,7 +12,7 @@ from app.database.models import AuditLog, Task, TaskParticipant, User, UserDirec
 from app.services import task_service
 from app.services.media_leadership_service import change_leader, leadership_state, set_invitation
 from app.services.media_membership_service import request_join
-from app.services.media_service import can_manage_media
+from app.services.media_service import apply_for_media, can_manage_media
 
 
 async def main():
@@ -24,10 +24,10 @@ async def main():
     identity = 40_000_000_000 + int(uuid.uuid4().hex[:7], 16)
     try:
         async with sessions() as session:
-            users = [User(telegram_id=identity+i, first_name="CI media", application_status="approved") for i in range(3)]
+            users = [User(telegram_id=identity+i, first_name="CI media", application_status="approved") for i in range(4)]
             session.add_all(users)
             await session.commit()
-            chair_id, member_id, leader_id = [u.id for u in users]
+            chair_id, member_id, leader_id, applicant_id = [u.id for u in users]
             settings = Settings(bot_token="0000000000:CITESTTOKEN", era_chair_user_id=chair_id,
                                 media_manager_ids=[identity+2])
 
@@ -44,6 +44,19 @@ async def main():
                 UserDirection.user_id == member_id, UserDirection.direction_id == direction.id)) == 1
             assert await session.scalar(select(func.count()).select_from(AuditLog).where(
                 AuditLog.action == "media.member_joined", AuditLog.new_value["user_id"].as_integer() == member_id)) == 1
+
+        # Concurrent Mini App applications must serialize on User FOR UPDATE;
+        # without it two requests may both insert the same unique membership.
+        async def apply():
+            async with sessions() as session:
+                status = await apply_for_media(session, await session.get(User, applicant_id))
+                await session.commit()
+                return status
+        applications = await asyncio.wait_for(asyncio.gather(*(apply() for _ in range(8))), 45)
+        assert applications == ["pending"] * 8, applications
+        async with sessions() as session:
+            assert await session.scalar(select(func.count()).select_from(UserDirection).where(
+                UserDirection.user_id == applicant_id, UserDirection.direction_id == direction.id)) == 1
 
         async def appoint():
             async with sessions() as session:
@@ -89,7 +102,7 @@ async def main():
                 raise AssertionError("Disabled invitation accepted")
             except ValueError as exc:
                 assert str(exc) == "media_invitation_disabled"
-        print("Media PostgreSQL races passed: join once, appointment once, performer capacity, immediate revocation, disabled invite")
+        print("Media PostgreSQL races passed: join once, apply idempotent under concurrency, appointment once, performer capacity, immediate revocation, disabled invite")
     finally:
         await engine.dispose()
 
