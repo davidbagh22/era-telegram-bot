@@ -34,9 +34,26 @@ async def ensure_topic(bot, settings, key: str, *, session_factory=None, create_
                 lock_id = int.from_bytes(hashlib.sha256(setting_key.encode()).digest()[:8], "big", signed=True)
                 await session.execute(sql_text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_id})
             row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
-            data = json.loads(row.value) if row else {}
-            if data.get("thread_id"):
-                return int(data["thread_id"])
+            if row is not None:
+                try:
+                    data = json.loads(row.value) if isinstance(row.value, str) else row.value
+                except (TypeError, ValueError):
+                    data = None
+                thread_id = data.get("thread_id") if isinstance(data, dict) else None
+                # Keep legacy positive numeric strings readable, but never
+                # coerce booleans/floats or a negative ID into a destination.
+                if type(thread_id) is str:
+                    try:
+                        thread_id = int(thread_id)
+                    except ValueError:
+                        thread_id = None
+                if type(thread_id) is int and thread_id > 0:
+                    return thread_id
+                # A saved but damaged record may already represent a real
+                # topic. Recreating it here risks a duplicate; an administrator
+                # must reconcile the record without automatic Telegram writes.
+                logger.warning("General topic settings need reconciliation key=%s", key)
+                return None
             if not create_if_missing:
                 return None
             if key == "announcements":
