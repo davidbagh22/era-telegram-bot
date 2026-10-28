@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
 from app.database.event_experience import EventExperience
+from app.database.models import Event
+from app.utils.constants import EventStatus
 
 router = APIRouter(prefix="/event-posters", tags=["event-posters"])
 
@@ -20,7 +22,11 @@ async def read_public_event_poster(
     event_id: int,
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Serve only browser-safe legacy poster MIME types without caching."""
+    """Hide moderation-only posters while preserving historical public links."""
+    event = await session.get(Event, event_id)
+    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
+        raise HTTPException(status_code=404, detail="event_poster_not_found")
+
     experience = await session.get(EventExperience, event_id)
     if experience is None or not experience.poster_bytes:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
