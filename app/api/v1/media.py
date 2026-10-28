@@ -307,7 +307,12 @@ async def apply_to_media(
     try:
         await media_service.apply_for_media(session, user)
     except ValueError as error:
-        raise HTTPException(status_code=500, detail=str(error)) from error
+        # A missing Media direction is a deployment/configuration outage, not
+        # an applicant error. Return a retryable 503 without exposing unknown
+        # internal ValueErrors as API response details.
+        if str(error) == "media_direction_missing":
+            raise HTTPException(status_code=503, detail="media_direction_missing") from error
+        raise
     return await read_media_hub(user=user, session=session, settings=settings)
 
 
