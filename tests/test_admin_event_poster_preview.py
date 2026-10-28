@@ -11,9 +11,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.params import Depends
 from fastapi.testclient import TestClient
 
-from app.api.deps import get_session, get_settings
+from app.api.deps import get_current_user, get_session, get_settings
 from app.api.v1.admin_event_create import read_admin_event_poster_preview, require_event_manager, router
-from app.utils.constants import EventStatus
+from app.utils.constants import EventStatus, Role
 
 
 class AdminEventPosterPreviewTests(unittest.IsolatedAsyncioTestCase):
@@ -70,6 +70,40 @@ class AdminEventPosterPreviewTests(unittest.IsolatedAsyncioTestCase):
             response = client.get("/admin/events/42/poster/preview")
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()["detail"], "missing_token")
+
+    def test_preview_rejects_participant_and_department_only_grants(self):
+        app = FastAPI()
+        app.include_router(router)
+        session = SimpleNamespace(get=AsyncMock(side_effect=[
+            SimpleNamespace(status=EventStatus.DRAFT),
+            SimpleNamespace(poster_bytes=b"poster", poster_content_type="image/png"),
+        ]))
+        app.dependency_overrides[get_session] = lambda: session
+        app.dependency_overrides[get_settings] = lambda: SimpleNamespace(admin_ids=set())
+        user = SimpleNamespace(
+            telegram_id=123456, role=Role.PARTICIPANT,
+            is_blocked=False, is_archived=False, permission_grants=[],
+        )
+        app.dependency_overrides[get_current_user] = lambda: user
+        with TestClient(app) as client:
+            self.assertEqual(client.get("/admin/events/42/poster/preview").status_code, 403)
+            user.permission_grants = [
+                SimpleNamespace(
+                    permission="events.manage", is_active=True,
+                    scope_type="department", scope_id=7,
+                )
+            ]
+            self.assertEqual(client.get("/admin/events/42/poster/preview").status_code, 403)
+            user.permission_grants = [
+                SimpleNamespace(
+                    permission="events.manage", is_active=True,
+                    scope_type="global", scope_id=0,
+                )
+            ]
+            response = client.get("/admin/events/42/poster/preview")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.content, b"poster")
+            self.assertEqual(response.headers["cache-control"], "private, no-store")
 
     def test_preview_route_requires_event_manager_dependency(self):
         dependency = inspect.signature(read_admin_event_poster_preview).parameters["_admin"].default
