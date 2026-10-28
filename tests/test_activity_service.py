@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import unittest
 from datetime import date, datetime, time, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.api.v1.events import read_event_activities
 from app.database.base import Base
 from app.database.models import (
     Event,
@@ -149,6 +152,33 @@ class ActivityServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 {event.id for event, _ in past}, {completed.id}
             )
+
+    async def test_unpublished_event_activities_stay_private_after_registration(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            for status in (EventStatus.DRAFT, EventStatus.PENDING_APPROVAL):
+                with self.subTest(status=status):
+                    event = self._event(
+                        created_by=user.id, days_offset=2, status=status
+                    )
+                    session.add(event)
+                    await session.flush()
+                    session.add(EventRegistration(
+                        event_id=event.id,
+                        user_id=user.id,
+                        status=RegistrationStatus.REGISTERED,
+                    ))
+                    await session.flush()
+                    with patch(
+                        "app.api.v1.events.event_activity_service.list_activities_for_participant",
+                        new_callable=AsyncMock,
+                    ) as activities:
+                        with self.assertRaises(HTTPException) as caught:
+                            await read_event_activities(
+                                event.id, user=user, session=session, settings=None
+                            )
+                        self.assertEqual(caught.exception.status_code, 404)
+                        activities.assert_not_awaited()
 
     async def test_past_scope_only_past_dates(self) -> None:
         async with self.session_factory() as session:
