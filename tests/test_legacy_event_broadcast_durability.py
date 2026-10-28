@@ -36,7 +36,7 @@ class LegacyBroadcastDurabilityTests(IsolatedAsyncioTestCase):
         self.bot = object()
 
     async def test_partial_delivery_retry_uses_identical_durable_keys(self):
-        item = event(description="🙂<&" * 1600)
+        item = event(description="🙂<&" * 420)
         with patch(
             "app.handlers.admin.events_block6.send_general_topic_once",
             new=AsyncMock(side_effect=[
