@@ -317,7 +317,7 @@ async def register_event(
     settings: Settings = Depends(get_settings),
 ) -> EventOut:
     event = await session.get(Event, event_id)
-    if event is None:
+    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
         raise HTTPException(status_code=404, detail="event_not_found")
     experience = await session.get(EventExperience, event_id)
     if _registration_is_closed(experience):
