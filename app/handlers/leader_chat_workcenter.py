@@ -32,6 +32,28 @@ from app.utils.constants import ApplicationStatus, TaskStatus
 router = Router(name="leaders_chat_workcenter")
 
 
+@router.message(Command("team_tasks"), F.chat.type == "private")
+async def team_tasks_shortcut(message: Message, user: User | None, settings: Settings) -> None:
+    """Private entry to the existing, permission-checked team task workflow."""
+    if not message.from_user or not _can_create(user, settings, message.from_user.id):
+        await message.answer("Выдавать поручения команде может руководство ЭРА.")
+        return
+    if not settings.effective_miniapp_url:
+        await message.answer("Мини-приложение временно недоступно. В чате лидеров можно ответить /task на текст поручения.")
+        return
+    from aiogram.types import WebAppInfo
+    from app.utils.deep_links import miniapp_path_url
+    url = miniapp_path_url(settings.effective_miniapp_url, "admin", {"adminSection": "team-tasks"})
+    await message.answer(
+        "Поручения команде\n\nНажмите «Новая задача», укажите задачу, исполнителя и срок. "
+        "Здесь же видно, что в работе, просрочено и ждёт вашей проверки.\n\n"
+        "В чате лидеров можно ответить /task на сообщение с поручением.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Открыть поручения", web_app=WebAppInfo(url=url))
+        ]]),
+    )
+
+
 def _is_active_member(status: str, is_member: bool | None = None) -> bool:
     return status in {"creator", "administrator", "member"} or (
         status == "restricted" and is_member is True
