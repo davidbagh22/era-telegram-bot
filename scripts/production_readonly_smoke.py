@@ -63,7 +63,7 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
                 # Mini App frontend is served. Check the stable React mount.
                 # Only inspect a bounded prefix; never persist page contents.
                 html = response.read(65_536)
-                if not re.search(rb'<div\\s+id=["\\\']root["\\\']', html, re.IGNORECASE):
+                if b'<div id="root"' not in html:
                     error = "miniapp_root_missing"
     except HTTPError as exc:
         status = exc.code
