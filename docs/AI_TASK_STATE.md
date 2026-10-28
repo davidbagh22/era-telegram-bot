@@ -1,3 +1,10 @@
+## 28.10.2026 18:17 UTC — independent Render metrics confirmation
+
+- Render status-code metrics on last confirmed LIVE `5faccdafb43a488883a72a92372467ef681f98b0`, bounded 17:39–18:16 UTC: observed 200 and 404, no 5xx series in returned metrics. Sparse HTTP metrics and empty filtered ERROR/5xx logs do **not** prove complete traffic coverage or 24h stability.
+- ERA PostgreSQL `dpg-d91r19vavr4c73fs837g-a`: active connections ~11 at 17:45–18:13 UTC (21 during deployment overlap), instance available; direct read-only SQL blocked by empty external IP allowlist. Persistent Redis `red-db4n2cnlk1mc73d7rei0`: available, active connection metric mostly 1 (one zero interval around 17:45); legacy free Redis suspended. These are infrastructure observations, not application-level Redis operation tests.
+- PR #500 exact HEAD `d4325346d45379fa58fd97eda9ab0addc88b628e` Bot checks and Tests runs 40735280277/40735280289 both SUCCESS, but reminder-delivery behavior is high risk and PR remains DRAFT; no merge or real sends.
+- Continue main push run 40742614885 and exact autoDeploy gate; next independent fix should address transactional confirmation outbox (#497), with real Telegram acceptance still separate.
+
 ## 28.10.2026 18:15 UTC — independent code audit and release blockers
 
 - **New source review, no production mutation:** public `app/api/v1/event_posters.py` on exact main `90014cbec4b24cf5e3d0e62d89780491839b8d39` still serves unmoderated poster bytes and untrusted MIME under a public cache. Submitted a risk/compatibility review on draft PR #484 (review 5687512789): it currently has merge conflicts; preserve main's private no-store change, reconcile checkpoint history, validate CANCELLED historical URLs, rerun fresh exact-head 6/6 before any security release. This is a confirmed source flaw, not a confirmed exploit.
