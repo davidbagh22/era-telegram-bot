@@ -495,9 +495,11 @@ async def safe_send(
         return False
 
 
-async def safe_send_photo(bot: Bot, chat_id: int, photo, *, caption: str | None = None, reply_markup=None, message_thread_id: int | None = None) -> bool:
+async def safe_send_photo(bot: Bot, chat_id: int, photo, *, caption: str | None = None, reply_markup=None, message_thread_id: int | None = None, parse_mode: str | None = None) -> bool:
     try:
         kwargs = {"message_thread_id": message_thread_id} if message_thread_id is not None else {}
+        if parse_mode is not None:
+            kwargs["parse_mode"] = parse_mode
         await bot.send_photo(chat_id, photo, caption=caption, reply_markup=reply_markup, **kwargs)
         return True
     except TelegramAPIError:
@@ -523,9 +525,10 @@ async def safe_send_video(bot: Bot, chat_id: int, video, *, caption: str | None 
         return False
 
 
-async def safe_answer_photo(message, photo, *, caption: str | None = None, reply_markup=None) -> bool:
+async def safe_answer_photo(message, photo, *, caption: str | None = None, reply_markup=None, parse_mode: str | None = None) -> bool:
     try:
-        await message.answer_photo(photo, caption=caption, reply_markup=reply_markup)
+        kwargs = {"parse_mode": parse_mode} if parse_mode is not None else {}
+        await message.answer_photo(photo, caption=caption, reply_markup=reply_markup, **kwargs)
         return True
     except TelegramAPIError:
         logger.exception("Could not answer with photo")
