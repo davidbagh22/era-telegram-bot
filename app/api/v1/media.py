@@ -312,6 +312,8 @@ async def apply_to_media(
         # internal ValueErrors as API response details.
         if str(error) == "media_direction_missing":
             raise HTTPException(status_code=503, detail="media_direction_missing") from error
+        if str(error) == "media_apply_forbidden":
+            raise HTTPException(status_code=403, detail="media_apply_requires_approved_membership") from error
         raise
     return await read_media_hub(user=user, session=session, settings=settings)
 
