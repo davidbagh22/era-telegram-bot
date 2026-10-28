@@ -16,6 +16,27 @@ from app.utils.constants import EventStatus, RegistrationStatus
 from app.utils.deep_links import miniapp_event_url
 
 
+def _configured_thresholds(values) -> list[int]:
+    """Ignore malformed legacy JSON values without aborting every reminder.
+
+    Valid positive minute thresholds keep their previous ordering and
+    de-duplication. Booleans are not minute values despite int(True) == 1.
+    """
+    if not isinstance(values, (list, tuple)):
+        return []
+    thresholds: set[int] = set()
+    for value in values:
+        if isinstance(value, bool):
+            continue
+        try:
+            minutes = int(value)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if minutes > 0:
+            thresholds.add(minutes)
+    return sorted(thresholds)
+
+
 async def send_configured_event_reminders(bot: Bot, settings: Settings, session_factory) -> None:
     """Send the nearest configured reminder threshold exactly once per registration.
 
@@ -46,7 +67,7 @@ async def send_configured_event_reminders(bot: Bot, settings: Settings, session_
             )
         ).all()
         for registration, event, experience, user in rows:
-            configured = sorted({int(value) for value in (experience.reminders or []) if int(value) > 0})
+            configured = _configured_thresholds(experience.reminders)
             if not configured:
                 continue
             minutes_left = (event_datetime(event, settings.timezone) - now).total_seconds() / 60
