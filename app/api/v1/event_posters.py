@@ -8,6 +8,16 @@ from app.database.event_experience import EventExperience
 from app.database.models import Event
 from app.services.event_poster_security import normalized_event_poster_mime
 from app.services.event_service import PUBLIC_EVENT_STATUSES
+from app.utils.constants import EventStatus
+
+# Active and completed events remain visible in participant history. They were
+# previously published; keep their poster links working without exposing
+# moderation-only drafts or unverified cancelled events.
+PUBLIC_POSTER_STATUSES = PUBLIC_EVENT_STATUSES | {
+    EventStatus.ACTIVE,
+    EventStatus.COMPLETED,
+    EventStatus.REPORT_SUBMITTED,
+}
 
 router = APIRouter(prefix="/event-posters", tags=["event-posters"])
 
@@ -20,11 +30,11 @@ async def read_public_event_poster(
     """Serve only published, non-executable event posters without authentication.
 
     This legacy public URL must not bypass the authenticated Mini App's
-    moderation and MIME checks. Drafts and non-public historical statuses
-    cannot be served here because there is no reliable publication history.
+    moderation and MIME checks. Drafts, pending reviews and cancelled events cannot be served here;
+    published, active and completed events retain their poster links.
     """
     event = await session.get(Event, event_id)
-    if event is None or event.status not in PUBLIC_EVENT_STATUSES:
+    if event is None or event.status not in PUBLIC_POSTER_STATUSES:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
     experience = await session.get(EventExperience, event_id)
     if experience is None or not experience.poster_bytes:
