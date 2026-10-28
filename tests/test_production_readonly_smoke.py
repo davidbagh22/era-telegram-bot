@@ -62,7 +62,15 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
         )):
             result = smoke.check(smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0)
         self.assertFalse(result["ok"])
-        self.assertEqual(result["error"], "cross_host_redirect")
+        self.assertEqual(result["error"], "cross_origin_redirect")
+
+    def test_https_downgrade_redirect_is_not_accepted(self):
+        with patch.object(smoke, "urlopen", return_value=FakeResponse(
+            "http://era-telegram-bot.onrender.com/app/", 200
+        )):
+            result = smoke.check(smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "cross_origin_redirect")
 
     def test_reject_non_https_or_embedded_credentials(self):
         for origin in (
