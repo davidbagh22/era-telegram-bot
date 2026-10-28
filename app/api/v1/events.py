@@ -255,6 +255,11 @@ async def read_event_poster(
     _user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
+    # An event awaiting moderation (or still a draft) must not leak its
+    # unpublished poster through a guessed numeric event ID.
+    event = await session.get(Event, event_id)
+    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
+        raise HTTPException(status_code=404, detail="event_poster_not_found")
     experience = await session.get(EventExperience, event_id)
     if experience is None or not experience.poster_bytes:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
@@ -297,7 +302,7 @@ async def read_event(
     session: AsyncSession = Depends(get_session),
 ) -> EventOut:
     event = await session.get(Event, event_id)
-    if event is None or event.status == EventStatus.DRAFT:
+    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
         raise HTTPException(status_code=404, detail="event_not_found")
     registration = await _get_registration(session, event_id, user.id)
     return await _to_event_out(session, event, registration)
