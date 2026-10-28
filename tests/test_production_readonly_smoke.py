@@ -2,7 +2,7 @@
 import json
 import unittest
 from unittest.mock import patch
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 from scripts import production_readonly_smoke as smoke
 
@@ -43,6 +43,17 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual(len(requests), len(smoke.CHECKS))
         self.assertTrue(all(item["ok"] for item in checks))
+
+    def test_real_urllib_401_exception_is_accepted_for_protected_routes(self):
+        def fake_open(request, timeout):
+            if request.full_url.endswith(("/health", "/ready", "/app/")):
+                return FakeResponse(request.full_url, 200)
+            raise HTTPError(request.full_url, 401, "Unauthorized", None, None)
+
+        with patch.object(smoke, "urlopen", side_effect=fake_open):
+            status, checks = smoke.run()
+        self.assertEqual(status, 0)
+        self.assertEqual([item["status"] for item in checks[3:]], [401] * 4)
 
     def test_dns_failure_is_unverified_not_pass(self):
         with patch.object(smoke, "urlopen", side_effect=URLError("DNS unavailable")):
