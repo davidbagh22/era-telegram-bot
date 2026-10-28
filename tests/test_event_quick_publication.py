@@ -202,6 +202,26 @@ class QuickPublicationTests(IsolatedAsyncioTestCase):
                 "needs_attention",
             )
 
+    async def test_fully_successful_personal_broadcast_marks_sent(self):
+        from app.services.notification_service import BroadcastResult
+
+        event_id = await self.draft()
+        await self.topic()
+        async with self.sessions() as session:
+            experience = await session.get(EventExperience, event_id)
+            experience.broadcast_enabled = True
+            experience.broadcast_targets = ["bot"]
+            await session.commit()
+        with patch(
+            "app.services.event_publication_service.broadcast_detailed_once",
+            new_callable=AsyncMock,
+            return_value=BroadcastResult(total=1, sent=1),
+        ) as broadcaster:
+            published = await self.publish(event_id)
+            self.assertEqual(published.announcement_status, "sent")
+            await deliver_pending_event_announcements(self.bot, self.settings, self.sessions)
+            broadcaster.assert_awaited_once()
+
     async def test_empty_personal_audience_does_not_block_successful_topic_post(self):
         from app.services.notification_service import BroadcastResult
 
