@@ -1,3 +1,9 @@
+## 2026-10-28 ~21:27 UTC — independent PR #506 awaiting exact-head CI
+
+- Created **PR #506** `test/admin-poster-preview-global-scope-20261029` at exact head `91c73d18d58cb7ff00d9afbddfbc2f94d9a2b33d`, adding real ASGI regression for anonymous/ordinary participant/department-only `events.manage` rejection and globally granted `events.manage` success on the private draft poster preview. Changed files: `tests/test_admin_event_poster_preview.py`, `docs/AI_TASK_STATE.md`; no runtime code changes. Exact-head Tests run **40771321072 IN_PROGRESS** and Bot checks run **40771323883 IN_PROGRESS**; Codex review requested, no review acceptance yet. **Do not merge before 6/6 exact-head success and reviewed permission semantics.**
+- Current main remains `e61bc7c901735f5b4017d897dd14e6169a26cedc` (#504). Main push CI 40770873652 **3/5 SUCCESS**, test/e2e IN_PROGRESS at last check. Render latest confirmed LIVE still `515190b2950e2fe8e41642e88cab07bf4cdaef96` (#503), automatic deploy `dep-dbh5s8favr4c73f12tj0`; #504 not yet LIVE. Eight direct HTTP routes DNS-blocked; no manual deploy, real sends, data/points/roles/chats/secrets/migrations.
+- Next exact task: finish #504 main 5/5, Render automatic LIVE exact main SHA and eight-route production smoke, then review #506 exact-head CI and merge safely only after release gate. Full Telegram/iPhone/Android acceptance, 24h soak, offsite restore and legal review remain open.
+
 ## 2026-10-28 ~21:22 UTC — post-merge CI and log evidence refinement
 
 - Exact #504 main `e61bc7c901735f5b4017d897dd14e6169a26cedc` **push** Bot checks run `40770873652`: frontend, postgres-migration, secret-scan **3/5 SUCCESS**; test and e2e still IN_PROGRESS. No 5/5 claim and no #504 Render LIVE yet; last confirmed LIVE remains `515190b2950e2fe8e41642e88cab07bf4cdaef96`.
