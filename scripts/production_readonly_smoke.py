@@ -53,11 +53,25 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
         with urlopen(request, timeout=timeout) as response:
             status = response.status
             final_url = response.geturl()
-            if path == "/health" and expected_sha is not None:
+            if path in ("/health", "/ready"):
+                # A 200 HTML proxy/error page is not proof of a healthy app.
+                # Verify the documented bounded JSON health/readiness body.
                 try:
-                    health_commit = json.loads(response.read(4096)).get("commit")
-                except (ValueError, UnicodeError, AttributeError):
-                    error = "health_commit_unreadable"
+                    payload = json.loads(response.read(4096))
+                    expected_status = "ok" if path == "/health" else "ready"
+                    if not isinstance(payload, dict) or payload.get("status") != expected_status:
+                        error = "health_payload_invalid" if path == "/health" else "ready_payload_invalid"
+                    elif path == "/health" and expected_sha is not None:
+                        health_commit = payload.get("commit")
+                except (ValueError, UnicodeError):
+                    error = "health_payload_unreadable" if path == "/health" else "ready_payload_unreadable"
+            elif path == "/app/":
+                # A generic 200 login/error page does not prove that the
+                # Mini App frontend is served. Check the stable React mount.
+                # Only inspect a bounded prefix; never persist page contents.
+                html = response.read(65_536)
+                if b'<div id="root"' not in html:
+                    error = "miniapp_root_missing"
     except HTTPError as exc:
         status = exc.code
         final_url = exc.geturl()
