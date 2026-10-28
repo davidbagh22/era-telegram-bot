@@ -4,6 +4,7 @@ import type { AdminEventDraft } from "../../../api/adminEvents";
 
 interface Props {
   draft: AdminEventDraft;
+  posterUrl: string | null;
   busy: boolean;
   saving: boolean;
   saveLabel: string;
@@ -17,11 +18,10 @@ interface Props {
 
 const firstLine = (text: string) => text.split("\n").find((line) => line.trim())?.trim().slice(0, 255) ?? "";
 
-export function QuickEventCreateDialog({ draft, busy, saving, saveLabel, error, onChange, onClose, onPublish, onPoster, onWizard }: Props) {
+export function QuickEventCreateDialog({ draft, posterUrl, busy, saving, saveLabel, error, onChange, onClose, onPublish, onPoster, onWizard }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [preview, setPreview] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
-  const [posterVersion, setPosterVersion] = useState(() => Date.now());
   const complete = draft.is_complete && draft.status !== "draft";
   const valid = Boolean(draft.full_description.trim() && draft.title.trim() && draft.title !== "Новое мероприятие"
     && draft.event_date && draft.event_time && draft.location.trim());
@@ -39,7 +39,6 @@ export function QuickEventCreateDialog({ draft, busy, saving, saveLabel, error, 
     }
     setPhotoError(null);
     await onPoster(file);
-    setPosterVersion(Date.now());
   };
 
   const updateText = (text: string) => onChange((current) => {
@@ -70,7 +69,7 @@ export function QuickEventCreateDialog({ draft, busy, saving, saveLabel, error, 
           <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: "1rem 0", minWidth: 0 }}>
             {preview ? (
               <>
-                {draft.has_poster && <img alt="Афиша мероприятия" src={`/api/v1/event-posters/${draft.id}?v=${posterVersion}`} style={{ width: "100%", maxHeight: 300, objectFit: "contain", borderRadius: ".8rem" }} />}
+                {draft.has_poster && posterUrl && <img alt="Афиша мероприятия" src={posterUrl} style={{ width: "100%", maxHeight: 300, objectFit: "contain", borderRadius: ".8rem" }} />}
                 {draft.full_description.split("\n")[0].trim() !== draft.title.trim() && <h3>{draft.title}</h3>}
                 <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{draft.full_description}</p>
                 <p>📅 {draft.event_date.split("-").reverse().join(".")} · {draft.event_time.slice(0, 5)}<br />📍 {draft.location}</p>
@@ -87,7 +86,7 @@ export function QuickEventCreateDialog({ draft, busy, saving, saveLabel, error, 
                 </div>
                 <Field label="Место или ссылка"><input required value={draft.location} maxLength={255} onChange={(event) => onChange((current) => ({ ...current, location: event.target.value }))} placeholder="Адрес или ссылка на онлайн-встречу" /></Field>
                 <Field label="Фото (до 5 МБ)"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void poster(file); event.target.value = ""; }} /></Field>
-                {draft.has_poster && <div style={{ marginBottom: ".8rem" }}><img alt="Прикреплённая афиша" src={`/api/v1/event-posters/${draft.id}?v=${posterVersion}`} style={{ width: "100%", maxHeight: 200, objectFit: "contain", borderRadius: ".8rem" }} /><button type="button" onClick={() => void poster(null)}>Удалить фото</button></div>}
+                {draft.has_poster && <div style={{ marginBottom: ".8rem" }}>{posterUrl && <img alt="Прикреплённая афиша" src={posterUrl} style={{ width: "100%", maxHeight: 200, objectFit: "contain", borderRadius: ".8rem" }} /> }<button type="button" onClick={() => void poster(null)}>Удалить фото</button></div>}
                 <details><summary>Регистрация и баллы</summary>
                   <Field label="Формат"><select value={draft.attendance_mode} onChange={(event) => onChange((current) => ({ ...current, attendance_mode: event.target.value as AdminEventDraft["attendance_mode"] }))}><option value="offline">Офлайн</option><option value="online">Онлайн</option><option value="hybrid">Гибрид</option></select></Field>
                   <label><input type="checkbox" checked={draft.registration_required} onChange={(event) => onChange((current) => ({ ...current, registration_required: event.target.checked }))} /> Нужна регистрация</label>
