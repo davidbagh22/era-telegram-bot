@@ -782,8 +782,12 @@ async def broadcast_detailed_once(
     for chat_id, delivery in deliveries:
         if delivery.duplicate:
             result.duplicates += 1
-        elif delivery.sent:
-            result.sent += 1
+        # A duplicate can be a previously failed/uncertain/blocked receipt, not
+        # only a successful delivery. Also treat sent_unconfirmed as incomplete:
+        # Telegram may have accepted it, but the durable acknowledgement failed.
+        if delivery.sent and delivery.status == "sent":
+            if not delivery.duplicate:
+                result.sent += 1
         else:
             result.failed += 1
             result.failures.append(
