@@ -5,6 +5,7 @@ import hmac
 import json
 import time
 import unittest
+from unittest.mock import patch
 from urllib.parse import urlencode
 
 from app.api.security import (
@@ -167,6 +168,35 @@ class SessionTokenTests(unittest.TestCase):
         token, _ = create_session_token(telegram_id=42, secret="s3cr3t", ttl_seconds=-10)
         with self.assertRaises(SessionTokenError):
             decode_session_token(token, "s3cr3t")
+
+    def test_oversized_bearer_token_is_rejected_before_decoding(self) -> None:
+        # The API receives untrusted Authorization headers; oversized values
+        # must not reach base64 decoding or HMAC verification.
+        with patch(
+            "app.api.security.base64.urlsafe_b64decode",
+            side_effect=AssertionError("must not decode oversized token"),
+        ):
+            with self.assertRaisesRegex(SessionTokenError, "malformed_token"):
+                decode_session_token("A" * 100_000 + "." + "0" * 64, "s3cr3t")
+
+    def test_signed_nonpositive_telegram_id_is_rejected(self) -> None:
+        for invalid_id in (0, -1):
+            with self.subTest(telegram_id=invalid_id):
+                token, _ = create_session_token(
+                    telegram_id=invalid_id, secret="s3cr3t", ttl_seconds=3600
+                )
+                with self.assertRaisesRegex(SessionTokenError, "malformed_token"):
+                    decode_session_token(token, "s3cr3t")
+
+    def test_token_expires_at_exact_boundary(self) -> None:
+        with patch("app.api.security.time.time", return_value=1000):
+            token, expires_at = create_session_token(
+                telegram_id=42, secret="s3cr3t", ttl_seconds=60
+            )
+        self.assertEqual(expires_at, 1060)
+        with patch("app.api.security.time.time", return_value=1060):
+            with self.assertRaisesRegex(SessionTokenError, "expired"):
+                decode_session_token(token, "s3cr3t")
 
     def test_missing_secret_raises(self) -> None:
         with self.assertRaises(SessionTokenError):
