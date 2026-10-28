@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -6,12 +8,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.services.general_topics_service import ensure_topic
+from app.services.general_topics_service import send_general_topic_once
 from app.database.models import Event, User
 from app.services import event_moderation_service
 from app.services.audit_service import audit
 from app.services.authorization_service import can_manage_events
-from app.services.event_card import format_event_text, send_event_card, send_event_card_to_chat
+from app.services.event_card import format_event_text, send_event_card
+from app.services.event_publication_service import escaped_text_parts
 from app.services.notification_service import safe_send, safe_answer_photo
 from app.utils import texts
 from app.utils.constants import EVENT_STATUS_LABELS, EventStatus
@@ -20,6 +23,7 @@ from app.utils.validators import clean_text
 
 router = Router(name="admin_events_block6")
 PREPARED_MARK = "[ERA_BROADCAST_PREPARED]"
+logger = logging.getLogger(__name__)
 
 
 class EventDecisionStates(StatesGroup):
@@ -172,6 +176,33 @@ async def broadcast_prepare(call: CallbackQuery, user: User | None, settings: Se
     )
 
 
+async def _deliver_prepared_announcement(bot: Bot, settings: Settings, event: Event) -> str:
+    """Durable legacy announcement: same key on every admin retry/restart.
+
+    Never accept an unconfirmed Telegram acknowledgement as successful.
+    Already-sent parts are reused from the receipt ledger; an uncertain
+    outcome blocks replay until an operator reconciles it.
+    """
+    poster = getattr(event, "poster_file_id", None)
+    text = format_event_text(
+        event, header="🔥 Новое событие ЭРА",
+        extra_text="Регистрация откроется в боте после публикации.",
+    )
+    parts = escaped_text_parts(text, 1000 if poster else 4000)
+    keyboard = await public_event_keyboard(bot, settings, event)
+    for index, part in enumerate(parts):
+        result = await send_general_topic_once(
+            bot, settings, "announcements", part,
+            delivery_key=f"legacy-event:{event.id}:broadcast:part:{index}",
+            parse_mode="HTML", max_attempts=1,
+            reply_markup=keyboard if index == len(parts) - 1 else None,
+            photo=poster if index == 0 else None,
+        )
+        if result.status != "sent":
+            return result.status
+    return "sent"
+
+
 @router.callback_query(F.data.startswith("admin:event:broadcast_publish:"))
 async def broadcast_publish(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, bot: Bot) -> None:
     if not await guard(call, user, settings):
@@ -181,23 +212,37 @@ async def broadcast_publish(call: CallbackQuery, user: User | None, settings: Se
         await call.message.answer("Сначала нажмите «Подготовить рассылку 1/2»")
         return
 
-    # The public announcement and registration become one atomic product step:
-    # every new event appears in the general chat with a direct route to this
-    # exact event screen rather than a generic Mini App/home link.
+    if event.status != EventStatus.APPROVED:
+        await call.message.answer("Рассылка недоступна для текущего статуса мероприятия.")
+        return
+
+    # The registration state is committed only after every part has a durable
+    # Telegram acknowledgement. If delivery fails or is uncertain, the
+    # prepared marker remains, allowing an admin to retry the SAME keys safely.
+    try:
+        delivery_status = await _deliver_prepared_announcement(bot, settings, event)
+    except Exception:
+        logger.exception("Legacy event announcement failed event_id=%s", event.id)
+        delivery_status = "failed"
+
+    if delivery_status != "sent":
+        await call.message.answer(
+            "Анонс не подтверждён, регистрация не открыта. "
+            "При ошибке сети или частичной доставке сначала сверьте сообщения "
+            "в теме «Мероприятия». Повтор использует прежние ключи доставки; "
+            "неподтверждённые сообщения автоматически не дублируются."
+        )
+        return
+
     event.status = EventStatus.REGISTRATION_OPEN
     event.additional_info = (event.additional_info or "").replace(PREPARED_MARK, "").strip()
     await session.commit()
-    thread_id = await ensure_topic(bot, settings, "announcements")
-    delivered = False
-    if thread_id is not None:
-        delivered = await send_event_card_to_chat(
-            bot, settings.general_chat_id, event,
-            header="🔥 Новое событие ЭРА", extra_text="Регистрация открыта.",
-            keyboard=await public_event_keyboard(bot, settings, event),
-            message_thread_id=thread_id,
-        )
-    await audit(session, actor_id=user.id if user else None, action="event.broadcast_published", entity_type="event", entity_id=event.id)
-    await call.message.answer("Регистрация открыта. Анонс отправлен в «Объявления»." if delivered else "Регистрация открыта, но анонс не доставлен. Проверьте темы и права бота в общем чате.", reply_markup=event_kb(event, settings=settings, telegram_id=call.from_user.id))
+    await audit(session, actor_id=user.id if user else None,
+                action="event.broadcast_published", entity_type="event", entity_id=event.id)
+    await call.message.answer(
+        "Регистрация открыта. Доставка анонса подтверждена.",
+        reply_markup=event_kb(event, settings=settings, telegram_id=call.from_user.id),
+    )
 
 
 @router.callback_query(F.data.regexp(r"^admin:event:(revise|reject):\d+$"))
