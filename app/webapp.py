@@ -60,6 +60,16 @@ finally:
 
 logger = logging.getLogger(__name__)
 
+
+def _warn_if_webhook_secret_missing(secret: str) -> None:
+    """Surface insecure webhook configuration without changing live delivery."""
+    if not secret:
+        logger.warning(
+            "SECURITY: WEBHOOK_SECRET is not configured; Telegram webhook "
+            "updates cannot be authenticated. Verify deployment configuration "
+            "before enabling fail-closed webhook validation."
+        )
+
 DEPLOYED_COMMIT = os.environ.get("RENDER_GIT_COMMIT", "unknown")[:7]
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
@@ -467,6 +477,7 @@ async def lifespan(app: FastAPI):
     try:
         base_url = settings.effective_base_url
         if base_url:
+            _warn_if_webhook_secret_missing(settings.effective_webhook_secret)
             webhook_url = f"{base_url}/telegram/webhook?v=2.1.0"
             await bot.set_webhook(
                 webhook_url,
