@@ -58,6 +58,13 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
                     health_commit = json.loads(response.read(4096)).get("commit")
                 except (ValueError, UnicodeError, AttributeError):
                     error = "health_commit_unreadable"
+            elif path == "/app/":
+                # A generic 200 login/error page does not prove that the
+                # Mini App frontend is served. Check the stable React mount.
+                # Only inspect a bounded prefix; never persist page contents.
+                html = response.read(65_536)
+                if not re.search(rb'<div\\s+id=["\\\']root["\\\']', html, re.IGNORECASE):
+                    error = "miniapp_root_missing"
     except HTTPError as exc:
         status = exc.code
         final_url = exc.geturl()
