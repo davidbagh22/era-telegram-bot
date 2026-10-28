@@ -1,3 +1,9 @@
+## Дополнение 28.10.2026 00:18 UTC — main CI, PostgreSQL, следующий риск
+
+- Main `3d4aaab32b032ff546b2f884baf3d3c7498d9ca5` CI Bot checks run `40607536388`: frontend и secret-scan SUCCESS, e2e/test/postgres-migration ещё IN_PROGRESS. Не считать выпуск принятым до всех 5 jobs SUCCESS и exact Render LIVE. PR checkpoint #466 открыт, собственный CI выполняется; #465 — параллельный старый checkpoint, не перетирать.
+- Последние доступные Render app logs содержат `GET /ready HTTP/1.1 200 OK` до 00:15 UTC для **старого** LIVE. В app error-level и request 5xx фильтрах за 00:00–00:22 UTC записей нет, однако фильтр Render `type=request` не вернул данных; это не эквивалент полноценной проверки 5xx после нового deploy. PG ERA: 10 активных соединений на каждом 5-минутном измерении 23:45–00:15 UTC; SQL/backup production не выполнялись.
+- Кодовый review `app/handlers/admin/events_block6.py:broadcast_publish`: handler ставит `REGISTRATION_OPEN` и удаляет PREPARED_MARK, делает commit **до** `ensure_topic`/Telegram send. При недоставке событие остаётся открытым, а durable receipt и автоматическое восстановление этой legacy-рассылки отсутствуют. Подтверждён риск несогласованного состояния по чтению кода, **не** доказана конкретная production-ошибка. Следующая задача: изолированный regression test и проектирование атомарного outbox/идемпотентной доставки; высокорисковое изменение не объединять без review/CI. Реальных рассылок не запускать.
+
 ## Контрольная точка 28.10.2026 00:16 UTC — проверенный merge #463 и #464
 
 - GitHub main после последовательных merges: `3d4aaab32b032ff546b2f884baf3d3c7498d9ca5`. #463 HEAD `b83153a190d808978c790f8745be37704c4e4671`, CI 6/6 SUCCESS, merge `e05dd4c941346365e99fd1b438303ae121825293`; #464 HEAD `3428fdec44809c19f5d53f2f069101314ee9a68d`, CI 6/6 SUCCESS, merge `3d4aaab32b032ff546b2f884baf3d3c7498d9ca5`. Оба PR объединены с точным expected_head_sha; без обхода проверок. #461 и #462 ранее объединены.
