@@ -494,10 +494,16 @@ async def _reverted_event_lifecycle_notices_are_skipped_without_telegram() -> No
                 send.assert_not_awaited()
                 bot.send_message.assert_not_awaited()
             async with factory() as session:
-                row = await session.get(AppSetting, key.replace(":pending:", ":skipped:"))
+                row = await session.scalar(
+                    select(AppSetting).where(
+                        AppSetting.key == key.replace(":pending:", ":skipped:")
+                    )
+                )
                 assert row is not None
                 assert json.loads(row.value)["status"] == "skipped"
-                assert await session.get(AppSetting, key) is None
+                assert await session.scalar(
+                    select(AppSetting).where(AppSetting.key == key)
+                ) is None
         finally:
             await engine.dispose()
 
