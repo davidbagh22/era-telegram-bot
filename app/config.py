@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     media_chat_id: int | None = None
     media_chat_url: str = "https://t.me/+f03ksvhCMKc5NDBi"
     media_manager_ids: IdList = Field(default_factory=list)
+    # Explicit opt-in: do not introduce new live chat reminders on deployment.
+    media_deadline_3h_enabled: bool = False
     # Immutable registered account ID; never inferred from a mutable name or username.
     era_chair_user_id: int | None = Field(default=None, gt=0)
     admin_ids: IdList = Field(default_factory=list)
