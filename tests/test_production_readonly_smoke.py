@@ -62,6 +62,23 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
         self.assertTrue(all(item["status"] is None for item in checks))
         self.assertTrue(all(not item["ok"] for item in checks))
 
+    def test_health_body_transport_failure_is_unverified(self):
+        class BrokenHealth(FakeResponse):
+            def read(self, size):
+                raise OSError("connection closed during body")
+
+        def fake_open(request, timeout):
+            if request.full_url.endswith("/health"):
+                return BrokenHealth(request.full_url, 200)
+            code = 200 if request.full_url.endswith(("/ready", "/app/")) else 401
+            return FakeResponse(request.full_url, code)
+
+        with patch.object(smoke, "urlopen", side_effect=fake_open):
+            status, checks = smoke.run(expected_sha="a" * 40)
+        self.assertEqual(status, 2)
+        self.assertIsNone(checks[0]["status"])
+        self.assertEqual(checks[0]["error"], "OSError")
+
     def test_unprotected_analytics_endpoint_fails(self):
         def fake_open(request, timeout):
             return FakeResponse(request.full_url, 200)
