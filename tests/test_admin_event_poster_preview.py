@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import inspect
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -42,6 +43,21 @@ class AdminEventPosterPreviewTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(kwargs=kwargs), self.assertRaises(HTTPException) as caught:
                 await self._preview(**kwargs)
             self.assertEqual(caught.exception.status_code, 404)
+
+    def test_editor_components_do_not_use_public_poster_urls(self):
+        root = Path(__file__).resolve().parents[1]
+        components = [
+            root / "frontend/src/screens/admin/events/QuickEventCreateDialog.tsx",
+            root / "frontend/src/screens/admin/events/AdminEventCreatePanel.tsx",
+        ]
+        for component in components:
+            with self.subTest(component=component.name):
+                source = component.read_text(encoding="utf-8")
+                self.assertNotIn("/api/v1/event-posters/", source)
+                self.assertIn("posterUrl", source)
+        api = (root / "frontend/src/api/adminEvents.ts").read_text(encoding="utf-8")
+        self.assertIn("Authorization: `Bearer ${sessionToken}`", api)
+        self.assertIn("/poster/preview", api)
 
     def test_preview_route_requires_event_manager_dependency(self):
         dependency = inspect.signature(read_admin_event_poster_preview).parameters["_admin"].default
