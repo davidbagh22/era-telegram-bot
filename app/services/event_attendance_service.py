@@ -361,7 +361,9 @@ async def participant_state(
     user_id: int,
 ) -> ParticipantAttendanceState:
     event = await session.get(Event, event_id)
-    if event is None:
+    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
+        # A retained registration must not expose moderation-only event state
+        # through the participant attendance API.
         raise ValueError("event_not_found")
     registration = await session.scalar(
         select(EventRegistration).where(
@@ -413,6 +415,10 @@ async def confirm_attendance(
     if active_user is None:
         raise ValueError('participant_not_active')
     event = await _event_for_update(session, event_id)
+    if event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
+        # Check before reading retained registrations or making any writes.
+        # A draft must be indistinguishable from a nonexistent event.
+        raise ValueError("event_not_found")
     runtime = await _attendance_session(session, event.id, create=False)
     registration = await session.scalar(
         select(EventRegistration)
