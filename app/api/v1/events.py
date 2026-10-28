@@ -339,8 +339,15 @@ async def register_event(
     if error:
         raise HTTPException(status_code=409, detail=error)
     assert registration is not None
+    result = await _to_event_out(session, event, registration)
+    # The request-scoped get_session dependency normally commits *after* this
+    # handler returns. Telegram must never acknowledge a registration while
+    # its event-row lock and business transaction are still uncommitted.
+    # This is an ordering safeguard, NOT a durable delivery outbox: a crash
+    # after commit may still lose the confirmation (see issue #497).
+    await session.commit()
     await _send_registration_confirmation(bot, settings, user, event, experience, registration)
-    return await _to_event_out(session, event, registration)
+    return result
 
 
 @router.post("/{event_id}/cancel", response_model=EventOut)
@@ -364,20 +371,27 @@ async def cancel_event_registration(
         raise HTTPException(status_code=409, detail="cannot_change_plans")
 
     promoted = None if was_waiting else await promote_waitlist(session, event)
+    promoted_user = None
+    experience = None
     if promoted is not None and bot is not None:
         promoted_user = await session.get(User, promoted.user_id)
         experience = await session.get(EventExperience, event.id)
-        if promoted_user is not None:
-            await safe_send(
-                bot,
-                promoted_user.telegram_id,
-                "🔥 Для вас освободилось место\n\n"
-                f"Вы теперь зарегистрированы на «{event.title}».\n\n"
-                f"📅 {event.event_date.strftime('%d.%m.%Y')} · {event.event_time.strftime('%H:%M')}\n"
-                f"📍 {event.location}",
-                reply_markup=_event_keyboard(settings, event, experience),
-            )
-    return await _to_event_out(session, event, registration)
+    result = await _to_event_out(session, event, registration)
+    # A promoted participant must not receive Telegram confirmation before
+    # the cancellation/promotion is committed. Delivery after commit remains
+    # best-effort until the durable outbox in issue #497 is implemented.
+    await session.commit()
+    if promoted_user is not None and bot is not None:
+        await safe_send(
+            bot,
+            promoted_user.telegram_id,
+            "🔥 Для вас освободилось место\n\n"
+            f"Вы теперь зарегистрированы на «{event.title}».\n\n"
+            f"📅 {event.event_date.strftime('%d.%m.%Y')} · {event.event_time.strftime('%H:%M')}\n"
+            f"📍 {event.location}",
+            reply_markup=_event_keyboard(settings, event, experience),
+        )
+    return result
 
 
 class EventActivityOut(BaseModel):
