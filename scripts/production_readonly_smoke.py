@@ -58,14 +58,21 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float) ->
     except (URLError, TimeoutError, OSError) as exc:
         error = type(exc).__name__
 
-    # Never treat an unrelated host reached via redirect as acceptance.
-    same_host = urlsplit(final_url).hostname == urlsplit(base_url).hostname
+    # Redirects must not change the HTTPS origin (including port). A 200
+    # from an unrelated host or an HTTP downgrade proves nothing about ERA.
+    final = urlsplit(final_url)
+    original = urlsplit(base_url)
+    same_origin = (
+        final.scheme == original.scheme == "https"
+        and final.hostname == original.hostname
+        and (final.port or 443) == (original.port or 443)
+    )
     return {
         "path": path,
         "status": status,
         "expected": sorted(expected),
-        "ok": status in expected and same_host,
-        "error": error or ("cross_host_redirect" if not same_host else None),
+        "ok": status in expected and same_origin,
+        "error": error or ("cross_origin_redirect" if not same_origin else None),
     }
 
 
