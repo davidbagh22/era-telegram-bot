@@ -1,3 +1,5 @@
+- **Изолированная PostgreSQL-конкурентность #473 подтверждена фактическим job log:** CI `postgres-migration` job `122630727455` SUCCESS, 2026-10-28 04:26:01 UTC: `Media PostgreSQL races passed: join once, apply idempotent under concurrency, appointment once, performer capacity, immediate revocation, disabled invite`. Это доказательство тестовой базы `era_test`, **не** production Telegram/DB приёмки. Остальные test jobs #473 ещё IN_PROGRESS на последней проверке.
+
 - **Дополнительное production-доказательство webhook режима:** Render app log **2026-10-28 04:06:02.981 UTC**: `Telegram webhook configured: https://era-telegram-bot.onrender.com/telegram/webhook?v=2.1.0` на LIVE `ad47c18...`. Это подтверждает реальную регистрацию webhook, **но не наличие secret_token**. PR #475 остаётся DRAFT до безопасной сверки секрета.
 
 ## Исправление оценки риска 28.10.2026 ~04:38 UTC — PR #475 переведён в DRAFT
