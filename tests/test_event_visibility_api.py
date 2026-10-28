@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.api.v1.events import read_event, read_event_poster
 from app.database.base import Base
 from app.database.event_experience import EventExperience
-from app.database.models import Event, User
-from app.utils.constants import EventStatus
+from app.database.models import Event, EventRegistration, User
+from app.utils.constants import EventStatus, RegistrationStatus
 
 
 class EventVisibilityApiTests(unittest.IsolatedAsyncioTestCase):
@@ -108,6 +108,46 @@ class EventVisibilityApiTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(response.status_code, 200)
                     self.assertEqual(response.media_type, expected)
                     self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+
+    async def test_cancelled_event_is_private_to_unregistered_but_retains_history(self):
+        # A cancelled event could have been cancelled before approval. Its
+        # details and poster must not be enumerable by unrelated participants.
+        async with self.sessions() as session:
+            owner, event = await self._make_event(session, EventStatus.CANCELLED)
+            stranger = User(telegram_id=779_500, first_name="Unregistered")
+            session.add(stranger)
+            await session.flush()
+
+            for endpoint in (
+                lambda: read_event(event.id, user=stranger, session=session),
+                lambda: read_event_poster(event.id, _user=stranger, session=session),
+            ):
+                with self.assertRaises(HTTPException) as caught:
+                    await endpoint()
+                self.assertEqual(caught.exception.status_code, 404)
+
+            # Existing historical registrations are not deleted or hidden.
+            session.add(EventRegistration(
+                event_id=event.id,
+                user_id=owner.id,
+                status=RegistrationStatus.ATTENDED,
+            ))
+            await session.flush()
+            detail = await read_event(event.id, user=owner, session=session)
+            self.assertEqual(detail.id, event.id)
+            poster = await read_event_poster(event.id, _user=owner, session=session)
+            self.assertEqual(poster.body, b"private-poster-bytes")
+
+    async def test_published_event_details_remain_visible_without_registration(self):
+        async with self.sessions() as session:
+            _creator, event = await self._make_event(session, EventStatus.PUBLISHED)
+            stranger = User(telegram_id=779_501, first_name="Unregistered")
+            session.add(stranger)
+            await session.flush()
+            detail = await read_event(event.id, user=stranger, session=session)
+            self.assertEqual(detail.id, event.id)
+            poster = await read_event_poster(event.id, _user=stranger, session=session)
+            self.assertEqual(poster.status_code, 200)
 
     async def test_unknown_poster_is_not_found(self):
         async with self.sessions() as session:
