@@ -95,10 +95,19 @@ class EventVisibilityApiTests(unittest.IsolatedAsyncioTestCase):
             experience = await session.get(EventExperience, event.id)
             experience.poster_content_type = " IMAGE/PNG; charset=binary "
             await session.flush()
-            response = await read_event_poster(event.id, _user=viewer, session=session)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.media_type, "image/png")
-            self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+            for safe_type, expected in (
+                (" IMAGE/PNG; charset=binary ", "image/png"),
+                ("image/heic", "image/heic"),
+                ("image/heif", "image/heif"),
+                ("image/avif", "image/avif"),
+            ):
+                with self.subTest(content_type=safe_type):
+                    experience.poster_content_type = safe_type
+                    await session.flush()
+                    response = await read_event_poster(event.id, _user=viewer, session=session)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.media_type, expected)
+                    self.assertEqual(response.headers["x-content-type-options"], "nosniff")
 
     async def test_unknown_poster_is_not_found(self):
         async with self.sessions() as session:
