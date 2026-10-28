@@ -323,7 +323,7 @@ async def register_event(
     settings: Settings = Depends(get_settings),
 ) -> EventOut:
     event = await session.get(Event, event_id)
-    if event is None:
+    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
         raise HTTPException(status_code=404, detail="event_not_found")
     experience = await session.get(EventExperience, event_id)
     if _registration_is_closed(experience):
@@ -352,7 +352,7 @@ async def cancel_event_registration(
     settings: Settings = Depends(get_settings),
 ) -> EventOut:
     event = await session.get(Event, event_id)
-    if event is None:
+    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
         raise HTTPException(status_code=404, detail="event_not_found")
     registration = await _get_registration(session, event_id, user.id)
     if registration is None:
@@ -398,7 +398,7 @@ async def read_event_activities(
     settings: Settings = Depends(get_settings),
 ) -> list[EventActivityOut]:
     event = await session.get(Event, event_id)
-    if event is None:
+    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
         raise HTTPException(status_code=404, detail="event_not_found")
     activities = await event_activity_service.list_activities_for_participant(session, event, user)
     if activities is None:

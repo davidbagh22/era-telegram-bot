@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import unittest
 from datetime import date, datetime, time, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
+from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.api.v1.events import cancel_event_registration, read_event_activities, register_event
 from app.database.base import Base
 from app.database.models import (
     Event,
@@ -112,6 +116,121 @@ class ActivityServiceTests(unittest.IsolatedAsyncioTestCase):
 
             rows = await list_events(session, user, "mine")
             self.assertEqual([event.id for event, _ in rows], [event1.id])
+
+    async def test_reverted_unpublished_events_are_hidden_from_participant_tabs(self) -> None:
+        # An event can retain historical registrations after a moderator
+        # returns it to draft or pending approval. Those registrations must
+        # not expose its unpublished content in "mine" or "past".
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            draft = self._event(
+                created_by=user.id, days_offset=-2, status=EventStatus.DRAFT
+            )
+            pending = self._event(
+                created_by=user.id, days_offset=-2, status=EventStatus.PENDING_APPROVAL
+            )
+            published = self._event(
+                created_by=user.id, days_offset=2, status=EventStatus.PUBLISHED
+            )
+            completed = self._event(
+                created_by=user.id, days_offset=-2, status=EventStatus.COMPLETED
+            )
+            session.add_all([draft, pending, published, completed])
+            await session.flush()
+            for event in (draft, pending, published, completed):
+                session.add(EventRegistration(
+                    event_id=event.id,
+                    user_id=user.id,
+                    status=RegistrationStatus.REGISTERED,
+                ))
+            await session.flush()
+
+            mine = await list_events(session, user, "mine")
+            past = await list_events(session, user, "past")
+            self.assertEqual(
+                {event.id for event, _ in mine}, {published.id, completed.id}
+            )
+            self.assertEqual(
+                {event.id for event, _ in past}, {completed.id}
+            )
+
+    async def test_unpublished_event_activities_stay_private_after_registration(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            for status in (EventStatus.DRAFT, EventStatus.PENDING_APPROVAL):
+                with self.subTest(status=status):
+                    event = self._event(
+                        created_by=user.id, days_offset=2, status=status
+                    )
+                    session.add(event)
+                    await session.flush()
+                    session.add(EventRegistration(
+                        event_id=event.id,
+                        user_id=user.id,
+                        status=RegistrationStatus.REGISTERED,
+                    ))
+                    await session.flush()
+                    with patch(
+                        "app.api.v1.events.event_activity_service.list_activities_for_participant",
+                        new_callable=AsyncMock,
+                    ) as activities:
+                        with self.assertRaises(HTTPException) as caught:
+                            await read_event_activities(
+                                event.id, user=user, session=session, settings=None
+                            )
+                        self.assertEqual(caught.exception.status_code, 404)
+                        activities.assert_not_awaited()
+
+    async def test_reverted_event_cancel_endpoint_does_not_leak_or_mutate(self) -> None:
+        # A retained registration must not provide a backdoor to the draft
+        # via the EventOut returned by POST /events/{id}/cancel.
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            for status in (EventStatus.DRAFT, EventStatus.PENDING_APPROVAL):
+                with self.subTest(status=status):
+                    event = self._event(created_by=user.id, days_offset=2, status=status)
+                    session.add(event)
+                    await session.flush()
+                    registration = EventRegistration(
+                        event_id=event.id,
+                        user_id=user.id,
+                        status=RegistrationStatus.REGISTERED,
+                    )
+                    session.add(registration)
+                    await session.flush()
+                    with self.assertRaises(HTTPException) as caught:
+                        await cancel_event_registration(
+                            event.id, user=user, session=session, bot=None, settings=None
+                        )
+                    self.assertEqual(caught.exception.status_code, 404)
+                    self.assertEqual(registration.status, RegistrationStatus.REGISTERED)
+                    self.assertFalse(session.dirty)
+
+    async def test_reverted_event_registration_returns_404_without_side_effects(self) -> None:
+        # Registration must not reveal a moderation-only event ID as 409
+        # while the normal event details endpoint returns 404.
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            for status in (EventStatus.DRAFT, EventStatus.PENDING_APPROVAL):
+                with self.subTest(status=status):
+                    event = self._event(created_by=user.id, days_offset=2, status=status)
+                    session.add(event)
+                    await session.flush()
+                    with self.assertRaises(HTTPException) as caught:
+                        await register_event(
+                            event.id, user=user, session=session, bot=None, settings=None
+                        )
+                    self.assertEqual(caught.exception.status_code, 404)
+                    self.assertFalse(session.dirty)
+                    self.assertEqual(
+                        (await session.execute(
+                            select(EventRegistration).where(
+                                EventRegistration.event_id == event.id,
+                                EventRegistration.user_id == user.id,
+                            )
+                        )).scalar_one_or_none(),
+                        None,
+                    )
 
     async def test_past_scope_only_past_dates(self) -> None:
         async with self.session_factory() as session:
