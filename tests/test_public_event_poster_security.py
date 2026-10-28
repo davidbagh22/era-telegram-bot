@@ -53,13 +53,11 @@ class PublicEventPosterSecurityTests(unittest.IsolatedAsyncioTestCase):
         await session.flush()
         return event
 
-    async def test_public_route_does_not_expose_unpublished_or_historical_statuses(self) -> None:
+    async def test_public_route_hides_moderation_and_cancelled_states(self) -> None:
         async with self.sessions() as session:
             for status in (
                 EventStatus.DRAFT,
                 EventStatus.PENDING_APPROVAL,
-                EventStatus.ACTIVE,
-                EventStatus.COMPLETED,
                 EventStatus.CANCELLED,
             ):
                 with self.subTest(status=status):
@@ -68,13 +66,23 @@ class PublicEventPosterSecurityTests(unittest.IsolatedAsyncioTestCase):
                         await read_public_event_poster(event.id, session=session)
                     self.assertEqual(caught.exception.status_code, 404)
 
-            approved = await self._event(session, EventStatus.APPROVED)
-            response = await read_public_event_poster(approved.id, session=session)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.body, b"poster-bytes")
-            self.assertEqual(response.media_type, "image/png")
-            self.assertEqual(response.headers["cache-control"], "no-store")
-            self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+            # Participant event history displays posters for completed events.
+            # Keep those existing links working after publication.
+            for status in (
+                EventStatus.APPROVED,
+                EventStatus.PUBLISHED,
+                EventStatus.ACTIVE,
+                EventStatus.COMPLETED,
+                EventStatus.REPORT_SUBMITTED,
+            ):
+                with self.subTest(status=status):
+                    event = await self._event(session, status)
+                    response = await read_public_event_poster(event.id, session=session)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.body, b"poster-bytes")
+                    self.assertEqual(response.media_type, "image/png")
+                    self.assertEqual(response.headers["cache-control"], "no-store")
+                    self.assertEqual(response.headers["x-content-type-options"], "nosniff")
 
     async def test_public_route_blocks_executable_or_unknown_mime(self) -> None:
         async with self.sessions() as session:
