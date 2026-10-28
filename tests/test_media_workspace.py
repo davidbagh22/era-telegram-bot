@@ -225,6 +225,17 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 workspace._publication_url(url, "telegram")
 
+    def test_malformed_publication_url_uses_localized_validation_detail(self):
+        for url in (
+            "https://t.me:bad/era_leaders1/123",
+            "https://t.me:65536/era_leaders1/123",
+            "https://[broken/era_leaders1/123",
+        ):
+            with self.subTest(url=url), self.assertRaisesRegex(
+                ValueError, "Нужна HTTPS-ссылка"
+            ):
+                workspace._publication_url(url, "telegram")
+
     async def test_legacy_publisher_never_sends_ksoors_or_unapproved_workspace_to_era(self):
         async with self.factory() as session:
             settings, _, leader, _, _, _ = await self.seed(session)
