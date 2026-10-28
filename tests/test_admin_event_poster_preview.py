@@ -7,10 +7,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.params import Depends
+from fastapi.testclient import TestClient
 
-from app.api.v1.admin_event_create import read_admin_event_poster_preview, require_event_manager
+from app.api.deps import get_session, get_settings
+from app.api.v1.admin_event_create import read_admin_event_poster_preview, require_event_manager, router
 from app.utils.constants import EventStatus
 
 
@@ -58,6 +60,16 @@ class AdminEventPosterPreviewTests(unittest.IsolatedAsyncioTestCase):
         api = (root / "frontend/src/api/adminEvents.ts").read_text(encoding="utf-8")
         self.assertIn("Authorization: `Bearer ${sessionToken}`", api)
         self.assertIn("/poster/preview", api)
+
+    def test_anonymous_editor_preview_is_unauthorized(self):
+        app = FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_session] = lambda: SimpleNamespace()
+        app.dependency_overrides[get_settings] = lambda: SimpleNamespace()
+        with TestClient(app) as client:
+            response = client.get("/admin/events/42/poster/preview")
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["detail"], "missing_token")
 
     def test_preview_route_requires_event_manager_dependency(self):
         dependency = inspect.signature(read_admin_event_poster_preview).parameters["_admin"].default
