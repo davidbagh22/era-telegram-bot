@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -38,7 +39,7 @@ def _validated_base_url(base_url: str) -> str:
     return base_url.rstrip("/")
 
 
-def check(base_url: str, path: str, expected: frozenset[int], timeout: float) -> dict:
+def check(base_url: str, path: str, expected: frozenset[int], timeout: float, expected_sha: str | None = None) -> dict:
     url = base_url + path
     request = Request(
         url, method="GET",
@@ -47,10 +48,16 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float) ->
     status: int | None = None
     final_url = url
     error: str | None = None
+    health_commit: str | None = None
     try:
         with urlopen(request, timeout=timeout) as response:
             status = response.status
             final_url = response.geturl()
+            if path == "/health" and expected_sha is not None:
+                try:
+                    health_commit = json.loads(response.read(4096)).get("commit")
+                except (ValueError, UnicodeError, AttributeError):
+                    error = "health_commit_unreadable"
     except HTTPError as exc:
         status = exc.code
         final_url = exc.geturl()
@@ -67,20 +74,29 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float) ->
         and final.hostname == original.hostname
         and (final.port or 443) == (original.port or 443)
     )
+    if path == "/health" and expected_sha is not None and error is None:
+        # /health intentionally exposes only RENDER_GIT_COMMIT[:7]. This is
+        # corroborating evidence, NOT exact LIVE-SHA proof (use Render deploy).
+        if health_commit != expected_sha[:7]:
+            error = "health_commit_prefix_mismatch"
     return {
         "path": path,
         "status": status,
         "expected": sorted(expected),
-        "ok": status in expected and same_origin,
+        "ok": status in expected and same_origin and error is None,
         "error": error or ("cross_origin_redirect" if not same_origin else None),
+        "commit_prefix": health_commit if path == "/health" and expected_sha else None,
     }
 
 
-def run(base_url: str = PRODUCTION_URL, timeout: float = 10.0) -> tuple[int, list[dict]]:
+def run(base_url: str = PRODUCTION_URL, timeout: float = 10.0,
+        expected_sha: str | None = None) -> tuple[int, list[dict]]:
     origin = _validated_base_url(base_url)
     if timeout <= 0:
         raise ValueError("timeout must be positive")
-    results = [check(origin, path, expected, timeout) for path, expected in CHECKS]
+    if expected_sha is not None and not re.fullmatch(r"[0-9a-f]{40}", expected_sha):
+        raise ValueError("expected SHA must be a full 40-character lowercase Git commit")
+    results = [check(origin, path, expected, timeout, expected_sha) for path, expected in CHECKS]
     if any(item["status"] is None for item in results):
         return 2, results  # DNS/network error: UNVERIFIED
     return (0 if all(item["ok"] for item in results) else 1), results
@@ -90,9 +106,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default=PRODUCTION_URL)
     parser.add_argument("--timeout", type=float, default=10.0)
+    parser.add_argument("--expected-sha", help="full SHA; checks /health seven-character prefix only")
     args = parser.parse_args()
     try:
-        exit_code, results = run(args.base_url, args.timeout)
+        exit_code, results = run(args.base_url, args.timeout, args.expected_sha)
     except ValueError as exc:
         parser.error(str(exc))
     print(json.dumps({"result": ("PASS" if exit_code == 0 else
