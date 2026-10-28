@@ -1,3 +1,9 @@
+## 28.10.2026 06:30 UTC — SQL blocker and release gate
+
+- Проверка Render PostgreSQL через `query_render_postgres` с **только read-only** `SELECT 1 AS ok, current_setting('server_version') AS pg_version` отклонена до подключения: `This database blocks all external connections because its IP allowlist is empty`. IP allowlist НЕ изменяли; SQL не выполнялся. PostgreSQL status=available и 10–11 active connections остаются только косвенными признаками работы.
+- На 06:29 UTC `main=96212dec763c985f6d55f9d8de821c74e8d6e937` CI 4/5 SUCCESS, test IN_PROGRESS; Render LIVE прежний `e09d0094e64e18a084eedba7bf910d7519da5dbc` / `dep-dbgolomi0phs73cm9qdg`. PR #477 exact HEAD `bbfff38eb69984376024efa384c52f38e62971f0`: 4/6 SUCCESS, оба test IN_PROGRESS. Не merge и не заявлять новый LIVE до обязательных проверок. PR #478 checkpoint CI перезапущен после append-only обновления.
+- Следующее действие: проверить финальный CI main и #477; при PASS review + exact-head merge #477, main CI, automatic LIVE и post-deploy контроль; при FAIL прочитать конкретный job log и исправить. Проверка предупреждения WEBHOOK_SECRET возможна только после фактического LIVE #476. Вопрос безопасной миграции секрета #475 остаётся заблокированным владельцем.
+
 ## 28.10.2026 06:27 UTC — допроверка нового HEAD и backup evidence
 
 - **Main:** `96212dec763c985f6d55f9d8de821c74e8d6e937` (PR #476 merged); push CI на этом SHA: e2e/frontend/secret-scan/postgres-migration SUCCESS, test IN_PROGRESS. **LIVE пока предыдущий:** `e09d0094e64e18a084eedba7bf910d7519da5dbc`, auto deploy `dep-dbgolomi0phs73cm9qdg`. Ни manual deploy, ни изменения production environment.
