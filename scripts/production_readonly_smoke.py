@@ -49,10 +49,12 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
     final_url = url
     error: str | None = None
     health_commit: str | None = None
+    content_type = ""
     try:
         with urlopen(request, timeout=timeout) as response:
             status = response.status
             final_url = response.geturl()
+            content_type = response.headers.get("Content-Type", "")
             if path in ("/health", "/ready"):
                 # A 200 HTML proxy/error page is not proof of a healthy app.
                 # Verify the documented bounded JSON health/readiness body.
@@ -75,12 +77,20 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
     except HTTPError as exc:
         status = exc.code
         final_url = exc.geturl()
+        content_type = exc.headers.get("Content-Type", "") if exc.headers else ""
         exc.close()
     except (URLError, TimeoutError, OSError) as exc:
         # Even if headers arrived, a transport failure while reading /health
         # is not a verified response and must never be reported as PASS/FAIL.
         status = None
         error = type(exc).__name__
+
+    # A proxy's HTML 401/403 page is not proof that the FastAPI route
+    # itself enforced authentication. FastAPI auth errors use JSON.
+    if path.startswith("/api/v1/") and status in expected and error is None:
+        media_type = content_type.split(";", 1)[0].strip().lower()
+        if media_type != "application/json" and not media_type.endswith("+json"):
+            error = "auth_response_not_json"
 
     # Redirects must not change the HTTPS origin (including port). A 200
     # from an unrelated host or an HTTP downgrade proves nothing about ERA.
