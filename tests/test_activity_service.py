@@ -5,9 +5,10 @@ from datetime import date, datetime, time, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.api.v1.events import cancel_event_registration, read_event_activities
+from app.api.v1.events import cancel_event_registration, read_event_activities, register_event
 from app.database.base import Base
 from app.database.models import (
     Event,
@@ -204,6 +205,32 @@ class ActivityServiceTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(caught.exception.status_code, 404)
                     self.assertEqual(registration.status, RegistrationStatus.REGISTERED)
                     self.assertFalse(session.dirty)
+
+    async def test_reverted_event_registration_returns_404_without_side_effects(self) -> None:
+        # Registration must not reveal a moderation-only event ID as 409
+        # while the normal event details endpoint returns 404.
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            for status in (EventStatus.DRAFT, EventStatus.PENDING_APPROVAL):
+                with self.subTest(status=status):
+                    event = self._event(created_by=user.id, days_offset=2, status=status)
+                    session.add(event)
+                    await session.flush()
+                    with self.assertRaises(HTTPException) as caught:
+                        await register_event(
+                            event.id, user=user, session=session, bot=None, settings=None
+                        )
+                    self.assertEqual(caught.exception.status_code, 404)
+                    self.assertFalse(session.dirty)
+                    self.assertEqual(
+                        (await session.execute(
+                            select(EventRegistration).where(
+                                EventRegistration.event_id == event.id,
+                                EventRegistration.user_id == user.id,
+                            )
+                        )).scalar_one_or_none(),
+                        None,
+                    )
 
     async def test_past_scope_only_past_dates(self) -> None:
         async with self.session_factory() as session:
