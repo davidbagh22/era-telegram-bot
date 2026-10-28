@@ -1,3 +1,8 @@
+## Последняя сверка 28.10.2026 — CI после объединения
+
+- `main=3d4aaab32b032ff546b2f884baf3d3c7498d9ca5`, Bot checks run `40607536388`: **frontend, secret-scan, postgres-migration SUCCESS; test и e2e IN_PROGRESS**. Проверка выполняется на точном main SHA. Пока 3/5, не объявлять main зелёным.
+- Render: последняя проверка всё ещё показывает `LIVE=deeb2efc214a0e52d1d073c519205787d261b0ce`, `dep-dbgj9ca9lscs73bd3aog`. Новый main не развёрнут; без ручного deploy. После завершения CI проверить новый LIVE SHA и повторить весь HTTP/security/error/PG контроль.
+
 ## Дополнение 28.10.2026 00:18 UTC — main CI, PostgreSQL, следующий риск
 
 - Main `3d4aaab32b032ff546b2f884baf3d3c7498d9ca5` CI Bot checks run `40607536388`: frontend и secret-scan SUCCESS, e2e/test/postgres-migration ещё IN_PROGRESS. Не считать выпуск принятым до всех 5 jobs SUCCESS и exact Render LIVE. PR checkpoint #466 открыт, собственный CI выполняется; #465 — параллельный старый checkpoint, не перетирать.
