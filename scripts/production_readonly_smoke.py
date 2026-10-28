@@ -77,6 +77,14 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
         and final.hostname == original.hostname
         and (final.port or 443) == (original.port or 443)
     )
+    # An auth route redirected to /login could return 401 there, creating a
+    # false-positive for the ORIGINAL protected endpoint. Verify the exact
+    # requested route, not merely a status on the same host.
+    same_route = (
+        final.path == urlsplit(url).path
+        and not final.query
+        and not final.fragment
+    )
     if path == "/health" and expected_sha is not None and error is None:
         # /health intentionally exposes only RENDER_GIT_COMMIT[:7]. This is
         # corroborating evidence, NOT exact LIVE-SHA proof (use Render deploy).
@@ -86,8 +94,8 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
         "path": path,
         "status": status,
         "expected": sorted(expected),
-        "ok": status in expected and same_origin and error is None,
-        "error": error or ("cross_origin_redirect" if not same_origin else None),
+        "ok": status in expected and same_origin and same_route and error is None,
+        "error": error or ("cross_origin_redirect" if not same_origin else "redirected_route" if not same_route else None),
         "commit_prefix": health_commit if path == "/health" and expected_sha else None,
     }
 
