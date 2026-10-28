@@ -1,4 +1,5 @@
 """Production acceptance probe must never send credentials or fake success."""
+import io
 import json
 import unittest
 from unittest.mock import patch
@@ -19,6 +20,8 @@ class FakeResponse:
                 body = b'{"status":"ok","commit":"unknown"}'
             elif url.endswith("/ready"):
                 body = b'{"status":"ready"}'
+            elif status in (401, 403):
+                body = b'{"detail":"Not authenticated"}'
         self.body = body or b""
 
     def read(self, size):
@@ -56,7 +59,7 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
         def fake_open(request, timeout):
             if request.full_url.endswith(("/health", "/ready", "/app/")):
                 return FakeResponse(request.full_url, 200)
-            raise HTTPError(request.full_url, 401, "Unauthorized", {"Content-Type": "application/json"}, None)
+            raise HTTPError(request.full_url, 401, "Unauthorized", {"Content-Type": "application/json"}, io.BytesIO(b'{"detail":"Not authenticated"}'))
 
         with patch.object(smoke, "urlopen", side_effect=fake_open):
             status, checks = smoke.run()
@@ -78,11 +81,28 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
         path = "/api/v1/media/workspaces"
         url = smoke.PRODUCTION_URL + path
         with patch.object(smoke, "urlopen", side_effect=HTTPError(
-            url, 403, "Forbidden", {"Content-Type": "application/json; charset=utf-8"}, None
+            url, 403, "Forbidden", {"Content-Type": "application/json; charset=utf-8"}, io.BytesIO(b'{"detail":"Forbidden"}')
         )):
             result = smoke.check(smoke.PRODUCTION_URL, path, frozenset({401, 403}), 3.0)
         self.assertTrue(result["ok"])
         self.assertIsNone(result["error"])
+
+    def test_proxy_json_without_fastapi_detail_does_not_count_as_authorization(self):
+        path = "/api/v1/media/workspaces"
+        url = smoke.PRODUCTION_URL + path
+        for body, expected_error in (
+            (b"{}", "auth_payload_invalid"),
+            (b'{"message":"login required"}', "auth_payload_invalid"),
+            (b"<html>bad gateway</html>", "auth_payload_unreadable"),
+            (b"", "auth_payload_unreadable"),
+        ):
+            with self.subTest(body=body), patch.object(smoke, "urlopen", side_effect=HTTPError(
+                url, 401, "Unauthorized", {"Content-Type": "application/json"}, io.BytesIO(body)
+            )):
+                result = smoke.check(smoke.PRODUCTION_URL, path, frozenset({401, 403}), 3.0)
+            self.assertEqual(result["status"], 401)
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["error"], expected_error)
 
     def test_dns_failure_is_unverified_not_pass(self):
         with patch.object(smoke, "urlopen", side_effect=URLError("DNS unavailable")):
