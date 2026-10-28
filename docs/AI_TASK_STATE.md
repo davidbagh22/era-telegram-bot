@@ -1,3 +1,10 @@
+## 2026-10-28 ~21:22 UTC — post-merge CI and log evidence refinement
+
+- Exact #504 main `e61bc7c901735f5b4017d897dd14e6169a26cedc` **push** Bot checks run `40770873652`: frontend, postgres-migration, secret-scan **3/5 SUCCESS**; test and e2e still IN_PROGRESS. No 5/5 claim and no #504 Render LIVE yet; last confirmed LIVE remains `515190b2950e2fe8e41642e88cab07bf4cdaef96`.
+- Unfiltered Render application logs for old LIVE include `GET /ready HTTP/1.1 200 OK` at **21:20:07 UTC** (path-label filter returned empty but application message confirms route). No newly observed ERROR or HTTP 5xx in previously filtered bounded interval; this is not full availability proof. All eight direct HTTP probes remain DNS-blocked.
+- Independent #497 transaction analysis: `get_session` commits on dependency exit, but `safe_send_once` uses a **separate** delivery-ledger transaction and stores only a hash, so replacing `safe_send` with `safe_send_once` before commit cannot provide a transactional outbox. Appended this precise implementation blocker and safe options to GitHub issue #497; **no registration code, participant data, points or Telegram delivery changed**.
+- Changed files in this checkpoint branch: **only** `docs/AI_TASK_STATE.md`. Next: finish main 5/5, verify Render auto LIVE exact SHA, eight direct HTTP probes when DNS works, bounded logs/PG/Redis; separately design #497 minimal transaction-coupled outbox in draft. Preserve all existing checkpoint history.
+
 ## 2026-10-28 ~21:20 UTC / 2026-10-29 ~01:20 Asia/Yerevan — #504 merged; exact CI and production gate pending
 
 - **Fresh GitHub main:** `e61bc7c901735f5b4017d897dd14e6169a26cedc`, merge of PR #504 with `expected_head_sha=6d0a0528f6ee4aa649c86db8cdb784e533c5e7c2` after **6/6 exact-head SUCCESS**: Bot checks run 40763246702 five jobs (frontend, postgres-migration, secret-scan, test, e2e) and Tests run 40763246701 one test job. Codex review explicitly completed on the exact head with no findings; #504 had no unresolved review threads. Prior #503 main push run 40762336627 **5/5 SUCCESS**. **New #504 main push CI not yet verified**; never substitute PR CI for main CI.
