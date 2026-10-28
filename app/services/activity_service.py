@@ -270,6 +270,10 @@ async def history_entries(session: AsyncSession, user: User, limit: int = 50) ->
             .where(
                 EventRegistration.user_id == user.id,
                 EventRegistration.status == RegistrationStatus.ATTENDED,
+                # Moderation can return an attended event to draft/review while
+                # retaining registrations. Personal history must not expose
+                # its unpublished title or location through that old record.
+                Event.status.not_in((EventStatus.DRAFT, EventStatus.PENDING_APPROVAL)),
             )
         )
     ).all()
