@@ -115,11 +115,21 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
             User.is_blocked.is_(False), User.is_archived.is_(False),
         ))
         summary = f"{event.title}\n\n{experience.short_description or event.description}"
-        await broadcast_detailed_once(
+        outcome = await broadcast_detailed_once(
             bot, settings, [int(value) for value in recipients.all() if value], summary[:3500],
             reply_markup=markup, delivery_key=f"event:{event.id}:published",
             notification_type="event_published",
         )
+        if outcome.failed:
+            # The general-topic receipt can be successful while some personal
+            # deliveries failed or have an uncertain outcome. Do not claim that
+            # the entire announcement was sent, or automatically replay it.
+            experience.announcement_status = "needs_attention"
+            logger.warning(
+                "Event announcement requires personal delivery reconciliation event_id=%s failed=%s",
+                event.id, outcome.failed,
+            )
+            return False
     return True
 
 

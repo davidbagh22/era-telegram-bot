@@ -174,6 +174,112 @@ class QuickPublicationTests(IsolatedAsyncioTestCase):
             delivery = await session.scalar(select(NotificationDelivery))
             self.assertEqual(delivery.status, "uncertain")
 
+    async def test_partial_personal_broadcast_never_marks_announcement_sent(self):
+        from app.services.notification_service import BroadcastResult
+
+        event_id = await self.draft()
+        await self.topic()
+        async with self.sessions() as session:
+            experience = await session.get(EventExperience, event_id)
+            experience.broadcast_enabled = True
+            experience.broadcast_targets = ["bot"]
+            await session.commit()
+
+        with patch(
+            "app.services.event_publication_service.broadcast_detailed_once",
+            new_callable=AsyncMock,
+            return_value=BroadcastResult(total=2, sent=1, failed=1),
+        ) as broadcaster:
+            published = await self.publish(event_id)
+            self.assertEqual(published.announcement_status, "needs_attention")
+            await deliver_pending_event_announcements(self.bot, self.settings, self.sessions)
+            broadcaster.assert_awaited_once()
+
+        self.bot.send_photo.assert_awaited_once()
+        async with self.sessions() as session:
+            self.assertEqual(
+                (await session.get(EventExperience, event_id)).announcement_status,
+                "needs_attention",
+            )
+
+    async def test_fully_successful_personal_broadcast_marks_sent(self):
+        from app.services.notification_service import BroadcastResult
+
+        event_id = await self.draft()
+        await self.topic()
+        async with self.sessions() as session:
+            experience = await session.get(EventExperience, event_id)
+            experience.broadcast_enabled = True
+            experience.broadcast_targets = ["bot"]
+            await session.commit()
+        with patch(
+            "app.services.event_publication_service.broadcast_detailed_once",
+            new_callable=AsyncMock,
+            return_value=BroadcastResult(total=1, sent=1),
+        ) as broadcaster:
+            published = await self.publish(event_id)
+            self.assertEqual(published.announcement_status, "sent")
+            await deliver_pending_event_announcements(self.bot, self.settings, self.sessions)
+            broadcaster.assert_awaited_once()
+
+    async def test_empty_personal_audience_does_not_block_successful_topic_post(self):
+        from app.services.notification_service import BroadcastResult
+
+        event_id = await self.draft()
+        await self.topic()
+        async with self.sessions() as session:
+            experience = await session.get(EventExperience, event_id)
+            experience.broadcast_enabled = True
+            experience.broadcast_targets = ["bot"]
+            await session.commit()
+        with patch(
+            "app.services.event_publication_service.broadcast_detailed_once",
+            new_callable=AsyncMock,
+            return_value=BroadcastResult(total=0),
+        ) as broadcaster:
+            published = await self.publish(event_id)
+            self.assertEqual(published.announcement_status, "sent")
+            broadcaster.assert_awaited_once()
+
+    async def test_duplicate_failed_or_unconfirmed_receipt_is_not_success(self):
+        from app.services.notification_service import (
+            NotificationDeliveryResult,
+            broadcast_detailed_once,
+        )
+
+        receipts = [
+            NotificationDeliveryResult(
+                sent=True, status="sent", duplicate=True, attempt_count=1,
+            ),
+            NotificationDeliveryResult(
+                sent=False, status="uncertain", duplicate=True, attempt_count=1,
+                error_code="delivery_outcome_unknown",
+            ),
+            NotificationDeliveryResult(
+                sent=True, status="sent_unconfirmed", duplicate=False, attempt_count=1,
+                error_code="delivery_ack_failed",
+            ),
+        ]
+        with patch(
+            "app.services.notification_service.safe_send_once",
+            new_callable=AsyncMock,
+            side_effect=receipts,
+        ) as sender:
+            outcome = await broadcast_detailed_once(
+                self.bot, self.settings, [101, 102, 103], "Event",
+                delivery_key="event:test:published",
+                notification_type="event_published",
+            )
+        self.assertEqual(sender.await_count, 3)
+        self.assertEqual(outcome.total, 3)
+        self.assertEqual(outcome.duplicates, 2)
+        self.assertEqual(outcome.sent, 0)
+        self.assertEqual(outcome.failed, 2)
+        self.assertEqual(
+            {item.reason for item in outcome.failures},
+            {"delivery_outcome_unknown", "delivery_ack_failed"},
+        )
+
     async def test_changed_title_is_included_with_full_text_and_schedule(self):
         event_id = await self.draft("Готовый текст без названия и даты")
         await self.topic()
