@@ -274,6 +274,40 @@ def test_attendance_code_rejects_unregistered_user() -> None:
     asyncio.run(_attendance_code_rejects_unregistered_user())
 
 
+async def _reverted_event_attendance_is_private_and_does_not_mutate() -> None:
+    # Old registrations can remain after moderation returns an event to
+    # draft/review. Both attendance endpoints must behave like a missing ID.
+    engine, factory = await _session_factory()
+    try:
+        async with factory() as session:
+            _manager, participant, stranger, event, registration = await _seed_event(session)
+            for status in (EventStatus.DRAFT, EventStatus.PENDING_APPROVAL):
+                event.status = status
+                await session.flush()
+                for user_id in (participant.id, stranger.id):
+                    with pytest.raises(ValueError, match="^event_not_found$"):
+                        await event_attendance_service.participant_state(
+                            session, event.id, user_id
+                        )
+                    with pytest.raises(ValueError, match="^event_not_found$"):
+                        await event_attendance_service.confirm_attendance(
+                            session, event.id, user_id, "INVALID"
+                        )
+                assert registration.status == RegistrationStatus.REGISTERED
+                assert not session.dirty
+                assert await session.scalar(
+                    select(func.count())
+                    .select_from(PointTransaction)
+                    .where(PointTransaction.related_event_id == event.id)
+                ) == 0
+    finally:
+        await engine.dispose()
+
+
+def test_reverted_event_attendance_is_private_and_does_not_mutate() -> None:
+    asyncio.run(_reverted_event_attendance_is_private_and_does_not_mutate())
+
+
 def test_generated_codes_are_human_friendly_and_do_not_use_ambiguous_symbols() -> None:
     codes = {event_attendance_service.generate_attendance_code() for _ in range(100)}
     assert len(codes) == 100
@@ -417,6 +451,65 @@ async def _lifecycle_notices_wait_for_commit_and_recover_without_duplicates():
 
 def test_lifecycle_notices_wait_for_commit_and_recover_without_duplicates():
     asyncio.run(_lifecycle_notices_wait_for_commit_and_recover_without_duplicates())
+
+
+async def _reverted_event_lifecycle_notices_are_skipped_without_telegram() -> None:
+    # A lifecycle notice can be queued before moderation returns an event to
+    # draft. Recovery must never disclose that draft's title/location.
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+    from app.config import Settings
+    from app.database.models import AppSetting
+
+    for status in (EventStatus.DRAFT, EventStatus.PENDING_APPROVAL):
+        engine, factory = await _session_factory()
+        try:
+            async with factory() as session:
+                _manager, participant, _stranger, event, _registration = await _seed_event(session)
+                event.status = status
+                key = f"event-lifecycle:pending:{event.id}:start"
+                session.add(
+                    AppSetting(
+                        key=key,
+                        value=json.dumps({
+                            "event_id": event.id,
+                            "phase": "start",
+                            "title": event.title,
+                            "location": event.location,
+                            "recipients": [participant.telegram_id],
+                            "status": "pending",
+                            "attempts": 0,
+                        }),
+                    )
+                )
+                await session.commit()
+            bot = SimpleNamespace(send_message=AsyncMock())
+            settings = Settings(bot_token="1234567890:test-token")
+            with patch.object(event_attendance_service, "safe_send_once", new_callable=AsyncMock) as send:
+                delivered = await event_attendance_service.deliver_attendance_notifications(
+                    bot, settings, factory
+                )
+                assert delivered == 0
+                send.assert_not_awaited()
+                bot.send_message.assert_not_awaited()
+            async with factory() as session:
+                row = await session.scalar(
+                    select(AppSetting).where(
+                        AppSetting.key == key.replace(":pending:", ":skipped:")
+                    )
+                )
+                assert row is not None
+                assert json.loads(row.value)["status"] == "skipped"
+                assert await session.scalar(
+                    select(AppSetting).where(AppSetting.key == key)
+                ) is None
+        finally:
+            await engine.dispose()
+
+
+def test_reverted_event_lifecycle_notices_are_skipped_without_telegram() -> None:
+    asyncio.run(_reverted_event_lifecycle_notices_are_skipped_without_telegram())
 
 
 async def _qr_handler_checks_manager_permission_before_reading_code():

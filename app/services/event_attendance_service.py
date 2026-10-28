@@ -361,7 +361,9 @@ async def participant_state(
     user_id: int,
 ) -> ParticipantAttendanceState:
     event = await session.get(Event, event_id)
-    if event is None:
+    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
+        # A retained registration must not expose moderation-only event state
+        # through the participant attendance API.
         raise ValueError("event_not_found")
     registration = await session.scalar(
         select(EventRegistration).where(
@@ -413,6 +415,10 @@ async def confirm_attendance(
     if active_user is None:
         raise ValueError('participant_not_active')
     event = await _event_for_update(session, event_id)
+    if event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
+        # Check before reading retained registrations or making any writes.
+        # A draft must be indistinguishable from a nonexistent event.
+        raise ValueError("event_not_found")
     runtime = await _attendance_session(session, event.id, create=False)
     registration = await session.scalar(
         select(EventRegistration)
@@ -577,7 +583,11 @@ async def deliver_attendance_notifications(bot: Bot, settings, session_factory) 
             if payload.get('status') != 'pending':
                 continue
             event = await session.get(Event, payload['event_id'])
-            if event is None or event.status == EventStatus.CANCELLED or (payload['phase'] == 'start' and event.status in COMPLETED_STATUSES):
+            if (
+                event is None
+                or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL, EventStatus.CANCELLED}
+                or (payload['phase'] == 'start' and event.status in COMPLETED_STATUSES)
+            ):
                 payload['status'] = 'skipped'
                 row.value = json.dumps(payload, ensure_ascii=False)
                 row.key = key.replace(':pending:', ':'+payload['status']+':', 1)
