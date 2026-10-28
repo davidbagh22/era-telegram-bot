@@ -21,6 +21,7 @@ CHECKS: tuple[tuple[str, frozenset[int]], ...] = (
     ("/api/v1/admin/analytics/executive-report.pdf", frozenset({401, 403})),
     ("/api/v1/admin/analytics/executive-report.xlsx", frozenset({401, 403})),
     ("/api/v1/media/workspaces", frozenset({401, 403})),
+    ("/api/v1/admin/events/1/poster/preview", frozenset({401, 403})),
 )
 
 
