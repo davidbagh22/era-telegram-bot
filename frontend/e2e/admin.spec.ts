@@ -194,6 +194,8 @@ test("leaders workcenter creates a task and confirms a separate leader status", 
   await page.getByRole("button", { name: "➕ Новая задача", exact: true }).click();
   const title = `E2E поручение ${Date.now()}`;
   await page.getByLabel("Что сделать", { exact: true }).fill(title);
+  await expect(page.getByLabel("Зачем и какой результат нужен")).not.toBeVisible();
+  await page.getByText("Дополнительно: описание, направление, баллы", { exact: true }).click();
   await page.getByLabel("Зачем и какой результат нужен").fill("Проверить общий процесс");
   await page.getByRole("button", { name: "Предпросмотр", exact: true }).click();
   await page.getByRole("button", { name: "Создать задачу", exact: true }).click();
