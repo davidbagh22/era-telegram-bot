@@ -64,7 +64,7 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
         with patch.object(smoke, "urlopen", side_effect=fake_open):
             status, checks = smoke.run()
         self.assertEqual(status, 0)
-        self.assertEqual([item["status"] for item in checks[3:]], [401] * 4)
+        self.assertEqual([item["status"] for item in checks[3:]], [401] * (len(smoke.CHECKS) - 3))
 
     def test_proxy_html_401_does_not_count_as_api_authorization(self):
         path = "/api/v1/media/workspaces"
