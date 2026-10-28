@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from app.api.v1.events import cancel_event_registration, register_event
+from app.handlers.participant.events_stability_block8 import event_join
 from app.utils.constants import EventStatus, RegistrationStatus
 
 
@@ -112,6 +113,52 @@ class EventCommitBeforeNotificationTests(unittest.IsolatedAsyncioTestCase):
                     bot=object(), settings=object(),
                 )
         notification.assert_not_awaited()
+
+
+    async def test_native_bot_join_commits_before_success_message(self):
+        order = []
+        event = _event()
+        event.participant_limit = None
+        session = SimpleNamespace(
+            get=AsyncMock(return_value=event),
+            commit=AsyncMock(side_effect=lambda: order.append("commit")),
+        )
+        message = SimpleNamespace(answer=AsyncMock(side_effect=lambda *args, **kwargs: order.append("send")))
+        call = SimpleNamespace(
+            data="event:join:42", answer=AsyncMock(), message=message,
+        )
+        with (
+            patch("app.handlers.participant.events_stability_block8._approved", return_value=True),
+            patch("app.handlers.participant.events_stability_block8.register_for_event",
+                  new=AsyncMock(return_value=(SimpleNamespace(), None))),
+            patch("app.handlers.participant.events_stability_block8.registration_stats",
+                  new=AsyncMock(return_value={"registered": 1, "free": "без ограничений"})),
+        ):
+            await event_join(call, user=SimpleNamespace(id=9), session=session)
+        self.assertEqual(order, ["commit", "send"])
+        session.commit.assert_awaited_once()
+        message.answer.assert_awaited_once()
+
+    async def test_native_bot_join_commit_failure_does_not_confirm(self):
+        event = _event()
+        session = SimpleNamespace(
+            get=AsyncMock(return_value=event),
+            commit=AsyncMock(side_effect=RuntimeError("commit failed")),
+        )
+        message = SimpleNamespace(answer=AsyncMock())
+        call = SimpleNamespace(
+            data="event:join:42", answer=AsyncMock(), message=message,
+        )
+        with (
+            patch("app.handlers.participant.events_stability_block8._approved", return_value=True),
+            patch("app.handlers.participant.events_stability_block8.register_for_event",
+                  new=AsyncMock(return_value=(SimpleNamespace(), None))),
+            patch("app.handlers.participant.events_stability_block8.registration_stats",
+                  new=AsyncMock(return_value={"registered": 1, "free": "без ограничений"})),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "commit failed"):
+                await event_join(call, user=SimpleNamespace(id=9), session=session)
+        message.answer.assert_not_awaited()
 
 
 if __name__ == "__main__":
