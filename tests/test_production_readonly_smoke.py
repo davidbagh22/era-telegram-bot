@@ -11,11 +11,14 @@ class FakeResponse:
     def __init__(self, url, status, body=None):
         self.url = url
         self.status = status
-        self.body = (
-            b'<!doctype html><html><body><div id="root"></div></body></html>'
-            if body is None and url.endswith("/app/")
-            else body or b""
-        )
+        if body is None:
+            if url.endswith("/app/"):
+                body = b'<!doctype html><html><body><div id="root"></div></body></html>'
+            elif url.endswith("/health"):
+                body = b'{"status":"ok","commit":"unknown"}'
+            elif url.endswith("/ready"):
+                body = b'{"status":"ready"}'
+        self.body = body or b""
 
     def read(self, size):
         return self.body[:size]
@@ -82,6 +85,34 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
         self.assertEqual(status, 2)
         self.assertIsNone(checks[0]["status"])
         self.assertEqual(checks[0]["error"], "OSError")
+
+    def test_generic_200_pages_are_not_health_or_readiness(self):
+        for path, error in (
+            ("/health", "health_payload_unreadable"),
+            ("/ready", "ready_payload_unreadable"),
+        ):
+            with self.subTest(path=path), patch.object(
+                smoke, "urlopen", return_value=FakeResponse(
+                    smoke.PRODUCTION_URL + path, 200,
+                    body=b"<html><body>Service unavailable</body></html>",
+                ),
+            ):
+                result = smoke.check(
+                    smoke.PRODUCTION_URL, path, frozenset({200}), 3.0
+                )
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["error"], error)
+
+    def test_json_200_with_wrong_status_is_not_ready(self):
+        with patch.object(smoke, "urlopen", return_value=FakeResponse(
+            smoke.PRODUCTION_URL + "/ready", 200,
+            body=b'{"status":"starting"}',
+        )):
+            result = smoke.check(
+                smoke.PRODUCTION_URL, "/ready", frozenset({200}), 3.0
+            )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "ready_payload_invalid")
 
     def test_generic_200_login_page_is_not_miniapp_acceptance(self):
         # A same-origin login/error page with HTTP 200 is not the React app.
@@ -153,7 +184,11 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
         sha = "a88dca9220b246727553b266b0a36786464bfc25"
 
         def fake_open(request, timeout):
-            body = json.dumps({"status": "ok", "commit": sha[:7]}).encode()
+            body = (
+                json.dumps({"status": "ok", "commit": sha[:7]}).encode()
+                if request.full_url.endswith("/health")
+                else None
+            )
             return FakeResponse(
                 request.full_url,
                 200 if request.full_url.endswith(("/health", "/ready", "/app/")) else 401,
