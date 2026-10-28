@@ -170,6 +170,10 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
         await call.message.answer("Регистрация на это мероприятие закрыта, но само событие остаётся в афише")
         return
     stats = await registration_stats(session, event)
+    # DatabaseAuthMiddleware commits only after this callback returns. Do not
+    # acknowledge a seat while the registration transaction is uncommitted.
+    # This does not yet provide a durable notification outbox (issue #497).
+    await session.commit()
     await call.message.answer(
         texts.event_registered(event)
         + f"\n\nЗарегистрировано: {stats['registered']}"
