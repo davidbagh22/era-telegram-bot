@@ -2,15 +2,16 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
 from html import escape
 
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
-from sqlalchemy import select
+from sqlalchemy import select, text as sql_text
 
 from app.database.event_experience import EventExperience
-from app.database.models import Event, User
+from app.database.models import AppSetting, Event, User
 from app.database.system_models import NotificationDelivery
 from app.services.general_topics_service import send_general_topic_once
 from app.services.notification_service import broadcast_detailed_once
@@ -19,6 +20,8 @@ from app.utils.deep_links import telegram_event_miniapp_url
 
 logger = logging.getLogger(__name__)
 PUBLIC_STATUSES = {EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN}
+RECOVERY_CURSOR_KEY = "event-announcement-recovery:cursor"
+RECOVERY_BATCH_SIZE = 20
 
 
 def text_parts(text: str, first_limit: int = 4000) -> list[str]:
@@ -161,12 +164,44 @@ async def deliver_event_announcement(bot, settings, session_factory, event_id) -
             logger.exception("Event announcement retry failed event_id=%s", event_id)
 
 
-async def deliver_pending_event_announcements(bot, settings, session_factory) -> None:
+async def _pending_announcement_ids(session_factory) -> list[int]:
+    """Persist a bounded round-robin page before starting any Telegram work.
+
+    Failed first-page events must not hide newer pending announcements forever.
+    Advancing before delivery also permits progress after a worker interruption;
+    pending rows wrap around on later runs, with existing delivery receipts intact.
+    """
     async with session_factory() as session:
-        ids = list((await session.scalars(select(EventExperience.event_id).join(
+        if session.bind.dialect.name == "postgresql":
+            lock_id = int.from_bytes(hashlib.sha256(RECOVERY_CURSOR_KEY.encode()).digest()[:8], "big", signed=True)
+            await session.execute(sql_text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_id})
+        cursor_row = await session.scalar(select(AppSetting).where(AppSetting.key == RECOVERY_CURSOR_KEY))
+        try:
+            cursor = max(0, int(cursor_row.value)) if cursor_row else 0
+        except (TypeError, ValueError):
+            cursor = 0
+        pending = select(EventExperience.event_id).join(
             Event, Event.id == EventExperience.event_id,
         ).where(EventExperience.announcement_status == "pending", Event.status.in_(PUBLIC_STATUSES))
-            .order_by(EventExperience.event_id).limit(20))).all())
+        pending = pending.order_by(EventExperience.event_id)
+        ids = list((await session.scalars(pending.where(
+            EventExperience.event_id > cursor,
+        ).limit(RECOVERY_BATCH_SIZE))).all())
+        if len(ids) < RECOVERY_BATCH_SIZE:
+            ids.extend((await session.scalars(pending.where(
+                EventExperience.event_id <= cursor,
+            ).limit(RECOVERY_BATCH_SIZE - len(ids)))).all())
+        if ids:
+            if cursor_row is None:
+                session.add(AppSetting(key=RECOVERY_CURSOR_KEY, value=str(ids[-1])))
+            else:
+                cursor_row.value = str(ids[-1])
+        await session.commit()
+        return ids
+
+
+async def deliver_pending_event_announcements(bot, settings, session_factory) -> None:
+    ids = await _pending_announcement_ids(session_factory)
     semaphore = asyncio.Semaphore(4)
 
     async def deliver(event_id):
