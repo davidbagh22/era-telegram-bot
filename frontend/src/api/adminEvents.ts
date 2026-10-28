@@ -198,6 +198,21 @@ export async function uploadEventPoster(eventId: number, file: File): Promise<Ad
   });
 }
 
+// Blob URLs are created only by the editor and revoked when the preview changes.
+// <img> requests cannot attach the Mini App's bearer token.
+export async function fetchAdminEventPoster(eventId: number): Promise<Blob> {
+  const sessionToken = await token();
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/events/${eventId}/poster/preview`, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!response.ok) return parseError(response);
+  if (!(response.headers.get("content-type") ?? "").toLowerCase().startsWith("image/")) {
+    throw new ApiError(502, "poster_invalid_image");
+  }
+  return response.blob();
+}
+
 export function removeEventPoster(eventId: number): Promise<AdminEventDraft> {
   return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/poster/remove`, { method: "POST" });
 }
