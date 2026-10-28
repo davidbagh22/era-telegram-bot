@@ -11,6 +11,7 @@ class FakeResponse:
     def __init__(self, url, status, body=None):
         self.url = url
         self.status = status
+        self.headers = {"Content-Type": "application/json" if status in (401, 403) else "text/html"}
         if body is None:
             if url.endswith("/app/"):
                 body = b'<!doctype html><html><body><div id="root"></div></body></html>'
@@ -55,12 +56,33 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
         def fake_open(request, timeout):
             if request.full_url.endswith(("/health", "/ready", "/app/")):
                 return FakeResponse(request.full_url, 200)
-            raise HTTPError(request.full_url, 401, "Unauthorized", None, None)
+            raise HTTPError(request.full_url, 401, "Unauthorized", {"Content-Type": "application/json"}, None)
 
         with patch.object(smoke, "urlopen", side_effect=fake_open):
             status, checks = smoke.run()
         self.assertEqual(status, 0)
         self.assertEqual([item["status"] for item in checks[3:]], [401] * 4)
+
+    def test_proxy_html_401_does_not_count_as_api_authorization(self):
+        path = "/api/v1/media/workspaces"
+        url = smoke.PRODUCTION_URL + path
+        with patch.object(smoke, "urlopen", side_effect=HTTPError(
+            url, 401, "Unauthorized", {"Content-Type": "text/html; charset=utf-8"}, None
+        )):
+            result = smoke.check(smoke.PRODUCTION_URL, path, frozenset({401, 403}), 3.0)
+        self.assertEqual(result["status"], 401)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "auth_response_not_json")
+
+    def test_fastapi_json_403_counts_as_authorization(self):
+        path = "/api/v1/media/workspaces"
+        url = smoke.PRODUCTION_URL + path
+        with patch.object(smoke, "urlopen", side_effect=HTTPError(
+            url, 403, "Forbidden", {"Content-Type": "application/json; charset=utf-8"}, None
+        )):
+            result = smoke.check(smoke.PRODUCTION_URL, path, frozenset({401, 403}), 3.0)
+        self.assertTrue(result["ok"])
+        self.assertIsNone(result["error"])
 
     def test_dns_failure_is_unverified_not_pass(self):
         with patch.object(smoke, "urlopen", side_effect=URLError("DNS unavailable")):
