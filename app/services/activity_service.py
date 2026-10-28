@@ -83,7 +83,9 @@ async def list_events(
                 .where(
                     EventRegistration.user_id == user.id,
                     EventRegistration.status.in_(ACTIVE_REGISTRATION_STATUSES),
-                    Event.status.not_in((EventStatus.CANCELLED,)),
+                    # A previously registered event may be returned to draft/review.
+                    # Keep unpublished moderation content out of participant tabs.
+                    Event.status.not_in((EventStatus.DRAFT, EventStatus.PENDING_APPROVAL, EventStatus.CANCELLED)),
                 )
                 .order_by(Event.event_date, Event.event_time)
             )
@@ -96,6 +98,7 @@ async def list_events(
             .join(EventRegistration, EventRegistration.event_id == Event.id)
             .where(
                 EventRegistration.user_id == user.id,
+                Event.status.not_in((EventStatus.DRAFT, EventStatus.PENDING_APPROVAL)),
                 or_(
                     Event.event_date < date.today(),
                     Event.status.in_((EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED, EventStatus.CANCELLED)),
