@@ -453,6 +453,59 @@ def test_lifecycle_notices_wait_for_commit_and_recover_without_duplicates():
     asyncio.run(_lifecycle_notices_wait_for_commit_and_recover_without_duplicates())
 
 
+async def _reverted_event_lifecycle_notices_are_skipped_without_telegram() -> None:
+    # A lifecycle notice can be queued before moderation returns an event to
+    # draft. Recovery must never disclose that draft's title/location.
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+    from app.config import Settings
+    from app.database.models import AppSetting
+
+    for status in (EventStatus.DRAFT, EventStatus.PENDING_APPROVAL):
+        engine, factory = await _session_factory()
+        try:
+            async with factory() as session:
+                _manager, participant, _stranger, event, _registration = await _seed_event(session)
+                event.status = status
+                key = f"event-lifecycle:pending:{event.id}:start"
+                session.add(
+                    AppSetting(
+                        key=key,
+                        value=json.dumps({
+                            "event_id": event.id,
+                            "phase": "start",
+                            "title": event.title,
+                            "location": event.location,
+                            "recipients": [participant.telegram_id],
+                            "status": "pending",
+                            "attempts": 0,
+                        }),
+                    )
+                )
+                await session.commit()
+            bot = SimpleNamespace(send_message=AsyncMock())
+            settings = Settings(bot_token="1234567890:test-token")
+            with patch.object(event_attendance_service, "safe_send_once", new_callable=AsyncMock) as send:
+                delivered = await event_attendance_service.deliver_attendance_notifications(
+                    bot, settings, factory
+                )
+                assert delivered == 0
+                send.assert_not_awaited()
+                bot.send_message.assert_not_awaited()
+            async with factory() as session:
+                row = await session.get(AppSetting, key.replace(":pending:", ":skipped:"))
+                assert row is not None
+                assert json.loads(row.value)["status"] == "skipped"
+                assert await session.get(AppSetting, key) is None
+        finally:
+            await engine.dispose()
+
+
+def test_reverted_event_lifecycle_notices_are_skipped_without_telegram() -> None:
+    asyncio.run(_reverted_event_lifecycle_notices_are_skipped_without_telegram())
+
+
 async def _qr_handler_checks_manager_permission_before_reading_code():
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, patch
