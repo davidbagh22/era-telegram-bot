@@ -9,16 +9,25 @@ from unittest.mock import AsyncMock
 from fastapi import HTTPException
 
 from app.api.v1.event_posters import read_public_event_poster
+from app.utils.constants import EventStatus
 
 
 class PublicPosterMimeTests(unittest.IsolatedAsyncioTestCase):
-    async def _response(self, content_type: str | None, poster_bytes: bytes = b"poster"):
+    async def _response(
+        self,
+        content_type: str | None,
+        poster_bytes: bytes = b"poster",
+        status: EventStatus | None = EventStatus.PUBLISHED,
+    ):
         session = SimpleNamespace(
             get=AsyncMock(
-                return_value=SimpleNamespace(
-                    poster_bytes=poster_bytes,
-                    poster_content_type=content_type,
-                )
+                side_effect=[
+                    SimpleNamespace(status=status) if status is not None else None,
+                    SimpleNamespace(
+                        poster_bytes=poster_bytes,
+                        poster_content_type=content_type,
+                    ),
+                ]
             )
         )
         return await read_public_event_poster(42, session=session)
@@ -52,6 +61,19 @@ class PublicPosterMimeTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(response.media_type, expected)
                 self.assertEqual(response.headers["cache-control"], "no-store")
                 self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+
+    async def test_moderation_only_posters_and_unknown_events_are_hidden(self) -> None:
+        for status in (EventStatus.DRAFT, EventStatus.PENDING_APPROVAL, None):
+            with self.subTest(status=status):
+                with self.assertRaises(HTTPException) as caught:
+                    await self._response("image/png", status=status)
+                self.assertEqual(caught.exception.status_code, 404)
+                self.assertEqual(caught.exception.detail, "event_poster_not_found")
+
+    async def test_cancelled_historical_links_remain_compatible(self) -> None:
+        response = await self._response("image/jpeg", status=EventStatus.CANCELLED)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["cache-control"], "no-store")
 
     async def test_missing_poster_remains_not_found(self) -> None:
         with self.assertRaises(HTTPException) as caught:
