@@ -17,6 +17,7 @@ from app.services.notification_service import (
     safe_send_video,
 )
 from app.utils import texts
+from app.utils.callback_ids import positive_pg_int_callback
 from app.utils.constants import ApplicationStatus, RegistrationStatus
 from app.utils.validators import clean_text
 
@@ -162,7 +163,10 @@ async def activities_list(
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    event_id = int(call.data.rsplit(":", 1)[-1])
+    event_id = positive_pg_int_callback(call.data, "event:activities:")
+    if event_id is None:
+        await call.message.answer("Мероприятие не найдено")
+        return
     event = await session.get(Event, event_id)
     if not event:
         await call.message.answer("Мероприятие не найдено")
@@ -209,9 +213,13 @@ async def proof_start(
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    activity = await session.get(
-        EventActivity, int(call.data.rsplit(":", 1)[-1])
-    )
+    activity_id = positive_pg_int_callback(call.data, "activity:do:")
+    if activity_id is None:
+        activity_id = positive_pg_int_callback(call.data, "activity:submit:")
+    if activity_id is None:
+        await call.message.answer("Активность недоступна")
+        return
+    activity = await session.get(EventActivity, activity_id)
     if not activity or not activity.is_active:
         await call.message.answer("Активность недоступна")
         return
