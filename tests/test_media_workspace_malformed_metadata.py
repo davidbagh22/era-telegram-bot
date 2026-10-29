@@ -37,6 +37,24 @@ class MalformedCalendarMetadataTests(unittest.TestCase):
         self.assertEqual(service.item_out(item)["platform"], "instagram")
 
 
+class MalformedCalendarMetadataReadTests(unittest.IsolatedAsyncioTestCase):
+    async def test_calendar_excludes_non_object_json_without_hiding_healthy_rows(self):
+        good = _item({"media_area": "era", "workspace_revision": 2})
+        good.id = 43
+        legacy_null = _item(None)
+        legacy_null.id = 44
+        corrupt = _item(["unscoped"])
+        session = SimpleNamespace(
+            scalars=AsyncMock(return_value=SimpleNamespace(
+                all=lambda: [corrupt, good, legacy_null],
+            )),
+        )
+        results = await service.calendar(session, "era")
+        self.assertEqual([row["id"] for row in results], [43, 44])
+        self.assertEqual(results[0]["revision"], 2)
+        session.scalars.assert_awaited_once()
+
+
 class MalformedCalendarMetadataWriteTests(unittest.IsolatedAsyncioTestCase):
     async def test_edit_rejects_non_object_without_mutating_or_flushing(self):
         for malformed in ([], ["x"], "legacy", 7, True):
