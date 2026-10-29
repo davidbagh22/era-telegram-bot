@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 
 from sqlalchemy import select
 
 from app.database.event_experience import EventExperience
 from app.database.models import Event, EventActivity
 from app.utils.constants import EventStatus
+
+logger = logging.getLogger(__name__)
 
 PUBLIC_STATUSES = {
     EventStatus.APPROVED,
@@ -25,6 +28,37 @@ def _deadline(value: object) -> datetime | None:
         return datetime.fromisoformat(str(value))
     except ValueError:
         return None
+
+
+def _validated_task_configuration(experience) -> tuple[list[dict], list[int]] | None:
+    """Reject malformed legacy JSON without touching its activity or point rows."""
+    tasks = experience.participant_tasks or []
+    ids = experience.participant_task_activity_ids or []
+    if not isinstance(tasks, list) or not isinstance(ids, list):
+        return None
+    configured: list[dict] = []
+    for item in tasks:
+        if not isinstance(item, dict):
+            return None
+        if not str(item.get("title") or "").strip():
+            continue
+        try:
+            int(item.get("points") or 0)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        configured.append(item)
+    old_ids: list[int] = []
+    for value in ids:
+        if not value:
+            continue
+        try:
+            activity_id = int(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if activity_id <= 0:
+            return None
+        old_ids.append(activity_id)
+    return configured, old_ids
 
 
 async def sync_event_wizard_tasks(session) -> int:
@@ -48,8 +82,11 @@ async def sync_event_wizard_tasks(session) -> int:
     ).all()
     changed = 0
     for event, experience in rows:
-        configured = [item for item in (experience.participant_tasks or []) if str(item.get("title") or "").strip()]
-        old_ids = [int(value) for value in (experience.participant_task_activity_ids or []) if value]
+        configuration = _validated_task_configuration(experience)
+        if configuration is None:
+            logger.warning("Skipping malformed event wizard tasks event_id=%s", event.id)
+            continue
+        configured, old_ids = configuration
         new_ids: list[int] = []
 
         for index, item in enumerate(configured):
