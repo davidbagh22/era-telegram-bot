@@ -32,10 +32,18 @@ class _ReactRootParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.found_root = False
+        self._inert_depth = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag == "div" and any(name == "id" and value == "root" for name, value in attrs):
-            self.found_root = True
+        if tag in {"template", "noscript"}:
+            self._inert_depth += 1
+        elif not self._inert_depth and tag == "div":
+            if any(name == "id" and value == "root" for name, value in attrs):
+                self.found_root = True
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"template", "noscript"} and self._inert_depth:
+            self._inert_depth -= 1
 
 
 def _has_react_root(html: bytes) -> bool:
