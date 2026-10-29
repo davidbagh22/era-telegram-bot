@@ -15,10 +15,24 @@ def _event(limit=1):
     return SimpleNamespace(id=42, participant_limit=limit)
 
 
+class _NoAutoflushGuard:
+    def __init__(self):
+        self.entries = 0
+        self.active = False
+
+    def __enter__(self):
+        self.entries += 1
+        self.active = True
+
+    def __exit__(self, *args):
+        self.active = False
+
+
 def _session(*rows):
     return SimpleNamespace(
         scalar=AsyncMock(side_effect=list(rows)),
         flush=AsyncMock(),
+        no_autoflush=_NoAutoflushGuard(),
     )
 
 
@@ -81,3 +95,5 @@ class WaitlistPromotionLockTests(IsolatedAsyncioTestCase):
         self.assertIsNotNone(event_query._for_update_arg)
         self.assertTrue(event_query._execution_options.get("populate_existing"))
         self.assertIsNotNone(waiter_query._for_update_arg)
+        self.assertEqual(session.no_autoflush.entries, 1)
+        self.assertFalse(session.no_autoflush.active)
