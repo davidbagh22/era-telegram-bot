@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import EventActivity, EventActivitySubmission, EventRegistration, User
 from app.utils import texts
+from app.utils.callback_ids import positive_pg_int_callback
 from app.utils.constants import ApplicationStatus
 from app.utils.validators import clean_text
 
@@ -31,7 +32,11 @@ async def activity_submit_start(call: CallbackQuery, user: User | None, session:
     if not approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    activity = await session.get(EventActivity, int(call.data.rsplit(":", 1)[-1]))
+    activity_id = positive_pg_int_callback(call.data, "activity:submit:")
+    if activity_id is None:
+        await call.message.answer("Активность недоступна")
+        return
+    activity = await session.get(EventActivity, activity_id)
     if not activity or not activity.is_active:
         await call.message.answer("Активность недоступна")
         return
