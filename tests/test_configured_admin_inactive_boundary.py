@@ -69,6 +69,16 @@ class ConfiguredAdminInactiveBoundaryTests(unittest.TestCase):
             self.assertFalse(can_manage_permissions(user, self.settings, 100))
         self.assertTrue(is_full_admin(_user(role=Role.ADMIN), self.settings, 100))
 
+    def test_missing_identity_attribute_is_denied_without_crashing(self):
+        user = SimpleNamespace(
+            role=Role.ADMIN,
+            is_blocked=False,
+            is_archived=False,
+            permission_grants=[],
+        )
+        self.assertFalse(is_full_admin(user, self.settings, 100))
+        self.assertFalse(can_manage_permissions(user, self.settings, 100))
+
     def test_legacy_bootstrap_without_persisted_user_is_preserved(self):
         self.assertTrue(is_full_admin(None, self.settings, 100))
         self.assertFalse(is_full_admin(None, self.settings, 200))
