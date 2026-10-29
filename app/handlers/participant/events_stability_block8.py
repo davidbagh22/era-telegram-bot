@@ -170,6 +170,9 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
     if event is None or event.status not in PUBLIC_EVENT_STATUSES:
         await call.message.answer("Это мероприятие сейчас недоступно")
         return
+    if event.status not in REGISTRATION_ALLOWED_STATUSES:
+        await call.message.answer("Регистрация на это мероприятие закрыта, но само событие остаётся в афише")
+        return
     experience = await session.get(EventExperience, event.id)
     if experience is not None and not experience.registration_required:
         await call.message.answer("Для этого мероприятия регистрация не требуется.")
