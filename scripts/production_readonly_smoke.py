@@ -64,6 +64,11 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
             if path in ("/health", "/ready"):
                 # A 200 HTML proxy/error page is not proof of a healthy app.
                 # Verify the documented bounded JSON health/readiness body.
+                media_type = content_type.split(";", 1)[0].strip().lower()
+                if media_type != "application/json" and not media_type.endswith("+json"):
+                    # A reverse proxy can serve a JSON-looking body with an
+                    # HTML/plaintext type; that is not an accepted health route.
+                    error = "health_response_not_json" if path == "/health" else "ready_response_not_json"
                 try:
                     payload = json.loads(response.read(4096))
                     expected_status = "ok" if path == "/health" else "ready"
