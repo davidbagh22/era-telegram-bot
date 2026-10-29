@@ -12,3 +12,12 @@ def positive_pg_int_callback(data: str | None, prefix: str) -> int | None:
         return None
     number = int(raw)
     return number if 0 < number <= PG_INTEGER_MAX else None
+
+
+def positive_pg_int_value(value: object) -> int | None:
+    """Validate a numeric ID recovered from FSM state (int or ASCII string)."""
+    if type(value) is int:
+        return value if 0 < value <= PG_INTEGER_MAX else None
+    if isinstance(value, str):
+        return positive_pg_int_callback(value, "")
+    return None
