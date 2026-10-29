@@ -1,5 +1,6 @@
 from datetime import date, datetime, time, timedelta, timezone
 from io import BytesIO
+from unittest.mock import patch
 
 import unittest
 import pytest
@@ -52,12 +53,32 @@ class AnalyticsSnapshotTests(unittest.IsolatedAsyncioTestCase):
             workbook = load_workbook(BytesIO(build_analytics_workbook([], [], [], {}, snapshot=snapshot)))
             rows = list(workbook['Обзор 2.0'].values)[1:]
             assert [row[1] for row in rows] == [m.value for m in snapshot.metrics]
-            dashboard = await dashboard_metrics(session)
-            assert dashboard.values['active_base'] == 2
-            health = await build_organization_health(session)
-            assert next(m for m in health.metrics if m.key == 'active_30d').value == 2
-            efficiency = await build_efficiency_snapshot(session)
-            assert efficiency is not None
+            # Snapshot accepts a fixed as_of, while these live views use the
+            # wall clock. Freeze all clocks to the fixture date so the 14-day
+            # cohort does not drift as CI runs on later calendar days.
+            class FixtureDatetime(datetime):
+                @classmethod
+                def now(cls, tz=None):
+                    return now.astimezone(tz) if tz else now.replace(tzinfo=None)
+
+            class FixtureDate(date):
+                @classmethod
+                def today(cls):
+                    return now.date()
+
+            with (
+                patch('app.services.admin_dashboard_service.datetime', FixtureDatetime),
+                patch('app.services.organization_health_service.datetime', FixtureDatetime),
+                patch('app.services.organization_health_service.date', FixtureDate),
+                patch('app.services.era_efficiency_service.datetime', FixtureDatetime),
+                patch('app.services.era_efficiency_service.date', FixtureDate),
+            ):
+                dashboard = await dashboard_metrics(session)
+                assert dashboard.values['active_base'] == 2
+                health = await build_organization_health(session)
+                assert next(m for m in health.metrics if m.key == 'active_30d').value == 2
+                efficiency = await build_efficiency_snapshot(session)
+                assert efficiency is not None
             for days in (7, 90):
                 assert (await build_analytics_snapshot(session, days=days, now=now)).days == days
             with pytest.raises(ValueError):
