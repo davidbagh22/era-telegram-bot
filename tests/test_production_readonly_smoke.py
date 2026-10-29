@@ -209,6 +209,8 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
             b'<!-- <div id="root"></div> -->',
             b'<div id="rooted"></div>',
             b'<span id="root"></span>',
+            b'<template><div id="root"></div></template>',
+            b'<noscript><div id="root"></div></noscript>',
             b'<div id="root"',
         )
         for html in invalid_pages:
@@ -234,7 +236,6 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
                         smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0
                     )
                 self.assertTrue(result["ok"])
-
 
     def test_html_charset_miniapp_response_is_accepted(self):
         response = FakeResponse(smoke.PRODUCTION_URL + "/app/", 200)
