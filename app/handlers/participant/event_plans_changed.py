@@ -124,10 +124,12 @@ def _event_id_from_callback(data: str | None) -> int | None:
     if not data or not data.startswith(prefix):
         return None
     raw_id = data[len(prefix):]
-    if not raw_id or len(raw_id) > 18 or not raw_id.isascii() or not raw_id.isdecimal():
+    if not raw_id or len(raw_id) > 10 or not raw_id.isascii() or not raw_id.isdecimal():
         return None
     event_id = int(raw_id)
-    return event_id if event_id > 0 else None
+    # Event.id is PostgreSQL INTEGER (signed 32-bit); reject oversized values
+    # before asyncpg attempts to bind them and raises a database DataError.
+    return event_id if 0 < event_id <= 2_147_483_647 else None
 
 
 @router.callback_query(F.data.startswith("event:plans_changed:"))
