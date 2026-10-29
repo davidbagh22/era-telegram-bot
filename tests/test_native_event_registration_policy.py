@@ -83,6 +83,25 @@ class NativeEventRegistrationTests(IsolatedAsyncioTestCase):
                 register.assert_not_awaited()
                 call.message.answer.assert_awaited_once()
 
+    async def test_policy_changed_after_callback_is_not_reported_as_success(self):
+        # The service rechecks policy after row locking. A stale callback must
+        # show the rejection instead of claiming a successful registration.
+        for error, expected in (
+            ("registration_not_required", "регистрация не требуется"),
+            ("closed", "Регистрация на это мероприятие закрыта"),
+        ):
+            with self.subTest(error=error):
+                call = _call()
+                session = SimpleNamespace(
+                    get=AsyncMock(side_effect=[_event(), _experience(required=True)])
+                )
+                with patch(
+                    "app.handlers.participant.events_stability_block8.register_for_event",
+                    new_callable=AsyncMock, return_value=(None, error),
+                ):
+                    await event_join(call, _user(), session)
+                self.assertIn(expected, call.message.answer.await_args.args[0])
+
     async def test_full_event_waitlist_uses_config_and_confirms_waitlist_not_seat(self):
         call = _call()
         session = SimpleNamespace(
