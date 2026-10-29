@@ -1,11 +1,13 @@
 name: Production read-only smoke
 
-# Run only after the trusted main-branch Bot checks succeed. This workflow
-# never deploys, authenticates, sends Telegram messages, or changes server data.
+# Independent periodic read-only verification. Do NOT trigger on workflow_run
+# or push: Render autoDeploy=checksPass may wait for all commit checks, creating
+# a circular wait if a post-CI workflow waits for Render to become LIVE.
+# Scheduled runs can report a pending deploy but cannot block its release.
 on:
-  workflow_run:
-    workflows: ["Bot checks"]
-    types: [completed]
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,29 +18,25 @@ concurrency:
 
 jobs:
   verify:
-    if: >-
-      ${{ github.event.workflow_run.conclusion == 'success' &&
-          github.event.workflow_run.event == 'push' &&
-          github.event.workflow_run.head_branch == 'main' &&
-          github.event.workflow_run.head_repository.full_name == github.repository }}
+    if: ${{ github.repository == 'davidbagh22/era-telegram-bot' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: main
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Verify exact main SHA and eight anonymous read-only HTTP gates
         env:
-          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
           PYTHONDONTWRITEBYTECODE: '1'
         shell: bash
         run: |
-          # Render autoDeploy=checksPass can finish after GitHub CI. Poll for
-          # the new commit prefix, but never treat DNS failure as acceptance.
+          # Resolve the exact checked-out main commit at run time.
+          EXPECTED_SHA="$(git rev-parse HEAD)"
+          # Poll boundedly; DNS or a pending deployment never counts as PASS.
           for attempt in 1 2 3 4 5 6; do
             echo "Production smoke attempt ${attempt}/6 for ${EXPECTED_SHA}"
             if python scripts/production_readonly_smoke.py --expected-sha "$EXPECTED_SHA" --timeout 5; then
