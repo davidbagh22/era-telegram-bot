@@ -111,7 +111,6 @@ async def sync_event_wizard_tasks(session) -> int:
                     requires_review=bool(item.get("confirmation_required")),
                     points=max(0, int(item.get("points") or 0)),
                     deadline=_deadline(item.get("deadline")),
-                    created_by=event.created_by,
                     is_active=True,
                 )
                 session.add(activity)
