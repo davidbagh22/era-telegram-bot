@@ -127,6 +127,8 @@ jobs:
         run: python scripts/postgres_pulse_announcement_race.py
       - name: Prove bounded event recovery pages are fair under concurrent workers
         run: python scripts/postgres_event_announcement_recovery_race.py
+      - name: Prove concurrent event waitlist promotions never exceed capacity
+        run: python scripts/postgres_event_waitlist_race.py
 
   frontend:
     runs-on: ubuntu-latest
