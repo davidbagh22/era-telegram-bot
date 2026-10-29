@@ -82,7 +82,8 @@ async def calendar(session, area, *, before_id: int | None = None, status_group:
     # A non-object JSON row has no trustworthy media_area: never expose its
     # title/body in either scoped calendar. Preserve legacy NULL rows.
     return [item_out(item) for item in rows
-            if item.metadata_json is None or isinstance(item.metadata_json, dict)]
+            if (item.metadata_json is None or isinstance(item.metadata_json, dict))
+            and area_of(item) == area]
 
 
 async def _validate_responsible(session, user_id):
