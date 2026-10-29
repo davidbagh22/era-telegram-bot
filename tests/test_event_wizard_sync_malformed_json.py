@@ -62,6 +62,9 @@ class EventWizardMalformedJsonRecoveryTests(unittest.IsolatedAsyncioTestCase):
                 await self._event(session, admin.id, tasks=[{"title": "Broken", "points": "invalid"}]),
                 await self._event(session, admin.id, tasks={"title": "not a list"}),
                 await self._event(session, admin.id, tasks=[{"title": "Task", "points": 3}], activity_ids=["invalid"]),
+                await self._event(session, admin.id, tasks=[{"title": "x" * 256, "points": 3}]),
+                await self._event(session, admin.id, tasks=[{"title": "Overflow", "points": 2_147_483_648}]),
+                await self._event(session, admin.id, tasks=[{"title": "Task", "points": 3}], activity_ids=[2_147_483_648]),
             ]
             good_id = await self._event(session, admin.id, tasks=[{"title": "Good", "points": 7}])
             await session.commit()
@@ -78,7 +81,7 @@ class EventWizardMalformedJsonRecoveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(rows[0].points, 7)
             for event_id in bad_ids:
                 experience = await session.get(EventExperience, event_id)
-                self.assertEqual(experience.participant_task_activity_ids, ["invalid"] if event_id == bad_ids[-1] else [])
+                self.assertEqual(experience.participant_task_activity_ids, ["invalid"] if event_id == bad_ids[3] else ([2_147_483_648] if event_id == bad_ids[-1] else []))
 
         async with self.sessions() as session:
             with self.assertLogs("app.services.event_wizard_sync_service", level="WARNING"):
