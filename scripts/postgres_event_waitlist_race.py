@@ -22,8 +22,13 @@ from app.utils.constants import EventStatus, RegistrationStatus
 async def main() -> None:
     url = os.environ["DATABASE_URL"]
     parsed = make_url(url)
-    if parsed.get_backend_name() != "postgresql" or parsed.database != "era_test":
-        raise RuntimeError("Only isolated PostgreSQL era_test is allowed")
+    if (
+        parsed.get_backend_name() != "postgresql"
+        or parsed.database != "era_test"
+        or parsed.username != "era_test"
+        or parsed.host not in {"127.0.0.1", "localhost"}
+    ):
+        raise RuntimeError("Only isolated localhost PostgreSQL era_test is allowed")
     engine = create_async_engine(url, pool_pre_ping=True)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     nonce = int(uuid.uuid4().hex[:8], 16)
