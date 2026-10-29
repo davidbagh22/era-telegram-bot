@@ -40,11 +40,18 @@ def _validated_task_configuration(experience) -> tuple[list[dict], list[int]] | 
     for item in tasks:
         if not isinstance(item, dict):
             return None
-        if not str(item.get("title") or "").strip():
+        title = str(item.get("title") or "").strip()
+        if not title:
             continue
+        # EventActivity.title is VARCHAR(255), points is PostgreSQL INTEGER.
+        # Reject the entire malformed row before writing any of its tasks.
+        if len(title) > 255:
+            return None
         try:
-            int(item.get("points") or 0)
+            points = int(item.get("points") or 0)
         except (TypeError, ValueError, OverflowError):
+            return None
+        if points > 2_147_483_647:
             return None
         configured.append(item)
     old_ids: list[int] = []
@@ -55,7 +62,7 @@ def _validated_task_configuration(experience) -> tuple[list[dict], list[int]] | 
             activity_id = int(value)
         except (TypeError, ValueError, OverflowError):
             return None
-        if activity_id <= 0:
+        if not 0 < activity_id <= 2_147_483_647:
             return None
         old_ids.append(activity_id)
     return configured, old_ids
