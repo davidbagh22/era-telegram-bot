@@ -160,7 +160,12 @@ async def feedback_start(call: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(FeedbackStates.rating, F.data.startswith("feedback:rating:"))
 async def feedback_rating(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    await state.update_data(rating=int(call.data.rsplit(":", 1)[-1]))
+    # Telegram callback data is untrusted, including stale and forged buttons.
+    raw_rating = (call.data or "").removeprefix("feedback:rating:")
+    if not (call.data or "").startswith("feedback:rating:") or raw_rating not in {"1", "2", "3", "4", "5"}:
+        await call.message.answer("Выберите оценку от 1 до 5.")
+        return
+    await state.update_data(rating=int(raw_rating))
     await state.set_state(FeedbackStates.liked)
     await call.message.answer(texts.FEEDBACK_LIKED)
 
