@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,9 @@ router = APIRouter(prefix="/media/workspaces", tags=["media"])
 Area = Literal["era", "ksoors"]
 Platform = Literal["telegram", "instagram", "facebook", "tiktok", "youtube"]
 CalendarStatusGroup = Literal["all", "active", "published"]
+# MediaContentItem.id and User.id are PostgreSQL INTEGER (signed 32-bit),
+# unlike Telegram identifiers, which are BIGINT.
+PG_INTEGER_MAX = 2_147_483_647
 
 
 class CalendarCreate(BaseModel):
@@ -24,7 +27,7 @@ class CalendarCreate(BaseModel):
     body: str = Field(default="", max_length=4096)
     platform: Platform = "telegram"
     scheduled_at: datetime | None = None
-    responsible_id: int | None = Field(default=None, gt=0)
+    responsible_id: int | None = Field(default=None, gt=0, le=PG_INTEGER_MAX)
     materials: str = Field(default="", max_length=3000)
 
     @field_validator("title")
@@ -49,7 +52,7 @@ class CalendarUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=2, max_length=255)
     body: str | None = Field(default=None, max_length=4096)
     scheduled_at: datetime | None = None
-    responsible_id: int | None = Field(default=None, gt=0)
+    responsible_id: int | None = Field(default=None, gt=0, le=PG_INTEGER_MAX)
     materials: str | None = Field(default=None, max_length=3000)
     status: Literal["planned", "in_progress", "review", "ready", "published", "skipped"] | None = None
     publication_url: str | None = Field(default=None, max_length=1000)
@@ -75,7 +78,7 @@ async def workspaces(user: User = Depends(get_current_user), session: AsyncSessi
 
 
 @router.get("/{area}/calendar")
-async def calendar(area: Area, before_id: int | None = Query(default=None, gt=0),
+async def calendar(area: Area, before_id: int | None = Query(default=None, gt=0, le=PG_INTEGER_MAX),
                    status_group: CalendarStatusGroup = Query(default="all"),
                    user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session),
                    settings: Settings = Depends(get_settings)):
@@ -98,7 +101,7 @@ async def create(area: Area, payload: CalendarCreate, user: User = Depends(get_c
 
 
 @router.patch("/{area}/calendar/{item_id}")
-async def update(area: Area, item_id: int, payload: CalendarUpdate, user: User = Depends(get_current_user),
+async def update(area: Area, item_id: Annotated[int, Path(gt=0, le=PG_INTEGER_MAX)], payload: CalendarUpdate, user: User = Depends(get_current_user),
                  session: AsyncSession = Depends(get_session), settings: Settings = Depends(get_settings)):
     changes = payload.model_dump(exclude_unset=True, exclude={"revision"})
     if any(changes.get(key, "valid") is None for key in ("title", "body", "materials", "status")):
@@ -111,7 +114,7 @@ async def update(area: Area, item_id: int, payload: CalendarUpdate, user: User =
 
 
 class EditorChange(BaseModel):
-    user_id: int = Field(gt=0)
+    user_id: int = Field(gt=0, le=PG_INTEGER_MAX)
     enabled: bool
     revision: int = Field(ge=0)
 
