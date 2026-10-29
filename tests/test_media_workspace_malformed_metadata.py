@@ -55,6 +55,31 @@ class MalformedCalendarMetadataReadTests(unittest.IsolatedAsyncioTestCase):
         session.scalars.assert_awaited_once()
 
 
+    async def test_calendar_rechecks_explicit_null_and_invalid_media_area(self):
+        # SQL JSON extraction can coalesce JSON null to ERA. Always recheck
+        # each returned record before exposing its title or body.
+        valid_era = _item({"media_area": "era"})
+        valid_era.id = 51
+        legacy_missing = _item({"workspace_revision": 0})
+        legacy_missing.id = 52
+        legacy_sql_null = _item(None)
+        legacy_sql_null.id = 53
+        explicit_null = _item({"media_area": None})
+        explicit_null.id = 54
+        invalid_area = _item({"media_area": ["era"]})
+        invalid_area.id = 55
+        wrong_area = _item({"media_area": "ksoors"})
+        wrong_area.id = 56
+        session = SimpleNamespace(scalars=AsyncMock(return_value=SimpleNamespace(
+            all=lambda: [valid_era, legacy_missing, legacy_sql_null,
+                         explicit_null, invalid_area, wrong_area],
+        )))
+        result = await service.calendar(session, "era")
+        self.assertEqual([row["id"] for row in result], [51, 52, 53])
+        self.assertTrue(all(row["area"] == "era" for row in result))
+        session.scalars.assert_awaited_once()
+
+
 class MalformedCalendarMetadataWriteTests(unittest.IsolatedAsyncioTestCase):
     async def test_edit_rejects_non_object_without_mutating_or_flushing(self):
         for malformed in ([], ["x"], "legacy", 7, True):
