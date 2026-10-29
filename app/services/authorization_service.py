@@ -39,22 +39,31 @@ def active_global_permissions(user: User | None) -> set[str]:
     }
 
 
+def _active_identity(user: User | None, telegram_id: int) -> bool:
+    """Fail closed when an authorization caller passes the wrong DB identity."""
+    return bool(
+        user is not None
+        and not user.is_blocked
+        and not user.is_archived
+        and getattr(user, "telegram_id", None) == telegram_id
+    )
+
+
 def is_full_admin(user: User | None, settings: Settings, telegram_id: int) -> bool:
     """Configured admin IDs never override an existing inactive/mismatched user.
 
     Preserve the legacy no-user bootstrap path for configured IDs; it requires
     a separate policy review and must not be silently removed in this patch.
     """
-    if user is not None:
-        if user.is_blocked or user.is_archived or getattr(user, "telegram_id", None) != telegram_id:
-            return False
+    if user is not None and not _active_identity(user, telegram_id):
+        return False
     return bool(telegram_id in settings.admin_ids or (user and user.role == Role.ADMIN))
 
 
 def can_view_people(user: User | None, settings: Settings, telegram_id: int) -> bool:
     if is_full_admin(user, settings, telegram_id):
         return True
-    if not user or user.is_blocked or user.is_archived:
+    if not _active_identity(user, telegram_id):
         return False
     return bool(active_global_permissions(user).intersection({"people.view", "people.manage"}))
 
@@ -62,7 +71,7 @@ def can_view_people(user: User | None, settings: Settings, telegram_id: int) -> 
 def can_manage_people(user: User | None, settings: Settings, telegram_id: int) -> bool:
     if is_full_admin(user, settings, telegram_id):
         return True
-    if not user or user.is_blocked or user.is_archived:
+    if not _active_identity(user, telegram_id):
         return False
     return "people.manage" in active_global_permissions(user)
 
@@ -76,7 +85,7 @@ def can_manage_permissions(
 def can_manage_events(user: User | None, settings: Settings, telegram_id: int) -> bool:
     if is_full_admin(user, settings, telegram_id):
         return True
-    if not user or user.is_blocked or user.is_archived:
+    if not _active_identity(user, telegram_id):
         return False
     return "events.manage" in active_global_permissions(user)
 
@@ -84,7 +93,7 @@ def can_manage_events(user: User | None, settings: Settings, telegram_id: int) -
 def can_manage_tasks(user: User | None, settings: Settings, telegram_id: int) -> bool:
     if is_full_admin(user, settings, telegram_id):
         return True
-    if not user or user.is_blocked or user.is_archived:
+    if not _active_identity(user, telegram_id):
         return False
     return "tasks.manage" in active_global_permissions(user)
 
@@ -92,7 +101,7 @@ def can_manage_tasks(user: User | None, settings: Settings, telegram_id: int) ->
 def can_manage_partners(user: User | None, settings: Settings, telegram_id: int) -> bool:
     if is_full_admin(user, settings, telegram_id):
         return True
-    if not user or user.is_blocked or user.is_archived:
+    if not _active_identity(user, telegram_id):
         return False
     return "partners.manage" in active_global_permissions(user)
 
