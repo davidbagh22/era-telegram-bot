@@ -43,12 +43,18 @@ async def require_access(session, user, settings, *, write=False, area=None):
         raise PermissionError("Доступ к календарю медиаотдела закрыт. Проверьте полномочия и обновите страницу.")
 
 
+def _metadata(item):
+    """Treat legacy non-object JSON as unreadable, never as editable state."""
+    data = item.metadata_json
+    return data if isinstance(data, dict) else {}
+
+
 def area_of(item):
-    return (item.metadata_json or {}).get("media_area", "era")
+    return _metadata(item).get("media_area", "era")
 
 
 def item_out(item):
-    data = item.metadata_json or {}
+    data = _metadata(item)
     scheduled_at = item.scheduled_at
     if scheduled_at is not None and scheduled_at.tzinfo is None:
         scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
@@ -132,7 +138,7 @@ async def create_entry(session, user, settings, area, values, request_key):
     key = f"workspace:{user.id}:{request_key}"
     existing = await session.scalar(select(MediaContentItem).where(MediaContentItem.source_key == key))
     if existing:
-        if area_of(existing) != area or (existing.metadata_json or {}).get("request_hash") != fingerprint:
+        if area_of(existing) != area or _metadata(existing).get("request_hash") != fingerprint:
             raise ValueError("Ключ запроса уже использован для другого материала")
         return existing
     item = MediaContentItem(source_kind="media_workspace", source_key=key, kind="text", title=values["title"],
@@ -145,7 +151,7 @@ async def create_entry(session, user, settings, area, values, request_key):
             await session.flush()
     except IntegrityError:
         existing = await session.scalar(select(MediaContentItem).where(MediaContentItem.source_key == key))
-        if existing and area_of(existing) == area and (existing.metadata_json or {}).get("request_hash") == fingerprint:
+        if existing and area_of(existing) == area and _metadata(existing).get("request_hash") == fingerprint:
             return existing
         raise ValueError("Повторный запрос не совпадает с исходным") from None
     await audit(session, actor_id=user.id, action="media.calendar_created", entity_type="media_content", entity_id=item.id,
@@ -159,7 +165,10 @@ async def update_entry(session, user, settings, area, item_id, values, revision)
         .with_for_update().execution_options(populate_existing=True))
     if item is None or area_of(item) != area:
         raise LookupError("Материал не найден в выбранном направлении")
-    data = dict(item.metadata_json or {})
+    # Do not overwrite or silently normalize corrupt JSON on an edit.
+    if item.metadata_json is not None and not isinstance(item.metadata_json, dict):
+        raise ValueError("Данные материала повреждены. Обратитесь к администратору")
+    data = dict(_metadata(item))
     if data.get("workspace_revision", 0) != revision:
         raise ValueError("Материал уже изменён. Обновите календарь")
     if item.status in {"published", "skipped"}:
