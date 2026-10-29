@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -23,6 +24,32 @@ CHECKS: tuple[tuple[str, frozenset[int]], ...] = (
     ("/api/v1/media/workspaces", frozenset({401, 403})),
     ("/api/v1/admin/events/1/poster/preview", frozenset({401, 403})),
 )
+
+
+class _ReactRootParser(HTMLParser):
+    """Match an actual React mount element, not a comment or script string."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.found_root = False
+        self._inert_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"template", "noscript"}:
+            self._inert_depth += 1
+        elif not self._inert_depth and tag == "div":
+            if any(name == "id" and value == "root" for name, value in attrs):
+                self.found_root = True
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"template", "noscript"} and self._inert_depth:
+            self._inert_depth -= 1
+
+
+def _has_react_root(html: bytes) -> bool:
+    parser = _ReactRootParser()
+    parser.feed(html.decode("utf-8", errors="replace"))
+    return parser.found_root
 
 
 def _validated_base_url(base_url: str) -> str:
@@ -87,7 +114,7 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
                 else:
                     # Only inspect a bounded prefix; never persist page contents.
                     html = response.read(65_536)
-                    if b'<div id="root"' not in html:
+                    if not _has_react_root(html):
                         error = "miniapp_root_missing"
     except HTTPError as exc:
         status = exc.code

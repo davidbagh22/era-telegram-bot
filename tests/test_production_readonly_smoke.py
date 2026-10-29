@@ -201,6 +201,42 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
                 self.assertFalse(result["ok"])
                 self.assertEqual(result["error"], "miniapp_response_not_html")
 
+    def test_miniapp_root_must_be_a_real_div_element(self):
+        # A matching byte string in JS, an HTML comment, an attribute prefix,
+        # or another tag must not make the read-only acceptance probe pass.
+        invalid_pages = (
+            b'<html><script>const template = \'<div id="root"></div>\';</script></html>',
+            b'<!-- <div id="root"></div> -->',
+            b'<div id="rooted"></div>',
+            b'<span id="root"></span>',
+            b'<template><div id="root"></div></template>',
+            b'<noscript><div id="root"></div></noscript>',
+            b'<div id="root"',
+        )
+        for html in invalid_pages:
+            with self.subTest(html=html):
+                response = FakeResponse(smoke.PRODUCTION_URL + "/app/", 200, body=html)
+                with patch.object(smoke, "urlopen", return_value=response):
+                    result = smoke.check(
+                        smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0
+                    )
+                self.assertEqual(result["status"], 200)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "miniapp_root_missing")
+
+    def test_miniapp_root_accepts_valid_html_attribute_variants(self):
+        for html in (
+            b"<html><body><div class='app' id='root'></div></body></html>",
+            b'<html><div id = "root" data-version="1"></div></html>',
+        ):
+            with self.subTest(html=html):
+                response = FakeResponse(smoke.PRODUCTION_URL + "/app/", 200, body=html)
+                with patch.object(smoke, "urlopen", return_value=response):
+                    result = smoke.check(
+                        smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0
+                    )
+                self.assertTrue(result["ok"])
+
     def test_html_charset_miniapp_response_is_accepted(self):
         response = FakeResponse(smoke.PRODUCTION_URL + "/app/", 200)
         response.headers["Content-Type"] = "text/html; charset=utf-8"
