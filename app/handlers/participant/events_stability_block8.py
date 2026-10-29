@@ -24,6 +24,17 @@ from app.utils.constants import ApplicationStatus
 router = Router(name="participant_events_stability_block8")
 
 
+def _event_id_from_callback(data: str | None, prefix: str) -> int | None:
+    """Reject stale, malformed and PostgreSQL INTEGER-overflow event IDs."""
+    if not data or not data.startswith(prefix):
+        return None
+    raw = data[len(prefix):]
+    if not raw or len(raw) > 10 or not raw.isascii() or not raw.isdecimal():
+        return None
+    event_id = int(raw)
+    return event_id if 0 < event_id <= 2_147_483_647 else None
+
+
 def _approved(user: User | None) -> bool:
     return bool(
         user
@@ -84,7 +95,11 @@ async def event_view(call: CallbackQuery, user: User | None, session: AsyncSessi
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    event = await session.get(Event, int(call.data.rsplit(":", 1)[-1]))
+    event_id = _event_id_from_callback(call.data, "event:view:")
+    if event_id is None:
+        await call.message.answer("Это мероприятие сейчас недоступно в афише")
+        return
+    event = await session.get(Event, event_id)
     if event is None or event.status not in PUBLIC_EVENT_STATUSES:
         await call.message.answer("Это мероприятие сейчас недоступно в афише")
         return
@@ -132,7 +147,10 @@ async def event_calendar(call: CallbackQuery, user: User | None, session: AsyncS
     from app.services.event_calendar_service import build_event_calendar
     from app.database.models import EventRegistration
     from app.utils.constants import EventStatus
-    event_id = int(call.data.rsplit(":", 1)[-1])
+    event_id = _event_id_from_callback(call.data, "event:calendar:")
+    if event_id is None:
+        await call.message.answer("Мероприятие недоступно.")
+        return
     event = await session.get(Event, event_id)
     registration = await session.scalar(select(EventRegistration).where(
         EventRegistration.event_id == event_id, EventRegistration.user_id == user.id))
@@ -155,7 +173,11 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
         return
-    event = await session.get(Event, int(call.data.rsplit(":", 1)[-1]))
+    event_id = _event_id_from_callback(call.data, "event:join:")
+    if event_id is None:
+        await call.message.answer("Это мероприятие сейчас недоступно")
+        return
+    event = await session.get(Event, event_id)
     if event is None or event.status not in PUBLIC_EVENT_STATUSES:
         await call.message.answer("Это мероприятие сейчас недоступно")
         return
@@ -183,7 +205,10 @@ async def confirmation_code_start(call: CallbackQuery, user: User | None, settin
     from app.services.event_attendance_service import attendance_v2_enabled, participant_state
     if not _approved(user) or not attendance_v2_enabled(settings, call.from_user.id):
         return
-    event_id = int(call.data.rsplit(':', 1)[-1])
+    event_id = _event_id_from_callback(call.data, "event:confirm_code:")
+    if event_id is None:
+        await call.message.answer('Мероприятие не найдено.')
+        return
     try:
         attendance = await participant_state(session, event_id, user.id)
     except ValueError:
