@@ -193,6 +193,9 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
     if error == "closed":
         await call.message.answer("Регистрация на это мероприятие закрыта, но само событие остаётся в афише")
         return
+    if error == "registration_not_required":
+        await call.message.answer("Для этого мероприятия регистрация не требуется.")
+        return
     if registration is not None and registration.status == RegistrationStatus.WAITLIST:
         await call.message.answer("Вы добавлены в лист ожидания. Если освободится место, мы сообщим.")
         return
