@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 from aiogram import Bot
@@ -17,6 +16,7 @@ from app.database.models import Event, EventRegistration, User
 from app.services import event_activity_service
 from app.services.activity_service import EventScope, list_events
 from app.services.event_registration_service import mark_not_coming
+from app.services.event_registration_policy import registration_is_closed as _registration_is_closed
 from app.services.event_service import (
     available_places,
     promote_waitlist,
@@ -66,15 +66,6 @@ class EventOut(BaseModel):
     program: list[dict[str, Any]]
     participant_tasks: list[dict[str, Any]]
     poster_url: str | None = None
-
-
-def _registration_is_closed(experience: EventExperience | None) -> bool:
-    if experience is None or experience.registration_close_at is None:
-        return False
-    deadline = experience.registration_close_at
-    if deadline.tzinfo is None:
-        deadline = deadline.replace(tzinfo=timezone.utc)
-    return deadline <= datetime.now(timezone.utc)
 
 
 def _display_status(
