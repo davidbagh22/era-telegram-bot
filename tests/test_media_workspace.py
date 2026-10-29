@@ -199,6 +199,7 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
     def test_telegram_publication_evidence_must_be_a_real_post_permalink(self):
         for url in (
             "https://t.me/era_leaders1/123",
+            "https://t.me/era_leaders1/123/456",  # public forum topic message
             "https://t.me:443/era_leaders1/123",
             "https://t.me/c/123456789/456",
             "https://t.me/c/123456789/456/789",  # forum topic message
@@ -212,7 +213,8 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
             "https://t.me/c/123456789/456/not-a-message",
             "https://t.me/c/123456789/456/789/10",
             "https://t.me/era_leaders1/0",
-            "https://t.me/era_leaders1/123/456",
+            "https://t.me/era_leaders1/123/0",
+            "https://t.me/era_leaders1/123/456/789",
             "https://t.me/era_leaders1/not-a-message",
             "https://t.me/joinchat/123",  # invitation, not a post
             "https://t.me/share/123",  # share action, not a post
