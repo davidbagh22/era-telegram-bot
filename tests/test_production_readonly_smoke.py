@@ -12,7 +12,7 @@ class FakeResponse:
     def __init__(self, url, status, body=None):
         self.url = url
         self.status = status
-        self.headers = {"Content-Type": "application/json" if status in (401, 403) else "text/html"}
+        self.headers = {"Content-Type": "application/json" if status in (401, 403) or url.endswith(("/health", "/ready")) else "text/html"}
         if body is None:
             if url.endswith("/app/"):
                 body = b'<!doctype html><html><body><div id="root"></div></body></html>'
@@ -144,6 +144,20 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
                 )
             self.assertFalse(result["ok"])
             self.assertEqual(result["error"], error)
+
+    def test_health_ready_json_payload_with_html_content_type_is_not_accepted(self):
+        for path, body, expected_error in (
+            ("/health", b'{"status":"ok"}', "health_response_not_json"),
+            ("/ready", b'{"status":"ready"}', "ready_response_not_json"),
+        ):
+            with self.subTest(path=path):
+                response = FakeResponse(smoke.PRODUCTION_URL + path, 200, body=body)
+                response.headers["Content-Type"] = "text/html; charset=utf-8"
+                with patch.object(smoke, "urlopen", return_value=response):
+                    result = smoke.check(smoke.PRODUCTION_URL, path, frozenset({200}), 3.0)
+                self.assertEqual(result["status"], 200)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], expected_error)
 
     def test_json_200_with_wrong_status_is_not_ready(self):
         with patch.object(smoke, "urlopen", return_value=FakeResponse(
