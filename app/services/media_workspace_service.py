@@ -102,7 +102,8 @@ def _publication_url(value, platform):
         raise ValueError("Нужна HTTPS-ссылка на опубликованный материал выбранной платформы")
     if platform == "telegram":
         parts = parsed.path.strip("/").split("/")
-        # A channel post is /channel/message_id or /c/chat_id/message_id.
+        # A channel post is /channel/message_id. Private supergroup posts
+        # may be /c/chat_id/message_id or forum /c/chat_id/topic_id/message_id.
         # A channel link (/c/chat_id), an extra path component, or message 0
         # is not evidence that the scheduled material was published.
         is_public_post = (
@@ -112,7 +113,7 @@ def _publication_url(value, platform):
             and int(parts[1]) > 0
         )
         is_private_post = (
-            len(parts) == 3 and parts[0] == "c"
+            len(parts) in (3, 4) and parts[0] == "c"
             and all(part.isascii() and part.isdecimal() and int(part) > 0 for part in parts[1:])
         )
         if not (is_public_post or is_private_post):
