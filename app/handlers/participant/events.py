@@ -19,6 +19,7 @@ from app.database.models import (
 from app.services.notification_service import notify_admins
 from app.states.event import EventActivityStates, FeedbackStates, SelfieStates
 from app.utils import texts
+from app.utils.callback_ids import positive_pg_int_callback, positive_pg_int_value
 from app.utils.constants import ApplicationStatus, RegistrationStatus
 from app.utils.validators import clean_text
 
@@ -229,7 +230,11 @@ async def event_activity_start(
     await call.answer()
     if not _approved(user):
         return
-    activity = await session.get(EventActivity, int(call.data.rsplit(":", 1)[-1]))
+    activity_id = positive_pg_int_callback(call.data, "event:activity:")
+    if activity_id is None:
+        await call.message.answer("Эта активность уже закрыта")
+        return
+    activity = await session.get(EventActivity, activity_id)
     if (
         activity is None
         or not activity.is_active
@@ -280,7 +285,12 @@ async def event_activity_submit(
     settings: Settings,
 ) -> None:
     data = await state.get_data()
-    activity = await session.get(EventActivity, int(data["event_activity_id"]))
+    activity_id = positive_pg_int_value(data.get("event_activity_id"))
+    if activity_id is None:
+        await state.clear()
+        await message.answer("Активность недоступна. Откройте её заново.")
+        return
+    activity = await session.get(EventActivity, activity_id)
     if activity is None:
         await state.clear()
         return
