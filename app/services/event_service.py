@@ -4,9 +4,11 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration
 from app.services.audit_service import audit
 from app.services.digital_engagement_service import award_event_registration
+from app.services.event_registration_policy import registration_is_closed
 from app.utils.constants import EventStatus, RegistrationStatus
 
 PUBLIC_EVENT_STATUSES = {
@@ -87,14 +89,36 @@ async def register_for_event(
     The event row is locked while capacity is checked, so two simultaneous
     registrations cannot consume the same last seat.
     """
+    # Re-read the event under its row lock. Without populate_existing the
+    # session identity map may retain a pre-lock status after an admin edit.
     locked_event = await session.scalar(
-        select(Event).where(Event.id == event.id).with_for_update()
+        select(Event).where(Event.id == event.id)
+        .with_for_update().execution_options(populate_existing=True)
     )
     if locked_event is None:
         return None, "closed"
     event = locked_event
     if event.status not in REGISTRATION_ALLOWED_STATUSES:
         return None, "closed"
+
+    # Registration policy must be checked after acquiring the event lock.
+    # The UI / callback may have read a stale deadline or waitlist setting.
+    # Lock the companion row too and refresh any identity-map cached state.
+    experience = await session.scalar(
+        select(EventExperience).where(EventExperience.event_id == event.id)
+        .with_for_update().execution_options(populate_existing=True)
+    )
+    if experience is not None:
+        if not experience.registration_required:
+            return None, "registration_not_required"
+        if registration_is_closed(experience):
+            return None, "closed"
+        waitlist_enabled = bool(experience.waitlist_enabled)
+    else:
+        # Legacy events have no waitlist policy; do not trust a stale caller
+        # flag to enable waitlisting without a persisted companion row.
+        waitlist_enabled = False
+
     existing = await session.scalar(
         select(EventRegistration).where(
             EventRegistration.event_id == event.id,
