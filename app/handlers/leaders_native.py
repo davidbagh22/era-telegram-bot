@@ -165,10 +165,10 @@ async def campaign_callback(call,state,user,settings,session,bot):
             direction=scope['id'] if scope['kind']=='direction' else None
             people=await campaigns.recipients(session,settings,user,dept,direction)
             await state.update_data(department_id=dept,direction_id=direction)
-            modes=[('Лично','dm')] if dept or direction else [('В чат','group'),('Лично','dm'),('В чат и лично','both')]
+            modes, route_notice = await campaigns.delivery_options(session, settings, scoped=bool(dept or direction))
             await call.message.answer(f'Проверьте рассылку\n\n{data["body"]}\n\nКоманда: {scope["name"]}\n'
                 f'Известных доступных аккаунтов: {len(people)}. Доставка будет отражена отдельно.\n'
-                'Нажатие следующей кнопки подтвердит отправку.',reply_markup=kb(
+                + (route_notice or 'Нажатие следующей кнопки подтвердит отправку.'),reply_markup=kb(
                     [[(label,f'lc:send:{mode}')] for label,mode in modes]+[[('Отмена','lc:cancel')]]))
         elif action=='send':
             data=await state.get_data()
@@ -194,7 +194,14 @@ async def campaign_callback(call,state,user,settings,session,bot):
             await show_campaign(call.message,session,item)
     except (ValueError,PermissionError) as exc:
         await session.rollback()
-        await call.message.answer(str(exc))
+        if action == 'send' and isinstance(exc, ValueError):
+            data = await state.get_data()
+            modes, route_notice = await campaigns.delivery_options(session, settings,
+                scoped=bool(data.get('department_id') or data.get('direction_id')))
+            await call.message.answer(route_notice or str(exc), reply_markup=kb(
+                [[(label, f'lc:send:{mode}')] for label, mode in modes] + [[('Отмена', 'lc:cancel')]]))
+        else:
+            await call.message.answer(str(exc))
 
 
 @router.message(CampaignState.text,~F.text.startswith('/'))
