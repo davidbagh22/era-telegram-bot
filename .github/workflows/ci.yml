@@ -127,6 +127,8 @@ jobs:
         run: python scripts/postgres_pulse_announcement_race.py
       - name: Prove bounded event recovery pages are fair under concurrent workers
         run: python scripts/postgres_event_announcement_recovery_race.py
+      - name: Prove event registration policy and last-seat races on PostgreSQL
+        run: python scripts/postgres_event_registration_policy_race.py
 
   frontend:
     runs-on: ubuntu-latest
