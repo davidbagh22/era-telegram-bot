@@ -79,7 +79,10 @@ async def calendar(session, area, *, before_id: int | None = None, status_group:
     if before_id is not None:
         query = query.where(MediaContentItem.id < before_id)
     rows = (await session.scalars(query.order_by(MediaContentItem.id.desc()).limit(100))).all()
-    return [item_out(item) for item in rows]
+    # A non-object JSON row has no trustworthy media_area: never expose its
+    # title/body in either scoped calendar. Preserve legacy NULL rows.
+    return [item_out(item) for item in rows
+            if item.metadata_json is None or isinstance(item.metadata_json, dict)]
 
 
 async def _validate_responsible(session, user_id):
