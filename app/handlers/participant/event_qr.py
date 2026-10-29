@@ -16,6 +16,7 @@ from app.config import Settings
 from app.database.models import Event, User
 from app.services.event_qr_service import CHECKIN_EVENT_STATUSES, qr_png
 from app.services.notification_service import safe_answer_photo
+from app.utils.callback_ids import positive_pg_int_callback, positive_pg_int_value
 from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES, Role
 from app.utils.deep_links import attendance_deep_link
 
@@ -172,9 +173,8 @@ async def qr_command(
     if not command.args:
         await _send_picker(message, user, session)
         return
-    try:
-        event_id = int(command.args.strip())
-    except ValueError:
+    event_id = positive_pg_int_value(command.args.strip())
+    if event_id is None:
         await message.answer("Используйте /qr или /qr <номер мероприятия>.")
         return
     event = await session.get(Event, event_id)
@@ -195,9 +195,8 @@ async def qr_generate(
     await call.answer()
     if not _approved(user) or not _can_manage_qr(user):
         return
-    try:
-        event_id = int(call.data.rsplit(":", 1)[-1])
-    except (ValueError, AttributeError):
+    event_id = positive_pg_int_callback(call.data, "event_qr:generate:")
+    if event_id is None:
         return
     event = await session.get(Event, event_id)
     if event is None or event.status not in CHECKIN_EVENT_STATUSES:
