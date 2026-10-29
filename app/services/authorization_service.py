@@ -40,15 +40,15 @@ def active_global_permissions(user: User | None) -> set[str]:
 
 
 def is_full_admin(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    return bool(
-        telegram_id in settings.admin_ids
-        or (
-            user
-            and user.role == Role.ADMIN
-            and not user.is_blocked
-            and not user.is_archived
-        )
-    )
+    """Configured admin IDs never override an existing inactive/mismatched user.
+
+    Preserve the legacy no-user bootstrap path for configured IDs; it requires
+    a separate policy review and must not be silently removed in this patch.
+    """
+    if user is not None:
+        if user.is_blocked or user.is_archived or user.telegram_id != telegram_id:
+            return False
+    return bool(telegram_id in settings.admin_ids or (user and user.role == Role.ADMIN))
 
 
 def can_view_people(user: User | None, settings: Settings, telegram_id: int) -> bool:
