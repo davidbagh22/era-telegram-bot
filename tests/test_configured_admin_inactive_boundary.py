@@ -69,6 +69,26 @@ class ConfiguredAdminInactiveBoundaryTests(unittest.TestCase):
             self.assertFalse(can_manage_permissions(user, self.settings, 100))
         self.assertTrue(is_full_admin(_user(role=Role.ADMIN), self.settings, 100))
 
+    def test_mismatched_actor_cannot_use_delegated_global_permissions(self):
+        user = _user(telegram_id=200)
+        user.permission_grants = [
+            SimpleNamespace(
+                permission=permission, is_active=True,
+                scope_type="global", scope_id=0,
+            )
+            for permission in (
+                "people.view", "people.manage", "events.manage",
+                "tasks.manage", "partners.manage",
+            )
+        ]
+        for permission in (
+            can_view_people, can_manage_people, can_manage_events,
+            can_manage_tasks, can_manage_partners,
+        ):
+            with self.subTest(permission=permission.__name__):
+                self.assertFalse(permission(user, self.settings, 100))
+        self.assertTrue(can_manage_events(user, self.settings, 200))
+
     def test_missing_identity_attribute_is_denied_without_crashing(self):
         user = SimpleNamespace(
             role=Role.ADMIN,
