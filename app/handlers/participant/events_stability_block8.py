@@ -8,10 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.states.event import EventConfirmationStates
 from app.config import Settings
 from app.database.models import Event, EventActivity, User
+from app.database.event_experience import EventExperience
 from app.keyboards.participant import event_list_keyboard
 from app.services.event_card import send_event_card
 from app.services.notification_service import safe_answer_document
 from app.services.event_registration_service import registration_stats
+from app.services.event_registration_policy import registration_is_closed
 from app.services.event_service import (
     PUBLIC_EVENT_STATUSES,
     REGISTRATION_ALLOWED_STATUSES,
@@ -19,7 +21,7 @@ from app.services.event_service import (
     register_for_event,
 )
 from app.utils import texts, ux_texts
-from app.utils.constants import ApplicationStatus
+from app.utils.constants import ApplicationStatus, RegistrationStatus
 
 router = Router(name="participant_events_stability_block8")
 
@@ -88,10 +90,17 @@ async def event_view(call: CallbackQuery, user: User | None, session: AsyncSessi
     if event is None or event.status not in PUBLIC_EVENT_STATUSES:
         await call.message.answer("Это мероприятие сейчас недоступно в афише")
         return
+    experience = await session.get(EventExperience, event.id)
     stats = await registration_stats(session, event)
+    waitlist_enabled = bool(experience and experience.waitlist_enabled)
+    registration_required = experience is None or experience.registration_required
+    deadline_closed = registration_is_closed(experience)
+    full = event.participant_limit is not None and int(stats["free"]) <= 0
     can_register = (
         event.status in REGISTRATION_ALLOWED_STATUSES
-        and (event.participant_limit is None or int(stats["free"]) > 0)
+        and registration_required
+        and not deadline_closed
+        and (not full or waitlist_enabled)
     )
     has_activities = bool(
         await session.scalar(
@@ -101,10 +110,12 @@ async def event_view(call: CallbackQuery, user: User | None, session: AsyncSessi
         )
     )
     extra = None
-    if event.status not in REGISTRATION_ALLOWED_STATUSES:
+    if event.status not in REGISTRATION_ALLOWED_STATUSES or deadline_closed:
         extra = "Регистрация закрыта, но карточка мероприятия остаётся доступна."
-    elif event.participant_limit is not None and int(stats["free"]) <= 0:
-        extra = "Свободных мест сейчас нет."
+    elif not registration_required:
+        extra = "Для этого мероприятия регистрация не требуется."
+    elif full:
+        extra = "Свободных мест сейчас нет. Доступен лист ожидания." if waitlist_enabled else "Свободных мест сейчас нет."
     keyboard = _event_keyboard(event.id, can_register=can_register, has_activities=has_activities)
     if settings is not None:
         from app.services.event_attendance_service import attendance_v2_enabled, participant_state
@@ -159,7 +170,17 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
     if event is None or event.status not in PUBLIC_EVENT_STATUSES:
         await call.message.answer("Это мероприятие сейчас недоступно")
         return
-    _, error = await register_for_event(session, event, user.id)
+    experience = await session.get(EventExperience, event.id)
+    if experience is not None and not experience.registration_required:
+        await call.message.answer("Для этого мероприятия регистрация не требуется.")
+        return
+    if registration_is_closed(experience):
+        await call.message.answer("Срок регистрации на это мероприятие истёк.")
+        return
+    registration, error = await register_for_event(
+        session, event, user.id,
+        waitlist_enabled=bool(experience and experience.waitlist_enabled),
+    )
     if error == "already":
         await call.message.answer(texts.EVENT_ALREADY_REGISTERED)
         return
@@ -168,6 +189,9 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
         return
     if error == "closed":
         await call.message.answer("Регистрация на это мероприятие закрыта, но само событие остаётся в афише")
+        return
+    if registration is not None and registration.status == RegistrationStatus.WAITLIST:
+        await call.message.answer("Вы добавлены в лист ожидания. Если освободится место, мы сообщим.")
         return
     stats = await registration_stats(session, event)
     await call.message.answer(
