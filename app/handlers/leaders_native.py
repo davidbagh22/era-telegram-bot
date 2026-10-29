@@ -194,7 +194,8 @@ async def campaign_callback(call,state,user,settings,session,bot):
             await show_campaign(call.message,session,item)
     except (ValueError,PermissionError) as exc:
         await session.rollback()
-        if action == 'send' and isinstance(exc, ValueError):
+        if (action == 'send' and isinstance(exc, ValueError)
+                and await state.get_state() == CampaignState.confirm.state):
             data = await state.get_data()
             modes, route_notice = await campaigns.delivery_options(session, settings,
                 scoped=bool(data.get('department_id') or data.get('direction_id')))
