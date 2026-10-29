@@ -109,11 +109,11 @@ def _publication_url(value, platform):
         is_public_post = (
             len(parts) in (2, 3) and parts[0].lower() not in TELEGRAM_RESERVED_PATHS
             and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{4,31}", parts[0]) is not None
-            and all(part.isascii() and part.isdecimal() and int(part) > 0 for part in parts[1:])
+            and all(0 < len(part) <= 20 and part.isascii() and part.isdecimal() and int(part) > 0 for part in parts[1:])
         )
         is_private_post = (
             len(parts) in (3, 4) and parts[0] == "c"
-            and all(part.isascii() and part.isdecimal() and int(part) > 0 for part in parts[1:])
+            and all(0 < len(part) <= 20 and part.isascii() and part.isdecimal() and int(part) > 0 for part in parts[1:])
         )
         if not (is_public_post or is_private_post):
             raise ValueError("Укажите прямую ссылку на сообщение Telegram, а не на канал или тему")
