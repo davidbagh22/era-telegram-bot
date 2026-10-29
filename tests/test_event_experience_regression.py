@@ -62,6 +62,10 @@ class EventExperienceRegressionTests(unittest.IsolatedAsyncioTestCase):
             first = await self._user(session, 101)
             second = await self._user(session, 102)
             event = await self._event(session, first.id, limit=1)
+            # Waitlisting requires persisted EventExperience policy, not just
+            # an optimistic flag supplied by a potentially stale caller.
+            session.add(EventExperience(event_id=event.id, waitlist_enabled=True))
+            await session.flush()
 
             first_registration, first_error = await register_for_event(
                 session, event, first.id, waitlist_enabled=True
