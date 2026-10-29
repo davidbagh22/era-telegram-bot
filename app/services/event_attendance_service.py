@@ -40,12 +40,13 @@ def _validated_pending_lifecycle_notice(raw: object) -> dict | None:
     if payload.get("status") != "pending":
         return payload
     event_id = payload.get("event_id")
+    phase = payload.get("phase")
     attempts = payload.get("attempts", 0)
     recipients = payload.get("recipients")
     if (
         isinstance(event_id, bool) or not isinstance(event_id, int)
         or not 0 < event_id <= 2_147_483_647
-        or payload.get("phase") not in {"start", "complete"}
+        or not isinstance(phase, str) or phase not in {"start", "complete"}
         or not isinstance(payload.get("title"), str)
         or not isinstance(payload.get("location"), str)
         or not isinstance(recipients, list)
