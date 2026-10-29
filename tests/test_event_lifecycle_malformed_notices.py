@@ -29,7 +29,8 @@ class PendingLifecycleNoticeValidationTests(unittest.IsolatedAsyncioTestCase):
         for invalid in (
             "{bad json", [], None, 42, {"status": "pending"},
             {**valid, "event_id": True}, {**valid, "event_id": 2_147_483_648},
-            {**valid, "phase": "unknown"}, {**valid, "title": None},
+            {**valid, "phase": "unknown"}, {**valid, "phase": []},
+            {**valid, "title": None},
             {**valid, "recipients": "123"}, {**valid, "recipients": [True]},
             {**valid, "recipients": ["123"]}, {**valid, "attempts": -1},
             {**valid, "attempts": "0"},
