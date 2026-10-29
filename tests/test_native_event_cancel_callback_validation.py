@@ -16,6 +16,7 @@ class EventPlansCallbackParserTests(TestCase):
     def test_valid_positive_event_ids(self):
         self.assertEqual(_event_id_from_callback("event:plans_changed:42"), 42)
         self.assertEqual(_event_id_from_callback("event:plans_changed:0005"), 5)
+        self.assertEqual(_event_id_from_callback("event:plans_changed:2147483647"), 2_147_483_647)
 
     def test_rejects_malformed_or_out_of_range_callback_ids(self):
         for value in (
@@ -23,6 +24,7 @@ class EventPlansCallbackParserTests(TestCase):
             "",
             "event:plans_changed:",
             "event:plans_changed:0",
+            "event:plans_changed:2147483648",
             "event:plans_changed:-1",
             "event:plans_changed:abc",
             "event:plans_changed:1:2",
