@@ -149,10 +149,15 @@ async def promote_waitlist(session: AsyncSession, event: Event) -> EventRegistra
     same free seat and over-promote. Serialize the check and promotion using
     the same event-row lock as register_for_event.
     """
-    locked_event = await session.scalar(
-        select(Event).where(Event.id == event.id)
-        .with_for_update().execution_options(populate_existing=True)
-    )
+    # A cancellation may have changed EventRegistration.status but not yet
+    # flushed it. Autoflushing here would lock the registration row BEFORE
+    # the Event row, inverting register_for_event's lock order. Acquire the
+    # Event lock first; the capacity query below then flushes the cancellation.
+    with session.no_autoflush:
+        locked_event = await session.scalar(
+            select(Event).where(Event.id == event.id)
+            .with_for_update().execution_options(populate_existing=True)
+        )
     if locked_event is None or locked_event.participant_limit is None:
         return None
     if int(await available_places(session, locked_event)) <= 0:
