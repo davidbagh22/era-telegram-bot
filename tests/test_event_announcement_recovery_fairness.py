@@ -4,7 +4,7 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.database.base import Base
 from app.database.event_experience import EventExperience
@@ -64,6 +64,55 @@ class EventRecoveryFairnessTests(IsolatedAsyncioTestCase):
             attempted = [call.args[3] for call in deliver.await_args_list]
             self.assertEqual(attempted[0], ids[20])
             self.assertEqual(set(attempted), set(ids))
+
+    async def test_transient_database_failure_before_cursor_commit_retries_pending_page(self):
+        """A failed database lookup must not advance the durable recovery cursor.
+
+        Isolated SQLite + mocked Telegram: this tests retry eligibility, not
+        real PostgreSQL DNS recovery or delivery acceptance.
+        """
+        ids = await self.events(3)
+        original_scalar = AsyncSession.scalar
+        failed_once = False
+
+        async def fail_first_scalar(session, statement, *args, **kwargs):
+            nonlocal failed_once
+            if not failed_once:
+                failed_once = True
+                raise OSError("simulated transient database DNS failure")
+            return await original_scalar(session, statement, *args, **kwargs)
+
+        with patch.object(AsyncSession, "scalar", new=fail_first_scalar):
+            with self.assertRaisesRegex(OSError, "transient database DNS failure"):
+                await deliver_pending_event_announcements(None, None, self.sessions)
+            async with self.sessions() as session:
+                cursor = await session.scalar(
+                    select(AppSetting).where(
+                        AppSetting.key == "event-announcement-recovery:cursor"
+                    )
+                )
+                self.assertIsNone(cursor)
+
+            with patch(
+                "app.services.event_publication_service.deliver_event_announcement",
+                new=AsyncMock(),
+            ) as deliver:
+                await deliver_pending_event_announcements(None, None, self.sessions)
+                self.assertEqual(
+                    [call.args[3] for call in deliver.await_args_list], ids
+                )
+
+        async with self.sessions() as session:
+            cursor = await session.scalar(
+                select(AppSetting).where(
+                    AppSetting.key == "event-announcement-recovery:cursor"
+                )
+            )
+            self.assertEqual(int(cursor.value), ids[-1])
+            statuses = (await session.scalars(
+                select(EventExperience.announcement_status)
+            )).all()
+            self.assertEqual(statuses, ["pending"] * 3)
 
     async def test_corrupt_cursor_recovers_and_nonpublic_or_terminal_items_are_excluded(self):
         ids = await self.events(4)
