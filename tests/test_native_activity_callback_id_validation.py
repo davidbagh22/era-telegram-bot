@@ -7,9 +7,9 @@ from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, patch
 
 from app.database.models import Event, EventActivity
-from app.handlers.participant.event_activities_block15 import activities_list, proof_start
-from app.handlers.participant.event_activities_block7 import activity_submit_start
-from app.utils.callback_ids import positive_pg_int_callback
+from app.handlers.participant.event_activities_block15 import activities_list, proof_start, proof_finish
+from app.handlers.participant.event_activities_block7 import activity_submit_start, activity_submit_finish
+from app.utils.callback_ids import positive_pg_int_callback, positive_pg_int_value
 
 
 def _call(data):
@@ -30,6 +30,14 @@ class ActivityCallbackParserTests(TestCase):
                     positive_pg_int_callback(prefix + "2147483647", prefix),
                     2_147_483_647,
                 )
+
+    def test_recovered_fsm_ids_are_bounded(self):
+        self.assertEqual(positive_pg_int_value(42), 42)
+        self.assertEqual(positive_pg_int_value("42"), 42)
+        self.assertEqual(positive_pg_int_value("2147483647"), 2_147_483_647)
+        for value in (None, True, -1, 0, 2_147_483_648, "bad", "9" * 5000, {}):
+            with self.subTest(value=str(value)[:40]):
+                self.assertIsNone(positive_pg_int_value(value))
 
     def test_invalid_ids_never_parse(self):
         for prefix in ("event:activities:", "activity:do:", "activity:submit:"):
@@ -99,3 +107,22 @@ class ActivityCallbackHandlerTests(IsolatedAsyncioTestCase):
         with patch("app.handlers.participant.event_activities_block7.approved", return_value=True):
             await activity_submit_start(call, SimpleNamespace(id=1), session, state)
         session.get.assert_awaited_once_with(EventActivity, 42)
+
+    async def test_malformed_fsm_activity_id_is_cleared_without_database_lookup(self):
+        for handler in (proof_finish, activity_submit_finish):
+            with self.subTest(handler=handler.__name__):
+                message = SimpleNamespace(answer=AsyncMock())
+                session = SimpleNamespace(get=AsyncMock(), scalar=AsyncMock())
+                state = SimpleNamespace(
+                    get_data=AsyncMock(return_value={"activity_id": "9" * 5000}),
+                    clear=AsyncMock(),
+                )
+                if handler is proof_finish:
+                    await handler(message, SimpleNamespace(id=1), session, state,
+                                  SimpleNamespace(), SimpleNamespace())
+                else:
+                    await handler(message, SimpleNamespace(id=1), session, state)
+                session.get.assert_not_awaited()
+                session.scalar.assert_not_awaited()
+                state.clear.assert_awaited_once()
+                message.answer.assert_awaited_once()
