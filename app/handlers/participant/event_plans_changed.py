@@ -118,12 +118,32 @@ async def my_events(call: CallbackQuery, user: User | None, session: AsyncSessio
     )
 
 
+def _event_id_from_callback(data: str | None) -> int | None:
+    """Accept only positive ASCII numeric IDs from our own callback namespace."""
+    prefix = "event:plans_changed:"
+    if not data or not data.startswith(prefix):
+        return None
+    raw_id = data[len(prefix):]
+    if not raw_id or len(raw_id) > 10 or not raw_id.isascii() or not raw_id.isdecimal():
+        return None
+    event_id = int(raw_id)
+    # Event.id is PostgreSQL INTEGER (signed 32-bit); reject oversized values
+    # before asyncpg attempts to bind them and raises a database DataError.
+    return event_id if 0 < event_id <= 2_147_483_647 else None
+
+
 @router.callback_query(F.data.startswith("event:plans_changed:"))
 async def plans_changed(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
     if not await _guard(call, user):
         return
 
-    event_id = int(call.data.rsplit(":", 1)[-1])
+    event_id = _event_id_from_callback(call.data)
+    if event_id is None:
+        await call.message.answer(
+            "Не удалось открыть регистрацию. Вернитесь в «Мои мероприятия».",
+            reply_markup=back_keyboard("cabinet:events"),
+        )
+        return
     registration = await session.scalar(
         select(EventRegistration).where(
             EventRegistration.event_id == event_id,
