@@ -28,9 +28,12 @@ class EventRegistrationBlock14Tests(unittest.TestCase):
         self.assertIn("registered=", source)
         self.assertIn("can_register", source)
 
-    def test_full_event_hides_registration_button(self):
+    def test_full_event_hides_registration_button_unless_waitlist_enabled(self):
+        # The waitlist policy intentionally permits joining when no seats remain.
+        # Behavioral cases for waitlist on/off live in test_native_event_registration_policy.
         source = inspect.getsource(events_stability_block8.event_view)
-        self.assertIn('int(stats["free"]) > 0', source)
+        self.assertIn('int(stats["free"]) <= 0', source)
+        self.assertIn("not full or waitlist_enabled", source)
 
     def test_admin_participants_keyboard_has_profiles_attendance_and_award(self):
         registration = type("RegistrationStub", (), {"id": 8})()
