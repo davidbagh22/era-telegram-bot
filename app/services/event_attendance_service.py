@@ -542,7 +542,12 @@ def confirmation_payload(event_id: int, code: str) -> str:
 def parse_confirmation_payload(payload: str) -> tuple[int, str] | None:
     import re
     match = re.fullmatch(r'attend2_([1-9][0-9]{0,9})_([A-Z2-9]{8})', payload)
-    return (int(match[1]), match[2]) if match else None
+    if not match:
+        return None
+    event_id = int(match[1])
+    if event_id > 2_147_483_647:
+        return None
+    return event_id, match[2]
 
 
 def confirmation_qr_png(link: str) -> bytes:
