@@ -46,7 +46,7 @@ def is_full_admin(user: User | None, settings: Settings, telegram_id: int) -> bo
     a separate policy review and must not be silently removed in this patch.
     """
     if user is not None:
-        if user.is_blocked or user.is_archived or user.telegram_id != telegram_id:
+        if user.is_blocked or user.is_archived or getattr(user, "telegram_id", None) != telegram_id:
             return False
     return bool(telegram_id in settings.admin_ids or (user and user.role == Role.ADMIN))
 
