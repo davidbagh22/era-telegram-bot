@@ -1,3 +1,9 @@
+### 2026-10-30 ~09:30–09:40 Asia/Yerevan — bounded metrics and backup custody risk
+
+- PostgreSQL active connections sampled **12–23** between 04:40–05:25Z (Render 5-minute metric). HTTP status metric in same window reports 200/401/404 and no 5xx series, but is sparse and **not** a substitute for direct route-level body/header/permission acceptance. App logs `GET /health` 200 at 04:42:48Z, `GET /ready` 200 at 05:22Z on previous LIVE.
+- Reviewed `.github/workflows/database-backup.yml`: offsite copy and independent restore are conditional on external S3-compatible credentials; prior backup success without those steps proves only encrypted GitHub artifact plus isolated restore. The decryption material is fetched from production via OIDC at backup time, so disaster recovery also requires independently retained authorized key custody/escrow if production is lost. Added exact source-grounded acceptance note to issue #496 (comment `6515669545`); **no secrets or configuration changed**.
+- Main push `41007822718` latest: postgres-migration/secret-scan/frontend/e2e **4/5 SUCCESS**, test still IN_PROGRESS; last Render LIVE still `88d4c4a5ea554b060f0b4e1c27c97339fca59a43`. Do not mark new main released.
+
 ### 2026-10-30 ~09:30 Asia/Yerevan — independent media forum and HTTP-log evidence (same run, no new release)
 
 - Fresh Render app logs on previous exact LIVE `88d4c4a5ea554b060f0b4e1c27c97339fca59a43`: `GET /health` **200** at 04:42:48Z and repeated `GET /ready` **200** at 05:22Z. `app.services.media_topics_service` reports **"Media forum ready: topics=8 navigation_message_id=8455"** every five minutes through 05:18:13Z. Source code verifies this message is logged only after eight unique ready topic IDs, Telegram reopen confirmation and durable navigation send/pin receipt. This is **server-side readiness evidence only**, not real moderator/member Telegram acceptance or proof all roles/scopes function.
