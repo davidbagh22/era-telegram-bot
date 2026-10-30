@@ -46,6 +46,7 @@ async def main():
                 ([{"title": "Missing slot", "points": 7}], [0]),
                 ([{"title": "Fractional id", "points": 7}], [1.5]),
                 ([{"title": "Duplicate mapping", "points": 7}], [1, 1]),
+                ([{"title": ""}, {"title": "Would shift", "points": 7}], [101, 102]),
                 ([{"title": "Good", "points": 7}], []),
             ]
             for tasks, old_ids in cases:
