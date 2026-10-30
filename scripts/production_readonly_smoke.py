@@ -61,9 +61,8 @@ def _validated_base_url(base_url: str) -> str:
     except ValueError:
         raise ValueError("base URL has an invalid host or port") from None
     if (
-        port is not None and not (1 <= port <= 65535)
-        or
-        parsed.scheme != "https"
+        (port is not None and not (1 <= port <= 65535))
+        or parsed.scheme != "https"
         or not parsed.hostname
         or parsed.username is not None
         or parsed.password is not None
