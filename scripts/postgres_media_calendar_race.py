@@ -3,7 +3,7 @@ import asyncio
 import os
 import uuid
 
-from sqlalchemy import delete, func, null, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -112,7 +112,7 @@ async def main():
                 {"media_area": "era"},
                 {"workspace_revision": 0},
                 {"media_area": "ksoors"},
-                null(),  # actual SQL NULL, retained for historical ERA rows
+                None,  # JSON literal null; column is NOT NULL
                 {"media_area": None},  # explicit JSON null is not a valid area
             ] + [["malformed"]] * 125
             items = [MediaContentItem(
@@ -123,13 +123,13 @@ async def main():
             try:
                 session.add_all(items)
                 await session.flush()
-                era_ids = [items[index].id for index in (0, 1, 3)]
+                era_ids = [items[index].id for index in (0, 1)]
                 ksoors_id = items[2].id
                 await session.commit()
                 era_page = await calendar(session, "era")
-                assert [row["id"] for row in era_page[:3]] == sorted(era_ids, reverse=True), era_page[:5]
+                assert [row["id"] for row in era_page[:2]] == sorted(era_ids, reverse=True), era_page[:5]
                 assert all(row["area"] == "era" for row in era_page)
-                assert [row["id"] for row in (await calendar(session, "era", before_id=era_ids[2]))[:2]] == sorted(era_ids[:2], reverse=True)
+                assert [row["id"] for row in (await calendar(session, "era", before_id=era_ids[1]))[:1]] == [era_ids[0]]
                 ksoors_page = await calendar(session, "ksoors")
                 assert ksoors_page[0]["id"] == ksoors_id, ksoors_page[:3]
                 assert all(row["area"] == "ksoors" for row in ksoors_page)
