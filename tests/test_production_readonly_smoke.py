@@ -331,6 +331,23 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
                 self.assertFalse(result["ok"])
                 self.assertEqual(result["error"], "invalid_redirect_url")
 
+    def test_redirected_health_cannot_masquerade_as_pending_deploy(self):
+        for redirected, expected_error in (
+            ("https://other.example/health", "cross_origin_redirect"),
+            (smoke.PRODUCTION_URL + "/login", "redirected_route"),
+        ):
+            with self.subTest(redirected=redirected), patch.object(
+                smoke, "urlopen", return_value=FakeResponse(
+                    redirected, 200, b'{"status":"ok","commit":"bbbbbbb"}'
+                ),
+            ):
+                result = smoke.check(
+                    smoke.PRODUCTION_URL, "/health", frozenset({200}), 3.0,
+                    expected_sha="a" * 40,
+                )
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["error"], expected_error)
+
     def test_pending_live_sha_is_not_a_passing_production_probe(self):
         def fake_open(request, timeout):
             body = b'{"status":"ok","commit":"bbbbbbb"}' if request.full_url.endswith("/health") else None
