@@ -1,3 +1,9 @@
+## 2026-10-30 ~14:27 UTC / 18:27 Asia/Yerevan — final exact-head PostgreSQL rerun
+
+- **#578 latest HEAD `8eac62a8d542662ffe8708b40ce34c7fc68abafc`:** Bot checks run `41071349100` PostgreSQL job step `Prove durable general forum topic claims under PostgreSQL concurrency` **SUCCESS** after local-only connection guard. At last read frontend, secret-scan and postgres-migration **3/5 SUCCESS**, test and e2e IN_PROGRESS; separate Tests `41071349281` IN_PROGRESS. Still HIGH-RISK DRAFT, no merge or Telegram acceptance.
+- **#523 latest branch HEAD `4de080e772eeddca6f3591e66449124951963199`:** previous-head PostgreSQL wizard step SUCCESS on `c24491a...`, but new-head workflow runs not yet visible and PR metadata still showed old head (GitHub propagation delay). No new-head CI acceptance; remain HIGH-RISK DRAFT. No real tasks/points changed.
+- **#580 checkpoint branch HEAD before this addendum `a3dd34ae802a3a6d03453f1e166e5e6ffbe0116f`, docs-only draft; reconcile with other docs PRs.** Render filtered ERROR/HTTP5xx empty 14:23–14:27 UTC. Main/LIVE exact `3b8b88da0015613b7436e2ad7a038484f328e591` unchanged; direct HTTP routes DNS-blocked. No release, no manual deploy. **Next:** finish both exact-head 6/6 CI, address any failures, keep high-risk drafts until real forum/points policy acceptance, offsite restore and legal review. Full readiness NOT confirmed.
+
 ## 2026-10-30 ~14:25 UTC / 18:25 Asia/Yerevan — final connection-guard hardening and exact-head CI reset
 
 - **Two independent isolated PostgreSQL probes succeeded on their prior heads:** #578 `6ef50083b03030c1c6f39cea02a9ef8df1a55e8a`, Bot checks `41070426630` postgres-migration job `124113476801` step 24 **SUCCESS**; #523 `c24491a1a09fc9a60d518eb2f3caa9d85f98b6d6`, Bot checks `41070896065` postgres-migration job `124115083783` step 24 **SUCCESS**. No live Telegram calls or production DB/points changes. Other CI checks were still running at last observation; **not 6/6**.
