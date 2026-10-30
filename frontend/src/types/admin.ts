@@ -159,6 +159,7 @@ export interface OperationalEvent {
   points_for_visit: number;
   registered: number;
   free: number | string;
+  show_in_public_listing: boolean;
 }
 
 export interface EventParticipant {
