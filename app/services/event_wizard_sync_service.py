@@ -71,7 +71,12 @@ def _validated_task_configuration(experience) -> tuple[list[dict], list[int]] | 
             return None
         if isinstance(value, int):
             activity_id = value
-        elif isinstance(value, str) and value.strip().isascii() and value.strip().isdecimal():
+        elif (
+            isinstance(value, str)
+            and 0 < len(value.strip()) <= 10
+            and value.strip().isascii()
+            and value.strip().isdecimal()
+        ):
             activity_id = int(value.strip())
         else:
             return None
