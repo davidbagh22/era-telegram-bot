@@ -41,6 +41,8 @@ async def main():
             cases = [
                 ([{"title": "Bad points", "points": "not-an-integer"}], []),
                 ([{"title": "Bad ids", "points": 4}], ["not-an-id"]),
+                ({}, []),  # falsey non-list tasks must not mean "delete all"
+                ([{"title": "Would duplicate", "points": 7}], {}),
                 ([{"title": "Good", "points": 7}], []),
             ]
             for tasks, old_ids in cases:
@@ -66,24 +68,24 @@ async def main():
 
         async with sessions() as session:
             await sync_event_wizard_tasks(session)
-            for bad_id in ids[:2]:
+            for bad_id in ids[:-1]:
                 assert await session.scalar(select(func.count(EventActivity.id)).where(
                     EventActivity.event_id == bad_id
                 )) == 0
             good = list((await session.scalars(select(EventActivity).where(
-                EventActivity.event_id == ids[2]
+                EventActivity.event_id == ids[-1]
             ))).all())
             assert len(good) == 1 and good[0].title == "Good" and good[0].points == 7
             saved_id = good[0].id
-            exp = await session.get(EventExperience, ids[2])
+            exp = await session.get(EventExperience, ids[-1])
             assert exp.participant_task_activity_ids == [saved_id]
 
         async with sessions() as session:
             await sync_event_wizard_tasks(session)
             assert await session.scalar(select(func.count(EventActivity.id)).where(
-                EventActivity.event_id == ids[2]
+                EventActivity.event_id == ids[-1]
             )) == 1
-            for bad_id in ids[:2]:
+            for bad_id in ids[:-1]:
                 assert await session.scalar(select(func.count(EventActivity.id)).where(
                     EventActivity.event_id == bad_id
                 )) == 0
