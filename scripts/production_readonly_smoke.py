@@ -181,7 +181,8 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
         invalid_redirect = True
         same_origin = False
         same_route = False
-    if path == "/health" and expected_sha is not None and error is None:
+    if (path == "/health" and expected_sha is not None and error is None
+            and same_origin and same_route and not invalid_redirect):
         # /health intentionally exposes only RENDER_GIT_COMMIT[:7]. This is
         # corroborating evidence, NOT exact LIVE-SHA proof (use Render deploy).
         if health_commit != expected_sha[:7]:
