@@ -53,8 +53,16 @@ def _has_react_root(html: bytes) -> bool:
 
 
 def _validated_base_url(base_url: str) -> str:
-    parsed = urlsplit(base_url)
+    # urlsplit accepts a non-numeric or out-of-range port until .port is
+    # accessed. Reject it before any network request or acceptance check.
+    try:
+        parsed = urlsplit(base_url)
+        port = parsed.port
+    except ValueError:
+        raise ValueError("base URL has an invalid host or port") from None
     if (
+        port is not None and not (1 <= port <= 65535)
+        or
         parsed.scheme != "https"
         or not parsed.hostname
         or parsed.username is not None
@@ -152,21 +160,28 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
 
     # Redirects must not change the HTTPS origin (including port). A 200
     # from an unrelated host or an HTTP downgrade proves nothing about ERA.
-    final = urlsplit(final_url)
-    original = urlsplit(base_url)
-    same_origin = (
-        final.scheme == original.scheme == "https"
-        and final.hostname == original.hostname
-        and (final.port or 443) == (original.port or 443)
-    )
-    # An auth route redirected to /login could return 401 there, creating a
-    # false-positive for the ORIGINAL protected endpoint. Verify the exact
-    # requested route, not merely a status on the same host.
-    same_route = (
-        final.path == urlsplit(url).path
-        and not final.query
-        and not final.fragment
-    )
+    # Redirects with malformed ports/IPv6 syntax or embedded credentials
+    # cannot count as a verified response from the requested ERA origin.
+    invalid_redirect = False
+    try:
+        final = urlsplit(final_url)
+        original = urlsplit(base_url)
+        same_origin = (
+            final.scheme == original.scheme == "https"
+            and final.hostname == original.hostname
+            and final.username is None and final.password is None
+            and (final.port or 443) == (original.port or 443)
+        )
+        # A same-origin /login 401 is not proof of the original protected route.
+        same_route = (
+            final.path == urlsplit(url).path
+            and not final.query
+            and not final.fragment
+        )
+    except ValueError:
+        invalid_redirect = True
+        same_origin = False
+        same_route = False
     if path == "/health" and expected_sha is not None and error is None:
         # /health intentionally exposes only RENDER_GIT_COMMIT[:7]. This is
         # corroborating evidence, NOT exact LIVE-SHA proof (use Render deploy).
@@ -177,7 +192,9 @@ def check(base_url: str, path: str, expected: frozenset[int], timeout: float, ex
         "status": status,
         "expected": sorted(expected),
         "ok": status in expected and same_origin and same_route and error is None,
-        "error": error or ("cross_origin_redirect" if not same_origin else "redirected_route" if not same_route else None),
+        "error": error or ("invalid_redirect_url" if invalid_redirect else
+                           "cross_origin_redirect" if not same_origin else
+                           "redirected_route" if not same_route else None),
         "commit_prefix": health_commit if path == "/health" and expected_sha else None,
     }
 
