@@ -120,6 +120,17 @@ class EventWizardMalformedJsonRecoveryTests(unittest.IsolatedAsyncioTestCase):
             participant_tasks=task, participant_task_activity_ids=[" 12 "],
         )), (task, [12]))
 
+    def test_blank_legacy_task_cannot_shift_existing_activity_ids(self):
+        tasks = [{"title": ""}, {"title": "Keep second task", "points": 8}]
+        self.assertIsNone(_validated_task_configuration(SimpleNamespace(
+            participant_tasks=tasks,
+            participant_task_activity_ids=[123, 124],
+        )))
+        self.assertEqual(_validated_task_configuration(SimpleNamespace(
+            participant_tasks=tasks,
+            participant_task_activity_ids=[],
+        )), ([tasks[1]], []))
+
     async def test_falsey_corruption_preserves_existing_activity_and_ids(self):
         async with self.sessions() as session:
             admin = User(telegram_id=8877002, first_name="Admin")
