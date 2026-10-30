@@ -49,7 +49,7 @@ async def attendance_confirmation(
     if not _approved(user):
         return
     parts = (call.data or "").split(":")
-    if len(parts) != 3 or parts[2] not in {"yes", "no"}:
+    if len(parts) != 3 or parts[0] != "attendance" or parts[2] not in {"yes", "no"}:
         return
     event_id = positive_pg_int_value(parts[1])
     if event_id is None:
