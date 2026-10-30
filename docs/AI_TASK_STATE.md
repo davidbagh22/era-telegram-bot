@@ -1,3 +1,6 @@
+### 2026-10-30 ~10:23 UTC checkpoint refresh
+- Fresh main push run `41039512035` is now **3/5 SUCCESS** (secret-scan, frontend, postgres-migration) with test and e2e IN_PROGRESS. Render latest LIVE still `ef1de28a0687b7e5358a7267c2921de0d4e7d928`, not new main `9c5fc25ddb3d581f542ee852abf61f518aab39df`. No manual deploy or additional production changes. Next exact gate unchanged: main 5/5, automatic exact LIVE, eight read-only route checks, bounded logs/PG/Redis. This note supersedes the 2/5 snapshot below, not the rest of its evidence.
+
 ## 2026-10-30 ~10:20 UTC / 14:20 Asia/Yerevan — PR #571 merged; fresh main CI pending, LIVE lag; #551 privacy review
 
 - **Fresh refs, not previous-run SHA:** GitHub `main=9c5fc25ddb3d581f542ee852abf61f518aab39df` from expected-head merge PR #571. Current main push Bot checks run `41039512035`: secret-scan/frontend **2/5 SUCCESS**, test/e2e/postgres-migration **3 IN_PROGRESS** at last read; **main CI not green yet**. Render service `srv-d91r1j7avr4c73fs8h00` in confirmed workspace `tea-d91quq1o3t8c73ehphh0` has `autoDeploy=yes`, `autoDeployTrigger=checksPass`. Last Render LIVE is previous main `ef1de28a0687b7e5358a7267c2921de0d4e7d928`, automatic deploy `dep-dbi694nb9u1s73doach0`, finished 2026-10-30T09:35:20Z, trigger `new_commit`. **Exact new main NOT LIVE/accepted**; no manual deploy.
