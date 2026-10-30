@@ -1,3 +1,6 @@
+### Follow-up checkpoint on exact PR #573 HEAD (same run)
+- GitHub check-runs for `80b1d21e820afb587518c31eeaabfe2f5117d023`: **3/6 SUCCESS** (secret-scan, frontend, postgres-migration); Bot checks `test`/`e2e` and separate Tests `test` still IN_PROGRESS. No merge, no production change. Source-only issue #575 filed for `EventActivity(created_by=...)` constructor mismatch; draft #523 already removes it but remains gated due real activity/points implications. Latest docs branch commit remains separate from main; preserve concurrent checkpoint PRs.
+
 ## 2026-10-30 ~11:25 UTC / 15:25 Asia/Yerevan — exact production LIVE, 5/5 main CI, HTML announcement regression DRAFT #573
 
 - **Fresh exact main/CI/LIVE (not historical SHA):** GitHub main `9c5fc25ddb3d581f542ee852abf61f518aab39df`; push Bot checks run `41039512035` completed **5/5 SUCCESS** (e2e, secret-scan, test, frontend, postgres-migration). Render confirmed workspace `tea-d91quq1o3t8c73ehphh0`, service `srv-d91r1j7avr4c73fs8h00`; automatic deploy `dep-dbi76fp42hec73faop9g` status **LIVE** on **exact same SHA**, finished `2026-10-30T10:38:07Z`, trigger `new_commit`, `autoDeploy=yes`, `autoDeployTrigger=checksPass`. **No manual deploy.** This proves exact deployment only, not end-to-end Telegram/Mini App acceptance.
