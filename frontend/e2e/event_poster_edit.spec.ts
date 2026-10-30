@@ -64,6 +64,12 @@ test("manager replaces a published poster without republishing or touching regis
   page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "Удалить только изображение" }).click();
   expect(removals).toBe(0);
+  // Confirmed image-only removal must not remove the event or republish it.
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Удалить только изображение" }).click();
+  await expect(page.getByRole("status")).toContainText("Изображение афиши удалено");
+  expect(removals).toBe(1);
+  expect(publications).toBe(0);
   await page.getByRole("button", { name: "← К списку мероприятий" }).click();
   await expect(page.getByText("E2E опубликованная афиша")).toBeVisible();
 });
