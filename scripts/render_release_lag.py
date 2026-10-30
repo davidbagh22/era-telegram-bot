@@ -44,13 +44,28 @@ def assess(snapshot: dict, *, now: datetime, max_lag_minutes: int = 45) -> dict:
         "status": "UNVERIFIED",
         "reason": "insufficient evidence",
     }
+    # A manually supplied snapshot is not current production evidence unless
+    # its observation time is recent. Never accept an old main/LIVE pair.
+    observed_raw = snapshot.get("observed_at")
+    if not isinstance(observed_raw, str):
+        result.update(status="UNVERIFIED", reason="snapshot observation timestamp missing")
+        return result
+    observed = _timestamp(observed_raw)
+    observation_age = (now.astimezone(timezone.utc) - observed).total_seconds()
+    if observation_age > 600 or observation_age < -60:
+        result.update(status="UNVERIFIED", reason="snapshot observation timestamp is stale or in the future")
+        return result
     if ci.get("head_sha") != main:
         result.update(status="CI_PENDING", reason="no CI evidence for exact main SHA")
         return result
     jobs = ci.get("jobs") or []
     if not isinstance(jobs, list):
         raise ValueError("ci.jobs must be a list")
-    by_name = {j.get("name"): j for j in jobs if isinstance(j, dict)}
+    names = [j.get("name") for j in jobs if isinstance(j, dict)]
+    if len(names) != len(jobs) or len(names) != len(set(names)):
+        result.update(status="UNVERIFIED", reason="malformed or duplicate CI job records")
+        return result
+    by_name = {j["name"]: j for j in jobs}
     if not REQUIRED_JOBS.issubset(by_name):
         result.update(status="CI_PENDING", reason="required CI jobs missing")
         return result
@@ -64,6 +79,9 @@ def assess(snapshot: dict, *, now: datetime, max_lag_minutes: int = 45) -> dict:
         result.update(status="UNVERIFIED", reason="green CI completion timestamp missing")
         return result
     completed = _timestamp(ci["completed_at"])
+    if completed > observed or completed > now.astimezone(timezone.utc):
+        result.update(status="UNVERIFIED", reason="CI completion is later than snapshot observation")
+        return result
     if live_sha == main and _SHA.fullmatch(live_sha):
         result.update(status="LIVE", reason="exact main SHA is Render LIVE with green CI")
         return result
