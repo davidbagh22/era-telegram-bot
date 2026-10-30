@@ -49,12 +49,15 @@ async def attendance_confirmation(
     if not _approved(user):
         return
     parts = (call.data or "").split(":")
-    if len(parts) != 3 or not parts[1].isdigit() or parts[2] not in {"yes", "no"}:
+    if len(parts) != 3 or parts[0] != "attendance" or parts[2] not in {"yes", "no"}:
         return
-    _, event_id, answer = parts
+    event_id = positive_pg_int_value(parts[1])
+    if event_id is None:
+        return
+    answer = parts[2]
     registration = await session.scalar(
         select(EventRegistration).where(
-            EventRegistration.event_id == int(event_id),
+            EventRegistration.event_id == event_id,
             EventRegistration.user_id == user.id,
         )
     )
@@ -80,7 +83,10 @@ async def selfie_start(
     await call.answer()
     if not _approved(user):
         return
-    event_id = int(call.data.rsplit(":", 1)[-1])
+    event_id = positive_pg_int_callback(call.data, "selfie:start:")
+    if event_id is None:
+        await call.message.answer(texts.SELFIE_INVALID)
+        return
     event = await session.get(Event, event_id)
     registration = await session.scalar(
         select(EventRegistration).where(
@@ -106,7 +112,11 @@ async def selfie_photo(
     settings: Settings,
 ) -> None:
     data = await state.get_data()
-    event_id = int(data["selfie_event_id"])
+    event_id = positive_pg_int_value(data.get("selfie_event_id"))
+    if event_id is None:
+        await state.clear()
+        await message.answer(texts.SELFIE_INVALID)
+        return
     exists = await session.scalar(
         select(AttendanceProof).where(
             AttendanceProof.event_id == event_id,
@@ -142,7 +152,10 @@ async def selfie_not_photo(message: Message) -> None:
 @router.callback_query(F.data.startswith("feedback:start:"))
 async def feedback_start(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
-    event_id = int(call.data.rsplit(":", 1)[-1])
+    event_id = positive_pg_int_callback(call.data, "feedback:start:")
+    if event_id is None:
+        await call.message.answer("Мероприятие не найдено. Откройте отзыв заново.")
+        return
     await state.set_state(FeedbackStates.rating)
     await state.update_data(feedback_event_id=event_id)
     buttons = [
@@ -203,17 +216,36 @@ async def feedback_finish(
     call: CallbackQuery, state: FSMContext, session: AsyncSession, user: User
 ) -> None:
     await call.answer()
+    # Stale/forged buttons and corrupted FSM data must not reach PostgreSQL.
+    if call.data not in {"feedback:again:yes", "feedback:again:no", "feedback:again:unsure"}:
+        await call.message.answer("Выберите один из предложенных вариантов.")
+        return
     data = await state.get_data()
-    event_id = int(data["feedback_event_id"])
+    event_id = positive_pg_int_value(data.get("feedback_event_id"))
+    rating = data.get("rating")
+    liked = data.get("liked")
+    improve = data.get("improve")
+    if (
+        event_id is None
+        or type(rating) is not int
+        or not 1 <= rating <= 5
+        or not isinstance(liked, str)
+        or not 1 <= len(liked.strip()) <= 1000
+        or not isinstance(improve, str)
+        or not 1 <= len(improve.strip()) <= 1000
+    ):
+        await state.clear()
+        await call.message.answer("Отзыв устарел. Откройте мероприятие и начните заново.")
+        return
     existing = await session.scalar(
         select(Feedback).where(
             Feedback.event_id == event_id, Feedback.user_id == user.id
         )
     )
     values = dict(
-        rating=data["rating"],
-        liked=data["liked"],
-        improve=data["improve"],
+        rating=rating,
+        liked=liked,
+        improve=improve,
         wants_again=call.data.rsplit(":", 1)[-1],
     )
     if existing:
