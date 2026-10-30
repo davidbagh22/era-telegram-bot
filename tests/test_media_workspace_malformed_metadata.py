@@ -115,7 +115,6 @@ class MalformedCalendarMetadataWriteTests(unittest.IsolatedAsyncioTestCase):
 
 class CalendarSqlPaginationTests(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_json_cannot_exhaust_page_before_valid_rows(self):
-        from sqlalchemy import null
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
         from app.database.base import Base
         from app.database.media_models import MediaContentItem
@@ -130,7 +129,7 @@ class CalendarSqlPaginationTests(unittest.IsolatedAsyncioTestCase):
                     {"media_area": "era"},
                     {"workspace_revision": 0},  # historical missing area => ERA
                     {"media_area": "ksoors"},
-                    null(),  # actual SQL NULL, not JSON literal null
+                    None,  # JSON literal null; schema column is NOT NULL
                     {"media_area": None},  # explicit JSON null must not leak
                 ]
                 metadata.extend([["invalid"]] * 125)
@@ -143,10 +142,10 @@ class CalendarSqlPaginationTests(unittest.IsolatedAsyncioTestCase):
                 await session.commit()
             async with factory() as session:
                 era = await service.calendar(session, "era")
-                self.assertEqual([row["id"] for row in era], [4, 2, 1])
+                self.assertEqual([row["id"] for row in era], [2, 1])
                 self.assertTrue(all(row["area"] == "era" for row in era))
                 self.assertEqual([row["id"] for row in
-                                  await service.calendar(session, "era", before_id=4)], [2, 1])
+                                  await service.calendar(session, "era", before_id=2)], [1])
                 ksoors = await service.calendar(session, "ksoors")
                 self.assertEqual([row["id"] for row in ksoors], [3])
                 self.assertTrue(all(row["area"] == "ksoors" for row in ksoors))
