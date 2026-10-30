@@ -47,6 +47,15 @@ class SupplementalEventCallbackGuards(IsolatedAsyncioTestCase):
                 session.scalar.assert_not_awaited()
                 call.answer.assert_awaited_once()
 
+    async def test_attendance_wrong_namespace_or_answer_never_queries(self):
+        for payload in ("other:42:yes", "attendance:42:maybe",
+                        "attendance:42:yes:extra"):
+            call = _call(payload)
+            session = SimpleNamespace(scalar=AsyncMock())
+            with patch("app.handlers.participant.events._approved", return_value=True):
+                await attendance_confirmation(call, SimpleNamespace(id=1), session)
+            session.scalar.assert_not_awaited()
+
     async def test_attendance_valid_id_preserves_confirmation(self):
         call = _call("attendance:00042:yes")
         registration = SimpleNamespace(status=RegistrationStatus.REGISTERED)
