@@ -170,7 +170,7 @@ class EventOperationsApiTests(unittest.TestCase):
             event_time=SimpleNamespace(isoformat=lambda: "18:00:00"), location="Онлайн",
             status="registration_open", points_for_visit=5,
         )
-        session = SimpleNamespace()
+        session = SimpleNamespace(get=AsyncMock(return_value=None))
         app = _build_app(_admin(), session)
         client = TestClient(app)
         with (
@@ -186,6 +186,8 @@ class EventOperationsApiTests(unittest.TestCase):
             response = client.get("/api/v1/admin/events/operational")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()[0]["registered"], 3)
+        self.assertTrue(response.json()[0]["show_in_public_listing"])
+        session.get.assert_awaited_once()
 
     def test_participants_event_not_found(self) -> None:
         session = SimpleNamespace(get=AsyncMock(return_value=None))
