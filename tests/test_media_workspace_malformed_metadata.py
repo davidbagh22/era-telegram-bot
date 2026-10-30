@@ -113,5 +113,58 @@ class MalformedCalendarMetadataWriteTests(unittest.IsolatedAsyncioTestCase):
         session.flush.assert_not_awaited()
 
 
+class CalendarSqlPaginationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_invalid_json_cannot_exhaust_page_before_valid_rows(self):
+        from sqlalchemy import null
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+        from app.database.base import Base
+        from app.database.media_models import MediaContentItem
+
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            factory = async_sessionmaker(engine, expire_on_commit=False)
+            async with factory() as session:
+                metadata = [
+                    {"media_area": "era"},
+                    {"workspace_revision": 0},  # historical missing area => ERA
+                    {"media_area": "ksoors"},
+                    null(),  # actual SQL NULL, not JSON literal null
+                    {"media_area": None},  # explicit JSON null must not leak
+                ]
+                metadata.extend([["invalid"]] * 125)
+                session.add_all([
+                    MediaContentItem(source_kind="media_workspace", source_key=f"page-{i}",
+                                     kind="text", title=f"item-{i}", status="planned",
+                                     metadata_json=value)
+                    for i, value in enumerate(metadata)
+                ])
+                await session.commit()
+            async with factory() as session:
+                era = await service.calendar(session, "era")
+                self.assertEqual([row["id"] for row in era], [4, 2, 1])
+                self.assertTrue(all(row["area"] == "era" for row in era))
+                self.assertEqual([row["id"] for row in
+                                  await service.calendar(session, "era", before_id=4)], [2, 1])
+                ksoors = await service.calendar(session, "ksoors")
+                self.assertEqual([row["id"] for row in ksoors], [3])
+                self.assertTrue(all(row["area"] == "ksoors" for row in ksoors))
+        finally:
+            await engine.dispose()
+
+    async def test_json_type_filter_is_postgresql_compatible_by_compilation(self):
+        from sqlalchemy import select
+        from sqlalchemy.dialects import postgresql
+        from app.database.media_models import MediaContentItem
+
+        query = select(MediaContentItem.id).where(service._calendar_metadata_filter("postgresql"))
+        compiled = str(query.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+        self.assertIn("json_typeof", compiled)
+        self.assertIn("->", compiled)
+        with self.assertRaisesRegex(RuntimeError, "Unsupported"):
+            service._calendar_metadata_filter("unknown")
+
+
 if __name__ == "__main__":
     unittest.main()
