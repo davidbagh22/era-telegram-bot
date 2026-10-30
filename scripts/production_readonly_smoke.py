@@ -211,18 +211,53 @@ def run(base_url: str = PRODUCTION_URL, timeout: float = 10.0,
     return (0 if all(item["ok"] for item in results) else 1), results
 
 
+def is_pending_deploy_only(results: list[dict]) -> bool:
+    """Only the SHA differs; all seven other HTTP/security gates passed.
+
+    This is NOT production acceptance. It lets a scheduled CI check report
+    a pending/stale LIVE SHA without deadlocking Render checksPass.
+    """
+    if len(results) != len(CHECKS):
+        return False
+    for item, (path, _) in zip(results, CHECKS):
+        if item.get("path") != path:
+            return False
+        if path == "/health":
+            prefix = item.get("commit_prefix")
+            if not (
+                item.get("status") == 200
+                and item.get("ok") is False
+                and item.get("error") == "health_commit_prefix_mismatch"
+                and isinstance(prefix, str)
+                and re.fullmatch(r"[0-9a-f]{7}", prefix)
+            ):
+                return False
+        elif item.get("ok") is not True:
+            return False
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default=PRODUCTION_URL)
     parser.add_argument("--timeout", type=float, default=10.0)
     parser.add_argument("--expected-sha", help="full SHA; checks /health seven-character prefix only")
+    parser.add_argument(
+        "--pending-exit-code", action="store_true",
+        help="exit 3 (PENDING_DEPLOY, not PASS) if only the LIVE SHA differs",
+    )
     args = parser.parse_args()
+    if args.pending_exit_code and not args.expected_sha:
+        parser.error("--pending-exit-code requires --expected-sha")
     try:
         exit_code, results = run(args.base_url, args.timeout, args.expected_sha)
     except ValueError as exc:
         parser.error(str(exc))
+    if args.pending_exit_code and exit_code == 1 and is_pending_deploy_only(results):
+        exit_code = 3  # pending/stale LIVE, never a passing production probe
     print(json.dumps({"result": ("PASS" if exit_code == 0 else
-                                  "UNVERIFIED" if exit_code == 2 else "FAIL"),
+                                  "UNVERIFIED" if exit_code == 2 else
+                                  "PENDING_DEPLOY" if exit_code == 3 else "FAIL"),
                       "checks": results}, ensure_ascii=False, indent=2))
     return exit_code
 
