@@ -224,6 +224,24 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
                 self.assertFalse(result["ok"])
                 self.assertEqual(result["error"], "miniapp_root_missing")
 
+    def test_miniapp_root_rejects_mismatched_inert_closing_tags(self):
+        # An unmatched closing tag must not decrement the inert nesting
+        # depth and make a fake root inside malformed markup look live.
+        for html in (
+            b'<template></noscript><div id="root"></div>',
+            b'<noscript></template><div id="root"></div>',
+            b'<template><noscript></template><div id="root"></div>',
+        ):
+            with self.subTest(html=html):
+                response = FakeResponse(smoke.PRODUCTION_URL + "/app/", 200, body=html)
+                with patch.object(smoke, "urlopen", return_value=response):
+                    result = smoke.check(
+                        smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0
+                    )
+                self.assertEqual(result["status"], 200)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "miniapp_root_missing")
+
     def test_miniapp_root_accepts_valid_html_attribute_variants(self):
         for html in (
             b"<html><body><div class='app' id='root'></div></body></html>",
