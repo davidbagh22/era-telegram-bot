@@ -107,6 +107,19 @@ class EventWizardMalformedJsonRecoveryTests(unittest.IsolatedAsyncioTestCase):
             participant_tasks=None, participant_task_activity_ids=None,
         )), ([], []))
 
+    def test_positional_activity_id_corruption_fails_closed(self):
+        task = [{"title": "Preserve task identity", "points": 7}]
+        for corrupt_ids in ([None], [0], [False], [""], [1.5], [True], [1, 1],
+                            ["9" * 5000], ["-1"]):
+            with self.subTest(ids=repr(corrupt_ids)[:60]):
+                self.assertIsNone(_validated_task_configuration(SimpleNamespace(
+                    participant_tasks=task,
+                    participant_task_activity_ids=corrupt_ids,
+                )))
+        self.assertEqual(_validated_task_configuration(SimpleNamespace(
+            participant_tasks=task, participant_task_activity_ids=[" 12 "],
+        )), (task, [12]))
+
     async def test_falsey_corruption_preserves_existing_activity_and_ids(self):
         async with self.sessions() as session:
             admin = User(telegram_id=8877002, first_name="Admin")
