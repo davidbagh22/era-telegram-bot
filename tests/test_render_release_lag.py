@@ -32,6 +32,14 @@ class ReleaseLagTests(unittest.TestCase):
     def test_exact_full_sha_is_live(self):
         self.check(snapshot(live=MAIN), "LIVE")
 
+    def test_exact_live_with_pending_ci_is_not_accepted(self):
+        self.check(snapshot(live=MAIN, ci_status="in_progress"), "CI_PENDING")
+
+    def test_exact_live_with_failed_ci_is_not_accepted(self):
+        data = snapshot(live=MAIN)
+        data["ci"]["jobs"][0]["conclusion"] = "failure"
+        self.check(data, "CI_FAILED")
+
     def test_matching_prefix_is_not_live(self):
         self.check(snapshot(live=MAIN[:7] + OLD[7:]), "STALE_LIVE")
 
