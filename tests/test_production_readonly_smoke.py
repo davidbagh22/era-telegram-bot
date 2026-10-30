@@ -299,6 +299,38 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "cross_origin_redirect")
 
+    def test_reject_malformed_base_port_before_any_network_request(self):
+        for origin in (
+            "https://era-telegram-bot.onrender.com:garbage",
+            "https://era-telegram-bot.onrender.com:99999",
+            "https://era-telegram-bot.onrender.com:0",
+            "https://[broken/app/",
+        ):
+            with self.subTest(origin=origin), patch.object(smoke, "urlopen") as opened:
+                with self.assertRaises(ValueError):
+                    smoke.run(origin)
+                opened.assert_not_called()
+
+    def test_credentialed_same_origin_redirect_is_not_accepted(self):
+        response = FakeResponse("https://user:secret@era-telegram-bot.onrender.com/app/", 200)
+        with patch.object(smoke, "urlopen", return_value=response):
+            result = smoke.check(smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "cross_origin_redirect")
+
+    def test_malformed_redirect_url_is_a_failed_check_not_a_crash(self):
+        for redirected in (
+            "https://era-telegram-bot.onrender.com:garbage/app/",
+            "https://era-telegram-bot.onrender.com:99999/app/",
+            "https://[broken/app/",
+        ):
+            with self.subTest(redirected=redirected):
+                with patch.object(smoke, "urlopen", return_value=FakeResponse(redirected, 200)):
+                    result = smoke.check(smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0)
+                self.assertEqual(result["status"], 200)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "invalid_redirect_url")
+
     def test_health_commit_prefix_is_corroboration_not_exact_sha_proof(self):
         sha = "a88dca9220b246727553b266b0a36786464bfc25"
 
