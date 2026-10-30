@@ -27,23 +27,31 @@ CHECKS: tuple[tuple[str, frozenset[int]], ...] = (
 
 
 class _ReactRootParser(HTMLParser):
-    """Match an actual React mount element, not a comment or script string."""
+    """Match a live React mount element, not inert HTML fallback content."""
+
+    _INERT_TAGS = frozenset({
+        "template", "noscript", "textarea", "title", "xmp",
+        "iframe", "noembed", "noframes",
+    })
 
     def __init__(self) -> None:
         super().__init__()
         self.found_root = False
-        self._inert_depth = 0
+        # Track the tag name, not just a counter. An unmatched closing
+        # </template> or </noscript> must not expose a fake mount element
+        # from malformed inert markup.
+        self._inert_stack: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in {"template", "noscript"}:
-            self._inert_depth += 1
-        elif not self._inert_depth and tag == "div":
+        if tag in self._INERT_TAGS:
+            self._inert_stack.append(tag)
+        elif not self._inert_stack and tag == "div":
             if any(name == "id" and value == "root" for name, value in attrs):
                 self.found_root = True
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in {"template", "noscript"} and self._inert_depth:
-            self._inert_depth -= 1
+        if self._inert_stack and self._inert_stack[-1] == tag:
+            self._inert_stack.pop()
 
 
 def _has_react_root(html: bytes) -> bool:
