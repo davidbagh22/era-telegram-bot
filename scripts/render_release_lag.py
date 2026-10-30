@@ -34,7 +34,10 @@ def assess(snapshot: dict, *, now: datetime, max_lag_minutes: int = 45) -> dict:
     if not isinstance(ci, dict) or not isinstance(deploys, list):
         raise ValueError("ci must be an object and deploys must be a list")
 
-    live = next((d for d in deploys if d.get("status") == "live"), None)
+    # An inconsistent API snapshot with two LIVE records cannot prove which
+    # deployment is serving requests, even if one matches the expected SHA.
+    live_records = [d for d in deploys if d.get("status") == "live"]
+    live = live_records[0] if len(live_records) == 1 else None
     live_sha = (live or {}).get("commit", {}).get("id")
     latest_main = next((d for d in deploys if d.get("commit", {}).get("id") == main), None)
     result = {
@@ -44,6 +47,9 @@ def assess(snapshot: dict, *, now: datetime, max_lag_minutes: int = 45) -> dict:
         "status": "UNVERIFIED",
         "reason": "insufficient evidence",
     }
+    if len(live_records) > 1:
+        result.update(status="UNVERIFIED", reason="multiple Render LIVE deployments in one snapshot")
+        return result
     # A manually supplied snapshot is not current production evidence unless
     # its observation time is recent. Never accept an old main/LIVE pair.
     observed_raw = snapshot.get("observed_at")

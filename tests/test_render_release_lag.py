@@ -77,6 +77,18 @@ class ReleaseLagTests(unittest.TestCase):
     def test_render_building_too_long(self):
         self.check(snapshot(main_deploy="build_in_progress"), "STALE_LIVE")
 
+    def test_two_conflicting_live_records_are_unverified(self):
+        data = snapshot(live=MAIN)
+        data["deploys"].append({"id": "conflicting-live", "status": "live", "commit": {"id": OLD}})
+        result = module.assess(data, now=NOW)
+        self.assertEqual(result["status"], "UNVERIFIED")
+        self.assertIn("multiple", result["reason"])
+
+    def test_two_identical_live_records_are_still_unverified(self):
+        data = snapshot(live=MAIN)
+        data["deploys"].append({"id": "duplicate-live", "status": "live", "commit": {"id": MAIN}})
+        self.check(data, "UNVERIFIED")
+
     def test_no_live_is_not_accepted(self):
         self.check(snapshot(status="deactivated"), "STALE_LIVE")
 
