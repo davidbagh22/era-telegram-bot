@@ -336,10 +336,14 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
             ("https://other.example/health", "cross_origin_redirect"),
             (smoke.PRODUCTION_URL + "/login", "redirected_route"),
         ):
+            response = FakeResponse(
+                redirected, 200, b'{"status":"ok","commit":"bbbbbbb"}'
+            )
+            # Keep the health JSON contract valid even when the redirect
+            # target is /login; this isolates the origin/route guard.
+            response.headers["Content-Type"] = "application/json"
             with self.subTest(redirected=redirected), patch.object(
-                smoke, "urlopen", return_value=FakeResponse(
-                    redirected, 200, b'{"status":"ok","commit":"bbbbbbb"}'
-                ),
+                smoke, "urlopen", return_value=response,
             ):
                 result = smoke.check(
                     smoke.PRODUCTION_URL, "/health", frozenset({200}), 3.0,
