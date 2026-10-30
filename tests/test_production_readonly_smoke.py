@@ -242,6 +242,20 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
                 self.assertFalse(result["ok"])
                 self.assertEqual(result["error"], "miniapp_root_missing")
 
+    def test_miniapp_root_rejects_inert_text_and_fallback_containers(self):
+        # HTMLParser parses tags inside textarea/title/xmp even though a
+        # browser treats them as text, not an actual React mount element.
+        for tag in ("textarea", "title", "xmp", "iframe", "noembed", "noframes"):
+            with self.subTest(tag=tag):
+                html = f'<{tag}><div id="root"></div></{tag}>'.encode()
+                response = FakeResponse(smoke.PRODUCTION_URL + "/app/", 200, body=html)
+                with patch.object(smoke, "urlopen", return_value=response):
+                    result = smoke.check(
+                        smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0
+                    )
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "miniapp_root_missing")
+
     def test_miniapp_root_accepts_valid_html_attribute_variants(self):
         for html in (
             b"<html><body><div class='app' id='root'></div></body></html>",
