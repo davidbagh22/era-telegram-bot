@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.database.media_models import MediaContentItem
@@ -66,8 +66,38 @@ def item_out(item):
         "revision": data.get("workspace_revision", 0)}
 
 
+def _calendar_metadata_filter(dialect_name: str):
+    """Filter malformed/ambiguous JSON in SQL *before* LIMIT/keyset paging.
+
+    PostgreSQL JSON and SQLite JSON1 expose different JSON type functions.
+    Both must reject scalar/array metadata and explicit non-string area keys,
+    while preserving historical SQL NULL/missing-area rows as ERA.
+    """
+    metadata = MediaContentItem.metadata_json
+    if dialect_name == "postgresql":
+        object_type = func.json_typeof(metadata)
+        area_type = func.json_typeof(metadata.op("->")("media_area"))
+        string_type = "string"
+    elif dialect_name == "sqlite":
+        object_type = func.json_type(metadata)
+        area_type = func.json_type(metadata, "$.media_area")
+        string_type = "text"
+    else:
+        # Never expose an unverified dialect's JSON semantics to either area.
+        raise RuntimeError("Unsupported calendar JSON dialect")
+    return and_(
+        or_(metadata.is_(None), object_type == "object"),
+        or_(area_type.is_(None), area_type == string_type),
+    )
+
+
 async def calendar(session, area, *, before_id: int | None = None, status_group: str = "all"):
-    query = select(MediaContentItem).where(func.coalesce(
+    # Filtering in Python after LIMIT can return empty pages when malformed
+    # legacy rows occupy the first 100 IDs, stranding healthy older records.
+    # AsyncSession.get_bind() resolves to the synchronous engine/dialect.
+    bind = session.get_bind() if hasattr(session, "get_bind") else getattr(session, "bind", None)
+    dialect = getattr(getattr(bind, "dialect", None), "name", "sqlite")
+    query = select(MediaContentItem).where(_calendar_metadata_filter(dialect)).where(func.coalesce(
         MediaContentItem.metadata_json["media_area"].as_string(), "era") == area)
     # Filter before pagination: a long history of published posts must not hide open tasks.
     if status_group == "active":
