@@ -32,18 +32,21 @@ class _ReactRootParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.found_root = False
-        self._inert_depth = 0
+        # Track the tag name, not just a counter. An unmatched closing
+        # </template> or </noscript> must not expose a fake mount element
+        # from malformed inert markup.
+        self._inert_stack: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in {"template", "noscript"}:
-            self._inert_depth += 1
-        elif not self._inert_depth and tag == "div":
+            self._inert_stack.append(tag)
+        elif not self._inert_stack and tag == "div":
             if any(name == "id" and value == "root" for name, value in attrs):
                 self.found_root = True
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in {"template", "noscript"} and self._inert_depth:
-            self._inert_depth -= 1
+        if self._inert_stack and self._inert_stack[-1] == tag:
+            self._inert_stack.pop()
 
 
 def _has_react_root(html: bytes) -> bool:
