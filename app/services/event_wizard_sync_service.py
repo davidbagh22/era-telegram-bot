@@ -64,13 +64,18 @@ def _validated_task_configuration(experience) -> tuple[list[dict], list[int]] | 
         configured.append(item)
     old_ids: list[int] = []
     for value in ids:
-        if not value:
-            continue
-        try:
-            activity_id = int(value)
-        except (TypeError, ValueError, OverflowError):
+        # Never compact an invalid/empty slot: the vector is positional, so
+        # skipping one entry could reassign a different participant task and
+        # change its points/review policy. Reject duplicate IDs as well.
+        if isinstance(value, bool):
             return None
-        if not 0 < activity_id <= 2_147_483_647:
+        if isinstance(value, int):
+            activity_id = value
+        elif isinstance(value, str) and value.strip().isascii() and value.strip().isdecimal():
+            activity_id = int(value.strip())
+        else:
+            return None
+        if not 0 < activity_id <= 2_147_483_647 or activity_id in old_ids:
             return None
         old_ids.append(activity_id)
     return configured, old_ids
