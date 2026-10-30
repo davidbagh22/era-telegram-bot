@@ -67,6 +67,8 @@ class EventWizardMalformedJsonRecoveryTests(unittest.IsolatedAsyncioTestCase):
                 await self._event(session, admin.id, tasks=[{"title": "Task", "points": 3}], activity_ids=["invalid"]),
                 await self._event(session, admin.id, tasks=[{"title": "x" * 256, "points": 3}]),
                 await self._event(session, admin.id, tasks=[{"title": "Overflow", "points": 2_147_483_648}]),
+                await self._event(session, admin.id, tasks=[{"title": "Bool", "points": True}]),
+                await self._event(session, admin.id, tasks=[{"title": "Fractional", "points": 1.9}]),
                 await self._event(session, admin.id, tasks=[{"title": "Task", "points": 3}], activity_ids=[2_147_483_648]),
             ]
             good_id = await self._event(session, admin.id, tasks=[{"title": "Good", "points": 7}])
@@ -106,6 +108,20 @@ class EventWizardMalformedJsonRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_validated_task_configuration(SimpleNamespace(
             participant_tasks=None, participant_task_activity_ids=None,
         )), ([], []))
+
+    def test_boolean_and_fractional_points_fail_closed(self):
+        for value in (True, False, 1.9, 2.0, -1.5):
+            with self.subTest(points=value):
+                self.assertIsNone(_validated_task_configuration(SimpleNamespace(
+                    participant_tasks=[{"title": "Preserve points", "points": value}],
+                    participant_task_activity_ids=[],
+                )))
+        for value in (0, 3, "4"):
+            with self.subTest(valid_points=value):
+                self.assertIsNotNone(_validated_task_configuration(SimpleNamespace(
+                    participant_tasks=[{"title": "Valid points", "points": value}],
+                    participant_task_activity_ids=[],
+                )))
 
     def test_positional_activity_id_corruption_fails_closed(self):
         task = [{"title": "Preserve task identity", "points": 7}]
