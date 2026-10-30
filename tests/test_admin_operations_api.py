@@ -189,6 +189,31 @@ class EventOperationsApiTests(unittest.TestCase):
         self.assertTrue(response.json()[0]["show_in_public_listing"])
         session.get.assert_awaited_once()
 
+    def test_operational_list_respects_hidden_visibility(self) -> None:
+        event = SimpleNamespace(
+            id=2, title="Hidden", event_date=SimpleNamespace(isoformat=lambda: "2026-01-01"),
+            event_time=SimpleNamespace(isoformat=lambda: "18:00:00"), location="Онлайн",
+            status="registration_open", points_for_visit=5,
+        )
+        session = SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(show_in_public_listing=False)))
+        app = _build_app(_admin(), session)
+        client = TestClient(app)
+        with (
+            patch(
+                "app.api.v1.admin.event_registration_service.list_operational_events",
+                new=AsyncMock(return_value=[event]),
+            ),
+            patch(
+                "app.api.v1.admin.event_registration_service.registration_stats",
+                new=AsyncMock(return_value={"registered": 3, "free": 7}),
+            ),
+        ):
+            response = client.get("/api/v1/admin/events/operational")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()[0]["show_in_public_listing"])
+        self.assertEqual(response.json()[0]["registered"], 3)
+        session.get.assert_awaited_once()
+
     def test_participants_event_not_found(self) -> None:
         session = SimpleNamespace(get=AsyncMock(return_value=None))
         app = _build_app(_admin(), session)
