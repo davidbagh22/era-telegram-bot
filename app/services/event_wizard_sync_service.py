@@ -32,8 +32,16 @@ def _deadline(value: object) -> datetime | None:
 
 def _validated_task_configuration(experience) -> tuple[list[dict], list[int]] | None:
     """Reject malformed legacy JSON without touching its activity or point rows."""
-    tasks = experience.participant_tasks or []
-    ids = experience.participant_task_activity_ids or []
+    # Only SQL NULL represents an absent legacy configuration. Empty JSON
+    # objects, strings, numbers and booleans are malformed, even if falsey:
+    # treating them as [] could deactivate existing activities or create
+    # duplicates when the stored activity-id vector is corrupted.
+    tasks = experience.participant_tasks
+    ids = experience.participant_task_activity_ids
+    if tasks is None:
+        tasks = []
+    if ids is None:
+        ids = []
     if not isinstance(tasks, list) or not isinstance(ids, list):
         return None
     configured: list[dict] = []
