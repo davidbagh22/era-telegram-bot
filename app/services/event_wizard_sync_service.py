@@ -50,6 +50,11 @@ def _validated_task_configuration(experience) -> tuple[list[dict], list[int]] | 
             return None
         title = str(item.get("title") or "").strip()
         if not title:
+            # Blank draft placeholders may be ignored only before activities
+            # have been materialised. With existing positional IDs, dropping
+            # a slot would attach the next task to the wrong activity/points.
+            if ids:
+                return None
             continue
         # EventActivity.title is VARCHAR(255), points is PostgreSQL INTEGER.
         # Reject the entire malformed row before writing any of its tasks.
