@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime
 from types import SimpleNamespace
@@ -106,6 +107,47 @@ class GeneralTopicsTests(IsolatedAsyncioTestCase):
                 AppSetting.key == "general_forum:-100123:notifications"))
             self.assertEqual(json.loads(row.value), {
                 "thread_id": 102, "name": "Оповещения"})
+        self.bot.create_forum_topic.assert_awaited_once()
+
+    async def test_second_worker_during_inflight_create_does_not_duplicate_topic(self):
+        # The first worker has committed its claim but Telegram has not replied.
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def create_delayed(chat_id, *, name):
+            entered.set()
+            await release.wait()
+            return SimpleNamespace(message_thread_id=102)
+
+        self.bot.create_forum_topic.side_effect = create_delayed
+        first = asyncio.create_task(ensure_topic(
+            self.bot, self.settings, "notifications", session_factory=self.sessions))
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=5)
+            self.assertIsNone(await ensure_topic(
+                self.bot, self.settings, "notifications", session_factory=self.sessions))
+            self.bot.create_forum_topic.assert_awaited_once()
+            self.assertFalse(first.done())
+        finally:
+            release.set()
+        self.assertEqual(await asyncio.wait_for(first, timeout=5), 102)
+        self.assertEqual(await ensure_topic(
+            self.bot, self.settings, "notifications", session_factory=self.sessions), 102)
+        self.bot.create_forum_topic.assert_awaited_once()
+
+    async def test_failed_claim_commit_never_calls_telegram(self):
+        # A DB failure before the durable claim must not start remote creation.
+        with patch.object(AsyncSession, "commit", new=AsyncMock(
+            side_effect=RuntimeError("claim transaction failed"))):
+            self.assertIsNone(await ensure_topic(
+                self.bot, self.settings, "notifications", session_factory=self.sessions))
+        self.bot.create_forum_topic.assert_not_awaited()
+        async with self.sessions() as session:
+            self.assertIsNone(await session.scalar(select(AppSetting).where(
+                AppSetting.key == "general_forum:-100123:notifications")))
+        # A later healthy attempt can create exactly once: no remote call occurred.
+        self.assertEqual(await ensure_topic(
+            self.bot, self.settings, "notifications", session_factory=self.sessions), 102)
         self.bot.create_forum_topic.assert_awaited_once()
 
     async def test_durable_delivery_is_threaded_and_not_repeated(self):
