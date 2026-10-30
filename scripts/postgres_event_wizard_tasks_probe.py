@@ -89,6 +89,71 @@ async def main():
                 assert await session.scalar(select(func.count(EventActivity.id)).where(
                     EventActivity.event_id == bad_id
                 )) == 0
+        # Force both scheduler sessions to finish their initial unlocked scan
+        # before either may materialise a new task. Without the refreshed
+        # EventExperience FOR UPDATE lock, both can insert an EventActivity.
+        async with sessions() as session:
+            race_event = Event(
+                title="CI concurrent wizard materialisation",
+                description="Disposable PostgreSQL only",
+                event_date=date.today() + timedelta(days=3),
+                event_time=time(18),
+                location="CI",
+                format="offline",
+                created_by=creator.id,
+                status=EventStatus.PUBLISHED,
+            )
+            session.add(race_event)
+            await session.flush()
+            race_event_id = race_event.id
+            session.add(EventExperience(
+                event_id=race_event_id,
+                is_complete=True,
+                participant_tasks=[{"title": "Only once", "points": 5}],
+                participant_task_activity_ids=[],
+            ))
+            await session.commit()
+
+        both_scanned = asyncio.Event()
+        arrivals = 0
+
+        async def concurrent_worker():
+            nonlocal arrivals
+            async with sessions() as session:
+                original_execute = session.execute
+                first_scan = True
+
+                async def synchronize_initial_scan(statement, *args, **kwargs):
+                    nonlocal arrivals, first_scan
+                    result = await original_execute(statement, *args, **kwargs)
+                    if first_scan:
+                        first_scan = False
+                        arrivals += 1
+                        if arrivals == 2:
+                            both_scanned.set()
+                        await asyncio.wait_for(both_scanned.wait(), timeout=15)
+                    return result
+
+                session.execute = synchronize_initial_scan
+                return await sync_event_wizard_tasks(session)
+
+        await asyncio.wait_for(
+            asyncio.gather(concurrent_worker(), concurrent_worker()),
+            timeout=35,
+        )
+        assert arrivals == 2, "Both sessions must read before the row lock"
+        async with sessions() as session:
+            activities = list((await session.scalars(
+                select(EventActivity).where(EventActivity.event_id == race_event_id)
+            )).all())
+            assert len(activities) == 1, (
+                "Concurrent scheduler workers created duplicate participant tasks"
+            )
+            assert activities[0].title == "Only once"
+            experience = await session.get(EventExperience, race_event_id)
+            assert experience.participant_task_activity_ids == [activities[0].id]
+
+        print("Wizard PostgreSQL: two concurrent stale scans created one task")
         print("Wizard PostgreSQL: malformed rows skipped; healthy task created once")
         print("Wizard PostgreSQL: second pass idempotent; no Telegram or point awards")
     finally:
