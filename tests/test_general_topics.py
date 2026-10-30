@@ -54,6 +54,37 @@ class GeneralTopicsTests(IsolatedAsyncioTestCase):
         self.bot.send_message.assert_not_awaited()
         self.bot.create_forum_topic.assert_not_awaited()
 
+    async def test_ambiguous_creation_keeps_claim_and_never_retries(self):
+        # Telegram may have created a real topic before its response is lost.
+        self.bot.create_forum_topic.side_effect = RuntimeError("timeout after remote create")
+        self.assertIsNone(await ensure_topic(
+            self.bot, self.settings, "notifications", session_factory=self.sessions))
+        self.assertIsNone(await ensure_topic(
+            self.bot, self.settings, "notifications", session_factory=self.sessions))
+        self.bot.create_forum_topic.assert_awaited_once()
+        async with self.sessions() as session:
+            row = await session.scalar(select(AppSetting).where(
+                AppSetting.key == "general_forum:-100123:notifications"))
+            self.assertEqual(json.loads(row.value), {"state": "creating"})
+
+    async def test_topic_creation_sees_committed_claim_before_api_call(self):
+        async def create_after_claim(chat_id, *, name):
+            async with self.sessions() as session:
+                row = await session.scalar(select(AppSetting).where(
+                    AppSetting.key == "general_forum:-100123:notifications"))
+                self.assertEqual(json.loads(row.value), {"state": "creating"})
+            return SimpleNamespace(message_thread_id=102)
+
+        self.bot.create_forum_topic.side_effect = create_after_claim
+        self.assertEqual(await ensure_topic(
+            self.bot, self.settings, "notifications", session_factory=self.sessions), 102)
+        async with self.sessions() as session:
+            row = await session.scalar(select(AppSetting).where(
+                AppSetting.key == "general_forum:-100123:notifications"))
+            self.assertEqual(json.loads(row.value), {
+                "thread_id": 102, "name": "Оповещения"})
+        self.bot.create_forum_topic.assert_awaited_once()
+
     async def test_durable_delivery_is_threaded_and_not_repeated(self):
         with patch("app.services.general_topics_service._session_factory", return_value=self.sessions), patch("app.services.notification_service._session_factory", return_value=self.sessions):
             self.assertTrue(await send_general_topic(self.bot, self.settings, "announcements", "Event", delivery_key="event:1"))
