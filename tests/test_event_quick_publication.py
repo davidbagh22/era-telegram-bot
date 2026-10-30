@@ -174,6 +174,40 @@ class QuickPublicationTests(IsolatedAsyncioTestCase):
             delivery = await session.scalar(select(NotificationDelivery))
             self.assertEqual(delivery.status, "uncertain")
 
+    async def test_status_write_failure_after_send_reuses_durable_receipt_on_retry(self):
+        """A failed status update after Telegram success must not resend the poster.
+
+        All database state is disposable SQLite and Telegram is mocked. This
+        does not prove real PostgreSQL transaction or network failure recovery.
+        """
+        event_id = await self.draft()
+        await self.topic()
+        async with self.sessions() as session:
+            published = await publish_event(
+                event_id, self.admin, session, self.settings, self.bot, BackgroundTasks()
+            )
+        self.assertEqual(published.announcement_status, "pending")
+
+        with patch(
+            "app.services.event_publication_service.record_announcement_status",
+            new=AsyncMock(side_effect=OSError("simulated status update failure")),
+        ):
+            await deliver_pending_event_announcements(self.bot, self.settings, self.sessions)
+
+        self.bot.send_photo.assert_awaited_once()
+        async with self.sessions() as session:
+            experience = await session.get(EventExperience, event_id)
+            self.assertEqual(experience.announcement_status, "pending")
+            receipts = (await session.scalars(select(NotificationDelivery))).all()
+            self.assertEqual(len(receipts), 1)
+            self.assertEqual(receipts[0].status, "sent")
+
+        await deliver_pending_event_announcements(self.bot, self.settings, self.sessions)
+        self.bot.send_photo.assert_awaited_once()
+        async with self.sessions() as session:
+            experience = await session.get(EventExperience, event_id)
+            self.assertEqual(experience.announcement_status, "sent")
+
     async def test_changed_title_is_included_with_full_text_and_schedule(self):
         event_id = await self.draft("Готовый текст без названия и даты")
         await self.topic()
