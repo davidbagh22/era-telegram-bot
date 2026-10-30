@@ -20,7 +20,12 @@ from app.utils.constants import EventStatus
 async def main():
     url = os.environ["DATABASE_URL"]
     parsed = make_url(url)
-    if parsed.get_backend_name() != "postgresql" or parsed.database != "era_test":
+    if (
+        parsed.get_backend_name() != "postgresql"
+        or parsed.database != "era_test"
+        or parsed.username != "era_test"
+        or parsed.host not in {"127.0.0.1", "localhost", "::1"}
+    ):
         raise RuntimeError("Only disposable PostgreSQL era_test is allowed")
     engine = create_async_engine(url)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
