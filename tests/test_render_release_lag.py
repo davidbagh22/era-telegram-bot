@@ -22,7 +22,7 @@ def snapshot(*, status="live", live=OLD, ci_status="success", ci_sha=MAIN, minut
     deploys = [{"id": "old-live", "status": status, "commit": {"id": live}}]
     if main_deploy:
         deploys.insert(0, {"id": "new-deploy", "status": main_deploy, "commit": {"id": MAIN}})
-    return {"main_sha": MAIN, "ci": {"head_sha": ci_sha, "jobs": jobs, "completed_at": f"2026-10-30T07:{60-minutes:02d}:00Z" if minutes <= 60 else "2026-10-30T06:00:00Z"}, "deploys": deploys}
+    return {"main_sha": MAIN, "observed_at": "2026-10-30T08:00:00Z", "ci": {"head_sha": ci_sha, "jobs": jobs, "completed_at": f"2026-10-30T07:{60-minutes:02d}:00Z" if minutes <= 60 else "2026-10-30T06:00:00Z"}, "deploys": deploys}
 
 
 class ReleaseLagTests(unittest.TestCase):
@@ -90,6 +90,31 @@ class ReleaseLagTests(unittest.TestCase):
         data["main_sha"] = "a" * 7
         with self.assertRaises(ValueError):
             module.assess(data, now=NOW)
+
+    def test_missing_snapshot_observation_is_unverified(self):
+        data = snapshot(live=MAIN)
+        data.pop("observed_at")
+        self.check(data, "UNVERIFIED")
+
+    def test_stale_snapshot_cannot_claim_old_main_live(self):
+        data = snapshot(live=MAIN)
+        data["observed_at"] = "2026-10-30T07:49:59Z"
+        self.check(data, "UNVERIFIED")
+
+    def test_future_observation_is_unverified(self):
+        data = snapshot(live=MAIN)
+        data["observed_at"] = "2026-10-30T08:02:00Z"
+        self.check(data, "UNVERIFIED")
+
+    def test_duplicate_required_ci_job_is_unverified(self):
+        data = snapshot(live=MAIN)
+        data["ci"]["jobs"].append(dict(data["ci"]["jobs"][0]))
+        self.check(data, "UNVERIFIED")
+
+    def test_ci_completion_after_snapshot_is_unverified(self):
+        data = snapshot(live=MAIN)
+        data["ci"]["completed_at"] = "2026-10-30T08:01:00Z"
+        self.check(data, "UNVERIFIED")
 
     def test_naive_clock_fails_closed(self):
         with self.assertRaises(ValueError):
