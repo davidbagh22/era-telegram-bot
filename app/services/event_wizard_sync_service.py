@@ -93,10 +93,29 @@ async def sync_event_wizard_tasks(session) -> int:
                 EventExperience.is_complete.is_(True),
                 Event.status.in_(PUBLIC_STATUSES),
             )
+            .order_by(Event.id)
         )
     ).all()
     changed = 0
     for event, experience in rows:
+        # The initial scan is intentionally not a lock: a concurrent worker
+        # may have materialised these tasks after we read it. Lock the single
+        # companion row, then refresh its JSON *under the lock* before deciding
+        # whether to insert or deactivate any EventActivity rows. Consistent
+        # event-id order avoids competing scheduler workers locking rows in
+        # opposite orders. SQLite ignores FOR UPDATE; the PostgreSQL race
+        # probe is the concurrency acceptance gate.
+        experience = await session.scalar(
+            select(EventExperience)
+            .where(EventExperience.event_id == event.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if experience is None or not experience.is_complete:
+            continue
+        await session.refresh(event, attribute_names=["status"])
+        if event.status not in PUBLIC_STATUSES:
+            continue
         configuration = _validated_task_configuration(experience)
         if configuration is None:
             logger.warning("Skipping malformed event wizard tasks event_id=%s", event.id)
