@@ -138,3 +138,8 @@ all forty requirements are ПРОВЕРЕНО and all known mandatory backlog is
 - Main push run `41124158813`: 4/5 SUCCESS (frontend, e2e, secret-scan, postgres-migration), Python `test` still IN_PROGRESS; no merge/deploy claimed.
 - PR #587 head `40b6a4aa60daf566077e5126d249e483a41d4794`: E2E, frontend, secret-scan and postgres-migration SUCCESS; Python `test` and separate Tests IN_PROGRESS. E2E completed the mocked poster-replacement/no-republish scenario; this is not real Telegram acceptance.
 - PR #584 marked ready for review without changing HEAD; source-grounded risk comment `6533081037` records unchanged feedback eligibility issue #585. PR #587 review comment `6533081651` records image-only removal and B03 distinction. Both await the required release gates. Render still last confirmed LIVE `1a8b635792e0b931e079d99dde380bd1a2ffe706`.
+
+### 00:52 Asia/Yerevan latest gate
+
+- PR #587 exact head `40b6a4aa60daf566077e5126d249e483a41d4794`: Bot checks **5/5 SUCCESS** including browser E2E. Separate Tests run `41124442132` remains IN_PROGRESS; do not merge yet. PR #587 remains DRAFT.
+- Main push run `41124158813` remains **4/5 SUCCESS**, Python test IN_PROGRESS; automatic Render exact SHA `ece02e943eba890cb7363a18c938b8070b45fa07` not yet confirmed LIVE. Previous LIVE `1a8b635792e0b931e079d99dde380bd1a2ffe706` remains last confirmed. This is an asynchronous CI wait, not a bypassable failure; no manual deploy. No new real Telegram acceptance or changes to the 1/40 verified count.
