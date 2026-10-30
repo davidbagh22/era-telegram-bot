@@ -1,3 +1,8 @@
+### 2026-10-30 ~08:34 Asia/Yerevan — final CI checkpoint; no unsafe merge or deploy
+
+- #560 exact head `bdf3e3432472c515c1494e5deda47c801d4e5d23` Bot checks run `41002467220` **5/5 SUCCESS** (including real isolated PostgreSQL poisoned-cursor probe); standalone Tests `41002467254` still **IN_PROGRESS**. Source review `5708051478` complete. **PR remains DRAFT/unmerged** until exact-head 6/6, then expected-head merge only after confirming previous main CI/automatic LIVE. No real Telegram or production SQL.
+- Main `88d4c4a5ea554b060f0b4e1c27c97339fca59a43` push Bot checks `41002354638` **4/5 SUCCESS**, test still **IN_PROGRESS**; last Render LIVE still previous `a79f81bd1930295343a939ec45b0993dddfe96d5`. No manual deploy; exact new LIVE and eight HTTP route gates unverified. Next run must re-read fresh SHA/checks/deploy and this checkpoint before acting. All other blockers remain as below.
+
 ### 2026-10-30 ~08:25 Asia/Yerevan — same-run CI progress and PostgreSQL proof (no new release)
 
 - Re-fetched GitHub main exact `88d4c4a5ea554b060f0b4e1c27c97339fca59a43`. Push Bot checks `41002354638`: **4/5 SUCCESS** (secret-scan, frontend, postgres-migration, e2e), test IN_PROGRESS. **Do not call main CI complete or LIVE**. Last Render LIVE at check remains prior `a79f81bd1930295343a939ec45b0993dddfe96d5` on `dep-dbi0su7b9u1s73dj9u4g`.
