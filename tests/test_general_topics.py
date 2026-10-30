@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy import select
 
 from app.config import Settings
@@ -59,6 +59,29 @@ class GeneralTopicsTests(IsolatedAsyncioTestCase):
         self.bot.create_forum_topic.side_effect = RuntimeError("timeout after remote create")
         self.assertIsNone(await ensure_topic(
             self.bot, self.settings, "notifications", session_factory=self.sessions))
+        self.assertIsNone(await ensure_topic(
+            self.bot, self.settings, "notifications", session_factory=self.sessions))
+        self.bot.create_forum_topic.assert_awaited_once()
+        async with self.sessions() as session:
+            row = await session.scalar(select(AppSetting).where(
+                AppSetting.key == "general_forum:-100123:notifications"))
+            self.assertEqual(json.loads(row.value), {"state": "creating"})
+
+    async def test_acknowledgement_commit_failure_does_not_recreate_topic(self):
+        # Telegram confirms the topic but the DB acknowledgement is lost.
+        real_commit = AsyncSession.commit
+        commits = 0
+
+        async def fail_second_commit(session):
+            nonlocal commits
+            commits += 1
+            if commits == 2:
+                raise RuntimeError("acknowledgement database outage")
+            return await real_commit(session)
+
+        with patch.object(AsyncSession, "commit", new=fail_second_commit):
+            self.assertIsNone(await ensure_topic(
+                self.bot, self.settings, "notifications", session_factory=self.sessions))
         self.assertIsNone(await ensure_topic(
             self.bot, self.settings, "notifications", session_factory=self.sessions))
         self.bot.create_forum_topic.assert_awaited_once()
