@@ -6,7 +6,6 @@ import { BottomSheet } from "../components/BottomSheet";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { MonoLabel } from "../components/MonoLabel";
-import { ProgressBar } from "../components/ProgressBar";
 import { Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { useToast } from "../components/Toast";
@@ -15,7 +14,6 @@ import { CareerPortfolioScreen } from "./CareerPortfolioScreen";
 import { ReferralScreen } from "./ReferralScreen";
 import type { PortfolioEntry } from "../types/profile";
 
-const GROWTH_LABELS = ["Участник", "Активный", "Лидер"];
 type DashboardCell = "projects" | "events" | "tasks" | "volunteer" | "leadership" | "achievements";
 
 const DASHBOARD_CELLS: { key: DashboardCell; label: string; title: string }[] = [
@@ -138,34 +136,11 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
             <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-secondary)" }}>{data.growth.label}{data.city ? ` · ${data.city}` : ""}</p>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "0.6rem", marginTop: "1rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.6rem", marginTop: "1rem" }}>
           <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{data.stats.points ?? 0}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.75rem" }}>баллов</span></div>
           <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{totalResults}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.75rem" }}>записей в обзоре</span></div>
-          <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{data.growth.level_index + 1}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.75rem" }}>этап пути</span></div>
         </div>
       </Card>
-
-      <section>
-        <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Мой путь</h2>
-        <ProgressBar currentIndex={data.growth.level_index} totalSteps={data.growth.level_count} labels={GROWTH_LABELS} />
-        {data.growth_criteria.next_label && data.growth_criteria.criteria.length > 0 && (
-          <Card style={{ marginTop: "0.75rem" }}>
-            <strong>До уровня «{data.growth_criteria.next_label}»</strong>
-            <p style={{ margin: "0.3rem 0 0.7rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>
-              Достаточно выполнить любой из подтверждённых вариантов. Баллы сами по себе уровень не меняют.
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {data.growth_criteria.criteria.map((criterion) => (
-                <div key={criterion.key} style={{ display: "grid", gridTemplateColumns: "1.4rem 1fr auto", gap: "0.5rem", alignItems: "start" }}>
-                  <span aria-hidden="true" style={{ color: criterion.done ? "var(--era-success)" : "var(--era-text-muted)", fontWeight: 800 }}>{criterion.done ? "✓" : "○"}</span>
-                  <span style={{ lineHeight: 1.4 }}>{criterion.label}</span>
-                  <span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)", whiteSpace: "nowrap" }}>{criterion.current}/{criterion.required}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-      </section>
 
       <section>
         <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Мой вклад и опыт</h2>
@@ -180,7 +155,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
       </section>
 
       <section>
-        <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Лента пути</h2>
+        <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>История участия</h2>
         {timeline.length === 0 ? <EmptyState text="История появится после первых подтверждённых действий." /> : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
             {timeline.map((entry, index) => (
