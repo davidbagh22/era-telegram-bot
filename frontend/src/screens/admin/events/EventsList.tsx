@@ -6,11 +6,12 @@ import { fetchOperationalEvents } from "../../../api/client";
 
 interface EventsListProps {
   onSelect: (eventId: number) => void;
+  onEditPoster?: (eventId: number) => void;
 }
 
 // Events already approved/published — the entry point into per-event
 // attendance and points, distinct from the moderation queue above.
-export function EventsList({ onSelect }: EventsListProps) {
+export function EventsList({ onSelect, onEditPoster }: EventsListProps) {
   const state = useAsync(() => fetchOperationalEvents(), []);
 
   if (state.status === "loading") {
@@ -43,6 +44,11 @@ export function EventsList({ onSelect }: EventsListProps) {
               Записано: {event.registered} · Свободно: {event.free} · За визит: +{event.points_for_visit}
             </p>
           </button>
+          {onEditPoster && (
+            <button type="button" onClick={() => onEditPoster(event.id)} style={{ marginTop: ".6rem" }}>
+              Изменить афишу
+            </button>
+          )}
         </Card>
       ))}
     </div>
