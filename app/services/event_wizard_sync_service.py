@@ -60,8 +60,14 @@ def _validated_task_configuration(experience) -> tuple[list[dict], list[int]] | 
         # Reject the entire malformed row before writing any of its tasks.
         if len(title) > 255:
             return None
+        raw_points = item.get("points")
+        # JSON booleans are int subclasses in Python, and int(1.9) silently
+        # truncates. Neither is a valid points policy for a legacy task.
+        # Reject the entire event before any activity/points mutation.
+        if isinstance(raw_points, (bool, float)):
+            return None
         try:
-            points = int(item.get("points") or 0)
+            points = int(raw_points or 0)
         except (TypeError, ValueError, OverflowError):
             return None
         if points > 2_147_483_647:
