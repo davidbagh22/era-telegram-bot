@@ -331,6 +331,58 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
                 self.assertFalse(result["ok"])
                 self.assertEqual(result["error"], "invalid_redirect_url")
 
+    def test_redirected_health_cannot_masquerade_as_pending_deploy(self):
+        for redirected, expected_error in (
+            ("https://other.example/health", "cross_origin_redirect"),
+            (smoke.PRODUCTION_URL + "/login", "redirected_route"),
+        ):
+            response = FakeResponse(
+                redirected, 200, b'{"status":"ok","commit":"bbbbbbb"}'
+            )
+            # Keep the health JSON contract valid even when the redirect
+            # target is /login; this isolates the origin/route guard.
+            response.headers["Content-Type"] = "application/json"
+            with self.subTest(redirected=redirected), patch.object(
+                smoke, "urlopen", return_value=response,
+            ):
+                result = smoke.check(
+                    smoke.PRODUCTION_URL, "/health", frozenset({200}), 3.0,
+                    expected_sha="a" * 40,
+                )
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["error"], expected_error)
+
+    def test_pending_live_sha_is_not_a_passing_production_probe(self):
+        def fake_open(request, timeout):
+            body = b'{"status":"ok","commit":"bbbbbbb"}' if request.full_url.endswith("/health") else None
+            status = 200 if request.full_url.endswith(("/health", "/ready", "/app/")) else 401
+            return FakeResponse(request.full_url, status, body)
+
+        expected_sha = "a" * 40
+        with patch.object(smoke, "urlopen", side_effect=fake_open):
+            status, checks = smoke.run(expected_sha=expected_sha)
+        self.assertEqual(status, 1)
+        self.assertTrue(smoke.is_pending_deploy_only(checks))
+        self.assertFalse(smoke.is_pending_deploy_only(checks[:-1]))
+        damaged = [dict(item) for item in checks]
+        damaged[6]["ok"] = False
+        damaged[6]["error"] = "auth_response_not_json"
+        self.assertFalse(smoke.is_pending_deploy_only(damaged))
+        damaged = [dict(item) for item in checks]
+        damaged[0]["commit_prefix"] = "notsha!"
+        self.assertFalse(smoke.is_pending_deploy_only(damaged))
+
+        with patch.object(smoke, "urlopen", side_effect=fake_open), patch(
+            "sys.argv", ["smoke", "--expected-sha", expected_sha, "--pending-exit-code"]
+        ), patch("builtins.print") as printed:
+            self.assertEqual(smoke.main(), 3)
+            self.assertEqual(json.loads(printed.call_args.args[0])["result"], "PENDING_DEPLOY")
+        with patch.object(smoke, "urlopen", side_effect=fake_open), patch(
+            "sys.argv", ["smoke", "--expected-sha", expected_sha]
+        ), patch("builtins.print") as printed:
+            self.assertEqual(smoke.main(), 1)
+            self.assertEqual(json.loads(printed.call_args.args[0])["result"], "FAIL")
+
     def test_health_commit_prefix_is_corroboration_not_exact_sha_proof(self):
         sha = "a88dca9220b246727553b266b0a36786464bfc25"
 
