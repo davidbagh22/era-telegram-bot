@@ -165,7 +165,14 @@ async def selfie_photo(
 
 
 @router.message(SelfieStates.photo)
-async def selfie_not_photo(message: Message) -> None:
+async def selfie_not_photo(
+    message: Message, state: FSMContext, user: User | None
+) -> None:
+    # A stale non-photo reply must not keep a revoked participant in the selfie FSM.
+    if not _approved(user):
+        await state.clear()
+        await message.answer(texts.SELFIE_INVALID)
+        return
     await message.answer("Отправьте фотографию как изображение.")
 
 
