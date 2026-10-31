@@ -31,7 +31,8 @@ def _fixtures(status):
         scalar=AsyncMock(side_effect=[SimpleNamespace(event_id=13), existing]),
         add=MagicMock(),
     )
-    user = SimpleNamespace(id=7, first_name="Участник", last_name=None)
+    user = SimpleNamespace(id=7, first_name="Участник", last_name=None,
+                           application_status="approved", is_blocked=False, is_archived=False)
     return message, state, session, user, existing
 
 
