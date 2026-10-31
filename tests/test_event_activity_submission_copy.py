@@ -28,7 +28,8 @@ class ActivitySubmissionCopyTests(IsolatedAsyncioTestCase):
             scalar=AsyncMock(side_effect=[SimpleNamespace(event_id=13), None]),
             add=MagicMock(),
         )
-        user = SimpleNamespace(id=7, first_name="Тест", last_name="Участник")
+        user = SimpleNamespace(id=7, first_name="Тест", last_name="Участник",
+                               application_status="approved", is_blocked=False, is_archived=False)
         with patch(
             "app.handlers.participant.events.notify_admins",
             new_callable=AsyncMock,
