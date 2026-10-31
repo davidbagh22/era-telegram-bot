@@ -12,6 +12,7 @@ from app.handlers.participant.events import (
     attendance_confirmation,
     feedback_finish,
     feedback_start,
+    selfie_not_photo,
     selfie_photo,
     selfie_start,
 )
@@ -101,6 +102,36 @@ class SupplementalEventCallbackGuards(IsolatedAsyncioTestCase):
         session.get.assert_awaited_once()
         state.set_state.assert_awaited_once_with(SelfieStates.photo)
         state.update_data.assert_awaited_once_with(selfie_event_id=42)
+
+    async def test_selfie_non_photo_clears_stale_fsm_for_inactive_user(self):
+        cases = (
+            None,
+            SimpleNamespace(id=1, application_status=ApplicationStatus.PENDING,
+                            is_blocked=False, is_archived=False),
+            SimpleNamespace(id=1, application_status=ApplicationStatus.REJECTED,
+                            is_blocked=False, is_archived=False),
+            SimpleNamespace(id=1, application_status=ApplicationStatus.APPROVED,
+                            is_blocked=True, is_archived=False),
+            SimpleNamespace(id=1, application_status=ApplicationStatus.APPROVED,
+                            is_blocked=False, is_archived=True),
+        )
+        for user in cases:
+            with self.subTest(user=str(user)):
+                message = SimpleNamespace(answer=AsyncMock())
+                state = _state({"selfie_event_id": 42})
+                await selfie_not_photo(message, state, user)
+                state.clear.assert_awaited_once()
+                state.get_data.assert_not_awaited()
+                state.update_data.assert_not_awaited()
+                message.answer.assert_awaited_once()
+
+    async def test_selfie_non_photo_approved_user_keeps_photo_prompt(self):
+        message = SimpleNamespace(answer=AsyncMock())
+        state = _state({"selfie_event_id": 42})
+        await selfie_not_photo(message, state, _approved_user())
+        state.clear.assert_not_awaited()
+        state.get_data.assert_not_awaited()
+        message.answer.assert_awaited_once_with("Отправьте фотографию как изображение.")
 
     async def test_selfie_photo_rechecks_approval_before_fsm_or_database(self):
         cases = (
