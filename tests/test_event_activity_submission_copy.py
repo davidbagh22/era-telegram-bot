@@ -20,11 +20,12 @@ class ActivitySubmissionCopyTests(IsolatedAsyncioTestCase):
             clear=AsyncMock(),
         )
         activity = SimpleNamespace(
-            id=42, submission_type="text", title="Тестовая активность", points=10,
+            id=42, event_id=13, is_active=True, deadline=None,
+            submission_type="text", title="Тестовая активность", points=10,
         )
         session = SimpleNamespace(
             get=AsyncMock(return_value=activity),
-            scalar=AsyncMock(return_value=None),
+            scalar=AsyncMock(side_effect=[SimpleNamespace(event_id=13), None]),
             add=MagicMock(),
         )
         user = SimpleNamespace(id=7, first_name="Тест", last_name="Участник")
