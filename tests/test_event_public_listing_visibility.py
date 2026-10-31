@@ -77,6 +77,21 @@ class PublicListingVisibilityTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(hidden.show_in_public_listing)
             self.assertEqual(await published_events(session), [])
             self.assertEqual(len(await list_events(session, user, "mine")), 1)
+            # Repeating the same request must not create another audit record or
+            # alter participation. This is important for mobile retry behavior.
+            repeated = await set_event_public_listing(
+                event.id, EventListingPatch(visible=False), user, session,
+            )
+            self.assertFalse(repeated.show_in_public_listing)
+            await session.flush()
+            hidden_actions = (await session.scalars(select(AuditLog.action).where(
+                AuditLog.entity_type == "event", AuditLog.entity_id == event.id))).all()
+            self.assertEqual(hidden_actions.count("event.public_listing_visibility_changed"), 1)
+            self.assertEqual(event.status, EventStatus.PUBLISHED)
+            self.assertIsNotNone(await session.scalar(select(EventRegistration).where(
+                EventRegistration.event_id == event.id,
+                EventRegistration.user_id == user.id,
+            )))
             restored = await set_event_public_listing(event.id, EventListingPatch(visible=True), user, session)
             self.assertTrue(restored.show_in_public_listing)
             self.assertEqual([e.id for e in await published_events(session)], [event.id])
