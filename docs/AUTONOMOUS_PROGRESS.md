@@ -501,3 +501,9 @@ all forty requirements are ПРОВЕРЕНО and all known mandatory backlog is
 - Strict acceptance **1/40 ПРОВЕРЕНО = 2.5%**, 39 not accepted. Last routine daily summary date **2026-10-31**, do not send another or any routine notification after 19:00 Asia/Yerevan.
 - Safety: no new ERA messages, no `Траектория открытий` 31 Oct, no Mafia, uncertain replay, fake production accounts/events, real data/points/participation/roles/security settings writes, destructive migrations, external database opening or manual deploy. `@MVKSRS_bot` separate.
 - **Next concrete action:** poll exact-head #589 runs `41220070880` (five jobs) and `41220071011` (one); if a regression fails, inspect job logs and repair on the same branch, then rerun all 6/6. Keep #589 DRAFT despite green CI pending human privacy and multi-role gates. Continue independent safe task after verifying current main/LIVE. Preserve this checkpoint append-only; do not overwrite concurrent work.
+
+
+#### 20:3x exact follow-up
+
+- Re-read main branch API: exact HEAD `cac33f325c77a557aac14960470f10c418408ecb`, same as automatic Render LIVE; main push run `41210595444` **5/5 SUCCESS**. Render app log shows internal `GET /ready` **200** at 2026-10-31 16:31:27–16:32:07 UTC. This does not prove public HTTP reachability or multi-role acceptance.
+- New #589 HEAD `7b49b3f46b22e34824ba155ecda459ac24b2c9a9`: Bot checks `41220070880` **2/5 SUCCESS** (frontend, secret-scan), Python test/e2e/postgres-migration IN_PROGRESS; Tests `41220071011` IN_PROGRESS. No failure seen in this poll, but **NOT 6/6**. No merge, no new LIVE SHA. Keep privacy/direct-link and rollback policy gates intact.
