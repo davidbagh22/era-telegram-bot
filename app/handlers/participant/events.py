@@ -123,6 +123,20 @@ async def selfie_photo(
         await state.clear()
         await message.answer(texts.SELFIE_INVALID)
         return
+    # The event or registration can disappear or move to another date while
+    # the participant is uploading a photo. Enforce the same eligibility
+    # conditions as selfie_start before creating or updating a proof.
+    event = await session.get(Event, event_id)
+    registration = await session.scalar(
+        select(EventRegistration).where(
+            EventRegistration.event_id == event_id,
+            EventRegistration.user_id == user.id,
+        )
+    )
+    if event is None or registration is None or event.event_date != date.today():
+        await state.clear()
+        await message.answer(texts.SELFIE_INVALID)
+        return
     exists = await session.scalar(
         select(AttendanceProof).where(
             AttendanceProof.event_id == event_id,

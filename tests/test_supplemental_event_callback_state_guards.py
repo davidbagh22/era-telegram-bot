@@ -137,19 +137,54 @@ class SupplementalEventCallbackGuards(IsolatedAsyncioTestCase):
         )
         state = _state({"selfie_event_id": 42})
         session = SimpleNamespace(
-            scalar=AsyncMock(return_value=None),
+            get=AsyncMock(return_value=SimpleNamespace(event_date=date.today())),
+            scalar=AsyncMock(side_effect=[SimpleNamespace(), None]),
             add=MagicMock(),
             flush=AsyncMock(),
         )
         with patch("app.handlers.participant.events.notify_admins", new_callable=AsyncMock) as notify:
             await selfie_photo(message, state, session, _approved_user(),
                               SimpleNamespace(), SimpleNamespace())
-        session.scalar.assert_awaited_once()
+        session.get.assert_awaited_once()
+        self.assertEqual(session.scalar.await_count, 2)
         session.add.assert_called_once()
         session.flush.assert_awaited_once()
         notify.assert_awaited_once()
         state.clear.assert_awaited_once()
         message.answer.assert_awaited_once()
+
+    async def test_selfie_photo_rechecks_event_and_registration_before_writes(self):
+        # Eligibility can change after selfie_start has already set the FSM.
+        cases = (
+            ("event_deleted", None, SimpleNamespace()),
+            ("registration_missing", SimpleNamespace(event_date=date.today()), None),
+            ("event_rescheduled", SimpleNamespace(event_date=date(2000, 1, 1)),
+             SimpleNamespace()),
+        )
+        for label, event, registration in cases:
+            with self.subTest(case=label):
+                message = SimpleNamespace(
+                    photo=[SimpleNamespace(file_id="isolated-test-file")],
+                    answer=AsyncMock(),
+                )
+                state = _state({"selfie_event_id": 42})
+                session = SimpleNamespace(
+                    get=AsyncMock(return_value=event),
+                    scalar=AsyncMock(return_value=registration),
+                    add=MagicMock(),
+                    flush=AsyncMock(),
+                )
+                with patch("app.handlers.participant.events.notify_admins",
+                           new_callable=AsyncMock) as notify:
+                    await selfie_photo(message, state, session, _approved_user(),
+                                      SimpleNamespace(), SimpleNamespace())
+                session.get.assert_awaited_once()
+                session.scalar.assert_awaited_once()
+                session.add.assert_not_called()
+                session.flush.assert_not_awaited()
+                notify.assert_not_awaited()
+                state.clear.assert_awaited_once()
+                message.answer.assert_awaited_once()
 
     async def test_selfie_photo_invalid_fsm_does_not_query_or_notify(self):
         for value in (None, True, -1, "bad", "2147483648", "９", "9" * 5000):
