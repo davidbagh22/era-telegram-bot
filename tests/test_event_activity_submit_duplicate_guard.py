@@ -19,7 +19,8 @@ def _fixtures(status):
         clear=AsyncMock(),
     )
     activity = SimpleNamespace(
-        id=42, submission_type="text", title="Активность", points=5,
+        id=42, event_id=13, is_active=True, deadline=None,
+        submission_type="text", title="Активность", points=5,
     )
     existing = SimpleNamespace(
         status=status, text="Оригинальный материал",
@@ -27,10 +28,11 @@ def _fixtures(status):
     )
     session = SimpleNamespace(
         get=AsyncMock(return_value=activity),
-        scalar=AsyncMock(return_value=existing),
+        scalar=AsyncMock(side_effect=[SimpleNamespace(event_id=13), existing]),
         add=MagicMock(),
     )
-    user = SimpleNamespace(id=7, first_name="Участник", last_name=None)
+    user = SimpleNamespace(id=7, first_name="Участник", last_name=None,
+                           application_status="approved", is_blocked=False, is_archived=False)
     return message, state, session, user, existing
 
 

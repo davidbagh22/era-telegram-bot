@@ -327,9 +327,30 @@ async def event_activity_submit(
         await state.clear()
         await message.answer("Активность недоступна. Откройте её заново.")
         return
-    activity = await session.get(EventActivity, activity_id)
-    if activity is None:
+    # FSM can outlive approval, registration or the activity deadline. Recheck
+    # eligibility at submission time rather than trusting the earlier callback.
+    if not _approved(user):
         await state.clear()
+        await message.answer("Активность недоступна. Откройте её заново.")
+        return
+    activity = await session.get(EventActivity, activity_id)
+    if (
+        activity is None
+        or not activity.is_active
+        or (activity.deadline and activity.deadline <= datetime.now().astimezone())
+    ):
+        await state.clear()
+        await message.answer("Эта активность уже закрыта")
+        return
+    registration = await session.scalar(
+        select(EventRegistration).where(
+            EventRegistration.event_id == activity.event_id,
+            EventRegistration.user_id == user.id,
+        )
+    )
+    if registration is None:
+        await state.clear()
+        await message.answer("Активность доступна участникам мероприятия")
         return
     file_id = file_type = None
     if message.photo:
