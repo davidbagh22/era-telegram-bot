@@ -16,7 +16,7 @@ from app.api.v1.admin_event_create import router as admin_event_router
 from app.config import Settings
 
 
-PNG = b"\\x89PNG\\r\\n\\x1a\\n" + b"isolated-fixture"
+PNG = b"\x89PNG\r\n\x1a\n" + b"isolated-fixture"
 
 
 def _participant(*, grants=()):
