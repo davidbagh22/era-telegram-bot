@@ -196,8 +196,14 @@ async def feedback_start(
 
 
 @router.callback_query(FeedbackStates.rating, F.data.startswith("feedback:rating:"))
-async def feedback_rating(call: CallbackQuery, state: FSMContext) -> None:
+async def feedback_rating(
+    call: CallbackQuery, state: FSMContext, user: User | None
+) -> None:
     await call.answer()
+    if not _approved(user):
+        await state.clear()
+        await call.message.answer("Отзывы доступны только подтверждённым участникам.")
+        return
     # Telegram callback data is untrusted, including stale and forged buttons.
     raw_rating = (call.data or "").removeprefix("feedback:rating:")
     if not (call.data or "").startswith("feedback:rating:") or raw_rating not in {"1", "2", "3", "4", "5"}:
@@ -209,7 +215,13 @@ async def feedback_rating(call: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.message(FeedbackStates.liked)
-async def feedback_liked(message: Message, state: FSMContext) -> None:
+async def feedback_liked(
+    message: Message, state: FSMContext, user: User | None
+) -> None:
+    if not _approved(user):
+        await state.clear()
+        await message.answer("Отзывы доступны только подтверждённым участникам.")
+        return
     value = clean_text(message.text or "", 1000)
     if not value:
         await message.answer(texts.INVALID_INPUT)
@@ -220,7 +232,13 @@ async def feedback_liked(message: Message, state: FSMContext) -> None:
 
 
 @router.message(FeedbackStates.improve)
-async def feedback_improve(message: Message, state: FSMContext) -> None:
+async def feedback_improve(
+    message: Message, state: FSMContext, user: User | None
+) -> None:
+    if not _approved(user):
+        await state.clear()
+        await message.answer("Отзывы доступны только подтверждённым участникам.")
+        return
     value = clean_text(message.text or "", 1000)
     if not value:
         await message.answer(texts.INVALID_INPUT)
