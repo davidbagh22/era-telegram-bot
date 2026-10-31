@@ -36,12 +36,10 @@ def rehearse(connection: sa.Connection) -> None:
     version = int(connection.exec_driver_sql("SHOW server_version_num").scalar_one())
     assert 180000 <= version < 190000, f"Expected disposable PostgreSQL 18, got {version}"
 
-    # Transactional schema creation means the entire fixture disappears on rollback.
-    connection.exec_driver_sql("CREATE SCHEMA era_visibility_ci_probe")
-    connection.exec_driver_sql(
-        "SET LOCAL search_path TO era_visibility_ci_probe, public"
-    )
-    assert connection.exec_driver_sql("SELECT current_schema()").scalar_one() == "era_visibility_ci_probe"
+    # The probe runs BEFORE Alembic on a fresh disposable CI database.
+    # The entire fixture, including DDL, is rolled back without a commit.
+    assert connection.exec_driver_sql("SELECT current_schema()").scalar_one() == "public"
+    assert not sa.inspect(connection).get_table_names(), "Expected empty disposable database"
 
     # Existing event metadata and registration records are synthetic and isolated.
     connection.exec_driver_sql(
@@ -96,11 +94,11 @@ def rehearse(connection: sa.Connection) -> None:
         "SELECT show_in_public_listing FROM event_experiences WHERE event_id = 7"
     ).scalar_one() is False
 
+    # Only synthetic fixture tables are dropped inside the uncommitted transaction.
+    # The database remains clean for the following full Alembic migration chain.
+    connection.exec_driver_sql("DROP TABLE event_registrations")
+    connection.exec_driver_sql("DROP TABLE event_experiences")
     # Missing table must be rejected without creating an empty replacement.
-    connection.exec_driver_sql("CREATE SCHEMA era_visibility_ci_missing")
-    connection.exec_driver_sql(
-        "SET LOCAL search_path TO era_visibility_ci_missing, public"
-    )
     try:
         migration.upgrade()
     except RuntimeError as exc:
