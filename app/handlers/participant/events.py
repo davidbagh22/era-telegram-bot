@@ -150,8 +150,13 @@ async def selfie_not_photo(message: Message) -> None:
 
 
 @router.callback_query(F.data.startswith("feedback:start:"))
-async def feedback_start(call: CallbackQuery, state: FSMContext) -> None:
+async def feedback_start(
+    call: CallbackQuery, state: FSMContext, user: User | None
+) -> None:
     await call.answer()
+    if not _approved(user):
+        await call.message.answer("Отзывы доступны только подтверждённым участникам.")
+        return
     event_id = positive_pg_int_callback(call.data, "feedback:start:")
     if event_id is None:
         await call.message.answer("Мероприятие не найдено. Откройте отзыв заново.")
@@ -213,9 +218,13 @@ async def feedback_improve(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(FeedbackStates.wants_again, F.data.startswith("feedback:again:"))
 async def feedback_finish(
-    call: CallbackQuery, state: FSMContext, session: AsyncSession, user: User
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, user: User | None
 ) -> None:
     await call.answer()
+    if not _approved(user):
+        await state.clear()
+        await call.message.answer("Отзывы доступны только подтверждённым участникам.")
+        return
     # Stale/forged buttons and corrupted FSM data must not reach PostgreSQL.
     if call.data not in {"feedback:again:yes", "feedback:again:no", "feedback:again:unsure"}:
         await call.message.answer("Выберите один из предложенных вариантов.")
