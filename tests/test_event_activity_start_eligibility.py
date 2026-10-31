@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
-from app.database.models import EventActivity, EventRegistration, EventActivitySubmission
+from app.database.models import EventActivity
 from app.handlers.participant.events import event_activity_start
 
 
