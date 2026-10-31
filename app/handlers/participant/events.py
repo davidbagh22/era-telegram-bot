@@ -107,10 +107,16 @@ async def selfie_photo(
     message: Message,
     state: FSMContext,
     session: AsyncSession,
-    user: User,
+    user: User | None,
     bot: Bot,
     settings: Settings,
 ) -> None:
+    # The photo can arrive after the user is blocked or their application is revoked.
+    # Fail closed before reading stale FSM data or touching attendance proofs.
+    if not _approved(user):
+        await state.clear()
+        await message.answer(texts.SELFIE_INVALID)
+        return
     data = await state.get_data()
     event_id = positive_pg_int_value(data.get("selfie_event_id"))
     if event_id is None:
