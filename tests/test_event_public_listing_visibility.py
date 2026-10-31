@@ -100,6 +100,38 @@ class PublicListingVisibilityTests(unittest.IsolatedAsyncioTestCase):
                 AuditLog.entity_type == "event", AuditLog.entity_id == event.id))).all()
             self.assertEqual(actions.count("event.public_listing_visibility_changed"), 2)
 
+    async def test_hidden_completed_registration_does_not_reappear_in_general_afisha(self):
+        # The general tab historically unions registered completed events so
+        # attendance codes remain accessible. A hidden completed event must
+        # remain in personal history, not reappear in the public listing.
+        async with self.factory() as session:
+            user, hidden = await self._user_event(session, EventStatus.COMPLETED)
+            visible = Event(
+                title="Visible completed", description="Test",
+                event_date=hidden.event_date, event_time=time(19, 0),
+                location="Test", format="offline", status=EventStatus.COMPLETED,
+                created_by=user.id,
+            )
+            session.add(visible)
+            await session.flush()
+            session.add_all([
+                EventExperience(event_id=hidden.id, show_in_public_listing=False),
+                EventExperience(event_id=visible.id, show_in_public_listing=True),
+                EventRegistration(event_id=hidden.id, user_id=user.id, status=RegistrationStatus.REGISTERED),
+                EventRegistration(event_id=visible.id, user_id=user.id, status=RegistrationStatus.REGISTERED),
+            ])
+            await session.flush()
+            self.assertEqual(
+                {event.id for event, _ in await list_events(session, user, "all")},
+                {visible.id},
+            )
+            for scope in ("mine", "past"):
+                with self.subTest(scope=scope):
+                    self.assertEqual(
+                        {event.id for event, _ in await list_events(session, user, scope)},
+                        {hidden.id, visible.id},
+                    )
+
     async def test_unpublished_event_rejects_visibility_mutation(self):
         async with self.factory() as session:
             user, event = await self._user_event(session, EventStatus.DRAFT)
