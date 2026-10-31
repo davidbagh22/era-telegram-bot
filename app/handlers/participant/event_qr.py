@@ -118,11 +118,6 @@ async def _generate(
     bot: Bot,
     settings: Settings,
 ) -> None:
-    # Recheck authorization at the final QR boundary as well as in handlers.
-    # An internal caller must not bypass approval or role restrictions.
-    if not _approved(user) or not _can_manage_qr(user):
-        await message.answer("QR вход доступен ответственным лидерам и администраторам.")
-        return
     if not _can_manage_all_qr(user) and event.responsible_id != user.id:
         await message.answer("У вас нет доступа к QR этого мероприятия.")
         return
