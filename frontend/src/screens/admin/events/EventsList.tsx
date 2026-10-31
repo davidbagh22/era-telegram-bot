@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { setEventPublicListing } from "../../../api/adminEvents";
+import { describeActionError } from "../../../api/client";
 import { Card } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { StatusBadge } from "../../../components/StatusBadge";
@@ -13,6 +16,24 @@ interface EventsListProps {
 // attendance and points, distinct from the moderation queue above.
 export function EventsList({ onSelect, onEditPoster }: EventsListProps) {
   const state = useAsync(() => fetchOperationalEvents(), []);
+  const [overrides, setOverrides] = useState<Record<number, boolean>>({});
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const toggleListing = async (eventId: number, currentlyVisible: boolean) => {
+    if (busyId !== null) return;
+    if (currentlyVisible && !window.confirm("Скрыть мероприятие только из общей афиши? Регистрации, баллы и история сохранятся.")) return;
+    setBusyId(eventId);
+    setError(null);
+    try {
+      const updated = await setEventPublicListing(eventId, !currentlyVisible);
+      setOverrides((prev) => ({ ...prev, [eventId]: updated.show_in_public_listing }));
+    } catch (reason) {
+      setError(describeActionError(reason));
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   if (state.status === "loading") {
     return <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>;
@@ -26,6 +47,7 @@ export function EventsList({ onSelect, onEditPoster }: EventsListProps) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      {error && <p role="alert">Не удалось изменить видимость: {error}</p>}
       {state.data.map((event) => (
         <Card key={event.id} style={{ padding: "0.75rem 1rem" }}>
           <button
@@ -45,9 +67,18 @@ export function EventsList({ onSelect, onEditPoster }: EventsListProps) {
             </p>
           </button>
           {onEditPoster && (
-            <button type="button" onClick={() => onEditPoster(event.id)} style={{ marginTop: ".6rem" }}>
-              Изменить афишу
-            </button>
+            <>
+              <button type="button" onClick={() => onEditPoster(event.id)} style={{ marginTop: ".6rem" }}>
+                Изменить афишу
+              </button>
+              <button type="button" disabled={busyId !== null}
+                onClick={() => void toggleListing(event.id, overrides[event.id] ?? (event.show_in_public_listing !== false))}
+                style={{ marginTop: ".6rem", marginLeft: ".6rem" }}>
+                {(overrides[event.id] ?? (event.show_in_public_listing !== false)) ? "Скрыть из общей афиши" : "Вернуть в общую афишу"}
+              </button>
+              {(overrides[event.id] ?? (event.show_in_public_listing !== false)) === false &&
+                <p role="status" style={{ color: "var(--era-text-muted)" }}>Скрыто из общей афиши; данные участников сохранены.</p>}
+            </>
           )}
         </Card>
       ))}
