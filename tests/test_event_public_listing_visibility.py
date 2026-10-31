@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 from datetime import date, time, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.api.v1.admin_event_create import EventListingPatch, set_event_public_listing
+from app.api.v1.admin_event_create import (
+    EventListingPatch, require_event_manager, router, set_event_public_listing,
+)
 from app.database.base import Base
 from app.database.event_experience import EventExperience
 from app.database.models import AuditLog, Event, EventRegistration, User
@@ -139,3 +143,35 @@ class PublicListingVisibilityTests(unittest.IsolatedAsyncioTestCase):
                 await set_event_public_listing(event.id, EventListingPatch(visible=False), user, session)
             self.assertEqual(caught.exception.status_code, 409)
             self.assertIsNone(await session.get(EventExperience, event.id))
+
+    async def test_listing_route_requires_manager_dependency(self):
+        # This protects the HTTP boundary, not merely the helper called by tests.
+        route = next(
+            item for item in router.routes
+            if item.path.endswith("/{event_id}/listing") and "PATCH" in item.methods
+        )
+        self.assertTrue(any(
+            dependency.call is require_event_manager
+            for dependency in route.dependant.dependencies
+        ))
+        with patch("app.api.v1.admin_event_create.can_manage_events", return_value=False) as allowed:
+            with self.assertRaises(HTTPException) as denied:
+                await require_event_manager(
+                    user=SimpleNamespace(telegram_id=100456), settings=SimpleNamespace(),
+                )
+        self.assertEqual(denied.exception.status_code, 403)
+        allowed.assert_called_once()
+
+    async def test_unknown_event_cannot_create_visibility_or_audit_rows(self):
+        async with self.factory() as session:
+            user, existing = await self._user_event(session)
+            unknown_id = existing.id + 1000
+            with self.assertRaises(HTTPException) as missing:
+                await set_event_public_listing(
+                    unknown_id, EventListingPatch(visible=False), user, session,
+                )
+            self.assertEqual(missing.exception.status_code, 404)
+            self.assertIsNone(await session.get(EventExperience, unknown_id))
+            self.assertFalse((await session.scalars(select(AuditLog).where(
+                AuditLog.entity_type == "event", AuditLog.entity_id == unknown_id,
+            ))).all())
