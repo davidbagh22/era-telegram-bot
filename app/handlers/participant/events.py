@@ -352,6 +352,12 @@ async def event_activity_submit(
             EventActivitySubmission.user_id == user.id,
         )
     )
+    # A stale FSM message must not overwrite a submission already in review or
+    # approved for points. Rejected submissions may still be corrected.
+    if existing and existing.status in {"pending", "approved"}:
+        await state.clear()
+        await message.answer("Ваш ответ уже сохранён")
+        return
     if existing:
         existing.text = text_value
         existing.file_id = file_id
