@@ -588,3 +588,9 @@ all forty requirements are ПРОВЕРЕНО and all known mandatory backlog is
 - High-risk #589 remains DRAFT pending direct-link privacy, migration downgrade policy and real admin/participant acceptance. Issues #585 feedback eligibility and #598 activity registration status require owner decisions. Strict acceptance **1/40 ПРОВЕРЕНО = 2.5%**, 39 unaccepted. Last daily summary date **2026-10-31** unchanged; no ordinary notice outside 09–19 Asia/Yerevan.
 - No prohibited `Траектория открытий` or other ERA publications, Mafia, uncertain delivery replay, fake production participants/events, real balances/registrations/roles/security changes, destructive migrations, external DB opening, manual deploy or @MVKSRS_bot changes.
 - **Next:** poll new main 5/5, automatic Render checksPass exact `fc573a813...` LIVE, bounded error/5xx and internal readiness; continue distinct unblocked task. Real admin/leader/staff/participant Telegram/Mini App, QR-v2 flag, authenticated production event list, external backup restore and legal approval **Не подтверждено**.
+
+#### 01:3x local follow-up — #602 post-merge gate
+
+- Exact new main `fc573a8132719621aaf47a92b0ba384eb523114b` push Bot checks **2/5 SUCCESS** (frontend and secret-scan); test, e2e and PostgreSQL migration IN_PROGRESS at latest poll. No failure reported, but **NOT 5/5**. Render still LIVE previous `2e8aa1c45c1399093596e81b44a8192d120e5d15`; new SHA **not yet deployed**. Do not manually deploy or skip checks.
+- Direct public `/ready` and `/health` via web were inaccessible; route-specific external smoke **Не подтверждено**. Internal Render `GET /ready` 200 on prior LIVE at 21:33 UTC; bounded app ERROR/HTTP 5xx queries empty, not a complete incident-free claim.
+- Next run: exact new main 5/5, automatic Render checksPass and LIVE exact SHA, then bounded production read-only checks and next independent task. Strict register remains 1/40, last daily summary 2026-10-31.
