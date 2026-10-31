@@ -54,6 +54,25 @@ class EventQrManagerScopeTests(IsolatedAsyncioTestCase):
         bot.get_me.assert_not_awaited()
         send.assert_not_awaited()
 
+    async def test_generation_boundary_rejects_unapproved_or_unprivileged_user(self):
+        users = (
+            _user(role=Role.ADMIN, approved=False),
+            _user(role=Role.ADMIN, blocked=True),
+            _user(role=Role.PARTICIPANT),
+        )
+        for user in users:
+            with self.subTest(role=user.role, status=user.application_status):
+                message, bot, settings = _fixtures()
+                with patch(
+                    "app.handlers.participant.event_qr.safe_answer_photo",
+                    new_callable=AsyncMock,
+                ) as send:
+                    await _generate(message, user, _event(), bot, settings)
+                message.answer.assert_awaited_once()
+                self.assertIn("доступен", message.answer.await_args.args[0])
+                bot.get_me.assert_not_awaited()
+                send.assert_not_awaited()
+
     async def test_assigned_leader_can_generate_qr_without_publishing(self):
         message, bot, settings = _fixtures()
         with patch(
