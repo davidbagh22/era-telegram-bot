@@ -461,3 +461,10 @@ all forty requirements are ПРОВЕРЕНО and all known mandatory backlog is
 - Strict acceptance remains **1/40 ПРОВЕРЕНО = 2.5%**, other 39 not fully accepted. Real admin/leader/staff/participant Telegram/Mini App, QR-v2 feature flag actual production state, offsite restore, legal approval **Не подтверждено**. Last routine daily summary date **2026-10-31** retained; no second routine summary.
 - Safety: no prohibited «Траектория открытий» or other ERA publication, Mafia, uncertain Telegram replay, fake production users/events, destructive migration, external DB access, real points/roles/participation/security changes, manual deploy or @MVKSRS_bot edits.
 - **Next exact action:** poll main push run `41210595444` until all 5 SUCCESS or diagnose; then verify automatic Render checksPass deploy LIVE exact `cac33f...`, bounded errors/5xx, internal readiness, and public routes if DNS permits. Continue safe independent task after release gate. Keep #589 DRAFT. Update this checkpoint append-only without overwriting concurrent edits.
+
+
+#### 18:3x local — main push gate follow-up after #599
+
+- GitHub main push Bot checks run `41210595444` on exact `cac33f325c77a557aac14960470f10c418408ecb` now **4/5 SUCCESS** (secret-scan, frontend, postgres-migration, e2e); Python `test` still IN_PROGRESS at step “Run tests against application environment”. No failure indicated, but **NOT 5/5**. Previous 2/5 status superseded.
+- Latest Render deploy list still **LIVE `441ce3f168814007ad3a33c6048a5498c5c33048`** (`dep-dbiu9q3bc2fs73crt450`); no new `cac33f...` deploy observed, so runtime fix #599 is **merged, not production-confirmed**. No manual deploy.
+- Next available run: recheck same run `41210595444` exact SHA; if 5/5 SUCCESS, await Render automatic checksPass LIVE exact `cac33f...`; then bounded read-only production checks. If test fails, inspect logs and fix safely via a new exact-head PR without bypass. Preserve strict 1/40 acceptance and already-recorded 2026-10-31 daily summary date.
