@@ -16,7 +16,7 @@ from app.handlers.participant.events import (
     selfie_start,
 )
 from app.states.event import FeedbackStates, SelfieStates
-from app.utils.constants import RegistrationStatus
+from app.utils.constants import ApplicationStatus, RegistrationStatus
 
 
 def _call(data):
@@ -33,6 +33,15 @@ def _state(data=None):
         set_state=AsyncMock(),
         update_data=AsyncMock(),
         clear=AsyncMock(),
+    )
+
+
+def _approved_user():
+    return SimpleNamespace(
+        id=1,
+        application_status=ApplicationStatus.APPROVED,
+        is_blocked=False,
+        is_archived=False,
     )
 
 
@@ -109,12 +118,56 @@ class SupplementalEventCallbackGuards(IsolatedAsyncioTestCase):
                 state.clear.assert_awaited_once()
                 message.answer.assert_awaited_once()
 
+    async def test_feedback_start_denies_inactive_or_unapproved_user_before_fsm(self):
+        cases = (
+            None,
+            SimpleNamespace(id=1, application_status=ApplicationStatus.PENDING,
+                            is_blocked=False, is_archived=False),
+            SimpleNamespace(id=1, application_status=ApplicationStatus.APPROVED,
+                            is_blocked=True, is_archived=False),
+            SimpleNamespace(id=1, application_status=ApplicationStatus.APPROVED,
+                            is_blocked=False, is_archived=True),
+        )
+        for user in cases:
+            with self.subTest(user=str(user)):
+                call = _call("feedback:start:42")
+                state = _state()
+                await feedback_start(call, state, user)
+                call.answer.assert_awaited_once()
+                state.set_state.assert_not_awaited()
+                state.update_data.assert_not_awaited()
+                call.message.answer.assert_awaited_once()
+
+    async def test_feedback_finish_denies_inactive_or_unapproved_before_database(self):
+        cases = (
+            None,
+            SimpleNamespace(id=1, application_status=ApplicationStatus.REJECTED,
+                            is_blocked=False, is_archived=False),
+            SimpleNamespace(id=1, application_status=ApplicationStatus.APPROVED,
+                            is_blocked=True, is_archived=False),
+            SimpleNamespace(id=1, application_status=ApplicationStatus.APPROVED,
+                            is_blocked=False, is_archived=True),
+        )
+        for user in cases:
+            with self.subTest(user=str(user)):
+                call = _call("feedback:again:yes")
+                state = _state({"feedback_event_id": 42, "rating": 5,
+                                "liked": "Хорошо", "improve": "Нет"})
+                session = SimpleNamespace(scalar=AsyncMock(), add=MagicMock())
+                await feedback_finish(call, state, session, user)
+                call.answer.assert_awaited_once()
+                state.get_data.assert_not_awaited()
+                session.scalar.assert_not_awaited()
+                session.add.assert_not_called()
+                state.clear.assert_awaited_once()
+                call.message.answer.assert_awaited_once()
+
     async def test_feedback_start_rejects_invalid_callback_before_fsm(self):
         for raw in ("", "0", "-1", "2147483648", "９", "9" * 5000, "bad"):
             with self.subTest(raw=raw[:24]):
                 call = _call("feedback:start:" + raw)
                 state = _state()
-                await feedback_start(call, state)
+                await feedback_start(call, state, _approved_user())
                 state.set_state.assert_not_awaited()
                 state.update_data.assert_not_awaited()
                 call.message.answer.assert_awaited_once()
@@ -122,7 +175,7 @@ class SupplementalEventCallbackGuards(IsolatedAsyncioTestCase):
     async def test_feedback_start_valid_callback_preserves_fsm(self):
         call = _call("feedback:start:42")
         state = _state()
-        await feedback_start(call, state)
+        await feedback_start(call, state, _approved_user())
         state.set_state.assert_awaited_once_with(FeedbackStates.rating)
         state.update_data.assert_awaited_once_with(feedback_event_id=42)
 
@@ -134,7 +187,7 @@ class SupplementalEventCallbackGuards(IsolatedAsyncioTestCase):
                 state = _state({"feedback_event_id": 42, "rating": 5,
                                 "liked": "Хорошо", "improve": "Нет"})
                 session = SimpleNamespace(scalar=AsyncMock(), add=MagicMock())
-                await feedback_finish(call, state, session, SimpleNamespace(id=1))
+                await feedback_finish(call, state, session, _approved_user())
                 state.get_data.assert_not_awaited()
                 session.scalar.assert_not_awaited()
                 session.add.assert_not_called()
@@ -158,7 +211,7 @@ class SupplementalEventCallbackGuards(IsolatedAsyncioTestCase):
                 call = _call("feedback:again:yes")
                 state = _state(data)
                 session = SimpleNamespace(scalar=AsyncMock(), add=MagicMock())
-                await feedback_finish(call, state, session, SimpleNamespace(id=1))
+                await feedback_finish(call, state, session, _approved_user())
                 session.scalar.assert_not_awaited()
                 session.add.assert_not_called()
                 state.clear.assert_awaited_once()
@@ -169,7 +222,7 @@ class SupplementalEventCallbackGuards(IsolatedAsyncioTestCase):
         state = _state({"feedback_event_id": "42", "rating": 5,
                         "liked": "Хорошо", "improve": "Нет"})
         session = SimpleNamespace(scalar=AsyncMock(return_value=None), add=MagicMock())
-        await feedback_finish(call, state, session, SimpleNamespace(id=1))
+        await feedback_finish(call, state, session, _approved_user())
         session.scalar.assert_awaited_once()
         session.add.assert_called_once()
         feedback = session.add.call_args.args[0]
