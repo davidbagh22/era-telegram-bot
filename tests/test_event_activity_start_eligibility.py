@@ -86,6 +86,32 @@ class ActivityStartEligibilityTests(IsolatedAsyncioTestCase):
                     state.set_state.assert_awaited_once()
                     state.update_data.assert_awaited_once_with(event_activity_id=42)
 
+    async def test_aware_offset_deadline_uses_absolute_instant(self):
+        # Offset-aware editor values must not be reinterpreted as naive UTC.
+        yerevan = timezone(timedelta(hours=4))
+        for expired in (True, False):
+            with self.subTest(expired=expired):
+                instant = datetime.now(timezone.utc) + timedelta(
+                    days=-1 if expired else 1
+                )
+                call, state = _call(), _state()
+                session = SimpleNamespace(
+                    get=AsyncMock(return_value=_activity(
+                        deadline=instant.astimezone(yerevan)
+                    )),
+                    scalar=AsyncMock(side_effect=[
+                        SimpleNamespace(event_id=13, user_id=7), None,
+                    ]),
+                )
+                with patch("app.handlers.participant.events._approved", return_value=True):
+                    await event_activity_start(call, SimpleNamespace(id=7), session, state)
+                if expired:
+                    session.scalar.assert_not_awaited()
+                    state.set_state.assert_not_awaited()
+                else:
+                    self.assertEqual(session.scalar.await_count, 2)
+                    state.set_state.assert_awaited_once()
+
     async def test_unregistered_user_cannot_start_submission(self):
         call, state = _call(), _state()
         session = SimpleNamespace(
