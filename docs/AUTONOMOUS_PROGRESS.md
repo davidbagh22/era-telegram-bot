@@ -891,3 +891,5 @@ all forty requirements are ПРОВЕРЕНО and all known mandatory backlog is
 - Render ERROR and request HTTP 5xx filters 12:55–13:50 UTC returned zero matches. Direct anonymous `/health`, `/ready`, `/app/` via container curl failed DNS resolution (HTTP 000); web open also inaccessible. **Do not infer outage or successful HTTP 200**. Automatic Render exact LIVE and main CI are separately confirmed above.
 
 - Later #613 CI poll: Bot checks **3/5 SUCCESS** (frontend, secret-scan, postgres-migration); e2e/test still IN_PROGRESS; separate Tests test still IN_PROGRESS. **Overall 3/6, exact-head release blocked pending CI.** Next run must re-read this checkpoint and poll both exact run IDs; no merge until 6/6.
+
+- Final observed #613 exact HEAD `124479c4255f6d6a724972c32850e1d267248f4a`: Bot checks `41312153451` **4/5 SUCCESS** (frontend, secret-scan, postgres-migration, **e2e including the new 320px layout test**); Bot checks Python test IN_PROGRESS. Separate Tests `41312153429` Python test IN_PROGRESS. **4/6, no merge or release.** Source-only COMMENT review `5728316781`, zero inline threads. Continue on same PR after exact 6/6, do not create duplicate.
