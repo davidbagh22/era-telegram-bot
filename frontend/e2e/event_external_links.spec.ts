@@ -5,10 +5,16 @@ import { expect, test, type Page } from "@playwright/test";
 const PARTICIPANT_TELEGRAM_ID = 900001;
 
 async function openEventWithLinks(page: Page, chatUrl: string, submitUrl: string) {
-  await page.route("**/api/v1/events?scope=for_me", async (route) => {
+  // Opening a card changes the hash and remounts EventsTab with scope=all.
+  // Preserve the same isolated override across both list and detail requests.
+  let targetId: number | null = null;
+  await page.route("**/api/v1/events?scope=*", async (route) => {
     const response = await route.fetch();
     const events = (await response.json()) as Array<Record<string, unknown>>;
-    const updated = events.map((event, index) => index === 0
+    if (targetId === null && events.length > 0) {
+      targetId = Number(events[0].id);
+    }
+    const updated = events.map((event) => event.id === targetId
       ? { ...event, chat_url: chatUrl, registration_status: "registered" }
       : event);
     await route.fulfill({ response, json: updated });
