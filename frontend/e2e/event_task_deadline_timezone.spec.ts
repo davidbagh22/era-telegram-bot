@@ -94,7 +94,7 @@ test("wizard navigation preserves newer edits while a save response is pending",
   const released = new Promise<void>((resolve) => { unblock = resolve; });
   let intercepted = false;
   await page.route(/\/api\/v1\/admin\/events\/\d+\/draft$/, async (route) => {
-    if (route.request().method() !== "PATCH" || intercepted) {
+    if (route.request().method() !== "PATCH" || intercepted || route.request().postDataJSON()?.wizard_step !== 2) {
       await route.continue();
       return;
     }
