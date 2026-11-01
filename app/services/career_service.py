@@ -159,6 +159,9 @@ async def update_item(
 ) -> CareerPortfolioItem:
     if item.status in {"verified", "revoked"}:
         raise ValueError("verified_item_locked")
+    # Validate before mutating any field: a rejected PATCH must not leave a
+    # partially changed ORM object that another operation could later commit.
+    evidence_url = valid_evidence_url(changes["url"]) if "url" in changes else None
     if "item_type" in changes and changes["item_type"] is not None:
         if changes["item_type"] not in CAREER_ITEM_TYPES:
             raise ValueError("invalid_item_type")
@@ -175,7 +178,7 @@ async def update_item(
     if "issued_at" in changes:
         item.issued_at = changes["issued_at"]
     if "url" in changes:
-        item.url = valid_evidence_url(changes["url"])
+        item.url = evidence_url
     if "include_in_resume" in changes and changes["include_in_resume"] is not None:
         item.include_in_resume = bool(changes["include_in_resume"])
     if item.status in {"pending", "rejected"}:
