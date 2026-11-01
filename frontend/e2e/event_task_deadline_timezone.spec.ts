@@ -76,3 +76,46 @@ test("wizard program time and presenter remain usable at 320px", async ({ page }
   await expect(page.getByLabel("Время")).toHaveValue("14:30");
   await expect(page.getByLabel("Ведущий")).toHaveValue("E2E ведущий");
 });
+
+
+test("wizard navigation preserves newer edits while a save response is pending", async ({ page }) => {
+  // Isolated CI draft only: no event publication, participant changes or Telegram send.
+  await page.goto("/app/?devTelegramId=900003");
+  await page.getByRole("navigation", { name: "Основная навигация" })
+    .getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: /Управление ЭРА/ }).click();
+  await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
+  await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
+  await page.getByRole("button", { name: "＋ Создать мероприятие" }).click();
+
+  let unblock: () => void = () => {};
+  let notifyIntercepted: () => void = () => {};
+  const blocked = new Promise<void>((resolve) => { notifyIntercepted = resolve; });
+  const released = new Promise<void>((resolve) => { unblock = resolve; });
+  let intercepted = false;
+  await page.route(/\\/api\\/v1\\/admin\\/events\\/\\d+\\/draft$/, async (route) => {
+    if (route.request().method() !== "PATCH" || intercepted) {
+      await route.continue();
+      return;
+    }
+    intercepted = true;
+    const response = await route.fetch();
+    notifyIntercepted();
+    await released;
+    await route.fulfill({ response });
+  });
+
+  await page.getByLabel("Название", { exact: true }).fill("Название до сохранения");
+  await page.getByRole("button", { name: "Продолжить" }).click();
+  await blocked;
+  // The editor remains interactive during a slow server response. This edit
+  // must survive the old navigation response rather than being replaced by it.
+  await page.getByLabel("Название", { exact: true }).fill("Название после сохранения");
+  unblock();
+
+  await expect(page.getByText("ШАГ 2 ИЗ 10")).toBeVisible();
+  await expect(page.getByText("Сохранено ✓", { exact: true })).toBeVisible({ timeout: 10000 });
+  await page.getByRole("button", { name: "Назад", exact: true }).click();
+  await expect(page.getByText("ШАГ 1 ИЗ 10")).toBeVisible();
+  await expect(page.getByLabel("Название", { exact: true })).toHaveValue("Название после сохранения");
+});
