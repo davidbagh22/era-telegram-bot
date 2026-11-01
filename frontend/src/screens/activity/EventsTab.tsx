@@ -94,7 +94,7 @@ function EventActivitiesPanel({ eventId }: { eventId: number }) {
       {state.data.map((activity: EventActivity) => {
         const submitUrl = safeEvidenceUrl(activity.submit_deep_link);
         return (
-        <div
+          <div
           key={activity.id}
           style={{
             border: "1px solid var(--era-border)",
@@ -116,7 +116,7 @@ function EventActivitiesPanel({ eventId }: { eventId: number }) {
             <a
               href={submitUrl}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="era-btn-primary"
               style={{ textAlign: "center", textDecoration: "none", marginTop: "0.35rem", minHeight: 44, display: "grid", placeItems: "center", borderRadius: "var(--era-radius-control)" }}
             >
