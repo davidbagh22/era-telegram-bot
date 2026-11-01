@@ -889,3 +889,5 @@ all forty requirements are ПРОВЕРЕНО and all known mandatory backlog is
 
 - #613 exact-head source-only COMMENT review **`5728316781`** posted; zero unresolved inline threads at review time. This is not human approval. At latest CI poll Bot checks **2/5 SUCCESS** (frontend, secret-scan), test/e2e/postgres-migration IN_PROGRESS; separate Tests IN_PROGRESS. **No merge.**
 - Render ERROR and request HTTP 5xx filters 12:55–13:50 UTC returned zero matches. Direct anonymous `/health`, `/ready`, `/app/` via container curl failed DNS resolution (HTTP 000); web open also inaccessible. **Do not infer outage or successful HTTP 200**. Automatic Render exact LIVE and main CI are separately confirmed above.
+
+- Later #613 CI poll: Bot checks **3/5 SUCCESS** (frontend, secret-scan, postgres-migration); e2e/test still IN_PROGRESS; separate Tests test still IN_PROGRESS. **Overall 3/6, exact-head release blocked pending CI.** Next run must re-read this checkpoint and poll both exact run IDs; no merge until 6/6.
