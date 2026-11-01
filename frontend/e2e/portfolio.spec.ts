@@ -13,7 +13,22 @@ const PARTICIPANT_TELEGRAM_ID = 900001;
 test("participant's earned badge appears in their portfolio", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
 
+  const profileResponse = page.waitForResponse(
+    (response) => /\/api\/v1\/profile(?:\?|$)/.test(response.url()) && response.status() === 200,
+  );
   await page.getByRole("button", { name: "Профиль", exact: true }).click();
+  const profile = (await (await profileResponse).json()) as { city: string; growth: { label: string } };
+  const identity = page.getByTestId("profile-identity");
+  await expect(identity).toBeVisible();
+  if (profile.growth.label) {
+    // Removing the old "Мой путь" card must also remove its residual stage label.
+    await expect(identity).not.toContainText(profile.growth.label);
+  }
+  if (profile.city) {
+    await expect(page.getByTestId("profile-location")).toHaveText(profile.city);
+  } else {
+    await expect(page.getByTestId("profile-location")).toHaveCount(0);
+  }
   await expect(page.getByRole("heading", { name: "Мой вклад и опыт" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Мой путь", exact: true })).toHaveCount(0);
   await expect(page.getByText("этап пути", { exact: true })).toHaveCount(0);
