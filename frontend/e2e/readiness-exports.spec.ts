@@ -28,7 +28,7 @@ test("event calendar download uses UTC rather than the device timezone", async (
   await expect(google).toBeVisible();
   const googleUrl = new URL((await google.getAttribute("href"))!);
   expect(googleUrl.searchParams.get("ctz")).toBe("Asia/Yerevan");
-  expect(googleUrl.searchParams.get("dates")).toMatch(/^\\d{8}T\\d{6}Z\\/\\d{8}T\\d{6}Z$/);
+  expect(googleUrl.searchParams.get("dates")).toMatch(new RegExp("^[0-9]{8}T[0-9]{6}Z/[0-9]{8}T[0-9]{6}Z$"));
   const calendar = page.getByRole("button", { name: "Календарь Apple (.ics)" });
   const download = page.waitForEvent("download");
   await calendar.click();
