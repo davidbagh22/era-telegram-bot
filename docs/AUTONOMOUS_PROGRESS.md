@@ -119,3 +119,17 @@ daily summary; record its delivery date here when sent. Last daily summary under
 this register: none yet. Format: «ЭРА | Автономная разработка», completed, evidence,
 open count, accepted percentage, next concrete action. Never declare 100% until
 all forty requirements are ПРОВЕРЕНО and all known mandatory backlog is closed.
+
+
+## Continuation checkpoint — 2026-11-01 16:49 UTC (read-only evidence)
+
+- Render API reports automatic deployment `dep-dbjmqceq1p3s73au65h0` status `live`, commit `f766e572a085edefa8fc025bf15e4fd8b0c1888b` (PR #614). No manual deploy.
+- PR #614 is closed/merged according to recent GitHub issue listing; PRs #613/#612 likewise closed. These are release facts, **not** multi-role acceptance.
+- The earlier register remains **1/40 verified (2.5%)**, pending a full evidence-backed register reconciliation; do not mark B05/E11 verified solely from the URL hardening release.
+- GitHub combined commit-status endpoint returned an empty status list for the above SHA; this is **not** proof of failed or passed GitHub Actions checks. Recheck exact push workflows separately.
+- Existing unresolved concerns to inspect before any merge: #589 (privacy), #605 (timezones), event listing privacy/history drafts #484/#486, plus current open PRs and changed HEAD CI. Do not duplicate existing work.
+- Next safe action: fetch latest GitHub main, enumerate current PRs/issues and exact HEAD six required CI results; select an independent low-risk patch. Complete review and guarded merge only on 6/6 SUCCESS, then main CI and automatic Render checksPass, and actual read-only production smoke. Do not create test production participants/events or send Telegram messages.
+- Human blockers unchanged: distinct authenticated Telegram roles, actual iOS/Android acceptance, scoped production event list and isolated restore evidence. Mark those `Не подтверждено` until verified.
+- Daily summary date: no new daily summary recorded by this checkpoint; do not assume a chat reply constitutes the scheduled summary.
+
+- Additional Render production evidence, 2026-11-01 16:57 UTC: deploy event `deploy_ended` reports `succeeded` for `dep-dbjmqceq1p3s73au65h0`; trigger is `newCommit` and `manual=false`. HTTP metrics after deploy show 25 responses 200, 4 responses 204 and 1 response 404 in sampled 16:54 bucket; instance count 1. Filtered 5xx request logs 16:49–16:57 UTC returned no entries. These limited metrics do not prove all endpoints or role flows healthy. Direct `/health` and `/ready` via public web fetch unavailable; acceptance remains unconfirmed.
