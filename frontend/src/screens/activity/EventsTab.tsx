@@ -15,7 +15,7 @@ import { StatusBadge } from "../../components/StatusBadge";
 import { useToast } from "../../components/Toast";
 import { useAsync } from "../../hooks/useAsync";
 import { safeEvidenceUrl } from "../../utils/safeEvidenceUrl";
-import { successHaptic } from "../../telegram/webApp";
+import { getTelegramWebApp, successHaptic } from "../../telegram/webApp";
 import type { EventActivity, EventItem, EventScope } from "../../types/activity";
 import { EventAttendancePanel } from "./EventAttendancePanel";
 
@@ -53,27 +53,138 @@ function posterSrc(event: EventItem): string | null {
   return `${API_BASE_URL}/api/v1/event-posters/${event.id}`;
 }
 
+// Calendar times are stored as local Asia/Yerevan clock times. Build explicit UTC
+// instants for Google Calendar without depending on the participant's device TZ.
+function googleCalendarUrl(event: EventItem): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(event.event_date)) return null;
+  const timePattern = /^\d{2}:\d{2}(?::\d{2})?$/;
+  if (!timePattern.test(event.event_time)) return null;
+  const asInstant = (clock: string) => new Date(
+    `${event.event_date}T${clock.length === 5 ? `${clock}:00` : clock}+04:00`,
+  );
+  const start = asInstant(event.event_time);
+  if (!Number.isFinite(start.getTime())) return null;
+  const end = event.end_time && timePattern.test(event.end_time)
+    ? asInstant(event.end_time)
+    : new Date(start.getTime() + 60 * 60 * 1000);
+  if (!Number.isFinite(end.getTime())) return null;
+  if (end <= start) end.setUTCDate(end.getUTCDate() + 1);
+  const stamp = (date: Date) => date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: event.title,
+    dates: `${stamp(start)}/${stamp(end)}`,
+    ctz: "Asia/Yerevan",
+    details: event.full_description || event.description || "",
+    location: [event.location, event.address].filter(Boolean).join(", "),
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function isIosDevice(): boolean {
+  return /iPad|iPhone|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
 function EventCalendarButton({ event }: { event: EventItem }) {
   const [busy, setBusy] = useState(false);
+  const [preparedFile, setPreparedFile] = useState<File | null>(null);
+  const [preparingShare, setPreparingShare] = useState(isIosDevice());
   const toast = useToast();
-  async function download() {
+  const googleUrl = googleCalendarUrl(event);
+  const ios = isIosDevice();
+
+  useEffect(() => {
+    if (!ios) return;
+    let active = true;
+    setPreparedFile(null);
+    setPreparingShare(true);
+    // Web Share must be called directly from a tap. Fetching the protected ICS
+    // inside that tap can lose transient user activation on iOS Telegram, so
+    // prepare the file read-only while the event detail is already visible.
+    const probe = new File([""], "ERA.ics", { type: "text/calendar" });
+    let canShareFile = false;
+    try {
+      canShareFile = typeof navigator.share === "function"
+        && typeof navigator.canShare === "function"
+        && navigator.canShare({ files: [probe] });
+    } catch { /* unsupported WebView */ }
+    if (!canShareFile) {
+      setPreparingShare(false);
+      return () => { active = false; };
+    }
+    void downloadEventCalendar(event.id)
+      .then((blob) => {
+        if (active) setPreparedFile(new File([blob], `ERA-${event.id}.ics`, { type: "text/calendar" }));
+      })
+      .catch(() => { /* explain unavailable import on explicit tap */ })
+      .finally(() => { if (active) setPreparingShare(false); });
+    return () => { active = false; };
+  }, [event.id, ios]);
+
+  async function shareAppleCalendar() {
+    if (busy || preparingShare) return;
+    if (ios) {
+      if (!preparedFile || typeof navigator.share !== "function") {
+        toast.show("Telegram на iPhone не поддерживает передачу .ics. Используйте Google Календарь или откройте ЭРА в Safari.", "error");
+        return;
+      }
+      try {
+        // No await before share: preserve the user gesture on iOS.
+        await navigator.share({ files: [preparedFile], title: event.title });
+        toast.show("Выберите Календарь или «Сохранить в Файлы» в меню «Поделиться».");
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        toast.show("Не удалось открыть меню «Поделиться». Используйте Google Календарь.", "error");
+      }
+      return;
+    }
     setBusy(true);
     try {
       const blob = await downloadEventCalendar(event.id);
-      const url = URL.createObjectURL(blob);
+      const file = new File([blob], `ERA-${event.id}.ics`, { type: "text/calendar" });
+      const url = URL.createObjectURL(file);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `ERA-${event.id}.ics`;
+      anchor.download = file.name;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      toast.show("Откройте файл в календаре. После изменения события скачайте новую версию.");
+      toast.show("Скачан .ics. Откройте файл в календаре; после изменения события скачайте новую версию.");
     } catch {
-      toast.show("Не удалось получить календарь. Попробуйте ещё раз или скачайте его в боте.", "error");
-    } finally { setBusy(false); }
+      toast.show("Не удалось скачать календарь. Попробуйте Google Календарь.", "error");
+    } finally {
+      setBusy(false);
+    }
   }
-  return <button type="button" disabled={busy} onClick={() => void download()}>{busy ? "Готовим календарь…" : "Добавить в календарь"}</button>;
+
+  function openGoogle(eventClick: React.MouseEvent<HTMLAnchorElement>) {
+    if (!googleUrl) return;
+    const telegram = getTelegramWebApp();
+    if (telegram?.openLink) {
+      try {
+        telegram.openLink(googleUrl);
+        eventClick.preventDefault();
+      } catch { /* fall back to the normal external anchor */ }
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
+      {googleUrl && <a href={googleUrl} target="_blank" rel="noopener noreferrer" onClick={openGoogle}
+        className="era-btn-primary" style={{ textAlign: "center", textDecoration: "none", padding: ".75rem", borderRadius: "var(--era-radius-control)" }}>
+        Google Календарь
+      </a>}
+      <button type="button" disabled={busy || preparingShare} onClick={() => void shareAppleCalendar()}>
+        {busy || preparingShare ? "Готовим файл…" : "Календарь Apple (.ics)"}
+      </button>
+      <small style={{ color: "var(--era-text-muted)" }}>
+        На iPhone используйте системное меню «Поделиться». Если оно недоступно, выберите Google Календарь.
+        {event.end_time ? "" : " Если время окончания не указано, Google предложит длительность 1 час."}
+      </small>
+    </div>
+  );
 }
 
 function EventActivitiesPanel({ eventId }: { eventId: number }) {

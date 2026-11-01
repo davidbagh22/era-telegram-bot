@@ -298,7 +298,7 @@ async def read_event_calendar(
     return Response(build_event_calendar(event, experience, timezone_name=settings.timezone),
                     media_type="text/calendar; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="ERA-{event_id}.ics"',
-                             "Cache-Control": "private, no-store"})
+                             "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
 
 @router.get("/{event_id}", response_model=EventOut)

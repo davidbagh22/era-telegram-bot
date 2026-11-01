@@ -76,3 +76,23 @@ def test_calendar_endpoint_private_download_and_hidden_event_denial():
 
 def test_registered_participant_can_export_active_event():
     assert client_for(event(status=EventStatus.ACTIVE), registered=True).get("/api/v1/events/42/calendar.ics").status_code == 200
+
+
+def test_calendar_ics_attachment_preserves_russian_armenian_emoji_and_utf8_octet_folding():
+    title = "Встреча ЭРА 🇦🇲 Երևան 🎓 " + "Բարև" * 35
+    e = event(title=title, description="Программа: встреча; вопросы, ответы\nՀայերեն 🎉", location="Երևան, Армения")
+    response = client_for(e).get("/api/v1/events/42/calendar.ics")
+    assert response.status_code == 200
+    assert response.headers["content-type"].lower().startswith("text/calendar; charset=utf-8")
+    assert response.headers["content-disposition"] == 'attachment; filename="ERA-42.ics"'
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.content.startswith(b"BEGIN:VCALENDAR\r\n")
+    assert not response.content.startswith(b"\xef\xbb\xbf")
+    assert response.content.replace(b"\r\n", b"").find(b"\n") == -1
+    assert all(len(line) <= 75 for line in response.content.split(b"\r\n"))
+    decoded = response.content.decode("utf-8", errors="strict").replace("\r\n ", "")
+    assert f"SUMMARY:{title}" in decoded
+    assert "DESCRIPTION:Программа: встреча\\; вопросы\\, ответы\\nՀայերեն 🎉" in decoded
+    assert "LOCATION:Երևան\\, Армения" in decoded
+    assert "DTSTART:20261024T080000Z" in decoded
+    assert "\ufffd" not in decoded
