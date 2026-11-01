@@ -32,4 +32,16 @@ test("wizard task deadline persists an absolute instant and reopens in editor lo
   await page.getByRole("button", { name: "Сохранить черновик и выйти" }).click();
   await page.getByRole("button", { name: /E2E срок задания, только черновик.*Шаг 7/ }).click();
   await expect(page.getByLabel("Срок")).toHaveValue("2026-11-07T18:00");
+
+  // A narrow Telegram viewport must not clip the date picker or points field.
+  await page.setViewportSize({ width: 320, height: 720 });
+  const deadline = await page.getByLabel("Срок").boundingBox();
+  const points = await page.getByLabel("Баллы", { exact: true }).boundingBox();
+  expect(deadline).not.toBeNull();
+  expect(points).not.toBeNull();
+  expect(deadline!.width).toBeGreaterThan(175);
+  expect(deadline!.x).toBeGreaterThanOrEqual(0);
+  expect(deadline!.x + deadline!.width).toBeLessThanOrEqual(321);
+  expect(points!.x + points!.width).toBeLessThanOrEqual(321);
+  expect(points!.y).toBeGreaterThan(deadline!.y);
 });
