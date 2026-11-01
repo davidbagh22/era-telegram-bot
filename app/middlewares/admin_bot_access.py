@@ -17,15 +17,9 @@ def has_admin_bot_access(
     They must not make a user admin-equivalent for the legacy Telegram admin
     router, where older handlers share broad guards.
     """
-    return bool(
-        telegram_id in settings.admin_ids
-        or (
-            user
-            and user.role == Role.ADMIN
-            and not user.is_blocked
-            and not user.is_archived
-        )
-    )
+    if user is not None and (user.is_blocked or user.is_archived):
+        return False
+    return bool(telegram_id in settings.admin_ids or (user and user.role == Role.ADMIN))
 
 
 class AdminBotAccessFilter(Filter):

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.deps import get_current_user, get_session, get_settings
+from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.v1.events import router
 from app.config import Settings
 from app.services.event_calendar_service import build_event_calendar
@@ -47,7 +47,7 @@ def test_calendar_handles_overnight_end_folding_update_and_cancellation():
     assert "SEQUENCE:1792540800" in second
 
 
-def client_for(e, *, approved=True, registered=False):
+def client_for(e, *, approved=True, registered=False, bot=None):
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     session = SimpleNamespace(get=AsyncMock(side_effect=[e, None]),
@@ -55,9 +55,10 @@ def client_for(e, *, approved=True, registered=False):
     async def session_override():
         yield session
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
-        id=1, application_status=ApplicationStatus.APPROVED if approved else ApplicationStatus.PENDING)
+        id=1, telegram_id=555, application_status=ApplicationStatus.APPROVED if approved else ApplicationStatus.PENDING)
     app.dependency_overrides[get_session] = session_override
     app.dependency_overrides[get_settings] = lambda: Settings(bot_token="0000000000:TEST")
+    app.dependency_overrides[get_bot] = lambda: bot
     return TestClient(app)
 
 
@@ -76,3 +77,27 @@ def test_calendar_endpoint_private_download_and_hidden_event_denial():
 
 def test_registered_participant_can_export_active_event():
     assert client_for(event(status=EventStatus.ACTIVE), registered=True).get("/api/v1/events/42/calendar.ics").status_code == 200
+
+
+def test_ics_roundtrips_cyrillic_and_emoji_as_utf8():
+    value = build_event_calendar(event(title="Встреча 🎉 ЭРА")).decode("utf-8")
+    assert "Встреча 🎉 ЭРА" in value.replace("\r\n ", "")
+
+
+def test_send_calendar_to_chat_delivers_same_ics_document():
+    bot = SimpleNamespace(send_document=AsyncMock())
+    response = client_for(event(), bot=bot).post("/api/v1/events/42/calendar/send")
+    assert response.status_code == 200 and response.json() == {"sent": True}
+    chat_id, document = bot.send_document.await_args.args
+    assert chat_id == 555 and document.filename == "ERA-42.ics"
+    assert document.data.startswith(b"BEGIN:VCALENDAR")
+
+
+def test_send_calendar_to_chat_keeps_access_rules_and_handles_bot_failures():
+    bot = SimpleNamespace(send_document=AsyncMock())
+    assert client_for(event(status=EventStatus.DRAFT), bot=bot).post("/api/v1/events/42/calendar/send").status_code == 404
+    assert client_for(event(), approved=False, bot=bot).post("/api/v1/events/42/calendar/send").status_code == 403
+    bot.send_document.assert_not_awaited()
+    assert client_for(event(), bot=None).post("/api/v1/events/42/calendar/send").status_code == 503
+    failing = SimpleNamespace(send_document=AsyncMock(side_effect=RuntimeError("blocked by user")))
+    assert client_for(event(), bot=failing).post("/api/v1/events/42/calendar/send").status_code == 502

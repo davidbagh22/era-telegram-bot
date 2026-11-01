@@ -276,13 +276,8 @@ async def read_event_poster(
     )
 
 
-@router.get("/{event_id}/calendar.ics")
-async def read_event_calendar(
-    event_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    settings: Settings = Depends(get_settings),
-) -> Response:
+async def _calendar_payload(event_id: int, user: User, session: AsyncSession, settings: Settings) -> bytes:
+    """Shared access check and ICS bytes for download and chat delivery."""
     from app.utils.constants import ApplicationStatus
     if user.application_status != ApplicationStatus.APPROVED:
         raise HTTPException(status_code=403, detail="application_not_approved")
@@ -295,10 +290,41 @@ async def read_event_calendar(
     ):
         raise HTTPException(status_code=404, detail="event_not_found")
     experience = await session.get(EventExperience, event_id)
-    return Response(build_event_calendar(event, experience, timezone_name=settings.timezone),
-                    media_type="text/calendar; charset=utf-8",
+    return build_event_calendar(event, experience, timezone_name=settings.timezone)
+
+
+@router.get("/{event_id}/calendar.ics")
+async def read_event_calendar(
+    event_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    payload = await _calendar_payload(event_id, user, session, settings)
+    return Response(payload, media_type="text/calendar; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="ERA-{event_id}.ics"',
                              "Cache-Control": "private, no-store"})
+
+
+@router.post("/{event_id}/calendar/send")
+async def send_event_calendar_to_chat(
+    event_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    bot: Bot | None = Depends(get_bot),
+) -> dict[str, bool]:
+    """Deliver ICS to user's Telegram chat for iOS calendar import."""
+    from aiogram.types import BufferedInputFile
+    payload = await _calendar_payload(event_id, user, session, settings)
+    if bot is None:
+        raise HTTPException(status_code=503, detail="bot_unavailable")
+    try:
+        await bot.send_document(user.telegram_id, BufferedInputFile(payload, filename=f"ERA-{event_id}.ics"),
+                                caption=f"Время события: {settings.timezone}. Откройте файл и добавьте его в Календарь.")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="telegram_send_failed") from exc
+    return {"sent": True}
 
 
 @router.get("/{event_id}", response_model=EventOut)

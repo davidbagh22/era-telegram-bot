@@ -26,6 +26,7 @@ interface TelegramWebApp {
   setBackgroundColor?: (color: string) => void;
   setBottomBarColor?: (color: string) => void;
   openTelegramLink?: (url: string) => void;
+  openLink?: (url: string, options?: { try_instant_view?: boolean }) => void;
   close?: () => void;
   shareMessage?: (msgId: string, callback?: (success: boolean) => void) => void;
   BackButton?: TelegramBackButton;
