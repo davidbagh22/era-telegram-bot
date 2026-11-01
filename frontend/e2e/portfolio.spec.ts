@@ -65,3 +65,25 @@ test("profile dashboard cells fit a narrow mobile viewport", async ({ page }) =>
   await page.getByRole("button", { name: /Волонтёрство/ }).click();
   await expect(page.getByRole("heading", { name: "Волонтёрство" })).toBeVisible();
 });
+
+test("profile detail cards wrap long unbroken titles at 320px", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
+  await page.getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: /Достижения/ }).click();
+  await expect(page.getByRole("heading", { name: "Достижения", exact: true })).toBeVisible();
+
+  // Stress the actual detail-card layout without adding synthetic DB records.
+  const card = page.locator("section .era-card").first();
+  await expect(card).toBeVisible();
+  await card.locator("strong").first().evaluate((title) => {
+    title.textContent = "ОченьДлинноеНазваниеПодтверждённогоДостижения".repeat(12);
+  });
+  const fits = await card.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.left >= -1 && rect.right <= window.innerWidth + 1
+      && element.scrollWidth <= element.clientWidth + 1
+      && document.documentElement.scrollWidth <= window.innerWidth + 1;
+  });
+  expect(fits).toBe(true);
+});
