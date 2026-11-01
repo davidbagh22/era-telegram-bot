@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.database.media_models import MediaContentItem
@@ -43,12 +43,18 @@ async def require_access(session, user, settings, *, write=False, area=None):
         raise PermissionError("Доступ к календарю медиаотдела закрыт. Проверьте полномочия и обновите страницу.")
 
 
+def _metadata(item):
+    """Treat legacy non-object JSON as unreadable, never as editable state."""
+    data = item.metadata_json
+    return data if isinstance(data, dict) else {}
+
+
 def area_of(item):
-    return (item.metadata_json or {}).get("media_area", "era")
+    return _metadata(item).get("media_area", "era")
 
 
 def item_out(item):
-    data = item.metadata_json or {}
+    data = _metadata(item)
     scheduled_at = item.scheduled_at
     if scheduled_at is not None and scheduled_at.tzinfo is None:
         scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
@@ -60,8 +66,38 @@ def item_out(item):
         "revision": data.get("workspace_revision", 0)}
 
 
+def _calendar_metadata_filter(dialect_name: str):
+    """Filter malformed/ambiguous JSON in SQL *before* LIMIT/keyset paging.
+
+    PostgreSQL JSON and SQLite JSON1 expose different JSON type functions.
+    Both must reject scalar/array metadata and explicit non-string area keys,
+    while preserving historical SQL NULL/missing-area rows as ERA.
+    """
+    metadata = MediaContentItem.metadata_json
+    if dialect_name == "postgresql":
+        object_type = func.json_typeof(metadata)
+        area_type = func.json_typeof(metadata.op("->")("media_area"))
+        string_type = "string"
+    elif dialect_name == "sqlite":
+        object_type = func.json_type(metadata)
+        area_type = func.json_type(metadata, "$.media_area")
+        string_type = "text"
+    else:
+        # Never expose an unverified dialect's JSON semantics to either area.
+        raise RuntimeError("Unsupported calendar JSON dialect")
+    return and_(
+        or_(metadata.is_(None), object_type == "object"),
+        or_(area_type.is_(None), area_type == string_type),
+    )
+
+
 async def calendar(session, area, *, before_id: int | None = None, status_group: str = "all"):
-    query = select(MediaContentItem).where(func.coalesce(
+    # Filtering in Python after LIMIT can return empty pages when malformed
+    # legacy rows occupy the first 100 IDs, stranding healthy older records.
+    # AsyncSession.get_bind() resolves to the synchronous engine/dialect.
+    bind = session.get_bind() if hasattr(session, "get_bind") else getattr(session, "bind", None)
+    dialect = getattr(getattr(bind, "dialect", None), "name", "sqlite")
+    query = select(MediaContentItem).where(_calendar_metadata_filter(dialect)).where(func.coalesce(
         MediaContentItem.metadata_json["media_area"].as_string(), "era") == area)
     # Filter before pagination: a long history of published posts must not hide open tasks.
     if status_group == "active":
@@ -73,7 +109,11 @@ async def calendar(session, area, *, before_id: int | None = None, status_group:
     if before_id is not None:
         query = query.where(MediaContentItem.id < before_id)
     rows = (await session.scalars(query.order_by(MediaContentItem.id.desc()).limit(100))).all()
-    return [item_out(item) for item in rows]
+    # A non-object JSON row has no trustworthy media_area: never expose its
+    # title/body in either scoped calendar. Preserve legacy NULL rows.
+    return [item_out(item) for item in rows
+            if (item.metadata_json is None or isinstance(item.metadata_json, dict))
+            and area_of(item) == area]
 
 
 async def _validate_responsible(session, user_id):
@@ -132,7 +172,7 @@ async def create_entry(session, user, settings, area, values, request_key):
     key = f"workspace:{user.id}:{request_key}"
     existing = await session.scalar(select(MediaContentItem).where(MediaContentItem.source_key == key))
     if existing:
-        if area_of(existing) != area or (existing.metadata_json or {}).get("request_hash") != fingerprint:
+        if area_of(existing) != area or _metadata(existing).get("request_hash") != fingerprint:
             raise ValueError("Ключ запроса уже использован для другого материала")
         return existing
     item = MediaContentItem(source_kind="media_workspace", source_key=key, kind="text", title=values["title"],
@@ -145,7 +185,7 @@ async def create_entry(session, user, settings, area, values, request_key):
             await session.flush()
     except IntegrityError:
         existing = await session.scalar(select(MediaContentItem).where(MediaContentItem.source_key == key))
-        if existing and area_of(existing) == area and (existing.metadata_json or {}).get("request_hash") == fingerprint:
+        if existing and area_of(existing) == area and _metadata(existing).get("request_hash") == fingerprint:
             return existing
         raise ValueError("Повторный запрос не совпадает с исходным") from None
     await audit(session, actor_id=user.id, action="media.calendar_created", entity_type="media_content", entity_id=item.id,
@@ -159,7 +199,10 @@ async def update_entry(session, user, settings, area, item_id, values, revision)
         .with_for_update().execution_options(populate_existing=True))
     if item is None or area_of(item) != area:
         raise LookupError("Материал не найден в выбранном направлении")
-    data = dict(item.metadata_json or {})
+    # Do not overwrite or silently normalize corrupt JSON on an edit.
+    if item.metadata_json is not None and not isinstance(item.metadata_json, dict):
+        raise ValueError("Данные материала повреждены. Обратитесь к администратору")
+    data = dict(_metadata(item))
     if data.get("workspace_revision", 0) != revision:
         raise ValueError("Материал уже изменён. Обновите календарь")
     if item.status in {"published", "skipped"}:
