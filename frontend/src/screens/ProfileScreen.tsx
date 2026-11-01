@@ -32,8 +32,8 @@ function PortfolioSection({ title, entries }: { title: string; entries: Portfoli
       {entries.length === 0 ? <EmptyState text="Здесь пока нет подтверждённых записей." /> : (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
           {entries.map((entry, index) => (
-            <Card key={`${entry.title}-${index}`}>
-              <strong>{entry.title}</strong>
+            <Card key={`${entry.title}-${index}`} style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+              <strong style={{ display: "block", overflowWrap: "anywhere" }}>{entry.title}</strong>
               {entry.description && <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>{entry.description}</p>}
               {(entry.status || entry.date_label) && <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>{[entry.status, entry.date_label].filter(Boolean).join(" · ")}</p>}
             </Card>
