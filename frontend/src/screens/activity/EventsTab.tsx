@@ -5,6 +5,7 @@ import {
   fetchEventActivities,
   fetchEvents,
   downloadEventCalendar,
+  sendEventCalendarToChat,
   registerForEvent,
 } from "../../api/client";
 import { BottomSheet } from "../../components/BottomSheet";
@@ -16,6 +17,7 @@ import { useToast } from "../../components/Toast";
 import { useAsync } from "../../hooks/useAsync";
 import { safeEvidenceUrl } from "../../utils/safeEvidenceUrl";
 import { successHaptic } from "../../telegram/webApp";
+import { googleCalendarUrl, isIosWebView } from "../../utils/calendarLinks";
 import type { EventActivity, EventItem, EventScope } from "../../types/activity";
 import { EventAttendancePanel } from "./EventAttendancePanel";
 
@@ -56,9 +58,14 @@ function posterSrc(event: EventItem): string | null {
 function EventCalendarButton({ event }: { event: EventItem }) {
   const [busy, setBusy] = useState(false);
   const toast = useToast();
-  async function download() {
+  async function add() {
     setBusy(true);
     try {
+      if (isIosWebView()) {
+        await sendEventCalendarToChat(event.id);
+        toast.show("Файл отправлен в чат с ботом. Откройте его и добавьте в Календарь.");
+        return;
+      }
       const blob = await downloadEventCalendar(event.id);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -70,10 +77,23 @@ function EventCalendarButton({ event }: { event: EventItem }) {
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
       toast.show("Откройте файл в календаре. После изменения события скачайте новую версию.");
     } catch {
-      toast.show("Не удалось получить календарь. Попробуйте ещё раз или скачайте его в боте.", "error");
+      toast.show("Не удалось получить календарь. Попробуйте ещё раз или откройте Google Календарь.", "error");
     } finally { setBusy(false); }
   }
-  return <button type="button" disabled={busy} onClick={() => void download()}>{busy ? "Готовим календарь…" : "Добавить в календарь"}</button>;
+  function openGoogle() {
+    const url = googleCalendarUrl(event);
+    const webApp = window.Telegram?.WebApp;
+    if (webApp?.openLink) webApp.openLink(url);
+    else window.open(url, "_blank", "noopener");
+  }
+  return (
+    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+      <button type="button" disabled={busy} onClick={() => void add()}>
+        {busy ? "Готовим календарь…" : isIosWebView() ? "Отправить в чат для календаря" : "Добавить в календарь"}
+      </button>
+      <button type="button" onClick={openGoogle}>Google Календарь</button>
+    </div>
+  );
 }
 
 function EventActivitiesPanel({ eventId }: { eventId: number }) {

@@ -1194,6 +1194,10 @@ export async function downloadEventCalendar(eventId: number): Promise<Blob> {
   return response.blob();
 }
 
+export function sendEventCalendarToChat(eventId: number): Promise<{ sent: boolean }> {
+  return authorizedPost<{ sent: boolean }>(`/api/v1/events/${eventId}/calendar/send`);
+}
+
 // Self-service data rights — see app/services/data_rights_service.py and
 // docs/DATA_INVENTORY.md section 4.
 export async function downloadDataExport(): Promise<Blob> {

@@ -40,15 +40,9 @@ def active_global_permissions(user: User | None) -> set[str]:
 
 
 def is_full_admin(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    return bool(
-        telegram_id in settings.admin_ids
-        or (
-            user
-            and user.role == Role.ADMIN
-            and not user.is_blocked
-            and not user.is_archived
-        )
-    )
+    if user is not None and (user.is_blocked or user.is_archived):
+        return False
+    return bool(telegram_id in settings.admin_ids or (user and user.role == Role.ADMIN))
 
 
 def can_view_people(user: User | None, settings: Settings, telegram_id: int) -> bool:
