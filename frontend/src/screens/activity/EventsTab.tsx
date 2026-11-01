@@ -56,8 +56,8 @@ function posterSrc(event: EventItem): string | null {
 // Calendar times are stored as local Asia/Yerevan clock times. Build explicit UTC
 // instants for Google Calendar without depending on the participant's device TZ.
 function googleCalendarUrl(event: EventItem): string | null {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(event.event_date)) return null;
-  const timePattern = /^\\d{2}:\\d{2}(?::\\d{2})?$/;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(event.event_date)) return null;
+  const timePattern = /^\d{2}:\d{2}(?::\d{2})?$/;
   if (!timePattern.test(event.event_time)) return null;
   const asInstant = (clock: string) => new Date(
     `${event.event_date}T${clock.length === 5 ? `${clock}:00` : clock}+04:00`,
@@ -69,7 +69,7 @@ function googleCalendarUrl(event: EventItem): string | null {
     : new Date(start.getTime() + 60 * 60 * 1000);
   if (!Number.isFinite(end.getTime())) return null;
   if (end <= start) end.setUTCDate(end.getUTCDate() + 1);
-  const stamp = (date: Date) => date.toISOString().replace(/[-:]/g, "").replace(/\\.\\d{3}Z$/, "Z");
+  const stamp = (date: Date) => date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
   const params = new URLSearchParams({
     action: "TEMPLATE",
     text: event.title,
