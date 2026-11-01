@@ -223,14 +223,14 @@ export function AdminEventCreatePanel() {
     if (!draft || draft.wizard_step >= 10) return;
     const target = draft.wizard_step + 1;
     const result = await saveNow(target);
-    if (result) setDraft({ ...result, wizard_step: target });
+    if (result) setDraft((current) => current?.id === result.id ? { ...current, wizard_step: target } : current);
   };
 
   const back = async () => {
     if (!draft || draft.wizard_step <= 1) return;
     const target = draft.wizard_step - 1;
     const result = await saveNow(target);
-    if (result) setDraft({ ...result, wizard_step: target });
+    if (result) setDraft((current) => current?.id === result.id ? { ...current, wizard_step: target } : current);
   };
 
   const leaveDraft = async () => {
