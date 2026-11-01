@@ -210,6 +210,16 @@ async def attach_file(
     return item
 
 
+def has_usable_evidence(item: CareerPortfolioItem) -> bool:
+    if item.file_id:
+        return True
+    try:
+        return bool(valid_evidence_url(item.url))
+    except ValueError:
+        # Keep legacy rows unchanged, but unsafe URL-only proof is insufficient.
+        return False
+
+
 async def request_verification(
     session: AsyncSession, item: CareerPortfolioItem
 ) -> CareerPortfolioItem:
@@ -217,13 +227,8 @@ async def request_verification(
         raise ValueError("verified_item_locked")
     if item.status == "verified":
         return item
-    if not item.file_id:
-        try:
-            evidence_url = valid_evidence_url(item.url)
-        except ValueError:
-            evidence_url = None  # Legacy malformed URLs remain stored, but cannot serve as proof.
-        if not evidence_url:
-            raise ValueError("evidence_required")
+    if not has_usable_evidence(item):
+        raise ValueError("evidence_required")
     item.status = "pending"
     item.submitted_at = utcnow()
     item.admin_comment = None
@@ -244,6 +249,10 @@ async def review_item(
         raise ValueError("invalid_decision")
     if item.status != "pending":
         raise ValueError("item_not_pending")
+    # Rejecting an old request stays possible, but approving one requires
+    # usable evidence even if it predates today's URL validation policy.
+    if decision == "approve" and not has_usable_evidence(item):
+        raise ValueError("evidence_required")
     if decision == "approve":
         item.status = "verified"
         item.verified_by = reviewer_id
