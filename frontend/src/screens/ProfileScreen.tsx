@@ -146,7 +146,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
         <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Мой вклад и опыт</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.6rem" }}>
           {DASHBOARD_CELLS.map((cell) => (
-            <button key={cell.key} type="button" onClick={() => setActiveCell(cell.key)} style={{ minHeight: 72, textAlign: "left", padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: "var(--era-surface)", border: "1px solid var(--era-border)" }}>
+            <button key={cell.key} type="button" onClick={() => setActiveCell(cell.key)} style={{ minHeight: 72, minWidth: 0, textAlign: "left", overflowWrap: "anywhere", padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: "var(--era-surface)", border: "1px solid var(--era-border)" }}>
               <strong style={{ display: "block" }}>{cell.label}</strong>
               <span style={{ display: "block", marginTop: "0.22rem", color: "var(--era-text-muted)", fontSize: "0.78rem" }}>{resultEntries[cell.key].length} записей</span>
             </button>
