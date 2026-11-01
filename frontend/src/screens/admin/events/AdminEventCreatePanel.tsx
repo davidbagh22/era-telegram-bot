@@ -436,7 +436,7 @@ export function AdminEventCreatePanel() {
             {draft.program.map((item, index) => (
               <ArrayCard key={index} title={`Активность ${index + 1}`} onRemove={() => mutate((current) => ({ ...current, program: current.program.filter((_, itemIndex) => itemIndex !== index) }))}>
                 <Field label="Название"><input value={item.title} onChange={(event) => updateProgram(index, { ...item, title: event.target.value }, mutate)} /></Field>
-                <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: ".5rem" }}><Field label="Время"><input type="time" value={item.time ?? ""} onChange={(event) => updateProgram(index, { ...item, time: event.target.value }, mutate)} /></Field><Field label="Ведущий"><input value={item.responsible ?? ""} onChange={(event) => updateProgram(index, { ...item, responsible: event.target.value }, mutate)} /></Field></div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: ".5rem" }}><Field label="Время"><input type="time" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={item.time ?? ""} onChange={(event) => updateProgram(index, { ...item, time: event.target.value }, mutate)} /></Field><Field label="Ведущий"><input style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={item.responsible ?? ""} onChange={(event) => updateProgram(index, { ...item, responsible: event.target.value }, mutate)} /></Field></div>
                 <Field label="Описание"><textarea rows={3} value={item.description ?? ""} onChange={(event) => updateProgram(index, { ...item, description: event.target.value }, mutate)} /></Field>
               </ArrayCard>
             ))}
@@ -466,7 +466,7 @@ export function AdminEventCreatePanel() {
             <Question title="Отправлять напоминания зарегистрированным?" hint="Можно выбрать несколько моментов. Они сохраняются в событии и используются планировщиком уведомлений." />
             {REMINDERS.map((item) => <Toggle key={item.value} checked={draft.reminders.includes(item.value)} onChange={(checked) => mutate((current) => ({ ...current, reminders: checked ? [...current.reminders, item.value] : current.reminders.filter((value) => value !== item.value) }))} title={item.label} />)}
             <Field label="Своё время, минут до события"><div style={{ display: "flex", gap: ".5rem" }}><input inputMode="numeric" value={customReminder} onChange={(event) => setCustomReminder(event.target.value)} placeholder="Например, 30" /><button type="button" onClick={() => { const value = Number(customReminder); if (value > 0) { mutate((current) => ({ ...current, reminders: [...current.reminders.filter((item) => item !== value), value] })); setCustomReminder(""); } }}>Добавить</button></div></Field>
-            {draft.reminders.length > 0 && <p style={{ color: "var(--era-text-muted)", fontSize: ".82rem", marginBottom: 0 }}>Сохранено: {draft.reminders.sort((a, b) => b - a).map((value) => value >= 60 ? `${value / 60} ч` : `${value} мин`).join(" · ")}</p>}
+            {draft.reminders.length > 0 && <p style={{ color: "var(--era-text-muted)", fontSize: ".82rem", marginBottom: 0 }}>Сохранено: {[...draft.reminders].sort((a, b) => b - a).map((value) => value >= 60 ? `${value / 60} ч` : `${value} мин`).join(" · ")}</p>}
           </>
         )}
 
