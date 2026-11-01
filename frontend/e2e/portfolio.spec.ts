@@ -41,3 +41,27 @@ test("participant's earned badge appears in their portfolio", async ({ page }) =
   await expect(page.getByRole("heading", { name: "Достижения" })).toBeVisible();
   await expect(page.getByText("E2E Тестовый значок")).toBeVisible();
 });
+
+test("profile dashboard cells fit a narrow mobile viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
+  await page.getByRole("button", { name: "Профиль", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Мой вклад и опыт" })).toBeVisible();
+
+  const cells = page.locator("section").filter({ has: page.getByRole("heading", { name: "Мой вклад и опыт" }) }).locator("button");
+  await expect(cells).toHaveCount(6);
+  for (const cell of await cells.all()) {
+    await expect(cell).toBeVisible();
+    const fits = await cell.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const label = element.querySelector("strong");
+      return rect.left >= 0 && rect.right <= window.innerWidth + 1
+        && element.scrollWidth <= element.clientWidth + 1
+        && (!label || label.scrollWidth <= label.clientWidth + 1);
+    });
+    expect(fits).toBe(true);
+  }
+
+  await page.getByRole("button", { name: /Волонтёрство/ }).click();
+  await expect(page.getByRole("heading", { name: "Волонтёрство" })).toBeVisible();
+});
