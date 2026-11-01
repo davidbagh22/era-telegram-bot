@@ -72,6 +72,22 @@ class SnapshotCollectorTests(unittest.TestCase):
         snapshot = module.collect(FakeAPI(live=OLD), render_token="fixture-only")
         self.assertEqual(assess(snapshot, now=datetime.now(timezone.utc))["status"], "DEPLOY_PENDING")
 
+    def test_completed_failed_workflow_without_jobs_is_ci_failed(self):
+        class FailedWorkflow(FakeAPI):
+            def __call__(self, url, token=None):
+                if "/actions/runs?" in url:
+                    return {"workflow_runs": [{
+                        "id": 123, "name": "Bot checks", "event": "push",
+                        "head_sha": MAIN, "created_at": self.completed_at,
+                        "status": "completed", "conclusion": "failure",
+                    }]}
+                if "/actions/runs/123/jobs?" in url:
+                    return {"jobs": []}
+                return super().__call__(url, token)
+        snapshot = module.collect(FailedWorkflow(), render_token="fixture-only")
+        self.assertEqual(snapshot["ci"]["workflow_conclusion"], "failure")
+        self.assertEqual(assess(snapshot, now=datetime.now(timezone.utc))["status"], "CI_FAILED")
+
     def test_pending_ci_with_matching_live_is_not_accepted(self):
         snapshot = module.collect(FakeAPI(ci="pending"), render_token="fixture-only")
         self.assertEqual(assess(snapshot, now=datetime.now(timezone.utc))["status"], "CI_PENDING")

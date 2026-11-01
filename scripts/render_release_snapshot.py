@@ -68,6 +68,8 @@ def collect(fetch, *, render_token: str, service_id: str = SERVICE) -> dict:
     ci = {"head_sha": main_sha, "jobs": []}
     if matches:
         run = matches[0]
+        ci["workflow_status"] = run.get("status")
+        ci["workflow_conclusion"] = run.get("conclusion")
         jobs_payload = fetch(GITHUB + f"/actions/runs/{int(run['id'])}/jobs?per_page=100")
         jobs = jobs_payload.get("jobs", [])
         if not isinstance(jobs, list):
