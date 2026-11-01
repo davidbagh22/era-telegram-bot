@@ -88,29 +88,61 @@ function isIosDevice(): boolean {
 
 function EventCalendarButton({ event }: { event: EventItem }) {
   const [busy, setBusy] = useState(false);
+  const [preparedFile, setPreparedFile] = useState<File | null>(null);
+  const [preparingShare, setPreparingShare] = useState(isIosDevice());
   const toast = useToast();
   const googleUrl = googleCalendarUrl(event);
+  const ios = isIosDevice();
+
+  useEffect(() => {
+    if (!ios) return;
+    let active = true;
+    setPreparedFile(null);
+    setPreparingShare(true);
+    // Web Share must be called directly from a tap. Fetching the protected ICS
+    // inside that tap can lose transient user activation on iOS Telegram, so
+    // prepare the file read-only while the event detail is already visible.
+    const probe = new File([""], "ERA.ics", { type: "text/calendar" });
+    let canShareFile = false;
+    try {
+      canShareFile = typeof navigator.share === "function"
+        && typeof navigator.canShare === "function"
+        && navigator.canShare({ files: [probe] });
+    } catch { /* unsupported WebView */ }
+    if (!canShareFile) {
+      setPreparingShare(false);
+      return () => { active = false; };
+    }
+    void downloadEventCalendar(event.id)
+      .then((blob) => {
+        if (active) setPreparedFile(new File([blob], `ERA-${event.id}.ics`, { type: "text/calendar;charset=utf-8" }));
+      })
+      .catch(() => { /* explain unavailable import on explicit tap */ })
+      .finally(() => { if (active) setPreparingShare(false); });
+    return () => { active = false; };
+  }, [event.id, ios]);
 
   async function shareAppleCalendar() {
-    if (busy) return;
+    if (busy || preparingShare) return;
+    if (ios) {
+      if (!preparedFile || typeof navigator.share !== "function") {
+        toast.show("Telegram на iPhone не поддерживает передачу .ics. Используйте Google Календарь или откройте ЭРА в Safari.", "error");
+        return;
+      }
+      try {
+        // No await before share: preserve the user gesture on iOS.
+        await navigator.share({ files: [preparedFile], title: event.title });
+        toast.show("Выберите Календарь или «Сохранить в Файлы» в меню «Поделиться».");
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        toast.show("Не удалось открыть меню «Поделиться». Используйте Google Календарь.", "error");
+      }
+      return;
+    }
     setBusy(true);
     try {
       const blob = await downloadEventCalendar(event.id);
       const file = new File([blob], `ERA-${event.id}.ics`, { type: "text/calendar;charset=utf-8" });
-      // On iOS Telegram, clicking a blob: download can render raw ICS in the
-      // WebView, with mojibake instead of importing it into Calendar.
-      // Prefer the OS share sheet and never trigger that broken blob fallback.
-      const payload: ShareData = { files: [file], title: event.title };
-      if (typeof navigator.share === "function" && typeof navigator.canShare === "function"
-          && navigator.canShare(payload)) {
-        await navigator.share(payload);
-        toast.show("Выберите Календарь или «Сохранить в Файлы» в меню «Поделиться».");
-        return;
-      }
-      if (isIosDevice()) {
-        toast.show("Telegram на iPhone не поддерживает передачу .ics. Используйте Google Календарь или откройте ЭРА в Safari.", "error");
-        return;
-      }
       const url = URL.createObjectURL(file);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -120,9 +152,8 @@ function EventCalendarButton({ event }: { event: EventItem }) {
       anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
       toast.show("Скачан .ics. Откройте файл в календаре; после изменения события скачайте новую версию.");
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      toast.show("Не удалось передать событие в календарь. Попробуйте Google Календарь.", "error");
+    } catch {
+      toast.show("Не удалось скачать календарь. Попробуйте Google Календарь.", "error");
     } finally {
       setBusy(false);
     }
@@ -132,8 +163,10 @@ function EventCalendarButton({ event }: { event: EventItem }) {
     if (!googleUrl) return;
     const telegram = getTelegramWebApp();
     if (telegram?.openLink) {
-      eventClick.preventDefault();
-      telegram.openLink(googleUrl);
+      try {
+        telegram.openLink(googleUrl);
+        eventClick.preventDefault();
+      } catch { /* fall back to the normal external anchor */ }
     }
   }
 
@@ -143,8 +176,8 @@ function EventCalendarButton({ event }: { event: EventItem }) {
         className="era-btn-primary" style={{ textAlign: "center", textDecoration: "none", padding: ".75rem", borderRadius: "var(--era-radius-control)" }}>
         Google Календарь
       </a>}
-      <button type="button" disabled={busy} onClick={() => void shareAppleCalendar()}>
-        {busy ? "Готовим файл…" : "Календарь Apple (.ics)"}
+      <button type="button" disabled={busy || preparingShare} onClick={() => void shareAppleCalendar()}>
+        {busy || preparingShare ? "Готовим файл…" : "Календарь Apple (.ics)"}
       </button>
       <small style={{ color: "var(--era-text-muted)" }}>
         На iPhone используйте системное меню «Поделиться». Если оно недоступно, выберите Google Календарь.
