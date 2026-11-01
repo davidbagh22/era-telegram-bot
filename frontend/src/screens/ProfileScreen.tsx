@@ -130,10 +130,10 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
       <Card gradient>
         <div style={{ display: "flex", gap: "0.9rem", alignItems: "center" }}>
           <Avatar firstName={data.first_name} lastName={data.last_name} size="lg" />
-          <div style={{ minWidth: 0 }}>
+          <div data-testid="profile-identity" style={{ minWidth: 0 }}>
             <MonoLabel tone="violet">Профиль</MonoLabel>
             <h1 style={{ margin: "0.25rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.75rem", overflowWrap: "anywhere" }}>{data.full_name || data.first_name}</h1>
-            <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-secondary)" }}>{data.growth.label}{data.city ? ` · ${data.city}` : ""}</p>
+            {data.city && <p data-testid="profile-location" style={{ margin: "0.25rem 0 0", color: "var(--era-text-secondary)" }}>{data.city}</p>}
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.6rem", marginTop: "1rem" }}>
