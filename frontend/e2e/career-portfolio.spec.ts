@@ -42,6 +42,10 @@ test("portfolio hides unsafe evidence links and wraps long mobile cards", async 
   await page.getByRole("button", { name: "Профиль", exact: true }).click();
   await page.getByRole("button", { name: /Моё портфолио/ }).click();
   await expect(page.getByText(longTitle)).toBeVisible();
+  const unsafeCard = page.getByText(longTitle).locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' era-card ')][1]");
+  const safeCard = page.getByText("Безопасное подтверждение").locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' era-card ')][1]");
+  await expect(unsafeCard.getByRole("button", { name: "Отправить на подтверждение ЭРА" })).toHaveCount(0);
+  await expect(safeCard.getByRole("button", { name: "Отправить на подтверждение ЭРА" })).toBeVisible();
 
   const links = page.getByRole("link", { name: "Открыть ссылку ↗" });
   await expect(links).toHaveCount(1);
