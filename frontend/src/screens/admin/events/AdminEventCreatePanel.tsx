@@ -45,7 +45,7 @@ const REMINDERS = [
 // Preserve legacy naive values until the editor actually changes the field.
 function taskDeadlineInput(value: string | null | undefined): string {
   if (!value) return "";
-  if (!/(?:Z|[+-]\\d{2}:\\d{2})$/i.test(value)) return value.slice(0, 16);
+  if (!/(?:Z|[+-][0-9]{2}:[0-9]{2})$/i.test(value)) return value.slice(0, 16);
   const instant = new Date(value);
   if (Number.isNaN(instant.getTime())) return value.slice(0, 16);
   return new Date(instant.getTime() - instant.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
