@@ -62,6 +62,21 @@ const EMPTY_FORM: CareerItemPayload = {
   include_in_resume: true,
 };
 
+// Evidence URLs come from participant-provided portfolio data. Never render
+// executable schemes (javascript:, data:, etc.) as clickable Mini App links.
+function safeEvidenceUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value.trim());
+    if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname || parsed.username || parsed.password) {
+      return null;
+    }
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
+
 function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -100,9 +115,10 @@ function ItemCard({
   const status = STATUS_META[item.status] ?? STATUS_META.self_reported;
   const canEdit = !["verified", "revoked"].includes(item.status);
   const canVerify = canEdit && item.status !== "pending" && (item.has_file || Boolean(item.url));
+  const evidenceUrl = safeEvidenceUrl(item.url);
   return (
     <Card>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start", flexWrap: "wrap" }}>
         <div style={{ minWidth: 0 }}>
           <strong style={{ overflowWrap: "anywhere" }}>{item.title}</strong>
           {(item.organization || item.issued_at) && (
@@ -111,7 +127,7 @@ function ItemCard({
             </p>
           )}
         </div>
-        <span style={{ whiteSpace: "nowrap", fontSize: "var(--era-text-xs)", fontWeight: 800, color: item.status === "verified" ? "var(--era-success)" : "var(--era-text-muted)" }}>
+        <span style={{ maxWidth: "100%", overflowWrap: "anywhere", fontSize: "var(--era-text-xs)", fontWeight: 800, color: item.status === "verified" ? "var(--era-success)" : "var(--era-text-muted)" }}>
           {status.mark} {status.label}
         </span>
       </div>
@@ -121,7 +137,7 @@ function ItemCard({
       )}
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.8rem" }}>
         {item.has_file && <span style={{ fontSize: "var(--era-text-xs)", color: "var(--era-text-muted)" }}>📎 {item.file_name || "Документ"}</span>}
-        {item.url && <a href={item.url} target="_blank" rel="noreferrer" style={{ fontSize: "var(--era-text-xs)" }}>Открыть ссылку ↗</a>}
+        {evidenceUrl && <a href={evidenceUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: "var(--era-text-xs)", overflowWrap: "anywhere" }}>Открыть ссылку ↗</a>}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem", marginTop: "0.9rem" }}>
         <label style={{ display: "flex", alignItems: "center", gap: "0.55rem", fontSize: "var(--era-text-sm)" }}>
