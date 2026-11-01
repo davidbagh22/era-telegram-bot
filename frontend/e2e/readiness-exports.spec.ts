@@ -23,7 +23,13 @@ test("event calendar download uses UTC rather than the device timezone", async (
   await page.goto("/app/?devTelegramId=900001#/events");
   const card = page.locator(".era-card", { hasText: event.title }).first();
   await card.getByRole("button", { name: "Открыть событие" }).click();
-  const calendar = page.getByRole("button", { name: "Добавить в календарь", exact: true });
+  // The UI now offers explicit Google and .ics paths; desktop keeps file download.
+  const google = page.getByRole("link", { name: "Google Календарь" });
+  await expect(google).toBeVisible();
+  const googleUrl = new URL((await google.getAttribute("href"))!);
+  expect(googleUrl.searchParams.get("ctz")).toBe("Asia/Yerevan");
+  expect(googleUrl.searchParams.get("dates")).toMatch(/^\\d{8}T\\d{6}Z\\/\\d{8}T\\d{6}Z$/);
+  const calendar = page.getByRole("button", { name: "Календарь Apple (.ics)" });
   const download = page.waitForEvent("download");
   await calendar.click();
   expect((await download).suggestedFilename()).toBe(`ERA-${event.id}.ics`);
