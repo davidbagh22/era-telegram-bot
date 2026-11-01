@@ -3,6 +3,7 @@ from __future__ import annotations
 import secrets
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,6 +48,28 @@ def clean_text(value: str | None, *, max_length: int | None = None) -> str:
     text = (value or "").strip()
     if max_length is not None:
         text = text[:max_length]
+    return text
+
+
+def valid_evidence_url(value: str | None) -> str | None:
+    """Accept browser-navigable HTTP(S) evidence without rewriting legacy rows.
+
+    This is a validation boundary, not a URL fetcher. Existing stored values
+    are never rewritten; callers can still use uploaded files as evidence.
+    """
+    text = (value or "").strip()
+    if not text:
+        return None
+    if len(text) > 500 or "\\" in text or any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in text):
+        raise ValueError("invalid_evidence_url")
+    try:
+        parsed = urlsplit(text)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or "@" in parsed.netloc:
+            raise ValueError("invalid_evidence_url")
+        # Accessing port also rejects malformed and out-of-range port numbers.
+        _ = parsed.port
+    except ValueError as exc:
+        raise ValueError("invalid_evidence_url") from exc
     return text
 
 
@@ -119,7 +142,7 @@ async def create_item(
         organization=clean_text(organization, max_length=255) or None,
         description=clean_text(description, max_length=3000) or None,
         issued_at=issued_at,
-        url=clean_text(url, max_length=500) or None,
+        url=valid_evidence_url(url),
         status="self_reported",
         include_in_resume=include_in_resume,
     )
@@ -152,7 +175,7 @@ async def update_item(
     if "issued_at" in changes:
         item.issued_at = changes["issued_at"]
     if "url" in changes:
-        item.url = clean_text(changes["url"], max_length=500) or None
+        item.url = valid_evidence_url(changes["url"])
     if "include_in_resume" in changes and changes["include_in_resume"] is not None:
         item.include_in_resume = bool(changes["include_in_resume"])
     if item.status in {"pending", "rejected"}:
@@ -191,8 +214,13 @@ async def request_verification(
         raise ValueError("verified_item_locked")
     if item.status == "verified":
         return item
-    if not item.file_id and not item.url:
-        raise ValueError("evidence_required")
+    if not item.file_id:
+        try:
+            evidence_url = valid_evidence_url(item.url)
+        except ValueError:
+            evidence_url = None  # Legacy malformed URLs remain stored, but cannot serve as proof.
+        if not evidence_url:
+            raise ValueError("evidence_required")
     item.status = "pending"
     item.submitted_at = utcnow()
     item.admin_comment = None
