@@ -14,6 +14,7 @@ import { SkeletonList } from "../../components/Skeleton";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useToast } from "../../components/Toast";
 import { useAsync } from "../../hooks/useAsync";
+import { safeEvidenceUrl } from "../../utils/safeEvidenceUrl";
 import { successHaptic } from "../../telegram/webApp";
 import type { EventActivity, EventItem, EventScope } from "../../types/activity";
 import { EventAttendancePanel } from "./EventAttendancePanel";
@@ -90,7 +91,9 @@ function EventActivitiesPanel({ eventId }: { eventId: number }) {
 
   return (
     <div className="era-stagger" style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-      {state.data.map((activity: EventActivity) => (
+      {state.data.map((activity: EventActivity) => {
+        const submitUrl = safeEvidenceUrl(activity.submit_deep_link);
+        return (
         <div
           key={activity.id}
           style={{
@@ -109,9 +112,9 @@ function EventActivitiesPanel({ eventId }: { eventId: number }) {
           </div>
           <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.85rem" }}>{activity.description}</p>
           <strong style={{ fontSize: "0.82rem" }}>+{activity.points} баллов</strong>
-          {activity.submit_deep_link && (
+          {submitUrl && (
             <a
-              href={activity.submit_deep_link}
+              href={submitUrl}
               target="_blank"
               rel="noreferrer"
               className="era-btn-primary"
@@ -121,7 +124,8 @@ function EventActivitiesPanel({ eventId }: { eventId: number }) {
             </a>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -170,6 +174,7 @@ interface EventDetailProps {
 function EventDetail({ event, pending, actionError, onRegister, onCancelRequest, onBack }: EventDetailProps) {
   const registered = ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "");
   const waitlisted = event.registration_status === WAITLIST_STATUS;
+  const chatUrl = safeEvidenceUrl(event.chat_url);
 
   return (
     <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.85rem", paddingBottom: "calc(var(--era-page-bottom-safe, 10rem) + 5rem)" }}>
@@ -260,7 +265,7 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
 
       {event.project_id && <button type="button" onClick={() => { window.location.hash = `#/projects/${event.project_id}`; }}>Открыть связанный проект →</button>}
       <EventCalendarButton event={event} />
-      {event.chat_url && <a href={event.chat_url} target="_blank" rel="noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть чат</a>}
+      {chatUrl && <a href={chatUrl} target="_blank" rel="noopener noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть чат</a>}
       {event.contact && <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.86rem" }}>Связь: {event.contact}</p>}
       {actionError && <p style={{ color: "var(--era-error)", margin: 0 }}>{actionError}</p>}
 
