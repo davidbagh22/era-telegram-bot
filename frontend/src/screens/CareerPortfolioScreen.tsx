@@ -114,8 +114,8 @@ function ItemCard({
 }) {
   const status = STATUS_META[item.status] ?? STATUS_META.self_reported;
   const canEdit = !["verified", "revoked"].includes(item.status);
-  const canVerify = canEdit && item.status !== "pending" && (item.has_file || Boolean(item.url));
   const evidenceUrl = safeEvidenceUrl(item.url);
+  const canVerify = canEdit && item.status !== "pending" && (item.has_file || Boolean(evidenceUrl));
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start", flexWrap: "wrap" }}>
