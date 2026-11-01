@@ -20,7 +20,7 @@ test("wizard task deadline persists an absolute instant and reopens in editor lo
   await page.getByLabel("Название", { exact: true }).fill("E2E проверка часового пояса");
 
   const savedRequest = page.waitForRequest((request) => {
-    if (request.method() !== "PATCH" || !/\\/api\\/v1\\/admin\\/events\\/\\d+\\/draft$/.test(request.url())) return false;
+    if (request.method() !== "PATCH" || !new URL(request.url()).pathname.match(/^\/api\/v1\/admin\/events\/[0-9]+\/draft$/)) return false;
     const payload = request.postDataJSON();
     return payload.participant_tasks?.[0]?.deadline === "2026-11-07T14:00:00.000Z";
   });
