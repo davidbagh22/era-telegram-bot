@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
@@ -33,6 +33,20 @@ def _approved(user: User | None) -> bool:
         and not user.is_blocked
         and not user.is_archived
     )
+
+
+def _activity_expired(deadline: datetime | None) -> bool:
+    """Treat naive legacy/SQLite activity deadlines as UTC, as stored by the app.
+
+    PostgreSQL timezone-aware values keep their absolute instant. Comparing a
+    naive value with an aware local clock would otherwise raise TypeError and
+    leave the participant's callback/FSM handler unfinished.
+    """
+    if deadline is None:
+        return False
+    if deadline.tzinfo is None or deadline.utcoffset() is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+    return deadline <= datetime.now(timezone.utc)
 
 
 # Afisha/list, event:view:* and event:join:* are intentionally owned by
@@ -329,7 +343,7 @@ async def event_activity_start(
     if (
         activity is None
         or not activity.is_active
-        or (activity.deadline and activity.deadline <= datetime.now().astimezone())
+        or _activity_expired(activity.deadline)
     ):
         await call.message.answer("Эта активность уже закрыта")
         return
@@ -391,7 +405,7 @@ async def event_activity_submit(
     if (
         activity is None
         or not activity.is_active
-        or (activity.deadline and activity.deadline <= datetime.now().astimezone())
+        or _activity_expired(activity.deadline)
     ):
         await state.clear()
         await message.answer("Эта активность уже закрыта")
