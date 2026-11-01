@@ -98,6 +98,25 @@ async def _run_isolated_service_flow() -> None:
             item = await career_service.request_verification(session, item)
             assert item.status == "pending"
             assert item.url == "javascript:alert(1)"
+
+            # A legacy pending URL-only request cannot be approved without proof,
+            # but a reviewer can still reject it without rewriting its URL.
+            legacy = await career_service.create_item(
+                session, user.id, item_type="achievement", title="Legacy pending",
+            )
+            legacy.url = "data:text/html,unsafe"
+            legacy.status = "pending"
+            await session.commit()
+            with pytest.raises(ValueError, match="^evidence_required$"):
+                await career_service.review_item(
+                    session, legacy, reviewer_id=user.id, decision="approve", comment=None,
+                )
+            assert legacy.status == "pending"
+            legacy = await career_service.review_item(
+                session, legacy, reviewer_id=user.id, decision="reject", comment="Invalid proof",
+            )
+            assert legacy.status == "rejected"
+            assert legacy.url == "data:text/html,unsafe"
     finally:
         await engine.dispose()
 
