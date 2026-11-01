@@ -63,6 +63,7 @@ export interface AdminEventDraft {
   address: string | null;
   attendance_mode: "offline" | "online" | "hybrid";
   has_poster: boolean;
+  show_in_public_listing: boolean;
   registration_required: boolean;
   participant_limit: number | null;
   registration_close_at: string | null;
@@ -183,6 +184,12 @@ export function saveEventDraft(eventId: number, patch: AdminEventDraftPatch): Pr
 
 export function publishEventDraft(eventId: number): Promise<AdminEventDraft> {
   return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/publish`, { method: "POST" });
+}
+
+export function setEventPublicListing(eventId: number, visible: boolean): Promise<AdminEventDraft> {
+  return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/listing`, {
+    method: "PATCH", body: JSON.stringify({ visible }),
+  });
 }
 
 export function cancelAdminEvent(eventId: number): Promise<AdminEventDraft> {

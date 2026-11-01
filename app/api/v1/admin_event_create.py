@@ -212,6 +212,7 @@ class EventDraftOut(BaseModel):
     address: str | None
     attendance_mode: str
     has_poster: bool
+    show_in_public_listing: bool = True
     registration_required: bool
     participant_limit: int | None
     registration_close_at: str | None
@@ -279,6 +280,7 @@ async def _draft_out(session: AsyncSession, event: Event, experience: EventExper
         address=experience.address,
         attendance_mode=experience.attendance_mode,
         has_poster=bool(experience.poster_bytes),
+        show_in_public_listing=bool(experience.show_in_public_listing),
         registration_required=experience.registration_required,
         participant_limit=event.participant_limit,
         registration_close_at=(experience.registration_close_at.isoformat() if experience.registration_close_at else None),
@@ -376,6 +378,41 @@ async def read_event_draft(
 ) -> EventDraftOut:
     event = await _managed_event(session, event_id)
     return await _draft_out(session, event, await _experience(session, event))
+
+
+class EventListingPatch(BaseModel):
+    visible: bool
+
+
+@router.patch("/{event_id}/listing", response_model=EventDraftOut)
+async def set_event_public_listing(
+    event_id: int,
+    payload: EventListingPatch,
+    admin: User = Depends(require_event_manager),
+    session: AsyncSession = Depends(get_session),
+) -> EventDraftOut:
+    """Reversible discovery-only switch; no publish, notifications or data deletion.
+
+    Registrations, attendance, personal history, points and direct event links
+    remain intact. A manager may restore the listing with visible=True.
+    """
+    event = await _managed_event(session, event_id)
+    if event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
+        raise HTTPException(status_code=409, detail="event_not_public")
+    experience = await _experience(session, event)
+    old_visible = bool(experience.show_in_public_listing)
+    if old_visible != payload.visible:
+        experience.show_in_public_listing = payload.visible
+        await audit(
+            session,
+            actor_id=admin.id,
+            action="event.public_listing_visibility_changed",
+            entity_type="event",
+            entity_id=event.id,
+            old_value={"visible": old_visible},
+            new_value={"visible": payload.visible},
+        )
+    return await _draft_out(session, event, experience)
 
 
 async def _notify_changed_event(

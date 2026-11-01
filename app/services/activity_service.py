@@ -7,6 +7,7 @@ from typing import Literal
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database.event_experience import EventExperience
 from app.database.models import (
     Event,
     EventRegistration,
@@ -42,9 +43,11 @@ async def list_events(
             (
                 await session.scalars(
                     select(Event)
+                    .outerjoin(EventExperience, EventExperience.event_id == Event.id)
                     .where(
                         Event.status.in_(PUBLIC_EVENT_STATUSES),
                         Event.event_date >= date.today(),
+                        or_(EventExperience.event_id.is_(None), EventExperience.show_in_public_listing.is_(True)),
                     )
                     .order_by(Event.event_date, Event.event_time)
                 )
@@ -56,10 +59,15 @@ async def list_events(
         registered_completed = list((await session.scalars(
             select(Event)
             .join(EventRegistration, EventRegistration.event_id == Event.id)
+            .outerjoin(EventExperience, EventExperience.event_id == Event.id)
             .where(
                 EventRegistration.user_id == user.id,
                 EventRegistration.status.in_(ACTIVE_REGISTRATION_STATUSES),
                 Event.status.in_((EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED)),
+                # Completed registrations stay available in "mine"/"past",
+                # but a hidden event must not leak into the general Afisha
+                # through this legacy completion exception.
+                or_(EventExperience.event_id.is_(None), EventExperience.show_in_public_listing.is_(True)),
             )
         )).all())
         events_by_id = {event.id: event for event in [*public_events, *registered_completed]}

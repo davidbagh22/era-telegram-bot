@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.rate_limit import enforce_rate_limit
 from app.config import Settings
+from app.database.event_experience import EventExperience
 from app.database.models import (
     Auction,
     Badge,
@@ -1310,6 +1311,7 @@ class OperationalEventOut(BaseModel):
     points_for_visit: int
     registered: int
     free: int | str
+    show_in_public_listing: bool = True
 
 
 @router.get("/events/operational", response_model=list[OperationalEventOut])
@@ -1321,6 +1323,7 @@ async def read_operational_events(
     result: list[OperationalEventOut] = []
     for event in events:
         stats = await event_registration_service.registration_stats(session, event)
+        experience = await session.get(EventExperience, event.id)
         result.append(
             OperationalEventOut(
                 id=event.id,
@@ -1332,6 +1335,7 @@ async def read_operational_events(
                 points_for_visit=event.points_for_visit,
                 registered=stats["registered"],
                 free=stats["free"],
+                show_in_public_listing=(bool(experience.show_in_public_listing) if experience else True),
             )
         )
     return result
