@@ -58,7 +58,7 @@ test("iPhone without file sharing never opens a raw ICS blob in Telegram", async
     await route.fulfill({
       status: 200,
       contentType: "text/calendar; charset=utf-8",
-      body: "BEGIN:VCALENDAR\\r\\nVERSION:2.0\\r\\nEND:VCALENDAR\\r\\n",
+      body: "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n",
     });
   });
   await openCalendarChoices(page);
@@ -84,12 +84,12 @@ test("supported iOS Web Share receives a UTF-8 .ics File instead of a blob URL",
     await route.fulfill({
       status: 200,
       contentType: "text/calendar; charset=utf-8",
-      body: "BEGIN:VCALENDAR\\r\\nSUMMARY:Встреча ЭРА 🇦🇲\\r\\nEND:VCALENDAR\\r\\n",
+      body: "BEGIN:VCALENDAR\r\nSUMMARY:Встреча ЭРА 🇦🇲\r\nEND:VCALENDAR\r\n",
     });
   });
   await openCalendarChoices(page);
   await page.getByRole("button", { name: "Календарь Apple (.ics)" }).click();
   await expect.poll(() => page.evaluate(() =>
     (window as typeof window & { __eraSharedFile?: string }).__eraSharedFile ?? null,
-  )).toMatch(/^ERA-\\d+\\.ics$/);
+  )).toMatch(/^ERA-\d+\.ics$/);
 });
