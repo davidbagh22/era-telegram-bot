@@ -4,7 +4,7 @@ Isolated mocks only: no real Telegram API, database, participants, or points.
 The test preserves current registration policy; waitlist eligibility is a separate
 business-rule review and must not be inferred from these cases.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
@@ -62,6 +62,29 @@ class ActivityStartEligibilityTests(IsolatedAsyncioTestCase):
                 state.set_state.assert_not_awaited()
                 state.update_data.assert_not_awaited()
                 call.message.answer.assert_awaited_once()
+
+    async def test_legacy_naive_utc_deadline_is_checked_without_typeerror(self):
+        now_utc_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+        for expired in (True, False):
+            with self.subTest(expired=expired):
+                deadline = now_utc_naive + timedelta(days=-1 if expired else 1)
+                call, state = _call(), _state()
+                session = SimpleNamespace(
+                    get=AsyncMock(return_value=_activity(deadline=deadline)),
+                    scalar=AsyncMock(side_effect=[
+                        SimpleNamespace(event_id=13, user_id=7), None,
+                    ]),
+                )
+                with patch("app.handlers.participant.events._approved", return_value=True):
+                    await event_activity_start(call, SimpleNamespace(id=7), session, state)
+                if expired:
+                    session.scalar.assert_not_awaited()
+                    state.set_state.assert_not_awaited()
+                    self.assertIn("закрыта", call.message.answer.await_args.args[0])
+                else:
+                    self.assertEqual(session.scalar.await_count, 2)
+                    state.set_state.assert_awaited_once()
+                    state.update_data.assert_awaited_once_with(event_activity_id=42)
 
     async def test_unregistered_user_cannot_start_submission(self):
         call, state = _call(), _state()
