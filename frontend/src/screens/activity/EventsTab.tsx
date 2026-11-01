@@ -115,7 +115,7 @@ function EventCalendarButton({ event }: { event: EventItem }) {
     }
     void downloadEventCalendar(event.id)
       .then((blob) => {
-        if (active) setPreparedFile(new File([blob], `ERA-${event.id}.ics`, { type: "text/calendar;charset=utf-8" }));
+        if (active) setPreparedFile(new File([blob], `ERA-${event.id}.ics`, { type: "text/calendar" }));
       })
       .catch(() => { /* explain unavailable import on explicit tap */ })
       .finally(() => { if (active) setPreparingShare(false); });
@@ -142,7 +142,7 @@ function EventCalendarButton({ event }: { event: EventItem }) {
     setBusy(true);
     try {
       const blob = await downloadEventCalendar(event.id);
-      const file = new File([blob], `ERA-${event.id}.ics`, { type: "text/calendar;charset=utf-8" });
+      const file = new File([blob], `ERA-${event.id}.ics`, { type: "text/calendar" });
       const url = URL.createObjectURL(file);
       const anchor = document.createElement("a");
       anchor.href = url;
