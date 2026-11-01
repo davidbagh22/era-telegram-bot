@@ -22,6 +22,7 @@ import { EmptyState } from "../components/EmptyState";
 import { SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { useToast } from "../components/Toast";
+import { safeEvidenceUrl } from "../utils/safeEvidenceUrl";
 import type {
   CareerDashboard,
   CareerItemPayload,
@@ -61,21 +62,6 @@ const EMPTY_FORM: CareerItemPayload = {
   url: "",
   include_in_resume: true,
 };
-
-// Evidence URLs come from participant-provided portfolio data. Never render
-// executable schemes (javascript:, data:, etc.) as clickable Mini App links.
-function safeEvidenceUrl(value: string | null): string | null {
-  if (!value) return null;
-  try {
-    const parsed = new URL(value.trim());
-    if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname || parsed.username || parsed.password) {
-      return null;
-    }
-    return parsed.href;
-  } catch {
-    return null;
-  }
-}
 
 function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
