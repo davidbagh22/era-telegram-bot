@@ -45,3 +45,34 @@ test("wizard task deadline persists an absolute instant and reopens in editor lo
   expect(points!.x + points!.width).toBeLessThanOrEqual(321);
   expect(points!.y).toBeGreaterThan(deadline!.y);
 });
+
+
+test("wizard program time and presenter remain usable at 320px", async ({ page }) => {
+  await page.goto("/app/?devTelegramId=900003");
+  await page.getByRole("navigation", { name: "Основная навигация" })
+    .getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: /Управление ЭРА/ }).click();
+  await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
+  await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
+  await page.getByRole("button", { name: "＋ Создать мероприятие" }).click();
+  await page.getByLabel("Название", { exact: true }).fill("E2E мобильная программа, только черновик");
+  for (let step = 1; step < 6; step += 1) {
+    await page.getByRole("button", { name: "Продолжить" }).click();
+  }
+  await expect(page.getByText("ШАГ 6 ИЗ 10")).toBeVisible();
+  await page.getByRole("button", { name: "＋ Добавить активность" }).click();
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.getByLabel("Время").fill("14:30");
+  await page.getByLabel("Ведущий").fill("E2E ведущий");
+  const time = await page.getByLabel("Время").boundingBox();
+  const presenter = await page.getByLabel("Ведущий").boundingBox();
+  expect(time).not.toBeNull();
+  expect(presenter).not.toBeNull();
+  expect(time!.width).toBeGreaterThan(175);
+  expect(time!.x).toBeGreaterThanOrEqual(0);
+  expect(time!.x + time!.width).toBeLessThanOrEqual(321);
+  expect(presenter!.x + presenter!.width).toBeLessThanOrEqual(321);
+  expect(presenter!.y).toBeGreaterThan(time!.y);
+  await expect(page.getByLabel("Время")).toHaveValue("14:30");
+  await expect(page.getByLabel("Ведущий")).toHaveValue("E2E ведущий");
+});
