@@ -40,6 +40,23 @@ const REMINDERS = [
   { value: 60, label: "За 1 час" },
 ];
 
+// datetime-local has no timezone. Persist new task deadlines as absolute instants
+// so server-side expiry checks are independent of the Render server timezone.
+// Preserve legacy naive values until the editor actually changes the field.
+function taskDeadlineInput(value: string | null | undefined): string {
+  if (!value) return "";
+  if (!/(?:Z|[+-]\\d{2}:\\d{2})$/i.test(value)) return value.slice(0, 16);
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) return value.slice(0, 16);
+  return new Date(instant.getTime() - instant.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+function taskDeadlineIso(value: string): string {
+  if (!value) return "";
+  const instant = new Date(value);
+  return Number.isNaN(instant.getTime()) ? value : instant.toISOString();
+}
+
 function patchFromDraft(draft: AdminEventDraft, wizardStep = draft.wizard_step): AdminEventDraftPatch {
   return {
     wizard_step: wizardStep,
@@ -435,7 +452,7 @@ export function AdminEventCreatePanel() {
               <ArrayCard key={index} title={`Задание ${index + 1}`} onRemove={() => mutate((current) => ({ ...current, participant_tasks: current.participant_tasks.filter((_, itemIndex) => itemIndex !== index) }))}>
                 <Field label="Название"><input value={item.title} onChange={(event) => updateTask(index, { ...item, title: event.target.value }, mutate)} /></Field>
                 <Field label="Описание"><textarea rows={3} value={item.description ?? ""} onChange={(event) => updateTask(index, { ...item, description: event.target.value }, mutate)} /></Field>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: ".5rem" }}><Field label="Срок"><input type="datetime-local" value={(item.deadline ?? "").slice(0, 16)} onChange={(event) => updateTask(index, { ...item, deadline: event.target.value }, mutate)} /></Field><Field label="Баллы"><input inputMode="numeric" value={item.points ?? 0} onChange={(event) => updateTask(index, { ...item, points: Number(event.target.value) || 0 }, mutate)} /></Field></div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: ".5rem" }}><Field label="Срок"><input type="datetime-local" value={taskDeadlineInput(item.deadline)} onChange={(event) => updateTask(index, { ...item, deadline: taskDeadlineIso(event.target.value) }, mutate)} /></Field><Field label="Баллы"><input inputMode="numeric" value={item.points ?? 0} onChange={(event) => updateTask(index, { ...item, points: Number(event.target.value) || 0 }, mutate)} /></Field></div>
                 <Toggle checked={Boolean(item.confirmation_required)} onChange={(checked) => updateTask(index, { ...item, confirmation_required: checked }, mutate)} title="Требуется подтверждение" />
                 {item.confirmation_required && <Field label="Кто подтверждает"><input value={item.reviewer ?? ""} onChange={(event) => updateTask(index, { ...item, reviewer: event.target.value }, mutate)} placeholder="Лидер / администратор" /></Field>}
               </ArrayCard>
