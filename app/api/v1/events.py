@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
 from typing import Any
 
@@ -23,7 +24,7 @@ from app.services.event_service import (
     register_for_event,
     registered_count,
 )
-from app.services.notification_service import safe_send
+from app.services.notification_service import safe_send, safe_send_once
 from app.services.event_calendar_service import build_event_calendar
 from app.services.event_service import PUBLIC_EVENT_STATUSES
 from app.utils.constants import EventStatus, RegistrationStatus
@@ -319,12 +320,28 @@ async def send_event_calendar_to_chat(
     payload = await _calendar_payload(event_id, user, session, settings)
     if bot is None:
         raise HTTPException(status_code=503, detail="bot_unavailable")
+    # A timeout after Telegram accepts the file is ambiguous. Persist a stable
+    # claim before sending, and never replay the same calendar version on retry.
+    # A modified event produces different ICS bytes and a new versioned key.
+    digest = hashlib.sha256(payload).hexdigest()
+    delivery_key = f"event-calendar:{user.id}:{event_id}:{digest}"
+    caption = f"Время события: {settings.timezone}. Откройте файл и добавьте его в Календарь."
     try:
-        await bot.send_document(user.telegram_id, BufferedInputFile(payload, filename=f"ERA-{event_id}.ics"),
-                                caption=f"Время события: {settings.timezone}. Откройте файл и добавьте его в Календарь.")
+        result = await safe_send_once(
+            bot, settings, int(user.telegram_id), caption,
+            delivery_key=delivery_key,
+            notification_type="event_calendar_file",
+            document=BufferedInputFile(payload, filename=f"ERA-{event_id}.ics"),
+            max_attempts=1,
+        )
     except Exception as exc:
+        # The durable claim remains pending/uncertain, so a retry cannot resend.
         raise HTTPException(status_code=502, detail="telegram_send_failed") from exc
-    return {"sent": True}
+    if result.sent:
+        return {"sent": True}
+    if result.status in {"pending", "uncertain", "conflict"}:
+        raise HTTPException(status_code=409, detail="calendar_delivery_unconfirmed")
+    raise HTTPException(status_code=502, detail="telegram_send_failed")
 
 
 @router.get("/{event_id}", response_model=EventOut)
