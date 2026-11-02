@@ -427,7 +427,7 @@ export function AdminEventCreatePanel() {
             {draft.registration_required && (
               <>
                 <Field label="Количество мест"><input inputMode="numeric" value={draft.participant_limit ?? ""} onChange={(event) => mutate((current) => ({ ...current, participant_limit: event.target.value ? Number(event.target.value) : null }))} placeholder="40" /></Field>
-                <Field label="Закрыть регистрацию"><input type="datetime-local" value={(draft.registration_close_at ?? "").slice(0, 16)} onChange={(event) => mutate((current) => ({ ...current, registration_close_at: event.target.value || null }))} /></Field>
+                <Field label="Закрыть регистрацию"><input type="datetime-local" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={(draft.registration_close_at ?? "").slice(0, 16)} onChange={(event) => mutate((current) => ({ ...current, registration_close_at: event.target.value || null }))} /></Field>
                 <Toggle checked={draft.waitlist_enabled} onChange={(checked) => mutate((current) => ({ ...current, waitlist_enabled: checked }))} title="Разрешить лист ожидания" hint="Когда места закончатся, новые участники попадут в очередь. Освободившееся место перейдёт первому автоматически." />
                 <Field label="Кто может регистрироваться"><select value={draft.registration_audience} onChange={(event) => mutate((current) => ({ ...current, registration_audience: event.target.value }))}><option value="all">Все одобренные участники ЭРА</option><option value="active">Только активные участники</option><option value="leaders">Лидеры и руководители</option></select></Field>
               </>
