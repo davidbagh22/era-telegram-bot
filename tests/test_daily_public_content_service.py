@@ -86,3 +86,52 @@ def test_startup_pin_refresh_never_creates_registration_promo():
     assert "send_message" not in restore_block
     assert "pin_chat_message" not in restore_block
     assert "edit_message_text" in restore_block
+
+
+def test_daily_channel_requires_specific_publication_approval(monkeypatch):
+    """A recurring schedule alone must never authorize a new ERA message."""
+    import asyncio
+    import hashlib
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    import app.services.daily_public_content_service as daily
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 3, 12, 0, tzinfo=tz)
+
+    monkeypatch.setattr(daily, "datetime", FixedDatetime)
+    monkeypatch.setattr(daily, "scheduled_minute", lambda *_: 0)
+    sent = []
+
+    async def fake_deliver(*args, **kwargs):
+        sent.append(kwargs)
+
+    monkeypatch.setattr(daily, "_deliver_once", fake_deliver)
+    settings = SimpleNamespace(
+        era_channel_id="@era_leaders1", era_channel_username="era_leaders1"
+    )
+    day, target = "2026-11-03", "@era_leaders1"
+    content = daily.text_for_day(day, "channel_post")
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    # Neither past successful deliveries nor a configured channel imply consent.
+    asyncio.run(daily.run_daily_public_content(object(), settings, None))
+    assert sent == []
+    assert not daily._has_explicit_channel_approval(day, target, content)
+
+    # Approval is bound to the exact day, channel and text bytes.
+    monkeypatch.setattr(
+        daily, "APPROVED_CHANNEL_PUBLICATIONS", frozenset({(day, target, digest)})
+    )
+    assert daily._has_explicit_channel_approval(day, target, content)
+    assert not daily._has_explicit_channel_approval("2026-11-04", target, content)
+    assert not daily._has_explicit_channel_approval(day, "@other_channel", content)
+    assert not daily._has_explicit_channel_approval(day, target, content + "!")
+
+    asyncio.run(daily.run_daily_public_content(object(), settings, None))
+    assert len(sent) == 1
+    assert sent[0]["text"] == content
+    assert sent[0]["chat_id"] == target
