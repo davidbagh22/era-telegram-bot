@@ -1,14 +1,15 @@
 from datetime import date, datetime, time, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.deps import get_current_user, get_session, get_settings
+from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.v1.events import router
 from app.config import Settings
 from app.services.event_calendar_service import build_event_calendar
+from app.services.notification_service import NotificationDeliveryResult
 from app.utils.constants import ApplicationStatus, EventStatus
 
 
@@ -47,7 +48,7 @@ def test_calendar_handles_overnight_end_folding_update_and_cancellation():
     assert "SEQUENCE:1792540800" in second
 
 
-def client_for(e, *, approved=True, registered=False):
+def client_for(e, *, approved=True, registered=False, bot=None):
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     session = SimpleNamespace(get=AsyncMock(side_effect=[e, None]),
@@ -55,9 +56,10 @@ def client_for(e, *, approved=True, registered=False):
     async def session_override():
         yield session
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
-        id=1, application_status=ApplicationStatus.APPROVED if approved else ApplicationStatus.PENDING)
+        id=1, telegram_id=555, application_status=ApplicationStatus.APPROVED if approved else ApplicationStatus.PENDING)
     app.dependency_overrides[get_session] = session_override
     app.dependency_overrides[get_settings] = lambda: Settings(bot_token="0000000000:TEST")
+    app.dependency_overrides[get_bot] = lambda: bot
     return TestClient(app)
 
 
@@ -96,3 +98,67 @@ def test_calendar_ics_attachment_preserves_russian_armenian_emoji_and_utf8_octet
     assert "LOCATION:Երևան\\, Армения" in decoded
     assert "DTSTART:20261024T080000Z" in decoded
     assert "\ufffd" not in decoded
+
+
+def test_calendar_chat_delivery_is_same_utf8_ics_as_download():
+    bot = SimpleNamespace(send_document=AsyncMock())
+    download = client_for(event(title="Встреча 🎉 Երևան")).get("/api/v1/events/42/calendar.ics")
+    outcome = NotificationDeliveryResult(sent=True, status="sent", duplicate=False, attempt_count=1)
+    with patch("app.api.v1.events.safe_send_once", new=AsyncMock(return_value=outcome)) as send:
+        response = client_for(event(title="Встреча 🎉 Երևան"), bot=bot).post(
+            "/api/v1/events/42/calendar/send")
+    assert download.status_code == response.status_code == 200
+    assert response.json() == {"sent": True}
+    args, kwargs = send.await_args
+    assert args[0] is bot and args[2] == 555
+    assert kwargs["document"].filename == "ERA-42.ics"
+    assert kwargs["document"].data == download.content
+    assert kwargs["max_attempts"] == 1
+    assert kwargs["notification_type"] == "event_calendar_file"
+    bot.send_document.assert_not_awaited()
+
+
+def test_calendar_delivery_key_idempotent_and_versioned():
+    bot = SimpleNamespace(send_document=AsyncMock())
+    outcome = NotificationDeliveryResult(sent=True, status="sent", duplicate=True, attempt_count=1)
+    original = event()
+    with patch("app.api.v1.events.safe_send_once", new=AsyncMock(return_value=outcome)) as send:
+        assert client_for(original, bot=bot).post("/api/v1/events/42/calendar/send").status_code == 200
+        assert client_for(original, bot=bot).post("/api/v1/events/42/calendar/send").status_code == 200
+        first, second = [call.kwargs["delivery_key"] for call in send.await_args_list]
+        assert first == second
+        original.updated_at = datetime(2026, 10, 20, tzinfo=timezone.utc)
+        assert client_for(original, bot=bot).post("/api/v1/events/42/calendar/send").status_code == 200
+        assert send.await_args.kwargs["delivery_key"] != first
+    bot.send_document.assert_not_awaited()
+
+
+def test_calendar_chat_delivery_denies_hidden_and_unapproved():
+    bot = SimpleNamespace(send_document=AsyncMock())
+    with patch("app.api.v1.events.safe_send_once", new=AsyncMock()) as send:
+        assert client_for(event(status=EventStatus.DRAFT), bot=bot).post(
+            "/api/v1/events/42/calendar/send").status_code == 404
+        assert client_for(event(), approved=False, bot=bot).post(
+            "/api/v1/events/42/calendar/send").status_code == 403
+        assert client_for(event(status=EventStatus.CANCELLED), bot=bot).post(
+            "/api/v1/events/42/calendar/send").status_code == 404
+        send.assert_not_awaited()
+    bot.send_document.assert_not_awaited()
+
+
+def test_calendar_chat_handles_bot_unavailable_and_uncertain_delivery():
+    assert client_for(event(), bot=None).post(
+        "/api/v1/events/42/calendar/send").status_code == 503
+    bot = SimpleNamespace(send_document=AsyncMock())
+    with patch("app.api.v1.events.safe_send_once", new=AsyncMock(side_effect=RuntimeError("network"))):
+        assert client_for(event(), bot=bot).post("/api/v1/events/42/calendar/send").status_code == 502
+    for status, expected in (
+        ("pending", 409), ("uncertain", 409), ("conflict", 409),
+        ("failed", 502), ("blocked", 502),
+    ):
+        outcome = NotificationDeliveryResult(sent=False, status=status, duplicate=True, attempt_count=1)
+        with patch("app.api.v1.events.safe_send_once", new=AsyncMock(return_value=outcome)) as send:
+            response = client_for(event(), bot=bot).post("/api/v1/events/42/calendar/send")
+            assert response.status_code == expected
+            send.assert_awaited_once()
+    bot.send_document.assert_not_awaited()
