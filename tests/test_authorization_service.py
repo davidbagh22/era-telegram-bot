@@ -169,3 +169,16 @@ def test_can_manage_partners_requires_admin_or_specific_grant() -> None:
     assert can_manage_partners(admin, settings, admin.telegram_id)
     assert can_manage_partners(grantee, settings, grantee.telegram_id)
     assert not can_manage_partners(bystander, settings, bystander.telegram_id)
+
+
+def test_blocked_or_archived_user_in_admin_ids_is_not_full_admin():
+    from types import SimpleNamespace
+    from app.services.authorization_service import is_full_admin
+    settings = SimpleNamespace(admin_ids=[7])
+    ok = SimpleNamespace(role=Role.ADMIN, is_blocked=False, is_archived=False)
+    assert is_full_admin(ok, settings, 7) and is_full_admin(None, settings, 7)
+    for flag in ("is_blocked", "is_archived"):
+        bad = SimpleNamespace(role=Role.ADMIN, is_blocked=False, is_archived=False)
+        setattr(bad, flag, True)
+        assert not is_full_admin(bad, settings, 7)
+        assert not is_full_admin(bad, SimpleNamespace(admin_ids=[]), 8)
