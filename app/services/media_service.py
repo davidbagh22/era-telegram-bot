@@ -818,8 +818,14 @@ async def publish_content(
         return PublishResult(False, "editorial_approval_required")
     if not manual and item.source_kind != "authored_pack":
         return PublishResult(False, "auto_authored_only")
-    if not manual and not _has_explicit_media_approval(item, settings):
-        return PublishResult(False, "approval_required")
+    approved_target: int | str | None = None
+    if not manual:
+        try:
+            approved_target = _channel_target(settings)
+        except ValueError:
+            return PublishResult(False, "channel_not_bound")
+        if _media_approval_key(item, approved_target) not in APPROVED_SCHEDULED_MEDIA_PUBLICATIONS:
+            return PublishResult(False, "approval_required")
 
     key = _delivery_key(item)
     delivery = await session.scalar(
@@ -851,7 +857,8 @@ async def publish_content(
         # blind AUTO send on restart.
         await session.commit()
 
-    target = _channel_target(settings)
+    # Reuse the exact destination checked before claiming the delivery receipt.
+    target = approved_target if approved_target is not None else _channel_target(settings)
     message = None
     for attempt in range(1, 4):
         delivery.attempt_count = attempt
