@@ -174,7 +174,7 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
     {!loading && !workspace && error && <button type="button" style={button} onClick={() => setRetryKey(key => key + 1)}>Повторить загрузку календаря</button>}
     {workspace && <>
       <button type="button" style={{ ...button, justifySelf: "start" }} disabled={loading} onClick={() => setRetryKey(key => key + 1)}>Обновить календарь</button>
-      <Card><strong>Площадки направления</strong><div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 10 }}>{Object.entries(workspace.platforms).map(([key, url]) => <a key={key} href={url} target="_blank" rel="noopener noreferrer">{platforms[key]} ↗</a>)}</div></Card>
+      <Card><strong>Площадки направления</strong><div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 10 }}>{Object.entries(workspace.platforms).map(([key, url]) => { const href = safeEvidenceUrl(url); return href ? <a key={key} href={href} target="_blank" rel="noopener noreferrer">{platforms[key]} ↗</a> : null; })}</div></Card>
       {workspace.can_assign_editors && <button style={button} onClick={() => setShowEditors(!showEditors)}>{showEditors ? "Закрыть полномочия" : "Редакторы календаря"}</button>}
       {showEditors && workspace.can_assign_editors && <Editors key={area} area={area} members={members} />}
       {workspace.can_manage && <button style={button} onClick={() => setShowForm(!showForm)}>{showForm ? "Закрыть форму" : "+ Добавить материал"}</button>}
