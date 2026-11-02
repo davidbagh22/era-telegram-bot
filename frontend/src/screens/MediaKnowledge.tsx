@@ -15,16 +15,30 @@ export function MediaKnowledge({ manager, onGuide }: { manager: boolean; onGuide
   const [category, setCategory] = useState("");
   const [archived, setArchived] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [retryKey, setRetryKey] = useState(0);
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
-  const reload = useCallback(async () => { setItems(await fetchMediaLibrary(manager && archived)); }, [manager, archived]);
-  useEffect(() => { let alive = true; setLoading(true); void fetchMediaLibrary(manager && archived)
-    .then(value => { if (alive) { setItems(value); setError(""); } })
-    .catch(cause => { if (alive) setError(cause instanceof Error ? cause.message : "Не удалось открыть базу знаний"); })
-    .finally(() => { if (alive) setLoading(false); }); return () => { alive = false; };
-  }, [manager, archived]);
+  // A cached archived/manager response must never render under a different role
+  // or visibility scope, even for the frame before a new effect runs.
+  const scope = `${manager ? "manager" : "reader"}:${manager && archived ? "archived" : "active"}`;
+  const reload = useCallback(async () => {
+    const value = await fetchMediaLibrary(manager && archived);
+    setItems(value);
+    setLoadedScope(scope);
+  }, [manager, archived, scope]);
+  useEffect(() => {
+    let alive = true;
+    setLoading(true); setError(""); setItems([]); setLoadedScope(null);
+    void fetchMediaLibrary(manager && archived)
+      .then(value => { if (alive) { setItems(value); setLoadedScope(scope); setError(""); } })
+      .catch(cause => { if (alive) setError(cause instanceof Error ? cause.message : "Не удалось открыть базу знаний"); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [manager, archived, scope, retryKey]);
+  useEffect(() => { if (!manager) setDraft(null); }, [manager]);
   const save = async (event: React.FormEvent) => {
     event.preventDefault(); if (!draft) return; setBusy(true); setError("");
     try {
@@ -41,7 +55,7 @@ export function MediaKnowledge({ manager, onGuide }: { manager: boolean; onGuide
     catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось изменить материал"); }
     finally { setBusy(false); }
   };
-  const visible = items.filter(item => !["chat", "channel"].includes(item.kind) && (!category || item.category === category) && `${item.title} ${item.description ?? ""}`.toLocaleLowerCase("ru").includes(query.trim().toLocaleLowerCase("ru")));
+  const visible = (loadedScope === scope ? items : []).filter(item => !["chat", "channel"].includes(item.kind) && (!category || item.category === category) && `${item.title} ${item.description ?? ""}`.toLocaleLowerCase("ru").includes(query.trim().toLocaleLowerCase("ru")));
   return <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
     <p style={{ margin: 0 }}>Всё для работы команды: инструкции, примеры, шаблоны и полезные ссылки.</p>
     <label>Поиск в базе знаний<input type="search" style={input} value={query} onChange={event => setQuery(event.target.value)} /></label>
@@ -58,7 +72,9 @@ export function MediaKnowledge({ manager, onGuide }: { manager: boolean; onGuide
       <button style={button} disabled={busy} type="submit">{busy ? "Сохраняем…" : "Сохранить материал"}</button><button style={button} disabled={busy} type="button" onClick={() => setDraft(null)}>Отмена</button>
     </form></Card>}
     {error && <p role="alert">{error}</p>}
-    {loading ? <p>Загружаем материалы…</p> : !visible.length && <Card>По этим условиям материалов пока нет.</Card>}
+    {!loading && error && <button type="button" style={button} onClick={() => setRetryKey(key => key + 1)}>Повторить загрузку базы знаний</button>}
+    {!loading && !error && <button type="button" style={button} onClick={() => setRetryKey(key => key + 1)}>Обновить базу знаний</button>}
+    {loading ? <p>Загружаем материалы…</p> : !error && !visible.length && <Card>По этим условиям материалов пока нет.</Card>}
     {visible.map(item => <Card key={item.id} style={{ display: "grid", gap: 10, overflowWrap: "anywhere" }}>
       <strong>{item.pinned ? "Закреплено · " : ""}{item.title}{!item.is_active ? " · скрыт" : ""}</strong><small>{categories[item.category] ?? "Рабочие материалы"}</small>
       {item.description && <><p style={{ margin: 0, whiteSpace: "pre-wrap", maxHeight: expanded === item.id ? undefined : "4.5em", overflow: "hidden" }}>{item.description}</p><button style={button} onClick={() => setExpanded(expanded === item.id ? null : item.id)}>{expanded === item.id ? "Свернуть текст" : "Читать полностью"}</button></>}
