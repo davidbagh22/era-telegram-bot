@@ -70,7 +70,11 @@ def _validated_task_configuration(experience) -> tuple[list[dict], list[int]] | 
             points = int(raw_points or 0)
         except (TypeError, ValueError, OverflowError):
             return None
-        if points > 2_147_483_647:
+        # Keep the same maximum as the existing manually created event
+        # activities; invalid reward values must not silently become awards.
+        if not 0 <= points <= 1000:
+            return None
+        if item.get("deadline") and _deadline(item["deadline"]) is None:
             return None
         configured.append(item)
     old_ids: list[int] = []
@@ -146,14 +150,24 @@ async def sync_event_wizard_tasks(session, *, allowed_event_ids: set[int] | None
             logger.warning("Skipping malformed event wizard tasks event_id=%s", event.id)
             continue
         configured, old_ids = configuration
+        # Validate the complete persisted ID vector before touching rows.
+        # Missing/foreign IDs must not silently be replaced by a new active
+        # task: that can orphan earlier submissions and expose duplicate points.
+        linked: dict[int, EventActivity] = {}
+        invalid_mapping = False
+        for activity_id in old_ids:
+            original = await session.get(EventActivity, activity_id)
+            if original is None or original.event_id != event.id:
+                logger.warning("Skipping invalid wizard activity mapping event_id=%s activity_id=%s", event.id, activity_id)
+                invalid_mapping = True
+                break
+            linked[activity_id] = original
+        if invalid_mapping:
+            continue
         new_ids: list[int] = []
 
         for index, item in enumerate(configured):
-            activity = None
-            if index < len(old_ids):
-                candidate = await session.get(EventActivity, old_ids[index])
-                if candidate is not None and candidate.event_id == event.id:
-                    activity = candidate
+            activity = linked.get(old_ids[index]) if index < len(old_ids) else None
             if activity is None:
                 activity = EventActivity(
                     event_id=event.id,

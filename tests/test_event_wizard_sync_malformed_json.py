@@ -215,6 +215,38 @@ class EventWizardMalformedJsonRecoveryTests(unittest.IsolatedAsyncioTestCase):
         await sync_event_wizard_tasks_job(factory, (-1, 0, 2_147_483_648))
         factory.assert_not_called()
 
+    async def test_missing_and_cross_event_ids_preserve_existing_data(self):
+        async with self.sessions() as session:
+            creator = User(telegram_id=8877123, first_name="Preflight audit")
+            session.add(creator)
+            await session.flush()
+            origin = await self._event(session, creator.id, tasks=[])
+            foreign = EventActivity(event_id=origin, title="Already live", description="Preserve",
+                                    points=8, is_active=True)
+            session.add(foreign)
+            await session.flush()
+            foreign_id = foreign.id
+            wrong = await self._event(session, creator.id,
+                                      tasks=[{"title": "Do not duplicate", "points": 7}],
+                                      activity_ids=[foreign_id])
+            missing = await self._event(session, creator.id,
+                                        tasks=[{"title": "Do not replace", "points": 4}],
+                                        activity_ids=[2_147_483_647])
+            await session.commit()
+
+        async with self.sessions() as session:
+            with self.assertLogs("app.services.event_wizard_sync_service", level="WARNING") as warnings:
+                changed = await sync_event_wizard_tasks(session, allowed_event_ids={wrong, missing})
+            self.assertEqual(changed, 0)
+            self.assertEqual(len(warnings.output), 2)
+            other = await session.get(EventExperience, wrong)
+            lost = await session.get(EventExperience, missing)
+            self.assertEqual(other.participant_task_activity_ids, [foreign_id])
+            self.assertEqual(lost.participant_task_activity_ids, [2_147_483_647])
+            rows = list((await session.scalars(select(EventActivity))).all())
+            self.assertEqual([(row.event_id, row.id, row.points) for row in rows],
+                             [(origin, foreign_id, 8)])
+
 
 if __name__ == "__main__":
     unittest.main()
