@@ -7,25 +7,14 @@ checkpoint documents only for evidence relevant to the selected task. Do not res
 the audit or create another automation. Existing task updated with the user's full
 30 October autonomous-development requirements, hourly, Asia/Yerevan.
 
-## Release and current change
+## Current release and next gate (2026-11-02 ~19:0x UTC)
 
-- Last observed main AND Render LIVE: `1a8b635792e0b931e079d99dde380bd1a2ffe706`.
-- Render deploy `dep-dbie8l29lscs73f7m3n0`, LIVE 2026-10-30 18:40:25 UTC.
-- Infrastructure: davidbagh22/era-telegram-bot; Render workspace
-  `tea-d91quq1o3t8c73ehphh0`, service `srv-d91r1j7avr4c73fs8h00`;
-  https://era-telegram-bot.onrender.com; @ERA_1bot. @MVKSRS_bot is separate.
-- Current branch: `fix/profile-remove-path-autonomous-state-20261030`.
-- Change: remove profile growth ladder «Мой путь», its criteria and stage counter;
-  retain points, contributions, portfolio, vector and participation history. Rename
-  «Лента пути» to «История участия». Update existing portfolio browser regression
-  to check the requested absence while still verifying earned-badge navigation.
-- Files: frontend/src/screens/ProfileScreen.tsx, frontend/e2e/portfolio.spec.ts,
-  docs/AUTONOMOUS_PROGRESS.md. CI/release pending when this checkpoint was written.
-- Next: complete exact-head PR CI (six jobs), merge with expected_head_sha, check
-  main CI and automatic Render LIVE exact merge SHA, run production_readonly_smoke.
-  Then implement safe hiding from public event listings and published-poster editing
-  using existing event administration; inspect existing visibility/history policies
-  and drafts #484/#486 before changing them. Never delete registrations or history.
+- GitHub main **`0847cb3efae0ff2a68026ff997869d3b6ac2a5a1`** (guarded merge PR #645).
+- **Last confirmed Render LIVE is still predecessor** `6edc1374c65ed265712ff4e7b670e0d94cf57421`, deploy `dep-dbkcu6ijnfac7381iq1g` (2026-11-02 17:59:07 UTC). Main push CI 5/5 and automatic checksPass LIVE **for 0847cb3... remain pending** at this checkpoint; do not claim publication authorization fix active in production until exact SHA LIVE.
+- P0 change #645: scheduled ERA-channel daily posts and scheduled general-chat posts now require exact day + destination + SHA-256 text approval, with empty default allowlists; read-only Mini App quote remains. No new publication authorized. User-requested per-post approval workflow remains unimplemented (E09/E10 not verified).
+- Strict accepted **3/40 = 7.5%** (C01, C02, E12); real four-role/iOS/Android, production events, privacy and final acceptance remain **Не подтверждено**.
+- **Next:** verify 0847cb3... push CI 5/5, automatic Render checksPass LIVE exact SHA and read-only production logs/health. If any gate fails, fix same code path, no manual deploy. Then review existing DRAFT #622 (calendar document idempotency), #523 (scheduler task races) and #589 (public event hiding privacy) without duplicate PRs. Do not merge risk-gated work without policy, isolated PostgreSQL and real-device acceptance.
+- No prohibited Oct 31 «Траектория открытий» or other unapproved ERA posts, Mafia, uncertain replay, production user/event/points mutation, destructive migration, external DB access or secret/security-setting changes.
 
 ## Acceptance register (40 stable requirements)
 
@@ -472,3 +461,13 @@ all forty requirements are ПРОВЕРЕНО and all known mandatory backlog is
 
 - **Further scoped review before release:** approved general-chat target is now resolved once from the registered chat ID and reused for actual delivery, preventing rebinding between approval and send; wrong destination fails closed. Commits `546ab6f4db6d94fe140117d0c22fed46fabcd244`, `86f6fb6af8971bf3deb989b1a7a001f3d5a51d1d`. The empty allowlist still denies every new scheduled post by default. Exact HEAD after this checkpoint requires a fresh 6/6 CI; no earlier green check counts.
 - **Independent work on existing DRAFT #622:** patched the iOS calendar `send_document` path to use durable `safe_send_once`, key scoped to user/event/full ICS SHA-256, `max_attempts=1`, fail-closed 409 for pending/uncertain/conflict. Mocked tests cover same-version idempotency, new-version delivery key and failure states. Commits `f0f2c704f1c1874723c9ba28ea08849429bf507b`, `d8cbdfa768c4e2932bb554761bd70ca170f98d88`. PR #622 converted to DRAFT; its own exact 6/6 CI, rebase, review, real iPhone/Android acceptance and automatic Render checksPass remain pending. No real Telegram document sent.
+
+
+## Continuation checkpoint — 2026-11-02 ~19:0x UTC (#645 exact-head guarded merge)
+
+- Read canonical register first, checked GitHub main, 52 open PRs and current issues; reused existing PR #645 (no duplicate). Reviewed six changed files: both scheduled content services, three isolated regression tests and this canonical register. No submitted review or unresolved review thread; mergeable true and base exactly main.
+- Final PR #645 HEAD **`46c8d14e9bc79c37a9e864cd16e1e7e79ff488f9`** passed exact **6/6 SUCCESS**: Bot checks frontend, test, postgres-migration, secret-scan, e2e; separate Tests test. Predecessor main `6edc1374c65ed265712ff4e7b670e0d94cf57421` passed **5/5 SUCCESS** push CI, plus optional verify check SUCCESS, and Render automatic `checksPass` LIVE exact SHA through `dep-dbkcu6ijnfac7381iq1g` at 17:59:07 UTC. Marked PR ready and merged with **expected_head_sha**; new main **`0847cb3efae0ff2a68026ff997869d3b6ac2a5a1`**.
+- Immediately after merge, new main push CI five jobs were **IN_PROGRESS** and Render remained LIVE on predecessor `6edc1374...`. Bounded 17:59–19:15 UTC Render request logs filtered to 5xx returned zero entries, limited negative evidence only. **Do not claim the fail-closed scheduled-publishing fix has reached production yet.** Direct authenticated Telegram role flows and production event list remain unavailable. No manual deploy.
+- The exact approval gate is intentionally empty by default: scheduled daily channel posts and general chat holiday/monthly/weekly posts will not send once the new SHA is LIVE. The daily quote is still readable in the Mini App; future per-publication approval UI, responsible human audit and actual authorized posting remain missing. This is why E09 is `В РАЗРАБОТКЕ`, and accepted register is **3/40 = 7.5%** (C01, C02, E12), not 4/40. No real Telegram post or participant/event/point changes were performed in this run.
+- Separate DRAFT #622 iPhone calendar document delivery was inspected: HEAD `d8cbdfa768c4e2932bb554761bd70ca170f98d88` adds `safe_send_once` with event/ICS hash, but branch is behind current main, mergeable false, and real iPhone acceptance is missing. Keep draft; no duplicate or unsafe merge. Existing DRAFT #523 has isolated PostgreSQL wizard-task race probe but is high-risk because it can resume previously blocked real activities; do not merge without policy/impact review. Existing #589 public event hiding is also policy-gated.
+- Next: check exact new main push 5/5 and Render checksPass LIVE SHA, read-only /health /ready and bounded 5xx; if blocked, record cause and continue independent review. This documentation branch/PR must itself pass exact 6/6 before guarded merge; do not let documentation CI bypass release gates. Ordinary daily summary for 2026-11-02 Asia/Yerevan was already issued, so no duplicate overnight notice. No unauthorized publication or uncertain resend, Mafia, destructive migration, external DB opening, real balances or participation changes.
