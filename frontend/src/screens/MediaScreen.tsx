@@ -222,11 +222,16 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
   }, []);
 
   const refresh = useCallback(async () => {
+    setLoading(true);
     setError(null);
+    // Fail closed while rechecking membership: never retain privileged desk
+    // content if the current role check or a required desk read fails.
+    setHub(null);
     try {
       const nextHub = await loadHub();
       if (nextHub.can_manage) await loadDesk();
     } catch (cause) {
+      setHub(null);
       setError(cause instanceof Error ? cause.message : "Не удалось открыть Медиа");
     } finally {
       setLoading(false);
@@ -303,7 +308,15 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
   };
 
   if (loading) return <div className="era-page" style={{ padding: "1.25rem" }}>Загружаем раздел «Медиа»…</div>;
-  if (!hub) return <div className="era-page" style={{ padding: "1.25rem" }}>{error || "Раздел «Медиа» недоступен"}</div>;
+  if (!hub) return (
+    <div className="era-page" style={{ padding: "1.25rem", display: "grid", gap: "1rem" }}>
+      {onBack ? <button type="button" onClick={onBack} style={{ ...buttonStyle(false), justifySelf: "start" }}>← Назад</button> : null}
+      <Card>
+        <p role="alert">{error || "Раздел «Медиа» недоступен"}</p>
+        <button type="button" onClick={() => void refresh()} style={buttonStyle(false)}>Повторить загрузку Медиа</button>
+      </Card>
+    </div>
+  );
 
   // ToR §28: NO_ACCESS / PENDING never see internal Media tools -- just the
   // public blurb + apply CTA, or a waiting state once applied.
