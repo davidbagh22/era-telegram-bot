@@ -387,9 +387,9 @@ export function AdminEventCreatePanel() {
         {step === 2 && (
           <>
             <Question title="Когда и где встречаемся?" hint="Эти данные попадут в карточку, подтверждение регистрации и календарь участника." />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem" }}>
-              <Field label="Дата"><input type="date" value={draft.event_date} onChange={(event) => mutate((current) => ({ ...current, event_date: event.target.value }))} /></Field>
-              <Field label="Начало"><input type="time" value={draft.event_time} onChange={(event) => mutate((current) => ({ ...current, event_time: event.target.value }))} /></Field>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 10rem), 1fr))", gap: ".5rem" }}>
+              <Field label="Дата"><input type="date" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={draft.event_date} onChange={(event) => mutate((current) => ({ ...current, event_date: event.target.value }))} /></Field>
+              <Field label="Начало"><input type="time" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={draft.event_time} onChange={(event) => mutate((current) => ({ ...current, event_time: event.target.value }))} /></Field>
             </div>
             <Field label="Окончание"><input type="time" value={draft.end_time ?? ""} onChange={(event) => mutate((current) => ({ ...current, end_time: event.target.value || null }))} /></Field>
             <Field label="Место"><input value={draft.location} onChange={(event) => mutate((current) => ({ ...current, location: event.target.value }))} placeholder="Дом Москвы в Ереване" /></Field>
