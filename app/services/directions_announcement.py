@@ -33,7 +33,29 @@ def directions_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+# Default deny until a responsible human approves the exact date, destination,
+# HTML and buttons. Never derive consent from an old release or delivery key.
+APPROVED_DIRECTIONS_ANNOUNCEMENTS: frozenset[tuple[str, str, str]] = frozenset()
+
+
+def directions_approval_key(day: str, chat_id: int | str) -> tuple[str, str, str]:
+    payload = {
+        "text": ANNOUNCEMENT,
+        "keyboard": directions_keyboard().model_dump(mode="json", exclude_none=True),
+    }
+    digest = hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return (day, str(chat_id), digest)
+
+
 async def publish_directions_announcement(bot, settings) -> bool:
+    target = settings.general_chat_id
+    if target is None:
+        return False
+    day = datetime.now(ZoneInfo("Asia/Yerevan")).date().isoformat()
+    if directions_approval_key(day, target) not in APPROVED_DIRECTIONS_ANNOUNCEMENTS:
+        return False
     return await send_general_topic(
         bot, settings, "notifications", ANNOUNCEMENT,
         reply_markup=directions_keyboard(),
