@@ -47,10 +47,14 @@ test("failed manager desk reads never expose stale tools; retry restores GET-onl
     if (path.endsWith("/content") && deskReads === 1) {
       return route.fulfill({ status: 503, contentType: "application/json", body: '{"detail":"temporary"}' });
     }
+    // A channel not configured for publication returns 503; it must not
+    // disable otherwise authorized, read-only Media management.
+    if (path.endsWith("/channel-health")) {
+      return route.fulfill({ status: 503, contentType: "application/json", body: '{"detail":"not configured"}' });
+    }
     return route.fulfill({
       status: 200, contentType: "application/json",
-      body: JSON.stringify(path.endsWith("/channel-health") ? { ok: true, detail: "" } :
-        path.endsWith("/today") || path.endsWith("/content") ? [] : {}),
+      body: JSON.stringify(path.endsWith("/today") || path.endsWith("/content") ? [] : {}),
     });
   });
 
