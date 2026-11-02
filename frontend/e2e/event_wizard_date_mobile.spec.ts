@@ -17,17 +17,22 @@ test("wizard date and start time fit a 320px Telegram viewport", async ({ page }
   const start = page.getByLabel("Начало", { exact: true });
   await date.fill("2026-11-20");
   await start.fill("18:30");
+  const end = page.getByLabel("Окончание", { exact: true });
+  await end.fill("20:00");
   await expect(date).toHaveValue("2026-11-20");
   await expect(start).toHaveValue("18:30");
+  await expect(end).toHaveValue("20:00");
 
-  const [dateBox, startBox] = await Promise.all([date.boundingBox(), start.boundingBox()]);
+  const [dateBox, startBox, endBox] = await Promise.all([date.boundingBox(), start.boundingBox(), end.boundingBox()]);
   expect(dateBox).not.toBeNull();
   expect(startBox).not.toBeNull();
-  if (!dateBox || !startBox) return;
-  for (const box of [dateBox, startBox]) {
+  expect(endBox).not.toBeNull();
+  if (!dateBox || !startBox || !endBox) return;
+  for (const box of [dateBox, startBox, endBox]) {
     expect(box.width).toBeGreaterThan(160);
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(321);
   }
   expect(dateBox.y + dateBox.height).toBeLessThanOrEqual(startBox.y + 1);
+  expect(startBox.y + startBox.height).toBeLessThanOrEqual(endBox.y + 1);
 });
