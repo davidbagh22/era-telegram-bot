@@ -27,6 +27,8 @@ export function EventPosterEditor({ eventId, onBack }: Props) {
   const [event, setEvent] = useState<PosterState | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
+  const [draftRevision, setDraftRevision] = useState(0);
+  const [previewStatus, setPreviewStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,21 +49,23 @@ export function EventPosterEditor({ eventId, onBack }: Props) {
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [eventId]);
+  }, [eventId, draftRevision]);
 
   useEffect(() => {
     let active = true;
     let objectUrl: string | null = null;
     setPreviewUrl(null);
+    setPreviewStatus(event?.has_poster ? "loading" : "idle");
     if (event?.has_poster) {
       void fetchAdminEventPoster(eventId)
         .then((blob) => {
           if (!active) return;
           objectUrl = URL.createObjectURL(blob);
           setPreviewUrl(objectUrl);
+          setPreviewStatus("ready");
         })
-        .catch((reason: unknown) => {
-          if (active) setError(describeActionError(reason));
+        .catch(() => {
+          if (active) setPreviewStatus("error");
         });
     }
     return () => {
@@ -121,14 +125,23 @@ export function EventPosterEditor({ eventId, onBack }: Props) {
       {loading ? (
         <Card>Загружаем афишу…</Card>
       ) : !event ? (
-        <Card><p role="alert">Не удалось открыть мероприятие. {error}</p></Card>
+        <Card>
+          <p role="alert">Не удалось открыть мероприятие. {error}</p>
+          <button type="button" onClick={() => setDraftRevision((value) => value + 1)}>Повторить загрузку мероприятия</button>
+        </Card>
       ) : (
         <Card>
           <p style={{ marginTop: 0, color: "var(--era-text-muted)" }}>
             Изменение изображения не публикует новый анонс и не меняет участников, баллы или статус мероприятия.
           </p>
           {previewUrl && <img src={previewUrl} alt="Текущая афиша" style={{ display: "block", width: "100%", maxHeight: 320, objectFit: "contain", borderRadius: ".8rem", marginBottom: ".75rem" }} />}
-          {event.has_poster && !previewUrl && <p>Загружаем изображение…</p>}
+          {event.has_poster && previewStatus === "loading" && <p>Загружаем изображение…</p>}
+          {event.has_poster && previewStatus === "error" && (
+            <div>
+              <p role="alert">Не удалось загрузить изображение афиши.</p>
+              <button type="button" onClick={() => setRevision((value) => value + 1)}>Повторить загрузку изображения</button>
+            </div>
+          )}
           {!event.has_poster && <p>У мероприятия пока нет изображения афиши.</p>}
           <label style={{ display: "block", cursor: busy ? "wait" : "pointer" }}>
             <strong>{event.has_poster ? "Заменить афишу" : "Загрузить афишу"}</strong>
