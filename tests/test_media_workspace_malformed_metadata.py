@@ -21,14 +21,23 @@ class MalformedCalendarMetadataTests(unittest.TestCase):
         for malformed in (None, [], ["x"], "legacy", 7, True):
             with self.subTest(metadata=malformed):
                 item = _item(malformed)
-                self.assertEqual(service.area_of(item), "era")
+                expected_area = "era" if malformed is None else None
+                self.assertEqual(service.area_of(item), expected_area)
                 result = service.item_out(item)
                 self.assertEqual(result["id"], 42)
-                self.assertEqual(result["area"], "era")
+                self.assertEqual(result["area"], expected_area)
                 self.assertEqual(result["revision"], 0)
                 self.assertEqual(result["platform"], "telegram")
                 self.assertIsNone(result["responsible_id"])
                 self.assertEqual(item.metadata_json, malformed)
+
+    def test_invalid_explicit_area_never_inherits_era_scope(self):
+        for value in (None, [], ["era"], 0, False, "ERA", "unknown"):
+            with self.subTest(area=value):
+                item = _item({"media_area": value, "workspace_revision": 0})
+                self.assertIsNone(service.area_of(item))
+                self.assertIsNone(service.item_out(item)["area"])
+                self.assertEqual(item.metadata_json["media_area"], value)
 
     def test_valid_metadata_is_preserved(self):
         item = _item({"media_area": "ksoors", "workspace_revision": 3, "platform": "instagram"})

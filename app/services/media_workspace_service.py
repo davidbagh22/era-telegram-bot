@@ -50,7 +50,12 @@ def _metadata(item):
 
 
 def area_of(item):
-    return _metadata(item).get("media_area", "era")
+    # Non-object or invalid explicit area has no verified owner. Never label it
+    # ERA in direct serializers or idempotency checks outside calendar().
+    if item.metadata_json is not None and not isinstance(item.metadata_json, dict):
+        return None
+    area = _metadata(item).get("media_area", "era")
+    return area if isinstance(area, str) and area in AREAS else None
 
 
 def item_out(item):
@@ -197,11 +202,14 @@ async def update_entry(session, user, settings, area, item_id, values, revision)
     await require_access(session, user, settings, write=True, area=area)
     item = await session.scalar(select(MediaContentItem).where(MediaContentItem.id == item_id)
         .with_for_update().execution_options(populate_existing=True))
-    if item is None or area_of(item) != area:
+    if item is None:
         raise LookupError("Материал не найден в выбранном направлении")
-    # Do not overwrite or silently normalize corrupt JSON on an edit.
+    # Check corruption before ownership to give an actionable error without
+    # normalizing or writing legacy metadata; the read path stays fail-closed.
     if item.metadata_json is not None and not isinstance(item.metadata_json, dict):
         raise ValueError("Данные материала повреждены. Обратитесь к администратору")
+    if area_of(item) != area:
+        raise LookupError("Материал не найден в выбранном направлении")
     data = dict(_metadata(item))
     if data.get("workspace_revision", 0) != revision:
         raise ValueError("Материал уже изменён. Обновите календарь")
