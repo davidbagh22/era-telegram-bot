@@ -119,6 +119,7 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
   const [materials, setMaterials] = useState("");
   const [requestKey, setRequestKey] = useState(() => crypto.randomUUID());
   const [filter, setFilter] = useState("active");
+  const [retryKey, setRetryKey] = useState(0);
   const reload = useCallback(async () => {
     const entries = await fetchMediaCalendar(area, undefined, filter as "all" | "active" | "published");
     setItems(entries);
@@ -126,18 +127,21 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
   }, [area, filter]);
   useEffect(() => {
     let alive = true;
-    setLoading(true); setError(""); setItems([]); setHasMore(false);
+    // Hide previously authorized tools while the current workspace permissions
+    // and calendar are being revalidated (including on filter changes).
+    setLoading(true); setError(""); setWorkspace(null); setMembers([]); setItems([]); setHasMore(false);
     void (async () => {
       try {
         const workspaces = await fetchMediaWorkspaces();
         const current = workspaces.find(item => item.id === area) ?? null;
+        if (!current) throw new Error("Нет доступа к выбранному календарю");
         const [entries, team] = await Promise.all([fetchMediaCalendar(area, undefined, filter as "all" | "active" | "published"), fetchMediaCalendarTeam(area)]);
         if (alive) { setWorkspace(current); setItems(entries); setHasMore(entries.length === 100); setMembers(team); }
       } catch (cause) { if (alive) setError(cause instanceof Error ? cause.message : "Не удалось открыть календарь"); }
       finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; };
-  }, [area, filter]);
+  }, [area, filter, retryKey]);
   const loadMore = async () => {
     if (!hasMore || loadingMore || !items.length) return;
     setLoadingMore(true); setError("");
@@ -164,7 +168,9 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
     <div><small>Медиа · {area === "era" ? "ЭРА" : "КСООРС"}</small><h1 style={{ margin: ".3rem 0" }}>Контент-план</h1><p style={{ color: "var(--era-text-secondary)" }}>Время Еревана. Запланированные материалы не считаются опубликованными.</p></div>
     {loading && <p>Загружаем календарь…</p>}
     {error && <p role="alert">{error}</p>}
+    {!loading && !workspace && error && <button type="button" style={button} onClick={() => setRetryKey(key => key + 1)}>Повторить загрузку календаря</button>}
     {workspace && <>
+      <button type="button" style={{ ...button, justifySelf: "start" }} disabled={loading} onClick={() => setRetryKey(key => key + 1)}>Обновить календарь</button>
       <Card><strong>Площадки направления</strong><div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 10 }}>{Object.entries(workspace.platforms).map(([key, url]) => <a key={key} href={url} target="_blank" rel="noopener noreferrer">{platforms[key]} ↗</a>)}</div></Card>
       {workspace.can_assign_editors && <button style={button} onClick={() => setShowEditors(!showEditors)}>{showEditors ? "Закрыть полномочия" : "Редакторы календаря"}</button>}
       {showEditors && workspace.can_assign_editors && <Editors key={area} area={area} members={members} />}
