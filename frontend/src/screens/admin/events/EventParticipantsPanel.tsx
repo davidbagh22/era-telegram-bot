@@ -125,7 +125,15 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
       {actionError && <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>}
 
       {state.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка участников…</p>}
-      {state.status === "error" && <EmptyState text="Не удалось загрузить участников." />}
+      {state.status === "error" && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: ".75rem" }}>
+          <EmptyState text="Не удалось загрузить участников." />
+          <button type="button" onClick={refresh}>Повторить загрузку участников</button>
+        </div>
+      )}
+      {state.status === "ready" && (
+        <button type="button" onClick={refresh} style={{ alignSelf: "flex-start" }}>Обновить участников</button>
+      )}
       {state.status === "ready" && participants.length === 0 && <EmptyState text="Пока никто не зарегистрирован. Как только появится первая регистрация, участник будет здесь." />}
       {state.status === "ready" && participants.length > 0 && filtered.length === 0 && <EmptyState text="По этому поиску участников нет. Измените имя или фильтр." />}
 
