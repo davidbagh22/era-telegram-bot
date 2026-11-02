@@ -49,4 +49,22 @@ test("admin can retry failed participant list and refresh it without writes", as
   await expect(page.getByText("E2E Участник")).toBeVisible();
   expect(reads).toBe(3);
   expect(writes).toBe(0);
+
+  // Narrow Telegram WebViews must not clip the search field or status selector.
+  await page.setViewportSize({ width: 320, height: 740 });
+  const search = page.getByRole("textbox", { name: "Поиск участника" });
+  const statusFilter = page.getByRole("combobox", { name: "Фильтр участников" });
+  await expect(search).toBeVisible();
+  await expect(statusFilter).toBeVisible();
+  const searchBox = await search.boundingBox();
+  const filterBox = await statusFilter.boundingBox();
+  expect(searchBox).not.toBeNull();
+  expect(filterBox).not.toBeNull();
+  for (const box of [searchBox!, filterBox!]) {
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(320);
+  }
+  expect(filterBox!.y).toBeGreaterThanOrEqual(searchBox!.y + searchBox!.height);
+  await statusFilter.selectOption("waitlist");
+  await expect(statusFilter).toHaveValue("waitlist");
 });
