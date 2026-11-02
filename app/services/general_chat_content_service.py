@@ -8,6 +8,7 @@ It never falls back from the registered ``general`` chat to another chat id.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 from dataclasses import asdict, dataclass
@@ -77,6 +78,18 @@ DEFAULT_AUTOCONTENT_SETTINGS: dict[str, bool] = {
     "themes": True,
     "holidays": True,
 }
+
+# Planning/previewing content does not authorize sending it to the ERA chat.
+# This intentionally empty, exact-content gate is fail-closed until a responsible
+# human approves a specific date, destination and immutable text digest.
+APPROVED_SCHEDULED_GENERAL_PUBLICATIONS: frozenset[tuple[str, str, str]] = frozenset()
+
+
+def _has_explicit_general_approval(day: date, target: int | None, text: str) -> bool:
+    if target is None:
+        return False
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return (day.isoformat(), str(target), digest) in APPROVED_SCHEDULED_GENERAL_PUBLICATIONS
 
 
 @dataclass(frozen=True)
@@ -615,6 +628,18 @@ async def deliver_planned_content(
     # The retired editor/manual endpoint must not re-enable group quotes.
     if item.content_type in {"morning_quote", "evening_quote"}:
         return DeliveryOutcome("disabled", item.content_id)
+    # The default autocontent flags and recurring schedule are not consent for
+    # a new Telegram publication. Check before durable claim or network I/O.
+    # A deliberate manual editor action remains a separate, explicit workflow.
+    approved_chat_id: int | None = None
+    if not manual:
+        # Resolve the *actual* registered chat once, so rebinding between
+        # approval and send cannot redirect an authorized publication.
+        approved_chat_id = await _general_chat_id(session, settings)
+        if not _has_explicit_general_approval(
+            planned.planned_at.date(), approved_chat_id, planned.effective_text
+        ):
+            return DeliveryOutcome("approval_required", item.content_id)
     if not manual and now < planned.planned_at:
         return DeliveryOutcome("not_due", item.content_id)
     key = (
@@ -648,7 +673,7 @@ async def deliver_planned_content(
             await session.commit()
             return DeliveryOutcome(late_status, item.content_id, delivery.id)
 
-    chat_id = await _general_chat_id(session, settings)
+    chat_id = approved_chat_id if not manual else await _general_chat_id(session, settings)
     if chat_id is None:
         delivery.status = "failed"
         delivery.error_code = "general_chat_unbound"
