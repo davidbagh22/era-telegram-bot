@@ -25,6 +25,9 @@ class ActivityAdminStates(StatesGroup):
 
 
 def is_admin(user: User | None, settings: Settings, tg_id: int) -> bool:
+    # A configured ADMIN_IDS entry never overrides a revoked account.
+    if user is not None and (user.is_blocked or user.is_archived):
+        return False
     return bool(
         tg_id in settings.admin_ids
         or (user and user.role == Role.ADMIN and not user.is_blocked)

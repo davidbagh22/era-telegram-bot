@@ -80,9 +80,9 @@ export function QuickEventCreateDialog({ draft, posterUrl, busy, saving, saveLab
                 <p style={{ marginTop: 0, color: "var(--era-text-muted)" }}>Вставьте готовый текст и добавьте фото. Черновик сохраняется автоматически.</p>
                 <Field label="Текст анонса"><textarea required value={draft.full_description} onChange={(event) => updateText(event.target.value)} rows={8} maxLength={10000} placeholder="Вставьте текст мероприятия целиком…" /></Field>
                 <Field label="Заголовок"><input required value={draft.title === "Новое мероприятие" ? "" : draft.title} onChange={(event) => onChange((current) => ({ ...current, title: event.target.value }))} maxLength={255} placeholder="Первая строка текста или свой заголовок" /></Field>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem" }}>
-                  <Field label="Дата"><input required type="date" value={draft.event_date} onChange={(event) => onChange((current) => ({ ...current, event_date: event.target.value }))} /></Field>
-                  <Field label="Время"><input required type="time" value={draft.event_time} onChange={(event) => onChange((current) => ({ ...current, event_time: event.target.value }))} /></Field>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 10rem), 1fr))", gap: ".5rem" }}>
+                  <Field label="Дата"><input required type="date" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={draft.event_date} onChange={(event) => onChange((current) => ({ ...current, event_date: event.target.value }))} /></Field>
+                  <Field label="Время"><input required type="time" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={draft.event_time} onChange={(event) => onChange((current) => ({ ...current, event_time: event.target.value }))} /></Field>
                 </div>
                 <Field label="Место или ссылка"><input required value={draft.location} maxLength={255} onChange={(event) => onChange((current) => ({ ...current, location: event.target.value }))} placeholder="Адрес или ссылка на онлайн-встречу" /></Field>
                 <Field label="Фото (до 5 МБ)"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void poster(file); event.target.value = ""; }} /></Field>

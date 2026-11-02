@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from datetime import datetime, timezone
 from typing import Any
 
@@ -23,7 +25,7 @@ from app.services.event_service import (
     register_for_event,
     registered_count,
 )
-from app.services.notification_service import safe_send
+from app.services.notification_service import safe_send, safe_send_once
 from app.services.event_calendar_service import build_event_calendar
 from app.services.event_service import PUBLIC_EVENT_STATUSES
 from app.utils.constants import EventStatus, RegistrationStatus
@@ -276,13 +278,10 @@ async def read_event_poster(
     )
 
 
-@router.get("/{event_id}/calendar.ics")
-async def read_event_calendar(
-    event_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    settings: Settings = Depends(get_settings),
-) -> Response:
+async def _calendar_payload(
+    event_id: int, user: User, session: AsyncSession, settings: Settings,
+) -> bytes:
+    """Enforce the same event visibility and access policy for ICS delivery."""
     from app.utils.constants import ApplicationStatus
     if user.application_status != ApplicationStatus.APPROVED:
         raise HTTPException(status_code=403, detail="application_not_approved")
@@ -295,10 +294,58 @@ async def read_event_calendar(
     ):
         raise HTTPException(status_code=404, detail="event_not_found")
     experience = await session.get(EventExperience, event_id)
-    return Response(build_event_calendar(event, experience, timezone_name=settings.timezone),
-                    media_type="text/calendar; charset=utf-8",
+    return build_event_calendar(event, experience, timezone_name=settings.timezone)
+
+
+@router.get("/{event_id}/calendar.ics")
+async def read_event_calendar(
+    event_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    payload = await _calendar_payload(event_id, user, session, settings)
+    return Response(payload, media_type="text/calendar; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="ERA-{event_id}.ics"',
-                             "Cache-Control": "private, no-store"})
+                             "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+
+
+@router.post("/{event_id}/calendar/send")
+async def send_event_calendar_to_chat(
+    event_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    bot: Bot | None = Depends(get_bot),
+) -> dict[str, bool]:
+    """Explicit iOS fallback: send private ICS document to user's bot chat."""
+    from aiogram.types import BufferedInputFile
+
+    payload = await _calendar_payload(event_id, user, session, settings)
+    if bot is None:
+        raise HTTPException(status_code=503, detail="bot_unavailable")
+    # A Telegram timeout may happen after the document was accepted. Persist a
+    # versioned claim before sending, and never replay an uncertain delivery.
+    # Changed ICS bytes create a different key; unchanged retries reuse it.
+    digest = hashlib.sha256(payload).hexdigest()
+    key = f"event-calendar:{user.id}:{event_id}:{digest}"
+    try:
+        outcome = await safe_send_once(
+            bot, settings, int(user.telegram_id),
+            "Откройте файл и добавьте мероприятие в Календарь.",
+            delivery_key=key,
+            notification_type="event_calendar_file",
+            document=BufferedInputFile(payload, filename=f"ERA-{event_id}.ics"),
+            max_attempts=1,
+        )
+    except Exception as exc:
+        # A durable pending claim may exist; never send again from this handler.
+        raise HTTPException(status_code=502, detail="telegram_send_failed") from exc
+    if outcome.sent:
+        return {"sent": True}
+    if outcome.status in {"pending", "uncertain", "conflict"}:
+        raise HTTPException(status_code=409, detail="calendar_delivery_unconfirmed")
+    raise HTTPException(status_code=502, detail="telegram_send_failed")
 
 
 @router.get("/{event_id}", response_model=EventOut)

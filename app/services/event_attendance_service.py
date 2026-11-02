@@ -70,6 +70,11 @@ class ConfirmationResult:
 
 
 def normalize_code(value: str) -> str:
+    # secrets.compare_digest(str, str) rejects non-ASCII. Reject confusable
+    # Unicode input before uppercasing (which can expand e.g. ß into "SS"),
+    # rather than crashing attendance confirmation or silently changing a code.
+    if not value.isascii():
+        return ""
     return "".join(character for character in value.upper().strip() if character.isalnum())
 
 
