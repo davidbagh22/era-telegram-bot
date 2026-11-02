@@ -2,13 +2,48 @@
 from __future__ import annotations
 
 import logging
+import hashlib
+import json
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.handlers.era_game_room import menu_markup
+from app.handlers.era_game_room import menu_markup, PUBLIC_MENU_TEXT
 from app.services.general_topics_service import ensure_topic, send_general_topic, send_general_topic_once
 
 logger = logging.getLogger(__name__)
+
+
+GAMES_UPDATE_TEXT = (
+        GAMES_UPDATE_TEXT
+)
+GAMES_NOTIFICATION_TEXT = (
+        GAMES_NOTIFICATION_TEXT
+)
+
+# A feature flag or old durable delivery key does not authorize a new message.
+APPROVED_SCHEDULED_GAMES_LAUNCHES: frozenset[tuple[str, str, str]] = frozenset()
+
+
+def games_launch_approval_key(day: str, chat_id: int | str, thread_id: int, username: str) -> tuple[str, str, str]:
+    chat = str(chat_id)
+    topic_url = f"https://t.me/c/{chat[4:]}/{thread_id}" if chat.startswith("-100") else ""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🎮 Перейти в Интерактив", url=topic_url)
+    ]]) if topic_url else None
+    payload = {
+        "menu_text": PUBLIC_MENU_TEXT,
+        "menu_keyboard": menu_markup(public=True, bot_username=username).model_dump(mode="json", exclude_none=True),
+        "games_text": GAMES_UPDATE_TEXT,
+        "notification_text": GAMES_NOTIFICATION_TEXT,
+        "launch_keyboard": keyboard.model_dump(mode="json", exclude_none=True) if keyboard else None,
+        "thread_id": thread_id,
+    }
+    digest = hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return (day, chat, digest)
 
 
 async def refresh_games_pin(bot, settings, session_factory, thread_id: int) -> bool:
@@ -122,9 +157,18 @@ async def _send_announcement_once(bot, settings, session_factory, topic, text, *
 async def publish_games_launch(bot, settings, session_factory) -> None:
     if settings.feature_games != "ALL" or not settings.general_chat_id:
         return
+    day = datetime.now(ZoneInfo("Asia/Yerevan")).date().isoformat()
+    chat_id = str(settings.general_chat_id)
+    # Do not even create a forum topic unless this date and chat have a
+    # pending specific approval; the exact text/buttons are checked below.
+    if not any(key[0] == day and key[1] == chat_id for key in APPROVED_SCHEDULED_GAMES_LAUNCHES):
+        return
     thread_id = await ensure_topic(bot, settings, "games", session_factory=session_factory)
     if thread_id is None:
         logger.warning("Games launch postponed: game topic unavailable")
+        return
+    username = settings.bot_username or "ERA_1bot"
+    if games_launch_approval_key(day, settings.general_chat_id, thread_id, username) not in APPROVED_SCHEDULED_GAMES_LAUNCHES:
         return
 
     menu_ok = await refresh_games_pin(bot, settings, session_factory, thread_id)
