@@ -1,6 +1,6 @@
 # ЭРА — автономная разработка
 
-Updated: 2026-10-30 UTC. This is the primary continuation point for the hourly task
+Updated: 2026-11-02 UTC. This is the primary continuation point for the hourly task
 `6adcbd42ede08191a5c0a946e4147b52` («ЭРА — разработка до полной готовности»).
 Read this first, then current main/PR/CI/Render; consult older AI_TASK_STATE.md and
 checkpoint documents only for evidence relevant to the selected task. Do not restart
@@ -33,7 +33,7 @@ Status is NOT a subjective completion percentage. ПРОВЕРЕНО requires co
 main/LIVE and actual relevant user scenario evidence. ВЫПУЩЕНО alone does not close
 acceptance. Grouped requirements below require ALL their listed parts; split them
 only with an explicit register revision explaining the changed denominator.
-Current strict acceptance: 1/40 = 2.5%; 39 remain open. This measures evidenced
+Current strict acceptance: 2/40 = 5.0%; 38 remain open. This measures evidenced
 acceptance, not the fraction of existing code. No new real Telegram acceptance
 was performed in this run. Historical proof must retain its date.
 
@@ -76,7 +76,7 @@ was performed in this run. Historical proof must retain its date.
 | E09 | Daily quotes | ВЫПУЩЕНО | Actual daily receipts in Mini App/chat/channel as authorized |
 | E10 | Broadcasts and notifications | В РАЗРАБОТКЕ | #491 incomplete receipts; no uncertain replay |
 | E11 | Security and data protection | В РАЗРАБОТКЕ | #475/#484/#486/#542; auth and role checks |
-| E12 | Backup and restore | ВЫПУЩЕНО | Encrypted GitHub + isolated PG restore evidenced; latest review |
+| E12 | Backup and restore | ПРОВЕРЕНО | 2026-11-02 scheduled backup run 41407674271 SUCCESS: real production OIDC snapshot, isolated PostgreSQL 18 restore and migrations, encrypted/checksum round-trip, stored private artifact 13123694669 (expires 2026-11-09). External S3 copy optional and not configured; retention improvement remains advisable. |
 | E13 | Legal/content organizational acceptance | В РАЗРАБОТКЕ | Draft #364 requires responsible human approval |
 | E14 | Final multi-role production acceptance | НЕ НАЧАТО | All required scenarios, no known blockers, observation |
 
@@ -402,3 +402,11 @@ all forty requirements are ПРОВЕРЕНО and all known mandatory backlog is
 - Extended E11/C05 fix to `MediaKnowledge.tsx` external library anchors using the same safe HTTP(S) guard; preserves SPA-internal guidance action. Added browser-only `media_knowledge_links.spec.ts` with three unsafe mock links plus one valid Telegram URL, verifying zero API writes. Real stored records are not modified.
 - **Next action:** open one DRAFT PR for this branch; require exact final HEAD 5/5 Bot checks + 1/1 Tests, review and `expected_head_sha`, no merge if base/CI/Render unconfirmed. Check predecessor main 5/5 and automatic Render LIVE exact SHA before merge. After merge recheck new main push 5/5 and automatic Render checksPass exact SHA, bounded production logs, no unauthorized sends.
 - 40-item strict acceptance still **1/40 = 2.5% ПРОВЕРЕНО**. Real four roles, iOS/Android Telegram, authenticated event list, privacy and restore remain **Не подтверждено**. Ordinary daily summary 2026-11-02 already recorded; do not duplicate. No prohibited Oct 31 «Траектория открытий», other unapproved ERA publication, Mafia, real points/registrations/data mutations, uncertain delivery replay, secret changes or manual deploy.
+
+
+## Acceptance evidence update — 2026-11-02 (E12 verified, no simulated participants)
+- **E12 ПРОВЕРЕНО** on operational evidence, not merely a passing unit test: scheduled `Database backup` run [41407674271](https://github.com/davidbagh22/era-telegram-bot/actions/runs/41407674271) completed SUCCESS 2026-11-02; `Wait for healthy production backup source`, `Download transient production snapshot using GitHub OIDC`, `Verify restore on isolated PostgreSQL`, `Encrypt and verify backup package`, `Upload encrypted verified GitHub artifact`, `Report successful verified backup using GitHub OIDC` and transient key cleanup all completed SUCCESS. Private encrypted artifact `era-daily-backup-41407674271-1` id `13123694669`, checksum digest available, expiry 2026-11-09. **Do not retrieve or expose the backup.** Existing restoration workflow checks real PostgreSQL schema/revision and checksum, and probes fail closed before writes to production.
+- External S3 backup steps were SKIPPED because optional external storage is not configured; this is a remaining durability improvement, not proof of an external copy. Verify daily scheduled backup freshness and independent retention regularly; treat expiry/failed next backup as a renewed blocker. Actual disaster recovery to production is never tested destructively.
+- Strict acceptance after E12 = **2/40 = 5.0%**, remaining **38/40**. C02 was already accepted with Oct26 Telegram receipt; no additional participant/admin role flows are claimed. No other status is promoted without complete end-to-end evidence. **10.0% requires 4/40 verified**; do not falsely promote remaining requirements whose real role/client or content evidence is unavailable.
+- Latest observed main after guarded #643 merge: `1d3840f1cf53cb0cda4fef3a4ae390706e4ac041` (read-only editor permissions retry); its push 5/5 and Render exact SHA deployment were still pending on first observation. Previous confirmed LIVE `b285de0b1146049153d3e66b5506dbc6af56735b` via `dep-dbkc2cuq1p3s73boa2b0` at 2026-11-02 16:59:43 UTC. DRAFT #644 protects media external links and includes two browser-only E2E tests; **do not merge until exact final HEAD 6/6, review and predecessor main CI + LIVE exact SHA**. Existing #589 event-hide privacy and #605 legacy deadlines stay DRAFT pending policy, migration safety, real acceptance.
+- Daily user-facing summary for 2026-11-02 already recorded; no second routine alert. No unauthorized Telegram posts, legacy announcement, Mafia, real data/point edits, manual deploy, or external DB opening.
