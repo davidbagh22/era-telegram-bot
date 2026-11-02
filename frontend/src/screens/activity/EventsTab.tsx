@@ -167,7 +167,7 @@ function EventCalendarButton({ event }: { event: EventItem }) {
       await sendEventCalendarToChat(event.id);
       toast.show("Файл календаря отправлен вам в чат с ботом ЭРА.");
     } catch {
-      toast.show("Не удалось отправить файл в чат. Попробуйте Google Календарь.", "error");
+      toast.show("Отправка не подтверждена. Проверьте чат с ботом; альтернативно используйте Google Календарь.", "error");
     } finally {
       setBusy(false);
     }
