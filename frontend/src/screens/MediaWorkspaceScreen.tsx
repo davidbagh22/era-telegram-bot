@@ -53,7 +53,7 @@ function Editors({ area, members }: { area: string; members: MediaMember[] }) {
     </div>}
     {error && <p role="alert">{error}</p>}
     {!state && error && <button type="button" style={button} disabled={busy} onClick={() => setRetryKey(key => key + 1)}>Повторить загрузку редакторов</button>}
-    {state && !error && <button type="button" style={button} disabled={busy} onClick={() => setRetryKey(key => key + 1)}>Обновить список редакторов</button>}
+    {state && <button type="button" style={button} disabled={busy} onClick={() => setRetryKey(key => key + 1)}>Обновить список редакторов</button>}
   </Card>;
 }
 
