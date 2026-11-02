@@ -42,12 +42,12 @@ was performed in this run. Historical proof must retain its date.
 | A01 | Registration and authorization full cycle | ВЫПУЩЕНО | Real fresh/resumed application, photo, approval and login |
 | A02 | Roles and access boundaries | В РАЗРАБОТКЕ | #542; real admin/leader/employee/participant matrix |
 | A03 | Convenient main menu | ВЫПУЩЕНО | Verify final mobile navigation and legacy keyboard |
-| A04 | Remove «Мой путь» from profile | В РАЗРАБОТКЕ | Current branch; CI, release and real profile acceptance |
+| A04 | Remove «Мой путь» from profile | ВЫПУЩЕНО | Main ProfileScreen no longer renders «Мой путь»; real participant/mobile profile acceptance not confirmed |
 | A05 | Buttons, typography and logo | В РАЗРАБОТКЕ | Mobile visual review against agreed design |
 | A06 | iPhone and Android Mini App | В РАЗРАБОТКЕ | #620 iOS ICS calendar import, real Telegram iPhone/Android clients, not only Playwright |
 | B01 | Event create/publish/edit | ВЫПУЩЕНО | #620 calendar export UX; real authorized scenario, no test announcement |
 | B02 | Edit published event poster | В РАЗРАБОТКЕ | Wizard supports poster changes; published entry flow unconfirmed |
-| B03 | Hide/remove events from general poster listing | НЕ НАЧАТО | Reversible visibility, retain history/registrations |
+| B03 | Hide/remove events from general poster listing | В РАЗРАБОТКЕ | Draft #589 exists; high-risk visibility policy, PostgreSQL and human acceptance not confirmed; do not release |
 | B04 | Publication latency and duplicate prevention | В РАЗРАБОТКЕ | #447 shipped; legacy #467/#491, uncertain receipts |
 | B05 | Registration, waitlist, capacity and deadlines | В РАЗРАБОТКЕ | Review overlapping #507/#510/#514/#515 as coherent package |
 | B06 | QR attendance | ВЫПУЩЕНО | Real scoped confirmation and repeated-scan acceptance |
