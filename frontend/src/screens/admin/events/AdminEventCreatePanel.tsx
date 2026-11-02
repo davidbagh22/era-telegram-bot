@@ -234,8 +234,17 @@ export function AdminEventCreatePanel() {
   };
 
   const leaveDraft = async () => {
-    if (busy) return;
-    if (dirty && !(await saveNow())) return;
+    if (busy || saving) return;
+    if (dirty) {
+      const versionAtSaveStart = versionRef.current;
+      if (!(await saveNow())) return;
+      // A slow save must not close the editor when the user has typed newer
+      // changes since the request started. Keep those edits on screen.
+      if (versionRef.current !== versionAtSaveStart) {
+        setError("Во время сохранения появились новые изменения. Проверьте их и повторите выход.");
+        return;
+      }
+    }
     setBusy(true);
     try {
       setDrafts(await listEventDrafts());
