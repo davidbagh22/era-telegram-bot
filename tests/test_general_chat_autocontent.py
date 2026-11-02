@@ -256,7 +256,8 @@ class GeneralChatDeliverySafetyTests(unittest.IsolatedAsyncioTestCase):
         delivery = SimpleNamespace(status="sending", content_id=item.content_id, id=9, telegram_message_id=None)
         digest = hashlib.sha256(item.text.encode("utf-8")).hexdigest()
 
-        with patch.object(content, "_claim_delivery", new=AsyncMock(return_value=(delivery, False))) as claim:
+        with patch.object(content, "_general_chat_id", new=AsyncMock(return_value=-100123)), \
+             patch.object(content, "_claim_delivery", new=AsyncMock(return_value=(delivery, False))) as claim:
             outcome = await content.deliver_planned_content(
                 bot, settings, SimpleNamespace(), planned, now=now
             )
@@ -265,11 +266,12 @@ class GeneralChatDeliverySafetyTests(unittest.IsolatedAsyncioTestCase):
             bot.send_message.assert_not_awaited()
 
             with patch.object(content, "APPROVED_SCHEDULED_GENERAL_PUBLICATIONS", frozenset({
-                ("2026-11-03", "general", digest),
+                ("2026-11-03", "-100123", digest),
             })):
-                self.assertTrue(content._has_explicit_general_approval(now.date(), item.text))
-                self.assertFalse(content._has_explicit_general_approval(date(2026, 11, 4), item.text))
-                self.assertFalse(content._has_explicit_general_approval(now.date(), item.text + "!"))
+                self.assertTrue(content._has_explicit_general_approval(now.date(), -100123, item.text))
+                self.assertFalse(content._has_explicit_general_approval(date(2026, 11, 4), -100123, item.text))
+                self.assertFalse(content._has_explicit_general_approval(now.date(), -100123, item.text + "!"))
+                self.assertFalse(content._has_explicit_general_approval(now.date(), -100456, item.text))
                 outcome = await content.deliver_planned_content(
                     bot, settings, SimpleNamespace(), planned, now=now
                 )
