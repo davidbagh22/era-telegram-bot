@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
@@ -19,6 +21,27 @@ from app.utils.constants import ApplicationStatus
 
 PROGRAM_START = date(2026, 10, 10)
 SPECIAL_OPENING_DATE = date(2026, 10, 10)
+
+# Opting in to a reading club does not authorize the organization to publish
+# every future issue. The exact day, registered chat and rendered issue must be
+# approved separately; empty by default. Manual reading/navigation still work.
+APPROVED_SCHEDULED_LITERATURE_ISSUES: frozenset[tuple[str, str, str]] = frozenset()
+
+
+def scheduled_literature_issue_approval_key(
+    on_date: date, chat_id: int | str, number: int
+) -> tuple[str, str, str]:
+    payload = {
+        'topic': 'literature',
+        'parse_mode': 'HTML',
+        'text': render_issue(number),
+    }
+    digest = hashlib.sha256(json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')
+    ).encode('utf-8')).hexdigest()
+    return (on_date.isoformat(), str(chat_id), digest)
+
+
 def publication_number(on_date: date, start_date: date = PROGRAM_START) -> int | None:
     """One issue every calendar day for 48 days from the program start."""
     number = (on_date - start_date).days + 1
@@ -91,11 +114,20 @@ async def reflection_summary(session, user):
 async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
     if await run_editorial_queue(bot, settings, session_factory):
         return
+    local_day = datetime.now(ZoneInfo('Asia/Yerevan')).date()
+    candidate = publication_number(local_day)
+    if (not settings.general_chat_id or candidate is None
+            or scheduled_literature_issue_approval_key(
+                local_day, settings.general_chat_id, candidate
+            ) not in APPROVED_SCHEDULED_LITERATURE_ISSUES):
+        return
     async with session_factory() as session:
         start_day = await start(session)
         await session.commit()
-        number = publication_number(datetime.now(ZoneInfo('Asia/Yerevan')).date(), start_day)
-        if number is None:
+        number = publication_number(local_day, start_day)
+        if (number is None or scheduled_literature_issue_approval_key(
+            local_day, settings.general_chat_id, number
+        ) not in APPROVED_SCHEDULED_LITERATURE_ISSUES):
             return
         ids = (await session.scalars(select(User.id).where(
             User.book_club_subscribed.is_(True), User.is_blocked.is_(False),
