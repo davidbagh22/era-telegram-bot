@@ -293,10 +293,6 @@ class GeneralChatSchedulerTests(unittest.TestCase):
         self.assertEqual(str(scheduler.timezone), "Asia/Yerevan")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class GeneralChatAmbiguousReceiptTests(unittest.IsolatedAsyncioTestCase):
     async def test_network_timeout_never_retries_same_telegram_send(self) -> None:
         class AmbiguousNetworkError(Exception):
@@ -388,3 +384,7 @@ class GeneralChatAmbiguousReceiptTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(delivery.attempts, 1)
         self.assertEqual(claim.await_count, 2)
         bot.send_message.assert_awaited_once()
+
+
+if __name__ == "__main__":
+    unittest.main()
