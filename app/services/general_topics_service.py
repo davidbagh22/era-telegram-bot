@@ -16,11 +16,12 @@ SETUP_TOPICS = ("announcements", "notifications")  # Existing bootstrapping cont
 
 
 async def ensure_topic(bot, settings, key: str, *, session_factory=None, create_if_missing: bool = True) -> int | None:
-    """Never fall back to the main thread when forum setup is unavailable.
+    """Reuse a durable forum route, failing closed after ambiguous creation.
 
-    Separate transaction: creating a topic must not commit a caller's draft.
-    PostgreSQL advisory lock serializes setup across API/scheduler workers.
-    Existing IDs are reused; deleted topics require explicit administrator repair.
+    PostgreSQL advisory locking protects the claim; a committed creating
+    row is persisted before the Telegram API call. If Telegram creates a
+    topic but its reply or the acknowledgement commit is lost, a later worker
+    must not create a duplicate. An administrator must reconcile the real ID.
     """
     name = TOPICS[key]
     chat_id = settings.general_chat_id
@@ -28,11 +29,15 @@ async def ensure_topic(bot, settings, key: str, *, session_factory=None, create_
         return None
     factory = session_factory or _session_factory(settings.database_url)
     setting_key = f"general_forum:{chat_id}:{key}"
+
+    async def lock(session):
+        if session.bind.dialect.name == "postgresql":
+            lock_id = int.from_bytes(hashlib.sha256(setting_key.encode()).digest()[:8], "big", signed=True)
+            await session.execute(sql_text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_id})
+
     try:
         async with factory() as session:
-            if session.bind.dialect.name == "postgresql":
-                lock_id = int.from_bytes(hashlib.sha256(setting_key.encode()).digest()[:8], "big", signed=True)
-                await session.execute(sql_text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_id})
+            await lock(session)
             row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
             if row is not None:
                 try:
@@ -49,9 +54,6 @@ async def ensure_topic(bot, settings, key: str, *, session_factory=None, create_
                         thread_id = None
                 if type(thread_id) is int and thread_id > 0:
                     return thread_id
-                # A saved but damaged record may already represent a real
-                # topic. Recreating it here risks a duplicate; an administrator
-                # must reconcile the record without automatic Telegram writes.
                 logger.warning("General topic settings need reconciliation key=%s", key)
                 return None
             if not create_if_missing:
@@ -68,18 +70,42 @@ async def ensure_topic(bot, settings, key: str, *, session_factory=None, create_
             if member.status != "creator" and not getattr(member, "can_manage_topics", False):
                 logger.warning("General topics unavailable: missing_manage_topics")
                 return None
-            topic = await bot.create_forum_topic(chat_id, name=name)
-            value = json.dumps({"thread_id": topic.message_thread_id, "name": name})
-            if row is None:
-                session.add(AppSetting(key=setting_key, value=value))
-            else:
-                row.value = value
+
+            # The claim is committed before any non-transactional Telegram I/O.
+            # A lost API response must not cause the next scheduler to recreate.
+            session.add(AppSetting(key=setting_key, value=json.dumps({"state": "creating"})))
             await session.commit()
-            return topic.message_thread_id
+
+        try:
+            topic = await bot.create_forum_topic(chat_id, name=name)
+            thread_id = topic.message_thread_id
+            if type(thread_id) is not int or thread_id <= 0:
+                raise ValueError("missing_thread_confirmation")
+        except Exception:
+            # Even an explicit rejection is kept for manual reconciliation:
+            # no automatic retry may duplicate a remotely created topic.
+            logger.exception("General topic creation outcome needs reconciliation key=%s", key)
+            return None
+
+        async with factory() as session:
+            await lock(session)
+            row = await session.scalar(select(AppSetting).where(AppSetting.key == setting_key))
+            if row is None:
+                logger.warning("General topic claim disappeared after creation key=%s", key)
+                return None
+            try:
+                current = json.loads(row.value) if isinstance(row.value, str) else row.value
+            except (TypeError, ValueError):
+                current = None
+            if current != {"state": "creating"}:
+                logger.warning("General topic claim changed after creation key=%s", key)
+                return None
+            row.value = json.dumps({"thread_id": thread_id, "name": name})
+            await session.commit()
+            return thread_id
     except Exception:
         logger.exception("General topic setup failed key=%s", key)
         return None
-
 
 async def setup_general_topics(bot, settings, session_factory) -> dict:
     result = {}
