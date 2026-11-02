@@ -14,12 +14,15 @@ function Editors({ area, members }: { area: string; members: MediaMember[] }) {
   const [confirmation, setConfirmation] = useState<{ member: MediaMember; enabled: boolean; revision: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [retryKey, setRetryKey] = useState(0);
   useEffect(() => {
     let alive = true;
+    // A failed or changed-scope GET must not leave stale editor permissions actionable.
+    setState(null); setTarget(""); setConfirmation(null); setError("");
     void fetchMediaCalendarEditors(area).then(value => { if (alive) setState(value); })
       .catch(cause => { if (alive) setError(cause instanceof Error ? cause.message : "Не удалось загрузить редакторов"); });
     return () => { alive = false; };
-  }, [area]);
+  }, [area, retryKey]);
   const confirm = async () => {
     if (!confirmation) return;
     setBusy(true); setError("");
@@ -49,6 +52,8 @@ function Editors({ area, members }: { area: string; members: MediaMember[] }) {
       <button style={button} disabled={busy} onClick={() => setConfirmation(null)}>Отмена</button>
     </div>}
     {error && <p role="alert">{error}</p>}
+    {!state && error && <button type="button" style={button} disabled={busy} onClick={() => setRetryKey(key => key + 1)}>Повторить загрузку редакторов</button>}
+    {state && <button type="button" style={button} disabled={busy} onClick={() => setRetryKey(key => key + 1)}>Обновить список редакторов</button>}
   </Card>;
 }
 
