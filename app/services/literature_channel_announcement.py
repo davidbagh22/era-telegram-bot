@@ -32,6 +32,21 @@ def channel_keyboard():
 def launch_window_open(day: date) -> bool:
     return PROGRAM_START <= day < PROGRAM_START + timedelta(days=48)
 
+# A historical launch schedule is not new authorization for a channel post.
+# Empty by default until an audited human approval of exact date/target/payload.
+APPROVED_LITERATURE_CHANNEL_LAUNCHES: frozenset[tuple[str, str, str]] = frozenset()
+
+
+def launch_approval_key(day: date, target: int | str) -> tuple[str, str, str]:
+    payload = {
+        "text": CHANNEL_POST,
+        "keyboard": channel_keyboard().model_dump(mode="json", exclude_none=True),
+    }
+    digest = hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return (day.isoformat(), str(target), digest)
+
 
 async def publish_literature_channel_launch(bot, settings):
     if not launch_window_open(datetime.now(ZoneInfo("Asia/Yerevan")).date()):
@@ -41,6 +56,8 @@ async def publish_literature_channel_launch(bot, settings):
         return
     if isinstance(target, str) and not target.startswith("@") and not target.lstrip("-").isdigit():
         target = "@" + target
+    if launch_approval_key(datetime.now(ZoneInfo("Asia/Yerevan")).date(), target) not in APPROVED_LITERATURE_CHANNEL_LAUNCHES:
+        return
     await safe_send_once(
         bot, settings, target, CHANNEL_POST,
         delivery_key="era-literature-channel-launch-20261010",
