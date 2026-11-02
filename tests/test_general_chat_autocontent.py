@@ -237,6 +237,47 @@ class GeneralChatDeliverySafetyTests(unittest.IsolatedAsyncioTestCase):
         alert.assert_not_awaited()
 
 
+    async def test_scheduled_general_post_requires_exact_human_approval(self) -> None:
+        # Neither default-enabled autocontent flags nor a due schedule can
+        # authorize an ERA message. All network and ledger operations are mocked.
+        import hashlib
+
+        zone = ZoneInfo("Asia/Yerevan")
+        now = datetime(2026, 11, 3, 18, 0, tzinfo=zone)
+        item = content.ContentItem(
+            content_id="weekly-challenge-test",
+            content_type="weekly_challenge",
+            slot="evening",
+            text="Approved only for one exact date and destination",
+        )
+        planned = content.PlannedContent(item=item, planned_at=now, effective_text=item.text)
+        bot = SimpleNamespace(send_message=AsyncMock())
+        settings = Settings(bot_token="0000000000:TESTTOKEN", timezone="Asia/Yerevan")
+        delivery = SimpleNamespace(status="sending", content_id=item.content_id, id=9, telegram_message_id=None)
+        digest = hashlib.sha256(item.text.encode("utf-8")).hexdigest()
+
+        with patch.object(content, "_claim_delivery", new=AsyncMock(return_value=(delivery, False))) as claim:
+            outcome = await content.deliver_planned_content(
+                bot, settings, SimpleNamespace(), planned, now=now
+            )
+            self.assertEqual(outcome.status, "approval_required")
+            claim.assert_not_awaited()
+            bot.send_message.assert_not_awaited()
+
+            with patch.object(content, "APPROVED_SCHEDULED_GENERAL_PUBLICATIONS", frozenset({
+                ("2026-11-03", "general", digest),
+            })):
+                self.assertTrue(content._has_explicit_general_approval(now.date(), item.text))
+                self.assertFalse(content._has_explicit_general_approval(date(2026, 11, 4), item.text))
+                self.assertFalse(content._has_explicit_general_approval(now.date(), item.text + "!"))
+                outcome = await content.deliver_planned_content(
+                    bot, settings, SimpleNamespace(), planned, now=now
+                )
+                self.assertEqual(outcome.status, "in_progress")
+                claim.assert_awaited_once()
+            bot.send_message.assert_not_awaited()
+
+
 class GeneralChatSchedulerTests(unittest.TestCase):
     def test_scheduler_has_two_slots_and_recovery_without_legacy_general_nudge(self) -> None:
         settings = Settings(bot_token="0000000000:TESTTOKEN", timezone="Asia/Yerevan")
