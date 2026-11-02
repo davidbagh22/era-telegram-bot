@@ -69,6 +69,7 @@ TERMINAL_STATUSES = {
     "skipped_admin",
     "disabled",
     "failed",
+    "uncertain",
 }
 
 DEFAULT_AUTOCONTENT_SETTINGS: dict[str, bool] = {
@@ -510,7 +511,7 @@ async def _send_with_retry(
     bot: Bot,
     chat_id: int,
     text: str,
-) -> tuple[Any | None, int, str | None, bool]:
+) -> tuple[Any | None, int, str | None, bool | None]:
     attempt = 0
     while attempt < MAX_SEND_ATTEMPTS:
         attempt += 1
@@ -521,14 +522,15 @@ async def _send_with_retry(
             if attempt >= MAX_SEND_ATTEMPTS:
                 return None, attempt, "retry_after", True
             await asyncio.sleep(min(max(float(exc.retry_after), 0.0), 30.0))
-        except (TelegramNetworkError, TelegramServerError):
-            if attempt >= MAX_SEND_ATTEMPTS:
-                return None, attempt, "telegram_transient", True
-            await asyncio.sleep(min(2**attempt, 10))
+        except (TelegramNetworkError, TelegramServerError) as exc:
+            # A timeout or 5xx may occur *after* Telegram accepted the message.
+            # Do not retry this send or allow a later scheduler run to replay it.
+            return None, attempt, type(exc).__name__, None
         except (TelegramForbiddenError, TelegramBadRequest) as exc:
             return None, attempt, exc.__class__.__name__, False
         except TelegramAPIError as exc:
-            return None, attempt, exc.__class__.__name__, False
+            # Generic API failures do not prove that the message was not sent.
+            return None, attempt, exc.__class__.__name__, None
     return None, attempt, "telegram_unknown", False
 
 
@@ -600,12 +602,18 @@ async def _claim_delivery(
         return delivery, False
     updated = _utc_stamp(delivery.updated_at)
     now_utc = _utc_stamp(now)
-    if (
-        delivery.status in {"claimed", "sending"}
-        and updated is not None
-        and now_utc is not None
-        and now_utc - updated < CLAIM_STALE_AFTER
-    ):
+    if delivery.status in {"claimed", "sending"}:
+        # A stale worker might have sent a Telegram message just before a
+        # crash. Never turn its unresolved receipt into a second send.
+        if (
+            updated is None
+            or now_utc is None
+            or now_utc - updated >= CLAIM_STALE_AFTER
+        ):
+            delivery.status = "uncertain"
+            delivery.error_code = "stale_delivery_claim"
+            delivery.error_detail = "manual_reconciliation_required"
+            await session.commit()
         return delivery, False
     delivery.status = "claimed"
     delivery.error_code = None
@@ -702,6 +710,13 @@ async def deliver_planned_content(
         )
 
     delivery.error_code = error_code or "telegram_error"
+    if transient is None:
+        # An ambiguous transport/API outcome is terminal until an authorized
+        # human reconciles the Telegram receipt; no automated re-delivery.
+        delivery.status = "uncertain"
+        delivery.error_detail = "manual_reconciliation_required"
+        await session.commit()
+        return DeliveryOutcome("uncertain", item.content_id, delivery.id)
     delivery.error_detail = "transient_exhausted" if transient else "permanent"
     if transient:
         delivery.status = "retryable_failed"
