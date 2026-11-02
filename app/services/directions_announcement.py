@@ -1,8 +1,13 @@
 """One-time announcement for ERA's two existing team chats.
 
-Publication is authorized by the release and scheduled through the existing worker.
+A recurring schedule does not authorize a new public announcement.
 Delivery is idempotent and routed strictly to the Notifications forum topic.
 """
+import hashlib
+import json
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.services.general_topics_service import send_general_topic
