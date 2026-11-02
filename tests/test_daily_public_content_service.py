@@ -135,3 +135,44 @@ def test_daily_channel_requires_specific_publication_approval(monkeypatch):
     assert len(sent) == 1
     assert sent[0]["text"] == content
     assert sent[0]["chat_id"] == target
+
+
+def test_legacy_polling_channel_requires_exact_approval(monkeypatch):
+    """The separate app.main polling scheduler cannot bypass channel approval."""
+    import asyncio
+    import hashlib
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    import app.services.channel_public_content_service as legacy
+    import app.services.daily_public_content_service as daily
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 3, 12, 0, tzinfo=tz)
+
+    monkeypatch.setattr(legacy, "datetime", FixedDatetime)
+    monkeypatch.setattr(legacy, "scheduled_minute", lambda *_: 0)
+    deliveries = []
+
+    async def fake_deliver(*args, **kwargs):
+        deliveries.append(kwargs)
+
+    monkeypatch.setattr(legacy, "_deliver_once", fake_deliver)
+    settings = SimpleNamespace(
+        era_channel_id="@era_leaders1", era_channel_username="era_leaders1"
+    )
+    asyncio.run(legacy.run_daily_channel_content(object(), settings, None))
+    assert deliveries == []
+
+    day, target = "2026-11-03", "@era_leaders1"
+    content = daily.text_for_day(day, "channel_post")
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    monkeypatch.setattr(
+        daily, "APPROVED_CHANNEL_PUBLICATIONS", frozenset({(day, target, digest)})
+    )
+    asyncio.run(legacy.run_daily_channel_content(object(), settings, None))
+    assert len(deliveries) == 1
+    assert deliveries[0]["text"] == content
+    assert deliveries[0]["chat_id"] == target
