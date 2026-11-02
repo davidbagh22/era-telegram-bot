@@ -203,7 +203,7 @@ export function MediaScreen({ onBack, initialView = null }: MediaScreenProps) {
       fetchMediaContentPlan(),
       fetchMediaConfig(),
       fetchMediaAnalytics(),
-      fetchMediaChannelHealth(),
+      // Channel health is advisory: the endpoint intentionally returns 503 when\n      // Telegram publication is not configured. Do not hide authorized Media\n      // tools just because this optional status probe is unavailable.\n      fetchMediaChannelHealth().catch(() => ({ ok: false, detail: "Проверка канала временно недоступна" })),
     ]);
     setToday(todayResult);
     setPlan(planResult);
