@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
@@ -12,6 +12,7 @@ from app.content.literature_issues import ISSUES, get_issue, render_issue, valid
 from app.database.base import Base
 from app.database.models import AppSetting, User
 from app.handlers.book_club import change_subscription, navigate
+from app.services import book_club_service as club
 from app.services.book_club_service import daily_job, mark_progress, progress, start
 from app.utils.constants import ApplicationStatus
 
@@ -50,9 +51,31 @@ class LiteratureTests(IsolatedAsyncioTestCase):
         return SimpleNamespace(data=data, answer=AsyncMock(), message=SimpleNamespace(answer=AsyncMock()))
 
     async def send_today(self):
-        with patch('app.services.book_club_service.datetime') as clock, patch('app.services.notification_service._session_factory', return_value=self.sessions):
+        # Exact approval is only installed inside the isolated regression.
+        key = club.scheduled_literature_issue_approval_key(
+            date(2026, 10, 10), self.settings.general_chat_id, 1
+        )
+        with patch.object(club, 'APPROVED_SCHEDULED_LITERATURE_ISSUES', frozenset({key})), patch(
+            'app.services.book_club_service.datetime'
+        ) as clock, patch('app.services.notification_service._session_factory', return_value=self.sessions):
             clock.now.return_value = datetime(2026, 10, 10, 19, tzinfo=ZoneInfo('Asia/Yerevan'))
             await daily_job(self.bot, self.settings, self.sessions)
+
+    async def test_unapproved_daily_issue_never_publishes_or_initializes_program(self):
+        with patch('app.services.book_club_service.datetime') as clock:
+            clock.now.return_value = datetime(2026, 10, 10, 19, tzinfo=ZoneInfo('Asia/Yerevan'))
+            await daily_job(self.bot, self.settings, self.sessions)
+        self.bot.send_message.assert_not_awaited()
+        async with self.sessions() as session:
+            assert await session.scalar(select(AppSetting).where(
+                AppSetting.key == 'book_club_start_date'
+            )) is None
+
+    def test_issue_approval_binds_day_chat_text_and_topic(self):
+        key = club.scheduled_literature_issue_approval_key(date(2026, 10, 10), -100123, 1)
+        assert key != club.scheduled_literature_issue_approval_key(date(2026, 10, 11), -100123, 1)
+        assert key != club.scheduled_literature_issue_approval_key(date(2026, 10, 10), -100124, 1)
+        assert key != club.scheduled_literature_issue_approval_key(date(2026, 10, 10), -100123, 2)
 
     async def test_delivery_only_eligible_opted_in_no_group_and_no_duplicates(self):
         await self.send_today()
