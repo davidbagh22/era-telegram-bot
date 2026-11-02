@@ -1,6 +1,6 @@
 from datetime import date, datetime, time, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -9,6 +9,7 @@ from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.v1.events import router
 from app.config import Settings
 from app.services.event_calendar_service import build_event_calendar
+from app.services.notification_service import NotificationDeliveryResult
 from app.utils.constants import ApplicationStatus, EventStatus
 
 
@@ -86,18 +87,49 @@ def test_ics_roundtrips_cyrillic_and_emoji_as_utf8():
 
 def test_send_calendar_to_chat_delivers_same_ics_document():
     bot = SimpleNamespace(send_document=AsyncMock())
-    response = client_for(event(), bot=bot).post("/api/v1/events/42/calendar/send")
+    result = NotificationDeliveryResult(sent=True, status="sent", duplicate=False, attempt_count=1)
+    with patch("app.api.v1.events.safe_send_once", new=AsyncMock(return_value=result)) as deliver:
+        response = client_for(event(), bot=bot).post("/api/v1/events/42/calendar/send")
     assert response.status_code == 200 and response.json() == {"sent": True}
-    chat_id, document = bot.send_document.await_args.args
-    assert chat_id == 555 and document.filename == "ERA-42.ics"
-    assert document.data.startswith(b"BEGIN:VCALENDAR")
+    args, kwargs = deliver.await_args
+    assert args[0] is bot and args[2] == 555
+    assert kwargs["notification_type"] == "event_calendar_file"
+    assert kwargs["max_attempts"] == 1  # no ambiguous network retry
+    assert kwargs["document"].filename == "ERA-42.ics"
+    assert kwargs["document"].data.startswith(b"BEGIN:VCALENDAR")
+    bot.send_document.assert_not_awaited()  # transport is owned by durable sender
+
+
+def test_calendar_delivery_key_stable_for_retries_and_versioned_for_edits():
+    bot = SimpleNamespace(send_document=AsyncMock())
+    result = NotificationDeliveryResult(sent=True, status="sent", duplicate=True, attempt_count=1)
+    e = event()
+    with patch("app.api.v1.events.safe_send_once", new=AsyncMock(return_value=result)) as deliver:
+        assert client_for(e, bot=bot).post("/api/v1/events/42/calendar/send").status_code == 200
+        assert client_for(e, bot=bot).post("/api/v1/events/42/calendar/send").status_code == 200
+        first, second = (call.kwargs["delivery_key"] for call in deliver.await_args_list)
+        assert first == second
+        e.updated_at = datetime(2026, 10, 20, tzinfo=timezone.utc)
+        assert client_for(e, bot=bot).post("/api/v1/events/42/calendar/send").status_code == 200
+        third = deliver.await_args.kwargs["delivery_key"]
+        assert third != first
+    bot.send_document.assert_not_awaited()
 
 
 def test_send_calendar_to_chat_keeps_access_rules_and_handles_bot_failures():
     bot = SimpleNamespace(send_document=AsyncMock())
-    assert client_for(event(status=EventStatus.DRAFT), bot=bot).post("/api/v1/events/42/calendar/send").status_code == 404
-    assert client_for(event(), approved=False, bot=bot).post("/api/v1/events/42/calendar/send").status_code == 403
+    with patch("app.api.v1.events.safe_send_once", new=AsyncMock()) as deliver:
+        assert client_for(event(status=EventStatus.DRAFT), bot=bot).post("/api/v1/events/42/calendar/send").status_code == 404
+        assert client_for(event(), approved=False, bot=bot).post("/api/v1/events/42/calendar/send").status_code == 403
+        assert client_for(event(), bot=None).post("/api/v1/events/42/calendar/send").status_code == 503
+        deliver.assert_not_awaited()
+
+    with patch("app.api.v1.events.safe_send_once", new=AsyncMock(side_effect=RuntimeError("transport unavailable"))):
+        assert client_for(event(), bot=bot).post("/api/v1/events/42/calendar/send").status_code == 502
+    for status, expected in (("uncertain", 409), ("pending", 409), ("conflict", 409), ("blocked", 502)):
+        result = NotificationDeliveryResult(sent=False, status=status, duplicate=True, attempt_count=1)
+        with patch("app.api.v1.events.safe_send_once", new=AsyncMock(return_value=result)) as deliver:
+            response = client_for(event(), bot=bot).post("/api/v1/events/42/calendar/send")
+            assert response.status_code == expected
+            deliver.assert_awaited_once()
     bot.send_document.assert_not_awaited()
-    assert client_for(event(), bot=None).post("/api/v1/events/42/calendar/send").status_code == 503
-    failing = SimpleNamespace(send_document=AsyncMock(side_effect=RuntimeError("blocked by user")))
-    assert client_for(event(), bot=failing).post("/api/v1/events/42/calendar/send").status_code == 502
