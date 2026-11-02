@@ -8,14 +8,23 @@ from aiogram.methods import SendMessage
 from sqlalchemy import select
 
 from app.database.system_models import NotificationDelivery
+from app.services import directions_announcement as directions
 from app.services.directions_announcement import ANNOUNCEMENT, publish_directions_announcement
 from tests.test_general_topics import GeneralTopicsTests
 
 
 class DirectionsAnnouncementTests(GeneralTopicsTests):
     async def send(self):
-        with patch('app.services.general_topics_service._session_factory', return_value=self.sessions), patch('app.services.notification_service._session_factory', return_value=self.sessions):
+        day = datetime.now(timezone(timedelta(hours=4))).date().isoformat()
+        key = directions.directions_approval_key(day, self.settings.general_chat_id)
+        with patch.object(directions, "APPROVED_DIRECTIONS_ANNOUNCEMENTS", frozenset({key})), patch('app.services.general_topics_service._session_factory', return_value=self.sessions), patch('app.services.notification_service._session_factory', return_value=self.sessions):
             return await publish_directions_announcement(self.bot, self.settings)
+
+    async def test_unapproved_announcement_does_not_claim_or_send(self):
+        self.assertFalse(await publish_directions_announcement(self.bot, self.settings))
+        self.bot.send_message.assert_not_awaited()
+        async with self.sessions() as session:
+            self.assertIsNone(await session.scalar(select(NotificationDelivery)))
 
     async def test_announcement_html_buttons_topic_and_restart(self):
         await self.send()
