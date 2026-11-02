@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "../components/Card";
+import { safeEvidenceUrl } from "../utils/safeEvidenceUrl";
 import { changeMediaCalendarEditor, createMediaCalendarEntry, fetchMediaCalendar, fetchMediaCalendarEditors, fetchMediaCalendarTeam, fetchMediaWorkspaces, updateMediaCalendarEntry, type MediaCalendarEditors, type MediaCalendarEntry, type MediaMember, type MediaWorkspace } from "../api/media";
 
 const statuses: Record<string, string> = { idea: "Идея", planned: "В подготовке", assigned: "Назначено", in_progress: "В работе", review: "На согласовании", ready: "Готово", scheduled: "Запланировано", published: "Опубликовано", skipped: "Отменено", failed: "Ошибка доставки" };
@@ -68,6 +69,7 @@ function Entry({ item, area, manager, members, onChanged }: { item: MediaCalenda
   const [body, setBody] = useState(item.body);
   const [responsible, setResponsible] = useState(String(item.responsible_id ?? ""));
   const terminal = ["published", "skipped"].includes(item.status);
+  const publicationLink = safeEvidenceUrl(item.publication_url);
   const change = async (values: object) => {
     setBusy(true); setError("");
     try { const updated = await updateMediaCalendarEntry(area, item.id, { revision: item.revision, ...values }); onChanged(updated); }
@@ -81,7 +83,8 @@ function Entry({ item, area, manager, members, onChanged }: { item: MediaCalenda
     <small>Ответственный: {members.find(member => member.id === item.responsible_id)?.name ?? (item.responsible_id ? "назначен" : "пока не назначен")}</small>
     <button style={button} onClick={() => setExpanded(!expanded)}>{expanded ? "Свернуть материал" : "Открыть материал"}</button>
     {expanded && item.materials && <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--era-text-secondary)" }}>Материалы: {item.materials}</p>}
-    {item.publication_url && <><a href={item.publication_url} target="_blank" rel="noopener noreferrer">Открыть публикацию ↗</a><small>Ссылка подтверждена руководителем. Это не автоматическая проверка внешнего сервиса.</small></>}
+    {publicationLink && <><a href={publicationLink} target="_blank" rel="noopener noreferrer">Открыть публикацию ↗</a><small>Ссылка подтверждена руководителем. Это не автоматическая проверка внешнего сервиса.</small></>}
+    {item.publication_url && !publicationLink && <small>Ссылка публикации имеет неподдерживаемый формат.</small>}
     {manager && !terminal && expanded && <>
       <button style={button} disabled={busy} onClick={() => setEditing(!editing)}>{editing ? "Закрыть редактор" : "Изменить материал / ответственного"}</button>
       {editing && <div style={{ display: "grid", gap: 10 }}>
@@ -99,7 +102,7 @@ function Entry({ item, area, manager, members, onChanged }: { item: MediaCalenda
       </div>
       <label>Перенести дату · время Еревана<input aria-label={`Новая дата: ${item.title}`} type="datetime-local" value={date} onChange={event => setDate(event.target.value)} style={input} /></label>
       <button style={button} disabled={busy || !date} onClick={() => void change({ scheduled_at: new Date(`${date}+04:00`).toISOString() })}>Сохранить дату</button>
-      {["ready", "scheduled"].includes(item.status) && <><label>Ссылка на вышедший материал<input type="url" placeholder="https://…" style={input} value={url} onChange={event => setUrl(event.target.value)} /></label><button style={button} disabled={busy || !url.trim()} onClick={() => void change({ status: "published", publication_url: url.trim() })}>Подтвердить публикацию по ссылке</button></>}
+      {["ready", "scheduled"].includes(item.status) && <><label>Ссылка на вышедший материал<input type="url" placeholder="https://…" style={input} value={url} onChange={event => setUrl(event.target.value)} /></label><button style={button} disabled={busy || !safeEvidenceUrl(url)} onClick={() => void change({ status: "published", publication_url: safeEvidenceUrl(url) })}>Подтвердить публикацию по ссылке</button></>}
     </>}
     {error && <p role="alert" style={{ margin: 0 }}>{error}</p>}
   </Card>;
@@ -176,7 +179,7 @@ export function MediaWorkspaceScreen({ area, onBack }: { area: "era" | "ksoors";
     {!loading && !workspace && error && <button type="button" style={button} onClick={() => setRetryKey(key => key + 1)}>Повторить загрузку календаря</button>}
     {workspace && <>
       <button type="button" style={{ ...button, justifySelf: "start" }} disabled={loading} onClick={() => setRetryKey(key => key + 1)}>Обновить календарь</button>
-      <Card><strong>Площадки направления</strong><div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 10 }}>{Object.entries(workspace.platforms).map(([key, url]) => <a key={key} href={url} target="_blank" rel="noopener noreferrer">{platforms[key]} ↗</a>)}</div></Card>
+      <Card><strong>Площадки направления</strong><div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 10 }}>{Object.entries(workspace.platforms).map(([key, url]) => { const href = safeEvidenceUrl(url); return href ? <a key={key} href={href} target="_blank" rel="noopener noreferrer">{platforms[key]} ↗</a> : null; })}</div></Card>
       {workspace.can_assign_editors && <button style={button} onClick={() => setShowEditors(!showEditors)}>{showEditors ? "Закрыть полномочия" : "Редакторы календаря"}</button>}
       {showEditors && workspace.can_assign_editors && <Editors key={area} area={area} members={members} />}
       {workspace.can_manage && <button style={button} onClick={() => setShowForm(!showForm)}>{showForm ? "Закрыть форму" : "+ Добавить материал"}</button>}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createMediaLibraryItem, fetchMediaLibrary, updateMediaLibraryItem, type MediaLibraryItem } from "../api/media";
 import { Card } from "../components/Card";
+import { safeEvidenceUrl } from "../utils/safeEvidenceUrl";
 
 const categories: Record<string, string> = { photo: "Фото и съёмка", editing: "Монтаж", journalism: "Журналистика и интервью", texts: "Тексты", design: "Дизайн", short_video: "Сторис и короткие видео", standards: "Стандарты ЭРА", publishing: "Инструкции публикации", logos: "Логотипы", canva: "Шаблоны Canva", video: "Видео", fonts_visual: "Шрифты и визуал", guides: "Инструкции", examples: "Примеры", partner_materials: "Материалы партнёров", archive: "Архив" };
 const button: React.CSSProperties = { background: "var(--era-surface-2)", color: "var(--era-text)", border: "1px solid var(--era-border)", borderRadius: 12, padding: ".7rem", fontWeight: 700, cursor: "pointer" };
@@ -78,7 +79,7 @@ export function MediaKnowledge({ manager, onGuide }: { manager: boolean; onGuide
     {visible.map(item => <Card key={item.id} style={{ display: "grid", gap: 10, overflowWrap: "anywhere" }}>
       <strong>{item.pinned ? "Закреплено · " : ""}{item.title}{!item.is_active ? " · скрыт" : ""}</strong><small>{categories[item.category] ?? "Рабочие материалы"}</small>
       {item.description && <><p style={{ margin: 0, whiteSpace: "pre-wrap", maxHeight: expanded === item.id ? undefined : "4.5em", overflow: "hidden" }}>{item.description}</p><button style={button} onClick={() => setExpanded(expanded === item.id ? null : item.id)}>{expanded === item.id ? "Свернуть текст" : "Читать полностью"}</button></>}
-      {item.url && (item.destination_type === "internal_route" ? <button style={button} onClick={onGuide}>Открыть руководство</button> : <a href={item.url} target="_blank" rel="noopener noreferrer">Открыть материал ↗</a>)}
+      {item.url && (item.destination_type === "internal_route" ? <button style={button} onClick={onGuide}>Открыть руководство</button> : safeEvidenceUrl(item.url) ? <a href={safeEvidenceUrl(item.url) ?? undefined} target="_blank" rel="noopener noreferrer">Открыть материал ↗</a> : <small>Ссылка материала имеет неподдерживаемый формат.</small>)}
       {manager && <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}><button style={button} disabled={busy} onClick={() => setDraft({ id: item.id, revision: item.revision, title: item.title, description: item.description ?? "", url: item.url, category: item.category, kind: item.kind, pinned: item.pinned, request_key: crypto.randomUUID() })}>Изменить: {item.title}</button><button style={button} disabled={busy} onClick={() => void change(item, { pinned: !item.pinned })}>{item.pinned ? "Открепить" : "Закрепить"}</button><button style={button} disabled={busy} onClick={() => void change(item, { is_active: !item.is_active })}>{item.is_active ? "Скрыть материал" : "Вернуть в каталог"}</button></div>}
     </Card>)}
   </div>;

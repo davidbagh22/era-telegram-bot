@@ -1,6 +1,6 @@
 # ЭРА — автономная разработка
 
-Updated: 2026-10-30 UTC. This is the primary continuation point for the hourly task
+Updated: 2026-11-02 UTC. This is the primary continuation point for the hourly task
 `6adcbd42ede08191a5c0a946e4147b52` («ЭРА — разработка до полной готовности»).
 Read this first, then current main/PR/CI/Render; consult older AI_TASK_STATE.md and
 checkpoint documents only for evidence relevant to the selected task. Do not restart
@@ -33,7 +33,7 @@ Status is NOT a subjective completion percentage. ПРОВЕРЕНО requires co
 main/LIVE and actual relevant user scenario evidence. ВЫПУЩЕНО alone does not close
 acceptance. Grouped requirements below require ALL their listed parts; split them
 only with an explicit register revision explaining the changed denominator.
-Current strict acceptance: 1/40 = 2.5%; 39 remain open. This measures evidenced
+Current strict acceptance: 4/40 = 10.0%; 36 remain open. This measures evidenced
 acceptance, not the fraction of existing code. No new real Telegram acceptance
 was performed in this run. Historical proof must retain its date.
 
@@ -53,7 +53,7 @@ was performed in this run. Historical proof must retain its date.
 | B06 | QR attendance | ВЫПУЩЕНО | Real scoped confirmation and repeated-scan acceptance |
 | B07 | Event points | ВЫПУЩЕНО | Actual attendance-to-ledger evidence, no test balance edits |
 | B08 | Actual production event list | В РАЗРАБОТКЕ | Authenticated read unavailable; do not invent the list |
-| C01 | Media chat and all eight topics | ВЫПУЩЕНО | Oct27 topics=8, pinned navigation8455; current role/link check |
+| C01 | Media chat and all eight topics | ПРОВЕРЕНО | 2026-11-02 LIVE b285de0: repeated 17:01/17:04/17:09 UTC 'Media forum ready: topics=8 navigation_message_id=8455'; setup_media_topics checks Telegram get_chat forum and bot admin topic/pin rights, 8 distinct ready thread IDs, reopen results and confirmed pinned navigation links. Does not claim each human member's private access. |
 | C02 | Agreed media recruitment notification | ПРОВЕРЕНО | #429; Oct26 18:09:42Z sent message26588; receipt reuse, no resend |
 | C03 | Media content plan and calendar | В РАЗРАБОТКЕ | #551 malformed metadata/scoped privacy; role acceptance |
 | C04 | Media tasks and staff | В РАЗРАБОТКЕ | Complete assignment/review and scoped membership acceptance |
@@ -73,10 +73,10 @@ was performed in this run. Historical proof must retain its date.
 | E06 | Literature club | ВЫПУЩЕНО | Real issue, subscription, discussion and reporting |
 | E07 | FAQ and support | ВЫПУЩЕНО | Scoped handling, replies and privacy acceptance |
 | E08 | My Vector | В РАЗРАБОТКЕ | Methods/check-ins/goals/history/privacy and earlier backlog |
-| E09 | Daily quotes | ВЫПУЩЕНО | Actual daily receipts in Mini App/chat/channel as authorized |
+| E09 | Daily quotes | ПРОВЕРЕНО | 2026-11-01 Telegram channel message 1641 (15:55 UTC) and 2026-11-02 message 1650 (08:15 UTC) match deterministic daily_public_content_service CHANNEL_POSTS; real authenticated GET /api/v1/home/daily-quote returned 200 Nov 1–2, HomeScreen displays fetched text. No group-chat quote delivery is enabled/authorized. |
 | E10 | Broadcasts and notifications | В РАЗРАБОТКЕ | #491 incomplete receipts; no uncertain replay |
 | E11 | Security and data protection | В РАЗРАБОТКЕ | #475/#484/#486/#542; auth and role checks |
-| E12 | Backup and restore | ВЫПУЩЕНО | Encrypted GitHub + isolated PG restore evidenced; latest review |
+| E12 | Backup and restore | ПРОВЕРЕНО | 2026-11-02 scheduled backup run 41407674271 SUCCESS: real production OIDC snapshot, isolated PostgreSQL 18 restore and migrations, encrypted/checksum round-trip, stored private artifact 13123694669 (expires 2026-11-09). External S3 copy optional and not configured; retention improvement remains advisable. |
 | E13 | Legal/content organizational acceptance | В РАЗРАБОТКЕ | Draft #364 requires responsible human approval |
 | E14 | Final multi-role production acceptance | НЕ НАЧАТО | All required scenarios, no known blockers, observation |
 
@@ -403,3 +403,34 @@ all forty requirements are ПРОВЕРЕНО and all known mandatory backlog is
 
 
 - **PR #643 opened DRAFT** for this independent media editor GET recovery. Initial code/test/checkpoint HEAD `28bd8a6b67b2208a2edb4447273a1004fdb6d613` had six CI jobs queued; the follow-up code commit `47d60f985edb2cafcaf5ca6944bbce5ee894f4a7` preserves the refresh action after a failed POST/reconciliation, without changing mutation handling. This documentation append changes HEAD again, so **all six checks must be SUCCESS on the resulting final HEAD**, not either earlier SHA. No merge before current main 5/5 push checks, automatic exact Render LIVE and review. Public /health and /ready were inaccessible from web; no endpoint success or real Telegram acceptance claimed. Continue existing #643 rather than opening a duplicate.
+
+
+## Continuation checkpoint — 2026-11-02 ~16:40 UTC (media URL navigation safety)
+
+- Current GitHub main at the time of branch creation: `b285de0b1146049153d3e66b5506dbc6af56735b` (PR #642 merge). Its exact push checks were **2/5 SUCCESS**, three running; Render last observed LIVE `a99c95db1dfc4f53002b54079389941b7ce981d3` via `dep-dbkb986417fc73brting`; do not claim `b285de0...` production until automatic checksPass exact LIVE. Both states must be rechecked immediately before merge.
+- Existing DRAFT PR #643 (media calendar editor GET retry/privilege state) was already open; exact HEAD `28bd8a6b67b2208a2edb4447273a1004fdb6d613`, CI still running. No changes made to that branch, no duplicates.
+- New **independent E11/C03 security repair** on branch `fix/media-publication-url-navigation-20261102`: MediaWorkspaceScreen previously rendered `publication_url` from API directly as clickable anchor, which could include `javascript:`, `data:` or embedded credentials on legacy rows. Reuse existing `safeEvidenceUrl` for HTTP(S) navigability; do not render unsafe link as anchor; show a non-clickable warning; disable confirmation if newly entered URL is unsafe. No backend data migration or rewrite of stored links.
+- Added disposable Playwright `media_publication_links.spec.ts` with unsafe `javascript:`, `data:`, credential-bearing URL and valid `https://t.me`, asserting only one safe link and **zero API writes**. Also guards workspace platform links against unsafe navigation. Existing server `media_workspace_service._publication_url` already validates new published links; this is defense in depth for existing/legacy metadata, **not a confirmed exploit**.
+- Extended E11/C05 fix to `MediaKnowledge.tsx` external library anchors using the same safe HTTP(S) guard; preserves SPA-internal guidance action. Added browser-only `media_knowledge_links.spec.ts` with three unsafe mock links plus one valid Telegram URL, verifying zero API writes. Real stored records are not modified.
+- **Next action:** open one DRAFT PR for this branch; require exact final HEAD 5/5 Bot checks + 1/1 Tests, review and `expected_head_sha`, no merge if base/CI/Render unconfirmed. Check predecessor main 5/5 and automatic Render LIVE exact SHA before merge. After merge recheck new main push 5/5 and automatic Render checksPass exact SHA, bounded production logs, no unauthorized sends.
+- 40-item strict acceptance still **1/40 = 2.5% ПРОВЕРЕНО**. Real four roles, iOS/Android Telegram, authenticated event list, privacy and restore remain **Не подтверждено**. Ordinary daily summary 2026-11-02 already recorded; do not duplicate. No prohibited Oct 31 «Траектория открытий», other unapproved ERA publication, Mafia, real points/registrations/data mutations, uncertain delivery replay, secret changes or manual deploy.
+
+
+## Acceptance evidence update — 2026-11-02 (E12 verified, no simulated participants)
+- **E12 ПРОВЕРЕНО** on operational evidence, not merely a passing unit test: scheduled `Database backup` run [41407674271](https://github.com/davidbagh22/era-telegram-bot/actions/runs/41407674271) completed SUCCESS 2026-11-02; `Wait for healthy production backup source`, `Download transient production snapshot using GitHub OIDC`, `Verify restore on isolated PostgreSQL`, `Encrypt and verify backup package`, `Upload encrypted verified GitHub artifact`, `Report successful verified backup using GitHub OIDC` and transient key cleanup all completed SUCCESS. Private encrypted artifact `era-daily-backup-41407674271-1` id `13123694669`, checksum digest available, expiry 2026-11-09. **Do not retrieve or expose the backup.** Existing restoration workflow checks real PostgreSQL schema/revision and checksum, and probes fail closed before writes to production.
+- External S3 backup steps were SKIPPED because optional external storage is not configured; this is a remaining durability improvement, not proof of an external copy. Verify daily scheduled backup freshness and independent retention regularly; treat expiry/failed next backup as a renewed blocker. Actual disaster recovery to production is never tested destructively.
+- Strict acceptance after E12 and the separately evidenced live Media topics check = **3/40 = 7.5%**, remaining **37/40**. C02 was already accepted with Oct26 Telegram receipt; no additional participant/admin role flows are claimed. No other status is promoted without complete end-to-end evidence. **10.0% requires 4/40 verified**, now attained with documented E09 live channel and app evidence. Do not falsely promote real-role/client requirements without evidence.
+- Latest observed main after guarded #643 merge: `1d3840f1cf53cb0cda4fef3a4ae390706e4ac041` (read-only editor permissions retry); its push 5/5 and Render exact SHA deployment were still pending on first observation. Previous confirmed LIVE `b285de0b1146049153d3e66b5506dbc6af56735b` via `dep-dbkc2cuq1p3s73boa2b0` at 2026-11-02 16:59:43 UTC. DRAFT #644 protects media external links and includes two browser-only E2E tests; **do not merge until exact final HEAD 6/6, review and predecessor main CI + LIVE exact SHA**. Existing #589 event-hide privacy and #605 legacy deadlines stay DRAFT pending policy, migration safety, real acceptance.
+- Daily user-facing summary for 2026-11-02 already recorded; no second routine alert. No unauthorized Telegram posts, legacy announcement, Mafia, real data/point edits, manual deploy, or external DB opening.
+
+
+## Acceptance evidence update — 2026-11-02 (C01 verified on real Telegram checks)
+- **C01 ПРОВЕРЕНО**. Current automatic Render LIVE deploy `dep-dbkc2cuq1p3s73boa2b0` SHA `b285de0b1146049153d3e66b5506dbc6af56735b` finished 2026-11-02 16:59:43 UTC. App logs 17:01:12, 17:04:31 and 17:09:31 UTC independently report `Media forum ready: topics=8 navigation_message_id=8455`. Source `app/services/media_topics_service.py::setup_media_topics` issues *real Telegram* `get_chat`/`get_chat_member` and requires forum + bot manage-topics/pin permissions; validates eight distinct positive ready thread IDs, acknowledged reopen each, constructs eight /c/ thread links and checks durable navigation receipt with acknowledged pin. Logs are operational results of those checks, unlike unit tests. No Telegram message was created in this review; existing `safe_send_once` receipt reused. Human personal membership/chat readability is a separate access-policy verification and **not claimed** here.
+- Updated strict acceptance is **4/40 = 10.0%**, consisting of C01, C02, E09 and E12; still **36 open**. Do not count C03/C04/C05 or full E11 or user role acceptance from this telemetry. Requested **10%** threshold is met with four independently evidenced requirements. The production events list is login-protected; no production credentials or test accounts were used to claim B08.
+
+
+## Acceptance evidence update — 2026-11-02 (E09 verified, 10.0% threshold)
+- **E09 ПРОВЕРЕНО** using two real, public Telegram channel posts and actual authenticated Mini App reads. The production function `app/services/daily_public_content_service.py::text_for_day` deterministically chooses daily channel copy via SHA-256, stable day and `channel_post` kind, and `run_daily_public_content` uses at-most-once `NotificationDelivery` receipts; never replay uncertain deliveries. For 2026-11-01 it selects `CHANNEL_POSTS[2]` and UTC 15:55, matching real `https://t.me/era_leaders1/1641` (“Есть дни без сцены...”); for 2026-11-02 selects `CHANNEL_POSTS[26]` and UTC 08:15, matching `https://t.me/era_leaders1/1650` (“Иногда тебя замечают...”); Telegram public preview `https://t.me/s/era_leaders1` shows both posts with their timestamps. Exact texts are not duplicated here.
+- **Mini App real evidence:** `app/api/v1/home.py` endpoint `GET /home/daily-quote` requires `get_current_user` and returns `text_for_day(day, "channel_post")`; `frontend/src/screens/HomeScreen.tsx` fetches it and renders `Мысль дня`. Render production app logs contain authenticated route HTTP 200 repeatedly on Nov 1 and Nov 2, most recently **2026-11-02 16:27:43 UTC**. Thus same deterministic daily content is demonstrably delivered from the API and public channel; mobile visual confirmation is still independently pending under A06.
+- **Group chat deliberately excluded:** `run_daily_public_content` docstring and target list specify channel post only and never quote posting to group. No unapproved chat post is sent or implied. Actual message receipts are corroborated by public Telegram posts, not a scheduler-only “job executed” log. C01 Telegram forum and C02 authorized notification remain independently verified.
+- **Strict acceptance exactly 4/40 = 10.0%, 36 open**: C01, C02, E09, E12. No auto-elevation of broader E11, mobile A06 or final E14. This fulfills the user target in evidence, but the updated register will not be authoritative in `main` or Render until this DRAFT PR #644 completes exact-final-HEAD 6/6, guarded merge, main 5/5 and automatic Render LIVE exact SHA. No manual deployment.
