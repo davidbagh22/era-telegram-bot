@@ -7,7 +7,7 @@ test("media calendar never turns unsafe publication URLs into clickable links", 
   });
   await page.route("**/api/v1/media/workspaces", route => route.fulfill({
     status: 200, contentType: "application/json",
-    body: JSON.stringify([{ id: "era", title: "ЭРА", platforms: {},
+    body: JSON.stringify([{ id: "era", title: "ЭРА", platforms: { telegram: "javascript:alert(1)", instagram: "https://instagram.com/era_leaders" },
       topic_url: "", can_manage: true, can_assign_editors: true }]),
   }));
   const source = [
@@ -35,5 +35,7 @@ test("media calendar never turns unsafe publication URLs into clickable links", 
   await expect(links).toHaveCount(1);
   await expect(links.first()).toHaveAttribute("href", "https://t.me/era_leaders1/10");
   await expect(page.getByText("Ссылка публикации имеет неподдерживаемый формат.")).toHaveCount(3);
+  await expect(page.getByRole("link", { name: "Telegram ↗" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Instagram ↗" })).toHaveAttribute("href", "https://instagram.com/era_leaders");
   expect(writes).toBe(0);
 });
