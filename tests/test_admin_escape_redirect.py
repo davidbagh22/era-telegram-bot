@@ -18,7 +18,7 @@ from app.utils import texts
 
 
 def _admin_user() -> SimpleNamespace:
-    return SimpleNamespace(role="admin", is_blocked=False, permission_grants=[])
+    return SimpleNamespace(role="admin", is_blocked=False, is_archived=False, permission_grants=[])
 
 
 def _settings(miniapp_url: str = "https://era-app.example/") -> SimpleNamespace:
