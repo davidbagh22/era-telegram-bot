@@ -511,7 +511,7 @@ async def _send_with_retry(
     bot: Bot,
     chat_id: int,
     text: str,
-) -> tuple[Any | None, int, str | None, bool]:
+) -> tuple[Any | None, int, str | None, bool | None]:
     attempt = 0
     while attempt < MAX_SEND_ATTEMPTS:
         attempt += 1
