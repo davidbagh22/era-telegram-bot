@@ -235,19 +235,26 @@ export function AdminEventCreatePanel() {
 
   const leaveDraft = async () => {
     if (busy || saving) return;
+    const versionAtLeaveStart = versionRef.current;
     if (dirty) {
-      const versionAtSaveStart = versionRef.current;
       if (!(await saveNow())) return;
       // A slow save must not close the editor when the user has typed newer
       // changes since the request started. Keep those edits on screen.
-      if (versionRef.current !== versionAtSaveStart) {
+      if (versionRef.current !== versionAtLeaveStart) {
         setError("Во время сохранения появились новые изменения. Проверьте их и повторите выход.");
         return;
       }
     }
     setBusy(true);
     try {
-      setDrafts(await listEventDrafts());
+      const items = await listEventDrafts();
+      setDrafts(items);
+      // Even after saving, the draft-list refresh can be slow. Keep edits
+      // entered while it was pending instead of closing an unsaved editor.
+      if (versionRef.current !== versionAtLeaveStart) {
+        setError("Пока загружался список черновиков, появились новые изменения. Проверьте их и повторите выход.");
+        return;
+      }
       setDraft(null);
       setError(null);
     } catch (reason) {

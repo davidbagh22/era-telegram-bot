@@ -161,3 +161,45 @@ test("wizard stays open when newer edits arrive during save-and-exit", async ({ 
   await expect(page.getByRole("button", { name: "Сохранить черновик и выйти" }))
     .toBeVisible();
 });
+
+
+test("wizard keeps edits typed while the exit draft-list refresh is pending", async ({ page }) => {
+  // Isolated CI draft only; never calls event publish or Telegram delivery.
+  await page.goto("/app/?devTelegramId=900003");
+  await page.getByRole("navigation", { name: "Основная навигация" })
+    .getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: /Управление ЭРА/ }).click();
+  await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
+  await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
+  await page.getByRole("button", { name: "＋ Создать мероприятие" }).click();
+
+  let unblock: () => void = () => {};
+  let notifyIntercepted: () => void = () => {};
+  const blocked = new Promise<void>((resolve) => { notifyIntercepted = resolve; });
+  const released = new Promise<void>((resolve) => { unblock = resolve; });
+  let intercepted = false;
+  await page.route(/\/api\/v1\/admin\/events\/drafts(?:\?.*)?$/, async (route) => {
+    if (route.request().method() !== "GET" || intercepted) {
+      await route.continue();
+      return;
+    }
+    intercepted = true;
+    const response = await route.fetch();
+    notifyIntercepted();
+    await released;
+    await route.fulfill({ response });
+  });
+
+  // No dirty changes before exit: the list refresh is the only pending request.
+  await page.getByRole("button", { name: "Сохранить черновик и выйти" }).click();
+  await blocked;
+  await page.getByLabel("Название", { exact: true }).fill("Изменено во время загрузки списка");
+  unblock();
+
+  await expect(page.getByLabel("Название", { exact: true }))
+    .toHaveValue("Изменено во время загрузки списка");
+  await expect(page.getByText(/Пока загружался список черновиков, появились новые изменения/))
+    .toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole("button", { name: "Сохранить черновик и выйти" }))
+    .toBeVisible();
+});
