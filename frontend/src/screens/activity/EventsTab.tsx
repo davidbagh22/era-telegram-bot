@@ -5,6 +5,7 @@ import {
   fetchEventActivities,
   fetchEvents,
   downloadEventCalendar,
+  sendEventCalendarToChat,
   registerForEvent,
 } from "../../api/client";
 import { BottomSheet } from "../../components/BottomSheet";
@@ -159,6 +160,19 @@ function EventCalendarButton({ event }: { event: EventItem }) {
     }
   }
 
+  async function sendToChat() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await sendEventCalendarToChat(event.id);
+      toast.show("Файл календаря отправлен вам в чат с ботом ЭРА.");
+    } catch {
+      toast.show("Отправка не подтверждена. Проверьте чат с ботом; альтернативно используйте Google Календарь.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function openGoogle(eventClick: React.MouseEvent<HTMLAnchorElement>) {
     if (!googleUrl) return;
     const telegram = getTelegramWebApp();
@@ -179,6 +193,9 @@ function EventCalendarButton({ event }: { event: EventItem }) {
       <button type="button" disabled={busy || preparingShare} onClick={() => void shareAppleCalendar()}>
         {busy || preparingShare ? "Готовим файл…" : "Календарь Apple (.ics)"}
       </button>
+      {ios && <button type="button" disabled={busy} onClick={() => void sendToChat()}>
+        {busy ? "Отправляем…" : "Получить файл календаря в чате ЭРА"}
+      </button>}
       <small style={{ color: "var(--era-text-muted)" }}>
         На iPhone используйте системное меню «Поделиться». Если оно недоступно, выберите Google Календарь.
         {event.end_time ? "" : " Если время окончания не указано, Google предложит длительность 1 час."}
