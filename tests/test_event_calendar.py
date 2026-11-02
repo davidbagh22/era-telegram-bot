@@ -101,9 +101,9 @@ def test_calendar_ics_attachment_preserves_russian_armenian_emoji_and_utf8_octet
 
 def test_calendar_chat_delivery_is_same_utf8_ics_as_download():
     bot = SimpleNamespace(send_document=AsyncMock())
-    client = client_for(event(title="Встреча 🎉 Երևան"), bot=bot)
-    get = client.get("/api/v1/events/42/calendar.ics")
-    result = client.post("/api/v1/events/42/calendar/send")
+    # Each request gets a fresh mocked session, just as a real API request does.
+    get = client_for(event(title="Встреча 🎉 Երևան")).get("/api/v1/events/42/calendar.ics")
+    result = client_for(event(title="Встреча 🎉 Երևան"), bot=bot).post("/api/v1/events/42/calendar/send")
     assert get.status_code == result.status_code == 200
     assert result.json() == {"sent": True}
     chat_id, document = bot.send_document.await_args.args
