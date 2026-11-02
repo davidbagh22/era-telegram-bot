@@ -107,6 +107,20 @@ def text_for_day(day: str, kind: str) -> str:
     return bank[_stable_number(day, f"text:{kind}") % len(bank)]
 
 
+# Fail closed: an earlier request for a daily-quote feature is not approval for
+# each future ERA-channel publication. No individual posts are authorized here.
+# A future audited approval workflow may populate exact (day, target, text SHA-256)
+# tuples only after the responsible human approves that specific publication.
+APPROVED_CHANNEL_PUBLICATIONS: frozenset[tuple[str, str, str]] = frozenset()
+
+
+def _has_explicit_channel_approval(day: str, target: int | str | None, text: str) -> bool:
+    if target is None:
+        return False
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return (day, str(target), digest) in APPROVED_CHANNEL_PUBLICATIONS
+
+
 def _channel_target(settings: Settings) -> int | str | None:
     raw = settings.era_channel_id
     if isinstance(raw, int):
@@ -199,7 +213,7 @@ async def _deliver_once(
 
 
 async def run_daily_public_content(bot: Bot, settings: Settings, session_factory) -> None:
-    """Publish one ERA-channel post per Moscow day; never post quotes to the group."""
+    """Send only specifically approved ERA-channel posts; keep Mini App quote read-only."""
     local = datetime.now(MOSCOW)
     minute = local.hour * 60 + local.minute
     if minute < WINDOW_START or minute >= WINDOW_END:
@@ -212,11 +226,16 @@ async def run_daily_public_content(bot: Bot, settings: Settings, session_factory
     for kind, target in targets:
         if target is None or minute < scheduled_minute(day, kind):
             continue
+        # No implicit consent from a recurring schedule or a previously sent day.
+        # The empty default allowlist prevents unapproved future publications.
+        content = text_for_day(day, kind)
+        if not _has_explicit_channel_approval(day, target, content):
+            continue
         await _deliver_once(
             bot,
             session_factory,
             key=f"era-daily:{kind}:{day}",
             chat_id=target,
             kind=f"era_daily_{kind}",
-            text=text_for_day(day, kind),
+            text=content,
         )
