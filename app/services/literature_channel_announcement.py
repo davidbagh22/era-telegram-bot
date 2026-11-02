@@ -1,4 +1,6 @@
 """One-time editorial announcement for ERA's public channel."""
+import hashlib
+import json
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
