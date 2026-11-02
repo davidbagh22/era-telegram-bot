@@ -97,7 +97,7 @@ def _validated_task_configuration(experience) -> tuple[list[dict], list[int]] | 
     return configured, old_ids
 
 
-async def sync_event_wizard_tasks(session) -> int:
+async def sync_event_wizard_tasks(session, *, allowed_event_ids: set[int] | None = None) -> int:
     """Keep participant tasks from the event wizard actionable and idempotent.
 
     EventExperience stores the editor-friendly JSON. This synchronizer turns
@@ -106,26 +106,33 @@ async def sync_event_wizard_tasks(session) -> int:
     stored activity-id vector means edits update the same rows instead of
     creating duplicates.
     """
-    rows = (
-        await session.execute(
-            select(Event, EventExperience)
+    # Background sync is explicitly scoped to reviewed event IDs. A direct
+    # migration/test call may omit the allowlist, but the scheduler never does.
+    if allowed_event_ids is not None and not allowed_event_ids:
+        return 0
+    query = (
+        select(Event, EventExperience)
             .join(EventExperience, EventExperience.event_id == Event.id)
             .where(
                 EventExperience.is_complete.is_(True),
                 Event.status.in_(PUBLIC_STATUSES),
             )
             .order_by(Event.id)
-        )
-    ).all()
+    )
+    if allowed_event_ids is not None:
+        query = query.where(Event.id.in_(allowed_event_ids))
+    rows = (await session.execute(query)).all()
     changed = 0
     for event, experience in rows:
-        # The initial scan is intentionally not a lock: a concurrent worker
-        # may have materialised these tasks after we read it. Lock the single
-        # companion row, then refresh its JSON *under the lock* before deciding
-        # whether to insert or deactivate any EventActivity rows. Consistent
-        # event-id order avoids competing scheduler workers locking rows in
-        # opposite orders. SQLite ignores FOR UPDATE; the PostgreSQL race
-        # probe is the concurrency acceptance gate.
+        # Lock Event first, then EventExperience: the editor uses that order.
+        # The initial scan can be stale, so refresh both ORM objects while
+        # holding their row locks. Opposing lock order would risk deadlocks.
+        event = await session.scalar(
+            select(Event).where(Event.id == event.id).with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if event is None or event.status not in PUBLIC_STATUSES:
+            continue
         experience = await session.scalar(
             select(EventExperience)
             .where(EventExperience.event_id == event.id)
@@ -133,9 +140,6 @@ async def sync_event_wizard_tasks(session) -> int:
             .execution_options(populate_existing=True)
         )
         if experience is None or not experience.is_complete:
-            continue
-        await session.refresh(event, attribute_names=["status"])
-        if event.status not in PUBLIC_STATUSES:
             continue
         configuration = _validated_task_configuration(experience)
         if configuration is None:
@@ -195,6 +199,11 @@ async def sync_event_wizard_tasks(session) -> int:
     return changed
 
 
-async def sync_event_wizard_tasks_job(session_factory) -> None:
+async def sync_event_wizard_tasks_job(session_factory, allowed_event_ids: tuple[int, ...] = ()) -> None:
+    # Default deny until a read-only production audit identifies the exact
+    # events whose prepared tasks should be materialised. No DB open otherwise.
+    event_ids = {id_ for id_ in allowed_event_ids if isinstance(id_, int) and 0 < id_ <= 2_147_483_647}
+    if not event_ids:
+        return
     async with session_factory() as session:
-        await sync_event_wizard_tasks(session)
+        await sync_event_wizard_tasks(session, allowed_event_ids=event_ids)

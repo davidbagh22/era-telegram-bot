@@ -188,6 +188,33 @@ class EventWizardMalformedJsonRecoveryTests(unittest.IsolatedAsyncioTestCase):
                 len(list((await session.scalars(select(EventActivity))).all())), 1,
             )
 
+    async def test_allowlist_enforces_event_scope_and_repeat_idempotency(self):
+        async with self.sessions() as session:
+            admin = User(telegram_id=8877110, first_name="Wizard allowlist")
+            session.add(admin)
+            await session.flush()
+            chosen = await self._event(session, admin.id, tasks=[{"title": "Enabled", "points": 5}])
+            excluded = await self._event(session, admin.id, tasks=[{"title": "Excluded", "points": 5}])
+            await session.commit()
+        async with self.sessions() as session:
+            self.assertEqual(await sync_event_wizard_tasks(session, allowed_event_ids=set()), 0)
+            self.assertEqual(await sync_event_wizard_tasks(session, allowed_event_ids={chosen}), 2)
+            self.assertEqual(await sync_event_wizard_tasks(session, allowed_event_ids={chosen}), 0)
+            rows = list((await session.scalars(select(EventActivity))).all())
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].event_id, chosen)
+            other = await session.get(EventExperience, excluded)
+            self.assertEqual(other.participant_task_activity_ids, [])
+
+    async def test_scheduler_default_deny_never_even_opens_database(self):
+        from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
+        from unittest.mock import MagicMock
+        factory = MagicMock(side_effect=AssertionError("must not open DB"))
+        await sync_event_wizard_tasks_job(factory)
+        await sync_event_wizard_tasks_job(factory, ())
+        await sync_event_wizard_tasks_job(factory, (-1, 0, 2_147_483_648))
+        factory.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
