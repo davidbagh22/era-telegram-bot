@@ -115,9 +115,9 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
         </div>
       </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.25fr .75fr", gap: ".5rem" }}>
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск участника" />
-        <select value={filter} onChange={(event) => setFilter(event.target.value as FilterValue)}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: ".5rem", minWidth: 0 }}>
+        <input aria-label="Поиск участника" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск участника" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} />
+        <select aria-label="Фильтр участников" value={filter} onChange={(event) => setFilter(event.target.value as FilterValue)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }}>
           {FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
         </select>
       </div>
