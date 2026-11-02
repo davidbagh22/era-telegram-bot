@@ -138,6 +138,9 @@ def _is_admin(
     telegram_id: int,
     event: Message | CallbackQuery,
 ) -> bool:
+    # A configured ADMIN_IDS entry never overrides a revoked account.
+    if user is not None and (user.is_blocked or user.is_archived):
+        return False
     if telegram_id in settings.admin_ids or (
         user and user.role == Role.ADMIN and not user.is_blocked
     ):

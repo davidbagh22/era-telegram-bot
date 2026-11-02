@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import Settings
 from app.database.base import Base
+from app.services import literature_channel_announcement as launch
 from app.services.literature_channel_announcement import launch_window_open, publish_literature_channel_launch
 
 
@@ -29,8 +30,13 @@ class LaunchCatchupTests(IsolatedAsyncioTestCase):
             bot = SimpleNamespace(send_message=AsyncMock())
             with patch('app.services.literature_channel_announcement.datetime') as clock, patch('app.services.notification_service._session_factory', return_value=sessions):
                 clock.now.return_value = datetime(2026, 10, 11, 9)
+                # A one-time delivery receipt is not authorization to publish.
                 await publish_literature_channel_launch(bot, settings)
-                await publish_literature_channel_launch(bot, settings)
+                bot.send_message.assert_not_awaited()
+                approval = launch.launch_approval_key(date(2026, 10, 11), -100456)
+                with patch.object(launch, "APPROVED_LITERATURE_CHANNEL_LAUNCHES", frozenset({approval})):
+                    await publish_literature_channel_launch(bot, settings)
+                    await publish_literature_channel_launch(bot, settings)
             bot.send_message.assert_awaited_once()
             assert bot.send_message.call_args.args[0] == -100456
             assert 'Первый выпуск уже сегодня' not in bot.send_message.call_args.args[1]

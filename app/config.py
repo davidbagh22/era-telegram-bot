@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     management_report_hour: int = Field(default=9, ge=0, le=23)
     management_report_minute: int = Field(default=0, ge=0, le=59)
     management_report_recipient_ids: IdList = Field(default_factory=list)
+    # Explicit event IDs only. Empty by default so a scheduler release cannot
+    # silently materialise or change existing participants' point tasks.
+    event_wizard_sync_event_ids: IdList = Field(default_factory=list)
     feature_games: str = "OFF"  # OFF until production smoke test and content review 
     feature_auctions: str = "ALL"
     feature_rewards: str = "ALL"

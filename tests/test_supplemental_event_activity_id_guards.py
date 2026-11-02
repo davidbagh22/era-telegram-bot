@@ -70,8 +70,9 @@ class SupplementalActivityIdGuardTests(IsolatedAsyncioTestCase):
         )
         session = SimpleNamespace(get=AsyncMock(return_value=None), scalar=AsyncMock())
         await event_activity_submit(
-            message, SimpleNamespace(id=1), session, state,
-            SimpleNamespace(), SimpleNamespace(),
+            message,
+            SimpleNamespace(id=1, application_status="approved", is_blocked=False, is_archived=False),
+            session, state, SimpleNamespace(), SimpleNamespace(),
         )
         session.get.assert_awaited_once_with(EventActivity, 42)
         state.clear.assert_awaited_once()

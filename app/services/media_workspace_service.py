@@ -27,6 +27,9 @@ TELEGRAM_RESERVED_PATHS = {"joinchat", "share", "boost", "addstickers", "addemoj
 
 
 async def require_access(session, user, settings, *, write=False, area=None):
+    # A missing identity must fail closed before any row locks or DB reads.
+    if user is None:
+        raise PermissionError("Доступ к календарю медиаотдела закрыт. Проверьте полномочия и обновите страницу.")
     if write:
         # Match membership/assignment's User -> Direction ordering. NO KEY
         # UPDATE still serializes access changes without blocking FK checks.

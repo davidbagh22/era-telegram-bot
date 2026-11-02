@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 
 from app.config import Settings
 from app.services.authorization_service import (
+    can_change_role,
     can_manage_events,
     can_manage_partners,
     can_manage_people,
@@ -23,6 +24,7 @@ from app.utils.constants import Role
 
 def _user(*, telegram_id=100, blocked=False, archived=False, role=Role.PARTICIPANT):
     return SimpleNamespace(
+        id=telegram_id,
         telegram_id=telegram_id,
         role=role.value,
         is_blocked=blocked,
@@ -102,6 +104,25 @@ class ConfiguredAdminInactiveBoundaryTests(unittest.TestCase):
     def test_legacy_bootstrap_without_persisted_user_is_preserved(self):
         self.assertTrue(is_full_admin(None, self.settings, 100))
         self.assertFalse(is_full_admin(None, self.settings, 200))
+
+
+class ConfiguredAdminRoleEscalationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_mismatched_actor_cannot_promote_a_new_admin(self):
+        settings = Settings(bot_token="1234567890:LOCALTEST", admin_ids=[100])
+        target = SimpleNamespace(id=301, telegram_id=301, role=Role.PARTICIPANT.value)
+        mismatched = _user(telegram_id=200, role=Role.ADMIN)
+        decision = await can_change_role(
+            AsyncMock(), actor=mismatched, actor_telegram_id=100,
+            target=target, new_role=Role.ADMIN, settings=settings,
+        )
+        self.assertFalse(decision.allowed)
+        self.assertIn("только действующий", decision.reason)
+        legitimate = _user(telegram_id=100, role=Role.ADMIN)
+        decision = await can_change_role(
+            AsyncMock(), actor=legitimate, actor_telegram_id=100,
+            target=target, new_role=Role.ADMIN, settings=settings,
+        )
+        self.assertTrue(decision.allowed)
 
 
 class ConfiguredAdminMediaLegacyTests(unittest.IsolatedAsyncioTestCase):

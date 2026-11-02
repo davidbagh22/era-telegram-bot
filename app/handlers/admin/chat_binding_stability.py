@@ -33,6 +33,9 @@ def _active_permissions(user: User | None) -> set[str]:
 
 
 def _can_bind(user: User | None, settings: Settings, telegram_id: int) -> bool:
+    # A configured ADMIN_IDS entry never overrides a revoked account.
+    if user is not None and (user.is_blocked or user.is_archived):
+        return False
     if telegram_id in settings.admin_ids:
         return True
     if not user or user.is_blocked or user.is_archived:

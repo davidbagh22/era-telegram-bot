@@ -114,6 +114,79 @@ class EventRecoveryFairnessTests(IsolatedAsyncioTestCase):
             )).all()
             self.assertEqual(statuses, ["pending"] * 3)
 
+    async def test_transient_cursor_commit_failure_keeps_pending_events_retryable(self):
+        """A connection loss before cursor commit must not skip due work.
+
+        Simulates the commit boundary in disposable SQLite only. No real
+        PostgreSQL, Telegram delivery, participants or points are touched.
+        """
+        ids = await self.events(3)
+        original_commit = AsyncSession.commit
+        failed_once = False
+
+        async def fail_first_commit(session, *args, **kwargs):
+            nonlocal failed_once
+            if not failed_once:
+                failed_once = True
+                raise OSError("simulated transient cursor commit failure")
+            return await original_commit(session, *args, **kwargs)
+
+        with patch.object(AsyncSession, "commit", new=fail_first_commit):
+            with self.assertRaisesRegex(OSError, "cursor commit failure"):
+                await deliver_pending_event_announcements(None, None, self.sessions)
+
+            async with self.sessions() as session:
+                cursor = await session.scalar(select(AppSetting).where(
+                    AppSetting.key == "event-announcement-recovery:cursor"
+                ))
+                self.assertIsNone(cursor)
+
+            with patch(
+                "app.services.event_publication_service.deliver_event_announcement",
+                new=AsyncMock(),
+            ) as deliver:
+                await deliver_pending_event_announcements(None, None, self.sessions)
+                self.assertEqual([call.args[3] for call in deliver.await_args_list], ids)
+
+        async with self.sessions() as session:
+            cursor = await session.scalar(select(AppSetting).where(
+                AppSetting.key == "event-announcement-recovery:cursor"
+            ))
+            self.assertEqual(int(cursor.value), ids[-1])
+            statuses = (await session.scalars(
+                select(EventExperience.announcement_status)
+            )).all()
+            self.assertEqual(statuses, ["pending"] * 3)
+
+    async def test_oversized_cursor_does_not_stall_pending_recovery(self):
+        """Malformed cursor values must never overflow a PostgreSQL INTEGER bind.
+
+        Disposable SQLite and mocked delivery only; no production Telegram
+        sends or database changes.
+        """
+        ids = await self.events(3)
+        key = "event-announcement-recovery:cursor"
+        for damaged in (str(2**80), "9" * 5000, "-9223372036854775809"):
+            with self.subTest(cursor=damaged[:40]):
+                async with self.sessions() as session:
+                    row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
+                    if row is None:
+                        session.add(AppSetting(key=key, value=damaged))
+                    else:
+                        row.value = damaged
+                    await session.commit()
+
+                with patch(
+                    "app.services.event_publication_service.deliver_event_announcement",
+                    new=AsyncMock(),
+                ) as deliver:
+                    await deliver_pending_event_announcements(None, None, self.sessions)
+                    self.assertEqual([call.args[3] for call in deliver.await_args_list], ids)
+
+                async with self.sessions() as session:
+                    row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
+                    self.assertEqual(row.value, str(ids[-1]))
+
     async def test_corrupt_cursor_recovers_and_nonpublic_or_terminal_items_are_excluded(self):
         ids = await self.events(4)
         async with self.sessions() as session:
