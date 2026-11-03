@@ -118,8 +118,10 @@ def _calendar_metadata_filter(dialect_name: str):
 async def calendar(session, area, *, before_id: int | None = None, status_group: str = "all"):
     # Fail closed before opening a DB query: a caller must not request an
     # unscoped/unknown calendar or bypass the keyset cursor boundary.
-    if area not in AREAS:
+    if type(area) is not str or area not in AREAS:
         raise ValueError("Неизвестное направление")
+    if type(status_group) is not str or status_group not in {"all", "active", "published"}:
+        raise ValueError("Неизвестный фильтр календаря")
     if before_id is not None and (type(before_id) is not int or before_id <= 0 or before_id > 2_147_483_647):
         raise ValueError("Некорректный курсор календаря")
     # Filtering in Python after LIMIT can return empty pages when malformed
