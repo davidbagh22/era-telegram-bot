@@ -63,12 +63,31 @@ def item_out(item):
     scheduled_at = item.scheduled_at
     if scheduled_at is not None and scheduled_at.tzinfo is None:
         scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+    # Legacy JSON can be an object with malformed nested fields. Keep it
+    # unchanged in storage but never send arrays/objects to React text nodes,
+    # or fabricate a writable revision for a corrupted entry.
+    platform = data.get("platform", "telegram")
+    if not isinstance(platform, str) or platform not in PLATFORMS:
+        platform = "unknown"
+    materials = data.get("materials", "")
+    if not isinstance(materials, str):
+        materials = ""
+    revision = data.get("workspace_revision", 0)
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+        revision = None
+    responsible_id = data.get("responsible_id")
+    if (isinstance(responsible_id, bool) or not isinstance(responsible_id, int)
+            or not 0 < responsible_id <= 2_147_483_647):
+        responsible_id = None
+    publication_url = data.get("publication_url")
+    publication_evidence = data.get("publication_evidence")
     return {"id": item.id, "area": area_of(item), "title": item.title or item.rubric or "Материал",
-        "body": item.body or "", "platform": data.get("platform", "telegram"), "status": item.status,
+        "body": item.body or "", "platform": platform, "status": item.status,
         "scheduled_at": scheduled_at.isoformat() if scheduled_at else None,
-        "responsible_id": data.get("responsible_id"), "materials": data.get("materials", ""),
-        "publication_url": data.get("publication_url"), "publication_evidence": data.get("publication_evidence"),
-        "revision": data.get("workspace_revision", 0)}
+        "responsible_id": responsible_id, "materials": materials,
+        "publication_url": publication_url if isinstance(publication_url, str) else None,
+        "publication_evidence": publication_evidence if isinstance(publication_evidence, str) else None,
+        "revision": revision}
 
 
 def _calendar_metadata_filter(dialect_name: str):
@@ -144,6 +163,8 @@ def _publication_url(value, platform):
         "facebook": {"facebook.com", "www.facebook.com", "fb.watch"},
         "youtube": {"youtube.com", "www.youtube.com", "youtu.be"},
         "tiktok": {"tiktok.com", "www.tiktok.com", "vm.tiktok.com"}}
+    if not isinstance(platform, str) or platform not in hosts:
+        raise ValueError(detail)
     if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
             or port not in (None, 443) or parsed.hostname not in hosts.get(platform, set())
             or not parsed.path.strip("/")):
