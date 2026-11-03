@@ -9,8 +9,9 @@ def _settings(*admin_ids: int):
     return SimpleNamespace(admin_ids=set(admin_ids))
 
 
-def _user(role: Role, *, blocked: bool = False, archived: bool = False, grants=()):
+def _user(role: Role, *, telegram_id: int = 1001, blocked: bool = False, archived: bool = False, grants=()):
     return SimpleNamespace(
+        telegram_id=telegram_id,
         role=role,
         is_blocked=blocked,
         is_archived=archived,
