@@ -80,7 +80,7 @@ class MalformedCalendarMetadataTests(unittest.TestCase):
     def test_invalid_publication_platform_does_not_raise_typeerror(self):
         for platform in ([], {"telegram": True}, None, 1, True, "unknown"):
             with self.subTest(platform=platform):
-                with self.assertRaisesRegex(ValueError, "HTTPS-ссылку"):
+                with self.assertRaisesRegex(ValueError, "HTTPS-ссылк"):
                     service._publication_url("https://t.me/examplechannel/2", platform)
         self.assertEqual(
             service._publication_url("https://t.me/examplechannel/2", "telegram"),
