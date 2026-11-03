@@ -91,7 +91,7 @@ class MalformedCalendarMetadataTests(unittest.TestCase):
 class MalformedCalendarMetadataReadTests(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_area_and_cursor_rejected_before_database_read(self):
         session = SimpleNamespace(scalars=AsyncMock())
-        for area in ("", "unknown", "ERA", None):
+        for area in ("", "unknown", "ERA", None, [], {}, 0, True):
             with self.subTest(area=area):
                 with self.assertRaisesRegex(ValueError, "направление"):
                     await service.calendar(session, area)
@@ -99,6 +99,10 @@ class MalformedCalendarMetadataReadTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(cursor=cursor):
                 with self.assertRaisesRegex(ValueError, "курсор"):
                     await service.calendar(session, "era", before_id=cursor)
+        for status_group in ("UNKNOWN", "", None, [], {}, 0, True):
+            with self.subTest(status_group=status_group):
+                with self.assertRaisesRegex(ValueError, "фильтр"):
+                    await service.calendar(session, "era", status_group=status_group)
         session.scalars.assert_not_awaited()
 
     async def test_unknown_bound_dialect_fails_closed_before_scoped_read(self):
