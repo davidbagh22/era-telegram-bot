@@ -147,6 +147,24 @@ class MalformedCalendarMetadataWriteTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(item.metadata_json, malformed)
                 session.flush.assert_not_awaited()
 
+    async def test_corrupt_revision_cannot_pass_boolean_integer_equality(self):
+        for stored_revision, submitted_revision in (
+            (True, 1), (False, 0), (-1, 0), ("1", 1), ([], 0), ({"revision": 1}, 1),
+        ):
+            with self.subTest(stored_revision=stored_revision):
+                metadata = {"media_area": "era", "workspace_revision": stored_revision}
+                item = _item(metadata)
+                session = SimpleNamespace(scalar=AsyncMock(return_value=item), flush=AsyncMock())
+                with patch.object(service, "require_access", new_callable=AsyncMock):
+                    with self.assertRaisesRegex(ValueError, "повреждены"):
+                        await service.update_entry(
+                            session, SimpleNamespace(id=7), object(), "era", item.id,
+                            {"title": "Изменённый материал"}, submitted_revision,
+                        )
+                self.assertEqual(item.title, "Материал")
+                self.assertEqual(item.metadata_json, metadata)
+                session.flush.assert_not_awaited()
+
     async def test_idempotency_collision_with_corrupt_json_fails_closed(self):
         item = _item(["invalid", "legacy"])
         session = SimpleNamespace(scalar=AsyncMock(return_value=item), flush=AsyncMock())
