@@ -101,6 +101,24 @@ class MalformedCalendarMetadataReadTests(unittest.IsolatedAsyncioTestCase):
                     await service.calendar(session, "era", before_id=cursor)
         session.scalars.assert_not_awaited()
 
+    async def test_unknown_bound_dialect_fails_closed_before_scoped_read(self):
+        session = SimpleNamespace(
+            bind=SimpleNamespace(dialect=SimpleNamespace(name="mysterydb")),
+            scalars=AsyncMock(),
+        )
+        with self.assertRaisesRegex(RuntimeError, "Unsupported calendar JSON dialect"):
+            await service.calendar(session, "era")
+        session.scalars.assert_not_awaited()
+
+    async def test_missing_bound_dialect_fails_closed(self):
+        session = SimpleNamespace(
+            bind=SimpleNamespace(dialect=None),
+            scalars=AsyncMock(),
+        )
+        with self.assertRaisesRegex(RuntimeError, "Unsupported calendar JSON dialect"):
+            await service.calendar(session, "ksoors")
+        session.scalars.assert_not_awaited()
+
     async def test_calendar_excludes_non_object_json_without_hiding_healthy_rows(self):
         good = _item({"media_area": "era", "workspace_revision": 2})
         good.id = 43
