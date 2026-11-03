@@ -45,6 +45,36 @@ def test_emergency_configured_admin_id_remains_available() -> None:
     assert has_admin_bot_access(None, _settings(1001), 1001) is True
 
 
+
+def test_mismatched_or_missing_persisted_identity_cannot_unlock_admin_router() -> None:
+    wrong = _user(Role.ADMIN, telegram_id=2002)
+    assert has_admin_bot_access(wrong, _settings(1001), 1001) is False
+    assert has_admin_bot_access(wrong, _settings(), 1001) is False
+    missing = SimpleNamespace(role=Role.ADMIN, is_blocked=False, is_archived=False)
+    assert has_admin_bot_access(missing, _settings(1001), 1001) is False
+    assert has_admin_bot_access(_user(Role.ADMIN), _settings(), 1001) is True
+
+
+def test_delegated_admin_handler_cannot_borrow_another_users_grant() -> None:
+    from app.handlers.admin.access import has_admin_bot_access as handler_access
+
+    grant = SimpleNamespace(permission="events.manage", is_active=True)
+    matching = _user(Role.PARTICIPANT, grants=[grant])
+    wrong = _user(Role.PARTICIPANT, telegram_id=2002, grants=[grant])
+    assert handler_access(matching, _settings(), 1001) is True
+    assert handler_access(wrong, _settings(1001), 1001) is False
+    assert handler_access(wrong, _settings(), 1001) is False
+    assert handler_access(_user(Role.PARTICIPANT, blocked=True, grants=[grant]), _settings(), 1001) is False
+
+
+def test_admin_root_filter_rejects_mismatched_user_but_preserves_bootstrap() -> None:
+    assert asyncio.run(
+        AdminBotAccessFilter()(_event(1001), user=_user(Role.ADMIN, telegram_id=2002), settings=_settings(1001))
+    ) is False
+    assert asyncio.run(
+        AdminBotAccessFilter()(_event(1001), user=None, settings=_settings(1001))
+    ) is True
+
 def test_participant_is_skipped_by_admin_root_filter_instead_of_answered_no_access() -> None:
     user = _user(Role.PARTICIPANT)
     result = asyncio.run(
