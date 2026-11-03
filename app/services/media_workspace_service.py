@@ -169,10 +169,15 @@ def _publication_url(value, platform):
     # IPv6 hosts, non-numeric ports or out-of-range ports. Normalize the
     # resulting validation detail instead of exposing parser internals.
     detail = "Нужна HTTPS-ссылка на опубликованный материал выбранной платформы"
+    # Historical metadata and API callers may supply JSON objects, arrays or
+    # numbers. Never let urlsplit raise TypeError/AttributeError (HTTP 500),
+    # and never treat non-string publication evidence as a valid URL.
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(detail)
     try:
-        parsed = urlsplit(value or "")
+        parsed = urlsplit(value)
         port = parsed.port
-    except ValueError:
+    except (ValueError, TypeError):
         raise ValueError(detail) from None
     hosts = {"telegram": {"t.me"}, "instagram": {"instagram.com", "www.instagram.com"},
         "facebook": {"facebook.com", "www.facebook.com", "fb.watch"},
