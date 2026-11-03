@@ -126,7 +126,14 @@ async def calendar(session, area, *, before_id: int | None = None, status_group:
     # legacy rows occupy the first 100 IDs, stranding healthy older records.
     # AsyncSession.get_bind() resolves to the synchronous engine/dialect.
     bind = session.get_bind() if hasattr(session, "get_bind") else getattr(session, "bind", None)
-    dialect = getattr(getattr(bind, "dialect", None), "name", "sqlite")
+    # A real connection with an unknown dialect must not silently use SQLite
+    # JSON semantics when enforcing ERA/KSOORS data isolation.
+    dialect = getattr(getattr(bind, "dialect", None), "name", None)
+    if bind is None:
+        # Lightweight isolated session mocks have no bind; production sessions do.
+        dialect = "sqlite"
+    elif dialect not in {"sqlite", "postgresql"}:
+        raise RuntimeError("Unsupported calendar JSON dialect")
     query = select(MediaContentItem).where(_calendar_metadata_filter(dialect)).where(func.coalesce(
         MediaContentItem.metadata_json["media_area"].as_string(), "era") == area)
     # Filter before pagination: a long history of published posts must not hide open tasks.
