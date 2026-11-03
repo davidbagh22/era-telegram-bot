@@ -89,6 +89,18 @@ class MalformedCalendarMetadataTests(unittest.TestCase):
 
 
 class MalformedCalendarMetadataReadTests(unittest.IsolatedAsyncioTestCase):
+    async def test_invalid_area_and_cursor_rejected_before_database_read(self):
+        session = SimpleNamespace(scalars=AsyncMock())
+        for area in ("", "unknown", "ERA", None):
+            with self.subTest(area=area):
+                with self.assertRaisesRegex(ValueError, "направление"):
+                    await service.calendar(session, area)
+        for cursor in (0, -1, True, False, "12", 2_147_483_648):
+            with self.subTest(cursor=cursor):
+                with self.assertRaisesRegex(ValueError, "курсор"):
+                    await service.calendar(session, "era", before_id=cursor)
+        session.scalars.assert_not_awaited()
+
     async def test_calendar_excludes_non_object_json_without_hiding_healthy_rows(self):
         good = _item({"media_area": "era", "workspace_revision": 2})
         good.id = 43
