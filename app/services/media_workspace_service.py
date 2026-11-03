@@ -232,7 +232,13 @@ async def update_entry(session, user, settings, area, item_id, values, revision)
     if area_of(item) != area:
         raise LookupError("Материал не найден в выбранном направлении")
     data = dict(_metadata(item))
-    if data.get("workspace_revision", 0) != revision:
+    stored_revision = data.get("workspace_revision", 0)
+    # bool is a subclass of int: True == 1 and False == 0 must not allow
+    # a corrupt legacy revision to pass optimistic concurrency checks.
+    if (isinstance(stored_revision, bool) or not isinstance(stored_revision, int)
+            or stored_revision < 0):
+        raise ValueError("Данные материала повреждены. Обратитесь к администратору")
+    if stored_revision != revision:
         raise ValueError("Материал уже изменён. Обновите календарь")
     if item.status in {"published", "skipped"}:
         raise ValueError("Завершённый материал нельзя изменять")
