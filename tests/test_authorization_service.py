@@ -175,10 +175,13 @@ def test_blocked_or_archived_user_in_admin_ids_is_not_full_admin():
     from types import SimpleNamespace
     from app.services.authorization_service import is_full_admin
     settings = SimpleNamespace(admin_ids=[7])
-    ok = SimpleNamespace(role=Role.ADMIN, is_blocked=False, is_archived=False)
+    ok = SimpleNamespace(telegram_id=7, role=Role.ADMIN, is_blocked=False, is_archived=False)
     assert is_full_admin(ok, settings, 7) and is_full_admin(None, settings, 7)
+    # A caller must not borrow a different persisted user's admin role.
+    assert not is_full_admin(ok, settings, 8)
+    assert not is_full_admin(SimpleNamespace(role=Role.ADMIN, is_blocked=False, is_archived=False), settings, 7)
     for flag in ("is_blocked", "is_archived"):
-        bad = SimpleNamespace(role=Role.ADMIN, is_blocked=False, is_archived=False)
+        bad = SimpleNamespace(telegram_id=7, role=Role.ADMIN, is_blocked=False, is_archived=False)
         setattr(bad, flag, True)
         assert not is_full_admin(bad, settings, 7)
         assert not is_full_admin(bad, SimpleNamespace(admin_ids=[]), 8)
