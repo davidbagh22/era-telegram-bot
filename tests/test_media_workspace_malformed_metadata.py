@@ -46,6 +46,48 @@ class MalformedCalendarMetadataTests(unittest.TestCase):
         self.assertEqual(service.item_out(item)["platform"], "instagram")
 
 
+    def test_nested_corrupt_json_is_safe_for_react_and_not_silently_editable(self):
+        metadata = {
+            "media_area": "era", "platform": {"invalid": "telegram"},
+            "materials": ["not", "renderable"],
+            "responsible_id": {"id": 7},
+            "publication_url": ["https://t.me/example/2"],
+            "publication_evidence": {"status": "confirmed"},
+            "workspace_revision": {"unexpected": 1},
+        }
+        item = _item(metadata)
+        result = service.item_out(item)
+        self.assertEqual(result["area"], "era")
+        self.assertEqual(result["platform"], "unknown")
+        self.assertEqual(result["materials"], "")
+        self.assertIsNone(result["responsible_id"])
+        self.assertIsNone(result["publication_url"])
+        self.assertIsNone(result["publication_evidence"])
+        self.assertIsNone(result["revision"])
+        self.assertEqual(item.metadata_json, metadata)
+
+    def test_invalid_nested_revision_and_identity_values_fail_closed(self):
+        for revision in (True, -1, "2", [], {"value": 1}):
+            with self.subTest(revision=revision):
+                result = service.item_out(_item({"workspace_revision": revision}))
+                self.assertIsNone(result["revision"])
+        for responsible_id in (True, -1, 0, 2_147_483_648, "7", [7]):
+            with self.subTest(responsible_id=responsible_id):
+                result = service.item_out(_item({"responsible_id": responsible_id}))
+                self.assertIsNone(result["responsible_id"])
+        self.assertEqual(service.item_out(_item({"responsible_id": 7}))["responsible_id"], 7)
+
+    def test_invalid_publication_platform_does_not_raise_typeerror(self):
+        for platform in ([], {"telegram": True}, None, 1, True, "unknown"):
+            with self.subTest(platform=platform):
+                with self.assertRaisesRegex(ValueError, "HTTPS-ссылку"):
+                    service._publication_url("https://t.me/examplechannel/2", platform)
+        self.assertEqual(
+            service._publication_url("https://t.me/examplechannel/2", "telegram"),
+            "https://t.me/examplechannel/2",
+        )
+
+
 class MalformedCalendarMetadataReadTests(unittest.IsolatedAsyncioTestCase):
     async def test_calendar_excludes_non_object_json_without_hiding_healthy_rows(self):
         good = _item({"media_area": "era", "workspace_revision": 2})
