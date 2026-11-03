@@ -31,6 +31,19 @@ class MalformedCalendarMetadataTests(unittest.TestCase):
                 self.assertIsNone(result["responsible_id"])
                 self.assertEqual(item.metadata_json, malformed)
 
+    def test_publication_evidence_rejects_non_string_and_malformed_urls(self):
+        # User/API JSON must fail with a domain validation error, not a 500.
+        for value in (None, 0, True, [], ["https://t.me/validname/3"],
+                      {"url": "https://t.me/validname/3"}, "", "   ",
+                      "https://t.me:bad/validname/3"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "HTTPS-ссылк"):
+                    service._publication_url(value, "telegram")
+        self.assertEqual(
+            service._publication_url("https://t.me/validname/3", "telegram"),
+            "https://t.me/validname/3",
+        )
+
     def test_invalid_explicit_area_never_inherits_era_scope(self):
         for value in (None, [], ["era"], 0, False, "ERA", "unknown"):
             with self.subTest(area=value):
