@@ -69,8 +69,10 @@ function Entry({ item, area, manager, members, onChanged }: { item: MediaCalenda
   const [body, setBody] = useState(item.body);
   const [responsible, setResponsible] = useState(String(item.responsible_id ?? ""));
   const terminal = ["published", "skipped"].includes(item.status);
+  const corruptRevision = !Number.isSafeInteger(item.revision) || item.revision === null || item.revision < 0;
   const publicationLink = safeEvidenceUrl(item.publication_url);
   const change = async (values: object) => {
+    if (corruptRevision) { setError("Данные материала повреждены. Обратитесь к администратору"); return; }
     setBusy(true); setError("");
     try { const updated = await updateMediaCalendarEntry(area, item.id, { revision: item.revision, ...values }); onChanged(updated); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось сохранить"); }
