@@ -119,3 +119,9 @@ daily summary; record its delivery date here when sent. Last daily summary under
 this register: none yet. Format: «ЭРА | Автономная разработка», completed, evidence,
 open count, accepted percentage, next concrete action. Never declare 100% until
 all forty requirements are ПРОВЕРЕНО and all known mandatory backlog is closed.
+
+## 2026-11-05 01:34 Asia/Yerevan — #605 ambiguous deadlines (in progress)
+
+- Confirmed main `4695807fad3dadd52826bfe5e839644b8d65d908`, automatic Render LIVE `dep-dbkhmleq1p3s73amq310` same SHA; no production write.
+- Existing #605 branch `fix/event-activity-naive-deadline-20261101`: replaced unconditional naive-as-UTC coercion with conservative fail-closed handling for *all* ambiguous naive deadlines, preserving aware UTC/offset instants and None semantics. Updated start and stale-FSM regression cases for UTC-naive past/future and Yerevan-naive near future; no live messages or data touched. Final code HEAD `9c36260e270094c16a883594cded7d21e0970c2d` **CI pending**; do not merge until 6/6, independent review, and owner-approved handling of ambiguous historical deadlines. This approach may deny legitimate activity proofs until provenance is reconciled; keep PR DRAFT. Source writes succeeded; no workaround used.
+- Next: inspect exact HEAD CI, source review, and add explicit offset-aware submit test if missing. Keep independent safe work moving; do not force merge or auto-deploy while policy risk remains. Accepted register unchanged **3/40 (7.5%)**.
