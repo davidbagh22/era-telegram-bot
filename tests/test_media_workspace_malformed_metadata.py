@@ -186,12 +186,28 @@ class MalformedCalendarMetadataWriteTests(unittest.IsolatedAsyncioTestCase):
                 session = SimpleNamespace(scalar=AsyncMock(return_value=item), flush=AsyncMock())
                 user = SimpleNamespace(id=7)
                 with patch.object(service, "require_access", new_callable=AsyncMock):
-                    with self.assertRaisesRegex(ValueError, "повреждены"):
+                    with self.assertRaisesRegex(LookupError, "не найден"):
                         await service.update_entry(
                             session, user, object(), "era", item.id, {"title": "Новое"}, 0,
                         )
                 self.assertEqual(item.title, "Материал")
                 self.assertEqual(item.metadata_json, malformed)
+                session.flush.assert_not_awaited()
+
+    async def test_foreign_and_corrupt_records_have_same_not_found_error(self):
+        # A caller scoped to ERA must not learn whether a KSOORS ID exists,
+        # or whether an unowned record has malformed metadata.
+        for metadata in ({"media_area": "ksoors"}, [], "legacy", {"media_area": None}):
+            with self.subTest(metadata=metadata):
+                item = _item(metadata)
+                session = SimpleNamespace(scalar=AsyncMock(return_value=item), flush=AsyncMock())
+                with patch.object(service, "require_access", new_callable=AsyncMock):
+                    with self.assertRaisesRegex(LookupError, "Материал не найден в выбранном направлении"):
+                        await service.update_entry(
+                            session, SimpleNamespace(id=7), object(), "era", item.id,
+                            {"title": "No change"}, 0,
+                        )
+                self.assertEqual(item.metadata_json, metadata)
                 session.flush.assert_not_awaited()
 
     async def test_corrupt_revision_cannot_pass_boolean_integer_equality(self):
