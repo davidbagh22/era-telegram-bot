@@ -63,28 +63,26 @@ class ActivityStartEligibilityTests(IsolatedAsyncioTestCase):
                 state.update_data.assert_not_awaited()
                 call.message.answer.assert_awaited_once()
 
-    async def test_legacy_naive_utc_deadline_is_checked_without_typeerror(self):
-        now_utc_naive = datetime.now(timezone.utc).replace(tzinfo=None)
-        for expired in (True, False):
-            with self.subTest(expired=expired):
-                deadline = now_utc_naive + timedelta(days=-1 if expired else 1)
+    async def test_ambiguous_naive_deadline_fails_closed_without_typeerror(self):
+        # Historical naive timestamps may mean UTC or Yerevan wall-clock.
+        # Even a seemingly future value must not authorize a new submission.
+        utc_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+        yerevan_naive = datetime.now(timezone(timedelta(hours=4))).replace(tzinfo=None)
+        for deadline in (utc_naive - timedelta(days=1),
+                         utc_naive + timedelta(days=1),
+                         yerevan_naive + timedelta(minutes=30)):
+            with self.subTest(deadline=deadline):
                 call, state = _call(), _state()
                 session = SimpleNamespace(
                     get=AsyncMock(return_value=_activity(deadline=deadline)),
-                    scalar=AsyncMock(side_effect=[
-                        SimpleNamespace(event_id=13, user_id=7), None,
-                    ]),
+                    scalar=AsyncMock(),
                 )
                 with patch("app.handlers.participant.events._approved", return_value=True):
                     await event_activity_start(call, SimpleNamespace(id=7), session, state)
-                if expired:
-                    session.scalar.assert_not_awaited()
-                    state.set_state.assert_not_awaited()
-                    self.assertIn("закрыта", call.message.answer.await_args.args[0])
-                else:
-                    self.assertEqual(session.scalar.await_count, 2)
-                    state.set_state.assert_awaited_once()
-                    state.update_data.assert_awaited_once_with(event_activity_id=42)
+                session.scalar.assert_not_awaited()
+                state.set_state.assert_not_awaited()
+                state.update_data.assert_not_awaited()
+                self.assertIn("закрыта", call.message.answer.await_args.args[0])
 
     async def test_aware_offset_deadline_uses_absolute_instant(self):
         # Offset-aware editor values must not be reinterpreted as naive UTC.
