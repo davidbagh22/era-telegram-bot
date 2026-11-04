@@ -25,7 +25,7 @@ from app.utils.deep_links import miniapp_event_url
 logger = logging.getLogger(__name__)
 
 
-def _validated_pending_lifecycle_notice(raw: object) -> dict | None:
+def _validated_pending_lifecycle_notice(raw: object, *, key: str | None = None) -> dict | None:
     """Ignore corrupt persisted notices without hiding other pending events.
 
     This is a read-only preflight: bad rows remain pending for manual review;
@@ -53,6 +53,8 @@ def _validated_pending_lifecycle_notice(raw: object) -> dict | None:
         or any(isinstance(value, bool) or not isinstance(value, int) or value <= 0 for value in recipients)
         or isinstance(attempts, bool) or not isinstance(attempts, int) or attempts < 0
     ):
+        return None
+    if key is not None and key != f"event-lifecycle:pending:{event_id}:{phase}":
         return None
     return payload
 
@@ -107,6 +109,11 @@ class ConfirmationResult:
 
 
 def normalize_code(value: str) -> str:
+    # secrets.compare_digest(str, str) rejects non-ASCII. Reject confusable
+    # Unicode input before uppercasing (which can expand e.g. ß into "SS"),
+    # rather than crashing attendance confirmation or silently changing a code.
+    if not value.isascii():
+        return ""
     return "".join(character for character in value.upper().strip() if character.isalnum())
 
 
@@ -579,7 +586,12 @@ def confirmation_payload(event_id: int, code: str) -> str:
 def parse_confirmation_payload(payload: str) -> tuple[int, str] | None:
     import re
     match = re.fullmatch(r'attend2_([1-9][0-9]{0,9})_([A-Z2-9]{8})', payload)
-    return (int(match[1]), match[2]) if match else None
+    if not match:
+        return None
+    event_id = int(match[1])
+    if event_id > 2_147_483_647:
+        return None
+    return event_id, match[2]
 
 
 def confirmation_qr_png(link: str) -> bytes:
@@ -616,7 +628,7 @@ async def deliver_attendance_notifications(bot: Bot, settings, session_factory) 
             row = await session.scalar(select(AppSetting).where(AppSetting.key == key).with_for_update())
             if row is None:
                 continue
-            payload = _validated_pending_lifecycle_notice(row.value)
+            payload = _validated_pending_lifecycle_notice(row.value, key=key)
             if payload is None:
                 logger.warning("Skipping malformed event lifecycle notice key=%s", key)
                 continue

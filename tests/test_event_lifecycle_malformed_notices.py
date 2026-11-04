@@ -38,6 +38,16 @@ class PendingLifecycleNoticeValidationTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(value=str(invalid)[:60]):
                 self.assertIsNone(_validated_pending_lifecycle_notice(invalid))
 
+    def test_pending_key_must_match_payload_identity(self):
+        good = dict(status="pending", event_id=42, phase="start", title="Test",
+                    location="Online", recipients=[])
+        self.assertEqual(_validated_pending_lifecycle_notice(
+            good, key="event-lifecycle:pending:42:start"), good)
+        for key in ("event-lifecycle:pending:43:start", "event-lifecycle:pending:42:complete",
+                    "event-lifecycle:pending:042:start", "event-lifecycle:pending:42:start:extra"):
+            with self.subTest(key=key):
+                self.assertIsNone(_validated_pending_lifecycle_notice(good, key=key))
+
     async def test_corrupt_notice_is_unchanged_and_healthy_event_is_processed(self):
         engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         try:
@@ -65,25 +75,27 @@ class PendingLifecycleNoticeValidationTests(unittest.IsolatedAsyncioTestCase):
                     "location": event.location, "recipients": [],
                 }
                 session.add_all([
+                    AppSetting(key="event-lifecycle:pending:wrong-identity", value=good),
                     AppSetting(key="event-lifecycle:pending:bad-json", value="{not-json"),
                     AppSetting(
                         key="event-lifecycle:pending:bad-recipients",
                         value={**good, "recipients": "wrong-type"},
                     ),
-                    AppSetting(key="event-lifecycle:pending:healthy", value=json.dumps(good)),
+                    AppSetting(key=f"event-lifecycle:pending:{event.id}:start", value=json.dumps(good)),
                 ])
                 await session.commit()
 
             with self.assertLogs("app.services.event_attendance_service", level="WARNING") as logs:
                 delivered = await deliver_attendance_notifications(None, None, factory)
             self.assertEqual(delivered, 0)
-            self.assertEqual(len(logs.output), 2)
+            self.assertEqual(len(logs.output), 3)
             async with factory() as session:
                 keys = set((await session.scalars(select(AppSetting.key))).all())
+                self.assertIn("event-lifecycle:pending:wrong-identity", keys)
                 self.assertIn("event-lifecycle:pending:bad-json", keys)
                 self.assertIn("event-lifecycle:pending:bad-recipients", keys)
-                self.assertIn("event-lifecycle:sent:healthy", keys)
-                self.assertNotIn("event-lifecycle:pending:healthy", keys)
+                self.assertIn(f"event-lifecycle:sent:{event.id}:start", keys)
+                self.assertNotIn(f"event-lifecycle:pending:{event.id}:start", keys)
         finally:
             await engine.dispose()
 
