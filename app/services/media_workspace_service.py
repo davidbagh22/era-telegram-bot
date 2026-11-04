@@ -243,13 +243,9 @@ async def update_entry(session, user, settings, area, item_id, values, revision)
     await require_access(session, user, settings, write=True, area=area)
     item = await session.scalar(select(MediaContentItem).where(MediaContentItem.id == item_id)
         .with_for_update().execution_options(populate_existing=True))
-    if item is None:
-        raise LookupError("Материал не найден в выбранном направлении")
-    # Check corruption before ownership to give an actionable error without
-    # normalizing or writing legacy metadata; the read path stays fail-closed.
-    if item.metadata_json is not None and not isinstance(item.metadata_json, dict):
-        raise ValueError("Данные материала повреждены. Обратитесь к администратору")
-    if area_of(item) != area:
+    # An unowned/corrupt record must be indistinguishable from a missing or
+    # foreign-area record. Never reveal its existence through error types.
+    if item is None or area_of(item) != area:
         raise LookupError("Материал не найден в выбранном направлении")
     data = dict(_metadata(item))
     stored_revision = data.get("workspace_revision", 0)
