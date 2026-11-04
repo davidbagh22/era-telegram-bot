@@ -36,16 +36,18 @@ def _approved(user: User | None) -> bool:
 
 
 def _activity_expired(deadline: datetime | None) -> bool:
-    """Treat naive legacy/SQLite activity deadlines as UTC, as stored by the app.
+    """Fail closed on ambiguous legacy deadlines; preserve aware instants.
 
-    PostgreSQL timezone-aware values keep their absolute instant. Comparing a
-    naive value with an aware local clock would otherwise raise TypeError and
-    leave the participant's callback/FSM handler unfinished.
+    Historical naive values may represent UTC or Yerevan wall-clock time.
+    Neither interpretation can be proven from the value alone. Until a
+    provenance-aware reconciliation exists, do not allow a new proof or a
+    stale FSM submission based on such an ambiguous deadline. This never
+    mutates the stored deadline or an existing submission.
     """
     if deadline is None:
         return False
     if deadline.tzinfo is None or deadline.utcoffset() is None:
-        deadline = deadline.replace(tzinfo=timezone.utc)
+        return True
     return deadline <= datetime.now(timezone.utc)
 
 
