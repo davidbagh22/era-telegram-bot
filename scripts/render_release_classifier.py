@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import re
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
-SUCCESS = {"success", "completed"}
+SUCCESS = {"success"}
 FAILURE = {"failed", "build_failed", "update_failed", "canceled", "cancelled"}
 
 
