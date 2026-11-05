@@ -70,3 +70,10 @@ def test_completed_workflow_status_is_not_success_conclusion():
     result = classify(MAIN, [deploy(MAIN, "live")],
                       ["completed"] + OK[1:], now=NOW)
     assert result == {"state": "UNVERIFIED", "reason": "main_ci_incomplete_or_unknown"}
+
+
+def test_malformed_render_snapshots_fail_closed():
+    for bad in [None, "unexpected", {"status": "live", "commit": "bad"},
+                {"status": "live", "commit": None}]:
+        result = classify(MAIN, [bad], OK, now=NOW)
+        assert result["state"] == "UNVERIFIED"
