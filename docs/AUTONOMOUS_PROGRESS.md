@@ -1,5 +1,12 @@
 # ЭРА — автономная разработка
 
+## Current continuation — 2026-11-06 02:36 Asia/Yerevan
+- Main / Render LIVE last confirmed: `4695807fad3dadd52826bfe5e839644b8d65d908`; Render `dep-dbkhmleq1p3s73amq310` LIVE. Recheck main before any merge.
+- #565 DRAFT PR #653 branch `fix/565-render-deploy-classifier-20261106`: previous HEAD `330802724ff18f1bd5350be3f2bfda63cabb8c64` passed 6/6 (Bot checks 5, Tests 1); independent reviews: none. Latest code+test HEAD `95417c0325f91b8b55edcd4ef9ab53a5a7895ed6` adds fail-closed malformed Render snapshot handling. CI on latest HEAD NOT YET CONFIRMED.
+- Next atomic action: verify exact HEAD 6/6, integrate classifier with independent read-only snapshots, obtain independent review, then guarded merge only after all gates. Do not merge a DRAFT.
+- Read-only monitoring must not become required GitHub CI. No user data, points, roles, publications, migrations, secrets or production changes authorized. Accepted register 3/40 (7.5%).
+
+
 Updated: 2026-11-02 UTC. This is the primary continuation point for the hourly task
 `6adcbd42ede08191a5c0a946e4147b52` («ЭРА — разработка до полной готовности»).
 Read this first, then current main/PR/CI/Render; consult older AI_TASK_STATE.md and
