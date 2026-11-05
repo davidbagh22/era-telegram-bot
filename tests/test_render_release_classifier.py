@@ -63,3 +63,10 @@ def test_invalid_sha_and_timestamp_fail_closed():
 def test_unknown_render_status_is_unverified():
     assert classify(MAIN, [deploy(MAIN, "mystery"), deploy(OLD, "live")],
                     OK, now=NOW)["state"] == "UNVERIFIED"
+
+
+def test_completed_workflow_status_is_not_success_conclusion():
+    # GitHub Actions 'completed' is a run status, not a successful conclusion.
+    result = classify(MAIN, [deploy(MAIN, "live")],
+                      ["completed"] + OK[1:], now=NOW)
+    assert result == {"state": "UNVERIFIED", "reason": "main_ci_incomplete_or_unknown"}
