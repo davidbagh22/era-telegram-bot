@@ -114,6 +114,42 @@ class ActivitySubmissionEligibilityTests(IsolatedAsyncioTestCase):
                 notify.assert_not_awaited()
                 self.assertIn("закрыта", message.answer.await_args.args[0])
 
+    async def test_offset_aware_deadline_preserves_absolute_instant_on_submit(self):
+        # A future Yerevan deadline must remain open; an expired one must
+        # reject stale FSM proof before querying registration or writing.
+        yerevan = timezone(timedelta(hours=4))
+        for expired in (True, False):
+            with self.subTest(expired=expired):
+                instant = datetime.now(timezone.utc) + timedelta(
+                    days=-1 if expired else 1
+                )
+                message, state, session = _fixtures(
+                    activity=_activity(deadline=instant.astimezone(yerevan))
+                )
+                if not expired:
+                    session.scalar.side_effect = [
+                        SimpleNamespace(event_id=13), None,
+                    ]
+                with patch(
+                    "app.handlers.participant.events.notify_admins",
+                    new_callable=AsyncMock,
+                ) as notify:
+                    await event_activity_submit(
+                        message, _user(), session, state,
+                        SimpleNamespace(), SimpleNamespace(),
+                    )
+                state.clear.assert_awaited_once()
+                if expired:
+                    session.scalar.assert_not_awaited()
+                    session.add.assert_not_called()
+                    notify.assert_not_awaited()
+                    self.assertIn("закрыта", message.answer.await_args.args[0])
+                else:
+                    self.assertEqual(session.scalar.await_count, 2)
+                    session.add.assert_called_once()
+                    notify.assert_awaited_once()
+                    self.assertIn("в вашем профиле", message.answer.await_args.args[0])
+
     async def test_registration_revoked_after_fsm_start(self):
         message, state, session = _fixtures(registration=None)
         with patch(
