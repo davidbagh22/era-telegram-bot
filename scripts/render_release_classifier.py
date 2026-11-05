@@ -38,6 +38,8 @@ def classify(main_sha: str, deploys: list[dict], ci_checks: list[str],
         return {"state": "CI_FAILED", "reason": "main_ci_failed"}
     if not deploys:
         return {"state": "UNVERIFIED", "reason": "render_deploys_missing"}
+    if any(not isinstance(d, dict) or not isinstance(d.get("commit"), dict) for d in deploys):
+        return {"state": "UNVERIFIED", "reason": "malformed_render_snapshot"}
     live = [d for d in deploys if d.get("status") == "live"]
     if len(live) != 1:
         return {"state": "UNVERIFIED", "reason": "unique_live_deploy_not_confirmed"}
