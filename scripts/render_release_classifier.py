@@ -10,7 +10,7 @@ import re
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 SUCCESS = {"success"}
-FAILURE = {"failed", "build_failed", "update_failed", "canceled", "cancelled"}
+FAILURE = {"failure", "failed", "build_failed", "update_failed", "canceled", "cancelled", "timed_out", "action_required"}
 
 
 def _time(value: str) -> datetime:
