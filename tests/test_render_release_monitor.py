@@ -85,3 +85,18 @@ def test_unexpected_render_schema_fails_closed(monkeypatch):
         return fake_api(url, token, github=github)
     with patch.object(monitor, "get_json", side_effect=malformed):
         assert monitor.collect("fake-github", "fake-render")["state"] == "UNVERIFIED"
+
+
+def test_default_main_check_names_allow_exact_match(monkeypatch):
+    monkeypatch.delenv("ERA_MAIN_CHECK_NAMES", raising=False)
+    expected = ["test", "secret-scan", "frontend", "postgres-migration", "e2e"]
+
+    def real_check_names(url, token, *, github=False):
+        result = fake_api(url, token, github=github)
+        if "/check-runs?" in url:
+            for check, name in zip(result["check_runs"], expected):
+                check["name"] = name
+        return result
+
+    with patch.object(monitor, "get_json", side_effect=real_check_names):
+        assert monitor.collect("fake-github", "fake-render")["state"] == "LIVE_EXACT"
