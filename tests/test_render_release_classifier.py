@@ -98,3 +98,13 @@ def test_malformed_pending_deploy_fields_are_unverified():
         item["createdAt"] = bad_time
         result = classify(MAIN, [item, deploy(OLD, "live")], OK, now=NOW)
         assert result["state"] == "UNVERIFIED"
+
+
+def test_newer_failed_attempt_cannot_be_masked_by_old_live_same_sha():
+    result = classify(MAIN, [deploy(MAIN, "build_failed", 1), deploy(MAIN, "live", 20)], OK, now=NOW)
+    assert result["state"] == "DEPLOY_FAILED"
+
+
+def test_newer_pending_attempt_cannot_be_masked_by_old_live_same_sha():
+    result = classify(MAIN, [deploy(MAIN, "build_in_progress", 1), deploy(MAIN, "live", 20)], OK, now=NOW)
+    assert result["state"] == "UNVERIFIED"
