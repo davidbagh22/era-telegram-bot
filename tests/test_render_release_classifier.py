@@ -108,3 +108,9 @@ def test_newer_failed_attempt_cannot_be_masked_by_old_live_same_sha():
 def test_newer_pending_attempt_cannot_be_masked_by_old_live_same_sha():
     result = classify(MAIN, [deploy(MAIN, "build_in_progress", 1), deploy(MAIN, "live", 20)], OK, now=NOW)
     assert result["state"] == "UNVERIFIED"
+
+
+@pytest.mark.parametrize("conclusion", ["failure", "timed_out", "action_required", "cancelled"])
+def test_github_failure_conclusions_are_ci_failed(conclusion):
+    result = classify(MAIN, [deploy(MAIN, "live")], [conclusion] + OK[1:], now=NOW)
+    assert result == {"state": "CI_FAILED", "reason": "main_ci_failed"}
