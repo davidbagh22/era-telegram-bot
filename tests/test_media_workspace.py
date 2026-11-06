@@ -57,6 +57,38 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
             with self.assertRaises(LookupError):
                 await workspace.update_entry(session, leader, settings, "era", other.id, {"title": "Подмена"}, 0)
 
+    async def test_calendar_keeps_missing_unknown_and_foreign_records_outside_own_area(self):
+        async with self.factory() as session:
+            settings, _, leader, _, _, _ = await self.seed(session)
+            own = await self.create(session, leader, settings, "era", "own")
+            foreign = await self.create(session, leader, settings, "ksoors", "foreign")
+            missing = MediaContentItem(
+                source_key="legacy-missing-area",
+                source_kind="manual",
+                kind="text",
+                status="planned",
+                title="Устаревшая запись без области",
+                created_by=leader.id,
+            )
+            unknown = MediaContentItem(
+                source_key="legacy-unknown-area",
+                source_kind="manual",
+                kind="text",
+                status="planned",
+                title="Запись с неизвестной областью",
+                created_by=leader.id,
+                metadata_json={"media_area": "mystery"},
+            )
+            session.add_all([missing, unknown])
+            await session.flush()
+
+            era_ids = {row["id"] for row in await workspace.calendar(session, "era")}
+            self.assertIn(own.id, era_ids)
+            self.assertIn(missing.id, era_ids)
+            self.assertNotIn(foreign.id, era_ids)
+            self.assertNotIn(unknown.id, era_ids)
+            self.assertEqual({row["id"] for row in await workspace.calendar(session, "ksoors")}, {foreign.id})
+
     async def test_calendar_paginates_beyond_100_without_crossing_areas(self):
         async with self.factory() as session:
             settings, _, leader, _, _, _ = await self.seed(session)
@@ -170,6 +202,51 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
             await session.flush()
             with self.assertRaises(PermissionError):
                 await workspace.update_entry(session, leader, settings, "era", item.id, {"status": "ready"}, 0)
+
+    async def test_area_editor_cannot_list_or_open_unscoped_or_unknown_cards(self):
+        from fastapi import FastAPI
+        from httpx import ASGITransport, AsyncClient
+        from app.api.deps import get_current_user, get_session, get_settings
+        from app.api.v1.media_workspace import router
+        from app.services import media_scope_service as scopes
+
+        async with self.factory() as session:
+            settings, _, leader, member, _, _ = await self.seed(session)
+            own = await self.create(session, leader, settings, "era", "own")
+            foreign = await self.create(session, leader, settings, "ksoors", "foreign")
+            missing = MediaContentItem(source_key="missing-area", source_kind="manual", kind="text",
+                status="planned", title="Без области", created_by=leader.id)
+            unknown = MediaContentItem(source_key="unknown-area", source_kind="manual", kind="text",
+                status="planned", title="Неизвестная область", created_by=leader.id,
+                metadata_json={"media_area": "mystery"})
+            session.add_all([missing, unknown])
+            await session.flush()
+            await scopes.set_editor(session, leader, settings, "era", member.id, True, 0)
+            await session.commit()
+
+        app = FastAPI()
+        app.include_router(router)
+
+        async def session_override():
+            async with self.factory() as current:
+                yield current
+                await current.commit()
+
+        app.dependency_overrides[get_session] = session_override
+        app.dependency_overrides[get_settings] = lambda: settings
+        app.dependency_overrides[get_current_user] = lambda: member
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            rows = (await client.get("/media/workspaces/era/calendar")).json()
+            self.assertEqual({row["id"] for row in rows}, {own.id})
+            self.assertNotIn(foreign.id, {row["id"] for row in rows})
+            self.assertNotIn(missing.id, {row["id"] for row in rows})
+            self.assertNotIn(unknown.id, {row["id"] for row in rows})
+            allowed = await client.patch(f"/media/workspaces/era/calendar/{own.id}",
+                json={"revision": 0, "status": "review"})
+            self.assertEqual(allowed.status_code, 200, allowed.text)
+            denied = await client.patch(f"/media/workspaces/era/calendar/{missing.id}",
+                json={"revision": 0, "status": "review"})
+            self.assertEqual(denied.status_code, 404, denied.text)
 
     async def test_publication_requires_approval_valid_link_and_audit_revision(self):
         async with self.factory() as session:
