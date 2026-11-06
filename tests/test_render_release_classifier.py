@@ -77,3 +77,24 @@ def test_malformed_render_snapshots_fail_closed():
                 {"status": "live", "commit": None}]:
         result = classify(MAIN, [bad], OK, now=NOW)
         assert result["state"] == "UNVERIFIED"
+
+
+@pytest.mark.parametrize("bad_checks", [None, "success", {}, [None] * 5, [1] * 5])
+def test_malformed_ci_collection_is_unverified(bad_checks):
+    assert classify(MAIN, [deploy(MAIN, "live")], bad_checks, now=NOW)["state"] == "UNVERIFIED"
+
+
+@pytest.mark.parametrize("bad_deploys", [None, "unexpected", {}, 42])
+def test_malformed_deploy_collection_is_unverified(bad_deploys):
+    assert classify(MAIN, bad_deploys, OK, now=NOW)["state"] == "UNVERIFIED"
+
+
+def test_malformed_pending_deploy_fields_are_unverified():
+    for bad_status in [None, [], {}]:
+        result = classify(MAIN, [deploy(MAIN, bad_status), deploy(OLD, "live")], OK, now=NOW)
+        assert result["state"] == "UNVERIFIED"
+    for bad_time in [None, 123, [], {}]:
+        item = deploy(MAIN, "pending")
+        item["createdAt"] = bad_time
+        result = classify(MAIN, [item, deploy(OLD, "live")], OK, now=NOW)
+        assert result["state"] == "UNVERIFIED"
