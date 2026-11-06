@@ -50,6 +50,15 @@ def classify(main_sha: str, deploys: list[dict], ci_checks: list[str],
     if not isinstance(live_sha, str) or not SHA.fullmatch(live_sha):
         return {"state": "UNVERIFIED", "reason": "live_sha_missing"}
     if live_sha == main_sha:
+        # A prior LIVE deployment of the same commit is not proof that the
+        # newest attempt succeeded. A later failed/rolled-back attempt must
+        # never be masked by an older LIVE record.
+        matching = [d for d in deploys if (d.get("commit") or {}).get("id") == main_sha]
+        if matching and matching[0] is not live[0]:
+            latest_status = matching[0].get("status")
+            if isinstance(latest_status, str) and latest_status in FAILURE:
+                return {"state": "DEPLOY_FAILED", "live_sha": live_sha}
+            return {"state": "UNVERIFIED", "reason": "newer_deploy_not_live", "live_sha": live_sha}
         if all(c in SUCCESS for c in ci_checks):
             return {"state": "LIVE_EXACT", "live_sha": live_sha}
         return {"state": "UNVERIFIED", "reason": "main_ci_pending", "live_sha": live_sha}
