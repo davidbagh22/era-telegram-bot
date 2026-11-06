@@ -1,3 +1,8 @@
+# Continuation — 2026-11-06 14:30 Asia/Yerevan
+- main latest observed SHA 45622639484eea9babae748f50d90600600c9975 (merged #537 at 14:21 Yerevan), Render LIVE still 4695807fad3dadd52826bfe5e839644b8d65d908 (deploy from Nov 3). Main/Render mismatch: no automatic deploy observed; investigate without manual deploy or production writes.
+- #565 DRAFT PR #653: explicit observed five main check names now default when ERA_MAIN_CHECK_NAMES absent; override remains supported; added offline default-name regression. Code 0232b0b57593f941be911e300604586b9e5f0e8d, test 877b5b5d06bafaa8aefc38870c3f58587b1fb174. CI on new final HEAD not yet verified; independent review absent. Do not merge.
+- Automation prompt update not confirmed: Automations get returned NOT_FOUND; schedule unchanged by this run. Accepted readiness remains 3/40. Next: verify exact-head 6/6 and investigate Render auto-deploy discrepancy; then independent review and non-gating scheduled integration.
+
 # Continuation — 2026-11-06 11:36 Asia/Yerevan
 - #565 DRAFT PR #653: GitHub standard `failure`, `timed_out`, `action_required` conclusions now classify CI_FAILED rather than UNVERIFIED; added parameterized offline regression. Code `75d6d19211c8b80f2c24a6700b6b1bdbc35ba4ed`; tests `60b5a1d2bea4d25492961838ffc20cf58d150497`. Final CI and independent review pending; no merge.
 - Render last observed LIVE `4695807fad3dadd52826bfe5e839644b8d65d908`. Main exact SHA not independently verified this run. Accepted 3/40. Next: exact-head 6/6, independent review, wire non-gating scheduled collector, then guarded release. No production writes.
