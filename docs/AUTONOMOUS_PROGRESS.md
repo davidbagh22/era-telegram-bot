@@ -1,3 +1,7 @@
+# Continuation — 2026-11-06 09:33 Asia/Yerevan
+- #565 PR #653 DRAFT: fixed false LIVE_EXACT when newer same-SHA deploy failed or is pending, added two offline regressions. Code commit `3e5a595b2ef38468d4474d742a45cdb5fe3c7f4f`; test commit `78b3a93bca364d3dbfb10b07d7cf50e0e8c6e1cf`. CI on final checkpoint HEAD NOT CONFIRMED; independent review absent. Do not merge.
+- Render latest LIVE observed `4695807fad3dadd52826bfe5e839644b8d65d908`; current main exact SHA not independently verified in this run. Accepted 3/40. Next: run targeted tests and exact-head CI 6/6, verify five actual main check names, connect optional non-gating scheduled monitor, request independent review. No production changes.
+
 # Continuation — 2026-11-06 08:30 Asia/Yerevan
 - #565 DRAFT PR #653: added three offline regressions for real Render deploy envelopes/failed deploy, duplicate GitHub check names, malformed Render response. Code/test commit `a20bf503876872b12f075fb722f847012262e8ae`; final CI and independent review NOT CONFIRMED. Do not merge.
 - Render latest observed LIVE `4695807fad3dadd52826bfe5e839644b8d65d908` (deploy `dep-dbkhmleq1p3s73amq310`); main current exact SHA not independently revalidated this run. Existing schedule not yet wired to collector. Accepted 3/40.
