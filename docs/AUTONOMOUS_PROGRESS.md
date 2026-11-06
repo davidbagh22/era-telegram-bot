@@ -1,3 +1,7 @@
+# Continuation — 2026-11-06 11:36 Asia/Yerevan
+- #565 DRAFT PR #653: GitHub standard `failure`, `timed_out`, `action_required` conclusions now classify CI_FAILED rather than UNVERIFIED; added parameterized offline regression. Code `75d6d19211c8b80f2c24a6700b6b1bdbc35ba4ed`; tests `60b5a1d2bea4d25492961838ffc20cf58d150497`. Final CI and independent review pending; no merge.
+- Render last observed LIVE `4695807fad3dadd52826bfe5e839644b8d65d908`. Main exact SHA not independently verified this run. Accepted 3/40. Next: exact-head 6/6, independent review, wire non-gating scheduled collector, then guarded release. No production writes.
+
 # Continuation — 2026-11-06 09:33 Asia/Yerevan
 - #565 PR #653 DRAFT: fixed false LIVE_EXACT when newer same-SHA deploy failed or is pending, added two offline regressions. Code commit `3e5a595b2ef38468d4474d742a45cdb5fe3c7f4f`; test commit `78b3a93bca364d3dbfb10b07d7cf50e0e8c6e1cf`. CI on final checkpoint HEAD NOT CONFIRMED; independent review absent. Do not merge.
 - Render latest LIVE observed `4695807fad3dadd52826bfe5e839644b8d65d908`; current main exact SHA not independently verified in this run. Accepted 3/40. Next: run targeted tests and exact-head CI 6/6, verify five actual main check names, connect optional non-gating scheduled monitor, request independent review. No production changes.
