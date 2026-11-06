@@ -6,7 +6,10 @@ request handling, or live Telegram delivery.
 from unittest import TestCase
 from unittest.mock import patch
 
-from app.webapp import _warn_if_webhook_secret_missing
+from fastapi.testclient import TestClient
+
+from app.config import Settings
+from app.webapp import app, _warn_if_webhook_secret_missing
 
 
 class WebhookSecretStartupWarningTests(TestCase):
@@ -30,3 +33,11 @@ class WebhookSecretStartupWarningTests(TestCase):
             _warn_if_webhook_secret_missing("")
         self.assertEqual(warning.call_count, 1)
         self.assertNotIn(secret, str(warning.call_args))
+
+    def test_webhook_rejects_missing_and_incorrect_request_secrets(self) -> None:
+        settings = Settings(bot_token="0000000000:CITESTTOKEN", webhook_secret="configured-test-secret")
+        with patch.object(app.state, "settings", settings, create=True):
+            client = TestClient(app)
+            for headers in ({}, {"X-Telegram-Bot-Api-Secret-Token": "wrong-secret"}):
+                response = client.post("/telegram/webhook", headers=headers, json={})
+                self.assertEqual(response.status_code, 403, response.text)
