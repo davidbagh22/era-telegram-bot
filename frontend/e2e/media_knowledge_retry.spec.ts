@@ -66,6 +66,7 @@ test("a failed read after hiding a material clears stale cards and retries only 
   await expect(page.getByText(item.title, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Скрыть материал", exact: true }).click();
   await expect(page.getByRole("button", { name: "Повторить загрузку базы знаний" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveText("Изменения сохранены, но список не обновился. Повторите загрузку базы знаний.");
   await expect(page.getByText(item.title, { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Скрыть материал", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Повторить загрузку базы знаний" }).click();

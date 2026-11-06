@@ -32,6 +32,8 @@ export function MediaKnowledge({ manager, onGuide }: { manager: boolean; onGuide
       const value = await fetchMediaLibrary(manager && archived);
       setItems(value);
       setLoadedScope(scope);
+    } catch {
+      setError("Изменения сохранены, но список не обновился. Повторите загрузку базы знаний.");
     } finally {
       setLoading(false);
     }
