@@ -1,3 +1,8 @@
+# Continuation — 2026-11-06 08:30 Asia/Yerevan
+- #565 DRAFT PR #653: added three offline regressions for real Render deploy envelopes/failed deploy, duplicate GitHub check names, malformed Render response. Code/test commit `a20bf503876872b12f075fb722f847012262e8ae`; final CI and independent review NOT CONFIRMED. Do not merge.
+- Render latest observed LIVE `4695807fad3dadd52826bfe5e839644b8d65d908` (deploy `dep-dbkhmleq1p3s73amq310`); main current exact SHA not independently revalidated this run. Existing schedule not yet wired to collector. Accepted 3/40.
+- Next: verify exact HEAD CI 6/6, verify actual five main job names and Render API response, wire non-gating scheduled read-only monitor; request independent review; guarded merge only after all gates. No production changes.
+
 # Continuation — 2026-11-06 07:33 Asia/Yerevan
 - #565 PR #653 DRAFT: added read-only collector scripts/render_release_monitor.py and offline tests/test_render_release_monitor.py. Commit before checkpoint d038f5c34e93125248c9dfd2c9f65bbdf7808c95. Earlier GitHub HTTP 422 resolved by using create_file for new paths; no bypass.
 - Collector requires GITHUB_TOKEN, RENDER_API_KEY and five explicitly configured ERA_MAIN_CHECK_NAMES; missing/ambiguous input is UNVERIFIED. Not connected to scheduled workflow; no required CI gate introduced. New HEAD CI/tests/review NOT CONFIRMED; do not merge.
