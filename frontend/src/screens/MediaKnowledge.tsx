@@ -26,9 +26,15 @@ export function MediaKnowledge({ manager, onGuide }: { manager: boolean; onGuide
   // or visibility scope, even for the frame before a new effect runs.
   const scope = `${manager ? "manager" : "reader"}:${manager && archived ? "archived" : "active"}`;
   const reload = useCallback(async () => {
-    const value = await fetchMediaLibrary(manager && archived);
-    setItems(value);
-    setLoadedScope(scope);
+    // A successful mutation invalidates the old list, even if its refresh fails.
+    setLoading(true); setItems([]); setLoadedScope(null);
+    try {
+      const value = await fetchMediaLibrary(manager && archived);
+      setItems(value);
+      setLoadedScope(scope);
+    } finally {
+      setLoading(false);
+    }
   }, [manager, archived, scope]);
   useEffect(() => {
     let alive = true;
