@@ -35,7 +35,7 @@ def collect(github_token: str, render_token: str) -> dict:
     runs = checks["check_runs"]
     # Never infer success from an arbitrary subset of check runs. Names must
     # be explicitly configured to match the five required main checks.
-    names = [x.strip() for x in os.getenv("ERA_MAIN_CHECK_NAMES", "").split(",") if x.strip()]
+    names = [x.strip() for x in os.getenv("ERA_MAIN_CHECK_NAMES", "test,secret-scan,frontend,postgres-migration,e2e").split(",") if x.strip()]
     if len(names) != 5 or len(set(names)) != 5:
         conclusions = []
     else:
