@@ -1,4 +1,35 @@
+# Continuation — 2026-11-06 11:36 Asia/Yerevan
+- #565 DRAFT PR #653: GitHub standard `failure`, `timed_out`, `action_required` conclusions now classify CI_FAILED rather than UNVERIFIED; added parameterized offline regression. Code `75d6d19211c8b80f2c24a6700b6b1bdbc35ba4ed`; tests `60b5a1d2bea4d25492961838ffc20cf58d150497`. Final CI and independent review pending; no merge.
+- Render last observed LIVE `4695807fad3dadd52826bfe5e839644b8d65d908`. Main exact SHA not independently verified this run. Accepted 3/40. Next: exact-head 6/6, independent review, wire non-gating scheduled collector, then guarded release. No production writes.
+
+# Continuation — 2026-11-06 09:33 Asia/Yerevan
+- #565 PR #653 DRAFT: fixed false LIVE_EXACT when newer same-SHA deploy failed or is pending, added two offline regressions. Code commit `3e5a595b2ef38468d4474d742a45cdb5fe3c7f4f`; test commit `78b3a93bca364d3dbfb10b07d7cf50e0e8c6e1cf`. CI on final checkpoint HEAD NOT CONFIRMED; independent review absent. Do not merge.
+- Render latest LIVE observed `4695807fad3dadd52826bfe5e839644b8d65d908`; current main exact SHA not independently verified in this run. Accepted 3/40. Next: run targeted tests and exact-head CI 6/6, verify five actual main check names, connect optional non-gating scheduled monitor, request independent review. No production changes.
+
+# Continuation — 2026-11-06 08:30 Asia/Yerevan
+- #565 DRAFT PR #653: added three offline regressions for real Render deploy envelopes/failed deploy, duplicate GitHub check names, malformed Render response. Code/test commit `a20bf503876872b12f075fb722f847012262e8ae`; final CI and independent review NOT CONFIRMED. Do not merge.
+- Render latest observed LIVE `4695807fad3dadd52826bfe5e839644b8d65d908` (deploy `dep-dbkhmleq1p3s73amq310`); main current exact SHA not independently revalidated this run. Existing schedule not yet wired to collector. Accepted 3/40.
+- Next: verify exact HEAD CI 6/6, verify actual five main job names and Render API response, wire non-gating scheduled read-only monitor; request independent review; guarded merge only after all gates. No production changes.
+
+# Continuation — 2026-11-06 07:33 Asia/Yerevan
+- #565 PR #653 DRAFT: added read-only collector scripts/render_release_monitor.py and offline tests/test_render_release_monitor.py. Commit before checkpoint d038f5c34e93125248c9dfd2c9f65bbdf7808c95. Earlier GitHub HTTP 422 resolved by using create_file for new paths; no bypass.
+- Collector requires GITHUB_TOKEN, RENDER_API_KEY and five explicitly configured ERA_MAIN_CHECK_NAMES; missing/ambiguous input is UNVERIFIED. Not connected to scheduled workflow; no required CI gate introduced. New HEAD CI/tests/review NOT CONFIRMED; do not merge.
+- Last observed Render LIVE 4695807fad3dadd52826bfe5e839644b8d65d908; current main exact SHA must be rechecked before release. Accepted 3/40. Next: validate new tests and final 6/6, review integration and Render response schema, independent review, guarded release only when safe.
+
 # ЭРА — автономная разработка
+
+## Continuation — 2026-11-06 04:33 Asia/Yerevan
+- main SHA / Render LIVE exact: `4695807fad3dadd52826bfe5e839644b8d65d908` (GitHub compare identical; Render deploy `dep-dbkhmleq1p3s73amq310` LIVE).
+- #565 DRAFT PR #653: tightened fail-closed classification for malformed CI/deploy collections, unhashable Render status and malformed timestamps; added offline regression tests. Latest code SHA before checkpoint: `9b5cd95f42e3c553ea24d1a39a2753121f065384`. CI on final SHA NOT CONFIRMED; no independent review. No merge or deploy.
+- Next: confirm exact HEAD 6/6, wire independent read-only GitHub/Render snapshots without making monitor a required CI gate, seek independent review, then guarded release only if all gates pass. Accepted 3/40. No prohibited production changes.
+
+
+## Current continuation — 2026-11-06 02:36 Asia/Yerevan
+- Main / Render LIVE last confirmed: `4695807fad3dadd52826bfe5e839644b8d65d908`; Render `dep-dbkhmleq1p3s73amq310` LIVE. Recheck main before any merge.
+- #565 DRAFT PR #653 branch `fix/565-render-deploy-classifier-20261106`: previous HEAD `330802724ff18f1bd5350be3f2bfda63cabb8c64` passed 6/6 (Bot checks 5, Tests 1); independent reviews: none. Latest code+test HEAD `95417c0325f91b8b55edcd4ef9ab53a5a7895ed6` adds fail-closed malformed Render snapshot handling. CI on latest HEAD NOT YET CONFIRMED.
+- Next atomic action: verify exact HEAD 6/6, integrate classifier with independent read-only snapshots, obtain independent review, then guarded merge only after all gates. Do not merge a DRAFT.
+- Read-only monitoring must not become required GitHub CI. No user data, points, roles, publications, migrations, secrets or production changes authorized. Accepted register 3/40 (7.5%).
+
 
 Updated: 2026-11-02 UTC. This is the primary continuation point for the hourly task
 `6adcbd42ede08191a5c0a946e4147b52` («ЭРА — разработка до полной готовности»).
