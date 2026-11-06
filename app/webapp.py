@@ -638,7 +638,9 @@ async def telegram_webhook(
     secret: str | None = Header(default=None, alias="X-Telegram-Bot-Api-Secret-Token"),
 ) -> dict[str, bool]:
     expected_secret = request.app.state.settings.effective_webhook_secret
-    if expected_secret and not hmac.compare_digest(secret or "", expected_secret):
+    if not expected_secret:
+        raise HTTPException(status_code=503, detail="Webhook authentication is not configured")
+    if not hmac.compare_digest(secret or "", expected_secret):
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
     payload = await request.json()
     update = Update.model_validate(payload, context={"bot": request.app.state.bot})

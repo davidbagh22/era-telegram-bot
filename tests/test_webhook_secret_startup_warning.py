@@ -41,3 +41,13 @@ class WebhookSecretStartupWarningTests(TestCase):
             for headers in ({}, {"X-Telegram-Bot-Api-Secret-Token": "wrong-secret"}):
                 response = client.post("/telegram/webhook", headers=headers, json={})
                 self.assertEqual(response.status_code, 403, response.text)
+
+    def test_webhook_rejects_all_requests_when_server_secret_is_missing(self) -> None:
+        settings = Settings(bot_token="0000000000:CITESTTOKEN", webhook_secret="")
+        with patch.object(app.state, "settings", settings, create=True):
+            response = TestClient(app).post(
+                "/telegram/webhook",
+                headers={"X-Telegram-Bot-Api-Secret-Token": "any-value"},
+                json={},
+            )
+        self.assertEqual(response.status_code, 503, response.text)
