@@ -1,5 +1,11 @@
 # ЭРА — автономная разработка
 
+## Continuation — 2026-11-06 04:33 Asia/Yerevan
+- main SHA / Render LIVE exact: `4695807fad3dadd52826bfe5e839644b8d65d908` (GitHub compare identical; Render deploy `dep-dbkhmleq1p3s73amq310` LIVE).
+- #565 DRAFT PR #653: tightened fail-closed classification for malformed CI/deploy collections, unhashable Render status and malformed timestamps; added offline regression tests. Latest code SHA before checkpoint: `9b5cd95f42e3c553ea24d1a39a2753121f065384`. CI on final SHA NOT CONFIRMED; no independent review. No merge or deploy.
+- Next: confirm exact HEAD 6/6, wire independent read-only GitHub/Render snapshots without making monitor a required CI gate, seek independent review, then guarded release only if all gates pass. Accepted 3/40. No prohibited production changes.
+
+
 ## Current continuation — 2026-11-06 02:36 Asia/Yerevan
 - Main / Render LIVE last confirmed: `4695807fad3dadd52826bfe5e839644b8d65d908`; Render `dep-dbkhmleq1p3s73amq310` LIVE. Recheck main before any merge.
 - #565 DRAFT PR #653 branch `fix/565-render-deploy-classifier-20261106`: previous HEAD `330802724ff18f1bd5350be3f2bfda63cabb8c64` passed 6/6 (Bot checks 5, Tests 1); independent reviews: none. Latest code+test HEAD `95417c0325f91b8b55edcd4ef9ab53a5a7895ed6` adds fail-closed malformed Render snapshot handling. CI on latest HEAD NOT YET CONFIRMED.
