@@ -28,15 +28,18 @@ def classify(main_sha: str, deploys: list[dict], ci_checks: list[str],
     commit.id, createdAt. A LIVE deployment must have full commit SHA.
     ci_checks: the five required main push check conclusions.
     """
-    if not SHA.fullmatch(main_sha):
+    if not isinstance(main_sha, str) or not SHA.fullmatch(main_sha):
         raise ValueError("main_sha must be full lowercase SHA")
-    if now.tzinfo is None or grace_minutes < 0:
+    if not isinstance(now, datetime) or now.tzinfo is None or not isinstance(grace_minutes, (int, float)) or grace_minutes < 0:
         raise ValueError("aware now and nonnegative grace required")
-    if len(ci_checks) != 5 or any(c not in SUCCESS | FAILURE | {"pending", "in_progress", "queued"} for c in ci_checks):
+    if not isinstance(ci_checks, list) or len(ci_checks) != 5 or any(
+        not isinstance(c, str) or c not in SUCCESS | FAILURE | {"pending", "in_progress", "queued"}
+        for c in ci_checks
+    ):
         return {"state": "UNVERIFIED", "reason": "main_ci_incomplete_or_unknown"}
     if any(c in FAILURE for c in ci_checks):
         return {"state": "CI_FAILED", "reason": "main_ci_failed"}
-    if not deploys:
+    if not isinstance(deploys, list) or not deploys:
         return {"state": "UNVERIFIED", "reason": "render_deploys_missing"}
     if any(not isinstance(d, dict) or not isinstance(d.get("commit"), dict) for d in deploys):
         return {"state": "UNVERIFIED", "reason": "malformed_render_snapshot"}
@@ -59,12 +62,12 @@ def classify(main_sha: str, deploys: list[dict], ci_checks: list[str],
         return {"state": "DEPLOY_FAILED", "live_sha": live_sha}
     if status in {"deactivated", "superseded"}:
         return {"state": "ROLLBACK_OR_SUPERSEDED", "live_sha": live_sha}
-    if status not in {"created", "build_in_progress", "update_in_progress", "pending", "build_succeeded"}:
+    if not isinstance(status, str) or status not in {"created", "build_in_progress", "update_in_progress", "pending", "build_succeeded"}:
         return {"state": "UNVERIFIED", "reason": "unknown_deploy_status", "live_sha": live_sha}
     try:
         created = _time(latest["createdAt"])
         age = (now.astimezone(timezone.utc) - created).total_seconds() / 60
-    except (KeyError, TypeError, ValueError, OverflowError):
+    except (KeyError, TypeError, AttributeError, ValueError, OverflowError):
         return {"state": "UNVERIFIED", "reason": "invalid_deploy_timestamp", "live_sha": live_sha}
     if age < 0:
         return {"state": "UNVERIFIED", "reason": "future_deploy_timestamp", "live_sha": live_sha}
