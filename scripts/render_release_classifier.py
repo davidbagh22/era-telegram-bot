@@ -58,9 +58,9 @@ def classify(main_sha: str, deploys: list[dict], ci_checks: list[str],
         return {"state": "UNVERIFIED", "reason": "main_deploy_not_in_snapshot", "live_sha": live_sha}
     latest = candidates[0]
     status = latest.get("status")
-    if status in FAILURE:
+    if isinstance(status, str) and status in FAILURE:
         return {"state": "DEPLOY_FAILED", "live_sha": live_sha}
-    if status in {"deactivated", "superseded"}:
+    if isinstance(status, str) and status in {"deactivated", "superseded"}:
         return {"state": "ROLLBACK_OR_SUPERSEDED", "live_sha": live_sha}
     if not isinstance(status, str) or status not in {"created", "build_in_progress", "update_in_progress", "pending", "build_succeeded"}:
         return {"state": "UNVERIFIED", "reason": "unknown_deploy_status", "live_sha": live_sha}
