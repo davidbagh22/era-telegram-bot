@@ -1,3 +1,8 @@
+# Continuation — 2026-11-06 07:33 Asia/Yerevan
+- #565 PR #653 DRAFT: added read-only collector scripts/render_release_monitor.py and offline tests/test_render_release_monitor.py. Commit before checkpoint d038f5c34e93125248c9dfd2c9f65bbdf7808c95. Earlier GitHub HTTP 422 resolved by using create_file for new paths; no bypass.
+- Collector requires GITHUB_TOKEN, RENDER_API_KEY and five explicitly configured ERA_MAIN_CHECK_NAMES; missing/ambiguous input is UNVERIFIED. Not connected to scheduled workflow; no required CI gate introduced. New HEAD CI/tests/review NOT CONFIRMED; do not merge.
+- Last observed Render LIVE 4695807fad3dadd52826bfe5e839644b8d65d908; current main exact SHA must be rechecked before release. Accepted 3/40. Next: validate new tests and final 6/6, review integration and Render response schema, independent review, guarded release only when safe.
+
 # ЭРА — автономная разработка
 
 ## Continuation — 2026-11-06 04:33 Asia/Yerevan
