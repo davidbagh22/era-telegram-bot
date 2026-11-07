@@ -23,11 +23,12 @@ class HasDashboardAccessTests(unittest.TestCase):
         self.assertTrue(has_dashboard_access(None, settings, 555))
 
     def test_admin_role_grants_access(self) -> None:
-        user = SimpleNamespace(role=Role.ADMIN, is_blocked=False, is_archived=False, permission_grants=[])
+        user = SimpleNamespace(telegram_id=1, role=Role.ADMIN, is_blocked=False, is_archived=False, permission_grants=[])
         self.assertTrue(has_dashboard_access(user, self._settings(), 1))
 
     def test_active_narrow_permission_does_not_grant_global_dashboard(self) -> None:
         user = SimpleNamespace(
+            telegram_id=1,
             role="participant",
             is_blocked=False,
             is_archived=False,
@@ -37,6 +38,7 @@ class HasDashboardAccessTests(unittest.TestCase):
 
     def test_inactive_permission_grant_does_not_grant_access(self) -> None:
         user = SimpleNamespace(
+            telegram_id=1,
             role="participant",
             is_blocked=False,
             is_archived=False,
@@ -46,6 +48,7 @@ class HasDashboardAccessTests(unittest.TestCase):
 
     def test_blocked_user_denied_even_with_permissions(self) -> None:
         user = SimpleNamespace(
+            telegram_id=1,
             role="participant",
             is_blocked=True,
             is_archived=False,
@@ -54,7 +57,7 @@ class HasDashboardAccessTests(unittest.TestCase):
         self.assertFalse(has_dashboard_access(user, self._settings(), 1))
 
     def test_plain_participant_denied(self) -> None:
-        user = SimpleNamespace(role="participant", is_blocked=False, is_archived=False, permission_grants=[])
+        user = SimpleNamespace(telegram_id=1, role="participant", is_blocked=False, is_archived=False, permission_grants=[])
         self.assertFalse(has_dashboard_access(user, self._settings(), 1))
 
 
@@ -144,7 +147,7 @@ class DashboardQueueEntryTests(unittest.IsolatedAsyncioTestCase):
             for role, blocked, allowed in [(Role.ADMIN, False, True), (Role.PARTICIPANT, False, False),
                                            (Role.ADMIN, True, False)]:
                 with self.subTest(payload=payload, role=role, blocked=blocked):
-                    user = SimpleNamespace(role=role, is_blocked=blocked, is_archived=False, permission_grants=[])
+                    user = SimpleNamespace(telegram_id=5, role=role, is_blocked=blocked, is_archived=False, permission_grants=[])
                     message = SimpleNamespace(from_user=SimpleNamespace(id=5), answer=AsyncMock())
                     state = AsyncMock()
                     await rescue_start(message, AsyncMock(), user, Settings(bot_token="1234567890:test-token"),
