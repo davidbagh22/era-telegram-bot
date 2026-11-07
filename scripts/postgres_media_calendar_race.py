@@ -3,7 +3,7 @@ import asyncio
 import os
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -12,7 +12,7 @@ from app.database.media_models import MediaContentItem
 from app.database.models import AuditLog, Department, Direction, PermissionGrant, User, UserDirection
 from app.services import media_scope_service as scopes
 from app.services.media_service import decide_media_application
-from app.services.media_workspace_service import create_entry, update_entry
+from app.services.media_workspace_service import calendar, create_entry, update_entry
 
 
 async def main():
@@ -103,6 +103,41 @@ async def main():
             await decide_media_application(session, editor_id, "approve", actor=await session.get(User, chair_id), settings=settings)
             assert not await scopes.can_edit_calendar(session, editor, settings, "era")
             await session.commit()
+        # Isolated PostgreSQL proof for #554: invalid JSON must be filtered
+        # in SQL before LIMIT 100, not after it. This runs ONLY against era_test.
+        token = uuid.uuid4().hex
+        prefix = f"ci-json-{token}-"
+        async with sessions() as session:
+            metadata = [
+                {"media_area": "era"},
+                {"workspace_revision": 0},
+                {"media_area": "ksoors"},
+                None,  # JSON literal null; column is NOT NULL
+                {"media_area": None},  # explicit JSON null is not a valid area
+            ] + [["malformed"]] * 125
+            items = [MediaContentItem(
+                source_kind="media_workspace", source_key=f"{prefix}{index}",
+                kind="text", title=f"CI JSON {index}", status="planned",
+                metadata_json=value,
+            ) for index, value in enumerate(metadata)]
+            try:
+                session.add_all(items)
+                await session.flush()
+                era_ids = [items[index].id for index in (0, 1)]
+                ksoors_id = items[2].id
+                await session.commit()
+                era_page = await calendar(session, "era")
+                assert [row["id"] for row in era_page[:2]] == sorted(era_ids, reverse=True), era_page[:5]
+                assert all(row["area"] == "era" for row in era_page)
+                assert [row["id"] for row in (await calendar(session, "era", before_id=era_ids[1]))[:1]] == [era_ids[0]]
+                ksoors_page = await calendar(session, "ksoors")
+                assert ksoors_page[0]["id"] == ksoors_id, ksoors_page[:3]
+                assert all(row["area"] == "ksoors" for row in ksoors_page)
+            finally:
+                await session.rollback()
+                await session.execute(delete(MediaContentItem).where(MediaContentItem.source_key.like(f"{prefix}%")))
+                await session.commit()
+        print("Media calendar PostgreSQL: malformed JSON excluded before LIMIT, ERA/KSOORS scoped pages and cursor verified")
         print("Calendar scopes PostgreSQL: 8 grants -> 1 audit; revoke/write serialized; rejoin never restores editing")
         print("Media calendar PostgreSQL: 8 creates -> 1 item, 8 updates -> 1 revision, one audit per action")
     finally:
