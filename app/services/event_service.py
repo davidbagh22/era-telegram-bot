@@ -143,8 +143,12 @@ async def register_for_event(
 
 async def promote_waitlist(session: AsyncSession, event: Event) -> EventRegistration | None:
     """Move the oldest waiting participant into a freed seat, if possible."""
-    if event.participant_limit is None:
+    locked_event = await session.scalar(
+        select(Event).where(Event.id == event.id).with_for_update()
+    )
+    if locked_event is None or locked_event.participant_limit is None:
         return None
+    event = locked_event
     if int(await available_places(session, event)) <= 0:
         return None
     waiting = await session.scalar(
