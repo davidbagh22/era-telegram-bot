@@ -90,6 +90,14 @@ jobs:
         run: python -m pip install --upgrade pip && pip install -r requirements.txt
       - name: Upgrade a clean PostgreSQL database through every migration
         run: alembic upgrade heads
+      - name: Install PostgreSQL clients for isolated backup restore probe
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client-16
+      - name: Restore a real PostgreSQL dump through the backup verifier
+        env:
+          BACKUP_PROBE_SOURCE_URL: postgresql://era_test:era_test@127.0.0.1:5432/era_test
+          RESTORE_DATABASE_URL: postgresql://era_test:era_test@127.0.0.1:5432/era_restore_check
+          PG_BIN: /usr/lib/postgresql/16/bin
+        run: bash scripts/postgres_backup_restore_probe.sh
       - name: Verify support migration preserves legacy answers on PostgreSQL
         run: python scripts/postgres_support_migration_probe.py
       - name: Run the real startup seed path and verify timestamp defaults
