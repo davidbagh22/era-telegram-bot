@@ -32,8 +32,8 @@ function PortfolioSection({ title, entries }: { title: string; entries: Portfoli
       {entries.length === 0 ? <EmptyState text="Здесь пока нет подтверждённых записей." /> : (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
           {entries.map((entry, index) => (
-            <Card key={`${entry.title}-${index}`}>
-              <strong>{entry.title}</strong>
+            <Card key={`${entry.title}-${index}`} style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+              <strong style={{ display: "block", overflowWrap: "anywhere" }}>{entry.title}</strong>
               {entry.description && <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>{entry.description}</p>}
               {(entry.status || entry.date_label) && <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>{[entry.status, entry.date_label].filter(Boolean).join(" · ")}</p>}
             </Card>
@@ -130,10 +130,10 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
       <Card gradient>
         <div style={{ display: "flex", gap: "0.9rem", alignItems: "center" }}>
           <Avatar firstName={data.first_name} lastName={data.last_name} size="lg" />
-          <div style={{ minWidth: 0 }}>
+          <div data-testid="profile-identity" style={{ minWidth: 0 }}>
             <MonoLabel tone="violet">Профиль</MonoLabel>
             <h1 style={{ margin: "0.25rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.75rem", overflowWrap: "anywhere" }}>{data.full_name || data.first_name}</h1>
-            <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-secondary)" }}>{data.growth.label}{data.city ? ` · ${data.city}` : ""}</p>
+            {data.city && <p data-testid="profile-location" style={{ margin: "0.25rem 0 0", color: "var(--era-text-secondary)" }}>{data.city}</p>}
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.6rem", marginTop: "1rem" }}>
@@ -146,7 +146,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
         <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Мой вклад и опыт</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.6rem" }}>
           {DASHBOARD_CELLS.map((cell) => (
-            <button key={cell.key} type="button" onClick={() => setActiveCell(cell.key)} style={{ minHeight: 72, textAlign: "left", padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: "var(--era-surface)", border: "1px solid var(--era-border)" }}>
+            <button key={cell.key} type="button" onClick={() => setActiveCell(cell.key)} style={{ minHeight: 72, minWidth: 0, textAlign: "left", overflowWrap: "anywhere", padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: "var(--era-surface)", border: "1px solid var(--era-border)" }}>
               <strong style={{ display: "block" }}>{cell.label}</strong>
               <span style={{ display: "block", marginTop: "0.22rem", color: "var(--era-text-muted)", fontSize: "0.78rem" }}>{resultEntries[cell.key].length} записей</span>
             </button>

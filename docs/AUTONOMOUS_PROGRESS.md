@@ -1,59 +1,35 @@
 # ЭРА — автономная разработка
 
-Updated: 2026-10-30 UTC. This is the primary continuation point for the hourly task
-`6adcbd42ede08191a5c0a946e4147b52` («ЭРА — разработка до полной готовности»).
-Read this first, then current main/PR/CI/Render; consult older AI_TASK_STATE.md and
-checkpoint documents only for evidence relevant to the selected task. Do not restart
-the audit or create another automation. Existing task updated with the user's full
-30 October autonomous-development requirements, hourly, Asia/Yerevan.
+## Состояние (обновлено: 2026-11-04, запуск по подтверждённому ТЗ)
+- main SHA: 4695807fad3dadd52826bfe5e839644b8d65d908 | Render LIVE SHA: 4695807fad3dadd52826bfe5e839644b8d65d908 (dep-dbkhmleq1p3s73amq310).
+- Запуск: в процессе; рабочая ветка fix/event-lifecycle-malformed-notice-isolation-20261029, PR #537.
+- Текущая задача: PostgreSQL-проверка изоляции повреждённых lifecycle notices и конкуренции 8 обработчиков.
+- Следующий шаг: выполнить CI на новом HEAD #537; изучить сбои и исправить в этой же ветке.
+- Автозадача 6adcbd42ede08191a5c0a946e4147b52 обновлена полным ТЗ пользователя, почасовое расписание сохранено; подтверждено API. Последний записанный запуск завершён, конкурирующий активный запуск не обнаружен.
+- #551: DRAFT, HEAD 6a1c4b1823847097f6f00087c30b58653889927f; решение о legacy NULL/missing-area и многоролевая приёмка остаются открытыми. Не объединять только на основании CI.
+- #537: ветка согласована с текущим main обычным merge без force push. Добавлен probe в disposable local PostgreSQL era_test; любые реальные Telegram-вызовы запрещены mock-проверкой. До проверки ключей: 2 теста + 15 subtests PASS. Дополнительно реализовано точное совпадение ключа pending с event_id/phase, по замечанию в #537 от 4 ноября. Новая версия: 16 тестов + 19 subtests PASS, ruff E9/F PASS, compileall и diff --check PASS. Финальные 6/6 и PostgreSQL CI ещё не подтверждены.
+- Блокеры: #542 резервный админ-доступ; #589 политика видимости; #605 неоднозначность исторических локальных дат. Не изменять эти политики молча.
+- Нужно от владельца: пакетная реальная приёмка ролей и мобильных клиентов; до неё статусы не повышать.
 
-## Release and current change
-
-- Last observed main AND Render LIVE: `1a8b635792e0b931e079d99dde380bd1a2ffe706`.
-- Render deploy `dep-dbie8l29lscs73f7m3n0`, LIVE 2026-10-30 18:40:25 UTC.
-- Infrastructure: davidbagh22/era-telegram-bot; Render workspace
-  `tea-d91quq1o3t8c73ehphh0`, service `srv-d91r1j7avr4c73fs8h00`;
-  https://era-telegram-bot.onrender.com; @ERA_1bot. @MVKSRS_bot is separate.
-- Current branch: `fix/profile-remove-path-autonomous-state-20261030`.
-- Change: remove profile growth ladder «Мой путь», its criteria and stage counter;
-  retain points, contributions, portfolio, vector and participation history. Rename
-  «Лента пути» to «История участия». Update existing portfolio browser regression
-  to check the requested absence while still verifying earned-badge navigation.
-- Files: frontend/src/screens/ProfileScreen.tsx, frontend/e2e/portfolio.spec.ts,
-  docs/AUTONOMOUS_PROGRESS.md. CI/release pending when this checkpoint was written.
-- Next: complete exact-head PR CI (six jobs), merge with expected_head_sha, check
-  main CI and automatic Render LIVE exact merge SHA, run production_readonly_smoke.
-  Then implement safe hiding from public event listings and published-poster editing
-  using existing event administration; inspect existing visibility/history policies
-  and drafts #484/#486 before changing them. Never delete registrations or history.
-
-## Acceptance register (40 stable requirements)
-
-Status is NOT a subjective completion percentage. ПРОВЕРЕНО requires code/tests,
-main/LIVE and actual relevant user scenario evidence. ВЫПУЩЕНО alone does not close
-acceptance. Grouped requirements below require ALL their listed parts; split them
-only with an explicit register revision explaining the changed denominator.
-Current strict acceptance: 1/40 = 2.5%; 39 remain open. This measures evidenced
-acceptance, not the fraction of existing code. No new real Telegram acceptance
-was performed in this run. Historical proof must retain its date.
+## Реестр готовности (3/40 = 7,5%)
 
 | ID | Requirement | Status | Remaining evidence / action |
 |---|---|---|---|
 | A01 | Registration and authorization full cycle | ВЫПУЩЕНО | Real fresh/resumed application, photo, approval and login |
 | A02 | Roles and access boundaries | В РАЗРАБОТКЕ | #542; real admin/leader/employee/participant matrix |
 | A03 | Convenient main menu | ВЫПУЩЕНО | Verify final mobile navigation and legacy keyboard |
-| A04 | Remove «Мой путь» from profile | В РАЗРАБОТКЕ | Current branch; CI, release and real profile acceptance |
+| A04 | Remove «Мой путь» from profile | ВЫПУЩЕНО | Main ProfileScreen no longer renders «Мой путь»; real participant/mobile profile acceptance not confirmed |
 | A05 | Buttons, typography and logo | В РАЗРАБОТКЕ | Mobile visual review against agreed design |
-| A06 | iPhone and Android Mini App | В РАЗРАБОТКЕ | Real Telegram clients, not only Playwright |
-| B01 | Event create/publish/edit | ВЫПУЩЕНО | Real authorized scenario, no test announcement |
+| A06 | iPhone and Android Mini App | В РАЗРАБОТКЕ | #620 iOS ICS calendar import, real Telegram iPhone/Android clients, not only Playwright |
+| B01 | Event create/publish/edit | ВЫПУЩЕНО | #620 calendar export UX; real authorized scenario, no test announcement |
 | B02 | Edit published event poster | В РАЗРАБОТКЕ | Wizard supports poster changes; published entry flow unconfirmed |
-| B03 | Hide/remove events from general poster listing | НЕ НАЧАТО | Reversible visibility, retain history/registrations |
+| B03 | Hide/remove events from general poster listing | В РАЗРАБОТКЕ | Draft #589 exists; high-risk visibility policy, PostgreSQL and human acceptance not confirmed; do not release |
 | B04 | Publication latency and duplicate prevention | В РАЗРАБОТКЕ | #447 shipped; legacy #467/#491, uncertain receipts |
 | B05 | Registration, waitlist, capacity and deadlines | В РАЗРАБОТКЕ | Review overlapping #507/#510/#514/#515 as coherent package |
 | B06 | QR attendance | ВЫПУЩЕНО | Real scoped confirmation and repeated-scan acceptance |
 | B07 | Event points | ВЫПУЩЕНО | Actual attendance-to-ledger evidence, no test balance edits |
 | B08 | Actual production event list | В РАЗРАБОТКЕ | Authenticated read unavailable; do not invent the list |
-| C01 | Media chat and all eight topics | ВЫПУЩЕНО | Oct27 topics=8, pinned navigation8455; current role/link check |
+| C01 | Media chat and all eight topics | ПРОВЕРЕНО | 2026-11-02 LIVE b285de0: repeated 17:01/17:04/17:09 UTC 'Media forum ready: topics=8 navigation_message_id=8455'; setup_media_topics checks Telegram get_chat forum and bot admin topic/pin rights, 8 distinct ready thread IDs, reopen results and confirmed pinned navigation links. Does not claim each human member's private access. |
 | C02 | Agreed media recruitment notification | ПРОВЕРЕНО | #429; Oct26 18:09:42Z sent message26588; receipt reuse, no resend |
 | C03 | Media content plan and calendar | В РАЗРАБОТКЕ | #551 malformed metadata/scoped privacy; role acceptance |
 | C04 | Media tasks and staff | В РАЗРАБОТКЕ | Complete assignment/review and scoped membership acceptance |
@@ -73,25 +49,12 @@ was performed in this run. Historical proof must retain its date.
 | E06 | Literature club | ВЫПУЩЕНО | Real issue, subscription, discussion and reporting |
 | E07 | FAQ and support | ВЫПУЩЕНО | Scoped handling, replies and privacy acceptance |
 | E08 | My Vector | В РАЗРАБОТКЕ | Methods/check-ins/goals/history/privacy and earlier backlog |
-| E09 | Daily quotes | ВЫПУЩЕНО | Actual daily receipts in Mini App/chat/channel as authorized |
+| E09 | Daily quotes | В РАЗРАБОТКЕ | Historical Nov 1–2 channel posts and Mini App quote API are evidenced, but future channel publications now require explicit approval for the exact text/day/target; approval UI and real authorized workflow are pending. No unapproved auto-posts permitted. |
 | E10 | Broadcasts and notifications | В РАЗРАБОТКЕ | #491 incomplete receipts; no uncertain replay |
 | E11 | Security and data protection | В РАЗРАБОТКЕ | #475/#484/#486/#542; auth and role checks |
-| E12 | Backup and restore | ВЫПУЩЕНО | Encrypted GitHub + isolated PG restore evidenced; latest review |
+| E12 | Backup and restore | ПРОВЕРЕНО | 2026-11-02 scheduled backup run 41407674271 SUCCESS: real production OIDC snapshot, isolated PostgreSQL 18 restore and migrations, encrypted/checksum round-trip, stored private artifact 13123694669 (expires 2026-11-09). External S3 copy optional and not configured; retention improvement remains advisable. |
 | E13 | Legal/content organizational acceptance | В РАЗРАБОТКЕ | Draft #364 requires responsible human approval |
 | E14 | Final multi-role production acceptance | НЕ НАЧАТО | All required scenarios, no known blockers, observation |
-
-## Open technical work and CI
-
-Open code/content drafts observed 30 October: #584 callback/FSM IDs; #578 durable
-forum creation claim; #551 calendar metadata; #542 inactive admin denial; #537
-corrupt attendance notices; #523 wizard JSON recovery; #515 capacity locks; #514
-registration policy locks; #510 native waitlist parity; #507 commit before notices;
-#500 malformed reminders; #491 incomplete broadcast receipts; #486 cancelled
-event history; #484 public poster privacy/MIME; #475 webhook secret; #468 3h media
-reminders; #467 legacy event publication; #364 legal. Their current HEAD CI needs
-fresh verification before release. Older green runs never authorize changed HEADs.
-Many additional open PRs are historical checkpoint documents; merging them does
-not complete functional requirements. Do not blindly merge old docs over new state.
 
 ## Human blockers and non-negotiable constraints
 
@@ -112,18 +75,16 @@ not complete functional requirements. Do not blindly merge old docs over new sta
   limits. The next available hourly run continues here. No continuous execution
   between runs is promised.
 
-## Reporting
+## Журнал
+- Текущий запуск: #537 — PostgreSQL regression probe, восемь обработчиков, malformed JSON/array/null/recipients/attempts; неизменность плохих записей, одна sent-транзакция для здоровой, ноль отправок. Добавлена защита от несовпадающего ключа/event_id/phase. CI ещё требуется.
+- 2026-11-04: автозадача обновлена пользовательским ТЗ, расписание сохранено. main и Render LIVE совпадают: 4695807.
+- 2026-11-02: #652 merged -> 4695807, автоматический Render LIVE подтверждён; новые реальные роли не проверялись.
+- 2026-11-02: #523 merged -> 7ca1c75; EVENT_WIZARD_SYNC_EVENT_IDS остаётся default-empty. Включение реальных event IDs не разрешено этим выпуском.
+- 2026-11-02: #651 календарь — durable safe_send_once, неизвестные результаты не повторяются; реальная iPhone-приёмка не подтверждена.
+- 2026-11-02: #650 — активная регистрация требуется при начале и отправке activity proof.
+- 2026-11-02: #648/#649 — точное согласование плановых публикаций, пользовательская приёмка workflow остаётся открытой.
+- 2026-11-02: #646/#647 — согласование плановых публикаций и fail-closed при неизвестной доставке.
+- Старые подробности доступны в git-истории этого файла; не перечитывать без конкретной причины.
 
-Report only material results/blockers, usual window 09–19 Asia/Yerevan. One factual
-daily summary; record its delivery date here when sent. Last daily summary under
-this register: none yet. Format: «ЭРА | Автономная разработка», completed, evidence,
-open count, accepted percentage, next concrete action. Never declare 100% until
-all forty requirements are ПРОВЕРЕНО and all known mandatory backlog is closed.
-
-## 2026-11-05 01:34 Asia/Yerevan — #605 ambiguous deadlines (in progress)
-
-- Confirmed main `4695807fad3dadd52826bfe5e839644b8d65d908`, automatic Render LIVE `dep-dbkhmleq1p3s73amq310` same SHA; no production write.
-- Existing #605 branch `fix/event-activity-naive-deadline-20261101`: replaced unconditional naive-as-UTC coercion with conservative fail-closed handling for *all* ambiguous naive deadlines, preserving aware UTC/offset instants and None semantics. Updated start and stale-FSM regression cases for UTC-naive past/future and Yerevan-naive near future; no live messages or data touched. Final code HEAD `9c36260e270094c16a883594cded7d21e0970c2d` **CI pending**; do not merge until 6/6, independent review, and owner-approved handling of ambiguous historical deadlines. This approach may deny legitimate activity proofs until provenance is reconciled; keep PR DRAFT. Source writes succeeded; no workaround used.
-- Next: inspect exact HEAD CI, source review, and add explicit offset-aware submit test if missing. Keep independent safe work moving; do not force merge or auto-deploy while policy risk remains. Accepted register unchanged **3/40 (7.5%)**.
-
-- 2026-11-05 04:37 Asia/Yerevan: added offset-aware stale-FSM submission regression on #605 branch (commit `52d331ff8bc6895ff2e8ddf887908a499c0a68a9`). Tests cover expired and future `+04:00` instants, including no write/no notice for expired and valid registered submission for future. Tests/CI on exact HEAD are **not confirmed**; PR stays DRAFT due to historic deadline provenance and merge conflict. main and Render last observed `4695807fad3dadd52826bfe5e839644b8d65d908`. Next: inspect exact-head CI, resolve branch conflict safely without overwriting main, then decide policy with owner; no production deploy.
+## Отчётность
+Один существенный суточный отчёт 09:00–19:00 Asia/Yerevan; вне окна только критический блокер. Последняя подтверждённая реальная приёмка: 3/40. CI и LIVE не равны приёмке. Не создавать отдельный PR только для отчёта.

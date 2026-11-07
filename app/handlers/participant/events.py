@@ -353,6 +353,12 @@ async def event_activity_start(
         select(EventRegistration).where(
             EventRegistration.event_id == activity.event_id,
             EventRegistration.user_id == user.id,
+            # Issue #598: cancelled / waitlist rows must never qualify for proof.
+            EventRegistration.status.in_((
+                RegistrationStatus.REGISTERED,
+                RegistrationStatus.WILL_COME,
+                RegistrationStatus.ATTENDED,
+            )),
         )
     )
     if registration is None:
@@ -416,6 +422,12 @@ async def event_activity_submit(
         select(EventRegistration).where(
             EventRegistration.event_id == activity.event_id,
             EventRegistration.user_id == user.id,
+            # Issue #598: cancelled / waitlist rows must never qualify for proof.
+            EventRegistration.status.in_((
+                RegistrationStatus.REGISTERED,
+                RegistrationStatus.WILL_COME,
+                RegistrationStatus.ATTENDED,
+            )),
         )
     )
     if registration is None:

@@ -12,6 +12,7 @@ import { SkeletonCard } from "../../components/Skeleton";
 import { StatusBanner } from "../../components/StatusBanner";
 import { useToast } from "../../components/Toast";
 import type { AdminCareerItem, AdminRecommendation } from "../../types/career";
+import { safeEvidenceUrl } from "../../utils/safeEvidenceUrl";
 
 function openBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -24,6 +25,11 @@ function openBlob(blob: Blob, filename: string) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function SafeEvidenceLink({ url }: { url: string | null }) {
+  const href = safeEvidenceUrl(url);
+  return href ? <a href={href} target="_blank" rel="noopener noreferrer">Открыть источник ↗</a> : null;
 }
 
 export function AdminCareerScreen() {
@@ -114,7 +120,7 @@ export function AdminCareerScreen() {
                       catch { toast.show("Не удалось открыть файл", "error"); }
                     })()}>Открыть файл</button>
                   )}
-                  {item.url && <a href={item.url} target="_blank" rel="noreferrer">Открыть источник ↗</a>}
+                  <SafeEvidenceLink url={item.url} />
                 </div>
                 <textarea
                   rows={2}
