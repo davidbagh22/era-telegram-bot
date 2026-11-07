@@ -17,15 +17,25 @@ PY
 umask 077
 VERIFY_DIR="$(mktemp -d)"
 trap 'rm -rf "${VERIFY_DIR}"' EXIT
-AWS_ARGS=()
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    echo 'sha256sum is required to validate the external backup' >&2
+    exit 127
+  fi
+}
+AWS_CMD=(aws)
 if [[ -n "${BACKUP_S3_ENDPOINT_URL:-}" ]]; then
-  AWS_ARGS+=(--endpoint-url "${BACKUP_S3_ENDPOINT_URL}")
+  AWS_CMD+=(--endpoint-url "${BACKUP_S3_ENDPOINT_URL}")
 fi
 if [[ -n "${BACKUP_S3_REGION:-}" ]]; then
   export AWS_DEFAULT_REGION="${BACKUP_S3_REGION}"
 fi
-aws "${AWS_ARGS[@]}" s3 cp "${EXTERNAL_REFERENCE}" "${VERIFY_DIR}/backup.enc" --only-show-errors
-ACTUAL_SHA="$(sha256sum "${VERIFY_DIR}/backup.enc" | awk '{print $1}')"
+"${AWS_CMD[@]}" s3 cp "${EXTERNAL_REFERENCE}" "${VERIFY_DIR}/backup.enc" --only-show-errors
+ACTUAL_SHA="$(sha256_file "${VERIFY_DIR}/backup.enc")"
 if [[ "${ACTUAL_SHA}" != "${ARCHIVE_SHA256}" ]]; then
   echo 'External encrypted backup checksum mismatch' >&2
   exit 1
