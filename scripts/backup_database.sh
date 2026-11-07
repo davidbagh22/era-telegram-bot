@@ -25,8 +25,27 @@ if [[ ! -s "${DUMP_PATH}" ]]; then
   exit 1
 fi
 
-SHA256="$(sha256sum "${DUMP_PATH}" | awk '{print $1}')"
-SIZE_BYTES="$(stat -c '%s' "${DUMP_PATH}")"
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    echo 'sha256sum is required to verify the backup payload' >&2
+    exit 127
+  fi
+}
+
+sha_file_size() {
+  if stat -c '%s' "$1" >/dev/null 2>&1; then
+    stat -c '%s' "$1"
+  else
+    stat -f '%z' "$1"
+  fi
+}
+
+SHA256="$(sha256_file "${DUMP_PATH}")"
+SIZE_BYTES="$(sha_file_size "${DUMP_PATH}")"
 PG_VERSION="$(pg_dump --version | sed 's/"/\\"/g')"
 
 cat > "${MANIFEST_PATH}" <<EOF
