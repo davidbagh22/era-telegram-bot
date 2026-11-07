@@ -106,9 +106,9 @@ async def main() -> None:
         barrier = asyncio.Barrier(len(participant_ids))
 
         async def promote() -> int | None:
+            await barrier.wait()
             async with sessions() as session:
                 current_event = await session.get(Event, event_id)
-                await barrier.wait()
                 registration = await promote_waitlist(session, current_event)
                 await session.commit()
                 return registration.id if registration is not None else None
