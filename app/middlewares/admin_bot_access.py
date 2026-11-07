@@ -19,10 +19,7 @@ def has_admin_bot_access(
     """
     # The persisted identity must belong to the actual Telegram sender;
     # a stale/misbound user object must never unlock the legacy admin router.
-    if user is not None and (
-        user.is_blocked or user.is_archived
-        or getattr(user, "telegram_id", None) != telegram_id
-    ):
+    if user is None or user.is_blocked or user.is_archived or getattr(user, "telegram_id", None) != telegram_id:
         return False
     return bool(telegram_id in settings.admin_ids or (user and user.role == Role.ADMIN))
 

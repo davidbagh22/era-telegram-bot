@@ -176,7 +176,8 @@ def test_blocked_or_archived_user_in_admin_ids_is_not_full_admin():
     from app.services.authorization_service import is_full_admin
     settings = SimpleNamespace(admin_ids=[7])
     ok = SimpleNamespace(telegram_id=7, role=Role.ADMIN, is_blocked=False, is_archived=False)
-    assert is_full_admin(ok, settings, 7) and is_full_admin(None, settings, 7)
+    assert is_full_admin(ok, settings, 7)
+    assert not is_full_admin(None, settings, 7)
     # A caller must not borrow a different persisted user's admin role.
     assert not is_full_admin(ok, settings, 8)
     assert not is_full_admin(SimpleNamespace(role=Role.ADMIN, is_blocked=False, is_archived=False), settings, 7)
@@ -194,7 +195,7 @@ def test_legacy_admin_router_denies_blocked_or_archived_settings_admin() -> None
     settings = Settings(bot_token="1234567890:test", admin_ids=[7])
     active = _user(telegram_id=7, role=Role.ADMIN)
     assert has_admin_bot_access(active, settings, 7)
-    assert has_admin_bot_access(None, settings, 7)
+    assert not has_admin_bot_access(None, settings, 7)
 
     for blocked, archived in ((True, False), (False, True)):
         disabled = _user(telegram_id=7, role=Role.ADMIN, blocked=blocked, archived=archived)

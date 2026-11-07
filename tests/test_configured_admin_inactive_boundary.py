@@ -1,7 +1,6 @@
-"""Configured ADMIN_IDS must not bypass a persisted user's inactive status.
+"""Configured ADMIN_IDS require an active matching persisted user.
 
 Isolated authorization checks only: no real roles, users, chats or secrets.
-The legacy no-user bootstrap behavior is explicitly preserved pending policy review.
 """
 import unittest
 from types import SimpleNamespace
@@ -101,8 +100,8 @@ class ConfiguredAdminInactiveBoundaryTests(unittest.TestCase):
         self.assertFalse(is_full_admin(user, self.settings, 100))
         self.assertFalse(can_manage_permissions(user, self.settings, 100))
 
-    def test_legacy_bootstrap_without_persisted_user_is_preserved(self):
-        self.assertTrue(is_full_admin(None, self.settings, 100))
+    def test_configured_admin_id_requires_active_persisted_user(self):
+        self.assertFalse(is_full_admin(None, self.settings, 100))
         self.assertFalse(is_full_admin(None, self.settings, 200))
 
 

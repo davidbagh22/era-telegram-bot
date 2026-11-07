@@ -50,12 +50,8 @@ def _active_identity(user: User | None, telegram_id: int) -> bool:
 
 
 def is_full_admin(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    """Configured admin IDs never override an existing inactive/mismatched user.
-
-    Preserve the legacy no-user bootstrap path for configured IDs; it requires
-    a separate policy review and must not be silently removed in this patch.
-    """
-    if user is not None and not _active_identity(user, telegram_id):
+    """Configured admin IDs require an active matching persisted identity."""
+    if not _active_identity(user, telegram_id):
         return False
     return bool(telegram_id in settings.admin_ids or (user and user.role == Role.ADMIN))
 
