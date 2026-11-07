@@ -115,7 +115,8 @@ def _calendar_metadata_filter(dialect_name: str):
     )
 
 
-async def calendar(session, area, *, before_id: int | None = None, status_group: str = "all"):
+async def calendar(session, area, *, before_id: int | None = None, status_group: str = "all",
+                   include_legacy: bool = True):
     # Fail closed before opening a DB query: a caller must not request an
     # unscoped/unknown calendar or bypass the keyset cursor boundary.
     if type(area) is not str or area not in AREAS:
@@ -136,8 +137,11 @@ async def calendar(session, area, *, before_id: int | None = None, status_group:
         dialect = "sqlite"
     elif dialect not in {"sqlite", "postgresql"}:
         raise RuntimeError("Unsupported calendar JSON dialect")
+    stored_area = MediaContentItem.metadata_json["media_area"].as_string()
     query = select(MediaContentItem).where(_calendar_metadata_filter(dialect)).where(func.coalesce(
-        MediaContentItem.metadata_json["media_area"].as_string(), "era") == area)
+        stored_area, "era") == area)
+    if not include_legacy and area == "era":
+        query = query.where(stored_area == area)
     # Filter before pagination: a long history of published posts must not hide open tasks.
     if status_group == "active":
         query = query.where(MediaContentItem.status.notin_(("published", "skipped")))
@@ -245,7 +249,13 @@ async def update_entry(session, user, settings, area, item_id, values, revision)
         .with_for_update().execution_options(populate_existing=True))
     # An unowned/corrupt record must be indistinguishable from a missing or
     # foreign-area record. Never reveal its existence through error types.
-    if item is None or area_of(item) != area:
+    is_legacy = item is not None and (
+        item.metadata_json is None
+        or isinstance(item.metadata_json, dict) and "media_area" not in item.metadata_json
+    )
+    if item is None or area_of(item) != area or (
+        is_legacy and not await media_service.can_manage_media(session, user, settings)
+    ):
         raise LookupError("Материал не найден в выбранном направлении")
     data = dict(_metadata(item))
     stored_revision = data.get("workspace_revision", 0)
