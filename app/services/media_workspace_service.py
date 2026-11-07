@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-from sqlalchemy import func, select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.database.media_models import MediaContentItem
@@ -60,9 +60,15 @@ def item_out(item):
         "revision": data.get("workspace_revision", 0)}
 
 
-async def calendar(session, area, *, before_id: int | None = None, status_group: str = "all"):
-    query = select(MediaContentItem).where(func.coalesce(
-        MediaContentItem.metadata_json["media_area"].as_string(), "era") == area)
+async def calendar(session, area, *, before_id: int | None = None, status_group: str = "all",
+                   include_legacy: bool = True):
+    stored_area = MediaContentItem.metadata_json["media_area"].as_string()
+    area_filter = (
+        or_(stored_area == area, stored_area.is_(None))
+        if include_legacy and area == "era"
+        else stored_area == area
+    )
+    query = select(MediaContentItem).where(area_filter)
     # Filter before pagination: a long history of published posts must not hide open tasks.
     if status_group == "active":
         query = query.where(MediaContentItem.status.notin_(("published", "skipped")))
@@ -157,7 +163,10 @@ async def update_entry(session, user, settings, area, item_id, values, revision)
     await require_access(session, user, settings, write=True, area=area)
     item = await session.scalar(select(MediaContentItem).where(MediaContentItem.id == item_id)
         .with_for_update().execution_options(populate_existing=True))
-    if item is None or area_of(item) != area:
+    is_legacy = item is not None and (item.metadata_json or {}).get("media_area") is None
+    if item is None or area_of(item) != area or (
+        is_legacy and not await media_service.can_manage_media(session, user, settings)
+    ):
         raise LookupError("Материал не найден в выбранном направлении")
     data = dict(item.metadata_json or {})
     if data.get("workspace_revision", 0) != revision:
