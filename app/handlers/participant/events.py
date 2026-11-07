@@ -36,18 +36,11 @@ def _approved(user: User | None) -> bool:
 
 
 def _activity_expired(deadline: datetime | None) -> bool:
-    """Fail closed on ambiguous legacy deadlines; preserve aware instants.
-
-    Historical naive values may represent UTC or Yerevan wall-clock time.
-    Neither interpretation can be proven from the value alone. Until a
-    provenance-aware reconciliation exists, do not allow a new proof or a
-    stale FSM submission based on such an ambiguous deadline. This never
-    mutates the stored deadline or an existing submission.
-    """
+    """Interpret legacy naive deadlines as UTC; preserve aware instants."""
     if deadline is None:
         return False
     if deadline.tzinfo is None or deadline.utcoffset() is None:
-        return True
+        deadline = deadline.replace(tzinfo=timezone.utc)
     return deadline <= datetime.now(timezone.utc)
 
 

@@ -90,16 +90,19 @@ class ActivitySubmissionEligibilityTests(IsolatedAsyncioTestCase):
                 state.clear.assert_awaited_once()
                 self.assertIn("закрыта", message.answer.await_args.args[0])
 
-    async def test_ambiguous_naive_deadline_blocks_stale_fsm_without_writes(self):
-        utc_naive = datetime.now(timezone.utc).replace(tzinfo=None)
-        yerevan_naive = datetime.now(timezone(timedelta(hours=4))).replace(tzinfo=None)
-        for deadline in (utc_naive - timedelta(days=1),
-                         utc_naive + timedelta(days=1),
-                         yerevan_naive + timedelta(minutes=30)):
-            with self.subTest(deadline=deadline):
+    async def test_naive_deadline_is_interpreted_as_utc_for_stale_fsm(self):
+        for expired in (True, False):
+            deadline = (datetime.now(timezone.utc) + timedelta(
+                days=-1 if expired else 1
+            )).replace(tzinfo=None)
+            with self.subTest(expired=expired):
                 message, state, session = _fixtures(
                     activity=_activity(deadline=deadline)
                 )
+                if not expired:
+                    session.scalar.side_effect = [
+                        SimpleNamespace(event_id=13), None,
+                    ]
                 with patch(
                     "app.handlers.participant.events.notify_admins",
                     new_callable=AsyncMock,
@@ -109,10 +112,16 @@ class ActivitySubmissionEligibilityTests(IsolatedAsyncioTestCase):
                         SimpleNamespace(), SimpleNamespace(),
                     )
                 state.clear.assert_awaited_once()
-                session.scalar.assert_not_awaited()
-                session.add.assert_not_called()
-                notify.assert_not_awaited()
-                self.assertIn("закрыта", message.answer.await_args.args[0])
+                if expired:
+                    session.scalar.assert_not_awaited()
+                    session.add.assert_not_called()
+                    notify.assert_not_awaited()
+                    self.assertIn("закрыта", message.answer.await_args.args[0])
+                else:
+                    self.assertEqual(session.scalar.await_count, 2)
+                    session.add.assert_called_once()
+                    notify.assert_awaited_once()
+                    self.assertIn("в вашем профиле", message.answer.await_args.args[0])
 
     async def test_offset_aware_deadline_preserves_absolute_instant_on_submit(self):
         # A future Yerevan deadline must remain open; an expired one must
