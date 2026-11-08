@@ -8,7 +8,7 @@ from app.config import Settings
 from app.database.models import User
 from app.services.admin_dashboard_service import has_dashboard_access
 from app.services.media_service import media_access_level, media_permissions
-from app.services.media_topics_service import TOPICS, read_topics, topic_id, topic_links
+from app.services.media_topics_service import TOPICS, read_topics, topic_links
 from app.utils import texts
 
 router = Router(name="admin_native_media")
