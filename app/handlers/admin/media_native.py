@@ -1,7 +1,7 @@
 """Media hub entry in the native administrator panel; read-only forum inspection."""
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,7 @@ from app.services.admin_dashboard_service import has_dashboard_access
 from app.services.media_service import media_access_level, media_permissions
 from app.services.media_topics_service import TOPICS, read_topics, topic_links
 from app.utils import texts
+from app.utils.deep_links import miniapp_path_url
 
 router = Router(name="admin_native_media")
 
@@ -35,6 +36,9 @@ async def show_media(message: Message, user: User | None, settings: Settings, se
                 state = item.get("state", "не настроена") if isinstance(item, dict) else "нужна проверка"
                 rows.append([InlineKeyboardButton(text=f"⚠ {name} · {str(state)[:24]}", callback_data="admin:media:refresh")])
     rows.insert(0, [InlineKeyboardButton(text="📋 Очередь материалов", callback_data="admin:media:queue")])
+    media_url = miniapp_path_url(settings.effective_miniapp_url, "media")
+    if media_url:
+        rows.insert(0, [InlineKeyboardButton(text="✏️ Управлять контентом", web_app=WebAppInfo(url=media_url))])
     rows.append([InlineKeyboardButton(text="🔄 Обновить состояние", callback_data="admin:media:refresh")])
     rows.append([InlineKeyboardButton(text="← Админ-панель", callback_data="admin:panel")])
     counts = dict((await session.execute(select(MediaContentItem.status, func.count(MediaContentItem.id))
