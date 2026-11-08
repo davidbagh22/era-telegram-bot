@@ -103,7 +103,7 @@ async def compose_text(message: Message, user: User | None, settings: Settings,
     audience_label = "Все одобренные участники" if data["audience"] == "all" else ROLES[data["filter_value"]]
     token = data["campaign_key"]
     await message.answer(
-        f"📨 <b>Предпросмотр рассылки</b>\nАудитория: {audience_label}\n"
+        f"📨 Предпросмотр рассылки\nАудитория: {audience_label}\n"
         f"Получателей сейчас: {count}\n\n{value}\n\n"
         "Перед отправкой состав аудитории будет определён заново. "
         "Telegram-пользователи, запретившие сообщения боту, могут не получить рассылку.",
