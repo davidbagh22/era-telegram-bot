@@ -5,9 +5,10 @@ import hashlib
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 
-from app.database.models import Broadcast, Direction
+from app.database.models import Broadcast, Direction, User
 from app.services.general_topics_service import send_general_topic_once
 from app.services.media_service import media_config
+from app.utils.constants import ApplicationStatus
 
 logger = logging.getLogger(__name__)
 CAMPAIGN_KEY = "media-recruitment-20261026-v1"
@@ -89,9 +90,18 @@ async def publish_media_join_direct_invitation(bot, settings, session_factory):
         return "wrong_bot"
     from app.services.admin_broadcast_service import send_personal_broadcast
 
-    # Hash is the same stable author/key pair used in the campaign service.
-    campaign_hash = hashlib.sha256(f"None:{MEDIA_JOIN_DM_KEY}".encode()).hexdigest()
+    # Broadcast.author_id is non-nullable. Only a verified registered chair
+    # can author the organization-wide invitation; no synthetic user IDs.
+    author_id = getattr(settings, "era_chair_user_id", None)
+    if not author_id:
+        return "chair_not_configured"
+    campaign_hash = hashlib.sha256(f"{author_id}:{MEDIA_JOIN_DM_KEY}".encode()).hexdigest()
     async with session_factory() as session:
+        author = await session.get(User, author_id)
+        if (author is None or author.is_blocked or author.is_archived
+                or author.application_status != ApplicationStatus.APPROVED):
+            logger.warning("Media invitation withheld: chair account unavailable")
+            return "chair_account_unavailable"
         existing = await session.scalar(select(Broadcast).where(
             Broadcast.audience_filter_json["campaign_key"].as_string() == campaign_hash
         ))
@@ -99,7 +109,7 @@ async def publish_media_join_direct_invitation(bot, settings, session_factory):
             return f"existing:{existing.status}"
         result = await send_personal_broadcast(
             bot, session, audience="all", filter_value=None,
-            text=MEDIA_JOIN_DM_TEXT, author_id=None, settings=settings,
+            text=MEDIA_JOIN_DM_TEXT, author_id=author_id, settings=settings,
             campaign_key=MEDIA_JOIN_DM_KEY,
         )
         logger.info("Media private recruitment: total=%s sent=%s failed=%s",
