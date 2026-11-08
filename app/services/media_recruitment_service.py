@@ -1,10 +1,11 @@
 """Owner-authorized media recruitment, delivered once through the existing ledger."""
 import logging
+import hashlib
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 
-from app.database.models import Direction
+from app.database.models import Broadcast, Direction
 from app.services.general_topics_service import send_general_topic_once
 from app.services.media_service import media_config
 
@@ -55,3 +56,52 @@ async def publish_media_recruitment(bot, settings, session_factory):
     logger.info("Media recruitment delivery: status=%s duplicate=%s message_id=%s",
         result.status, result.duplicate, result.message_id)
     return result.status
+
+
+# A separate, owner-authorized invitation to approved users in private messages.
+# Distinct from the historical general-chat campaign above.
+MEDIA_JOIN_DM_KEY = "media-club-invitation-20261108-v1"
+MEDIA_JOIN_DM_TEXT = (
+    "Хочешь быть частью команды, которая создаёт ЭРА?\n\n"
+    "Открываем набор в медиаотдел! Здесь можно попробовать себя в съёмках, "
+    "монтаже, дизайне, журналистике и ведении социальных сетей. Опыт не обязателен "
+    "— главное, желание учиться и создавать.\n\n"
+    "Впереди реальные проекты, выездные мероприятия, практика с партнёрами, "
+    "сертификаты и возможность получить рекомендательное письмо за активную работу.\n\n"
+    "Присоединяйся к команде медиа ЭРА:\n"
+    "https://t.me/+f03ksvhCMKc5NDBi"
+)
+
+
+async def publish_media_join_direct_invitation(bot, settings, session_factory):
+    """Once per campaign: the existing durable broadcast ledger owns all sends.
+
+    Off by default. Never automatically renew the recipient snapshot on restart;
+    any interrupted campaign is handled by resume_broadcasts instead.
+    """
+    if not getattr(settings, "media_join_dm_campaign_enabled", False):
+        return "disabled"
+    if settings.media_chat_url != "https://t.me/+f03ksvhCMKc5NDBi":
+        logger.warning("Media invitation skipped: expected chat invitation changed")
+        return "unexpected_chat"
+    me = await bot.get_me()
+    if (me.username or "").casefold() != "era_1bot":
+        return "wrong_bot"
+    from app.services.admin_broadcast_service import send_personal_broadcast
+
+    # Hash is the same stable author/key pair used in the campaign service.
+    campaign_hash = hashlib.sha256(f"None:{MEDIA_JOIN_DM_KEY}".encode()).hexdigest()
+    async with session_factory() as session:
+        existing = await session.scalar(select(Broadcast).where(
+            Broadcast.audience_filter_json["campaign_key"].as_string() == campaign_hash
+        ))
+        if existing is not None:
+            return f"existing:{existing.status}"
+        result = await send_personal_broadcast(
+            bot, session, audience="all", filter_value=None,
+            text=MEDIA_JOIN_DM_TEXT, author_id=None, settings=settings,
+            campaign_key=MEDIA_JOIN_DM_KEY,
+        )
+        logger.info("Media private recruitment: total=%s sent=%s failed=%s",
+                    result.total, result.sent, result.failed)
+        return "created"
