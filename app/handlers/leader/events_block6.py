@@ -112,8 +112,16 @@ async def event_revise(call: CallbackQuery, user: User | None, state: FSMContext
 
 @router.callback_query(F.data == "leader:event:new")
 async def event_new(call: CallbackQuery, user: User | None, state: FSMContext, settings: Settings | None = None) -> None:
-    if not await guard(call, user):
+    from app.services.authorization_service import can_manage_events
+    # Admin IDs may have a participant role, while still having explicit event rights.
+    authorized = is_leader(user) or bool(
+        user and settings and not user.is_blocked and not user.is_archived
+        and can_manage_events(user, settings, call.from_user.id)
+    )
+    if not authorized:
+        await call.answer(texts.NO_ACCESS, show_alert=True)
         return
+    await call.answer()
     await state.clear()
     await call.message.answer("Как подготовить мероприятие?", reply_markup=mode_keyboard(settings, user))
 
