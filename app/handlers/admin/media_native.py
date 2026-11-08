@@ -42,7 +42,7 @@ async def show_media(message: Message, user: User | None, settings: Settings, se
     description = ("Контент-план: " + str(sum(counts.values())) + " материалов. "
                    + "На согласовании: " + str(counts.get("review", 0)) + ". "
                    + "Готово: " + str(counts.get("ready", 0)) + ". "
-                   + "Запланировано: " + str(counts.get("scheduled", 0)) + ".\\n\\n"
+                   + "Запланировано: " + str(counts.get("scheduled", 0)) + ".\n\n"
                    + "Для редактирования материалов откройте раздел «Медиа» в приложении ЭРА. "
                    + "Ссылки ниже ведут только в подтверждённые темы чата.")
     await message.answer(
@@ -81,13 +81,13 @@ async def media_queue(call: CallbackQuery, user: User | None, settings: Settings
         .order_by(MediaContentItem.id.desc()).limit(12))).all()
     labels = {"review": "На согласовании", "ready": "Готово",
               "scheduled": "Запланировано", "failed": "Ошибка публикации"}
-    body = "📋 Медиа · рабочая очередь\\n\\n"
+    body = "📋 Медиа · рабочая очередь\n\n"
     if items:
-        body += "\\n".join(f"#{item.id} · {labels.get(item.status, item.status)} · "
+        body += "\n".join(f"#{item.id} · {labels.get(item.status, item.status)} · "
                           f"{(item.title or item.rubric or 'Материал')[:100]}" for item in items)
     else:
         body += "Нет материалов, ожидающих действия."
-    body += "\\n\\nЭто обзор без изменений и автоматической публикации."
+    body += "\n\nЭто обзор без изменений и автоматической публикации."
     await call.message.answer(body, parse_mode=None, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="↩ Медиа", callback_data="admin:media")],
     ]))
