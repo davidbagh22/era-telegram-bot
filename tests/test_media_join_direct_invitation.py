@@ -30,9 +30,14 @@ class DirectMediaRecruitmentTests(unittest.IsolatedAsyncioTestCase):
         self.bot = SimpleNamespace(get_me=AsyncMock(return_value=SimpleNamespace(username="ERA_1bot")))
         self.settings = SimpleNamespace(
             media_join_dm_campaign_enabled=False,
+            era_chair_user_id=22,
             media_chat_url="https://t.me/+f03ksvhCMKc5NDBi",
         )
-        self.session = SimpleNamespace(scalar=AsyncMock(return_value=None))
+        self.session = SimpleNamespace(
+            scalar=AsyncMock(return_value=None),
+            get=AsyncMock(return_value=SimpleNamespace(
+                is_blocked=False, is_archived=False, application_status="approved")),
+        )
         self.factory = _Factory(self.session)
 
     async def test_disabled_is_silent(self):
@@ -71,7 +76,21 @@ class DirectMediaRecruitmentTests(unittest.IsolatedAsyncioTestCase):
             kwargs = send.await_args.kwargs
             self.assertEqual(kwargs["campaign_key"], MEDIA_JOIN_DM_KEY)
             self.assertEqual(kwargs["audience"], "all")
-            self.assertEqual(kwargs["author_id"], None)
+            self.assertEqual(kwargs["author_id"], 22)
             self.assertIn("https://t.me/+f03ksvhCMKc5NDBi", MEDIA_JOIN_DM_TEXT)
             self.assertIn("сертификаты", MEDIA_JOIN_DM_TEXT)
-            self.assertEqual(len(hashlib.sha256(f"None:{MEDIA_JOIN_DM_KEY}".encode()).hexdigest()), 64)
+            self.assertEqual(len(hashlib.sha256(f"22:{MEDIA_JOIN_DM_KEY}".encode()).hexdigest()), 64)
+
+    async def test_missing_chair_or_inactive_chair_never_sends(self):
+        self.settings.media_join_dm_campaign_enabled = True
+        with patch("app.services.admin_broadcast_service.send_personal_broadcast",
+                   new_callable=AsyncMock) as send:
+            self.settings.era_chair_user_id = None
+            self.assertEqual(await publish_media_join_direct_invitation(
+                self.bot, self.settings, self.factory), "chair_not_configured")
+            self.settings.era_chair_user_id = 22
+            self.session.get.return_value = SimpleNamespace(
+                is_blocked=True, is_archived=False, application_status="approved")
+            self.assertEqual(await publish_media_join_direct_invitation(
+                self.bot, self.settings, self.factory), "chair_account_unavailable")
+            send.assert_not_awaited()
