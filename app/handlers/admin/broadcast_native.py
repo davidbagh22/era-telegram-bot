@@ -106,7 +106,9 @@ async def compose_text(message: Message, user: User | None, settings: Settings,
         f"📨 Предпросмотр рассылки\nАудитория: {audience_label}\n"
         f"Получателей сейчас: {count}\n\n{value}\n\n"
         "Перед отправкой состав аудитории будет определён заново. "
-        "Telegram-пользователи, запретившие сообщения боту, могут не получить рассылку.",
+        + ("При выборе всех участников существующая система также отправит объявление "
+           "в раздел уведомлений общего чата. " if data["audience"] == "all" else "")
+        + "Telegram-пользователи, запретившие сообщения боту, могут не получить рассылку.",
         parse_mode=None,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Подтвердить отправку", callback_data=f"admin:campaign:confirm:{token}")],
