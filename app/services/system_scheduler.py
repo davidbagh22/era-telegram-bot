@@ -88,7 +88,7 @@ def add_system_jobs(
     scheduler.add_job(process_task_squad_notifications, "interval", minutes=1, args=(bot, settings, session_factory), id="task-squad-notifications", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(publish_media_recruitment, "interval", minutes=5, args=(bot, settings, session_factory), id="media-recruitment-opening", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     # Explicit opt-in campaign: fixed recipients and delivery ledger prevent duplicate DMs.
-    if settings.media_join_dm_campaign_enabled:
+    if getattr(settings, "media_join_dm_campaign_enabled", False):
         scheduler.add_job(publish_media_join_direct_invitation, "interval", minutes=5,
                           args=(bot, settings, session_factory), id="media-recruitment-private-invite",
                           replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
