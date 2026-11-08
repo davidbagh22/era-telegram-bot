@@ -9,7 +9,7 @@ from app.config import Settings
 from app.database.models import User
 from app.database.media_models import MediaContentItem
 from app.services.admin_dashboard_service import has_dashboard_access
-from app.services.media_service import media_access_level, media_permissions
+from app.services.media_service import can_use_media_hub, media_access_level, media_permissions
 from app.services.media_topics_service import TOPICS, read_topics, topic_links
 from app.utils import texts
 from app.utils.deep_links import miniapp_path_url
@@ -19,6 +19,9 @@ router = Router(name="admin_native_media")
 
 async def show_media(message: Message, user: User | None, settings: Settings, session: AsyncSession) -> None:
     level = await media_access_level(session, user, settings)
+    if not can_use_media_hub(level):
+        await message.answer(texts.NO_ACCESS)
+        return
     permissions = media_permissions(level)
     chat_id = settings.media_chat_id
     rows = []
@@ -77,6 +80,9 @@ async def media_callback(call: CallbackQuery, user: User | None, settings: Setti
 @router.callback_query(F.data == "admin:media:queue")
 async def media_queue(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession) -> None:
     if not has_dashboard_access(user, settings, call.from_user.id):
+        await call.answer(texts.NO_ACCESS, show_alert=True)
+        return
+    if not can_use_media_hub(await media_access_level(session, user, settings)):
         await call.answer(texts.NO_ACCESS, show_alert=True)
         return
     await call.answer()
