@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from app.handlers.admin import broadcast_native, media_native
-from app.handlers.leader import event_quick_composer
+from app.handlers.leader import event_quick_composer, events_block6
 from app.keyboards.admin import admin_home_keyboard
 
 
@@ -59,3 +59,18 @@ class MediaNativeAccessTests(unittest.IsolatedAsyncioTestCase):
         session.execute.assert_not_awaited()
         session.scalars.assert_not_awaited()
         message.answer.assert_awaited_once()
+
+
+class NativeEventAdminAccessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_explicit_admin_can_open_event_form_when_role_not_leader(self):
+        user = SimpleNamespace(telegram_id=321, is_blocked=False, is_archived=False)
+        call = SimpleNamespace(from_user=SimpleNamespace(id=321), answer=AsyncMock(),
+                               message=SimpleNamespace(answer=AsyncMock()))
+        state = SimpleNamespace(clear=AsyncMock())
+        settings = SimpleNamespace()
+        with patch.object(events_block6, "is_leader", return_value=False), \
+                patch("app.services.authorization_service.can_manage_events", return_value=True), \
+                patch.object(events_block6, "mode_keyboard", return_value=None):
+            await events_block6.event_new(call, user, state, settings)
+        state.clear.assert_awaited_once()
+        call.message.answer.assert_awaited_once()
