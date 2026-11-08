@@ -1,9 +1,9 @@
 """Regression coverage for native admin entry points; no Telegram sends."""
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
-from app.handlers.admin import broadcast_native
+from app.handlers.admin import broadcast_native, media_native
 from app.handlers.leader import event_quick_composer
 from app.keyboards.admin import admin_home_keyboard
 
@@ -48,3 +48,14 @@ class NativeAdminEntrypointsTests(unittest.TestCase):
             self.assertTrue(event_quick_composer.enabled_for_user(settings, user))
         with patch.object(event_quick_composer, "is_full_admin", return_value=False):
             self.assertFalse(event_quick_composer.enabled_for_user(settings, user))
+
+
+class MediaNativeAccessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_no_media_privilege_never_reads_scoped_queue(self):
+        message = SimpleNamespace(answer=AsyncMock())
+        session = SimpleNamespace(execute=AsyncMock(), scalars=AsyncMock())
+        with patch.object(media_native, "media_access_level", new=AsyncMock(return_value="no_access")):
+            await media_native.show_media(message, object(), SimpleNamespace(media_chat_id=1), session)
+        session.execute.assert_not_awaited()
+        session.scalars.assert_not_awaited()
+        message.answer.assert_awaited_once()
