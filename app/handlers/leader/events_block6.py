@@ -55,9 +55,9 @@ async def guard(event: CallbackQuery | Message, user: User | None) -> bool:
 
 
 def mode_keyboard(settings: Settings | None = None, user: User | None = None) -> InlineKeyboardMarkup:
-    from app.handlers.leader.event_quick_composer import enabled
+    from app.handlers.leader.event_quick_composer import enabled_for_user
     from app.services.authorization_service import can_manage_events
-    if settings and user and enabled(settings, user.telegram_id) and can_manage_events(user, settings, user.telegram_id):
+    if settings and user and enabled_for_user(settings, user) and can_manage_events(user, settings, user.telegram_id):
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="⚡ Быстро · текст и фото", callback_data="leader:eventq:new")],
             [InlineKeyboardButton(text="🧩 Расширенный мастер", callback_data="leader:event6:mode:constructor")],
