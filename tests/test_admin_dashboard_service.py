@@ -18,9 +18,17 @@ class HasDashboardAccessTests(unittest.TestCase):
     def _settings(self, admin_ids=()) -> Settings:
         return Settings(bot_token="1234567890:test-token", admin_ids=list(admin_ids))
 
-    def test_admin_id_in_settings_grants_access_even_without_user(self) -> None:
+    def test_configured_admin_requires_active_matching_user(self) -> None:
         settings = self._settings(admin_ids=[555])
-        self.assertTrue(has_dashboard_access(None, settings, 555))
+        self.assertFalse(has_dashboard_access(None, settings, 555))
+        active = SimpleNamespace(telegram_id=555, role=Role.PARTICIPANT, is_blocked=False, is_archived=False, permission_grants=[])
+        self.assertTrue(has_dashboard_access(active, settings, 555))
+        self.assertFalse(has_dashboard_access(active, settings, 556))
+        active.is_blocked = True
+        self.assertFalse(has_dashboard_access(active, settings, 555))
+        active.is_blocked = False
+        active.is_archived = True
+        self.assertFalse(has_dashboard_access(active, settings, 555))
 
     def test_admin_role_grants_access(self) -> None:
         user = SimpleNamespace(telegram_id=1, role=Role.ADMIN, is_blocked=False, is_archived=False, permission_grants=[])
