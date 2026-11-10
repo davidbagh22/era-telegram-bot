@@ -40,3 +40,9 @@ def test_optional_fields_are_safe():
     body = build_calendar_payload(event(description=None, location=None), end_time=time(14, 0))
     assert body["description"] == ""
     assert body["location"] == ""
+
+
+@pytest.mark.parametrize("invalid_id", [None, 0, -1, "", "42", True])
+def test_rejects_unpersisted_or_ambiguous_event_id(invalid_id):
+    with pytest.raises(ValueError, match="persisted positive ERA event ID"):
+        build_calendar_payload(event(id=invalid_id), end_time=time(14, 0))
