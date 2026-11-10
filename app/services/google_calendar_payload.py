@@ -16,6 +16,8 @@ def build_calendar_payload(event, *, end_time: time) -> dict:
     """
     if not event.title or not event.title.strip():
         raise ValueError("Event title is required")
+    if not isinstance(event.id, int) or isinstance(event.id, bool) or event.id <= 0:
+        raise ValueError("A persisted positive ERA event ID is required")
     start = datetime.combine(event.event_date, event.event_time, ZoneInfo(ERA_TIMEZONE))
     end = datetime.combine(event.event_date, end_time, ZoneInfo(ERA_TIMEZONE))
     if end <= start:
