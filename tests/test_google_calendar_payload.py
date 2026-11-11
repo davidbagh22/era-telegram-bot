@@ -25,10 +25,17 @@ def test_calendar_payload_preserves_yerevan_time_and_identity():
     assert "sendUpdates" not in body
 
 
-@pytest.mark.parametrize("end_time", [time(13, 0), time(12, 59)])
-def test_rejects_nonpositive_duration(end_time):
-    with pytest.raises(ValueError, match="End time"):
-        build_calendar_payload(event(), end_time=end_time)
+@pytest.mark.parametrize("end_time, expected_end", [
+    (time(12, 59), "2026-12-13T12:59:00+04:00"),
+    (time(13, 0), "2026-12-13T13:00:00+04:00"),
+    (time(0, 0), "2026-12-13T00:00:00+04:00"),
+])
+def test_overnight_end_matches_ics_rollover(end_time, expected_end):
+    body = build_calendar_payload(event(), end_time=end_time)
+    assert body["start"]["dateTime"] == "2026-12-12T13:00:00+04:00"
+    assert body["end"]["dateTime"] == expected_end
+    assert body["end"]["timeZone"] == "Asia/Yerevan"
+    assert "attendees" not in body
 
 
 def test_rejects_blank_title():
