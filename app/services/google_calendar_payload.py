@@ -3,7 +3,7 @@
 This module does not authenticate, send invitations, or write calendar entries.
 The caller must supply an explicit end time; event records have no duration.
 """
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 ERA_TIMEZONE = "Asia/Yerevan"
@@ -20,8 +20,10 @@ def build_calendar_payload(event, *, end_time: time) -> dict:
         raise ValueError("A persisted positive ERA event ID is required")
     start = datetime.combine(event.event_date, event.event_time, ZoneInfo(ERA_TIMEZONE))
     end = datetime.combine(event.event_date, end_time, ZoneInfo(ERA_TIMEZONE))
+    # Match the existing ICS export: an earlier or equal end clock time
+    # denotes an event finishing the next calendar day (equal = 24 hours).
     if end <= start:
-        raise ValueError("End time must be later than start time on the same date")
+        end += timedelta(days=1)
     return {
         "summary": event.title.strip(),
         "description": event.description or "",
