@@ -100,6 +100,7 @@ async def main() -> None:
                 )
             )
             assert registered is not None
+            cancelled_user_id = registered.user_id
             registered.status = RegistrationStatus.CANCELLED
             await session.commit()
 
@@ -150,9 +151,31 @@ async def main() -> None:
         assert registered_count == 1, registered_count
         assert waitlist_count == 6, waitlist_count
         assert registration_count == 8, registration_count
+
+        async with sessions() as editor:
+            edited_event = await editor.get(Event, event_id)
+            edited_event.participant_limit = 2
+            await editor.commit()
+
+        async with sessions() as joiner, sessions() as promoter:
+            join_event = await joiner.get(Event, event_id)
+            promote_event = await promoter.get(Event, event_id)
+            assert join_event.participant_limit == promote_event.participant_limit == 2
+
+            async with sessions() as editor:
+                edited_event = await editor.get(Event, event_id)
+                edited_event.participant_limit = 1
+                await editor.commit()
+
+            registration, error = await register_for_event(joiner, join_event, cancelled_user_id)
+            assert registration is None and error == "full", (registration, error)
+            await joiner.rollback()
+            assert await promote_waitlist(promoter, promote_event) is None
+            await promoter.rollback()
+
         print("PostgreSQL event capacity/waitlist concurrency verification passed")
         print("registrations=8 capacity=1 registered=1 waitlist=7 duplicate_replays=8 promotions=1")
-        print("after_release registered=1 waitlist=6 total_rows=8")
+        print("after_release registered=1 waitlist=6 total_rows=8; stale capacity rejected")
     finally:
         await engine.dispose()
 

@@ -16,6 +16,8 @@ class WaitlistPromotionLockTests(unittest.IsolatedAsyncioTestCase):
         session.scalar.assert_awaited_once()
         query = session.scalar.await_args.args[0]
         self.assertIn("FOR UPDATE", str(query.compile()))
+        self.assertTrue(query.get_execution_options()["populate_existing"])
+        self.assertFalse(query.get_execution_options()["autoflush"])
         places.assert_not_awaited()
 
     async def test_full_capacity_rechecked_after_event_lock(self):
