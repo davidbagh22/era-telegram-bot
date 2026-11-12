@@ -23,6 +23,7 @@ async def show_campaigns(message, session):
         .order_by(Broadcast.id.desc()).limit(15))).all())
     rows = [[InlineKeyboardButton(text=f'#{item.id} · {LABELS.get(item.status, item.status)}',
         callback_data=f'admin:campaign:{item.id}:view')] for item in items]
+    rows.insert(0, [InlineKeyboardButton(text='➕ Создать рассылку', callback_data='admin:campaign:new')])
     rows.append([InlineKeyboardButton(text='← Админ-панель', callback_data='admin:panel')])
     await message.answer('📨 Рассылки ЭРА\n\nПоследние 15 кампаний. Пауза и отмена останавливают следующие отправки; '
                          'сообщение, уже переданное Telegram, отозвать нельзя.',

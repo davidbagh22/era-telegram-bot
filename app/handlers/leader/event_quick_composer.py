@@ -27,7 +27,7 @@ from starlette.datastructures import Headers
 from app.config import Settings
 from app.database.event_experience import EventExperience
 from app.database.models import AppSetting, Event, User
-from app.services.authorization_service import can_manage_events
+from app.services.authorization_service import can_manage_events, is_full_admin
 from app.services.event_publication_service import (
     announcement_text,
     text_parts,
@@ -56,6 +56,13 @@ def enabled(settings, telegram_id):
         settings.native_event_composer_tester_ids)
 
 
+def enabled_for_user(settings, user):
+    # Administrators can use the bot-native composer without enabling a
+    # participant-facing rollout flag for all event editors.
+    return bool(user and (enabled(settings, user.telegram_id)
+                          or is_full_admin(user, settings, user.telegram_id)))
+
+
 def parse_integer_field(field, raw):
     try:
         value = int(raw)
@@ -67,7 +74,7 @@ def parse_integer_field(field, raw):
 
 
 async def guard(call, user, settings):
-    if not user or user.is_blocked or user.is_archived or user.telegram_id != call.from_user.id or not enabled(settings, call.from_user.id) or not can_manage_events(user, settings, call.from_user.id):
+    if not user or user.is_blocked or user.is_archived or user.telegram_id != call.from_user.id or not enabled_for_user(settings, user) or not can_manage_events(user, settings, call.from_user.id):
         target = call.message if isinstance(call, CallbackQuery) else call
         if isinstance(call, CallbackQuery):
             await call.answer('Нет доступа к этой форме.', show_alert=True)
