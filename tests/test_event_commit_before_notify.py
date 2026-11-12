@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.sql.dml import Update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.v1.events import cancel_event_registration, register_event
@@ -14,8 +15,10 @@ from app.config import Settings
 from app.database.base import Base
 from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
+from app.database.system_models import NotificationDelivery
 from app.handlers.participant.event_plans_changed import plans_changed
 from app.handlers.participant.events_stability_block8 import event_join, event_view
+from app.services.event_registration_notice_service import recover_event_registration_notices
 from app.services.event_registration_policy import registration_is_closed
 from app.services.event_service import register_for_event, send_committed_registration_notice
 from app.services.points_service import total_points
@@ -68,6 +71,10 @@ class EventCommitBeforeNotificationTests(IsolatedAsyncioTestCase):
                 )
             )
 
+    async def _receipts(self) -> list[NotificationDelivery]:
+        async with self.sessions() as session:
+            return list(await session.scalars(select(NotificationDelivery).order_by(NotificationDelivery.id)))
+
     async def _fill_event_and_waitlist(self) -> None:
         async with self.sessions() as session:
             for user_id, status in (
@@ -107,6 +114,7 @@ class EventCommitBeforeNotificationTests(IsolatedAsyncioTestCase):
                     await register_event(self.event_id, user, session, bot, self.settings)
         bot.send_message.assert_not_awaited()
         self.assertIsNone(await self._stored_status(self.first_id))
+        self.assertEqual(await self._receipts(), [])
         async with self.sessions() as session:
             self.assertEqual(await total_points(session, self.first_id), 0)
 
@@ -114,11 +122,62 @@ class EventCommitBeforeNotificationTests(IsolatedAsyncioTestCase):
         bot = SimpleNamespace(send_message=AsyncMock(side_effect=TimeoutError("test Telegram timeout")))
         async with self.sessions() as session:
             user = await session.get(User, self.first_id)
-            with self.assertLogs("app.services.event_service", level="ERROR"):
+            with self.assertLogs("app.services.event_registration_notice_service", level="ERROR"):
                 result = await register_event(self.event_id, user, session, bot, self.settings)
         self.assertEqual(result.registration_status, RegistrationStatus.REGISTERED)
         self.assertEqual(await self._stored_status(self.first_id), RegistrationStatus.REGISTERED)
+        await recover_event_registration_notices(bot, self.settings, self.sessions)
         bot.send_message.assert_awaited_once()
+        receipt, = await self._receipts()
+        self.assertEqual((receipt.status, receipt.attempt_count), ("uncertain", 1))
+
+    async def test_registration_recovers_after_commit_and_sends_once(self) -> None:
+        bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=710)))
+        async with self.sessions() as session:
+            user = await session.get(User, self.first_id)
+            with patch("app.api.v1.events.deliver_registration_notice", new=AsyncMock()):
+                result = await register_event(self.event_id, user, session, bot, self.settings)
+        self.assertEqual(result.registration_status, RegistrationStatus.REGISTERED)
+        self.assertEqual(await self._stored_status(self.first_id), RegistrationStatus.REGISTERED)
+        receipt, = await self._receipts()
+        self.assertEqual((receipt.status, receipt.attempt_count), ("queued", 0))
+        bot.send_message.assert_not_awaited()
+
+        await recover_event_registration_notices(bot, self.settings, self.sessions)
+        await recover_event_registration_notices(bot, self.settings, self.sessions)
+        bot.send_message.assert_awaited_once()
+        recipient, reply = bot.send_message.await_args.args
+        self.assertEqual(recipient, 101)
+        self.assertIn("Вы зарегистрированы", reply)
+        receipt, = await self._receipts()
+        self.assertEqual((receipt.status, receipt.message_id, receipt.attempt_count), ("sent", 710, 1))
+
+    async def test_confirmed_send_with_failed_receipt_write_is_not_replayed(self) -> None:
+        bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=711)))
+        async with self.sessions() as session:
+            user = await session.get(User, self.first_id)
+            execute = session.execute
+
+            async def fail_receipt_write(statement, *args, **kwargs):
+                if isinstance(statement, Update) and statement.table.name == NotificationDelivery.__tablename__:
+                    raise RuntimeError("receipt store unavailable")
+                return await execute(statement, *args, **kwargs)
+
+            with (
+                patch.object(session, "execute", side_effect=fail_receipt_write),
+                self.assertLogs("app.services.event_registration_notice_service", level="ERROR"),
+            ):
+                result = await register_event(self.event_id, user, session, bot, self.settings)
+        self.assertEqual(result.registration_status, RegistrationStatus.REGISTERED)
+        async with self.sessions() as session, session.begin():
+            receipt = await session.scalar(select(NotificationDelivery))
+            self.assertEqual((receipt.status, receipt.attempt_count), ("pending", 1))
+            receipt.last_attempt_at = datetime.now(timezone.utc) - timedelta(hours=1)
+
+        await recover_event_registration_notices(bot, self.settings, self.sessions)
+        bot.send_message.assert_awaited_once()
+        receipt, = await self._receipts()
+        self.assertEqual((receipt.status, receipt.error_code), ("uncertain", "delivery_outcome_unknown"))
 
     async def test_promotion_notice_sees_committed_cancellation_and_promotion(self) -> None:
         await self._fill_event_and_waitlist()
@@ -139,6 +198,24 @@ class EventCommitBeforeNotificationTests(IsolatedAsyncioTestCase):
         self.assertEqual(observed, [(102, False, RegistrationStatus.NOT_COMING, RegistrationStatus.REGISTERED)])
         bot.send_message.assert_awaited_once()
 
+    async def test_promoted_waitlist_member_receives_queued_notice_after_restart(self) -> None:
+        await self._fill_event_and_waitlist()
+        bot = SimpleNamespace(send_message=AsyncMock())
+        async with self.sessions() as session:
+            user = await session.get(User, self.first_id)
+            with patch("app.api.v1.events.deliver_registration_notice", new=AsyncMock()):
+                await cancel_event_registration(self.event_id, user, session, bot, self.settings)
+        self.assertEqual(await self._stored_status(self.second_id), RegistrationStatus.REGISTERED)
+        receipt, = await self._receipts()
+        self.assertEqual((receipt.status, receipt.chat_id), ("queued", 102))
+
+        await recover_event_registration_notices(bot, self.settings, self.sessions)
+        await recover_event_registration_notices(bot, self.settings, self.sessions)
+        bot.send_message.assert_awaited_once()
+        recipient, reply = bot.send_message.await_args.args
+        self.assertEqual(recipient, 102)
+        self.assertIn("Для вас освободилось место", reply)
+
     async def test_failed_cancellation_commit_preserves_both_statuses_and_skips_notice(self) -> None:
         await self._fill_event_and_waitlist()
         bot = SimpleNamespace(send_message=AsyncMock())
@@ -150,6 +227,39 @@ class EventCommitBeforeNotificationTests(IsolatedAsyncioTestCase):
         bot.send_message.assert_not_awaited()
         self.assertEqual(await self._stored_status(self.first_id), RegistrationStatus.REGISTERED)
         self.assertEqual(await self._stored_status(self.second_id), RegistrationStatus.WAITLIST)
+        self.assertEqual(await self._receipts(), [])
+
+    async def test_queued_notice_is_skipped_when_event_is_no_longer_public(self) -> None:
+        bot = SimpleNamespace(send_message=AsyncMock())
+        for status in (EventStatus.DRAFT, EventStatus.PENDING_APPROVAL, EventStatus.CANCELLED):
+            with self.subTest(status=status), patch("app.api.v1.events.deliver_registration_notice", new=AsyncMock()):
+                async with self.sessions() as session:
+                    event = await session.get(Event, self.event_id)
+                    event.status = EventStatus.REGISTRATION_OPEN
+                    await session.commit()
+                    user = await session.get(User, self.first_id)
+                    await register_event(self.event_id, user, session, bot, self.settings)
+                    event.status = status
+                    await session.commit()
+                await recover_event_registration_notices(bot, self.settings, self.sessions)
+                async with self.sessions() as session, session.begin():
+                    registration = await session.scalar(select(EventRegistration))
+                    registration.status = RegistrationStatus.NOT_COMING
+        bot.send_message.assert_not_awaited()
+        self.assertEqual([row.status for row in await self._receipts()], ["skipped"] * 3)
+
+    async def test_reregistration_supersedes_an_unsent_confirmation(self) -> None:
+        bot = SimpleNamespace(send_message=AsyncMock())
+        async with self.sessions() as session:
+            user = await session.get(User, self.first_id)
+            with patch("app.api.v1.events.deliver_registration_notice", new=AsyncMock()):
+                await register_event(self.event_id, user, session, bot, self.settings)
+                await cancel_event_registration(self.event_id, user, session, bot, self.settings)
+                await register_event(self.event_id, user, session, bot, self.settings)
+        self.assertEqual([row.status for row in await self._receipts()], ["queued", "queued"])
+        await recover_event_registration_notices(bot, self.settings, self.sessions)
+        bot.send_message.assert_awaited_once()
+        self.assertEqual([row.status for row in await self._receipts()], ["skipped", "sent"])
 
     async def test_stale_status_or_unavailable_event_suppresses_notice(self) -> None:
         async with self.sessions() as session:
@@ -198,6 +308,24 @@ class EventCommitBeforeNotificationTests(IsolatedAsyncioTestCase):
                     await event_join(call, user, session)
         call.message.answer.assert_not_awaited()
         self.assertIsNone(await self._stored_status(self.first_id))
+        self.assertEqual(await self._receipts(), [])
+
+    async def test_native_waitlist_notice_recovers_in_private_chat(self) -> None:
+        async with self.sessions() as session:
+            first = await session.get(User, self.first_id)
+            await register_event(self.event_id, first, session, None, self.settings)
+            second = await session.get(User, self.second_id)
+            call = self._event_callback("join")
+            with patch("app.handlers.participant.events_stability_block8.deliver_registration_notice", new=AsyncMock()):
+                await event_join(call, second, session)
+        call.message.answer.assert_not_awaited()
+        self.assertEqual(await self._stored_status(self.second_id), RegistrationStatus.WAITLIST)
+        bot = SimpleNamespace(send_message=AsyncMock())
+        await recover_event_registration_notices(bot, self.settings, self.sessions)
+        bot.send_message.assert_awaited_once()
+        recipient, reply = bot.send_message.await_args.args
+        self.assertEqual(recipient, 102)
+        self.assertIn("Вы в листе ожидания", reply)
 
     def _event_callback(self, action: str) -> SimpleNamespace:
         return SimpleNamespace(

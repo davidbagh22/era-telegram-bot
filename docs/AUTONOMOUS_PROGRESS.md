@@ -28,7 +28,7 @@
 | B02 | Edit published event poster | В РАЗРАБОТКЕ | Wizard supports poster changes; published entry flow unconfirmed |
 | B03 | Hide/remove events from general poster listing | В РАЗРАБОТКЕ | Draft #589 exists; high-risk visibility policy, PostgreSQL and human acceptance not confirmed; do not release |
 | B04 | Publication latency and duplicate prevention | В РАЗРАБОТКЕ | #447 shipped; legacy #467/#491, uncertain receipts |
-| B05 | Registration, waitlist, capacity and deadlines | IN PROGRESS | Capacity #663, commit-before-notice #507, and policy parity release evidence in [#514](https://github.com/davidbagh22/era-telegram-bot/pull/514). Durable recovery #497, the scoring decision #513, and real Telegram acceptance remain. |
+| B05 | Registration, waitlist, capacity and deadlines | IN PROGRESS | Capacity #663, commit-before-notice #507, and policy parity #514 are deployed. Durable recovery and release evidence are tracked in [#497](https://github.com/davidbagh22/era-telegram-bot/issues/497). Waitlist scoring #513 and real Telegram acceptance remain. |
 | B06 | QR attendance | ВЫПУЩЕНО | Real scoped confirmation and repeated-scan acceptance |
 | B07 | Event points | ВЫПУЩЕНО | Actual attendance-to-ledger evidence, no test balance edits |
 | B08 | Actual production event list | В РАЗРАБОТКЕ | Authenticated read unavailable; do not invent the list |

@@ -47,6 +47,7 @@ class SchedulerRecoveryContractTests(unittest.TestCase):
         for job_id in (
             "event-announcement-recovery",
             "event-lifecycle-notifications",
+            "event-registration-notice-recovery",
             "event-wizard-task-sync",
             "configured-event-reminders",
             "project-review-notices",
@@ -64,9 +65,9 @@ class SchedulerRecoveryContractTests(unittest.TestCase):
                 self.assertTrue(options["coalesce"])
                 self.assertTrue(options["replace_existing"])
 
-    def test_event_announcement_and_wizard_recovery_run_after_restart(self):
+    def test_event_recovery_runs_after_restart(self):
         """On scheduler setup, these jobs are due without waiting a minute."""
-        for job_id in ("event-announcement-recovery", "event-wizard-task-sync"):
+        for job_id in ("event-announcement-recovery", "event-registration-notice-recovery", "event-wizard-task-sync"):
             with self.subTest(job_id=job_id):
                 _, _, options = self.scheduler.jobs[job_id]
                 self.assertIsNotNone(options.get("next_run_time"))
