@@ -82,7 +82,6 @@ class EventExperienceRegressionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(duplicate_error, "already")
 
             first_registration.status = RegistrationStatus.CANCELLED
-            await session.flush()
             promoted = await promote_waitlist(session, event)
             self.assertIsNotNone(promoted)
             self.assertEqual(promoted.user_id, second.id)
