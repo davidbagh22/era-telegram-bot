@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
@@ -145,6 +145,7 @@ async def register_for_event(
             status=target_status,
         )
         session.add(registration)
+    registration.updated_at = datetime.now(timezone.utc)
     await session.flush()
     await audit(
         session,
@@ -182,6 +183,7 @@ async def promote_waitlist(session: AsyncSession, event: Event) -> EventRegistra
     if waiting is None:
         return None
     waiting.status = RegistrationStatus.REGISTERED
+    waiting.updated_at = datetime.now(timezone.utc)
     await session.flush()
     await audit(
         session,

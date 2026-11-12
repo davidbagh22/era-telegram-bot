@@ -19,6 +19,12 @@ from app.api.v1.events import register_event
 from app.config import Settings
 from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
+from app.database.system_models import NotificationDelivery
+from app.services.event_registration_notice_service import (
+    RegistrationNoticeKind,
+    deliver_registration_notice,
+    enqueue_registration_notice,
+)
 from app.services.event_service import promote_waitlist, register_for_event
 from app.utils.constants import EventStatus, RegistrationStatus
 
@@ -261,11 +267,37 @@ async def main() -> None:
         assert confirmed_status == RegistrationStatus.REGISTERED, confirmed_status
         assert send_transactions == [False], send_transactions
 
+        async with sessions() as session, session.begin():
+            registration = await session.scalar(select(EventRegistration).where(
+                EventRegistration.event_id == event_id, EventRegistration.user_id == cancelled_user_id,
+            ))
+            user = await session.get(User, cancelled_user_id)
+            assert registration is not None and user is not None
+            recipient = user.telegram_id
+            key = await enqueue_registration_notice(session, registration, recipient, RegistrationNoticeKind.TELEGRAM)
+
+        sent_to = []
+
+        async def recover_notice() -> None:
+            async with sessions() as session:
+                async def send(chat_id, _text, **kwargs):
+                    sent_to.append((chat_id, session.in_transaction()))
+                    return SimpleNamespace(message_id=712)
+
+                await deliver_registration_notice(session, key, send, settings)
+
+        await asyncio.wait_for(asyncio.gather(recover_notice(), recover_notice()), timeout=10)
+        assert sent_to == [(recipient, False)], sent_to
+        async with sessions() as session:
+            receipt = await session.scalar(select(NotificationDelivery).where(NotificationDelivery.delivery_key == key))
+            assert (receipt.status, receipt.attempt_count, receipt.message_id) == ("sent", 1, 712)
+
         print("PostgreSQL event capacity/waitlist concurrency verification passed")
         print("registrations=8 capacity=1 registered=1 waitlist=7 duplicate_replays=8 promotions=1")
         print("after_release registered=1 waitlist=6 total_rows=8; stale capacity rejected")
         print("Registration honored the admin edit, deadline, waitlist, and legacy policy commit or rollback")
         print("A concurrent request saw the committed last seat while Telegram delivery was paused")
+        print("Two workers competing for one queued notice attempted delivery once")
     finally:
         await engine.dispose()
 

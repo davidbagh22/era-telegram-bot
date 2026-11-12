@@ -5,7 +5,6 @@ import hashlib
 from typing import Any
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -18,19 +17,23 @@ from app.database.models import Event, EventRegistration, User
 from app.services import event_activity_service
 from app.services.activity_service import EventScope, list_events
 from app.services.event_registration_policy import registration_is_closed
+from app.services.event_registration_notice_service import (
+    RegistrationNoticeKind,
+    deliver_registration_notice,
+    enqueue_registration_notice,
+)
 from app.services.event_registration_service import mark_not_coming
 from app.services.event_service import (
     available_places,
     promote_waitlist,
     register_for_event,
     registered_count,
-    send_committed_registration_notice,
 )
-from app.services.notification_service import safe_send, safe_send_once
+from app.services.notification_service import safe_send_once
 from app.services.event_calendar_service import build_event_calendar
 from app.services.event_service import PUBLIC_EVENT_STATUSES
 from app.utils.constants import EventStatus, RegistrationStatus
-from app.utils.deep_links import activity_submit_deep_link, miniapp_event_url
+from app.utils.deep_links import activity_submit_deep_link
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -184,55 +187,6 @@ async def _get_registration(
     )
 
 
-def _event_keyboard(settings: Settings, event: Event, experience: EventExperience | None) -> InlineKeyboardMarkup | None:
-    url = miniapp_event_url(settings.effective_miniapp_url, event.id)
-    rows: list[list[InlineKeyboardButton]] = []
-    if url:
-        rows.append([InlineKeyboardButton(text="Открыть мероприятие", web_app=WebAppInfo(url=url))])
-    if experience and experience.chat_url:
-        rows.append([InlineKeyboardButton(text="Открыть чат", url=experience.chat_url)])
-    if url:
-        rows.append([InlineKeyboardButton(text="Отказаться от участия", web_app=WebAppInfo(url=url))])
-    return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
-
-
-async def _send_registration_confirmation(
-    bot: Bot | None,
-    settings: Settings,
-    user: User,
-    event: Event,
-    experience: EventExperience | None,
-    registration: EventRegistration,
-) -> None:
-    if bot is None:
-        return
-    if registration.status == RegistrationStatus.WAITLIST:
-        text = (
-            "🔥 Вы в листе ожидания\n\n"
-            f"{event.title}\n\n"
-            f"📅 {event.event_date.strftime('%d.%m.%Y')}\n"
-            f"🕐 {event.event_time.strftime('%H:%M')}\n"
-            f"📍 {event.location}\n\n"
-            "Сейчас свободных мест нет. Если место освободится, мы автоматически переведём вас в список участников и сообщим об этом."
-        )
-    else:
-        text = (
-            "🔥 Вы зарегистрированы\n\n"
-            f"{event.title}\n\n"
-            f"📅 {event.event_date.strftime('%d.%m.%Y')}\n"
-            f"🕐 {event.event_time.strftime('%H:%M')}\n"
-            f"📍 {event.location}\n\n"
-            "Мы напомним вам о встрече заранее.\n\n"
-            "Если планы изменятся — пожалуйста, отмените участие. Так ваше место сможет занять другой участник."
-        )
-    await safe_send(
-        bot,
-        user.telegram_id,
-        text,
-        reply_markup=_event_keyboard(settings, event, experience),
-    )
-
-
 @router.get("", response_model=list[EventOut])
 async def read_events(
     scope: EventScope = Query("all"),
@@ -368,16 +322,13 @@ async def register_event(
     if error:
         raise HTTPException(status_code=409, detail=error)
     assert registration is not None
-    experience = await session.get(EventExperience, event_id) if bot is not None else None
+    notice = None
+    if bot is not None:
+        notice = await enqueue_registration_notice(session, registration, user.telegram_id, RegistrationNoticeKind.MINI_APP)
     result = await _to_event_out(session, event, registration)
     await session.commit()
-    if bot is not None:
-        await send_committed_registration_notice(
-            session,
-            registration.id,
-            registration.status,
-            lambda: _send_registration_confirmation(bot, settings, user, event, experience, registration),
-        )
+    if notice is not None and bot is not None:
+        await deliver_registration_notice(session, notice, bot.send_message, settings)
     return result
 
 
@@ -402,28 +353,17 @@ async def cancel_event_registration(
         raise HTTPException(status_code=409, detail="cannot_change_plans")
 
     promoted = None if was_waiting else await promote_waitlist(session, event)
-    promoted_user = None
-    experience = None
+    notice = None
     if promoted is not None and bot is not None:
         promoted_user = await session.get(User, promoted.user_id)
-        experience = await session.get(EventExperience, event.id)
+        if promoted_user is not None:
+            notice = await enqueue_registration_notice(
+                session, promoted, promoted_user.telegram_id, RegistrationNoticeKind.PROMOTION
+            )
     result = await _to_event_out(session, event, registration)
     await session.commit()
-    if promoted is not None and promoted_user is not None and bot is not None:
-        await send_committed_registration_notice(
-            session,
-            promoted.id,
-            RegistrationStatus.REGISTERED,
-            lambda: safe_send(
-                bot,
-                promoted_user.telegram_id,
-                "🔥 Для вас освободилось место\n\n"
-                f"Вы теперь зарегистрированы на «{event.title}».\n\n"
-                f"📅 {event.event_date.strftime('%d.%m.%Y')} · {event.event_time.strftime('%H:%M')}\n"
-                f"📍 {event.location}",
-                reply_markup=_event_keyboard(settings, event, experience),
-            ),
-        )
+    if notice is not None and bot is not None:
+        await deliver_registration_notice(session, notice, bot.send_message, settings)
     return result
 
 

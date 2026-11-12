@@ -11,6 +11,11 @@ from app.database.event_experience import EventExperience
 from app.database.models import Event, EventActivity, EventRegistration, User
 from app.keyboards.participant import event_list_keyboard
 from app.services.event_card import send_event_card
+from app.services.event_registration_notice_service import (
+    RegistrationNoticeKind,
+    deliver_registration_notice,
+    enqueue_registration_notice,
+)
 from app.services.event_registration_policy import registration_is_closed
 from app.services.notification_service import safe_answer_document
 from app.services.event_registration_service import registration_stats
@@ -19,7 +24,6 @@ from app.services.event_service import (
     REGISTRATION_ALLOWED_STATUSES,
     published_events,
     register_for_event,
-    send_committed_registration_notice,
 )
 from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus, RegistrationStatus
@@ -213,18 +217,10 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
         await call.message.answer(reply)
         return
     assert registration is not None
-    if registration.status == RegistrationStatus.WAITLIST:
-        reply = f"Вы в листе ожидания на «{event.title}». Сообщим, если для вас освободится место."
-    else:
-        stats = await registration_stats(session, event)
-        reply = (
-            texts.event_registered(event)
-            + f"\n\nЗарегистрировано: {stats['registered']}"
-            + (f"\nСвободных мест: {stats['free']}" if event.participant_limit is not None else "")
-        )
+    notice = await enqueue_registration_notice(session, registration, user.telegram_id, RegistrationNoticeKind.TELEGRAM)
     await session.commit()
-    await send_committed_registration_notice(
-        session, registration.id, registration.status, lambda: call.message.answer(reply)
+    await deliver_registration_notice(
+        session, notice, lambda _recipient, text, **kwargs: call.message.answer(text, **kwargs)
     )
 
 
