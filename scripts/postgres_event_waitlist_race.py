@@ -7,11 +7,15 @@ import asyncio
 import os
 import uuid
 from datetime import date, time, timedelta
+from types import SimpleNamespace
 
+from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.api.v1.events import register_event
+from app.config import Settings
 from app.database.models import Event, EventRegistration, User
 from app.services.event_service import promote_waitlist, register_for_event
 from app.utils.constants import EventStatus, RegistrationStatus
@@ -173,9 +177,52 @@ async def main() -> None:
             assert await promote_waitlist(promoter, promote_event) is None
             await promoter.rollback()
 
+        async with sessions() as editor:
+            edited_event = await editor.get(Event, event_id)
+            edited_event.participant_limit = 2
+            await editor.commit()
+
+        send_started = asyncio.Event()
+        finish_send = asyncio.Event()
+        send_transactions = []
+        settings = Settings(bot_token="0000000000:POSTGRESMIGRATIONSMOKE")
+
+        async def register_with_delayed_notice() -> str:
+            async with sessions() as session:
+                async def send_message(*args, **kwargs):
+                    send_transactions.append(session.in_transaction())
+                    send_started.set()
+                    await finish_send.wait()
+
+                user = await session.get(User, cancelled_user_id)
+                bot = SimpleNamespace(send_message=send_message)
+                result = await register_event(event_id, user, session, bot, settings)
+                return result.registration_status
+
+        pending_notice = asyncio.create_task(register_with_delayed_notice())
+        try:
+            await asyncio.wait_for(send_started.wait(), timeout=10)
+            async with sessions() as competitor:
+                other_user = await competitor.get(User, creator.id)
+                try:
+                    await asyncio.wait_for(
+                        register_event(event_id, other_user, competitor, None, settings), timeout=10
+                    )
+                except HTTPException as exc:
+                    assert (exc.status_code, exc.detail) == (409, "full"), exc
+                else:
+                    raise AssertionError("A competing request overbooked the committed last seat")
+            assert not pending_notice.done()
+        finally:
+            finish_send.set()
+            confirmed_status = await asyncio.wait_for(pending_notice, timeout=10)
+        assert confirmed_status == RegistrationStatus.REGISTERED, confirmed_status
+        assert send_transactions == [False], send_transactions
+
         print("PostgreSQL event capacity/waitlist concurrency verification passed")
         print("registrations=8 capacity=1 registered=1 waitlist=7 duplicate_replays=8 promotions=1")
         print("after_release registered=1 waitlist=6 total_rows=8; stale capacity rejected")
+        print("A concurrent request saw the committed last seat while Telegram delivery was paused")
     finally:
         await engine.dispose()
 

@@ -1,8 +1,8 @@
 # ERA bot and Mini App handoff
 
-- Baseline checked 2026-11-12 Asia/Yerevan: `main` and Render LIVE `522f6f135081acb39a803f087b1424e6e352d1f7`, main CI 5/5. Authenticated webhook DEPLOYED in [#662](https://github.com/davidbagh22/era-telegram-bot/pull/662).
-- A02 configured-admin boundary and release evidence in [#542](https://github.com/davidbagh22/era-telegram-bot/pull/542). Admin checks require an active database account matching the Telegram sender. Delegated grants are checked against the same identity.
-- While #542 is open, verify exact-head CI and merge with the expected SHA. After merging, record main CI, automatic Render LIVE SHA, `/health`, and `/ready` in the PR.
-- Real iOS/Android and the admin/leader/employee/participant role matrix are BLOCKED: HUMAN ACCEPTANCE.
-- B05 capacity protection DEPLOYED in #663. #514/#510 cover registration-policy parity. #507 covers notification ordering.
-- After #542 is LIVE, compare #507 with `main` and finish committing registration changes before Telegram notifications. Check #514 for changes touching the same endpoints.
+- Baseline checked 2026-11-12 Asia/Yerevan: `main` and Render LIVE `38dd9261ebc794793f56e4c96b963a21cfa59f65`, main CI 5/5. Configured-admin protection DEPLOYED in [#542](https://github.com/davidbagh22/era-telegram-bot/pull/542).
+- B05 notification ordering and release evidence in [#507](https://github.com/davidbagh22/era-telegram-bot/pull/507). Mini App and native Telegram registration/cancellation commit before sending success or waitlist notices. The current committed state is checked before delivery.
+- While #507 is open, verify exact-head CI and merge with the expected SHA. Record main CI, automatic Render LIVE SHA, `/health`, and `/ready` in the PR.
+- Durable recovery of an interrupted registration notice remains open in #497. Capacity protection is DEPLOYED in #663.
+- Real Telegram registration, waitlist and role scenarios are BLOCKED: HUMAN ACCEPTANCE.
+- After #507 is LIVE, compare #514 with `main` and finish registration deadline and waitlist policy under the existing event-row lock.

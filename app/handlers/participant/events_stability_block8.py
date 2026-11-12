@@ -17,6 +17,7 @@ from app.services.event_service import (
     REGISTRATION_ALLOWED_STATUSES,
     published_events,
     register_for_event,
+    send_committed_registration_notice,
 )
 from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus
@@ -181,7 +182,7 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
     if event is None or event.status not in PUBLIC_EVENT_STATUSES:
         await call.message.answer("Это мероприятие сейчас недоступно")
         return
-    _, error = await register_for_event(session, event, user.id)
+    registration, error = await register_for_event(session, event, user.id)
     if error == "already":
         await call.message.answer(texts.EVENT_ALREADY_REGISTERED)
         return
@@ -191,11 +192,16 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
     if error == "closed":
         await call.message.answer("Регистрация на это мероприятие закрыта, но само событие остаётся в афише")
         return
+    assert registration is not None
     stats = await registration_stats(session, event)
-    await call.message.answer(
+    reply = (
         texts.event_registered(event)
         + f"\n\nЗарегистрировано: {stats['registered']}"
         + (f"\nСвободных мест: {stats['free']}" if event.participant_limit is not None else "")
+    )
+    await session.commit()
+    await send_committed_registration_notice(
+        session, registration.id, registration.status, lambda: call.message.answer(reply)
     )
 
 

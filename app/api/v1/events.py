@@ -24,6 +24,7 @@ from app.services.event_service import (
     promote_waitlist,
     register_for_event,
     registered_count,
+    send_committed_registration_notice,
 )
 from app.services.notification_service import safe_send, safe_send_once
 from app.services.event_calendar_service import build_event_calendar
@@ -386,8 +387,16 @@ async def register_event(
     if error:
         raise HTTPException(status_code=409, detail=error)
     assert registration is not None
-    await _send_registration_confirmation(bot, settings, user, event, experience, registration)
-    return await _to_event_out(session, event, registration)
+    result = await _to_event_out(session, event, registration)
+    await session.commit()
+    if bot is not None:
+        await send_committed_registration_notice(
+            session,
+            registration.id,
+            registration.status,
+            lambda: _send_registration_confirmation(bot, settings, user, event, experience, registration),
+        )
+    return result
 
 
 @router.post("/{event_id}/cancel", response_model=EventOut)
@@ -411,11 +420,19 @@ async def cancel_event_registration(
         raise HTTPException(status_code=409, detail="cannot_change_plans")
 
     promoted = None if was_waiting else await promote_waitlist(session, event)
+    promoted_user = None
+    experience = None
     if promoted is not None and bot is not None:
         promoted_user = await session.get(User, promoted.user_id)
         experience = await session.get(EventExperience, event.id)
-        if promoted_user is not None:
-            await safe_send(
+    result = await _to_event_out(session, event, registration)
+    await session.commit()
+    if promoted is not None and promoted_user is not None and bot is not None:
+        await send_committed_registration_notice(
+            session,
+            promoted.id,
+            RegistrationStatus.REGISTERED,
+            lambda: safe_send(
                 bot,
                 promoted_user.telegram_id,
                 "🔥 Для вас освободилось место\n\n"
@@ -423,8 +440,9 @@ async def cancel_event_registration(
                 f"📅 {event.event_date.strftime('%d.%m.%Y')} · {event.event_time.strftime('%H:%M')}\n"
                 f"📍 {event.location}",
                 reply_markup=_event_keyboard(settings, event, experience),
-            )
-    return await _to_event_out(session, event, registration)
+            ),
+        )
+    return result
 
 
 class EventActivityOut(BaseModel):

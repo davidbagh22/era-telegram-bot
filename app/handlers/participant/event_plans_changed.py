@@ -10,6 +10,7 @@ from app.services.event_registration_service import (
     can_change_registration_plans,
     mark_not_coming,
 )
+from app.services.event_service import send_committed_registration_notice
 from app.utils import texts
 from app.utils.constants import (
     ApplicationStatus,
@@ -163,7 +164,11 @@ async def plans_changed(call: CallbackQuery, user: User | None, session: AsyncSe
         )
         return
 
-    await call.message.answer(
-        f"Поняли. Отметили, что вы не сможете прийти на «{event.title}».\n\nСпасибо, что сообщили заранее.",
-        reply_markup=back_keyboard("cabinet:events"),
+    reply = f"Поняли. Отметили, что вы не сможете прийти на «{event.title}».\n\nСпасибо, что сообщили заранее."
+    await session.commit()
+    await send_committed_registration_notice(
+        session,
+        registration.id,
+        registration.status,
+        lambda: call.message.answer(reply, reply_markup=back_keyboard("cabinet:events")),
     )
