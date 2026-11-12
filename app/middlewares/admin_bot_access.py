@@ -3,7 +3,7 @@ from aiogram.types import CallbackQuery, Message
 
 from app.config import Settings
 from app.database.models import User
-from app.utils.constants import Role
+from app.services.authorization_service import is_full_admin
 
 
 def has_admin_bot_access(
@@ -17,11 +17,7 @@ def has_admin_bot_access(
     They must not make a user admin-equivalent for the legacy Telegram admin
     router, where older handlers share broad guards.
     """
-    # The persisted identity must belong to the actual Telegram sender;
-    # a stale/misbound user object must never unlock the legacy admin router.
-    if user is None or user.is_blocked or user.is_archived or getattr(user, "telegram_id", None) != telegram_id:
-        return False
-    return bool(telegram_id in settings.admin_ids or (user and user.role == Role.ADMIN))
+    return is_full_admin(user, settings, telegram_id)
 
 
 class AdminBotAccessFilter(Filter):

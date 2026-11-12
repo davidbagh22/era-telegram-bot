@@ -4,16 +4,14 @@ from aiogram.types import CallbackQuery, Message
 
 from app.config import Settings
 from app.database.models import User
-from app.services.authorization_service import is_full_admin
+from app.services.authorization_service import has_active_telegram_identity, is_full_admin
 from app.utils import texts
 
 
 def has_admin_bot_access(user: User | None, settings: Settings, telegram_id: int) -> bool:
     if is_full_admin(user, settings, telegram_id):
         return True
-    # A delegated grant is not transferable to a different Telegram sender.
-    if (not user or user.is_blocked or user.is_archived
-            or getattr(user, "telegram_id", None) != telegram_id):
+    if not has_active_telegram_identity(user, telegram_id):
         return False
     return any(grant.is_active for grant in (user.permission_grants or []))
 

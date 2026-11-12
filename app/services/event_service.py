@@ -75,6 +75,17 @@ async def available_places(session: AsyncSession, event: Event) -> str:
     return str(max(0, event.participant_limit - registered))
 
 
+async def _lock_event_for_capacity(session: AsyncSession, event_id: int) -> Event | None:
+    # Refresh any cached capacity and acquire the event lock before flushing
+    # a pending cancellation, which would otherwise lock its registration first.
+    return await session.scalar(
+        select(Event)
+        .where(Event.id == event_id)
+        .with_for_update()
+        .execution_options(populate_existing=True, autoflush=False)
+    )
+
+
 async def register_for_event(
     session: AsyncSession,
     event: Event,
@@ -87,9 +98,7 @@ async def register_for_event(
     The event row is locked while capacity is checked, so two simultaneous
     registrations cannot consume the same last seat.
     """
-    locked_event = await session.scalar(
-        select(Event).where(Event.id == event.id).with_for_update()
-    )
+    locked_event = await _lock_event_for_capacity(session, event.id)
     if locked_event is None:
         return None, "closed"
     event = locked_event
@@ -143,8 +152,10 @@ async def register_for_event(
 
 async def promote_waitlist(session: AsyncSession, event: Event) -> EventRegistration | None:
     """Move the oldest waiting participant into a freed seat, if possible."""
-    if event.participant_limit is None:
+    locked_event = await _lock_event_for_capacity(session, event.id)
+    if locked_event is None or locked_event.participant_limit is None:
         return None
+    event = locked_event
     if int(await available_places(session, event)) <= 0:
         return None
     waiting = await session.scalar(

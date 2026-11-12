@@ -1,22 +1,25 @@
 # ЭРА — автономная разработка
 
-## Состояние (обновлено: 2026-11-04, запуск по подтверждённому ТЗ)
-- main SHA: 4695807fad3dadd52826bfe5e839644b8d65d908 | Render LIVE SHA: 4695807fad3dadd52826bfe5e839644b8d65d908 (dep-dbkhmleq1p3s73amq310).
-- Запуск: в процессе; рабочая ветка fix/event-lifecycle-malformed-notice-isolation-20261029, PR #537.
-- Текущая задача: PostgreSQL-проверка изоляции повреждённых lifecycle notices и конкуренции 8 обработчиков.
-- Следующий шаг: выполнить CI на новом HEAD #537; изучить сбои и исправить в этой же ветке.
-- Автозадача 6adcbd42ede08191a5c0a946e4147b52 обновлена полным ТЗ пользователя, почасовое расписание сохранено; подтверждено API. Последний записанный запуск завершён, конкурирующий активный запуск не обнаружен.
-- #551: DRAFT, HEAD 6a1c4b1823847097f6f00087c30b58653889927f; решение о legacy NULL/missing-area и многоролевая приёмка остаются открытыми. Не объединять только на основании CI.
-- #537: ветка согласована с текущим main обычным merge без force push. Добавлен probe в disposable local PostgreSQL era_test; любые реальные Telegram-вызовы запрещены mock-проверкой. До проверки ключей: 2 теста + 15 subtests PASS. Дополнительно реализовано точное совпадение ключа pending с event_id/phase, по замечанию в #537 от 4 ноября. Новая версия: 16 тестов + 19 subtests PASS, ruff E9/F PASS, compileall и diff --check PASS. Финальные 6/6 и PostgreSQL CI ещё не подтверждены.
-- Блокеры: #542 резервный админ-доступ; #589 политика видимости; #605 неоднозначность исторических локальных дат. Не изменять эти политики молча.
-- Нужно от владельца: пакетная реальная приёмка ролей и мобильных клиентов; до неё статусы не повышать.
+Актуальная контрольная точка — [CODEX_HANDOFF.md](CODEX_HANDOFF.md).
+
+## Состояние (обновлено: 2026-11-06)
+- main SHA: 45622639484eea9babae748f50d90600600c9975 (#537 merged with expected HEAD 7e7347b) | последний подтверждённый Render LIVE: 4695807fad3dadd52826bfe5e839644b8d65d908.
+- Запуск: в процессе, независимая задача исправления обновления базы знаний после изменения материала.
+- #537: финальный HEAD 7e7347bd40281c71ebc8a2cfee052c3ced6efbe7 прошёл 6/6, включая PostgreSQL с 8 обработчиками; проверены source и отсутствие unresolved threads. Предыдущий main 4695807 прошёл 5/5 и был LIVE. Guarded merge выполнен. Новый main run 42202034867 ещё выполняется; автоматический deploy нового SHA пока не подтверждён.
+- Политика повреждённых уведомлений: оставить записи неизменными, предупреждать по ключу; не преобразовывать string recipient IDs, не исправлять/удалять записи автоматически, не повторять uncertain/conflict. Ручная коррекция реальных записей требует отдельного разрешения.
+- Проверки нового исправления: npm ci и npm run build (tsc + Vite) PASS, diff --check PASS. Локальный Playwright не запустил Chromium: socket() Operation not permitted; это ограничение среды, не успешный E2E. Полный E2E требуется в CI.
+- Новое исправление: после успешного изменения материала старый список сразу инвалидируется; при ошибке повторной загрузки устаревшие карточки не показываются. Кнопка повторяет GET, а не PATCH. Добавлен браузерный regression test.
+- Следующий шаг: завершить main 5/5 и автоматический LIVE #537, проверить health/ready и короткую выборку ошибок; затем финальные 6/6 нового PR базы знаний.
+- #551: legacy NULL/missing-area и реальная ERA/KSOORS приёмка открыты; #542 резервный админ-доступ; #589 политика видимости; #605 исторические локальные даты. Не менять эти политики молча.
+- Автозадача 6adcbd42ede08191a5c0a946e4147b52 содержит полное ТЗ; расписание сохранено.
+- Нужно от владельца: пакетная реальная приёмка ролей и мобильных клиентов; CI и LIVE не равны ПРОВЕРЕНО.
 
 ## Реестр готовности (3/40 = 7,5%)
 
 | ID | Requirement | Status | Remaining evidence / action |
 |---|---|---|---|
 | A01 | Registration and authorization full cycle | ВЫПУЩЕНО | Real fresh/resumed application, photo, approval and login |
-| A02 | Roles and access boundaries | В РАЗРАБОТКЕ | #542; real admin/leader/employee/participant matrix |
+| A02 | Roles and access boundaries | IN PROGRESS | Configured-admin guard and release evidence in [#542](https://github.com/davidbagh22/era-telegram-bot/pull/542). Real admin/leader/employee/participant matrix is BLOCKED: HUMAN ACCEPTANCE. |
 | A03 | Convenient main menu | ВЫПУЩЕНО | Verify final mobile navigation and legacy keyboard |
 | A04 | Remove «Мой путь» from profile | ВЫПУЩЕНО | Main ProfileScreen no longer renders «Мой путь»; real participant/mobile profile acceptance not confirmed |
 | A05 | Buttons, typography and logo | В РАЗРАБОТКЕ | Mobile visual review against agreed design |
@@ -25,7 +28,7 @@
 | B02 | Edit published event poster | В РАЗРАБОТКЕ | Wizard supports poster changes; published entry flow unconfirmed |
 | B03 | Hide/remove events from general poster listing | В РАЗРАБОТКЕ | Draft #589 exists; high-risk visibility policy, PostgreSQL and human acceptance not confirmed; do not release |
 | B04 | Publication latency and duplicate prevention | В РАЗРАБОТКЕ | #447 shipped; legacy #467/#491, uncertain receipts |
-| B05 | Registration, waitlist, capacity and deadlines | В РАЗРАБОТКЕ | Review overlapping #507/#510/#514/#515 as coherent package |
+| B05 | Registration, waitlist, capacity and deadlines | IN PROGRESS | Capacity concurrency and release evidence in [#663](https://github.com/davidbagh22/era-telegram-bot/pull/663). #514/#510 policy parity, #507 notification ordering, and real Telegram acceptance remain. |
 | B06 | QR attendance | ВЫПУЩЕНО | Real scoped confirmation and repeated-scan acceptance |
 | B07 | Event points | ВЫПУЩЕНО | Actual attendance-to-ledger evidence, no test balance edits |
 | B08 | Actual production event list | В РАЗРАБОТКЕ | Authenticated read unavailable; do not invent the list |
@@ -51,7 +54,7 @@
 | E08 | My Vector | В РАЗРАБОТКЕ | Methods/check-ins/goals/history/privacy and earlier backlog |
 | E09 | Daily quotes | В РАЗРАБОТКЕ | Historical Nov 1–2 channel posts and Mini App quote API are evidenced, but future channel publications now require explicit approval for the exact text/day/target; approval UI and real authorized workflow are pending. No unapproved auto-posts permitted. |
 | E10 | Broadcasts and notifications | В РАЗРАБОТКЕ | #491 incomplete receipts; no uncertain replay |
-| E11 | Security and data protection | В РАЗРАБОТКЕ | #475/#484/#486/#542; auth and role checks |
+| E11 | Security and data protection | IN PROGRESS | Webhook release #662, configured-admin boundary #542, and remaining #484/#486 event privacy checks. |
 | E12 | Backup and restore | ПРОВЕРЕНО | 2026-11-02 scheduled backup run 41407674271 SUCCESS: real production OIDC snapshot, isolated PostgreSQL 18 restore and migrations, encrypted/checksum round-trip, stored private artifact 13123694669 (expires 2026-11-09). External S3 copy optional and not configured; retention improvement remains advisable. |
 | E13 | Legal/content organizational acceptance | В РАЗРАБОТКЕ | Draft #364 requires responsible human approval |
 | E14 | Final multi-role production acceptance | НЕ НАЧАТО | All required scenarios, no known blockers, observation |
