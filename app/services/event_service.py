@@ -1,3 +1,5 @@
+import logging
+from collections.abc import Awaitable, Callable
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
@@ -8,6 +10,8 @@ from app.database.models import Event, EventRegistration
 from app.services.audit_service import audit
 from app.services.digital_engagement_service import award_event_registration
 from app.utils.constants import EventStatus, RegistrationStatus
+
+logger = logging.getLogger(__name__)
 
 PUBLIC_EVENT_STATUSES = {
     EventStatus.APPROVED,
@@ -75,6 +79,17 @@ async def available_places(session: AsyncSession, event: Event) -> str:
     return str(max(0, event.participant_limit - registered))
 
 
+async def _lock_event_for_capacity(session: AsyncSession, event_id: int) -> Event | None:
+    # Refresh any cached capacity and acquire the event lock before flushing
+    # a pending cancellation, which would otherwise lock its registration first.
+    return await session.scalar(
+        select(Event)
+        .where(Event.id == event_id)
+        .with_for_update()
+        .execution_options(populate_existing=True, autoflush=False)
+    )
+
+
 async def register_for_event(
     session: AsyncSession,
     event: Event,
@@ -87,9 +102,7 @@ async def register_for_event(
     The event row is locked while capacity is checked, so two simultaneous
     registrations cannot consume the same last seat.
     """
-    locked_event = await session.scalar(
-        select(Event).where(Event.id == event.id).with_for_update()
-    )
+    locked_event = await _lock_event_for_capacity(session, event.id)
     if locked_event is None:
         return None, "closed"
     event = locked_event
@@ -143,8 +156,10 @@ async def register_for_event(
 
 async def promote_waitlist(session: AsyncSession, event: Event) -> EventRegistration | None:
     """Move the oldest waiting participant into a freed seat, if possible."""
-    if event.participant_limit is None:
+    locked_event = await _lock_event_for_capacity(session, event.id)
+    if locked_event is None or locked_event.participant_limit is None:
         return None
+    event = locked_event
     if int(await available_places(session, event)) <= 0:
         return None
     waiting = await session.scalar(
@@ -169,6 +184,30 @@ async def promote_waitlist(session: AsyncSession, event: Event) -> EventRegistra
         entity_id=event.id,
     )
     return waiting
+
+
+async def send_committed_registration_notice(
+    session: AsyncSession,
+    registration_id: int,
+    expected_status: str,
+    send: Callable[[], Awaitable[object]],
+) -> None:
+    """Check the committed state in a short transaction before an interactive reply."""
+    try:
+        async with session.begin():
+            current = await session.scalar(
+                select(EventRegistration.id)
+                .join(Event, Event.id == EventRegistration.event_id)
+                .where(
+                    EventRegistration.id == registration_id,
+                    EventRegistration.status == expected_status,
+                    Event.status.notin_((EventStatus.DRAFT, EventStatus.PENDING_APPROVAL, EventStatus.CANCELLED)),
+                )
+            )
+        if current is not None:
+            await send()
+    except Exception:
+        logger.exception("Could not deliver committed registration notice for registration %s", registration_id)
 
 
 def event_datetime(event: Event, timezone: str) -> datetime:

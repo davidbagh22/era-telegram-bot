@@ -169,3 +169,38 @@ def test_can_manage_partners_requires_admin_or_specific_grant() -> None:
     assert can_manage_partners(admin, settings, admin.telegram_id)
     assert can_manage_partners(grantee, settings, grantee.telegram_id)
     assert not can_manage_partners(bystander, settings, bystander.telegram_id)
+
+
+def test_blocked_or_archived_user_in_admin_ids_is_not_full_admin():
+    from types import SimpleNamespace
+    from app.services.authorization_service import is_full_admin
+    settings = SimpleNamespace(admin_ids=[7])
+    ok = SimpleNamespace(telegram_id=7, role=Role.ADMIN, is_blocked=False, is_archived=False)
+    assert is_full_admin(ok, settings, 7)
+    assert not is_full_admin(None, settings, 7)
+    # A caller must not borrow a different persisted user's admin role.
+    assert not is_full_admin(ok, settings, 8)
+    assert not is_full_admin(SimpleNamespace(role=Role.ADMIN, is_blocked=False, is_archived=False), settings, 7)
+    for flag in ("is_blocked", "is_archived"):
+        bad = SimpleNamespace(telegram_id=7, role=Role.ADMIN, is_blocked=False, is_archived=False)
+        setattr(bad, flag, True)
+        assert not is_full_admin(bad, settings, 7)
+        assert not is_full_admin(bad, SimpleNamespace(admin_ids=[]), 8)
+
+
+
+def test_legacy_admin_router_denies_blocked_or_archived_settings_admin() -> None:
+    from app.middlewares.admin_bot_access import has_admin_bot_access
+
+    settings = Settings(bot_token="1234567890:test", admin_ids=[7])
+    active = _user(telegram_id=7, role=Role.ADMIN)
+    assert has_admin_bot_access(active, settings, 7)
+    assert not has_admin_bot_access(None, settings, 7)
+
+    for blocked, archived in ((True, False), (False, True)):
+        disabled = _user(telegram_id=7, role=Role.ADMIN, blocked=blocked, archived=archived)
+        assert not has_admin_bot_access(disabled, settings, 7)
+        assert not has_admin_bot_access(disabled, Settings(bot_token="1234567890:test", admin_ids=[]), 7)
+
+    participant = _user(telegram_id=8, role=Role.PARTICIPANT)
+    assert not has_admin_bot_access(participant, settings, 8)

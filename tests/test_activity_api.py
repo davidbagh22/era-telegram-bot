@@ -127,7 +127,6 @@ class EventsApiTests(unittest.TestCase):
             response = client.post("/api/v1/events/10/register")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["registration_status"], "registered")
-        session.commit.assert_awaited_once()
 
     def test_register_event_conflict(self) -> None:
         event = _event()

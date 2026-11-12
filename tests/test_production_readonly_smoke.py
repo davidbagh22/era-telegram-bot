@@ -12,7 +12,7 @@ class FakeResponse:
     def __init__(self, url, status, body=None):
         self.url = url
         self.status = status
-        self.headers = {"Content-Type": "application/json" if status in (401, 403) else "text/html"}
+        self.headers = {"Content-Type": "application/json" if status in (401, 403) or url.endswith(("/health", "/ready")) else "text/html"}
         if body is None:
             if url.endswith("/app/"):
                 body = b'<!doctype html><html><body><div id="root"></div></body></html>'
@@ -145,6 +145,20 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertEqual(result["error"], error)
 
+    def test_health_ready_json_payload_with_html_content_type_is_not_accepted(self):
+        for path, body, expected_error in (
+            ("/health", b'{"status":"ok"}', "health_response_not_json"),
+            ("/ready", b'{"status":"ready"}', "ready_response_not_json"),
+        ):
+            with self.subTest(path=path):
+                response = FakeResponse(smoke.PRODUCTION_URL + path, 200, body=body)
+                response.headers["Content-Type"] = "text/html; charset=utf-8"
+                with patch.object(smoke, "urlopen", return_value=response):
+                    result = smoke.check(smoke.PRODUCTION_URL, path, frozenset({200}), 3.0)
+                self.assertEqual(result["status"], 200)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], expected_error)
+
     def test_json_200_with_wrong_status_is_not_ready(self):
         with patch.object(smoke, "urlopen", return_value=FakeResponse(
             smoke.PRODUCTION_URL + "/ready", 200,
@@ -186,6 +200,74 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
                 self.assertEqual(result["status"], 200)
                 self.assertFalse(result["ok"])
                 self.assertEqual(result["error"], "miniapp_response_not_html")
+
+    def test_miniapp_root_must_be_a_real_div_element(self):
+        # A matching byte string in JS, an HTML comment, an attribute prefix,
+        # or another tag must not make the read-only acceptance probe pass.
+        invalid_pages = (
+            b'<html><script>const template = \'<div id="root"></div>\';</script></html>',
+            b'<!-- <div id="root"></div> -->',
+            b'<div id="rooted"></div>',
+            b'<span id="root"></span>',
+            b'<template><div id="root"></div></template>',
+            b'<noscript><div id="root"></div></noscript>',
+            b'<div id="root"',
+        )
+        for html in invalid_pages:
+            with self.subTest(html=html):
+                response = FakeResponse(smoke.PRODUCTION_URL + "/app/", 200, body=html)
+                with patch.object(smoke, "urlopen", return_value=response):
+                    result = smoke.check(
+                        smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0
+                    )
+                self.assertEqual(result["status"], 200)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "miniapp_root_missing")
+
+    def test_miniapp_root_rejects_mismatched_inert_closing_tags(self):
+        # An unmatched closing tag must not decrement the inert nesting
+        # depth and make a fake root inside malformed markup look live.
+        for html in (
+            b'<template></noscript><div id="root"></div>',
+            b'<noscript></template><div id="root"></div>',
+            b'<template><noscript></template><div id="root"></div>',
+        ):
+            with self.subTest(html=html):
+                response = FakeResponse(smoke.PRODUCTION_URL + "/app/", 200, body=html)
+                with patch.object(smoke, "urlopen", return_value=response):
+                    result = smoke.check(
+                        smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0
+                    )
+                self.assertEqual(result["status"], 200)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "miniapp_root_missing")
+
+    def test_miniapp_root_rejects_inert_text_and_fallback_containers(self):
+        # HTMLParser parses tags inside textarea/title/xmp even though a
+        # browser treats them as text, not an actual React mount element.
+        for tag in ("textarea", "title", "xmp", "iframe", "noembed", "noframes"):
+            with self.subTest(tag=tag):
+                html = f'<{tag}><div id="root"></div></{tag}>'.encode()
+                response = FakeResponse(smoke.PRODUCTION_URL + "/app/", 200, body=html)
+                with patch.object(smoke, "urlopen", return_value=response):
+                    result = smoke.check(
+                        smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0
+                    )
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "miniapp_root_missing")
+
+    def test_miniapp_root_accepts_valid_html_attribute_variants(self):
+        for html in (
+            b"<html><body><div class='app' id='root'></div></body></html>",
+            b'<html><div id = "root" data-version="1"></div></html>',
+        ):
+            with self.subTest(html=html):
+                response = FakeResponse(smoke.PRODUCTION_URL + "/app/", 200, body=html)
+                with patch.object(smoke, "urlopen", return_value=response):
+                    result = smoke.check(
+                        smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0
+                    )
+                self.assertTrue(result["ok"])
 
     def test_html_charset_miniapp_response_is_accepted(self):
         response = FakeResponse(smoke.PRODUCTION_URL + "/app/", 200)
@@ -248,6 +330,90 @@ class ProductionReadonlySmokeTests(unittest.TestCase):
             result = smoke.check(smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0)
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "cross_origin_redirect")
+
+    def test_reject_malformed_base_port_before_any_network_request(self):
+        for origin in (
+            "https://era-telegram-bot.onrender.com:garbage",
+            "https://era-telegram-bot.onrender.com:99999",
+            "https://era-telegram-bot.onrender.com:0",
+            "https://[broken/app/",
+        ):
+            with self.subTest(origin=origin), patch.object(smoke, "urlopen") as opened:
+                with self.assertRaises(ValueError):
+                    smoke.run(origin)
+                opened.assert_not_called()
+
+    def test_credentialed_same_origin_redirect_is_not_accepted(self):
+        response = FakeResponse("https://user:secret@era-telegram-bot.onrender.com/app/", 200)
+        with patch.object(smoke, "urlopen", return_value=response):
+            result = smoke.check(smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "cross_origin_redirect")
+
+    def test_malformed_redirect_url_is_a_failed_check_not_a_crash(self):
+        for redirected in (
+            "https://era-telegram-bot.onrender.com:garbage/app/",
+            "https://era-telegram-bot.onrender.com:99999/app/",
+            "https://[broken/app/",
+        ):
+            with self.subTest(redirected=redirected):
+                with patch.object(smoke, "urlopen", return_value=FakeResponse(redirected, 200)):
+                    result = smoke.check(smoke.PRODUCTION_URL, "/app/", frozenset({200}), 3.0)
+                self.assertEqual(result["status"], 200)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "invalid_redirect_url")
+
+    def test_redirected_health_cannot_masquerade_as_pending_deploy(self):
+        for redirected, expected_error in (
+            ("https://other.example/health", "cross_origin_redirect"),
+            (smoke.PRODUCTION_URL + "/login", "redirected_route"),
+        ):
+            response = FakeResponse(
+                redirected, 200, b'{"status":"ok","commit":"bbbbbbb"}'
+            )
+            # Keep the health JSON contract valid even when the redirect
+            # target is /login; this isolates the origin/route guard.
+            response.headers["Content-Type"] = "application/json"
+            with self.subTest(redirected=redirected), patch.object(
+                smoke, "urlopen", return_value=response,
+            ):
+                result = smoke.check(
+                    smoke.PRODUCTION_URL, "/health", frozenset({200}), 3.0,
+                    expected_sha="a" * 40,
+                )
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["error"], expected_error)
+
+    def test_pending_live_sha_is_not_a_passing_production_probe(self):
+        def fake_open(request, timeout):
+            body = b'{"status":"ok","commit":"bbbbbbb"}' if request.full_url.endswith("/health") else None
+            status = 200 if request.full_url.endswith(("/health", "/ready", "/app/")) else 401
+            return FakeResponse(request.full_url, status, body)
+
+        expected_sha = "a" * 40
+        with patch.object(smoke, "urlopen", side_effect=fake_open):
+            status, checks = smoke.run(expected_sha=expected_sha)
+        self.assertEqual(status, 1)
+        self.assertTrue(smoke.is_pending_deploy_only(checks))
+        self.assertFalse(smoke.is_pending_deploy_only(checks[:-1]))
+        damaged = [dict(item) for item in checks]
+        damaged[6]["ok"] = False
+        damaged[6]["error"] = "auth_response_not_json"
+        self.assertFalse(smoke.is_pending_deploy_only(damaged))
+        damaged = [dict(item) for item in checks]
+        damaged[0]["commit_prefix"] = "notsha!"
+        self.assertFalse(smoke.is_pending_deploy_only(damaged))
+
+        with patch.object(smoke, "urlopen", side_effect=fake_open), patch(
+            "sys.argv", ["smoke", "--expected-sha", expected_sha, "--pending-exit-code"]
+        ), patch("builtins.print") as printed:
+            self.assertEqual(smoke.main(), 3)
+            self.assertEqual(json.loads(printed.call_args.args[0])["result"], "PENDING_DEPLOY")
+        with patch.object(smoke, "urlopen", side_effect=fake_open), patch(
+            "sys.argv", ["smoke", "--expected-sha", expected_sha]
+        ), patch("builtins.print") as printed:
+            self.assertEqual(smoke.main(), 1)
+            self.assertEqual(json.loads(printed.call_args.args[0])["result"], "FAIL")
 
     def test_health_commit_prefix_is_corroboration_not_exact_sha_proof(self):
         sha = "a88dca9220b246727553b266b0a36786464bfc25"
