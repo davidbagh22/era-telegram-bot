@@ -6,9 +6,11 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration
 from app.services.audit_service import audit
 from app.services.digital_engagement_service import award_event_registration
+from app.services.event_registration_policy import registration_is_closed
 from app.utils.constants import EventStatus, RegistrationStatus
 
 logger = logging.getLogger(__name__)
@@ -94,8 +96,6 @@ async def register_for_event(
     session: AsyncSession,
     event: Event,
     user_id: int,
-    *,
-    waitlist_enabled: bool = False,
 ) -> tuple[EventRegistration | None, str | None]:
     """Register a participant, or put them on the waitlist when configured.
 
@@ -108,6 +108,13 @@ async def register_for_event(
     event = locked_event
     if event.status not in REGISTRATION_ALLOWED_STATUSES:
         return None, "closed"
+    # The admin event editor takes the same Event lock before updating or
+    # inserting the policy. Refresh the session cache after acquiring it.
+    experience = await session.get(EventExperience, event.id, populate_existing=True)
+    if registration_is_closed(experience):
+        return None, "closed"
+    if experience is not None and not experience.registration_required:
+        return None, "registration_not_required"
     existing = await session.scalar(
         select(EventRegistration).where(
             EventRegistration.event_id == event.id,
@@ -124,7 +131,7 @@ async def register_for_event(
         event.participant_limit is not None
         and int(await available_places(session, event)) <= 0
     )
-    if is_full and not waitlist_enabled:
+    if is_full and not (experience and experience.waitlist_enabled):
         return None, "full"
 
     target_status = RegistrationStatus.WAITLIST if is_full else RegistrationStatus.REGISTERED

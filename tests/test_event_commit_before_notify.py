@@ -1,6 +1,6 @@
 """Exercise event notices with a real, isolated transaction and mocked Telegram."""
 
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
@@ -15,10 +15,18 @@ from app.database.base import Base
 from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
 from app.handlers.participant.event_plans_changed import plans_changed
-from app.handlers.participant.events_stability_block8 import event_join
+from app.handlers.participant.events_stability_block8 import event_join, event_view
+from app.services.event_registration_policy import registration_is_closed
 from app.services.event_service import register_for_event, send_committed_registration_notice
 from app.services.points_service import total_points
 from app.utils.constants import ApplicationStatus, EventStatus, RegistrationStatus
+
+
+def test_registration_deadline_handles_legacy_utc_and_aware_offsets() -> None:
+    now = datetime(2026, 11, 12, 18, tzinfo=timezone.utc)
+    assert registration_is_closed(SimpleNamespace(registration_close_at=datetime(2026, 11, 12, 18)), now=now)
+    later_in_yerevan = datetime(2026, 11, 12, 22, 1, tzinfo=timezone(timedelta(hours=4)))
+    assert not registration_is_closed(SimpleNamespace(registration_close_at=later_in_yerevan), now=now)
 
 
 class EventCommitBeforeNotificationTests(IsolatedAsyncioTestCase):
@@ -62,11 +70,13 @@ class EventCommitBeforeNotificationTests(IsolatedAsyncioTestCase):
 
     async def _fill_event_and_waitlist(self) -> None:
         async with self.sessions() as session:
-            event = await session.get(Event, self.event_id)
-            for user_id in (self.first_id, self.second_id):
-                _, error = await register_for_event(session, event, user_id, waitlist_enabled=True)
-                self.assertIsNone(error)
-            await session.commit()
+            for user_id, status in (
+                (self.first_id, RegistrationStatus.REGISTERED),
+                (self.second_id, RegistrationStatus.WAITLIST),
+            ):
+                user = await session.get(User, user_id)
+                result = await register_event(self.event_id, user, session, None, self.settings)
+                self.assertEqual(result.registration_status, status)
         self.assertEqual(await self._stored_status(self.second_id), RegistrationStatus.WAITLIST)
 
     async def test_api_confirmation_sees_committed_registration_and_retry_sends_nothing(self) -> None:
@@ -188,3 +198,71 @@ class EventCommitBeforeNotificationTests(IsolatedAsyncioTestCase):
                     await event_join(call, user, session)
         call.message.answer.assert_not_awaited()
         self.assertIsNone(await self._stored_status(self.first_id))
+
+    def _event_callback(self, action: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            data=f"event:{action}:{self.event_id}", answer=AsyncMock(),
+            message=SimpleNamespace(answer=AsyncMock()),
+        )
+
+    async def _native_join_buttons(self, user: User, session) -> list[str]:
+        with patch("app.handlers.participant.events_stability_block8.send_event_card", new=AsyncMock()) as card:
+            await event_view(self._event_callback("view"), user, session)
+        buttons = card.await_args.kwargs["keyboard"].inline_keyboard
+        return [button.text for row in buttons for button in row if button.callback_data == f"event:join:{self.event_id}"]
+
+    async def test_native_legacy_full_event_and_enabled_waitlist_use_correct_actions(self) -> None:
+        async with self.sessions() as session:
+            experience = await session.get(EventExperience, self.event_id)
+            await session.delete(experience)
+            event = await session.get(Event, self.event_id)
+            _, error = await register_for_event(session, event, self.first_id)
+            self.assertIsNone(error)
+            await session.commit()
+
+        for enabled in (False, True):
+            with self.subTest(waitlist_enabled=enabled):
+                async with self.sessions() as session:
+                    if enabled:
+                        session.add(EventExperience(event_id=self.event_id, waitlist_enabled=True))
+                        await session.commit()
+                    user = await session.get(User, self.second_id)
+                    joins = await self._native_join_buttons(user, session)
+                    self.assertEqual(joins, ["Встать в лист ожидания"] if enabled else [])
+                    call = self._event_callback("join")
+                    await event_join(call, user, session)
+                    self.assertIn("в листе ожидания" if enabled else "Свободных мест", call.message.answer.await_args.args[0])
+                expected = RegistrationStatus.WAITLIST if enabled else None
+                self.assertEqual(await self._stored_status(self.second_id), expected)
+
+        async with self.sessions() as session:
+            user = await session.get(User, self.second_id)
+            call = self._event_callback("join")
+            await event_join(call, user, session)
+            self.assertIn("уже в листе ожидания", call.message.answer.await_args.args[0])
+
+    async def test_deadline_and_disabled_registration_reject_stale_callbacks_in_both_clients(self) -> None:
+        expired = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)
+        for required, deadline, detail, reply in (
+            (True, expired, "closed", "закрыта"),
+            (False, None, "registration_not_required", "не нужна"),
+        ):
+            with self.subTest(detail=detail):
+                async with self.sessions() as session:
+                    experience = await session.get(EventExperience, self.event_id)
+                    experience.registration_required = required
+                    experience.registration_close_at = deadline
+                    await session.commit()
+                    user = await session.get(User, self.first_id)
+                    with self.assertRaises(HTTPException) as error:
+                        await register_event(self.event_id, user, session, None, self.settings)
+                    self.assertEqual((error.exception.status_code, error.exception.detail), (409, detail))
+                    await session.rollback()
+
+                async with self.sessions() as session:
+                    user = await session.get(User, self.first_id)
+                    self.assertEqual(await self._native_join_buttons(user, session), [])
+                    call = self._event_callback("join")
+                    await event_join(call, user, session)
+                    self.assertIn(reply, call.message.answer.await_args.args[0])
+                self.assertIsNone(await self._stored_status(self.first_id))

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 
-from datetime import datetime, timezone
 from typing import Any
 
 from aiogram import Bot
@@ -18,6 +17,7 @@ from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
 from app.services import event_activity_service
 from app.services.activity_service import EventScope, list_events
+from app.services.event_registration_policy import registration_is_closed
 from app.services.event_registration_service import mark_not_coming
 from app.services.event_service import (
     available_places,
@@ -71,15 +71,6 @@ class EventOut(BaseModel):
     poster_url: str | None = None
 
 
-def _registration_is_closed(experience: EventExperience | None) -> bool:
-    if experience is None or experience.registration_close_at is None:
-        return False
-    deadline = experience.registration_close_at
-    if deadline.tzinfo is None:
-        deadline = deadline.replace(tzinfo=timezone.utc)
-    return deadline <= datetime.now(timezone.utc)
-
-
 def _display_status(
     event: Event,
     registration: EventRegistration | None,
@@ -123,7 +114,7 @@ async def _to_event_out(
 
     registration_required = experience.registration_required if experience else True
     waitlist_enabled = experience.waitlist_enabled if experience else False
-    registration_closed = _registration_is_closed(experience)
+    registration_closed = registration_is_closed(experience)
     active_registration = bool(
         registration
         and registration.status
@@ -373,20 +364,11 @@ async def register_event(
     event = await session.get(Event, event_id)
     if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
         raise HTTPException(status_code=404, detail="event_not_found")
-    experience = await session.get(EventExperience, event_id)
-    if _registration_is_closed(experience):
-        raise HTTPException(status_code=409, detail="closed")
-    if experience is not None and not experience.registration_required:
-        raise HTTPException(status_code=409, detail="registration_not_required")
-    registration, error = await register_for_event(
-        session,
-        event,
-        user.id,
-        waitlist_enabled=bool(experience and experience.waitlist_enabled),
-    )
+    registration, error = await register_for_event(session, event, user.id)
     if error:
         raise HTTPException(status_code=409, detail=error)
     assert registration is not None
+    experience = await session.get(EventExperience, event_id) if bot is not None else None
     result = await _to_event_out(session, event, registration)
     await session.commit()
     if bot is not None:

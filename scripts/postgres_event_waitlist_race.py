@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from types import SimpleNamespace
 
 from fastapi import HTTPException
@@ -14,8 +14,10 @@ from sqlalchemy import func, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.api.v1.admin_event_create import EventDraftPatch, save_event_draft_step
 from app.api.v1.events import register_event
 from app.config import Settings
+from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
 from app.services.event_service import promote_waitlist, register_for_event
 from app.utils.constants import EventStatus, RegistrationStatus
@@ -31,6 +33,7 @@ async def main() -> None:
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     nonce = uuid.uuid4().hex[:12]
     telegram_base = 8_100_000_000 + int(nonce[:7], 16)
+    settings = Settings(bot_token="0000000000:POSTGRESMIGRATIONSMOKE")
     try:
         async with sessions() as session:
             creator = User(
@@ -48,8 +51,7 @@ async def main() -> None:
             ]
             session.add_all([creator, *participants])
             await session.flush()
-            event = Event(
-                title=f"CI capacity {nonce}",
+            event_fields = dict(
                 description="Disposable PostgreSQL concurrency fixture",
                 event_date=date.today() + timedelta(days=3),
                 event_time=time(18),
@@ -59,17 +61,19 @@ async def main() -> None:
                 created_by=creator.id,
                 status=EventStatus.REGISTRATION_OPEN,
             )
-            session.add(event)
+            event = Event(title=f"CI capacity {nonce}", **event_fields)
+            legacy = Event(title=f"CI legacy {nonce}", **event_fields)
+            session.add_all([event, legacy])
+            await session.flush()
+            session.add(EventExperience(event_id=event.id, waitlist_enabled=True))
             await session.commit()
-            event_id = event.id
+            event_id, legacy_id = event.id, legacy.id
             participant_ids = [participant.id for participant in participants]
 
         async def register(user_id: int) -> str:
             async with sessions() as session:
                 current_event = await session.get(Event, event_id)
-                registration, error = await register_for_event(
-                    session, current_event, user_id, waitlist_enabled=True
-                )
+                registration, error = await register_for_event(session, current_event, user_id)
                 await session.commit()
                 if error is not None or registration is None:
                     raise AssertionError(f"registration failed: {error}")
@@ -85,9 +89,7 @@ async def main() -> None:
         async def replay(user_id: int) -> None:
             async with sessions() as session:
                 current_event = await session.get(Event, event_id)
-                registration, error = await register_for_event(
-                    session, current_event, user_id, waitlist_enabled=True
-                )
+                registration, error = await register_for_event(session, current_event, user_id)
                 assert registration is None and error == "already", (registration, error)
                 await session.rollback()
 
@@ -156,8 +158,49 @@ async def main() -> None:
         assert waitlist_count == 6, waitlist_count
         assert registration_count == 8, registration_count
 
+        async def race_admin_policy(
+            target_id: int, patch: EventDraftPatch, expected_error: str | None, *, rollback_edit: bool = False
+        ) -> None:
+            async with sessions() as applicant, sessions() as editor:
+                stale_event = await applicant.get(Event, target_id)
+                stale_policy = await applicant.get(EventExperience, target_id)
+                assert (stale_policy is None) == (target_id == legacy_id)
+                await save_event_draft_step(target_id, patch, creator, editor, settings, None)
+
+                task = asyncio.create_task(register_for_event(applicant, stale_event, creator.id))
+                try:
+                    done, _ = await asyncio.wait({task}, timeout=0.15)
+                    assert not done, "Registration bypassed the admin's Event lock"
+                    if rollback_edit:
+                        await editor.rollback()
+                    else:
+                        await editor.commit()
+                    registration, error = await asyncio.wait_for(task, timeout=10)
+                    assert error == expected_error, (registration, error)
+                    if expected_error is None:
+                        assert registration is not None and registration.status == RegistrationStatus.REGISTERED
+                    else:
+                        assert registration is None
+                    if expected_error == "full":
+                        assert not stale_policy.waitlist_enabled
+                finally:
+                    if not task.done():
+                        task.cancel()
+                        await asyncio.gather(task, return_exceptions=True)
+
+        await race_admin_policy(event_id, EventDraftPatch(waitlist_enabled=False), "full")
+        await race_admin_policy(
+            event_id, EventDraftPatch(registration_close_at=datetime.now(timezone.utc) - timedelta(minutes=1)), "closed"
+        )
+        await race_admin_policy(
+            legacy_id, EventDraftPatch(registration_required=False), None, rollback_edit=True
+        )
+        await race_admin_policy(legacy_id, EventDraftPatch(registration_required=False), "registration_not_required")
+
         async with sessions() as editor:
             edited_event = await editor.get(Event, event_id)
+            experience = await editor.get(EventExperience, event_id)
+            experience.registration_close_at = None
             edited_event.participant_limit = 2
             await editor.commit()
 
@@ -185,7 +228,6 @@ async def main() -> None:
         send_started = asyncio.Event()
         finish_send = asyncio.Event()
         send_transactions = []
-        settings = Settings(bot_token="0000000000:POSTGRESMIGRATIONSMOKE")
 
         async def register_with_delayed_notice() -> str:
             async with sessions() as session:
@@ -222,6 +264,7 @@ async def main() -> None:
         print("PostgreSQL event capacity/waitlist concurrency verification passed")
         print("registrations=8 capacity=1 registered=1 waitlist=7 duplicate_replays=8 promotions=1")
         print("after_release registered=1 waitlist=6 total_rows=8; stale capacity rejected")
+        print("Registration honored the admin edit, deadline, waitlist, and legacy policy commit or rollback")
         print("A concurrent request saw the committed last seat while Telegram delivery was paused")
     finally:
         await engine.dispose()

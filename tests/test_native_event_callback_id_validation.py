@@ -80,6 +80,7 @@ class NativeEventHandlerIdTests(IsolatedAsyncioTestCase):
         call.message.answer.assert_awaited_once()
 
     async def test_valid_view_reaches_existing_event_card_without_database_writes(self):
+        from app.database.event_experience import EventExperience
         from app.database.models import Event
         from app.utils.constants import EventStatus
 
@@ -88,7 +89,7 @@ class NativeEventHandlerIdTests(IsolatedAsyncioTestCase):
             data="event:view:42", answer=AsyncMock(),
             message=SimpleNamespace(answer=AsyncMock()),
         )
-        session = SimpleNamespace(get=AsyncMock(return_value=event), scalar=AsyncMock(return_value=0))
+        session = SimpleNamespace(get=AsyncMock(side_effect=[event, None]), scalar=AsyncMock(return_value=0))
         with (
             patch("app.handlers.participant.events_stability_block8._approved", return_value=True),
             patch("app.handlers.participant.events_stability_block8.registration_stats",
@@ -97,8 +98,10 @@ class NativeEventHandlerIdTests(IsolatedAsyncioTestCase):
                   new_callable=AsyncMock) as card,
         ):
             await event_view(call, SimpleNamespace(id=1), session)
-        session.get.assert_awaited_once_with(Event, 42)
+        self.assertEqual([args.args for args in session.get.await_args_list], [(Event, 42), (EventExperience, 42)])
         card.assert_awaited_once()
+        self.assertEqual(card.await_args.kwargs["available"], "8")
+        self.assertEqual(card.await_args.kwargs["registered"], 2)
         call.message.answer.assert_not_awaited()
 
     async def test_valid_join_preserves_already_registered_path(self):
@@ -110,7 +113,9 @@ class NativeEventHandlerIdTests(IsolatedAsyncioTestCase):
             data="event:join:42", answer=AsyncMock(),
             message=SimpleNamespace(answer=AsyncMock()),
         )
-        session = SimpleNamespace(get=AsyncMock(return_value=event))
+        session = SimpleNamespace(
+            get=AsyncMock(return_value=event), scalar=AsyncMock(return_value="registered"), commit=AsyncMock(),
+        )
         with (
             patch("app.handlers.participant.events_stability_block8._approved", return_value=True),
             patch("app.handlers.participant.events_stability_block8.register_for_event",

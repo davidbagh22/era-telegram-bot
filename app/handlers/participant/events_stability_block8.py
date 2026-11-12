@@ -7,9 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.states.event import EventConfirmationStates
 from app.config import Settings
-from app.database.models import Event, EventActivity, User
+from app.database.event_experience import EventExperience
+from app.database.models import Event, EventActivity, EventRegistration, User
 from app.keyboards.participant import event_list_keyboard
 from app.services.event_card import send_event_card
+from app.services.event_registration_policy import registration_is_closed
 from app.services.notification_service import safe_answer_document
 from app.services.event_registration_service import registration_stats
 from app.services.event_service import (
@@ -20,7 +22,7 @@ from app.services.event_service import (
     send_committed_registration_notice,
 )
 from app.utils import texts, ux_texts
-from app.utils.constants import ApplicationStatus
+from app.utils.constants import ApplicationStatus, RegistrationStatus
 
 router = Router(name="participant_events_stability_block8")
 
@@ -45,10 +47,10 @@ def _approved(user: User | None) -> bool:
     )
 
 
-def _event_keyboard(event_id: int, *, can_register: bool, has_activities: bool) -> InlineKeyboardMarkup:
+def _event_keyboard(event_id: int, *, registration_button: str | None, has_activities: bool) -> InlineKeyboardMarkup:
     rows = []
-    if can_register:
-        rows.append([InlineKeyboardButton(text="Зарегистрироваться", callback_data=f"event:join:{event_id}")])
+    if registration_button is not None:
+        rows.append([InlineKeyboardButton(text=registration_button, callback_data=f"event:join:{event_id}")])
     if has_activities:
         rows.append([InlineKeyboardButton(text="✨ Активности", callback_data=f"event:activities:{event_id}")])
     rows.append([InlineKeyboardButton(text="Добавить в календарь", callback_data=f"event:calendar:{event_id}")])
@@ -104,11 +106,13 @@ async def event_view(call: CallbackQuery, user: User | None, session: AsyncSessi
     if event is None or event.status not in PUBLIC_EVENT_STATUSES:
         await call.message.answer("Это мероприятие сейчас недоступно в афише")
         return
+    experience = await session.get(EventExperience, event.id)
     stats = await registration_stats(session, event)
-    can_register = (
+    registration_open = (
         event.status in REGISTRATION_ALLOWED_STATUSES
-        and (event.participant_limit is None or int(stats["free"]) > 0)
+        and not registration_is_closed(experience)
     )
+    full = event.participant_limit is not None and int(stats["free"]) <= 0
     has_activities = bool(
         await session.scalar(
             select(func.count())
@@ -117,11 +121,18 @@ async def event_view(call: CallbackQuery, user: User | None, session: AsyncSessi
         )
     )
     extra = None
-    if event.status not in REGISTRATION_ALLOWED_STATUSES:
+    registration_button = None
+    if experience is not None and not experience.registration_required:
+        extra = "Для этого мероприятия регистрация не нужна."
+    elif not registration_open:
         extra = "Регистрация закрыта, но карточка мероприятия остаётся доступна."
-    elif event.participant_limit is not None and int(stats["free"]) <= 0:
+    elif full:
         extra = "Свободных мест сейчас нет."
-    keyboard = _event_keyboard(event.id, can_register=can_register, has_activities=has_activities)
+        if experience is not None and experience.waitlist_enabled:
+            registration_button = "Встать в лист ожидания"
+    else:
+        registration_button = "Зарегистрироваться"
+    keyboard = _event_keyboard(event.id, registration_button=registration_button, has_activities=has_activities)
     if settings is not None:
         from app.services.event_attendance_service import attendance_v2_enabled, participant_state
         if attendance_v2_enabled(settings, call.from_user.id):
@@ -183,22 +194,34 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
         await call.message.answer("Это мероприятие сейчас недоступно")
         return
     registration, error = await register_for_event(session, event, user.id)
-    if error == "already":
-        await call.message.answer(texts.EVENT_ALREADY_REGISTERED)
-        return
-    if error == "full":
-        await call.message.answer(texts.EVENT_FULL)
-        return
-    if error == "closed":
-        await call.message.answer("Регистрация на это мероприятие закрыта, но само событие остаётся в афише")
+    if error is not None:
+        reply = {
+            "already": texts.EVENT_ALREADY_REGISTERED,
+            "full": texts.EVENT_FULL,
+            "closed": "Регистрация на это мероприятие закрыта, но само событие остаётся в афише",
+            "registration_not_required": "Для этого мероприятия регистрация не нужна.",
+        }[error]
+        if error == "already":
+            status = await session.scalar(
+                select(EventRegistration.status).where(
+                    EventRegistration.event_id == event.id, EventRegistration.user_id == user.id
+                )
+            )
+            if status == RegistrationStatus.WAITLIST:
+                reply = "Вы уже в листе ожидания на это мероприятие."
+        await session.commit()
+        await call.message.answer(reply)
         return
     assert registration is not None
-    stats = await registration_stats(session, event)
-    reply = (
-        texts.event_registered(event)
-        + f"\n\nЗарегистрировано: {stats['registered']}"
-        + (f"\nСвободных мест: {stats['free']}" if event.participant_limit is not None else "")
-    )
+    if registration.status == RegistrationStatus.WAITLIST:
+        reply = f"Вы в листе ожидания на «{event.title}». Сообщим, если для вас освободится место."
+    else:
+        stats = await registration_stats(session, event)
+        reply = (
+            texts.event_registered(event)
+            + f"\n\nЗарегистрировано: {stats['registered']}"
+            + (f"\nСвободных мест: {stats['free']}" if event.participant_limit is not None else "")
+        )
     await session.commit()
     await send_committed_registration_notice(
         session, registration.id, registration.status, lambda: call.message.answer(reply)
