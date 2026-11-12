@@ -101,7 +101,14 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
     return <Card><span style={{ color: "var(--era-text-muted)" }}>Загружаем управление мероприятием…</span></Card>;
   }
   if (state.status === "error") {
-    return <Card><span style={{ color: "var(--era-error)" }}>Не удалось загрузить управление мероприятием.</span></Card>;
+    return (
+      <Card>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: ".75rem" }}>
+          <span style={{ color: "var(--era-error)" }}>Не удалось загрузить управление мероприятием.</span>
+          <button type="button" onClick={() => setRefreshKey((key) => key + 1)}>Повторить загрузку управления</button>
+        </div>
+      </Card>
+    );
   }
 
   const item = state.data;
@@ -111,6 +118,7 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
   return (
     <Card style={{ borderColor: item.confirmation_open ? "rgba(255,100,0,.32)" : "var(--era-border)" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: ".8rem" }}>
+        <button type="button" onClick={() => setRefreshKey((key) => key + 1)} style={{ alignSelf: "flex-start" }}>Обновить управление</button>
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", gap: ".65rem", alignItems: "center" }}>
             <strong style={{ fontSize: "1.03rem" }}>Управление мероприятием</strong>

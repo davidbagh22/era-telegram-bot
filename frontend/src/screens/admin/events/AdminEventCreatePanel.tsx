@@ -40,6 +40,23 @@ const REMINDERS = [
   { value: 60, label: "За 1 час" },
 ];
 
+// datetime-local has no timezone. Persist new task deadlines as absolute instants
+// so server-side expiry checks are independent of the Render server timezone.
+// Preserve legacy naive values until the editor actually changes the field.
+function taskDeadlineInput(value: string | null | undefined): string {
+  if (!value) return "";
+  if (!/(?:Z|[+-][0-9]{2}:[0-9]{2})$/i.test(value)) return value.slice(0, 16);
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) return value.slice(0, 16);
+  return new Date(instant.getTime() - instant.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+function taskDeadlineIso(value: string): string {
+  if (!value) return "";
+  const instant = new Date(value);
+  return Number.isNaN(instant.getTime()) ? value : instant.toISOString();
+}
+
 function patchFromDraft(draft: AdminEventDraft, wizardStep = draft.wizard_step): AdminEventDraftPatch {
   return {
     wizard_step: wizardStep,
@@ -206,22 +223,38 @@ export function AdminEventCreatePanel() {
     if (!draft || draft.wizard_step >= 10) return;
     const target = draft.wizard_step + 1;
     const result = await saveNow(target);
-    if (result) setDraft({ ...result, wizard_step: target });
+    if (result) setDraft((current) => current?.id === result.id ? { ...current, wizard_step: target } : current);
   };
 
   const back = async () => {
     if (!draft || draft.wizard_step <= 1) return;
     const target = draft.wizard_step - 1;
     const result = await saveNow(target);
-    if (result) setDraft({ ...result, wizard_step: target });
+    if (result) setDraft((current) => current?.id === result.id ? { ...current, wizard_step: target } : current);
   };
 
   const leaveDraft = async () => {
-    if (busy) return;
-    if (dirty && !(await saveNow())) return;
+    if (busy || saving) return;
+    const versionAtLeaveStart = versionRef.current;
+    if (dirty) {
+      if (!(await saveNow())) return;
+      // A slow save must not close the editor when the user has typed newer
+      // changes since the request started. Keep those edits on screen.
+      if (versionRef.current !== versionAtLeaveStart) {
+        setError("Во время сохранения появились новые изменения. Проверьте их и повторите выход.");
+        return;
+      }
+    }
     setBusy(true);
     try {
-      setDrafts(await listEventDrafts());
+      const items = await listEventDrafts();
+      setDrafts(items);
+      // Even after saving, the draft-list refresh can be slow. Keep edits
+      // entered while it was pending instead of closing an unsaved editor.
+      if (versionRef.current !== versionAtLeaveStart) {
+        setError("Пока загружался список черновиков, появились новые изменения. Проверьте их и повторите выход.");
+        return;
+      }
       setDraft(null);
       setError(null);
     } catch (reason) {
@@ -354,11 +387,11 @@ export function AdminEventCreatePanel() {
         {step === 2 && (
           <>
             <Question title="Когда и где встречаемся?" hint="Эти данные попадут в карточку, подтверждение регистрации и календарь участника." />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem" }}>
-              <Field label="Дата"><input type="date" value={draft.event_date} onChange={(event) => mutate((current) => ({ ...current, event_date: event.target.value }))} /></Field>
-              <Field label="Начало"><input type="time" value={draft.event_time} onChange={(event) => mutate((current) => ({ ...current, event_time: event.target.value }))} /></Field>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 10rem), 1fr))", gap: ".5rem" }}>
+              <Field label="Дата"><input type="date" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={draft.event_date} onChange={(event) => mutate((current) => ({ ...current, event_date: event.target.value }))} /></Field>
+              <Field label="Начало"><input type="time" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={draft.event_time} onChange={(event) => mutate((current) => ({ ...current, event_time: event.target.value }))} /></Field>
             </div>
-            <Field label="Окончание"><input type="time" value={draft.end_time ?? ""} onChange={(event) => mutate((current) => ({ ...current, end_time: event.target.value || null }))} /></Field>
+            <Field label="Окончание"><input type="time" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={draft.end_time ?? ""} onChange={(event) => mutate((current) => ({ ...current, end_time: event.target.value || null }))} /></Field>
             <Field label="Место"><input value={draft.location} onChange={(event) => mutate((current) => ({ ...current, location: event.target.value }))} placeholder="Дом Москвы в Ереване" /></Field>
             <Field label="Адрес"><input value={draft.address ?? ""} onChange={(event) => mutate((current) => ({ ...current, address: event.target.value }))} placeholder="Улица, дом, этаж — если нужно" /></Field>
             <Field label="Формат">
@@ -394,7 +427,7 @@ export function AdminEventCreatePanel() {
             {draft.registration_required && (
               <>
                 <Field label="Количество мест"><input inputMode="numeric" value={draft.participant_limit ?? ""} onChange={(event) => mutate((current) => ({ ...current, participant_limit: event.target.value ? Number(event.target.value) : null }))} placeholder="40" /></Field>
-                <Field label="Закрыть регистрацию"><input type="datetime-local" value={(draft.registration_close_at ?? "").slice(0, 16)} onChange={(event) => mutate((current) => ({ ...current, registration_close_at: event.target.value || null }))} /></Field>
+                <Field label="Закрыть регистрацию"><input type="datetime-local" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={(draft.registration_close_at ?? "").slice(0, 16)} onChange={(event) => mutate((current) => ({ ...current, registration_close_at: event.target.value || null }))} /></Field>
                 <Toggle checked={draft.waitlist_enabled} onChange={(checked) => mutate((current) => ({ ...current, waitlist_enabled: checked }))} title="Разрешить лист ожидания" hint="Когда места закончатся, новые участники попадут в очередь. Освободившееся место перейдёт первому автоматически." />
                 <Field label="Кто может регистрироваться"><select value={draft.registration_audience} onChange={(event) => mutate((current) => ({ ...current, registration_audience: event.target.value }))}><option value="all">Все одобренные участники ЭРА</option><option value="active">Только активные участники</option><option value="leaders">Лидеры и руководители</option></select></Field>
               </>
@@ -419,7 +452,7 @@ export function AdminEventCreatePanel() {
             {draft.program.map((item, index) => (
               <ArrayCard key={index} title={`Активность ${index + 1}`} onRemove={() => mutate((current) => ({ ...current, program: current.program.filter((_, itemIndex) => itemIndex !== index) }))}>
                 <Field label="Название"><input value={item.title} onChange={(event) => updateProgram(index, { ...item, title: event.target.value }, mutate)} /></Field>
-                <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: ".5rem" }}><Field label="Время"><input type="time" value={item.time ?? ""} onChange={(event) => updateProgram(index, { ...item, time: event.target.value }, mutate)} /></Field><Field label="Ведущий"><input value={item.responsible ?? ""} onChange={(event) => updateProgram(index, { ...item, responsible: event.target.value }, mutate)} /></Field></div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: ".5rem" }}><Field label="Время"><input type="time" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={item.time ?? ""} onChange={(event) => updateProgram(index, { ...item, time: event.target.value }, mutate)} /></Field><Field label="Ведущий"><input style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={item.responsible ?? ""} onChange={(event) => updateProgram(index, { ...item, responsible: event.target.value }, mutate)} /></Field></div>
                 <Field label="Описание"><textarea rows={3} value={item.description ?? ""} onChange={(event) => updateProgram(index, { ...item, description: event.target.value }, mutate)} /></Field>
               </ArrayCard>
             ))}
@@ -435,7 +468,7 @@ export function AdminEventCreatePanel() {
               <ArrayCard key={index} title={`Задание ${index + 1}`} onRemove={() => mutate((current) => ({ ...current, participant_tasks: current.participant_tasks.filter((_, itemIndex) => itemIndex !== index) }))}>
                 <Field label="Название"><input value={item.title} onChange={(event) => updateTask(index, { ...item, title: event.target.value }, mutate)} /></Field>
                 <Field label="Описание"><textarea rows={3} value={item.description ?? ""} onChange={(event) => updateTask(index, { ...item, description: event.target.value }, mutate)} /></Field>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: ".5rem" }}><Field label="Срок"><input type="datetime-local" value={(item.deadline ?? "").slice(0, 16)} onChange={(event) => updateTask(index, { ...item, deadline: event.target.value }, mutate)} /></Field><Field label="Баллы"><input inputMode="numeric" value={item.points ?? 0} onChange={(event) => updateTask(index, { ...item, points: Number(event.target.value) || 0 }, mutate)} /></Field></div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: ".5rem" }}><Field label="Срок"><input type="datetime-local" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={taskDeadlineInput(item.deadline)} onChange={(event) => updateTask(index, { ...item, deadline: taskDeadlineIso(event.target.value) }, mutate)} /></Field><Field label="Баллы"><input inputMode="numeric" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={item.points ?? 0} onChange={(event) => updateTask(index, { ...item, points: Number(event.target.value) || 0 }, mutate)} /></Field></div>
                 <Toggle checked={Boolean(item.confirmation_required)} onChange={(checked) => updateTask(index, { ...item, confirmation_required: checked }, mutate)} title="Требуется подтверждение" />
                 {item.confirmation_required && <Field label="Кто подтверждает"><input value={item.reviewer ?? ""} onChange={(event) => updateTask(index, { ...item, reviewer: event.target.value }, mutate)} placeholder="Лидер / администратор" /></Field>}
               </ArrayCard>
@@ -448,8 +481,8 @@ export function AdminEventCreatePanel() {
           <>
             <Question title="Отправлять напоминания зарегистрированным?" hint="Можно выбрать несколько моментов. Они сохраняются в событии и используются планировщиком уведомлений." />
             {REMINDERS.map((item) => <Toggle key={item.value} checked={draft.reminders.includes(item.value)} onChange={(checked) => mutate((current) => ({ ...current, reminders: checked ? [...current.reminders, item.value] : current.reminders.filter((value) => value !== item.value) }))} title={item.label} />)}
-            <Field label="Своё время, минут до события"><div style={{ display: "flex", gap: ".5rem" }}><input inputMode="numeric" value={customReminder} onChange={(event) => setCustomReminder(event.target.value)} placeholder="Например, 30" /><button type="button" onClick={() => { const value = Number(customReminder); if (value > 0) { mutate((current) => ({ ...current, reminders: [...current.reminders.filter((item) => item !== value), value] })); setCustomReminder(""); } }}>Добавить</button></div></Field>
-            {draft.reminders.length > 0 && <p style={{ color: "var(--era-text-muted)", fontSize: ".82rem", marginBottom: 0 }}>Сохранено: {draft.reminders.sort((a, b) => b - a).map((value) => value >= 60 ? `${value / 60} ч` : `${value} мин`).join(" · ")}</p>}
+            <Field label="Своё время, минут до события"><div style={{ display: "flex", gap: ".5rem", minWidth: 0 }}><input style={{ flex: "1 1 0", minWidth: 0, width: "100%", boxSizing: "border-box" }} inputMode="numeric" value={customReminder} onChange={(event) => setCustomReminder(event.target.value)} placeholder="Например, 30" /><button type="button" onClick={() => { const value = Number(customReminder); if (value > 0) { mutate((current) => ({ ...current, reminders: [...current.reminders.filter((item) => item !== value), value] })); setCustomReminder(""); } }}>Добавить</button></div></Field>
+            {draft.reminders.length > 0 && <p style={{ color: "var(--era-text-muted)", fontSize: ".82rem", marginBottom: 0 }}>Сохранено: {[...draft.reminders].sort((a, b) => b - a).map((value) => value >= 60 ? `${value / 60} ч` : `${value} мин`).join(" · ")}</p>}
           </>
         )}
 

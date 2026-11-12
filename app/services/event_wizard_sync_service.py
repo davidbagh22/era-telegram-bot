@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 
 from sqlalchemy import select
 
 from app.database.event_experience import EventExperience
 from app.database.models import Event, EventActivity
 from app.utils.constants import EventStatus
+
+logger = logging.getLogger(__name__)
 
 PUBLIC_STATUSES = {
     EventStatus.APPROVED,
@@ -27,7 +30,78 @@ def _deadline(value: object) -> datetime | None:
         return None
 
 
-async def sync_event_wizard_tasks(session) -> int:
+def _validated_task_configuration(experience) -> tuple[list[dict], list[int]] | None:
+    """Reject malformed legacy JSON without touching its activity or point rows."""
+    # Only SQL NULL represents an absent legacy configuration. Empty JSON
+    # objects, strings, numbers and booleans are malformed, even if falsey:
+    # treating them as [] could deactivate existing activities or create
+    # duplicates when the stored activity-id vector is corrupted.
+    tasks = experience.participant_tasks
+    ids = experience.participant_task_activity_ids
+    if tasks is None:
+        tasks = []
+    if ids is None:
+        ids = []
+    if not isinstance(tasks, list) or not isinstance(ids, list):
+        return None
+    configured: list[dict] = []
+    for item in tasks:
+        if not isinstance(item, dict):
+            return None
+        title = str(item.get("title") or "").strip()
+        if not title:
+            # Blank draft placeholders may be ignored only before activities
+            # have been materialised. With existing positional IDs, dropping
+            # a slot would attach the next task to the wrong activity/points.
+            if ids:
+                return None
+            continue
+        # EventActivity.title is VARCHAR(255), points is PostgreSQL INTEGER.
+        # Reject the entire malformed row before writing any of its tasks.
+        if len(title) > 255:
+            return None
+        raw_points = item.get("points")
+        # JSON booleans are int subclasses in Python, and int(1.9) silently
+        # truncates. Neither is a valid points policy for a legacy task.
+        # Reject the entire event before any activity/points mutation.
+        if isinstance(raw_points, (bool, float)):
+            return None
+        try:
+            points = int(raw_points or 0)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        # Keep the same maximum as the existing manually created event
+        # activities; invalid reward values must not silently become awards.
+        if not 0 <= points <= 1000:
+            return None
+        if item.get("deadline") and _deadline(item["deadline"]) is None:
+            return None
+        configured.append(item)
+    old_ids: list[int] = []
+    for value in ids:
+        # Never compact an invalid/empty slot: the vector is positional, so
+        # skipping one entry could reassign a different participant task and
+        # change its points/review policy. Reject duplicate IDs as well.
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            activity_id = value
+        elif (
+            isinstance(value, str)
+            and 0 < len(value.strip()) <= 10
+            and value.strip().isascii()
+            and value.strip().isdecimal()
+        ):
+            activity_id = int(value.strip())
+        else:
+            return None
+        if not 0 < activity_id <= 2_147_483_647 or activity_id in old_ids:
+            return None
+        old_ids.append(activity_id)
+    return configured, old_ids
+
+
+async def sync_event_wizard_tasks(session, *, allowed_event_ids: set[int] | None = None) -> int:
     """Keep participant tasks from the event wizard actionable and idempotent.
 
     EventExperience stores the editor-friendly JSON. This synchronizer turns
@@ -36,28 +110,64 @@ async def sync_event_wizard_tasks(session) -> int:
     stored activity-id vector means edits update the same rows instead of
     creating duplicates.
     """
-    rows = (
-        await session.execute(
-            select(Event, EventExperience)
+    # Background sync is explicitly scoped to reviewed event IDs. A direct
+    # migration/test call may omit the allowlist, but the scheduler never does.
+    if allowed_event_ids is not None and not allowed_event_ids:
+        return 0
+    query = (
+        select(Event, EventExperience)
             .join(EventExperience, EventExperience.event_id == Event.id)
             .where(
                 EventExperience.is_complete.is_(True),
                 Event.status.in_(PUBLIC_STATUSES),
             )
-        )
-    ).all()
+            .order_by(Event.id)
+    )
+    if allowed_event_ids is not None:
+        query = query.where(Event.id.in_(allowed_event_ids))
+    rows = (await session.execute(query)).all()
     changed = 0
     for event, experience in rows:
-        configured = [item for item in (experience.participant_tasks or []) if str(item.get("title") or "").strip()]
-        old_ids = [int(value) for value in (experience.participant_task_activity_ids or []) if value]
+        # Lock Event first, then EventExperience: the editor uses that order.
+        # The initial scan can be stale, so refresh both ORM objects while
+        # holding their row locks. Opposing lock order would risk deadlocks.
+        event = await session.scalar(
+            select(Event).where(Event.id == event.id).with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if event is None or event.status not in PUBLIC_STATUSES:
+            continue
+        experience = await session.scalar(
+            select(EventExperience)
+            .where(EventExperience.event_id == event.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if experience is None or not experience.is_complete:
+            continue
+        configuration = _validated_task_configuration(experience)
+        if configuration is None:
+            logger.warning("Skipping malformed event wizard tasks event_id=%s", event.id)
+            continue
+        configured, old_ids = configuration
+        # Validate the complete persisted ID vector before touching rows.
+        # Missing/foreign IDs must not silently be replaced by a new active
+        # task: that can orphan earlier submissions and expose duplicate points.
+        linked: dict[int, EventActivity] = {}
+        invalid_mapping = False
+        for activity_id in old_ids:
+            original = await session.get(EventActivity, activity_id)
+            if original is None or original.event_id != event.id:
+                logger.warning("Skipping invalid wizard activity mapping event_id=%s activity_id=%s", event.id, activity_id)
+                invalid_mapping = True
+                break
+            linked[activity_id] = original
+        if invalid_mapping:
+            continue
         new_ids: list[int] = []
 
         for index, item in enumerate(configured):
-            activity = None
-            if index < len(old_ids):
-                candidate = await session.get(EventActivity, old_ids[index])
-                if candidate is not None and candidate.event_id == event.id:
-                    activity = candidate
+            activity = linked.get(old_ids[index]) if index < len(old_ids) else None
             if activity is None:
                 activity = EventActivity(
                     event_id=event.id,
@@ -67,7 +177,6 @@ async def sync_event_wizard_tasks(session) -> int:
                     requires_review=bool(item.get("confirmation_required")),
                     points=max(0, int(item.get("points") or 0)),
                     deadline=_deadline(item.get("deadline")),
-                    created_by=event.created_by,
                     is_active=True,
                 )
                 session.add(activity)
@@ -104,6 +213,11 @@ async def sync_event_wizard_tasks(session) -> int:
     return changed
 
 
-async def sync_event_wizard_tasks_job(session_factory) -> None:
+async def sync_event_wizard_tasks_job(session_factory, allowed_event_ids: tuple[int, ...] = ()) -> None:
+    # Default deny until a read-only production audit identifies the exact
+    # events whose prepared tasks should be materialised. No DB open otherwise.
+    event_ids = {id_ for id_ in allowed_event_ids if isinstance(id_, int) and 0 < id_ <= 2_147_483_647}
+    if not event_ids:
+        return
     async with session_factory() as session:
-        await sync_event_wizard_tasks(session)
+        await sync_event_wizard_tasks(session, allowed_event_ids=event_ids)

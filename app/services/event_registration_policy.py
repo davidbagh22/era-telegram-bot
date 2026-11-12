@@ -1,13 +1,11 @@
-"""Shared registration deadline rule for the Mini App and native ERA bot."""
+"""Registration deadline rule shared by the Mini App and Telegram bot."""
+
 from datetime import datetime, timezone
 
 from app.database.event_experience import EventExperience
 
 
-def registration_is_closed(
-    experience: EventExperience | None, *, now: datetime | None = None
-) -> bool:
-    """Treat legacy naive timestamps as UTC, matching the existing Mini App rule."""
+def registration_is_closed(experience: EventExperience | None, *, now: datetime | None = None) -> bool:
     if experience is None or experience.registration_close_at is None:
         return False
     deadline = experience.registration_close_at

@@ -62,31 +62,22 @@ class EventExperienceRegressionTests(unittest.IsolatedAsyncioTestCase):
             first = await self._user(session, 101)
             second = await self._user(session, 102)
             event = await self._event(session, first.id, limit=1)
-            # Waitlisting requires persisted EventExperience policy, not just
-            # an optimistic flag supplied by a potentially stale caller.
             session.add(EventExperience(event_id=event.id, waitlist_enabled=True))
             await session.flush()
 
-            first_registration, first_error = await register_for_event(
-                session, event, first.id, waitlist_enabled=True
-            )
+            first_registration, first_error = await register_for_event(session, event, first.id)
             self.assertIsNone(first_error)
             self.assertEqual(first_registration.status, RegistrationStatus.REGISTERED)
 
-            second_registration, second_error = await register_for_event(
-                session, event, second.id, waitlist_enabled=True
-            )
+            second_registration, second_error = await register_for_event(session, event, second.id)
             self.assertIsNone(second_error)
             self.assertEqual(second_registration.status, RegistrationStatus.WAITLIST)
 
-            duplicate, duplicate_error = await register_for_event(
-                session, event, second.id, waitlist_enabled=True
-            )
+            duplicate, duplicate_error = await register_for_event(session, event, second.id)
             self.assertIsNone(duplicate)
             self.assertEqual(duplicate_error, "already")
 
             first_registration.status = RegistrationStatus.CANCELLED
-            await session.flush()
             promoted = await promote_waitlist(session, event)
             self.assertIsNotNone(promoted)
             self.assertEqual(promoted.user_id, second.id)

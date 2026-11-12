@@ -1,0 +1,64 @@
+name: Production read-only smoke
+
+# Independent periodic read-only verification. Do NOT trigger on workflow_run
+# or push: Render autoDeploy=checksPass may wait for all commit checks, creating
+# a circular wait if a post-CI workflow waits for Render to become LIVE.
+# Scheduled runs can report a pending deploy but cannot block its release.
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: era-production-readonly-smoke-main
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: ${{ github.repository == 'davidbagh22/era-telegram-bot' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check exact main SHA and eight anonymous read-only HTTP gates
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        shell: bash
+        run: |
+          # Resolve the exact checked-out main commit at run time.
+          EXPECTED_SHA="$(git rev-parse HEAD)"
+          # Strict probe still returns FAIL on a mismatched LIVE SHA. This
+          # scheduled workflow is attached to main and therefore must not
+          # block Render checksPass while that SHA is awaiting deployment.
+          # Exit 3 means ONLY the commit prefix differs and all seven other
+          # HTTP/security checks passed. It is PENDING, never production PASS.
+          last_result=1
+          for attempt in 1 2 3 4 5 6; do
+            echo "Production smoke attempt ${attempt}/6 for ${EXPECTED_SHA}"
+            set +e
+            python scripts/production_readonly_smoke.py --expected-sha "$EXPECTED_SHA" --timeout 5 --pending-exit-code
+            last_result=$?
+            set -e
+            if [ "$last_result" -eq 0 ]; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 6 ]; then
+              sleep 30
+            fi
+          done
+          if [ "$last_result" -eq 3 ]; then
+            echo '::warning::LIVE SHA differs from main. All other HTTP/security gates passed; production is PENDING/STALE, NOT accepted.'
+            echo 'PENDING/STALE LIVE SHA: main is not yet deployed. Seven other read-only HTTP/security gates passed. Verify Render exact LIVE SHA independently; this is NOT production acceptance.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo 'Production smoke not accepted: a route/security/transport gate failed.' >&2
+          exit 1
