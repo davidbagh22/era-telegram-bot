@@ -407,7 +407,7 @@ async def quick_action(call: CallbackQuery, user: User | None, settings: Setting
             link = telegram_event_registration_url(username, event.id)
             await call.message.answer(
                 f'✅ Мероприятие #{event.id} опубликовано. Регистрация открыта.'
-                + (f'\n\nСсылка для гостей:\n{link}' if link else '\n\nНе удалось определить адрес бота для ссылки.'),
+                + (f'\n\nСсылка на регистрацию:\n{link}' if link else '\n\nНе удалось определить адрес бота для ссылки.'),
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                     InlineKeyboardButton(text='Открыть регистрацию', url=link),
                 ]]) if link else None,
