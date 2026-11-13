@@ -12,6 +12,7 @@ from sqlalchemy import select
 from app.database.models import AppSetting
 from app.services import anniversary_registration_service as rsvp
 from app.services.authorization_service import is_full_admin
+from app.services.notification_service import safe_answer_document
 
 router = Router(name="anniversary")
 router.message.filter(F.chat.type == "private")
@@ -137,5 +138,5 @@ async def export_guests(message: Message, session, user, settings):
     writer.writerow(["Имя", "Фамилия", "Организация", "Telegram ID", "Дата регистрации"])
     for row in values:
         writer.writerow([csv_cell(row.get(key, "")) for key in ("first_name", "last_name", "organization", "telegram_id", "registered_at")])
-    await message.answer_document(BufferedInputFile(output.getvalue().encode("utf-8-sig"), filename="ERA_anniversary_2026_guests.csv"),
+    await safe_answer_document(message, BufferedInputFile(output.getvalue().encode("utf-8-sig"), filename="ERA_anniversary_2026_guests.csv"),
                                   caption=f"Зарегистрировано гостей: {len(values)}")
