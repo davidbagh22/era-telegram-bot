@@ -24,6 +24,7 @@ from app.utils.constants import EventStatus
 
 logger = logging.getLogger(__name__)
 KEY = "anniversary:2026:campaign"
+ACTIVE_KEY = "anniversary:2026:active"
 MARKER = "[ERA_GUEST_RSVP:anniversary2026]"
 URL = "https://t.me/ERA_1bot?start=anniversary2026"
 TZ = ZoneInfo("Asia/Yerevan")
@@ -143,7 +144,11 @@ async def campaign_snapshot(factory):
 async def run_campaign(bot, settings, factory, *, now=None):
     mode = getattr(settings, "anniversary_2026_campaign", "off")
     if mode not in {"prepare", "publish"}:
-        return
+        async with factory() as session:
+            active = await session.scalar(select(AppSetting.value).where(AppSetting.key == ACTIVE_KEY))
+        if not isinstance(active, dict) or active.get("mode") != "publish":
+            return
+        mode = "publish"
     now = now or datetime.now(TZ)
     try:
         if now >= STOP:

@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     render_external_hostname: str = ""
     render_git_commit: str = ""
     anniversary_2026_campaign: str = "off"
+    anniversary_2026_activation_token: str = ""
     dev_auth_enabled: bool = False
     init_data_max_age_seconds: int = 3600
     miniapp_url: str = ""

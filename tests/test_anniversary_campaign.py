@@ -131,3 +131,26 @@ class CampaignTests(unittest.IsolatedAsyncioTestCase):
             snapshot = await campaign.campaign_snapshot(self.factory)
             self.assertTrue(all(':initial' in r['key'] or '2026-12-11' in r['key'] for r in snapshot['receipts']))
             self.assertEqual(snapshot['deliveries_saved'], 18)
+
+    async def test_operator_auth_release_gate_and_durable_activation(self):
+        from fastapi import HTTPException
+        from app.api.v1.system import require_anniversary_operator, activate_anniversary_publication, AnniversaryActivationIn
+        settings = SimpleNamespace(**vars(self.settings), anniversary_2026_activation_token='a' * 64)
+        for value in (None, 'Bearer wrong'):
+            with self.assertRaises(HTTPException):
+                await require_anniversary_operator(value, settings)
+        await require_anniversary_operator('Bearer ' + 'a' * 64, settings)
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(session_factory=self.factory)))
+        payload = AnniversaryActivationIn(release_sha='1' * 40)
+        with patch('app.api.v1.system.current_commit_sha', return_value='2' * 40):
+            with self.assertRaises(HTTPException):
+                await activate_anniversary_publication(payload, request, None, settings, self.bot)
+        with patch('app.api.v1.system.current_commit_sha', return_value=payload.release_sha):
+            first = await activate_anniversary_publication(payload, request, None, settings, self.bot)
+            second = await activate_anniversary_publication(payload, request, None, settings, self.bot)
+            self.assertEqual(first, second)
+        self.bot.send_photo.assert_not_awaited()
+        self.settings.anniversary_2026_campaign = 'off'
+        with patch.object(notification_service, '_session_factory', return_value=self.factory):
+            await campaign.run_campaign(self.bot, self.settings, self.factory, now=datetime(2026, 11, 14, 18, tzinfo=campaign.TZ))
+        self.assertEqual(self.bot.send_photo.await_count, 4)
