@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -159,7 +159,12 @@ async def run_campaign(bot, settings, factory, *, now=None):
             if hashlib.sha256(poster).hexdigest() != value["poster_sha256"]:
                 raise ValueError("anniversary_saved_poster_mismatch")
             for delivery in value["deliveries"]:
-                if datetime.fromisoformat(delivery["due_at"]) > now:
+                due = datetime.fromisoformat(delivery["due_at"])
+                if due > now:
+                    continue
+                # A missed date is not permission to flood both venues later.
+                # Keep the original intent but never replay old reminder slots.
+                if delivery["slot"] != "initial" and now >= due + timedelta(hours=1):
                     continue
                 await safe_send_once(bot, settings, delivery["chat_id"], value["copy"],
                     delivery_key=delivery["key"], notification_type="anniversary2026",

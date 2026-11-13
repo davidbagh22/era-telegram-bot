@@ -122,3 +122,12 @@ class CampaignTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(out.can_register)
             self.assertEqual(out.registration_url, campaign.URL)
             self.assertIsNotNone(out.poster_url)
+
+    async def test_late_activation_skips_old_dates_instead_of_flooding(self):
+        with patch.object(notification_service, '_session_factory', return_value=self.factory):
+            now = datetime(2026, 12, 11, 18, tzinfo=campaign.TZ)
+            await campaign.run_campaign(self.bot, self.settings, self.factory, now=now)
+            self.assertEqual(self.bot.send_photo.await_count, 4)
+            snapshot = await campaign.campaign_snapshot(self.factory)
+            self.assertTrue(all(':initial' in r['key'] or '2026-12-11' in r['key'] for r in snapshot['receipts']))
+            self.assertEqual(snapshot['deliveries_saved'], 18)
