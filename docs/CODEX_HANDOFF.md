@@ -1,7 +1,8 @@
 # ERA bot and Mini App handoff
 
-- Last confirmed baseline before #497 was `107f23690aedf35ad426ef5f5bab1869efea71e0` on `main` and Render LIVE. Main CI passed 5/5 and both health endpoints returned 200. [#514](https://github.com/davidbagh22/era-telegram-bot/pull/514)
-- B05 registration and waitlist notices are queued with the business transaction and claimed after commit. The worker recovers queued notices after restart and keeps uncertain outcomes for reconciliation. [#497](https://github.com/davidbagh22/era-telegram-bot/issues/497)
-- Check [#666](https://github.com/davidbagh22/era-telegram-bot/pull/666) for exact-head CI, main CI, automatic Render LIVE SHA, `/health`, and `/ready` evidence.
-- B05 remains IN PROGRESS for the waitlist scoring decision in #513. Telegram registration and waitlist scenarios are BLOCKED: HUMAN ACCEPTANCE.
-- Next, compare the poster access and content-type changes in [#484](https://github.com/davidbagh22/era-telegram-bot/pull/484) with `main` and overlapping [#486](https://github.com/davidbagh22/era-telegram-bot/pull/486). Continue with the first remaining E11 fix.
+- Owner priority (13 November): anniversary RSVP, 12 December 2026 at 17:30 Asia/Yerevan, cinema hall of Moscow House in Yerevan.
+- Branch `feat/anniversary-2026-rsvp`: dedicated `/start anniversary2026` guest flow before generic onboarding; first name, surname, organization, explicit confirmation/consent. No membership creation, points, subscription requirement, broadcast or migration.
+- AppSetting guest key is unique by Telegram sender; database upsert does not overwrite or duplicate existing registrations and commits before confirmation. Admin-only `/anniversary_guests` CSV export protects spreadsheet formulas.
+- Local targeted tests pass; full final-head CI, guarded merge, main CI and automatic Render LIVE are still required. Do not distribute the link as working before deployment: https://t.me/ERA_1bot?start=anniversary2026.
+- Last checked main before this work: 55c9c8cb9f60296bfc72dc702bcde4341feea1a5 (#666). See #666 for its exact release evidence.
+- Existing B05 waitlist scoring #513 and E11 poster access #484/#486 remain; real multi-role/device acceptance is still unconfirmed. No changes to those policies in this RSVP task.

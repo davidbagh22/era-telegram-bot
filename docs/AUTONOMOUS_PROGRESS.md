@@ -91,3 +91,7 @@
 
 ## Отчётность
 Один существенный суточный отчёт 09:00–19:00 Asia/Yerevan; вне окна только критический блокер. Последняя подтверждённая реальная приёмка: 3/40. CI и LIVE не равны приёмке. Не создавать отдельный PR только для отчёта.
+
+## Owner addition — anniversary RSVP (2026-11-13)
+- New mandatory requirement F01: direct bot guest registration for 12 December 2026, 17:30, cinema hall, name/surname/organization and private organizer list. IN PROGRESS; branch feat/anniversary-2026-rsvp.
+- Register denominator is now 41; prior evidenced acceptance remains 3/41 (7.3%). F01 needs exact production deployment and real guest/admin acceptance before VERIFIED.
