@@ -68,6 +68,7 @@ class EventOut(BaseModel):
     waitlist_enabled: bool = False
     registration_required: bool = True
     registration_close_at: str | None = None
+    registration_url: str | None = None
     can_register: bool = False
     program: list[dict[str, Any]]
     participant_tasks: list[dict[str, Any]]
@@ -136,6 +137,8 @@ async def _to_event_out(
         and (remaining is None or remaining > 0 or waitlist_enabled)
     )
 
+    from app.services.anniversary_campaign_service import is_anniversary, URL
+    guest_event = is_anniversary(event)
     return EventOut(
         id=event.id,
         title=event.title,
@@ -170,7 +173,8 @@ async def _to_event_out(
             if experience and experience.registration_close_at
             else None
         ),
-        can_register=can_register,
+        can_register=can_register and not guest_event,
+        registration_url=URL if guest_event and can_register else None,
         program=list(experience.program or []) if experience else [],
         participant_tasks=list(experience.participant_tasks or []) if experience else [],
         poster_url=(f"/api/v1/events/{event.id}/poster" if experience and experience.poster_bytes else None),

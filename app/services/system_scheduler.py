@@ -7,6 +7,7 @@ from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import Settings
+from app.services.anniversary_campaign_service import run_campaign
 from app.services.media_recruitment_service import publish_media_recruitment
 from app.services.telegram_analytics_service import refresh_sources_job, mark_coverage_gap, source_targets
 from app.services.application_review_service import deliver_application_notices
@@ -55,6 +56,7 @@ def add_system_jobs(
 ) -> None:
     """Attach production-health jobs and durable infrastructure maintenance."""
     now = datetime.now(ZoneInfo(settings.timezone))
+    scheduler.add_job(run_campaign, "interval", minutes=1, args=(bot, settings, session_factory), id="anniversary-2026", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     # A restart interrupts verifiable continuous coverage, even when permissions persist.
     for chat_id in source_targets(settings).values():
         mark_coverage_gap(chat_id)

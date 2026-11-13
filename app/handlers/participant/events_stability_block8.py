@@ -116,6 +116,18 @@ async def show_public_event_registration_card(
         await message.answer("Это мероприятие сейчас недоступно в афише")
         return
     experience = await session.get(EventExperience, event.id)
+    from app.services.anniversary_campaign_service import is_anniversary, keyboard
+    if is_anniversary(event):
+        from app.services.anniversary_registration_service import registration_open
+        from app.services.event_card import format_event_text
+        from html import escape
+        if experience and experience.poster_bytes:
+            await message.answer_photo(BufferedInputFile(experience.poster_bytes, filename="IMG_3322.PNG"),
+                caption=escape(format_event_text(event)), parse_mode="HTML",
+                reply_markup=keyboard() if registration_open() else None)
+        else:
+            await send_event_card(message, event, keyboard=keyboard() if registration_open() else None)
+        return
     stats = await registration_stats(session, event)
     registration_open = (
         event.status in REGISTRATION_ALLOWED_STATUSES
@@ -211,6 +223,10 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
     event = await session.get(Event, event_id)
     if event is None or event.status not in PUBLIC_EVENT_STATUSES:
         await call.message.answer("Это мероприятие сейчас недоступно")
+        return
+    from app.services.anniversary_campaign_service import is_anniversary, keyboard
+    if is_anniversary(event):
+        await call.message.answer("Регистрация гостей годовщины:", reply_markup=keyboard())
         return
     registration, error = await register_for_event(session, event, user.id)
     if error is not None:

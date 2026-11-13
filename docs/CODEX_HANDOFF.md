@@ -1,8 +1,8 @@
 # ERA bot and Mini App handoff
 
-- Owner priority (13 November): anniversary RSVP, 12 December 2026 at 17:30 Asia/Yerevan, cinema hall of Moscow House in Yerevan.
-- Branch `feat/anniversary-2026-rsvp`: dedicated `/start anniversary2026` guest flow before generic onboarding; first name, surname, organization, explicit confirmation/consent. No membership creation, points, subscription requirement, broadcast or migration.
-- AppSetting guest key is unique by Telegram sender; database upsert does not overwrite or duplicate existing registrations and commits before confirmation. Admin-only `/anniversary_guests` CSV export protects spreadsheet formulas.
-- Local targeted tests pass; full final-head CI, guarded merge, main CI and automatic Render LIVE are still required. Do not distribute the link as working before deployment: https://t.me/ERA_1bot?start=anniversary2026.
-- Last checked main before this work: 55c9c8cb9f60296bfc72dc702bcde4341feea1a5 (#666). See #666 for its exact release evidence.
-- Existing B05 waitlist scoring #513 and E11 poster access #484/#486 remain; real multi-role/device acceptance is still unconfirmed. No changes to those policies in this RSVP task.
+- #669: anniversary publication implementation. Original IMG_3322.PNG is bundled unchanged (SHA256 6bc159a980bad0ec7cf27d23957add7a75dd42a4c22b37c948735719bc7d88c0).
+- ANNIVERSARY_2026_CAMPAIGN defaults off. After exact-head/main CI and automatic Render LIVE, prepare creates exactly one event plus 18 durable delivery intents; publish enables the two initial posts and eight dated reminders per target. Existing candidate events fail closed for reconciliation.
+- Destinations resolve from active channel configuration and existing general_forum announcements topic, then freeze in AppSetting anniversary:2026:campaign. Existing safe_send_once ledger owns receipts; unknown outcomes are never replayed. No guest/member writes or private broadcasts.
+- Event marker routes bot/Mini App registration to existing /start anniversary2026. Generic event registration is rejected. /anniversary_guests remains the only guest roster.
+- ANNIVERSARY_669 log contains event ID, original poster checksum, target IDs, dates and real delivery message IDs. CI/LIVE and actual publication evidence will be recorded in #669. Do not declare success from this handoff alone.
+- Prior requirements and role acceptance remain in docs/AUTONOMOUS_PROGRESS.md; no other campaign is authorized by this work.
