@@ -76,7 +76,8 @@ def event_kb(event: Event, *, settings: Settings | None = None, telegram_id: int
         rows.append([InlineKeyboardButton(text="✅ Подготовить рассылку 1/2", callback_data=f"admin:event:broadcast_prepare:{event.id}")])
     elif event.status in {EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN, EventStatus.REGISTRATION_CLOSED, EventStatus.ACTIVE, EventStatus.COMPLETED}:
         rows.append([InlineKeyboardButton(text="👥 Участники и посещение", callback_data=f"admin:event:participants:{event.id}")])
-        rows.append([InlineKeyboardButton(text="🔗 Ссылка на регистрацию", callback_data=f"admin:event:share:{event.id}")])
+        if event.status in PUBLIC_EVENT_STATUSES:
+            rows.append([InlineKeyboardButton(text="🔗 Ссылка на регистрацию", callback_data=f"admin:event:share:{event.id}")])
         if event.status == EventStatus.PUBLISHED:
             rows.append([InlineKeyboardButton(text="🟢 Открыть регистрацию", callback_data=f"admin:event:status:registration_open:{event.id}")])
         elif event.status == EventStatus.REGISTRATION_OPEN:
