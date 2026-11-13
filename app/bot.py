@@ -1,4 +1,4 @@
-from app.handlers import anniversary
+from app.handlers import anniversary, event_registration_link
 from app.handlers.leaders_native import router as leaders_native_router
 from app.handlers.leaders_broadcast import router as leaders_broadcast_router
 from app.handlers.leaders_workspace import router as leaders_workspace_router
@@ -140,6 +140,7 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
         # before the emergency catch-all /start router, otherwise ref_<code>
         # is discarded before registration begins.
         anniversary.router,
+        event_registration_link.router,
         referrals.router,
         leaders_native_router,
         leaders_broadcast_router,

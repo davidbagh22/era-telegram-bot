@@ -96,19 +96,24 @@ async def event_list(call: CallbackQuery, user: User | None, session: AsyncSessi
     await _send_event_list(call.message, user, session)
 
 
-@router.callback_query(F.data.startswith("event:view:"))
-async def event_view(call: CallbackQuery, user: User | None, session: AsyncSession, settings: Settings | None = None) -> None:
-    await call.answer()
+async def show_public_event_registration_card(
+    message: Message,
+    user: User | None,
+    session: AsyncSession,
+    event_id: int | None,
+    settings: Settings | None = None,
+    telegram_id: int | None = None,
+) -> None:
+    """Same published-event card for the afisha and a direct /start URL."""
     if not _approved(user):
-        await call.message.answer(texts.APPLICATION_PENDING)
+        await message.answer(texts.APPLICATION_PENDING)
         return
-    event_id = _event_id_from_callback(call.data, "event:view:")
     if event_id is None:
-        await call.message.answer("Это мероприятие сейчас недоступно в афише")
+        await message.answer("Это мероприятие сейчас недоступно в афише")
         return
     event = await session.get(Event, event_id)
     if event is None or event.status not in PUBLIC_EVENT_STATUSES:
-        await call.message.answer("Это мероприятие сейчас недоступно в афише")
+        await message.answer("Это мероприятие сейчас недоступно в афише")
         return
     experience = await session.get(EventExperience, event.id)
     stats = await registration_stats(session, event)
@@ -139,17 +144,27 @@ async def event_view(call: CallbackQuery, user: User | None, session: AsyncSessi
     keyboard = _event_keyboard(event.id, registration_button=registration_button, has_activities=has_activities)
     if settings is not None:
         from app.services.event_attendance_service import attendance_v2_enabled, participant_state
-        if attendance_v2_enabled(settings, call.from_user.id):
+        if attendance_v2_enabled(settings, telegram_id):
             attendance = await participant_state(session, event.id, user.id)
             if attendance.confirmation_open:
                 keyboard.inline_keyboard.insert(0, [InlineKeyboardButton(text="✅ Подтвердить посещение кодом", callback_data=f"event:confirm_code:{event.id}")])
     await send_event_card(
-        call.message,
+        message,
         event,
         available=str(stats["free"]),
         registered=int(stats["registered"]),
         extra_text=extra,
         keyboard=keyboard,
+    )
+
+
+@router.callback_query(F.data.startswith("event:view:"))
+async def event_view(call: CallbackQuery, user: User | None, session: AsyncSession, settings: Settings | None = None) -> None:
+    await call.answer()
+    event_id = _event_id_from_callback(call.data, "event:view:")
+    await show_public_event_registration_card(
+        call.message, user, session, event_id, settings=settings,
+        telegram_id=getattr(getattr(call, "from_user", None), "id", None),
     )
 
 
