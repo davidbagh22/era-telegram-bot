@@ -137,7 +137,7 @@ async def share_event_registration(call: CallbackQuery, user: User | None, setti
         await call.message.answer("Не удалось определить адрес бота.")
         return
     await call.message.answer(
-        f"Ссылка на мероприятие «{event.title}»:\\n{link}\\n\\n"
+        f"Ссылка на мероприятие «{event.title}»:\n{link}\n\n"
         "Она откроет карточку и кнопку регистрации. Запись доступна в рамках действующих правил ЭРА.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="Открыть регистрацию", url=link),
