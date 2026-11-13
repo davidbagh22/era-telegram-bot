@@ -163,7 +163,8 @@ async def event_view(call: CallbackQuery, user: User | None, session: AsyncSessi
     await call.answer()
     event_id = _event_id_from_callback(call.data, "event:view:")
     await show_public_event_registration_card(
-        call.message, user, session, event_id, settings=settings, telegram_id=call.from_user.id,
+        call.message, user, session, event_id, settings=settings,
+        telegram_id=getattr(getattr(call, "from_user", None), "id", None),
     )
 
 
