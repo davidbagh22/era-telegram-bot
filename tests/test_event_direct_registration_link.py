@@ -1,3 +1,4 @@
+import copy
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -31,7 +32,7 @@ class EventDirectRegistrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_deeplink_is_dispatched_to_exact_event_card_without_registering(self):
         dp = Dispatcher()
-        dp.include_router(link_handler.router)
+        dp.include_router(copy.deepcopy(link_handler.router))
         bot = Bot("0000000000:LOCALTEST")
         bot.session = AsyncMock()
         message = {
