@@ -57,7 +57,10 @@ async def prepare_campaign(bot, settings, factory):
     me = await bot.get_me()
     if (me.username or "").lower() != "era_1bot":
         raise ValueError("anniversary_wrong_bot")
-    channel = await bot.get_chat(settings.era_channel_id or settings.era_channel_username)
+    target = settings.era_channel_id or settings.era_channel_username
+    if isinstance(target, str) and not target.startswith("@") and not target.lstrip("-").isdigit():
+        target = "@" + target
+    channel = await bot.get_chat(target)
     if (channel.username or "").lower() != "era_leaders1":
         raise ValueError("anniversary_wrong_channel")
     thread = await ensure_topic(bot, settings, "announcements", session_factory=factory, create_if_missing=False)

@@ -18,10 +18,15 @@ test("anniversary card hands off to guest RSVP without member registration POST"
   await page.getByRole("button", { name: "Открыть событие" }).first().click();
   const cta = page.getByRole("button", { name: "Зарегистрироваться", exact: true });
   await expect(cta).toBeVisible();
-  const popupPromise = page.waitForEvent("popup");
+  await page.evaluate(() => {
+    const calls: string[] = [];
+    (window as unknown as { guestLinks: string[] }).guestLinks = calls;
+    window.Telegram = window.Telegram || {};
+    window.Telegram.WebApp = window.Telegram.WebApp || {} as NonNullable<typeof window.Telegram.WebApp>;
+    window.Telegram.WebApp.openTelegramLink = (url: string) => { calls.push(url); };
+  });
   await cta.click();
-  const popup = await popupPromise;
-  await expect(popup).toHaveURL("https://t.me/ERA_1bot?start=anniversary2026");
+  expect(await page.evaluate(() => (window as unknown as { guestLinks: string[] }).guestLinks))
+    .toEqual(["https://t.me/ERA_1bot?start=anniversary2026"]);
   expect(memberPosts).toBe(0);
-  await popup.close();
 });
