@@ -152,6 +152,7 @@ const ACTION_ERROR_MESSAGES: Record<string, string> = {
   cannot_change_plans: "Отменить регистрацию уже нельзя — до мероприятия слишком мало времени.",
   closed: "Регистрация на это мероприятие закрыта.",
   anniversary_registration_closed: "Регистрация на годовщину закрыта.",
+  anniversary_waitlisted: "Вы в листе ожидания на годовщину.",
   anniversary_profile_incomplete: "Заполните имя, фамилию и организацию.",
   anniversary_invalid_fields: "Проверьте имя, фамилию и организацию. Имя и фамилию укажите буквами.",
   anniversary_registration_required: "Используйте кнопку регистрации на карточке годовщины.",

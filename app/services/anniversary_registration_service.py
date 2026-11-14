@@ -11,7 +11,7 @@ from app.database.event_experience import EventExperience
 from app.database.models import AppSetting, Event, EventRegistration, User
 from app.services.event_registration_policy import registration_is_closed
 from app.services.event_registration_service import ACTIVE_REGISTRATION_STATUSES
-from app.utils.constants import EventStatus
+from app.utils.constants import EventStatus, RegistrationStatus
 
 PAYLOAD = "anniversary2026"
 PREFIX = "anniversary:2026:guest:"
@@ -107,15 +107,13 @@ def profile_defaults(user: User | None) -> dict[str, str]:
     return defaults
 
 
-async def has_legacy_registration(session: AsyncSession, event: Event | None, user: User | None) -> bool:
+async def legacy_registration_status(session: AsyncSession, event: Event | None, user: User | None) -> str | None:
     if event is None or user is None:
-        return False
-    registration_id = await session.scalar(select(EventRegistration.id).where(
+        return None
+    return await session.scalar(select(EventRegistration.status).where(
         EventRegistration.event_id == event.id,
         EventRegistration.user_id == user.id,
-        EventRegistration.status.in_(ACTIVE_REGISTRATION_STATUSES),
     ))
-    return registration_id is not None
 
 
 async def check_event_registration(session: AsyncSession, event: Event, telegram_id: int, user: User | None) -> bool:
@@ -125,8 +123,11 @@ async def check_event_registration(session: AsyncSession, event: Event, telegram
         locked_event is None or not is_public_anniversary(locked_event) or locked_event.status not in FEATURED_STATUSES
     ):
         raise ValueError("event_not_found")
-    if await get_registration(session, telegram_id) or await has_legacy_registration(session, locked_event, user):
+    legacy_status = await legacy_registration_status(session, locked_event, user)
+    if await get_registration(session, telegram_id) or legacy_status in ACTIVE_REGISTRATION_STATUSES:
         return True
+    if legacy_status == RegistrationStatus.WAITLIST:
+        raise ValueError("anniversary_waitlisted")
     experience = await session.get(EventExperience, event.id, populate_existing=True)
     if not event_registration_open(locked_event, experience):
         raise ValueError("anniversary_registration_closed")

@@ -154,17 +154,20 @@ async def _to_event_out(
     anniversary_defaults = None
     display_status = _display_status(event, registration, remaining)
     if guest_event:
+        waitlisted = registration is not None and registration.status == RegistrationStatus.WAITLIST
         anniversary_registered = (
             (registration is not None and registration.status in anniversary.ACTIVE_REGISTRATION_STATUSES)
             or bool(await anniversary.get_registration(session, user.telegram_id))
         )
-        anniversary_open = anniversary.event_registration_open(event, experience) and (remaining is None or remaining > 0)
+        anniversary_open = (
+            not waitlisted and anniversary.event_registration_open(event, experience) and (remaining is None or remaining > 0)
+        )
         if anniversary_open and not anniversary_registered:
             anniversary_defaults = AnniversaryRegistrationIn(**anniversary.profile_defaults(user))
         can_register = False
         if anniversary_registered:
             display_status = "Вы зарегистрированы"
-        elif not anniversary_open and event.status in anniversary.FEATURED_STATUSES:
+        elif not waitlisted and not anniversary_open and event.status in anniversary.FEATURED_STATUSES:
             display_status = "Мест нет" if remaining == 0 else "Регистрация закрыта"
 
     return EventOut(

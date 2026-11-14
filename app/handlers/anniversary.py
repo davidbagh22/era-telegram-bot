@@ -11,10 +11,9 @@ from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton
 from app.services import anniversary_registration_service as rsvp
 from app.services.authorization_service import is_full_admin
 from app.services.notification_service import safe_answer_document
+from app.utils.constants import RegistrationStatus
 
 router = Router(name="anniversary")
-router.message.filter(F.chat.type == "private")
-router.callback_query.filter(F.message.chat.type == "private")
 
 
 class AnniversaryStates(StatesGroup):
@@ -91,6 +90,8 @@ def _registration_error(exc):
         return "Свободных мест на годовщину больше нет."
     if str(exc) in {"event_not_found", "anniversary_registration_closed"}:
         return "Регистрация на годовщину закрыта."
+    if str(exc) == "anniversary_waitlisted":
+        return "Вы в листе ожидания на годовщину."
     return str(exc)
 
 
@@ -210,12 +211,14 @@ async def save(call: CallbackQuery, state: FSMContext, session, user):
 
 @router.callback_query(F.message.chat.type == "private", F.data == "anniversary:save")
 async def expired_confirmation(call: CallbackQuery, session, user):
-    if not blocked(user) and (
-        await rsvp.get_registration(session, call.from_user.id)
-        or await rsvp.has_legacy_registration(session, await rsvp.find_event(session), user)
-    ):
-        await call.answer("Вы уже зарегистрированы!", show_alert=True)
-        return
+    if not blocked(user):
+        legacy_status = await rsvp.legacy_registration_status(session, await rsvp.find_event(session), user)
+        if await rsvp.get_registration(session, call.from_user.id) or legacy_status in rsvp.ACTIVE_REGISTRATION_STATUSES:
+            await call.answer("Вы уже зарегистрированы!", show_alert=True)
+            return
+        if legacy_status == RegistrationStatus.WAITLIST:
+            await call.answer("Вы в листе ожидания на годовщину.", show_alert=True)
+            return
     await call.answer("Откройте приглашение заново, чтобы проверить регистрацию.", show_alert=True)
 
 

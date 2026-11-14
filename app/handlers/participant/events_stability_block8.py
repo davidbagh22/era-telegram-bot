@@ -119,8 +119,11 @@ async def show_public_event_registration_card(
     experience = await session.get(EventExperience, event.id)
     if anniversary.is_public_anniversary(event):
         keyboard = _event_keyboard(event.id, registration_button=None, has_activities=False)
-        if await anniversary.get_registration(session, user.telegram_id) or await anniversary.has_legacy_registration(session, event, user):
+        legacy_status = await anniversary.legacy_registration_status(session, event, user)
+        if await anniversary.get_registration(session, user.telegram_id) or legacy_status in anniversary.ACTIVE_REGISTRATION_STATUSES:
             extra = "Вы зарегистрированы."
+        elif legacy_status == RegistrationStatus.WAITLIST:
+            extra = "Вы в листе ожидания."
         elif anniversary.event_registration_open(event, experience):
             complete = len(anniversary.profile_defaults(user)) == 3
             extra = anniversary.CONSENT if complete else None

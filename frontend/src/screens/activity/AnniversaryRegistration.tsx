@@ -42,7 +42,7 @@ export function AnniversaryRegistration({ event }: { event: EventItem }) {
         setFormOpen(true);
       } else {
         setError(describeActionError(reason));
-        if (reason instanceof ApiError && ["anniversary_registration_closed", "event_not_found", "full"].includes(reason.message)) {
+        if (reason instanceof ApiError && ["anniversary_registration_closed", "anniversary_waitlisted", "event_not_found", "full"].includes(reason.message)) {
           setClosed(true);
           setFormOpen(false);
         }

@@ -16,7 +16,7 @@ from app.database.models import AppSetting, Event, EventRegistration, User
 from app.handlers import anniversary as handler
 from app.handlers.participant.navigation import _send_main_menu
 from app.services import anniversary_registration_service as rsvp
-from app.utils.constants import ApplicationStatus, EventStatus
+from app.utils.constants import ApplicationStatus, EventStatus, RegistrationStatus
 
 
 class AnniversaryOneClickTests(IsolatedAsyncioTestCase):
@@ -106,6 +106,20 @@ class AnniversaryOneClickTests(IsolatedAsyncioTestCase):
         async with self.factory() as session:
             self.assertIsNone(await rsvp.get_registration(session, 123))
             self.assertEqual([row["telegram_id"] for row in await rsvp.roster(session)], [123])
+
+    async def test_legacy_waitlist_cannot_create_a_second_registration(self):
+        async with self.factory() as session:
+            session.add(EventRegistration(event_id=self.event_id, user_id=self.user_id, status=RegistrationStatus.WAITLIST))
+            await session.commit()
+        path = f"/events/{self.event_id}"
+        event = (await self.client.get(path)).json()
+        self.assertFalse(event["anniversary_registration_open"])
+        self.assertEqual(event["display_status"], "Вы в листе ожидания")
+        response = await self.client.post(f"{path}/anniversary-rsvp", json={})
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "anniversary_waitlisted")
+        async with self.factory() as session:
+            self.assertIsNone(await rsvp.get_registration(session, 123))
 
     async def test_bot_menu_puts_anniversary_first_and_registers_once(self):
         async with self.factory() as session:
