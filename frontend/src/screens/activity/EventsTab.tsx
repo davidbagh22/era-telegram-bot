@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   cancelEventRegistration,
   describeActionError,
@@ -18,6 +18,7 @@ import { useAsync } from "../../hooks/useAsync";
 import { safeEvidenceUrl } from "../../utils/safeEvidenceUrl";
 import { getTelegramWebApp, successHaptic } from "../../telegram/webApp";
 import type { EventActivity, EventItem, EventScope } from "../../types/activity";
+import { AnniversaryRegistration } from "./AnniversaryRegistration";
 import { EventAttendancePanel } from "./EventAttendancePanel";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -47,11 +48,6 @@ function formatDate(value: string): string {
 function capacityText(event: EventItem): string {
   if (event.participant_limit === null) return "Без ограничения мест";
   return `${event.registered_count} / ${event.participant_limit} участников`;
-}
-
-function posterSrc(event: EventItem): string | null {
-  if (!event.poster_url) return null;
-  return `${API_BASE_URL}/api/v1/event-posters/${event.id}`;
 }
 
 // Calendar times are stored as local Asia/Yerevan clock times. Build explicit UTC
@@ -258,8 +254,8 @@ function EventActivitiesPanel({ eventId }: { eventId: number }) {
   );
 }
 
-function EventPoster({ event, compact = false }: { event: EventItem; compact?: boolean }) {
-  const src = posterSrc(event);
+export function EventPoster({ event, compact = false }: { event: EventItem; compact?: boolean }) {
+  const src = event.poster_url ? `${API_BASE_URL}/api/v1/event-posters/${event.id}` : null;
   const height = compact ? 150 : 245;
   if (src) {
     return (
@@ -300,6 +296,7 @@ interface EventDetailProps {
 }
 
 function EventDetail({ event, pending, actionError, onRegister, onCancelRequest, onBack }: EventDetailProps) {
+  const anniversary = event.anniversary_registered != null;
   const registered = ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "");
   const waitlisted = event.registration_status === WAITLIST_STATUS;
   const chatUrl = safeEvidenceUrl(event.chat_url);
@@ -413,7 +410,9 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
           boxShadow: "var(--era-shadow-dock)",
         }}
       >
-        {registered ? (
+        {anniversary ? (
+          <AnniversaryRegistration key={event.id} event={event} />
+        ) : registered ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: ".5rem" }}>
             <div
               className="era-success-state"
@@ -455,6 +454,7 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
   const [selectedId, setSelectedId] = useState<number | null>(initialItemId ?? null);
   const [selectedOverride, setSelectedOverride] = useState<EventItem | null>(null);
   const [pendingId, setPendingId] = useState<number | null>(null);
+  const pendingRegistration = useRef(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<EventItem | null>(null);
   const [registrationSuccess, setRegistrationSuccess] = useState<EventItem | null>(null);
@@ -488,6 +488,8 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
   }, [selectedId, selectedOverride, state]);
 
   const handleRegister = useCallback(async (eventId: number) => {
+    if (pendingRegistration.current) return;
+    pendingRegistration.current = true;
     setPendingId(eventId);
     setActionError(null);
     try {
@@ -502,8 +504,11 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
         toast.show("Место за вами", "success");
       }
     } catch (error) {
-      setActionError(describeActionError(error));
+      const description = describeActionError(error);
+      setActionError(description);
+      toast.show(description, "error");
     } finally {
+      pendingRegistration.current = false;
       setPendingId(null);
     }
   }, [refresh, toast]);
@@ -541,6 +546,22 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
     window.location.hash = "#/events";
   };
 
+  const registrationPrompt = (
+    <BottomSheet open={registrationSuccess !== null} onClose={() => setRegistrationSuccess(null)} title="Место за вами">
+      {registrationSuccess && (
+        <div className="era-success-state" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: ".25rem" }}>
+            <strong style={{ fontSize: "var(--era-text-lg)" }}>{registrationSuccess.title}</strong>
+            <span style={{ color: "var(--era-text-muted)" }}>{formatDate(registrationSuccess.event_date)} · {registrationSuccess.event_time}</span>
+            <span style={{ color: "var(--era-text-muted)" }}>{registrationSuccess.location}</span>
+          </div>
+          <EventCalendarButton event={registrationSuccess} />
+          <button type="button" onClick={() => setRegistrationSuccess(null)}>Готово</button>
+        </div>
+      )}
+    </BottomSheet>
+  );
+
   if (selectedId !== null) {
     if (state.status === "loading") return <SkeletonList count={3} />;
     if (state.status === "error") return <EmptyState text="Не удалось открыть мероприятие. Проверьте соединение и попробуйте снова." />;
@@ -575,19 +596,7 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
             </div>
           </BottomSheet>
 
-          <BottomSheet open={registrationSuccess !== null} onClose={() => setRegistrationSuccess(null)} title="Место за вами">
-            {registrationSuccess && (
-              <div className="era-success-state" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: ".25rem" }}>
-                  <strong style={{ fontSize: "var(--era-text-lg)" }}>{registrationSuccess.title}</strong>
-                  <span style={{ color: "var(--era-text-muted)" }}>{formatDate(registrationSuccess.event_date)} · {registrationSuccess.event_time}</span>
-                  <span style={{ color: "var(--era-text-muted)" }}>{registrationSuccess.location}</span>
-                </div>
-                <EventCalendarButton event={registrationSuccess} />
-                <button type="button" onClick={() => setRegistrationSuccess(null)}>Готово</button>
-              </div>
-            )}
-          </BottomSheet>
+          {registrationPrompt}
         </>
       );
     }
@@ -613,7 +622,9 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
               <EventPoster event={event} compact />
               <div style={{ padding: "0.7rem 0.3rem 0.2rem", display: "flex", flexDirection: "column", gap: "0.45rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "flex-start" }}>
-                  <StatusBadge label={event.display_status} tone={ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "") ? "violet" : "neutral"} />
+                  {event.anniversary_registered == null && (
+                    <StatusBadge label={event.display_status} tone={ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "") ? "violet" : "neutral"} />
+                  )}
                   {event.points_for_visit > 0 && <strong style={{ fontSize: "0.82rem", color: "var(--era-gold-ink)" }}>+{event.points_for_visit} баллов</strong>}
                 </div>
                 <strong style={{ fontSize: "1.18rem", lineHeight: 1.15 }}>{event.title}</strong>
@@ -623,13 +634,33 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
                   <span>{capacityText(event)}</span>
                   {event.remaining_count !== null && <span>Осталось {event.remaining_count}</span>}
                 </div>
-                <button type="button" className="era-btn-primary" onClick={() => openEvent(event.id)} style={{ width: "100%", marginTop: "0.25rem" }}>Открыть событие</button>
+                {event.anniversary_registered != null ? (
+                  <>
+                    <AnniversaryRegistration event={event} />
+                    <button type="button" onClick={() => openEvent(event.id)}>Подробнее</button>
+                  </>
+                ) : (
+                  <>
+                    {event.can_register && (
+                      <button type="button" className="era-btn-primary" disabled={pendingId !== null}
+                        onClick={() => void handleRegister(event.id)}>
+                        {pendingId === event.id ? "Сохраняем…" : event.remaining_count === 0 && event.waitlist_enabled
+                          ? "Встать в лист ожидания" : "Зарегистрироваться"}
+                      </button>
+                    )}
+                    <button type="button" className={event.can_register ? undefined : "era-btn-primary"}
+                      onClick={() => openEvent(event.id)} style={{ width: "100%", marginTop: "0.25rem" }}>
+                      Открыть событие
+                    </button>
+                  </>
+                )}
               </div>
             </Card>
           ))}
         </div>
       )}
 
+      {registrationPrompt}
       <BottomSheet open={filterOpen} onClose={() => setFilterOpen(false)} title="Какие события показать?">
         <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
           {SCOPES.map((option) => (

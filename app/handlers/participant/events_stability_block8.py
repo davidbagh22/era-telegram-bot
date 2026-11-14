@@ -10,6 +10,7 @@ from app.config import Settings
 from app.database.event_experience import EventExperience
 from app.database.models import Event, EventActivity, EventRegistration, User
 from app.keyboards.participant import event_list_keyboard
+from app.services import anniversary_registration_service as anniversary
 from app.services.event_card import send_event_card
 from app.services.event_registration_notice_service import (
     RegistrationNoticeKind,
@@ -116,6 +117,19 @@ async def show_public_event_registration_card(
         await message.answer("Это мероприятие сейчас недоступно в афише")
         return
     experience = await session.get(EventExperience, event.id)
+    if anniversary.is_public_anniversary(event):
+        keyboard = _event_keyboard(event.id, registration_button=None, has_activities=False)
+        if await anniversary.get_registration(session, user.telegram_id) or await anniversary.has_legacy_registration(session, event, user):
+            extra = "Вы зарегистрированы."
+        elif anniversary.event_registration_open(event, experience):
+            complete = len(anniversary.profile_defaults(user)) == 3
+            extra = anniversary.CONSENT if complete else None
+            action = "quick" if complete else "begin"
+            keyboard.inline_keyboard.insert(0, [InlineKeyboardButton(text="Зарегистрироваться", callback_data=f"anniversary:{action}")])
+        else:
+            extra = "Регистрация закрыта."
+        await send_event_card(message, event, extra_text=extra, keyboard=keyboard)
+        return
     stats = await registration_stats(session, event)
     registration_open = (
         event.status in REGISTRATION_ALLOWED_STATUSES
@@ -219,6 +233,7 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
             "full": texts.EVENT_FULL,
             "closed": "Регистрация на это мероприятие закрыта, но само событие остаётся в афише",
             "registration_not_required": "Для этого мероприятия регистрация не нужна.",
+            "anniversary_registration_required": "Откройте карточку годовщины или нажмите «🎟 Зарегистрироваться на годовщину» в главном меню.",
         }[error]
         if error == "already":
             status = await session.scalar(

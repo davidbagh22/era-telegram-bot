@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration
+from app.services import anniversary_registration_service as anniversary
 from app.services.audit_service import audit
 from app.services.digital_engagement_service import award_event_registration
 from app.services.event_registration_policy import registration_is_closed
@@ -106,6 +107,8 @@ async def register_for_event(
     if locked_event is None:
         return None, "closed"
     event = locked_event
+    if anniversary.is_public_anniversary(event):
+        return None, "anniversary_registration_required"
     if event.status not in REGISTRATION_ALLOWED_STATUSES:
         return None, "closed"
     # The admin event editor takes the same Event lock before updating or

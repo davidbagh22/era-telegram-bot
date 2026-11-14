@@ -9,6 +9,7 @@ from app.database.models import User
 from app.keyboards.bot_shell import has_leaders_entry, main_reply_keyboard
 from app.keyboards.common import registration_keyboard, subscription_keyboard
 from app.keyboards.registration import pending_registration_keyboard
+from app.services import anniversary_registration_service as anniversary
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus, Role
@@ -16,7 +17,9 @@ from app.utils.constants import ApplicationStatus, Role
 router = Router(name="start")
 
 
-async def show_home(message: Message, user: User, settings: Settings) -> None:
+async def show_home(
+    message: Message, user: User, settings: Settings, session: AsyncSession | None = None,
+) -> None:
     if user.is_blocked or user.is_archived:
         await message.answer(texts.BLOCKED)
         return
@@ -35,12 +38,15 @@ async def show_home(message: Message, user: User, settings: Settings) -> None:
             reply_markup=pending_registration_keyboard(settings.era_channel_url),
         )
         return
+    featured = session is not None and await anniversary.menu_available(session)
+    text = f"{ux_texts.MAIN_MENU}\n\n{anniversary.MENU_SHORTCUT}" if featured else ux_texts.MAIN_MENU
     await message.answer(
-        ux_texts.MAIN_MENU,
+        text,
         reply_markup=main_reply_keyboard(
             leaders=has_leaders_entry(user),
             miniapp_url=settings.effective_miniapp_url,
             admin=user.role == Role.ADMIN or getattr(user, 'telegram_id', None) in getattr(settings, 'admin_ids', []),
+            anniversary=featured,
         ),
     )
 
@@ -98,7 +104,7 @@ async def start(
     subscribed = await _subscription_ok(bot, message.from_user.id, settings)
     if subscribed is None:
         if _approved_existing_user(user):
-            await show_home(message, user, settings)
+            await show_home(message, user, settings, session)
             return
         await message.answer(
             getattr(
@@ -118,7 +124,7 @@ async def start(
     if user is None:
         await message.answer(ux_texts.WELCOME_START, reply_markup=registration_keyboard())
         return
-    await show_home(message, user, settings)
+    await show_home(message, user, settings, session)
 
 
 @router.callback_query(F.data == "subscription:check")
@@ -128,13 +134,14 @@ async def check_subscription(
     user: User | None,
     settings: Settings,
     state: FSMContext,
+    session: AsyncSession | None = None,
 ) -> None:
     await call.answer()
     await state.clear()
     subscribed = await _subscription_ok(bot, call.from_user.id, settings)
     if subscribed is None:
         if _approved_existing_user(user):
-            await show_home(call.message, user, settings)
+            await show_home(call.message, user, settings, session)
             return
         await call.message.answer(
             getattr(
@@ -156,19 +163,19 @@ async def check_subscription(
             texts.SUBSCRIPTION_CONFIRMED, reply_markup=registration_keyboard()
         )
     else:
-        await show_home(call.message, user, settings)
+        await show_home(call.message, user, settings, session)
 
 
 @router.callback_query(F.data == "menu:main")
 async def main_menu_callback(
-    call: CallbackQuery, user: User | None, settings: Settings, state: FSMContext
+    call: CallbackQuery, user: User | None, settings: Settings, state: FSMContext, session: AsyncSession | None = None,
 ) -> None:
     await call.answer()
     await state.clear()
     if user is None:
         await call.message.answer(ux_texts.WELCOME_START, reply_markup=registration_keyboard())
         return
-    await show_home(call.message, user, settings)
+    await show_home(call.message, user, settings, session)
 
 
 @router.message(Command("rules"), F.chat.type == "private")

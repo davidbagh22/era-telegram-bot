@@ -1,4 +1,5 @@
 import type {
+  AnniversaryRegistrationFields,
   CalendarItem,
   EventActivity,
   EventItem,
@@ -150,6 +151,10 @@ const ACTION_ERROR_MESSAGES: Record<string, string> = {
   registration_not_found: "Регистрация не найдена — возможно, вы уже отменили её.",
   cannot_change_plans: "Отменить регистрацию уже нельзя — до мероприятия слишком мало времени.",
   closed: "Регистрация на это мероприятие закрыта.",
+  anniversary_registration_closed: "Регистрация на годовщину закрыта.",
+  anniversary_profile_incomplete: "Заполните имя, фамилию и организацию.",
+  anniversary_invalid_fields: "Проверьте имя, фамилию и организацию. Имя и фамилию укажите буквами.",
+  anniversary_registration_required: "Используйте кнопку регистрации на карточке годовщины.",
   already: "Вы уже зарегистрированы на это мероприятие.",
   full: "Свободных мест на это мероприятие больше нет.",
   assignee_not_found: "Участник не найден.",
@@ -288,6 +293,13 @@ export function fetchEvents(scope: EventScope): Promise<EventItem[]> {
 
 export function registerForEvent(eventId: number): Promise<EventItem> {
   return authorizedPost<EventItem>(`/api/v1/events/${eventId}/register`);
+}
+
+export function registerForAnniversary(
+  eventId: number,
+  fields: Partial<AnniversaryRegistrationFields> = {},
+): Promise<EventItem> {
+  return authorizedPost<EventItem>(`/api/v1/events/${eventId}/anniversary-rsvp`, fields);
 }
 
 export function cancelEventRegistration(eventId: number): Promise<EventItem> {
