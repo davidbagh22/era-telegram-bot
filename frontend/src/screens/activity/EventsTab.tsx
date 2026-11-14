@@ -410,9 +410,7 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
           boxShadow: "var(--era-shadow-dock)",
         }}
       >
-        {anniversary ? (
-          <AnniversaryRegistration key={event.id} event={event} />
-        ) : registered ? (
+        {registered ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: ".5rem" }}>
             <div
               className="era-success-state"
@@ -431,6 +429,8 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
             </div>
             <button type="button" disabled={pending} onClick={onCancelRequest} style={{ minWidth: 106 }}>Отказаться</button>
           </div>
+        ) : anniversary ? (
+          <AnniversaryRegistration key={event.id} event={event} />
         ) : event.can_register ? (
           <button type="button" className="era-btn-primary" disabled={pending} onClick={onRegister} style={{ width: "100%" }}>
             {pending ? "● Сохраняем…" : event.remaining_count === 0 && event.waitlist_enabled ? "Встать в лист ожидания" : "Участвовать"}

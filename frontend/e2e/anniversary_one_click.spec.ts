@@ -71,3 +71,19 @@ test("the participation card opens the short form when the profile lacks an orga
   await expect(page.getByRole("status").filter({ hasText: "Вы зарегистрированы" })).toBeVisible();
   expect(requests).toEqual([{ first_name: "Анна", last_name: "Иванова", organization: "Без организации" }]);
 });
+
+test("an existing anniversary participant can still open cancellation", async ({ page }) => {
+  await mockAnniversary(page, "ЭРА");
+  await page.route("**/api/v1/events?*", (route) => route.fulfill({ json: [{
+    ...event,
+    display_status: "Вы зарегистрированы",
+    registration_status: "registered",
+    anniversary_registered: true,
+    program: [],
+    participant_tasks: [],
+  }] }));
+  await page.route("**/api/v1/events/669/**", (route) => route.fulfill({ json: [] }));
+  await page.goto("/app/?devTelegramId=900001#/events/669");
+  await page.getByRole("button", { name: "Отказаться", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Отказаться от участия?" })).toBeVisible();
+});
