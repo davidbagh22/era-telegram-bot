@@ -17,7 +17,7 @@ from app.services.event_registration_notice_service import (
     enqueue_registration_notice,
 )
 from app.services.event_registration_policy import registration_is_closed
-from app.services.notification_service import safe_answer_document
+from app.services.notification_service import safe_answer_document, safe_answer_photo
 from app.services.event_registration_service import registration_stats
 from app.services.event_service import (
     PUBLIC_EVENT_STATUSES,
@@ -122,7 +122,7 @@ async def show_public_event_registration_card(
         from app.services.event_card import format_event_text
         from html import escape
         if experience and experience.poster_bytes:
-            await message.answer_photo(BufferedInputFile(experience.poster_bytes, filename="IMG_3322.PNG"),
+            await safe_answer_photo(message, BufferedInputFile(experience.poster_bytes, filename="IMG_3322.PNG"),
                 caption=escape(format_event_text(event)), parse_mode="HTML",
                 reply_markup=keyboard() if registration_open() else None)
         else:
