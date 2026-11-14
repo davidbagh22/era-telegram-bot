@@ -235,10 +235,11 @@ class FsmRecoveryTests(unittest.IsolatedAsyncioTestCase):
             era_channel_url="https://t.me/example",
             effective_miniapp_url="https://era-telegram-bot.onrender.com/app/",
         )
-        with patch.object(emergency, "_subscription_ok", AsyncMock(return_value=True)):
-            await emergency.rescue_start(
-                message, FakeBot(), approved_user(), settings, state, SimpleNamespace()
-            )
+        with (
+            patch.object(emergency, "_subscription_ok", AsyncMock(return_value=True)),
+            patch("app.handlers.participant.navigation.anniversary.featured_event", AsyncMock(return_value=None)),
+        ):
+            await emergency.rescue_start(message, FakeBot(), approved_user(), settings, state, SimpleNamespace())
         markup = message.answers[-1][1]["reply_markup"]
         buttons = [button for row in markup.keyboard for button in row]
         miniapp_button = next((b for b in buttons if b.text == "🔥 Открыть ЭРА"), None)
@@ -263,7 +264,10 @@ class FsmRecoveryTests(unittest.IsolatedAsyncioTestCase):
             era_channel_url="https://t.me/example",
             effective_miniapp_url="https://era.example/app/",
         )
-        with patch.object(emergency, "_subscription_ok", AsyncMock(return_value=True)):
+        with (
+            patch.object(emergency, "_subscription_ok", AsyncMock(return_value=True)),
+            patch("app.handlers.participant.navigation.anniversary.featured_event", AsyncMock(return_value=None)),
+        ):
             await emergency.rescue_start(
                 message, FakeBot(), approved_user(), settings, state, SimpleNamespace(),
                 SimpleNamespace(args="miniapp"),

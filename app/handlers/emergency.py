@@ -344,7 +344,7 @@ async def rescue_start(
     if command and command.args == "miniapp" and _approved(user):
         # Recover old simple-mode buttons and replace the persistent keyboard
         # before offering an inline WebApp launch with signed initData.
-        await _send_main_menu(message, user, settings)
+        await _send_main_menu(message, user, settings, session=session)
         await _send_miniapp_entry(message, user, settings)
         return
     if command and command.args and command.args.startswith('attend2_'):
@@ -406,7 +406,7 @@ async def rescue_start(
         message, user, state, session, bot, settings, command
     ):
         return
-    await _send_main_menu(message, user, settings)
+    await _send_main_menu(message, user, settings, session=session)
 
 
 @router.message(StateFilter("*"), Command("cancel"), F.chat.type == "private")
@@ -416,11 +416,12 @@ async def cancel_any(
     user: User | None,
     settings: Settings,
     state: FSMContext,
+    session: AsyncSession | None = None,
 ) -> None:
     await state.clear()
     if _approved(user):
         await message.answer("Текущее действие отменено. Выберите раздел в меню ниже.")
-        await _send_main_menu(message, user, settings)
+        await _send_main_menu(message, user, settings, session=session)
         return
     if user is None:
         await message.answer(texts.WELCOME, reply_markup=registration_keyboard())
@@ -494,4 +495,4 @@ async def rescue_menu_button(
             return
         await message.answer(texts.NO_ACCESS)
         return
-    await _send_main_menu(message, user, settings)
+    await _send_main_menu(message, user, settings, session=session)

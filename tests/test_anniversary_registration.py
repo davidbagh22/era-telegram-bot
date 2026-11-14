@@ -52,7 +52,9 @@ class AnniversaryTests(unittest.IsolatedAsyncioTestCase):
     async def test_guest_entry_does_not_require_membership(self):
         message = SimpleNamespace(from_user=SimpleNamespace(id=123), answer=AsyncMock())
         state = AsyncMock()
-        with patch.object(service, "get_registration", AsyncMock(return_value=None)), patch.object(service, "registration_open", return_value=True):
+        with patch.object(service, "get_registration", AsyncMock(return_value=None)), patch.object(
+            service, "find_event", AsyncMock(return_value=None)
+        ), patch.object(service, "registration_open", return_value=True):
             await handler.entry(message, state, object(), None)
         state.clear.assert_awaited_once()
         self.assertEqual(message.answer.call_args.kwargs["reply_markup"].inline_keyboard[0][0].callback_data, "anniversary:begin")
@@ -70,7 +72,9 @@ class AnniversaryTests(unittest.IsolatedAsyncioTestCase):
         state = AsyncMock()
         data = dict(first_name="Анна", last_name="Иванова", organization="ЭРА", telegram_id=999)
         state.get_data.return_value = data
-        with patch.object(service, "register", AsyncMock(return_value=data)) as register:
+        with patch.object(service, "register", AsyncMock(return_value=data)) as register, patch.object(
+            service, "find_event", AsyncMock(return_value=None)
+        ):
             await handler.save(call, state, object(), None)
             self.assertEqual(register.call_args.args[1], 123)
         state.clear.assert_awaited_once()
@@ -98,7 +102,9 @@ class AnniversaryTests(unittest.IsolatedAsyncioTestCase):
                 "text": text, "entities": [{"type": "bot_command", "offset": 0, "length": 6}] if text.startswith("/start") else [],
             }})
             return await dp.feed_update(bot, update, session=object(), user=None)
-        with patch.object(service, "get_registration", AsyncMock(return_value=None)), patch.object(service, "registration_open", return_value=True):
+        with patch.object(service, "get_registration", AsyncMock(return_value=None)), patch.object(
+            service, "find_event", AsyncMock(return_value=None)
+        ), patch.object(service, "registration_open", return_value=True):
             await send("/start anniversary2026", 1)
             method = bot.session.call_args.args[1]
             self.assertEqual(method.reply_markup.inline_keyboard[0][0].callback_data, "anniversary:begin")
