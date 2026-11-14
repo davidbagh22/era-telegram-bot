@@ -106,6 +106,9 @@ async def register_for_event(
     if locked_event is None:
         return None, "closed"
     event = locked_event
+    from app.services.anniversary_campaign_service import is_anniversary
+    if is_anniversary(event):
+        return None, "guest_registration_required"
     if event.status not in REGISTRATION_ALLOWED_STATUSES:
         return None, "closed"
     # The admin event editor takes the same Event lock before updating or
@@ -168,6 +171,9 @@ async def promote_waitlist(session: AsyncSession, event: Event) -> EventRegistra
     if locked_event is None or locked_event.participant_limit is None:
         return None
     event = locked_event
+    from app.services.anniversary_campaign_service import is_anniversary
+    if is_anniversary(event):
+        return None
     if int(await available_places(session, event)) <= 0:
         return None
     waiting = await session.scalar(

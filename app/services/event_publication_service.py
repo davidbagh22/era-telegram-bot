@@ -62,6 +62,9 @@ def escaped_text_parts(text: str, first_limit: int = 4000) -> list[str]:
 
 
 async def public_event_keyboard(bot, settings, event):
+    from app.services.anniversary_campaign_service import is_anniversary, keyboard
+    if is_anniversary(event):
+        return keyboard()
     username = (settings.bot_username or "").strip() or (await bot.get_me()).username
     url = telegram_event_miniapp_url(username or "", event.id)
     return InlineKeyboardMarkup(inline_keyboard=[[

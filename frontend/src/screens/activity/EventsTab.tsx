@@ -413,7 +413,14 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
           boxShadow: "var(--era-shadow-dock)",
         }}
       >
-        {registered ? (
+        {event.registration_url ? (
+          <button type="button" className="era-btn-primary" style={{ width: "100%" }} onClick={() => {
+            const url = event.registration_url!;
+            const tg = getTelegramWebApp();
+            if (tg?.openTelegramLink) tg.openTelegramLink(url);
+            else window.open(url, "_blank", "noopener,noreferrer");
+          }}>Зарегистрироваться</button>
+        ) : registered ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: ".5rem" }}>
             <div
               className="era-success-state"
