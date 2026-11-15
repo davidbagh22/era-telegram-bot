@@ -137,7 +137,10 @@ def test_group_commands_accept_bot_mention():
     from aiogram.types import Chat, Message
     from app.handlers.era_game_room import router
     command_filter = router.message.handlers[0].filters[0].callback
-    bot = SimpleNamespace(me=AsyncMock(return_value=SimpleNamespace(username='ERA_1bot')))
+    bot = SimpleNamespace(
+        me=AsyncMock(return_value=SimpleNamespace(username='ERA_1bot')),
+        usernames=AsyncMock(return_value=[]),
+    )
     for text in ('/games', '/game@ERA_1bot', '/games@ERA_1bot'):
         message = Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=-100123, type='supergroup'), text=text)
         assert asyncio.run(command_filter(message, bot))
