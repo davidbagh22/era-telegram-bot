@@ -15,6 +15,56 @@ from app.utils.constants import Role
 
 router = Router(name="chat_binding")
 
+
+@router.message(Command("leaders_repair"), F.chat.type == "supergroup")
+async def repair_leaders_panel(message: Message, user: User | None, settings: Settings,
+                               session: AsyncSession, bot: Bot) -> None:
+    from app.services.leaders_topics_service import (
+        TOPICS, _topic_data, _has_duplicate_thread_route, _has_duplicate_panel_route, panel,
+    )
+    if (not message.from_user or message.chat.id != settings.leaders_chat_id
+            or message.chat.id == settings.general_chat_id
+            or not _can_bind(user, settings, message.from_user.id)):
+        return
+    parts = (message.text or '').split()
+    key = parts[1] if len(parts) == 2 else ''
+    source = message.reply_to_message
+    if (key not in TOPICS or source is None or not source.from_user
+            or source.from_user.id != bot.id or source.chat.id != message.chat.id):
+        await message.reply('Ответьте /leaders_repair important на существующую панель этого бота в теме «Важно». Также доступны tasks и pulse.')
+        return
+    # Serialize repairs across workers; never authorize a different destination.
+    if session.bind.dialect.name == 'postgresql':
+        from sqlalchemy import text
+        await session.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': message.chat.id})
+    row = await session.scalar(select(AppSetting).where(
+        AppSetting.key == f'leaders_forum:{message.chat.id}:{key}').with_for_update())
+    data = _topic_data(row)
+    thread = data.get('thread_id')
+    if (row is None or data.get('mode') not in (None, 'forum')
+            or data.get('thread_state') not in (None, 'ready')
+            or type(thread) is not int or thread <= 0
+            or message.message_thread_id != thread or source.message_thread_id != thread
+            or type(source.message_id) is not int or source.message_id <= 0
+            or await _has_duplicate_thread_route(session, message.chat.id, key, thread)
+            or await _has_duplicate_panel_route(session, message.chat.id, key, source.message_id)):
+        await message.reply('Тема не совпадает с сохранённым маршрутом или используется другим разделом. Настройки не изменены.')
+        return
+    me = await bot.get_me()
+    content, keyboard = await panel(session, message.chat.id, key, me.username)
+    try:
+        await bot.edit_message_text(chat_id=message.chat.id, message_id=source.message_id,
+            text=content, reply_markup=keyboard)
+    except TelegramAPIError as exc:
+        if 'message is not modified' not in str(exc).lower():
+            await message.reply('Telegram не подтвердил панель. Настройки не изменены; повторная панель не отправлялась.')
+            return
+    row.value = json.dumps({**data, 'mode': 'forum', 'thread_state': 'ready',
+        'message_id': source.message_id, 'message_state': 'sent',
+        'panel': {'text': content, 'keyboard': keyboard.model_dump(mode='json') if keyboard else None}})
+    await session.commit()
+    await message.reply('Существующая панель подтверждена. Вернитесь к сохранённому черновику рассылки и выберите доставку заново.')
+
 CHAT_KEYS = {
     "general": ("general_chat_id", "general", "Общий чат"),
     "internal": ("internal_department_chat_id", "internal", "Внутренние связи"),

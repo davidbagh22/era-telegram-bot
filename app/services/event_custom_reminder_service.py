@@ -17,29 +17,26 @@ from app.utils.deep_links import miniapp_event_url
 
 
 def _configured_thresholds(values) -> list[int]:
-    """Ignore malformed legacy JSON values without aborting every reminder.
-
-    Valid positive minute thresholds keep their previous ordering and
-    de-duplication. Booleans are not minute values despite int(True) == 1.
-    """
-    if not isinstance(values, (list, tuple)):
+    """Skip an entire malformed configuration; never guess partial send intent."""
+    if values is None:
+        return []
+    if not isinstance(values, list):
         return []
     thresholds: set[int] = set()
     for value in values:
-        # Do not truncate fractional floats or coerce arbitrary JSON objects:
-        # those can unexpectedly activate real Telegram sends.
         if type(value) is int:
             minutes = value
         elif isinstance(value, str):
-            candidate = value.strip()
-            if not candidate or len(candidate) > 9 or not candidate.isascii() or not candidate.isdigit():
-                continue
-            minutes = int(candidate)
+            try:
+                minutes = int(value)
+            except ValueError:
+                return []
         else:
-            continue
-        # Reject nonsensical legacy values and anything outside a one-year
-        # reminder horizon; the DB receipt key stores minutes as an integer.
-        if 0 < minutes <= 525600:
+            return []
+        # The durable receipt stores this value in a PostgreSQL Integer.
+        if minutes > 2147483647:
+            return []
+        if minutes > 0:
             thresholds.add(minutes)
     return sorted(thresholds)
 

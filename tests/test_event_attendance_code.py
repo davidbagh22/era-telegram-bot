@@ -308,6 +308,41 @@ def test_reverted_event_attendance_is_private_and_does_not_mutate() -> None:
     asyncio.run(_reverted_event_attendance_is_private_and_does_not_mutate())
 
 
+async def _unicode_attendance_code_is_rejected_without_awarding_points() -> None:
+    # The active code/QR-v2 flow must never raise TypeError from compare_digest
+    # for Cyrillic, fullwidth, emoji or Unicode case-expansion characters.
+    engine, factory = await _session_factory()
+    try:
+        async with factory() as session:
+            manager, participant, _stranger, event, registration = await _seed_event(session)
+            await event_attendance_service.start_event(
+                session, event.id, actor_user_id=manager.id, bot=None, miniapp_url=""
+            )
+            completed = await event_attendance_service.complete_event(
+                session, event.id, actor_user_id=manager.id, bot=None, miniapp_url=""
+            )
+            assert completed.session and completed.session.attendance_code
+            code = completed.session.attendance_code
+            for invalid in ("А" + code, "Ａ" + code, "ß" + code, "🙂" + code):
+                with pytest.raises(ValueError, match="^invalid_attendance_code$"):
+                    await event_attendance_service.confirm_attendance(
+                        session, event.id, participant.id, invalid
+                    )
+                assert registration.status == RegistrationStatus.REGISTERED
+                assert await session.scalar(
+                    select(func.count())
+                    .select_from(PointTransaction)
+                    .where(PointTransaction.related_event_id == event.id)
+                ) == 0
+            assert event_attendance_service.normalize_code(" ab-cd 23 45 ") == "ABCD2345"
+    finally:
+        await engine.dispose()
+
+
+def test_unicode_attendance_code_is_rejected_without_awarding_points() -> None:
+    asyncio.run(_unicode_attendance_code_is_rejected_without_awarding_points())
+
+
 def test_generated_codes_are_human_friendly_and_do_not_use_ambiguous_symbols() -> None:
     codes = {event_attendance_service.generate_attendance_code() for _ in range(100)}
     assert len(codes) == 100

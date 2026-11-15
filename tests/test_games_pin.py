@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.database.base import Base
 from app.database.models import AppSetting
 from app.handlers.era_game_room import _data, menu_markup
+from app.services import games_launch_service as launch
 from app.services.games_launch_service import refresh_games_pin
 from app.services.general_chat_menu_service import _restore_registration_pin
 
@@ -31,6 +33,13 @@ class GamesPinTests(IsolatedAsyncioTestCase):
                                    get_chat=AsyncMock(return_value=SimpleNamespace(pinned_message=self.pinned)),
                                    edit_message_text=AsyncMock(return_value=True), pin_chat_message=AsyncMock(return_value=True),
                                    send_message=AsyncMock())
+
+    def approved_launch(self):
+        # Explicit test-only approval of the exact existing menu, messages and
+        # destination; production scheduled launch remains default-deny.
+        day = datetime.now(ZoneInfo("Asia/Yerevan")).date().isoformat()
+        key = launch.games_launch_approval_key(day, self.settings.general_chat_id, 99, self.settings.bot_username)
+        return patch.object(launch, "APPROVED_SCHEDULED_GAMES_LAUNCHES", frozenset({key}))
 
     async def asyncTearDown(self):
         await self.engine.dispose()
@@ -77,7 +86,7 @@ class GamesPinTests(IsolatedAsyncioTestCase):
                                              self.pinned.model_copy(update={'message_id': 779, 'message_thread_id': 98})]
         async def topic(bot, settings, key, **kwargs):
             return 99 if key == 'games' else 98
-        with patch('app.services.games_launch_service.ensure_topic', new=AsyncMock(side_effect=topic)), patch(
+        with self.approved_launch(), patch('app.services.games_launch_service.ensure_topic', new=AsyncMock(side_effect=topic)), patch(
             'app.services.general_topics_service.ensure_topic', new=AsyncMock(side_effect=topic)
         ), patch('app.services.notification_service._session_factory', return_value=self.sessions):
             await publish_games_launch(self.bot, self.settings, self.sessions)
@@ -103,7 +112,7 @@ class GamesPinTests(IsolatedAsyncioTestCase):
                                              self.pinned.model_copy(update={'message_id': 779, 'message_thread_id': 98})]
         async def topic(bot, settings, key, **kwargs):
             return 99 if key == 'games' else 98
-        with patch('app.services.games_launch_service.ensure_topic', new=AsyncMock(side_effect=topic)), patch(
+        with self.approved_launch(), patch('app.services.games_launch_service.ensure_topic', new=AsyncMock(side_effect=topic)), patch(
             'app.services.general_topics_service.ensure_topic', new=AsyncMock(side_effect=topic)
         ), patch('app.services.notification_service._session_factory', return_value=self.sessions):
             with patch('app.handlers.era_game_room._save', new=AsyncMock(side_effect=RuntimeError('simulated pin state crash'))):
@@ -129,7 +138,7 @@ class GamesPinTests(IsolatedAsyncioTestCase):
                                              self.pinned.model_copy(update={'message_id': 779, 'message_thread_id': 98})]
         async def topic(bot, settings, key, **kwargs):
             return 99 if key == 'games' else 98
-        with patch('app.services.games_launch_service.ensure_topic', new=AsyncMock(side_effect=topic)), patch(
+        with self.approved_launch(), patch('app.services.games_launch_service.ensure_topic', new=AsyncMock(side_effect=topic)), patch(
             'app.services.general_topics_service.ensure_topic', new=AsyncMock(side_effect=topic)
         ), patch('app.services.notification_service._session_factory', return_value=self.sessions):
             await publish_games_launch(self.bot, self.settings, self.sessions)

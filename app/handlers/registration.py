@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.database.models import User
 from app.database.socials import SocialLink, SocialProfile
 from app.keyboards.common import subscription_keyboard
 from app.keyboards.registration import (
@@ -766,6 +767,22 @@ async def finish_registration(
         )
         return
     if not await _ensure_complete(call.message, state, data):
+        return
+    # A consent callback can survive an admin block/archive while the
+    # registration FSM remains open. Lock the persisted identity before
+    # creating/resubmitting it: configured ADMIN_IDS must not silently
+    # re-approve an inactive account through a stale callback.
+    existing_user = await session.scalar(
+        select(User)
+        .where(User.telegram_id == call.from_user.id)
+        .with_for_update()
+    )
+    if existing_user is not None and (existing_user.is_blocked or existing_user.is_archived):
+        await state.clear()
+        await call.message.answer(
+            "Регистрация недоступна для заблокированной или архивированной "
+            "учётной записи. Обратитесь к администрации ЭРА."
+        )
         return
     resubmitted = False
     if data.get('resubmission'):

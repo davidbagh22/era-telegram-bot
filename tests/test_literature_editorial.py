@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
@@ -13,6 +13,7 @@ from app.config import Settings
 from app.database.base import Base
 from app.database.models import AppSetting, User
 from app.database.system_models import NotificationDelivery
+from app.services import book_club_service as club
 from app.services.book_club_service import (approve_editorial_item, editorial_revision, editorial_settings,
     parse_editorial_text, publish_editorial_item, render_editorial, run_editorial_queue, save_editorial_item, save_editorial_settings)
 from app.utils.constants import ApplicationStatus, Role
@@ -64,6 +65,22 @@ class EditorialTests(IsolatedAsyncioTestCase):
             await save_editorial_settings(session, actor_id=self.editor_id, enabled=True, **changes)
             await session.commit()
 
+    def scheduled_approval(self, item, on_date: date):
+        return club.scheduled_editorial_approval_key(
+            on_date, self.settings.general_chat_id, item.content_id, item.text
+        )
+
+    def test_editorial_approval_binds_day_destination_item_and_rendered_copy(self):
+        # Test-only keys; production allowlist remains empty.
+        item_id = 'literature-test'
+        text = json.dumps(club.parse_editorial_text(MATERIAL), ensure_ascii=False)
+        key = club.scheduled_editorial_approval_key(date(2026, 10, 17), -1001, item_id, text)
+        assert key != club.scheduled_editorial_approval_key(date(2026, 10, 18), -1001, item_id, text)
+        assert key != club.scheduled_editorial_approval_key(date(2026, 10, 17), -1002, item_id, text)
+        assert key != club.scheduled_editorial_approval_key(date(2026, 10, 17), -1001, 'other', text)
+        changed = json.dumps(club.parse_editorial_text(MATERIAL.replace('памяти', 'истории')), ensure_ascii=False)
+        assert key != club.scheduled_editorial_approval_key(date(2026, 10, 17), -1001, item_id, changed)
+
     async def test_only_reviewed_material_is_scheduled_and_a_restart_does_not_repeat_it(self):
         draft = await self.draft()
         await self.enable()
@@ -72,8 +89,17 @@ class EditorialTests(IsolatedAsyncioTestCase):
         async with self.sessions() as session:
             await approve_editorial_item(session, draft.id, editorial_revision(draft), actor_id=self.editor_id)
             await session.commit()
+        # Reviewed content alone does not authorize a dated scheduled post.
         await run_editorial_queue(self.bot, self.settings, self.sessions, now=self.now)
-        await run_editorial_queue(self.bot, self.settings, self.sessions, now=self.now)
+        self.bot.send_message.assert_not_awaited()
+        async with self.sessions() as session:
+            assert await session.scalar(select(AppSetting).where(
+                AppSetting.key == 'book-club-editorial-day:2026-10-17'
+            )) is None
+        key = self.scheduled_approval(draft, date(2026, 10, 17))
+        with patch.object(club, 'APPROVED_SCHEDULED_EDITORIAL_PUBLICATIONS', frozenset({key})):
+            await run_editorial_queue(self.bot, self.settings, self.sessions, now=self.now)
+            await run_editorial_queue(self.bot, self.settings, self.sessions, now=self.now)
         assert self.bot.send_message.await_count == 2
         recipients = {c.args[0] for c in self.bot.send_message.await_args_list}
         assert recipients == {-1001, 22}
@@ -84,16 +110,21 @@ class EditorialTests(IsolatedAsyncioTestCase):
             assert await session.scalar(select(func.count()).select_from(NotificationDelivery)) == 2
 
     async def test_pause_schedule_and_next_material_are_controlled(self):
-        await self.draft(approve=True)
-        await self.draft(approve=True)
+        first = await self.draft(approve=True)
+        second = await self.draft(approve=True)
+        keys = frozenset({
+            self.scheduled_approval(first, date(2026, 10, 17)),
+            self.scheduled_approval(second, date(2026, 10, 18)),
+        })
         await self.enable(paused=True)
         await run_editorial_queue(self.bot, self.settings, self.sessions, now=self.now)
         self.bot.send_message.assert_not_awaited()
         await self.enable(paused=False, hour=20, minute=0)
         await run_editorial_queue(self.bot, self.settings, self.sessions, now=self.now)  # 19:00 MSK
         self.bot.send_message.assert_not_awaited()
-        await run_editorial_queue(self.bot, self.settings, self.sessions, now=self.now+timedelta(hours=1))
-        await run_editorial_queue(self.bot, self.settings, self.sessions, now=self.now+timedelta(days=1, hours=1))
+        with patch.object(club, 'APPROVED_SCHEDULED_EDITORIAL_PUBLICATIONS', keys):
+            await run_editorial_queue(self.bot, self.settings, self.sessions, now=self.now+timedelta(hours=1))
+            await run_editorial_queue(self.bot, self.settings, self.sessions, now=self.now+timedelta(days=1, hours=1))
         assert self.bot.send_message.await_count == 4
 
     async def test_editing_revokes_approval_and_old_preview_cannot_approve_new_text(self):
@@ -121,11 +152,13 @@ class EditorialTests(IsolatedAsyncioTestCase):
         assert self.bot.send_message.await_count == 2
 
     async def test_unknown_outcome_pauses_queue_instead_of_sending_again(self):
-        await self.draft(approve=True)
+        item = await self.draft(approve=True)
         await self.enable()
         self.bot.send_message.side_effect = TelegramNetworkError(method=SendMessage(chat_id=-1001, text='test'), message='unknown')
-        await run_editorial_queue(self.bot, self.settings, self.sessions, now=self.now)
-        await run_editorial_queue(self.bot, self.settings, self.sessions, now=self.now)
+        key = self.scheduled_approval(item, date(2026, 10, 17))
+        with patch.object(club, 'APPROVED_SCHEDULED_EDITORIAL_PUBLICATIONS', frozenset({key})):
+            await run_editorial_queue(self.bot, self.settings, self.sessions, now=self.now)
+            await run_editorial_queue(self.bot, self.settings, self.sessions, now=self.now)
         assert self.bot.send_message.await_count == 1
         async with self.sessions() as session:
             assert (await editorial_settings(session))['paused']

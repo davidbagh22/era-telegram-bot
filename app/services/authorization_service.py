@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TypeGuard
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,22 +40,27 @@ def active_global_permissions(user: User | None) -> set[str]:
     }
 
 
-def is_full_admin(user: User | None, settings: Settings, telegram_id: int) -> bool:
-    return bool(
-        telegram_id in settings.admin_ids
-        or (
-            user
-            and user.role == Role.ADMIN
-            and not user.is_blocked
-            and not user.is_archived
-        )
+def has_active_telegram_identity(user: User | None, telegram_id: int) -> TypeGuard[User]:
+    """Require the active database identity of the current Telegram sender."""
+    return (
+        user is not None
+        and not user.is_blocked
+        and not user.is_archived
+        and getattr(user, "telegram_id", None) == telegram_id
     )
+
+
+def is_full_admin(user: User | None, settings: Settings, telegram_id: int) -> bool:
+    """Configured admin IDs require an active matching persisted identity."""
+    if not has_active_telegram_identity(user, telegram_id):
+        return False
+    return telegram_id in settings.admin_ids or user.role == Role.ADMIN
 
 
 def can_view_people(user: User | None, settings: Settings, telegram_id: int) -> bool:
     if is_full_admin(user, settings, telegram_id):
         return True
-    if not user or user.is_blocked or user.is_archived:
+    if not has_active_telegram_identity(user, telegram_id):
         return False
     return bool(active_global_permissions(user).intersection({"people.view", "people.manage"}))
 
@@ -62,7 +68,7 @@ def can_view_people(user: User | None, settings: Settings, telegram_id: int) -> 
 def can_manage_people(user: User | None, settings: Settings, telegram_id: int) -> bool:
     if is_full_admin(user, settings, telegram_id):
         return True
-    if not user or user.is_blocked or user.is_archived:
+    if not has_active_telegram_identity(user, telegram_id):
         return False
     return "people.manage" in active_global_permissions(user)
 
@@ -76,7 +82,7 @@ def can_manage_permissions(
 def can_manage_events(user: User | None, settings: Settings, telegram_id: int) -> bool:
     if is_full_admin(user, settings, telegram_id):
         return True
-    if not user or user.is_blocked or user.is_archived:
+    if not has_active_telegram_identity(user, telegram_id):
         return False
     return "events.manage" in active_global_permissions(user)
 
@@ -84,7 +90,7 @@ def can_manage_events(user: User | None, settings: Settings, telegram_id: int) -
 def can_manage_tasks(user: User | None, settings: Settings, telegram_id: int) -> bool:
     if is_full_admin(user, settings, telegram_id):
         return True
-    if not user or user.is_blocked or user.is_archived:
+    if not has_active_telegram_identity(user, telegram_id):
         return False
     return "tasks.manage" in active_global_permissions(user)
 
@@ -92,7 +98,7 @@ def can_manage_tasks(user: User | None, settings: Settings, telegram_id: int) ->
 def can_manage_partners(user: User | None, settings: Settings, telegram_id: int) -> bool:
     if is_full_admin(user, settings, telegram_id):
         return True
-    if not user or user.is_blocked or user.is_archived:
+    if not has_active_telegram_identity(user, telegram_id):
         return False
     return "partners.manage" in active_global_permissions(user)
 

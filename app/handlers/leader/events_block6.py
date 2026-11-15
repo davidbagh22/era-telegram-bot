@@ -56,8 +56,10 @@ async def guard(event: CallbackQuery | Message, user: User | None) -> bool:
 
 def mode_keyboard(settings: Settings | None = None, user: User | None = None) -> InlineKeyboardMarkup:
     from app.handlers.leader.event_quick_composer import enabled
-    from app.services.authorization_service import can_manage_events
-    if settings and user and enabled(settings, user.telegram_id) and can_manage_events(user, settings, user.telegram_id):
+    from app.services.authorization_service import can_manage_events, is_full_admin
+    if settings and user and can_manage_events(user, settings, user.telegram_id) and (
+        enabled(settings, user.telegram_id) or is_full_admin(user, settings, user.telegram_id)
+    ):
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="⚡ Быстро · текст и фото", callback_data="leader:eventq:new")],
             [InlineKeyboardButton(text="🧩 Расширенный мастер", callback_data="leader:event6:mode:constructor")],
@@ -112,7 +114,10 @@ async def event_revise(call: CallbackQuery, user: User | None, state: FSMContext
 
 @router.callback_query(F.data == "leader:event:new")
 async def event_new(call: CallbackQuery, user: User | None, state: FSMContext, settings: Settings | None = None) -> None:
-    if not await guard(call, user):
+    from app.services.authorization_service import is_full_admin
+    if settings and is_full_admin(user, settings, call.from_user.id):
+        await call.answer()
+    elif not await guard(call, user):
         return
     await state.clear()
     await call.message.answer("Как подготовить мероприятие?", reply_markup=mode_keyboard(settings, user))

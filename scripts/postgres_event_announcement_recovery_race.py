@@ -49,6 +49,21 @@ async def main():
         async with sessions() as session:
             cursor = await session.scalar(select(AppSetting.value).where(AppSetting.key == RECOVERY_CURSOR_KEY))
             assert int(cursor) == eligible[-1]
+        # Verify the actual PostgreSQL/asyncpg comparison path, not only the
+        # disposable SQLite unit test. A poisoned JSON AppSetting cursor must
+        # never stall recovery or leak into an INTEGER bind.
+        for damaged in (str(2**80), "9" * 5000, "-9223372036854775809", str(2_147_483_647)):
+            async with sessions() as session:
+                row = await session.scalar(select(AppSetting).where(AppSetting.key == RECOVERY_CURSOR_KEY))
+                assert row is not None
+                row.value = damaged
+                await session.commit()
+            page = await _pending_announcement_ids(sessions)
+            assert page == eligible[:RECOVERY_BATCH_SIZE], (damaged[:32], page)
+            async with sessions() as session:
+                repaired = await session.scalar(select(AppSetting.value).where(AppSetting.key == RECOVERY_CURSOR_KEY))
+                assert repaired == str(eligible[RECOVERY_BATCH_SIZE - 1]), repaired
+        print("Event recovery PostgreSQL: poisoned/oversized cursor reset and asyncpg INTEGER bind verified")
         print("Event recovery PostgreSQL: 8 concurrent workers claim distinct bounded pages; no Telegram calls")
     finally:
         await engine.dispose()
