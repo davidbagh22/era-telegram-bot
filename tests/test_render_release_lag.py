@@ -159,5 +159,15 @@ class ReleaseLagTests(unittest.TestCase):
             module.assess(snapshot(), now=datetime(2026, 10, 30, 8, 0))
 
 
+
+class NewerSameCommitAttemptTests(unittest.TestCase):
+    def test_previous_live_does_not_mask_newer_failed_or_pending_attempt(self):
+        for status, expected in (("build_failed", "DEPLOY_FAILED"),
+                                 ("update_in_progress", "UNVERIFIED")):
+            data = snapshot(live=MAIN, main_deploy=status)
+            with self.subTest(status=status):
+                self.assertEqual(module.assess(data, now=NOW)["status"], expected)
+
+
 if __name__ == "__main__":
     unittest.main()
