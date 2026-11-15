@@ -1,3 +1,6 @@
+## CI repair — 2026-11-15 22:52 Asia/Yerevan
+- Full CI found an unrelated aiogram compatibility failure: test_group_commands_accept_bot_mention mock lacks Bot.usernames(). Add empty async usernames to preserve foreign-bot rejection. No production command filter changed. #653 run 43747336912: 2606 passed, one fixture failure; all other jobs passed. Apply the same fixture repair on #500/#653; exact-head full CI must rerun. Main #605 automatic rollout remains gated.
+
 ## FAST CLEANUP — 2026-11-15 (run cleanup-500-653-20261115)
 - Closed 34 obsolete checkpoint-only PRs and duplicate #661; branches/commits retained. #580 kept because it contains a separate reconciliation procedure.
 - #605 reviewed at 8f890855, all 6 checks successful, merged with expected SHA -> main 72c9ccfbd69611334d780c2d44ed7e97281ed4ee. Owner UTC decision is recorded in PR description. Main CI and automatic LIVE verification pending.
