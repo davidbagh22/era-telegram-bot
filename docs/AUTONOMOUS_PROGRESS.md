@@ -34,9 +34,10 @@
 ## Контрольная точка и отчёт
 Этот файл + существующая почасовая задача 6adcbd42ede08191a5c0a946e4147b52. После результата сохранять текущий SHA, PR, тесты, LIVE, блокер и следующий шаг. Итог до 10 строк: что исправлено/выпущено/проверено, что осталось и точное продолжение. «ПОЛНОСТЬЮ ГОТОВ» — только после выполнения всех критериев выше.
 
-## Продолжение: PR #491
-- Согласование с main 72c9ccfbd69611334d780c2d44ed7e97281ed4ee. Частично неуспешная личная рассылка переводит публикацию в needs_attention; duplicate uncertain/failed и sent_unconfirmed не считаются успешными. Новых retry и переписывания receipts нет. Четыре существующих регрессионных сценария перенесены на текущий main; полный CI/review ещё требуется.
-- #500 и #653 продолжают полный CI после исправления заглушки aiogram. Последний подтверждённый LIVE остаётся 747b33b2685b5a7c24ec573eaa58e9f241f88ef2. Статус бота: В РАЗРАБОТКЕ, не ПОЛНОСТЬЮ ГОТОВ.
+## Продолжение 15.11.2026
+- #500 merged after exact 6/6 and independent review -> main 30edfeb2b91df72d8789b339f4ea07a66d31ed51. Main CI / automatic LIVE pending.
+- #491 source + all six CI passed on bcb4e67; independent review clean. Reconciled progress conflict with #500; require new-head CI. Four extracted accounting cases and syntax compile PASS.
+- Real Telegram acceptance blocked: native app displays QR login, no authenticated session. No real users/messages/registrations changed.
 
 ## CI repair — 2026-11-15 22:52 Asia/Yerevan
 - Full CI found an unrelated aiogram compatibility failure: test_group_commands_accept_bot_mention mock lacks Bot.usernames(). Add empty async usernames to preserve foreign-bot rejection. No production command filter changed. #653 run 43747336912: 2606 passed, one fixture failure; all other jobs passed. Apply the same fixture repair on #500/#653; exact-head full CI must rerun. Main #605 automatic rollout remains gated.
