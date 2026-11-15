@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
@@ -19,6 +21,27 @@ from app.utils.constants import ApplicationStatus
 
 PROGRAM_START = date(2026, 10, 10)
 SPECIAL_OPENING_DATE = date(2026, 10, 10)
+
+# Opting in to a reading club does not authorize the organization to publish
+# every future issue. The exact day, registered chat and rendered issue must be
+# approved separately; empty by default. Manual reading/navigation still work.
+APPROVED_SCHEDULED_LITERATURE_ISSUES: frozenset[tuple[str, str, str]] = frozenset()
+
+
+def scheduled_literature_issue_approval_key(
+    on_date: date, chat_id: int | str, number: int
+) -> tuple[str, str, str]:
+    payload = {
+        'topic': 'literature',
+        'parse_mode': 'HTML',
+        'text': render_issue(number),
+    }
+    digest = hashlib.sha256(json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')
+    ).encode('utf-8')).hexdigest()
+    return (on_date.isoformat(), str(chat_id), digest)
+
+
 def publication_number(on_date: date, start_date: date = PROGRAM_START) -> int | None:
     """One issue every calendar day for 48 days from the program start."""
     number = (on_date - start_date).days + 1
@@ -91,11 +114,20 @@ async def reflection_summary(session, user):
 async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
     if await run_editorial_queue(bot, settings, session_factory):
         return
+    local_day = datetime.now(ZoneInfo('Asia/Yerevan')).date()
+    candidate = publication_number(local_day)
+    if (not settings.general_chat_id or candidate is None
+            or scheduled_literature_issue_approval_key(
+                local_day, settings.general_chat_id, candidate
+            ) not in APPROVED_SCHEDULED_LITERATURE_ISSUES):
+        return
     async with session_factory() as session:
         start_day = await start(session)
         await session.commit()
-        number = publication_number(datetime.now(ZoneInfo('Asia/Yerevan')).date(), start_day)
-        if number is None:
+        number = publication_number(local_day, start_day)
+        if (number is None or scheduled_literature_issue_approval_key(
+            local_day, settings.general_chat_id, number
+        ) not in APPROVED_SCHEDULED_LITERATURE_ISSUES):
             return
         ids = (await session.scalars(select(User.id).where(
             User.book_club_subscribed.is_(True), User.is_blocked.is_(False),
@@ -127,6 +159,26 @@ async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
 # Editorial material shares the existing custom-content storage and sender.
 # It never runs until an administrator explicitly enables this queue.
 EDITORIAL_SETTINGS_KEY = 'book-club-editorial-settings'
+# Editorial review approves a draft revision, not an arbitrary future scheduled
+# public post. A dated scheduled send additionally requires exact authorization.
+APPROVED_SCHEDULED_EDITORIAL_PUBLICATIONS: frozenset[tuple[str, str, str]] = frozenset()
+
+
+def scheduled_editorial_approval_key(
+    on_date: date, chat_id: int | str, content_id: str, item_text: str
+) -> tuple[str, str, str]:
+    payload = {
+        'topic': 'literature',
+        'parse_mode': 'HTML',
+        'content_id': content_id,
+        'text': render_editorial(json.loads(item_text)),
+    }
+    digest = hashlib.sha256(json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')
+    ).encode('utf-8')).hexdigest()
+    return (on_date.isoformat(), str(chat_id), digest)
+
+
 EDITORIAL_FIELDS = {'Название': 'title', 'Автор': 'author', 'Введение': 'intro',
                     'Главная мысль': 'idea', 'Вопрос': 'question', 'Источник': 'source'}
 
@@ -221,7 +273,10 @@ async def approve_editorial_item(session: AsyncSession, item_id: int, revision: 
     return item
 
 
-async def publish_editorial_item(bot, settings, session, item_id: int, revision: str):
+async def publish_editorial_item(
+    bot, settings, session, item_id: int, revision: str, *,
+    scheduled_on_date: date | None = None,
+):
     import json
     from app.database.autocontent_models import GeneralCustomContent
     from app.services.general_topics_service import send_general_topic_once
@@ -231,6 +286,10 @@ async def publish_editorial_item(bot, settings, session, item_id: int, revision:
         GeneralCustomContent.id == item_id, GeneralCustomContent.content_type == 'literature').with_for_update().execution_options(populate_existing=True))
     if not item or not item.is_enabled or editorial_revision(item) != revision:
         raise ValueError('editorial_item_not_approved')
+    if scheduled_on_date is not None and scheduled_editorial_approval_key(
+        scheduled_on_date, settings.general_chat_id, item.content_id, item.text
+    ) not in APPROVED_SCHEDULED_EDITORIAL_PUBLICATIONS:
+        return 'approval_required'
     if item.is_skipped:
         return 'already_sent'
     topic = await session.scalar(select(AppSetting).where(
@@ -287,10 +346,18 @@ async def run_editorial_queue(bot, settings, session_factory, *, now=None) -> bo
             item = await session.scalar(select(GeneralCustomContent).where(
                 GeneralCustomContent.content_type == 'literature', GeneralCustomContent.is_enabled.is_(True),
                 GeneralCustomContent.is_skipped.is_(False)).order_by(GeneralCustomContent.id).limit(1))
-            if item:
-                await _insert_setting(session, key=day_key, value={'item_id': item.id})
         if item and item.is_enabled:
-            await publish_editorial_item(bot, settings, session, item.id, editorial_revision(item))
+            publication_date = now.astimezone(ZoneInfo('Asia/Yerevan')).date()
+            if scheduled_editorial_approval_key(
+                publication_date, settings.general_chat_id, item.content_id, item.text
+            ) not in APPROVED_SCHEDULED_EDITORIAL_PUBLICATIONS:
+                return True
+            if not day:
+                await _insert_setting(session, key=day_key, value={'item_id': item.id})
+            await publish_editorial_item(
+                bot, settings, session, item.id, editorial_revision(item),
+                scheduled_on_date=publication_date,
+            )
             await session.commit()
     return True
 

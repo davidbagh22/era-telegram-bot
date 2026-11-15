@@ -581,15 +581,45 @@ async def safe_answer_media(
     return False
 
 
-async def admin_notification_recipients(settings: Settings) -> set[int]:
-    """Return actual administrators for automatic administrative notifications.
+async def _eligible_configured_admin_ids(settings: Settings) -> set[int]:
+    """Exclude revoked configured admins before private notifications leave the bot.
 
-    The leaders chat is intentionally not included here. Automatic events such as
-    new registration applications must stay private to admins. Messages explicitly
-    sent to the leaders chat from Admin Mode continue to use the dedicated chat
-    broadcast path and are unaffected by this recipient list.
+    An absent User row retains the intentional primary-admin bootstrap. If the
+    database cannot confirm revocation state, fail closed for configured IDs;
+    never fall back to broadcasting sensitive cards to an unverified recipient.
     """
-    recipients = set(settings.admin_ids)
+    configured = {int(telegram_id) for telegram_id in settings.admin_ids}
+    if not configured:
+        return set()
+    try:
+        factory = _session_factory(settings.database_url)
+        async with factory() as session:
+            rows = (
+                await session.execute(
+                    select(User.telegram_id, User.is_blocked, User.is_archived).where(
+                        User.telegram_id.in_(configured)
+                    )
+                )
+            ).all()
+        revoked = {
+            int(telegram_id)
+            for telegram_id, blocked, archived in rows
+            if blocked or archived
+        }
+        return configured - revoked
+    except Exception:
+        logger.exception("Could not verify configured admin recipients; omitting unverified IDs")
+        return set()
+
+
+async def admin_notification_recipients(settings: Settings) -> set[int]:
+    """Return active administrators only for private automatic notifications.
+
+    Configured bootstrap admins without a User row remain eligible when the
+    database is reachable. Blocked/archived rows never override revocation.
+    The leaders chat is not an automatic recipient.
+    """
+    recipients = await _eligible_configured_admin_ids(settings)
     recipients.update(await _database_admin_ids(settings))
     return recipients
 

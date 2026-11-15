@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Literal
@@ -230,9 +232,26 @@ def media_permissions(level: MediaAccessLevel) -> dict[str, bool]:
 
 
 async def apply_for_media(session: AsyncSession, user: User) -> MediaAccessLevel:
-    """ToR §28 NO_ACCESS CTA: "Подать заявку". Idempotent -- re-applying
-    while already pending/approved is a no-op, never creates duplicate rows
-    (UserDirection is unique on user_id+direction_id)."""
+    """Apply once per account, serializing concurrent taps on PostgreSQL.
+
+    UserDirection is unique on user_id+direction_id; without a row lock two
+    concurrent requests can both see no membership and one fails on flush.
+    Locking the existing user (before reading the membership) also refreshes
+    approval/block status, so a revoked applicant cannot race the API check.
+    """
+    locked_user = await session.scalar(
+        select(User)
+        .where(User.id == user.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if (
+        locked_user is None
+        or locked_user.is_blocked
+        or locked_user.is_archived
+        or locked_user.application_status != ApplicationStatus.APPROVED
+    ):
+        raise ValueError("media_apply_forbidden")
     direction = await _media_direction(session)
     if direction is None:
         raise ValueError("media_direction_missing")
@@ -736,6 +755,35 @@ def _delivery_key(item: MediaContentItem) -> str:
     return f"era-channel:{item.id}:{stamp}"
 
 
+# A seeded authored pack, an old metadata flag or an enabled scheduler is not
+# approval for a specific future public ERA message. Populated only by a future
+# audited human workflow; empty by default to fail closed.
+APPROVED_SCHEDULED_MEDIA_PUBLICATIONS: frozenset[tuple[str, str, str]] = frozenset()
+
+
+def _media_approval_key(item: MediaContentItem, target: int | str) -> tuple[str, str, str]:
+    payload = {
+        "kind": item.kind,
+        "body": item.body,
+        "poll_question": item.poll_question,
+        "poll_options": list(item.poll_options or []),
+        "scheduled_at": item.scheduled_at.isoformat() if item.scheduled_at else None,
+        "source_key": item.source_key,
+    }
+    digest = hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return (str(item.id), str(target), digest)
+
+
+def _has_explicit_media_approval(item: MediaContentItem, settings: Settings) -> bool:
+    try:
+        target = _channel_target(settings)
+    except ValueError:
+        return False
+    return _media_approval_key(item, target) in APPROVED_SCHEDULED_MEDIA_PUBLICATIONS
+
+
 async def _send_content(bot: Bot, target: int | str, item: MediaContentItem):
     if item.kind == "poll":
         options = [InputPollOption(text=option) for option in (item.poll_options or [])]
@@ -770,6 +818,14 @@ async def publish_content(
         return PublishResult(False, "editorial_approval_required")
     if not manual and item.source_kind != "authored_pack":
         return PublishResult(False, "auto_authored_only")
+    approved_target: int | str | None = None
+    if not manual:
+        try:
+            approved_target = _channel_target(settings)
+        except ValueError:
+            return PublishResult(False, "channel_not_bound")
+        if _media_approval_key(item, approved_target) not in APPROVED_SCHEDULED_MEDIA_PUBLICATIONS:
+            return PublishResult(False, "approval_required")
 
     key = _delivery_key(item)
     delivery = await session.scalar(
@@ -801,7 +857,8 @@ async def publish_content(
         # blind AUTO send on restart.
         await session.commit()
 
-    target = _channel_target(settings)
+    # Reuse the exact destination checked before claiming the delivery receipt.
+    target = approved_target if approved_target is not None else _channel_target(settings)
     message = None
     for attempt in range(1, 4):
         delivery.attempt_count = attempt

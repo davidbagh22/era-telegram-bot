@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.v1.router import api_router
 from app.config import Settings
+from app.database.models import EventStatus
 
 
 def _participant(**overrides) -> SimpleNamespace:
@@ -33,7 +34,7 @@ def _admin(**overrides) -> SimpleNamespace:
 
 
 def _event(**overrides) -> SimpleNamespace:
-    defaults = dict(id=10, title="Событие", additional_info=None)
+    defaults = dict(id=10, title="Событие", additional_info=None, status=EventStatus.PUBLISHED)
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
@@ -78,6 +79,19 @@ class ParticipantEventActivitiesApiTests(unittest.TestCase):
         client = TestClient(app)
         response = client.get("/api/v1/events/999/activities")
         self.assertEqual(response.status_code, 404)
+
+    def test_reverted_unpublished_event_returns_404_before_activity_lookup(self) -> None:
+        for status in (EventStatus.DRAFT, EventStatus.PENDING_APPROVAL):
+            with self.subTest(status=status):
+                session = SimpleNamespace(get=AsyncMock(return_value=_event(status=status)))
+                client = TestClient(_build_app(_participant(), session))
+                with patch(
+                    "app.api.v1.events.event_activity_service.list_activities_for_participant",
+                    new_callable=AsyncMock,
+                ) as activity_lookup:
+                    response = client.get("/api/v1/events/10/activities")
+                self.assertEqual(response.status_code, 404)
+                activity_lookup.assert_not_awaited()
 
     def test_not_registered_returns_409(self) -> None:
         event = _event()

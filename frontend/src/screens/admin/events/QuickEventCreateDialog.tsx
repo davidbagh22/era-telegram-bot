@@ -4,6 +4,7 @@ import type { AdminEventDraft } from "../../../api/adminEvents";
 
 interface Props {
   draft: AdminEventDraft;
+  posterUrl: string | null;
   busy: boolean;
   saving: boolean;
   saveLabel: string;
@@ -17,11 +18,10 @@ interface Props {
 
 const firstLine = (text: string) => text.split("\n").find((line) => line.trim())?.trim().slice(0, 255) ?? "";
 
-export function QuickEventCreateDialog({ draft, busy, saving, saveLabel, error, onChange, onClose, onPublish, onPoster, onWizard }: Props) {
+export function QuickEventCreateDialog({ draft, posterUrl, busy, saving, saveLabel, error, onChange, onClose, onPublish, onPoster, onWizard }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [preview, setPreview] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
-  const [posterVersion, setPosterVersion] = useState(() => Date.now());
   const complete = draft.is_complete && draft.status !== "draft";
   const valid = Boolean(draft.full_description.trim() && draft.title.trim() && draft.title !== "Новое мероприятие"
     && draft.event_date && draft.event_time && draft.location.trim());
@@ -39,7 +39,6 @@ export function QuickEventCreateDialog({ draft, busy, saving, saveLabel, error, 
     }
     setPhotoError(null);
     await onPoster(file);
-    setPosterVersion(Date.now());
   };
 
   const updateText = (text: string) => onChange((current) => {
@@ -70,7 +69,7 @@ export function QuickEventCreateDialog({ draft, busy, saving, saveLabel, error, 
           <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: "1rem 0", minWidth: 0 }}>
             {preview ? (
               <>
-                {draft.has_poster && <img alt="Афиша мероприятия" src={`/api/v1/event-posters/${draft.id}?v=${posterVersion}`} style={{ width: "100%", maxHeight: 300, objectFit: "contain", borderRadius: ".8rem" }} />}
+                {draft.has_poster && posterUrl && <img alt="Афиша мероприятия" src={posterUrl} style={{ width: "100%", maxHeight: 300, objectFit: "contain", borderRadius: ".8rem" }} />}
                 {draft.full_description.split("\n")[0].trim() !== draft.title.trim() && <h3>{draft.title}</h3>}
                 <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{draft.full_description}</p>
                 <p>📅 {draft.event_date.split("-").reverse().join(".")} · {draft.event_time.slice(0, 5)}<br />📍 {draft.location}</p>
@@ -81,13 +80,13 @@ export function QuickEventCreateDialog({ draft, busy, saving, saveLabel, error, 
                 <p style={{ marginTop: 0, color: "var(--era-text-muted)" }}>Вставьте готовый текст и добавьте фото. Черновик сохраняется автоматически.</p>
                 <Field label="Текст анонса"><textarea required value={draft.full_description} onChange={(event) => updateText(event.target.value)} rows={8} maxLength={10000} placeholder="Вставьте текст мероприятия целиком…" /></Field>
                 <Field label="Заголовок"><input required value={draft.title === "Новое мероприятие" ? "" : draft.title} onChange={(event) => onChange((current) => ({ ...current, title: event.target.value }))} maxLength={255} placeholder="Первая строка текста или свой заголовок" /></Field>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem" }}>
-                  <Field label="Дата"><input required type="date" value={draft.event_date} onChange={(event) => onChange((current) => ({ ...current, event_date: event.target.value }))} /></Field>
-                  <Field label="Время"><input required type="time" value={draft.event_time} onChange={(event) => onChange((current) => ({ ...current, event_time: event.target.value }))} /></Field>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 10rem), 1fr))", gap: ".5rem" }}>
+                  <Field label="Дата"><input required type="date" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={draft.event_date} onChange={(event) => onChange((current) => ({ ...current, event_date: event.target.value }))} /></Field>
+                  <Field label="Время"><input required type="time" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={draft.event_time} onChange={(event) => onChange((current) => ({ ...current, event_time: event.target.value }))} /></Field>
                 </div>
                 <Field label="Место или ссылка"><input required value={draft.location} maxLength={255} onChange={(event) => onChange((current) => ({ ...current, location: event.target.value }))} placeholder="Адрес или ссылка на онлайн-встречу" /></Field>
                 <Field label="Фото (до 5 МБ)"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void poster(file); event.target.value = ""; }} /></Field>
-                {draft.has_poster && <div style={{ marginBottom: ".8rem" }}><img alt="Прикреплённая афиша" src={`/api/v1/event-posters/${draft.id}?v=${posterVersion}`} style={{ width: "100%", maxHeight: 200, objectFit: "contain", borderRadius: ".8rem" }} /><button type="button" onClick={() => void poster(null)}>Удалить фото</button></div>}
+                {draft.has_poster && <div style={{ marginBottom: ".8rem" }}>{posterUrl && <img alt="Прикреплённая афиша" src={posterUrl} style={{ width: "100%", maxHeight: 200, objectFit: "contain", borderRadius: ".8rem" }} /> }<button type="button" onClick={() => void poster(null)}>Удалить фото</button></div>}
                 <details><summary>Регистрация и баллы</summary>
                   <Field label="Формат"><select value={draft.attendance_mode} onChange={(event) => onChange((current) => ({ ...current, attendance_mode: event.target.value as AdminEventDraft["attendance_mode"] }))}><option value="offline">Офлайн</option><option value="online">Онлайн</option><option value="hybrid">Гибрид</option></select></Field>
                   <label><input type="checkbox" checked={draft.registration_required} onChange={(event) => onChange((current) => ({ ...current, registration_required: event.target.checked }))} /> Нужна регистрация</label>

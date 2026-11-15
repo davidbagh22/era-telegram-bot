@@ -25,6 +25,7 @@ from app.utils.constants import ApplicationStatus
 
 def _admin_user() -> SimpleNamespace:
     return SimpleNamespace(
+        telegram_id=1,
         role="admin",
         is_blocked=False,
         is_archived=False,

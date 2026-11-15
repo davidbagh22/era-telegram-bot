@@ -30,12 +30,25 @@ class ExternalBackupVerificationTests(unittest.TestCase):
             aws.write_text('#!/usr/bin/env bash\nset -e\ncp "$TEST_ARCHIVE" "$4"\n')
             aws.chmod(0o700)
             env['PATH'] = str(root) + os.pathsep + env['PATH']
-            # The real restore tool owns schema verification. Verify that this
-            # wrapper passes the downloaded, decrypted original into that tool.
-            (root / 'scripts/verify_database_restore.sh').write_text(
+            pg_bin = root / 'pg-bin'
+            pg_bin.mkdir()
+            pg_restore = pg_bin / 'pg_restore'
+            pg_restore.write_text('#!/usr/bin/env bash\nset -e\ntouch "$RESTORE_MARKER"\n')
+            pg_restore.chmod(0o700)
+            psql = pg_bin / 'psql'
+            psql.write_text(
                 '#!/usr/bin/env bash\nset -e\n'
-                'test "$(sha256sum "$BACKUP_FILE" | cut -d " " -f1)" = "$BACKUP_SHA256"\n'
-                'touch "$TEST_MARKER"\n')
+                'if [[ "$*" == *"SELECT version_num"* ]]; then printf "%s\\n" "$CODE_REVISION"; fi\n'
+            )
+            psql.chmod(0o700)
+            alembic = root / 'alembic-fixture'
+            alembic.write_text('#!/usr/bin/env bash\nprintf "%s (head)\\n" "$CODE_REVISION"\n')
+            alembic.chmod(0o700)
+            verifier = root / 'scripts/verify_database_restore.sh'
+            verifier.write_text((Path(__file__).resolve().parents[1] / 'scripts/verify_database_restore.sh').read_text())
+            verifier.chmod(0o700)
+            env.update(PG_BIN=str(pg_bin), ALEMBIC_BIN=str(alembic),
+                       RESTORE_MARKER=str(root / 'restored'), CODE_REVISION='fixture-head')
             result = subprocess.run(['bash', str(SCRIPT)], cwd=root, env=env, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue((root / 'restored').exists())

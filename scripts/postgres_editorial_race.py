@@ -3,7 +3,8 @@ import asyncio
 import json
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from unittest.mock import patch
 from types import SimpleNamespace
 
 from sqlalchemy import func, select
@@ -15,6 +16,7 @@ from app.database.autocontent_models import GeneralCustomContent
 from app.database.models import AppSetting, Broadcast, User, UserQuestion
 from app.database.system_models import NotificationDelivery
 from app.services.admin_broadcast_service import control_broadcast, resume_broadcasts, send_personal_broadcast
+from app.services import book_club_service as club
 from app.services.book_club_service import (approve_editorial_item, editorial_revision, run_editorial_queue,
     save_editorial_item, save_editorial_settings)
 from app.services.scheduler_service import deliver_support_answers
@@ -52,15 +54,21 @@ async def main():
             editor_id = editor.id
             session.add(AppSetting(key=f'general_forum:{-uid}:literature', value=json.dumps({'thread_id': 26216})))
             item = await save_editorial_item(session, MATERIAL, actor_id=editor.id)
-            item_id, content_id = item.id, item.content_id
+            item_id, content_id, item_text = item.id, item.content_id, item.text
             await approve_editorial_item(session, item.id, editorial_revision(item), actor_id=editor.id)
             next_item = await save_editorial_item(session, MATERIAL.replace('Проверка очереди', 'Следующий выпуск'), actor_id=editor.id)
             next_id = next_item.id
             await approve_editorial_item(session, next_item.id, editorial_revision(next_item), actor_id=editor.id)
             await save_editorial_settings(session, actor_id=editor.id, enabled=True)
             await session.commit()
-        await asyncio.wait_for(asyncio.gather(*(
-            run_editorial_queue(bot, settings, sessions, now=now) for _ in range(8))), 60)
+        # The race probe explicitly authorizes this exact synthetic dated post.
+        # Production allowlists remain empty; no real chat or participant is used.
+        key = club.scheduled_editorial_approval_key(
+            date(2026, 10, 17), settings.general_chat_id, content_id, item_text
+        )
+        with patch.object(club, 'APPROVED_SCHEDULED_EDITORIAL_PUBLICATIONS', frozenset({key})):
+            await asyncio.wait_for(asyncio.gather(*(
+                run_editorial_queue(bot, settings, sessions, now=now) for _ in range(8))), 60)
         assert len(calls) == 2, len(calls)
         async with sessions() as session:
             assert (await session.get(GeneralCustomContent, item_id)).is_skipped

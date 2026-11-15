@@ -12,6 +12,7 @@ from app.keyboards.participant import (
     main_inline_keyboard as legacy_main_inline_keyboard,
     navigation_guide_keyboard as legacy_navigation_guide_keyboard,
 )
+from app.services.anniversary_registration_service import MENU_BUTTON
 from app.utils.deep_links import miniapp_admin_url, miniapp_leader_url
 from app.utils.constants import PRIVILEGED_ROLES
 from app.services.leadership_permission_service import is_assignment_active
@@ -69,9 +70,14 @@ def main_inline_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def main_reply_keyboard(miniapp_url: str = "", *, admin: bool = False, leaders: bool = False, media_chair: bool = False) -> ReplyKeyboardMarkup:
+def main_reply_keyboard(
+    miniapp_url: str = "", *, admin: bool = False, leaders: bool = False,
+    media_chair: bool = False, anniversary: bool = False,
+) -> ReplyKeyboardMarkup:
     """Persistent quick-access menu shown above the Telegram input field."""
     rows: list[list[KeyboardButton]] = []
+    if anniversary:
+        rows.append([KeyboardButton(text=MENU_BUTTON)])
     if miniapp_url:
         rows.append([
             # Reply-keyboard WebApps use Telegram's simple mode, which has

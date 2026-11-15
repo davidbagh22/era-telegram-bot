@@ -8,7 +8,9 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_session
+from app.api.v1.events import EventOut, _get_registration, _to_event_out
 from app.database.models import User
+from app.services import anniversary_registration_service as anniversary
 from app.services.home_service import build_home_snapshot
 from app.services.daily_public_content_service import text_for_day
 
@@ -133,6 +135,7 @@ class HomeSnapshotOut(BaseModel):
     activity: ActivityStatsOut
     next_step: NextStepOut | None
     nearest_event: EventSummaryOut | None
+    featured_event: EventOut | None = None
     active_task: TaskSummaryOut | None
     active_project: ProjectSummaryOut | None
     opportunities: list[OpportunitySummaryOut]
@@ -156,7 +159,12 @@ async def read_home(
     session: AsyncSession = Depends(get_session),
 ) -> HomeSnapshotOut:
     snapshot = await build_home_snapshot(session, user)
-    return HomeSnapshotOut.model_validate(snapshot)
+    result = HomeSnapshotOut.model_validate(snapshot)
+    event = await anniversary.featured_event(session)
+    if event is not None:
+        registration = await _get_registration(session, event.id, user.id)
+        result.featured_event = await _to_event_out(session, event, registration, user)
+    return result
 
 
 @router.get("/home/daily-quote", response_model=DailyQuoteOut)
