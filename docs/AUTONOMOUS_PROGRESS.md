@@ -1,10 +1,15 @@
-## FAST CLEANUP — 2026-11-15 (run cleanup-653-20261115)
-- Main / Render LIVE confirmed: 747b33b2685b5a7c24ec573eaa58e9f241f88ef2. Main push Bot checks 43578913696 SUCCESS; recent scheduled smoke and backup SUCCESS. Render /ready returns 200.
-- Closed duplicate PR #661 in favor of #605 after comparing both handler patches and tests; branches/history retained.
-- PR #653: reconcile with current main, retain current readiness registry, replace obsolete branch-only checkpoints with this continuation. Guard GitHub check response shape so malformed collections/rows report UNVERIFIED instead of crashing. Local unittest: 2 tests, 8 malformed cases PASS.
-- Next: exact final-head CI/review for #653; monitoring schedule/credentials integration remains incomplete, so keep DRAFT. #605 has green CI and recorded UTC owner decision but older source-review timezone objections need reconciliation before release.
-- Existing hourly automation found; no duplicate created. Local dirty workflow files untouched. No real queue/data cleanup, Telegram sends, settings or secrets changed.
-- This is the shared remote continuation for this run on existing PR #653; no documentation-only PR.
+## CI repair — 2026-11-15 22:52 Asia/Yerevan
+- Full CI found an unrelated aiogram compatibility failure: test_group_commands_accept_bot_mention mock lacks Bot.usernames(). Add empty async usernames to preserve foreign-bot rejection. No production command filter changed. #653 run 43747336912: 2606 passed, one fixture failure; all other jobs passed. Apply the same fixture repair on #500/#653; exact-head full CI must rerun. Main #605 automatic rollout remains gated.
+
+## FAST CLEANUP — 2026-11-15 (run cleanup-500-653-20261115)
+- Closed 34 obsolete checkpoint-only PRs and duplicate #661; branches/commits retained. #580 kept because it contains a separate reconciliation procedure.
+- #605 reviewed at 8f890855, all 6 checks successful, merged with expected SHA -> main 72c9ccfbd69611334d780c2d44ed7e97281ed4ee. Owner UTC decision is recorded in PR description. Main CI and automatic LIVE verification pending.
+- Last confirmed Render LIVE: 747b33b2685b5a7c24ec573eaa58e9f241f88ef2. Scheduled smoke 43730856640 PASS including health/ready. PostgreSQL and persistent Redis available, scheduler jobs successful; ERROR sample 17:30–18:32 UTC empty. Old free Redis suspended; do not delete.
+- #653 conflict resolved against main; malformed GitHub check collections now produce UNVERIFIED instead of crashing. Commit 40e9468095b98e8002876deea2a72b95370438b0; local 2 tests / 8 malformed inputs PASS; CI in progress. Schedule integration and independent review remain.
+- #500 reconciled with current main: malformed reminder configuration skipped as a whole, never salvaged into partial sends. Valid integer thresholds retain semantics; no arbitrary one-year cap. Reject values exceeding PostgreSQL receipt Integer. Existing delivery keys/receipts untouched. Isolated extracted parser: 6 unittest tests PASS; full app CI pending.
+- Remaining PR blockers: #670/#660/#578/#589/#491/#486/#484/#468/#467 conflict with main and have delivery/privacy/acceptance gates; #665 is only a payload builder, missing authorized Calendar adapter/outbox; #364 legal acceptance; #580 historical reconciliation procedure review.
+- Existing enabled hourly automation 6adcbd42ede08191a5c0a946e4147b52 retained, no duplicate. Local dirty workflow edits preserved. No production data, queues, secrets or settings changed.
+- Next: finish exact-head CI/review #500 and #653, confirm #605 main CI + automatic exact LIVE, then guarded release of safe fixes. Telegram/mobile role acceptance still unverified.
 
 # ЭРА — автономная разработка
 
