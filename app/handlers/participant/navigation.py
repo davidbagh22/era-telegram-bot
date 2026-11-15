@@ -16,6 +16,7 @@ from app.keyboards.bot_shell import (
 )
 from app.keyboards.participant import event_list_keyboard, journey_keyboard, open_app_button
 from app.repositories.users import rating, user_stats
+from app.services import anniversary_registration_service as anniversary
 from app.services.event_service import published_events
 from app.services.points_service import total_points
 from app.services.feature_flags import Feature, feature_enabled
@@ -94,19 +95,24 @@ def _cabinet_text(user: User, stats: dict[str, int], place: int | str) -> str:
 Выберите следующий шаг."""
 
 
-async def _send_main_menu(message: Message, user: User | None, settings: Settings | None = None) -> None:
+async def _send_main_menu(
+    message: Message, user: User | None, settings: Settings | None = None, *, session: AsyncSession | None = None,
+) -> None:
     if not _approved(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
     from app.services.media_leadership_service import is_media_chair
+    featured = session is not None and await anniversary.menu_available(session)
+    menu_text = f"{ux_texts.MAIN_INLINE_MENU}\n\n{anniversary.MENU_SHORTCUT}" if featured else ux_texts.MAIN_INLINE_MENU
     await message.answer(
-        ux_texts.MAIN_INLINE_MENU,
+        menu_text,
         parse_mode=ParseMode.HTML,
         reply_markup=main_reply_keyboard(
             leaders=has_leaders_entry(user),
             miniapp_url=settings.effective_miniapp_url if settings else "",
             admin=user.role == Role.ADMIN or bool(settings and getattr(user, 'telegram_id', None) in getattr(settings, 'admin_ids', [])),
             media_chair=bool(settings and is_media_chair(user, settings)),
+            anniversary=featured,
         ),
     )
 
@@ -279,6 +285,8 @@ async def panel_callback(call: CallbackQuery, user: User | None, settings: Setti
 
 
 @router.message(F.text == "🧭 Главное меню")
-async def main_menu_message(message: Message, user: User | None, state: FSMContext, settings: Settings) -> None:
+async def main_menu_message(
+    message: Message, user: User | None, state: FSMContext, settings: Settings, session: AsyncSession | None = None,
+) -> None:
     await state.clear()
-    await _send_main_menu(message, user, settings)
+    await _send_main_menu(message, user, settings, session=session)

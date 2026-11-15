@@ -69,8 +69,10 @@ function Entry({ item, area, manager, members, onChanged }: { item: MediaCalenda
   const [body, setBody] = useState(item.body);
   const [responsible, setResponsible] = useState(String(item.responsible_id ?? ""));
   const terminal = ["published", "skipped"].includes(item.status);
+  const corruptRevision = !Number.isSafeInteger(item.revision) || item.revision === null || item.revision < 0;
   const publicationLink = safeEvidenceUrl(item.publication_url);
   const change = async (values: object) => {
+    if (corruptRevision) { setError("Данные материала повреждены. Обратитесь к администратору"); return; }
     setBusy(true); setError("");
     try { const updated = await updateMediaCalendarEntry(area, item.id, { revision: item.revision, ...values }); onChanged(updated); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось сохранить"); }
@@ -85,7 +87,8 @@ function Entry({ item, area, manager, members, onChanged }: { item: MediaCalenda
     {expanded && item.materials && <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--era-text-secondary)" }}>Материалы: {item.materials}</p>}
     {publicationLink && <><a href={publicationLink} target="_blank" rel="noopener noreferrer">Открыть публикацию ↗</a><small>Ссылка подтверждена руководителем. Это не автоматическая проверка внешнего сервиса.</small></>}
     {item.publication_url && !publicationLink && <small>Ссылка публикации имеет неподдерживаемый формат.</small>}
-    {manager && !terminal && expanded && <>
+    {manager && expanded && corruptRevision && <small role="alert">Данные материала повреждены. Редактирование отключено до проверки администратором.</small>}
+    {manager && !terminal && expanded && !corruptRevision && <>
       <button style={button} disabled={busy} onClick={() => setEditing(!editing)}>{editing ? "Закрыть редактор" : "Изменить материал / ответственного"}</button>
       {editing && <div style={{ display: "grid", gap: 10 }}>
         <label>Название материала<input style={input} value={title} maxLength={255} onChange={event => setTitle(event.target.value)} /></label>

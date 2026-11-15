@@ -183,7 +183,7 @@ export interface MediaCalendarEntry {
   materials: string;
   publication_url: string | null;
   publication_evidence: string | null;
-  revision: number;
+  revision: number | null;
 }
 export const fetchMediaWorkspaces = () => request<MediaWorkspace[]>("/api/v1/media/workspaces");
 export const fetchMediaCalendar = (area: string, beforeId?: number, statusGroup: "all" | "active" | "published" = "all") => {

@@ -140,6 +140,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "configured-event-reminders",
                 "event-lifecycle-notifications",
                 "event-announcement-recovery",
+                "event-registration-notice-recovery",
                 "event-wizard-task-sync",
                 "project-scoring-reconciliation",
                 "task-squad-notifications",

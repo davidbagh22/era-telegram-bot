@@ -10,6 +10,8 @@ import { StatusBanner } from "../components/StatusBanner";
 import { EventIcon, ProjectsIcon, TaskIcon } from "../components/icons";
 import { useHome } from "../hooks/useHome";
 import type { MiniAppUserSummary } from "../types/auth";
+import { AnniversaryRegistration } from "./activity/AnniversaryRegistration";
+import { EventPoster } from "./activity/EventsTab";
 
 interface HomeScreenProps {
   user: MiniAppUserSummary;
@@ -94,6 +96,8 @@ export function HomeScreen({
   }
 
   const { data } = home;
+  const featuredEvent = data.featured_event;
+  const nearestEvent = data.nearest_event?.id === featuredEvent?.id ? null : data.nearest_event;
 
   const nextStepClick = (() => {
     if (!data.next_step) return undefined;
@@ -134,6 +138,19 @@ export function HomeScreen({
           <Avatar firstName={user.first_name} lastName={user.last_name} />
         </button>
       </header>
+
+      {featuredEvent && (
+        <Card style={{ padding: "0.8rem", display: "grid", gap: "0.55rem" }}>
+          <EventPoster event={featuredEvent} compact />
+          <h2 style={{ margin: 0, fontSize: "1.3rem" }}><strong>Первая годовщина ЭРА — 1 ГОД</strong></h2>
+          <p style={{ margin: 0, color: "var(--era-text-secondary)" }}>
+            {formatDate(featuredEvent.event_date)} · Сбор в 17:30 · Начало в {featuredEvent.event_time}
+          </p>
+          <p style={{ margin: 0, color: "var(--era-text-secondary)" }}>{featuredEvent.location}</p>
+          <AnniversaryRegistration key={featuredEvent.id} event={featuredEvent} />
+          {onOpenEvent && <button type="button" onClick={() => onOpenEvent(featuredEvent.id)}>Подробнее</button>}
+        </Card>
+      )}
 
       <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
         <MonoLabel>Следующий шаг</MonoLabel>
@@ -198,14 +215,14 @@ export function HomeScreen({
 
       <section style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
         <MonoLabel>Ближайшее</MonoLabel>
-        {data.nearest_event ? (
+        {nearestEvent ? (
           <PosterCard
             dark
-            eyebrow={formatDate(data.nearest_event.event_date)}
-            title={data.nearest_event.title}
-            subtitle={`${data.nearest_event.event_time} · ${data.nearest_event.location}`}
+            eyebrow={formatDate(nearestEvent.event_date)}
+            title={nearestEvent.title}
+            subtitle={`${nearestEvent.event_time} · ${nearestEvent.location}`}
             cta="Открыть событие"
-            onClick={onOpenEvent ? () => onOpenEvent(data.nearest_event!.id) : onOpenEvents}
+            onClick={onOpenEvent ? () => onOpenEvent(nearestEvent.id) : onOpenEvents}
           />
         ) : data.active_task && onOpenTask ? (
           <Card onClick={() => onOpenTask(data.active_task!.id)}>

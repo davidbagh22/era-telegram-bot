@@ -86,7 +86,9 @@ async def calendar(area: Area, before_id: int | None = Query(default=None, gt=0,
         await service.require_access(session, user, settings)
     except PermissionError as error:
         raise _error(error) from error
-    return await service.calendar(session, area, before_id=before_id, status_group=status_group)
+    include_legacy = await service.media_service.can_manage_media(session, user, settings)
+    return await service.calendar(session, area, before_id=before_id, status_group=status_group,
+                                  include_legacy=include_legacy)
 
 
 @router.post("/{area}/calendar")

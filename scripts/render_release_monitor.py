@@ -32,7 +32,11 @@ def collect(github_token: str, render_token: str) -> dict:
     main_sha = branch["commit"]["sha"]
     checks = get_json(base + "/commits/" + main_sha + "/check-runs?per_page=100",
                       github_token, github=True)
+    if not isinstance(checks, dict) or not isinstance(checks.get("check_runs"), list):
+        return {"state": "UNVERIFIED", "reason": "malformed_github_checks"}
     runs = checks["check_runs"]
+    if any(not isinstance(run, dict) for run in runs):
+        return {"state": "UNVERIFIED", "reason": "malformed_github_checks"}
     # Never infer success from an arbitrary subset of check runs. Names must
     # be explicitly configured to match the five required main checks.
     names = [x.strip() for x in os.getenv("ERA_MAIN_CHECK_NAMES", "test,secret-scan,frontend,postgres-migration,e2e").split(",") if x.strip()]
