@@ -121,9 +121,6 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
             notification_type="event_published",
         )
         if outcome.failed:
-            # The general-topic receipt can be successful while some personal
-            # deliveries failed or have an uncertain outcome. Do not claim that
-            # the entire announcement was sent, or automatically replay it.
             experience.announcement_status = "needs_attention"
             logger.warning(
                 "Event announcement requires personal delivery reconciliation event_id=%s failed=%s",
@@ -186,9 +183,14 @@ async def _pending_announcement_ids(session_factory) -> list[int]:
             lock_id = int.from_bytes(hashlib.sha256(RECOVERY_CURSOR_KEY.encode()).digest()[:8], "big", signed=True)
             await session.execute(sql_text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_id})
         cursor_row = await session.scalar(select(AppSetting).where(AppSetting.key == RECOVERY_CURSOR_KEY))
+        # Event IDs use PostgreSQL INTEGER (signed 32-bit). A damaged
+        # AppSetting cursor beyond that range must not reach an asyncpg
+        # comparison and repeatedly abort the entire recovery batch.
         try:
-            cursor = max(0, int(cursor_row.value)) if cursor_row else 0
-        except (TypeError, ValueError):
+            cursor = int(cursor_row.value) if cursor_row else 0
+        except (TypeError, ValueError, OverflowError):
+            cursor = 0
+        if not 0 <= cursor <= 2_147_483_647:
             cursor = 0
         pending = select(EventExperience.event_id).join(
             Event, Event.id == EventExperience.event_id,

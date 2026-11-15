@@ -65,7 +65,7 @@ def _event_session(event: SimpleNamespace | None) -> SimpleNamespace:
             return None
         return None
 
-    return SimpleNamespace(get=AsyncMock(side_effect=_get))
+    return SimpleNamespace(get=AsyncMock(side_effect=_get), commit=AsyncMock())
 
 
 def _build_app(session: SimpleNamespace) -> FastAPI:

@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from sqlalchemy import select, func
 
@@ -7,6 +7,7 @@ from tests.test_task_review_service import TaskReviewServiceTests
 from app.config import Settings
 from app.database.models import AppSetting, Task, TaskSubmission, PortfolioItem
 from app.handlers.participant.task_block2 import task_view, tasks_list
+from app.services import public_task_catalog_service as catalog
 from app.services.public_task_catalog_service import publish_catalog
 from app.services.task_service import claim, can_view, can_submit, completed_task_ids
 from app.services.task_review_service import decide_submission
@@ -14,6 +15,23 @@ from app.utils.constants import ApplicationStatus
 
 
 class PublicCatalogTests(TaskReviewServiceTests):
+    async def test_scheduler_without_specific_approval_never_opens_db_or_posts(self):
+        settings = Settings(
+            bot_token='1234567890:test-token', bot_username='ERA_1bot',
+            general_chat_id=-100123456,
+        )
+        factory = Mock(side_effect=AssertionError("unapproved scheduled catalog must not access DB"))
+        bot = SimpleNamespace(send_message=AsyncMock())
+        await catalog.launch_catalog_job(bot, settings, factory)
+        factory.assert_not_called()
+        bot.send_message.assert_not_awaited()
+
+    def test_catalog_approval_key_binds_exact_date_destination_and_buttons(self):
+        key = catalog.catalog_launch_approval_key("2026-11-03", -100123456, "ERA_1bot")
+        assert key != catalog.catalog_launch_approval_key("2026-11-04", -100123456, "ERA_1bot")
+        assert key != catalog.catalog_launch_approval_key("2026-11-03", -100123457, "ERA_1bot")
+        assert key != catalog.catalog_launch_approval_key("2026-11-03", -100123456, "other_bot")
+
     async def test_catalog_repeat_self_service_and_independent_completion(self):
         settings = Settings(bot_token='1234567890:test-token', bot_username='ERA_1bot')
         async with self.session_factory() as s:

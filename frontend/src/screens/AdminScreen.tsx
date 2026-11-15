@@ -65,6 +65,9 @@ function initialAdminRoute(): InitialAdminRoute {
   if (section === "applications") {
     return { peopleSection: "applications", applicationId: positiveId(query.get("applicationId")) };
   }
+  if (section === "team-tasks") {
+    return { peopleSection: "leaders-chat", applicationId: null };
+  }
   if (section === "offices") {
     return { peopleSection: "offices", applicationId: null };
   }

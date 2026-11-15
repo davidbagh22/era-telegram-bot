@@ -6,12 +6,13 @@ from typing import Any, Literal
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
+from app.api.v1.event_posters import _SAFE_POSTER_MIME_TYPES
 from app.config import Settings
 from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
@@ -512,6 +513,29 @@ async def save_event_draft_step(
         except Exception:
             logger.exception("Event %s saved; change notification failed", event.id)
     return result
+
+
+@router.get("/{event_id}/poster/preview")
+async def read_admin_event_poster_preview(
+    event_id: int,
+    _admin: User = Depends(require_event_manager),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Authenticated editor preview; never expose unpublished bytes via public URLs."""
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event_poster_not_found")
+    experience = await session.get(EventExperience, event_id)
+    if experience is None or not experience.poster_bytes:
+        raise HTTPException(status_code=404, detail="event_poster_not_found")
+    poster_mime = (experience.poster_content_type or "image/jpeg").split(";", 1)[0].strip().lower()
+    if poster_mime not in _SAFE_POSTER_MIME_TYPES:
+        raise HTTPException(status_code=404, detail="event_poster_not_found")
+    return Response(
+        content=experience.poster_bytes,
+        media_type=poster_mime,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.post("/{event_id}/poster", response_model=EventDraftOut)

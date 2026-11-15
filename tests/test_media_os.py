@@ -375,6 +375,11 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
                 media_service.MEDIA_TASK_POINTS,
             )
 
+    def _approved_auto(self, item: MediaContentItem):
+        """Explicit test-only consent, never a production publication approval."""
+        key = media_service._media_approval_key(item, media_service._channel_target(self.settings))
+        return patch.object(media_service, "APPROVED_SCHEDULED_MEDIA_PUBLICATIONS", frozenset({key}))
+
     async def test_authored_text_is_published_once(self) -> None:
         async with self.session_factory() as session:
             item = MediaContentItem(
@@ -393,16 +398,18 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
                 send_message=AsyncMock(return_value=SimpleNamespace(message_id=777)),
                 send_poll=AsyncMock(),
             )
-            first = await media_service.publish_content(
-                session, bot, self.settings, item, manual=False
-            )
+            with self._approved_auto(item):
+                first = await media_service.publish_content(
+                    session, bot, self.settings, item, manual=False
+                )
             # send_message now covers two purposes: the actual content
             # delivery and the "Опубликовано ✓" Media Chat notice (ToR
             # §42) -- exactly 2 calls after one successful publish.
             after_first = bot.send_message.await_count
-            second = await media_service.publish_content(
-                session, bot, self.settings, item, manual=False
-            )
+            with self._approved_auto(item):
+                second = await media_service.publish_content(
+                    session, bot, self.settings, item, manual=False
+                )
             self.assertTrue(first.ok)
             self.assertFalse(second.ok)
             self.assertEqual(second.code, "already_published")
@@ -433,9 +440,10 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
                 send_message=AsyncMock(),
                 send_poll=AsyncMock(return_value=SimpleNamespace(message_id=778)),
             )
-            result = await media_service.publish_content(
-                session, bot, self.settings, item, manual=False
-            )
+            with self._approved_auto(item):
+                result = await media_service.publish_content(
+                    session, bot, self.settings, item, manual=False
+                )
             self.assertTrue(result.ok)
             # The poll itself goes out via send_poll; send_message is used
             # only for the separate "Опубликовано ✓" Media Chat notice
@@ -463,7 +471,8 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
                 send_message=AsyncMock(return_value=SimpleNamespace(message_id=1)),
                 send_poll=AsyncMock(),
             )
-            await media_service.publish_content(session, bot, self.settings, item, manual=False)
+            with self._approved_auto(item):
+                await media_service.publish_content(session, bot, self.settings, item, manual=False)
 
             notice = await session.scalar(
                 select(MediaChatNotice).where(MediaChatNotice.notice_kind == "published")
@@ -508,7 +517,8 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
             bot = SimpleNamespace(
                 send_message=AsyncMock(side_effect=_content_fails_notice_succeeds), send_poll=AsyncMock()
             )
-            result = await media_service.publish_content(session, bot, self.settings, item, manual=False)
+            with self._approved_auto(item):
+                result = await media_service.publish_content(session, bot, self.settings, item, manual=False)
 
             self.assertFalse(result.ok)
             notice = await session.scalar(

@@ -6,6 +6,7 @@ import { AdminEventCreatePanel } from "./events/AdminEventCreatePanel";
 import { EventActivitiesPanel } from "./events/EventActivitiesPanel";
 import { EventModerationPanel } from "./events/EventModerationPanel";
 import { EventParticipantsPanel } from "./events/EventParticipantsPanel";
+import { EventPosterEditor } from "./events/EventPosterEditor";
 import { EventsList } from "./events/EventsList";
 
 type EventsSection = "create" | "moderation" | "operations" | "activities";
@@ -25,11 +26,13 @@ interface AdminEventsScreenProps {
 export function AdminEventsScreen({ initialEventId = null }: AdminEventsScreenProps) {
   const [section, setSection] = useState<EventsSection | null>(initialEventId ? "operations" : null);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(initialEventId);
+  const [posterEventId, setPosterEventId] = useState<number | null>(null);
   const [activitiesMode, setActivitiesMode] = useState<ActivitiesMode | null>(null);
 
   const backToMenu = () => {
     setSection(null);
     setSelectedEventId(null);
+    setPosterEventId(null);
     setActivitiesMode(null);
     if (initialEventId) window.location.hash = "#/admin";
   };
@@ -62,7 +65,11 @@ export function AdminEventsScreen({ initialEventId = null }: AdminEventsScreenPr
       {section === "create" && <AdminEventCreatePanel />}
       {section === "moderation" && <EventModerationPanel />}
       {section === "operations" && (
-        selectedEventId === null ? <EventsList onSelect={setSelectedEventId} /> : <EventParticipantsPanel eventId={selectedEventId} onBack={() => { setSelectedEventId(null); if (initialEventId) window.location.hash = "#/admin"; }} />
+        posterEventId !== null
+          ? <EventPosterEditor eventId={posterEventId} onBack={() => setPosterEventId(null)} />
+          : selectedEventId === null
+            ? <EventsList onSelect={setSelectedEventId} onEditPoster={setPosterEventId} />
+            : <EventParticipantsPanel eventId={selectedEventId} onBack={() => { setSelectedEventId(null); if (initialEventId) window.location.hash = "#/admin"; }} />
       )}
       {section === "activities" && activitiesMode === null && (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>

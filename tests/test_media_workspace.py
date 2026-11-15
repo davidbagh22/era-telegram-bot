@@ -199,16 +199,22 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
     def test_telegram_publication_evidence_must_be_a_real_post_permalink(self):
         for url in (
             "https://t.me/era_leaders1/123",
+            "https://t.me/era_leaders1/123/456",  # public forum topic message
             "https://t.me:443/era_leaders1/123",
             "https://t.me/c/123456789/456",
+            "https://t.me/c/123456789/456/789",  # forum topic message
         ):
             self.assertEqual(workspace._publication_url(url, "telegram"), url)
         for url in (
             "https://t.me/c/123456789",
             "https://t.me/c/not-a-chat/456",
             "https://t.me/c/123456789/0",
+            "https://t.me/c/123456789/456/0",
+            "https://t.me/c/123456789/456/not-a-message",
+            "https://t.me/c/123456789/456/789/10",
             "https://t.me/era_leaders1/0",
-            "https://t.me/era_leaders1/123/456",
+            "https://t.me/era_leaders1/123/0",
+            "https://t.me/era_leaders1/123/456/789",
             "https://t.me/era_leaders1/not-a-message",
             "https://t.me/joinchat/123",  # invitation, not a post
             "https://t.me/share/123",  # share action, not a post
@@ -223,6 +229,21 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
             "https://[broken/era_leaders1/123",  # malformed IPv6 authority
         ):
             with self.subTest(url=url), self.assertRaises(ValueError):
+                workspace._publication_url(url, "telegram")
+
+    def test_oversized_telegram_post_ids_fail_with_localized_validation(self):
+        # Python 3.11+ rejects conversion of >4300 decimal digits; validate
+        # length first so untrusted URLs never leak an integer parser error.
+        huge = "9" * 5000
+        for url in (
+            f"https://t.me/era_leaders1/{huge}",
+            f"https://t.me/era_leaders1/123/{huge}",
+            f"https://t.me/c/123456789/{huge}",
+            f"https://t.me/c/123456789/123/{huge}",
+        ):
+            with self.subTest(url=url[:70]), self.assertRaisesRegex(
+                ValueError, "Укажите прямую ссылку"
+            ):
                 workspace._publication_url(url, "telegram")
 
     def test_malformed_publication_url_uses_localized_validation_detail(self):

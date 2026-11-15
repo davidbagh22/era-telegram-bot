@@ -17,6 +17,24 @@ async function enterAdminWorkspace(page: import("@playwright/test").Page) {
   await expect(page.getByText("Пульт руководителя", { exact: true })).toBeVisible();
 }
 
+test("career reviewer sees only safe legacy evidence links", async ({ page }) => {
+  // Mock responses in the local Playwright browser; never create production rows.
+  await page.route("**/api/v1/admin/career/pending", (route) => route.fulfill({ json: [
+    { id: -9101, user_id: -1, user_name: "Local fixture", title: "Unsafe legacy evidence",
+      organization: "", description: "", url: "javascript:alert(1)", has_file: false, status: "pending" },
+    { id: -9102, user_id: -1, user_name: "Local fixture", title: "Safe evidence",
+      organization: "", description: "", url: "https://example.org/proof", has_file: false, status: "pending" },
+  ] }));
+  await page.route("**/api/v1/admin/career/recommendations/pending", (route) => route.fulfill({ json: [] }));
+  await enterAdminWorkspace(page);
+  await page.getByRole("button", { name: "Люди" }).click();
+  await page.getByRole("button", { name: /Портфолио и рекомендации/ }).click();
+  await expect(page.getByText("Unsafe legacy evidence")).toBeVisible();
+  const links = page.getByRole("link", { name: "Открыть источник ↗" });
+  await expect(links).toHaveCount(1);
+  await expect(links).toHaveAttribute("href", "https://example.org/proof");
+});
+
 test("admin enters management workspace and approves a pending applicant", async ({ page }) => {
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: "Люди" }).click();
@@ -194,6 +212,8 @@ test("leaders workcenter creates a task and confirms a separate leader status", 
   await page.getByRole("button", { name: "➕ Новая задача", exact: true }).click();
   const title = `E2E поручение ${Date.now()}`;
   await page.getByLabel("Что сделать", { exact: true }).fill(title);
+  await expect(page.getByLabel("Зачем и какой результат нужен")).not.toBeVisible();
+  await page.getByText("Дополнительно: описание, направление, баллы", { exact: true }).click();
   await page.getByLabel("Зачем и какой результат нужен").fill("Проверить общий процесс");
   await page.getByRole("button", { name: "Предпросмотр", exact: true }).click();
   await page.getByRole("button", { name: "Создать задачу", exact: true }).click();

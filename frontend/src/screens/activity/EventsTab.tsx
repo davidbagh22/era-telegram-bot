@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   cancelEventRegistration,
   describeActionError,
   fetchEventActivities,
   fetchEvents,
   downloadEventCalendar,
+  sendEventCalendarToChat,
   registerForEvent,
 } from "../../api/client";
 import { BottomSheet } from "../../components/BottomSheet";
@@ -14,8 +15,10 @@ import { SkeletonList } from "../../components/Skeleton";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useToast } from "../../components/Toast";
 import { useAsync } from "../../hooks/useAsync";
-import { successHaptic } from "../../telegram/webApp";
+import { safeEvidenceUrl } from "../../utils/safeEvidenceUrl";
+import { getTelegramWebApp, successHaptic } from "../../telegram/webApp";
 import type { EventActivity, EventItem, EventScope } from "../../types/activity";
+import { AnniversaryRegistration } from "./AnniversaryRegistration";
 import { EventAttendancePanel } from "./EventAttendancePanel";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -47,32 +50,154 @@ function capacityText(event: EventItem): string {
   return `${event.registered_count} / ${event.participant_limit} участников`;
 }
 
-function posterSrc(event: EventItem): string | null {
-  if (!event.poster_url) return null;
-  return `${API_BASE_URL}/api/v1/event-posters/${event.id}`;
+// Calendar times are stored as local Asia/Yerevan clock times. Build explicit UTC
+// instants for Google Calendar without depending on the participant's device TZ.
+function googleCalendarUrl(event: EventItem): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(event.event_date)) return null;
+  const timePattern = /^\d{2}:\d{2}(?::\d{2})?$/;
+  if (!timePattern.test(event.event_time)) return null;
+  const asInstant = (clock: string) => new Date(
+    `${event.event_date}T${clock.length === 5 ? `${clock}:00` : clock}+04:00`,
+  );
+  const start = asInstant(event.event_time);
+  if (!Number.isFinite(start.getTime())) return null;
+  const end = event.end_time && timePattern.test(event.end_time)
+    ? asInstant(event.end_time)
+    : new Date(start.getTime() + 60 * 60 * 1000);
+  if (!Number.isFinite(end.getTime())) return null;
+  if (end <= start) end.setUTCDate(end.getUTCDate() + 1);
+  const stamp = (date: Date) => date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: event.title,
+    dates: `${stamp(start)}/${stamp(end)}`,
+    ctz: "Asia/Yerevan",
+    details: event.full_description || event.description || "",
+    location: [event.location, event.address].filter(Boolean).join(", "),
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function isIosDevice(): boolean {
+  return /iPad|iPhone|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
 function EventCalendarButton({ event }: { event: EventItem }) {
   const [busy, setBusy] = useState(false);
+  const [preparedFile, setPreparedFile] = useState<File | null>(null);
+  const [preparingShare, setPreparingShare] = useState(isIosDevice());
   const toast = useToast();
-  async function download() {
+  const googleUrl = googleCalendarUrl(event);
+  const ios = isIosDevice();
+
+  useEffect(() => {
+    if (!ios) return;
+    let active = true;
+    setPreparedFile(null);
+    setPreparingShare(true);
+    // Web Share must be called directly from a tap. Fetching the protected ICS
+    // inside that tap can lose transient user activation on iOS Telegram, so
+    // prepare the file read-only while the event detail is already visible.
+    const probe = new File([""], "ERA.ics", { type: "text/calendar" });
+    let canShareFile = false;
+    try {
+      canShareFile = typeof navigator.share === "function"
+        && typeof navigator.canShare === "function"
+        && navigator.canShare({ files: [probe] });
+    } catch { /* unsupported WebView */ }
+    if (!canShareFile) {
+      setPreparingShare(false);
+      return () => { active = false; };
+    }
+    void downloadEventCalendar(event.id)
+      .then((blob) => {
+        if (active) setPreparedFile(new File([blob], `ERA-${event.id}.ics`, { type: "text/calendar" }));
+      })
+      .catch(() => { /* explain unavailable import on explicit tap */ })
+      .finally(() => { if (active) setPreparingShare(false); });
+    return () => { active = false; };
+  }, [event.id, ios]);
+
+  async function shareAppleCalendar() {
+    if (busy || preparingShare) return;
+    if (ios) {
+      if (!preparedFile || typeof navigator.share !== "function") {
+        toast.show("Telegram на iPhone не поддерживает передачу .ics. Используйте Google Календарь или откройте ЭРА в Safari.", "error");
+        return;
+      }
+      try {
+        // No await before share: preserve the user gesture on iOS.
+        await navigator.share({ files: [preparedFile], title: event.title });
+        toast.show("Выберите Календарь или «Сохранить в Файлы» в меню «Поделиться».");
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        toast.show("Не удалось открыть меню «Поделиться». Используйте Google Календарь.", "error");
+      }
+      return;
+    }
     setBusy(true);
     try {
       const blob = await downloadEventCalendar(event.id);
-      const url = URL.createObjectURL(blob);
+      const file = new File([blob], `ERA-${event.id}.ics`, { type: "text/calendar" });
+      const url = URL.createObjectURL(file);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `ERA-${event.id}.ics`;
+      anchor.download = file.name;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      toast.show("Откройте файл в календаре. После изменения события скачайте новую версию.");
+      toast.show("Скачан .ics. Откройте файл в календаре; после изменения события скачайте новую версию.");
     } catch {
-      toast.show("Не удалось получить календарь. Попробуйте ещё раз или скачайте его в боте.", "error");
-    } finally { setBusy(false); }
+      toast.show("Не удалось скачать календарь. Попробуйте Google Календарь.", "error");
+    } finally {
+      setBusy(false);
+    }
   }
-  return <button type="button" disabled={busy} onClick={() => void download()}>{busy ? "Готовим календарь…" : "Добавить в календарь"}</button>;
+
+  async function sendToChat() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await sendEventCalendarToChat(event.id);
+      toast.show("Файл календаря отправлен вам в чат с ботом ЭРА.");
+    } catch {
+      toast.show("Отправка не подтверждена. Проверьте чат с ботом; альтернативно используйте Google Календарь.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openGoogle(eventClick: React.MouseEvent<HTMLAnchorElement>) {
+    if (!googleUrl) return;
+    const telegram = getTelegramWebApp();
+    if (telegram?.openLink) {
+      try {
+        telegram.openLink(googleUrl);
+        eventClick.preventDefault();
+      } catch { /* fall back to the normal external anchor */ }
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
+      {googleUrl && <a href={googleUrl} target="_blank" rel="noopener noreferrer" onClick={openGoogle}
+        className="era-btn-primary" style={{ textAlign: "center", textDecoration: "none", padding: ".75rem", borderRadius: "var(--era-radius-control)" }}>
+        Google Календарь
+      </a>}
+      <button type="button" disabled={busy || preparingShare} onClick={() => void shareAppleCalendar()}>
+        {busy || preparingShare ? "Готовим файл…" : "Календарь Apple (.ics)"}
+      </button>
+      {ios && <button type="button" disabled={busy} onClick={() => void sendToChat()}>
+        {busy ? "Отправляем…" : "Получить файл календаря в чате ЭРА"}
+      </button>}
+      <small style={{ color: "var(--era-text-muted)" }}>
+        На iPhone используйте системное меню «Поделиться». Если оно недоступно, выберите Google Календарь.
+        {event.end_time ? "" : " Если время окончания не указано, Google предложит длительность 1 час."}
+      </small>
+    </div>
+  );
 }
 
 function EventActivitiesPanel({ eventId }: { eventId: number }) {
@@ -90,8 +215,10 @@ function EventActivitiesPanel({ eventId }: { eventId: number }) {
 
   return (
     <div className="era-stagger" style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-      {state.data.map((activity: EventActivity) => (
-        <div
+      {state.data.map((activity: EventActivity) => {
+        const submitUrl = safeEvidenceUrl(activity.submit_deep_link);
+        return (
+          <div
           key={activity.id}
           style={{
             border: "1px solid var(--era-border)",
@@ -109,11 +236,11 @@ function EventActivitiesPanel({ eventId }: { eventId: number }) {
           </div>
           <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.85rem" }}>{activity.description}</p>
           <strong style={{ fontSize: "0.82rem" }}>+{activity.points} баллов</strong>
-          {activity.submit_deep_link && (
+          {submitUrl && (
             <a
-              href={activity.submit_deep_link}
+              href={submitUrl}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="era-btn-primary"
               style={{ textAlign: "center", textDecoration: "none", marginTop: "0.35rem", minHeight: 44, display: "grid", placeItems: "center", borderRadius: "var(--era-radius-control)" }}
             >
@@ -121,13 +248,14 @@ function EventActivitiesPanel({ eventId }: { eventId: number }) {
             </a>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-function EventPoster({ event, compact = false }: { event: EventItem; compact?: boolean }) {
-  const src = posterSrc(event);
+export function EventPoster({ event, compact = false }: { event: EventItem; compact?: boolean }) {
+  const src = event.poster_url ? `${API_BASE_URL}/api/v1/event-posters/${event.id}` : null;
   const height = compact ? 150 : 245;
   if (src) {
     return (
@@ -168,8 +296,10 @@ interface EventDetailProps {
 }
 
 function EventDetail({ event, pending, actionError, onRegister, onCancelRequest, onBack }: EventDetailProps) {
+  const anniversary = event.anniversary_registered != null;
   const registered = ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "");
   const waitlisted = event.registration_status === WAITLIST_STATUS;
+  const chatUrl = safeEvidenceUrl(event.chat_url);
 
   return (
     <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.85rem", paddingBottom: "calc(var(--era-page-bottom-safe, 10rem) + 5rem)" }}>
@@ -260,7 +390,7 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
 
       {event.project_id && <button type="button" onClick={() => { window.location.hash = `#/projects/${event.project_id}`; }}>Открыть связанный проект →</button>}
       <EventCalendarButton event={event} />
-      {event.chat_url && <a href={event.chat_url} target="_blank" rel="noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть чат</a>}
+      {chatUrl && <a href={chatUrl} target="_blank" rel="noopener noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть чат</a>}
       {event.contact && <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.86rem" }}>Связь: {event.contact}</p>}
       {actionError && <p style={{ color: "var(--era-error)", margin: 0 }}>{actionError}</p>}
 
@@ -299,6 +429,8 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
             </div>
             <button type="button" disabled={pending} onClick={onCancelRequest} style={{ minWidth: 106 }}>Отказаться</button>
           </div>
+        ) : anniversary ? (
+          <AnniversaryRegistration key={event.id} event={event} />
         ) : event.can_register ? (
           <button type="button" className="era-btn-primary" disabled={pending} onClick={onRegister} style={{ width: "100%" }}>
             {pending ? "● Сохраняем…" : event.remaining_count === 0 && event.waitlist_enabled ? "Встать в лист ожидания" : "Участвовать"}
@@ -322,6 +454,7 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
   const [selectedId, setSelectedId] = useState<number | null>(initialItemId ?? null);
   const [selectedOverride, setSelectedOverride] = useState<EventItem | null>(null);
   const [pendingId, setPendingId] = useState<number | null>(null);
+  const pendingRegistration = useRef(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<EventItem | null>(null);
   const [registrationSuccess, setRegistrationSuccess] = useState<EventItem | null>(null);
@@ -355,6 +488,8 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
   }, [selectedId, selectedOverride, state]);
 
   const handleRegister = useCallback(async (eventId: number) => {
+    if (pendingRegistration.current) return;
+    pendingRegistration.current = true;
     setPendingId(eventId);
     setActionError(null);
     try {
@@ -369,8 +504,11 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
         toast.show("Место за вами", "success");
       }
     } catch (error) {
-      setActionError(describeActionError(error));
+      const description = describeActionError(error);
+      setActionError(description);
+      toast.show(description, "error");
     } finally {
+      pendingRegistration.current = false;
       setPendingId(null);
     }
   }, [refresh, toast]);
@@ -408,6 +546,22 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
     window.location.hash = "#/events";
   };
 
+  const registrationPrompt = (
+    <BottomSheet open={registrationSuccess !== null} onClose={() => setRegistrationSuccess(null)} title="Место за вами">
+      {registrationSuccess && (
+        <div className="era-success-state" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: ".25rem" }}>
+            <strong style={{ fontSize: "var(--era-text-lg)" }}>{registrationSuccess.title}</strong>
+            <span style={{ color: "var(--era-text-muted)" }}>{formatDate(registrationSuccess.event_date)} · {registrationSuccess.event_time}</span>
+            <span style={{ color: "var(--era-text-muted)" }}>{registrationSuccess.location}</span>
+          </div>
+          <EventCalendarButton event={registrationSuccess} />
+          <button type="button" onClick={() => setRegistrationSuccess(null)}>Готово</button>
+        </div>
+      )}
+    </BottomSheet>
+  );
+
   if (selectedId !== null) {
     if (state.status === "loading") return <SkeletonList count={3} />;
     if (state.status === "error") return <EmptyState text="Не удалось открыть мероприятие. Проверьте соединение и попробуйте снова." />;
@@ -442,19 +596,7 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
             </div>
           </BottomSheet>
 
-          <BottomSheet open={registrationSuccess !== null} onClose={() => setRegistrationSuccess(null)} title="Место за вами">
-            {registrationSuccess && (
-              <div className="era-success-state" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: ".25rem" }}>
-                  <strong style={{ fontSize: "var(--era-text-lg)" }}>{registrationSuccess.title}</strong>
-                  <span style={{ color: "var(--era-text-muted)" }}>{formatDate(registrationSuccess.event_date)} · {registrationSuccess.event_time}</span>
-                  <span style={{ color: "var(--era-text-muted)" }}>{registrationSuccess.location}</span>
-                </div>
-                <EventCalendarButton event={registrationSuccess} />
-                <button type="button" onClick={() => setRegistrationSuccess(null)}>Готово</button>
-              </div>
-            )}
-          </BottomSheet>
+          {registrationPrompt}
         </>
       );
     }
@@ -480,7 +622,9 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
               <EventPoster event={event} compact />
               <div style={{ padding: "0.7rem 0.3rem 0.2rem", display: "flex", flexDirection: "column", gap: "0.45rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "flex-start" }}>
-                  <StatusBadge label={event.display_status} tone={ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "") ? "violet" : "neutral"} />
+                  {event.anniversary_registered == null && (
+                    <StatusBadge label={event.display_status} tone={ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "") ? "violet" : "neutral"} />
+                  )}
                   {event.points_for_visit > 0 && <strong style={{ fontSize: "0.82rem", color: "var(--era-gold-ink)" }}>+{event.points_for_visit} баллов</strong>}
                 </div>
                 <strong style={{ fontSize: "1.18rem", lineHeight: 1.15 }}>{event.title}</strong>
@@ -490,13 +634,33 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
                   <span>{capacityText(event)}</span>
                   {event.remaining_count !== null && <span>Осталось {event.remaining_count}</span>}
                 </div>
-                <button type="button" className="era-btn-primary" onClick={() => openEvent(event.id)} style={{ width: "100%", marginTop: "0.25rem" }}>Открыть событие</button>
+                {event.anniversary_registered != null ? (
+                  <>
+                    <AnniversaryRegistration event={event} />
+                    <button type="button" onClick={() => openEvent(event.id)}>Подробнее</button>
+                  </>
+                ) : (
+                  <>
+                    {event.can_register && (
+                      <button type="button" className="era-btn-primary" disabled={pendingId !== null}
+                        onClick={() => void handleRegister(event.id)}>
+                        {pendingId === event.id ? "Сохраняем…" : event.remaining_count === 0 && event.waitlist_enabled
+                          ? "Встать в лист ожидания" : "Зарегистрироваться"}
+                      </button>
+                    )}
+                    <button type="button" className={event.can_register ? undefined : "era-btn-primary"}
+                      onClick={() => openEvent(event.id)} style={{ width: "100%", marginTop: "0.25rem" }}>
+                      Открыть событие
+                    </button>
+                  </>
+                )}
               </div>
             </Card>
           ))}
         </div>
       )}
 
+      {registrationPrompt}
       <BottomSheet open={filterOpen} onClose={() => setFilterOpen(false)} title="Какие события показать?">
         <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
           {SCOPES.map((option) => (
