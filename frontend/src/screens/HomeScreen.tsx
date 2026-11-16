@@ -13,6 +13,7 @@ import type { EventItem } from "../types/activity";
 import type { MiniAppUserSummary } from "../types/auth";
 import { AnniversaryRegistration } from "./activity/AnniversaryRegistration";
 import { EventPoster } from "./activity/EventsTab";
+import { displayProjectTitle } from "./projects/displayTitle";
 import { projectStatusLabel } from "./projects/statusLabels";
 
 const TASK_STATUS_LABELS: Record<string, string> = {
@@ -344,7 +345,10 @@ export function HomeScreen({
           <Card onClick={() => onOpenProject(data.active_project!.id)}>
             <div style={{ display: "flex", gap: ".75rem" }}>
               <IconBubble tone="orange"><ProjectsIcon width={18} height={18} /></IconBubble>
-              <div><strong>{data.active_project.title}</strong><p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>{projectStatusLabel(data.active_project.status)}</p></div>
+              <div>
+                <strong style={{ display: "block", overflowWrap: "anywhere", textWrap: "balance" }}>{displayProjectTitle(data.active_project.title)}</strong>
+                <p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>{projectStatusLabel(data.active_project.status)}</p>
+              </div>
             </div>
           </Card>
         ) : <EmptyState text="На ближайшее время ничего не запланировано." />}

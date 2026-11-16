@@ -111,7 +111,7 @@ export function OverviewTab() {
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             {data.projects.map((project) => (
               <Card key={project.id}>
-                <strong>{project.title}</strong>
+                <strong style={{ display: "block", minWidth: 0, lineHeight: 1.3, overflowWrap: "anywhere", textWrap: "balance" }}>{project.title.replace(/\s+/g, " ").trim() || "Без названия"}</strong>
               </Card>
             ))}
           </div>

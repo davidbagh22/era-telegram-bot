@@ -7,6 +7,7 @@ import { StatusBadge } from "../../components/StatusBadge";
 import { useAsync } from "../../hooks/useAsync";
 import type { ProjectScope, ProjectSummary } from "../../types/project";
 import { ProjectCover } from "./ProjectCover";
+import { displayProjectTitle } from "./displayTitle";
 import { projectStatusLabel } from "./statusLabels";
 
 const SCOPES: { value: ProjectScope; label: string }[] = [
@@ -136,7 +137,7 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
                 </div>
               )}
               <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
-                <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1.15rem", lineHeight: 1.25, overflowWrap: "anywhere" }}>{project.title}</strong>
+                <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1.15rem", lineHeight: 1.3, overflowWrap: "anywhere", textWrap: "balance" }}>{displayProjectTitle(project.title)}</strong>
                 <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
               </div>
               {project.short_description && (

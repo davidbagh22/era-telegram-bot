@@ -25,6 +25,7 @@ import { MetricCard } from "../../components/MetricCard";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusBadge } from "../../components/StatusBadge";
 import type { ProjectMember, ProjectRole, ProjectWorkspace as ProjectWorkspaceType } from "../../types/project";
+import { displayProjectTitle } from "./displayTitle";
 import {
   projectContributionStatusLabel,
   projectEventStatusLabel,
@@ -189,7 +190,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
           <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start", minWidth: 0 }}>
             <div style={{ minWidth: 0 }}>
               <p style={{ margin: "0 0 0.25rem", color: "var(--era-text-secondary)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Рабочая зона проекта</p>
-              <div style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)", overflowWrap: "anywhere" }}>{workspace.project.title}</div>
+              <div style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)", lineHeight: 1.2, overflowWrap: "anywhere", textWrap: "balance" }}>{displayProjectTitle(workspace.project.title)}</div>
               <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-secondary)", overflowWrap: "anywhere" }}>{workspace.project.short_description}</p>
             </div>
             <StatusBadge label={projectStatusLabel(workspace.project.status)} tone="violet" />
