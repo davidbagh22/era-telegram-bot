@@ -33,6 +33,7 @@ interface DeepLink {
   tab: TabKey;
   projectId: number | null;
   activitySection: LegacyActivitySection | null;
+  eventScope: "mine" | null;
   communitySection: CommunitySection | null;
   itemId: number | null;
   workspace: WorkspaceKind | null;
@@ -106,6 +107,7 @@ function link(overrides: Partial<DeepLink> = {}): DeepLink {
     tab: "home",
     projectId: null,
     activitySection: null,
+    eventScope: null,
     communitySection: null,
     itemId: null,
     workspace: null,
@@ -153,6 +155,7 @@ function parseDeepLink(): DeepLink | null {
     return projectId ? link({ tab: "projects", projectId }) : link({ invalid: true });
   }
   if (route === "projects") return link({ tab: "projects" });
+  if (route === "events_mine" || route === "events/mine") return link({ tab: "events", activitySection: "events", eventScope: "mine" });
   if (route === "participation") return link({ tab: "events" });
 
   const activityMatch = route.match(/^(tasks|calendar|history)(?:\/(\d+))?$/);
@@ -216,11 +219,11 @@ function renderTab(
   user: MiniAppUserSummary,
   initialProjectId: number | null,
   initialActivitySection: LegacyActivitySection | null,
+  initialEventScope: "mine" | null,
   initialCommunitySection: CommunitySection | null,
   initialItemId: number | null,
   initialMediaRoute: "guide" | "files" | "era" | "ksoors" | null,
   isDeepLinkedTab: boolean,
-  onTabChange: (tab: TabKey) => void,
 ) {
   if (tab === "home") {
     if (isDeepLinkedTab && initialActivitySection === "tasks") {
@@ -233,7 +236,7 @@ function renderTab(
         onOpenProfile={() => navigateToRoute("profile")}
         onOpenProgress={() => navigateToRoute("progress")}
         onOpenDevelopment={() => navigateToRoute("development")}
-        onOpenEvents={() => onTabChange("events")}
+        onOpenEvents={() => navigateToRoute("events")}
         onOpenEvent={(id) => navigateToRoute(`events/${id}`)}
         onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
         onOpenTask={(id) => navigateToRoute(`tasks/${id}`)}
@@ -246,7 +249,7 @@ function renderTab(
   if (tab === "projects") return <ProjectsScreen initialProjectId={initialProjectId} />;
   if (tab === "events") {
     return isDeepLinkedTab && (initialItemId || initialActivitySection === "events")
-      ? <EventsScreen initialItemId={initialItemId} />
+      ? <EventsScreen key={initialEventScope ?? "all"} initialItemId={initialItemId} initialScope={initialEventScope ?? undefined} />
       : <ActivityScreen />;
   }
   if (tab === "community") return <CommunityScreen initialSection={isDeepLinkedTab ? initialCommunitySection : null} initialItemId={isDeepLinkedTab ? initialItemId : null} initialMediaRoute={isDeepLinkedTab ? initialMediaRoute : null} />;
@@ -301,7 +304,7 @@ export function App() {
         {activeTab === "home" ? (
           <PendingScreen status={user.application_status} onRefresh={auth.refresh} />
         ) : (
-          renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.mediaRoute ?? null, deepLink?.tab === activeTab, handleTabChange)
+          renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.eventScope ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.mediaRoute ?? null, deepLink?.tab === activeTab)
         )}
       </UserLayout>
     );
@@ -371,7 +374,7 @@ export function App() {
           onEnterWorkspace={user.is_admin || user.is_leader ? () => setInWorkspace(true) : undefined}
           onOpenDevelopment={() => navigateToRoute("development")}
         />
-      ) : renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.mediaRoute ?? null, deepLink?.tab === activeTab, handleTabChange)}
+      ) : renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.eventScope ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.mediaRoute ?? null, deepLink?.tab === activeTab)}
     </UserLayout>
   );
 }

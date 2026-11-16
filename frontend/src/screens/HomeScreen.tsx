@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { fetchDailyQuote } from "../api/client";
+import { fetchDailyQuote, fetchEvents } from "../api/client";
 import { Avatar } from "../components/Avatar";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
@@ -9,6 +9,7 @@ import { Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { EventIcon, ProjectsIcon, TaskIcon } from "../components/icons";
 import { useHome } from "../hooks/useHome";
+import type { EventItem } from "../types/activity";
 import type { MiniAppUserSummary } from "../types/auth";
 import { AnniversaryRegistration } from "./activity/AnniversaryRegistration";
 import { EventPoster } from "./activity/EventsTab";
@@ -68,6 +69,15 @@ export function HomeScreen({
 }: HomeScreenProps) {
   const home = useHome();
   const [dailyQuote, setDailyQuote] = useState("");
+  const [eventBoard, setEventBoard] = useState<EventItem[] | "loading" | "error">("loading");
+
+  useEffect(() => {
+    let active = true;
+    void fetchEvents("all").then((events) => {
+      if (active) setEventBoard(events.filter((event) => ["approved", "published", "registration_open", "registration_closed"].includes(event.status)));
+    }).catch(() => { if (active) setEventBoard("error"); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -97,7 +107,12 @@ export function HomeScreen({
 
   const { data } = home;
   const featuredEvent = data.featured_event;
-  const nearestEvent = data.nearest_event?.id === featuredEvent?.id ? null : data.nearest_event;
+  const upcomingEvents = Array.isArray(eventBoard)
+    ? eventBoard.filter((event) => event.id !== featuredEvent?.id)
+    : [];
+  const nearestEvent = data.nearest_event?.id === featuredEvent?.id
+    || upcomingEvents.slice(0, 5).some((event) => event.id === data.nearest_event?.id)
+    ? null : data.nearest_event;
 
   const nextStepClick = (() => {
     if (!data.next_step) return undefined;
@@ -139,18 +154,37 @@ export function HomeScreen({
         </button>
       </header>
 
-      {featuredEvent && (
-        <Card style={{ padding: "0.8rem", display: "grid", gap: "0.55rem" }}>
-          <EventPoster event={featuredEvent} compact />
-          <h2 style={{ margin: 0, fontSize: "1.3rem" }}><strong>Первая годовщина ЭРА — 1 ГОД</strong></h2>
-          <p style={{ margin: 0, color: "var(--era-text-secondary)" }}>
-            {formatDate(featuredEvent.event_date)} · Сбор в 17:30 · Начало в {featuredEvent.event_time}
-          </p>
-          <p style={{ margin: 0, color: "var(--era-text-secondary)" }}>{featuredEvent.location}</p>
-          <AnniversaryRegistration key={featuredEvent.id} event={featuredEvent} />
-          {onOpenEvent && <button type="button" onClick={() => onOpenEvent(featuredEvent.id)}>Подробнее</button>}
-        </Card>
-      )}
+      <section aria-label="Афиша ЭРА" style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
+          <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Афиша ЭРА</h2>
+          {onOpenEvents && <button type="button" className="era-btn-ghost" onClick={onOpenEvents}>Все мероприятия →</button>}
+        </div>
+        {featuredEvent && (
+          <Card style={{ padding: "0.8rem", display: "grid", gap: "0.55rem" }}>
+            <EventPoster event={featuredEvent} compact />
+            <h2 style={{ margin: 0, fontSize: "1.3rem" }}><strong>Первая годовщина ЭРА — 1 ГОД</strong></h2>
+            <p style={{ margin: 0, color: "var(--era-text-secondary)" }}>
+              {formatDate(featuredEvent.event_date)} · Сбор в 17:30 · Начало в {featuredEvent.event_time}
+            </p>
+            <p style={{ margin: 0, color: "var(--era-text-secondary)" }}>{featuredEvent.location}</p>
+            <AnniversaryRegistration key={featuredEvent.id} event={featuredEvent} />
+            {onOpenEvent && <button type="button" onClick={() => onOpenEvent(featuredEvent.id)}>Подробнее</button>}
+          </Card>
+        )}
+        {eventBoard === "loading" && <SkeletonCard />}
+        {eventBoard === "error" && <EmptyState text="Афиша временно недоступна." />}
+        {Array.isArray(eventBoard) && upcomingEvents.length === 0 && !featuredEvent && (
+          <EmptyState text="Пока нет ближайших мероприятий." />
+        )}
+        {upcomingEvents.slice(0, 5).map((event) => (
+          <Card key={event.id} onClick={onOpenEvent ? () => onOpenEvent(event.id) : onOpenEvents}>
+            <strong>{event.title}</strong>
+            <p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>
+              {formatDate(event.event_date)} · {event.event_time} · {event.location}
+            </p>
+          </Card>
+        ))}
+      </section>
 
       <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
         <MonoLabel>Следующий шаг</MonoLabel>

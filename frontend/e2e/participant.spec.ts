@@ -29,6 +29,19 @@ test("participant gets light ERA UI, opens event details, and registers", async 
   await expect(page.getByRole("button", { name: "Отказаться" })).toBeVisible();
 });
 
+test("the home board and group shortcuts open the intended event lists", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
+  const board = page.getByRole("region", { name: "Афиша ЭРА" });
+  await expect(board.getByText("E2E тестовое мероприятие")).toBeVisible();
+  await board.getByRole("button", { name: "Все мероприятия" }).click();
+  await expect(page.getByRole("heading", { name: "Афиша", exact: true })).toBeVisible();
+
+  const personalEvents = page.waitForRequest((request) => new URL(request.url()).searchParams.get("scope") === "mine");
+  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}&tgWebAppStartParam=events_mine`);
+  await personalEvents;
+  await expect(page.getByRole("heading", { name: "Мои мероприятия", exact: true })).toBeVisible();
+});
+
 test("project constructor teaches each step, has no AI writer and lets the author delete a draft", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/projects`);
   await expect(page.getByRole("heading", { name: "Проекты" })).toBeVisible();

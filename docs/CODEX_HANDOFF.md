@@ -1,5 +1,7 @@
 # ERA bot and Mini App handoff
 
+- 16 November / #673: Home shows upcoming published events. The existing bot-owned registration pin exposes direct board, personal events and profile links. The registration confirmation links to personal events. Verify exact-head CI, automatic LIVE and the click-through on iPhone and Android.
+
 - 14 November: existing 12 December anniversary (screenshot title «12 декабря для ЭРА — особенная дата.») is featured above the Mini App home feed and first in the native bot reply menu. Mini App also registers from the participation card. Complete profile uses one tap, missing fields are collected in context.
 - New anniversary entries from either surface use the existing guest RSVP store. Previous event registrations keep their status and appear in the deduplicated `/anniversary_guests` export. This change uses the existing event and does not activate the #670 publication/reminder campaign.
 - Verify the exact PR head, main CI and automatic Render LIVE. Confirm the live event matches by date, start time and title or existing campaign marker. Keep production writes limited to genuine user actions.

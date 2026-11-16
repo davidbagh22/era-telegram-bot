@@ -5,9 +5,10 @@ import { EventsTab } from "./activity/EventsTab";
 
 interface EventsScreenProps {
   initialItemId?: number | null;
+  initialScope?: "mine";
 }
 
-export function EventsScreen({ initialItemId = null }: EventsScreenProps) {
+export function EventsScreen({ initialItemId = null, initialScope }: EventsScreenProps) {
   const isDetail = initialItemId !== null;
   return (
     <div
@@ -22,7 +23,7 @@ export function EventsScreen({ initialItemId = null }: EventsScreenProps) {
       {!isDetail && (
         <EditorialHero
           eyebrow="Здесь начинается движение"
-          title="События"
+          title={initialScope === "mine" ? "Мои мероприятия" : "Афиша"}
           description="Выбирайте формат, смотрите программу и занимайте место в один шаг."
           glow="cool"
         >
@@ -47,8 +48,7 @@ export function EventsScreen({ initialItemId = null }: EventsScreenProps) {
       {initialItemId !== null ? <MediaRequestButton sourceType="event" sourceId={initialItemId} /> : null}
 
       <section style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        {!isDetail && <h2 style={{ fontSize: "var(--era-text-xl)", margin: 0 }}>Ближайшее</h2>}
-        <EventsTab initialItemId={initialItemId} />
+        <EventsTab initialItemId={initialItemId} initialScope={initialScope} />
       </section>
     </div>
   );
