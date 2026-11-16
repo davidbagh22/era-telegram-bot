@@ -294,6 +294,8 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(task)
             self.assertTrue(task.reward_json["media_task"])
             self.assertEqual(task.points, 50)
+            self.assertTrue(task.title.startswith("Написать текст для «"))
+            self.assertNotIn("Медиа ·", task.title)
 
             membership, error = await task_service.claim(session, task, member)
             self.assertIsNone(error)

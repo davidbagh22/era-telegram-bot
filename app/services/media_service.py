@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Literal
@@ -58,6 +59,17 @@ MEDIA_TASK_KINDS = {
     "editing": "Монтаж",
     "stories": "Stories",
 }
+_MEDIA_TASK_TITLE_TEMPLATES = {
+    "text": "Написать текст для «{rubric}»",
+    "design": "Подготовить дизайн для «{rubric}»",
+    "photo": "Сделать фото для «{rubric}»",
+    "video": "Снять видео для «{rubric}»",
+    "editing": "Смонтировать ролик для «{rubric}»",
+    "stories": "Собрать Stories для «{rubric}»",
+}
+_FORMULAIC_MEDIA_TITLE = re.compile(
+    r"^Медиа · (?P<kind>Текст|Дизайн|Фото|Видео|Монтаж|Stories) · (?P<rubric>.+)$"
+)
 MEDIA_PACKAGES: dict[str, tuple[str, ...]] = {
     "announcement": ("text", "design"),
     "photo": ("photo",),
@@ -589,6 +601,50 @@ def _is_media_task(task: Task) -> bool:
     return bool((getattr(task, "reward_json", None) or {}).get("media_task"))
 
 
+def media_task_display_title(task_kind: str, rubric: str | None) -> str:
+    template = _MEDIA_TASK_TITLE_TEMPLATES.get(task_kind)
+    if template is None:
+        raise ValueError("invalid_media_task_kind")
+    label = (rubric or "").strip() or "публикации ЭРА"
+    return template.format(rubric=label)
+
+
+def rewrite_formulaic_media_title(title: str) -> str | None:
+    """Rewrite only unambiguous auto titles. Author titles stay untouched."""
+    match = _FORMULAIC_MEDIA_TITLE.match((title or "").strip())
+    if match is None:
+        return None
+    kind_label = match.group("kind")
+    rubric = match.group("rubric").strip()
+    kind_by_label = {label: key for key, label in MEDIA_TASK_KINDS.items()}
+    task_kind = kind_by_label.get(kind_label)
+    if task_kind is None:
+        return None
+    return media_task_display_title(task_kind, rubric)
+
+
+async def rewrite_formulaic_media_task_titles(session: AsyncSession) -> int:
+    """Correct stored formulaic media titles in place. No deletes."""
+    tasks = list(
+        (
+            await session.scalars(
+                select(Task).where(Task.title.like("Медиа · %"))
+            )
+        ).all()
+    )
+    changed = 0
+    for task in tasks:
+        if not _is_media_task(task):
+            continue
+        rewritten = rewrite_formulaic_media_title(task.title)
+        if rewritten and rewritten != task.title:
+            task.title = rewritten
+            changed += 1
+    if changed:
+        await session.flush()
+    return changed
+
+
 async def create_content_tasks(
     session: AsyncSession,
     item: MediaContentItem,
@@ -619,7 +675,7 @@ async def create_content_tasks(
             links.append(existing)
             continue
         task = Task(
-            title=f"Медиа · {MEDIA_TASK_KINDS[task_kind]} · {item.rubric or 'Контент'}",
+            title=media_task_display_title(task_kind, item.rubric),
             description=(
                 "Подготовь материал для редакции ЭРА. Результат отправляется "
                 "через стандартную сдачу задачи и после проверки учитывается в Медиа."
