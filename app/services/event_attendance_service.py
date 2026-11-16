@@ -302,6 +302,37 @@ async def start_event(
     )
 
 
+async def open_confirmation_after_archive(
+    session: AsyncSession,
+    event_id: int,
+    *,
+    actor_user_id: int | None = None,
+    completed_at: datetime | None = None,
+) -> EventAttendanceSession:
+    """Open the self-service attendance window after board archival.
+
+    Auto-archive moves the event to COMPLETED without the organizer pressing
+    «Завершить». Participants still need a code and completed_at for the
+    usual 7-day confirmation window; this does not award points or notify.
+    """
+    runtime = await _attendance_session(session, event_id, create=True)
+    assert runtime is not None
+    moment = completed_at or datetime.now(timezone.utc)
+    if runtime.attendance_code is None:
+        runtime.attendance_code = await _unique_code(session)
+    if runtime.started_at is None:
+        runtime.started_at = moment
+        if actor_user_id is not None:
+            runtime.started_by = actor_user_id
+    if runtime.completed_at is None:
+        runtime.completed_at = moment
+        if actor_user_id is not None:
+            runtime.completed_by = actor_user_id
+    # Keep confirmation_closed_at untouched so the 7-day closer can run later.
+    await session.flush()
+    return runtime
+
+
 async def complete_event(
     session: AsyncSession,
     event_id: int,

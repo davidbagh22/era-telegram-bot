@@ -74,6 +74,24 @@ async def archive_elapsed_events(
         previous = event.status
         event.status = EventStatus.COMPLETED
         await session.flush()
+
+        # ACTIVE (or already-started) events must keep the attendance
+        # confirmation path open for the organizer window. Status-only
+        # archival would block complete_event() and participant confirm.
+        runtime = await session.get(EventAttendanceSession, event.id)
+        needs_confirmation = previous == EventStatus.ACTIVE or (
+            runtime is not None and runtime.completed_at is None and runtime.started_at is not None
+        )
+        if needs_confirmation:
+            from app.services.event_attendance_service import open_confirmation_after_archive
+
+            await open_confirmation_after_archive(
+                session,
+                event.id,
+                actor_user_id=actor_user_id,
+                completed_at=moment.astimezone(ZoneInfo("UTC")),
+            )
+
         await audit(
             session,
             actor_id=actor_user_id,
@@ -85,6 +103,7 @@ async def archive_elapsed_events(
                 "status": str(EventStatus.COMPLETED),
                 "end_at": end_at.isoformat(),
                 "archived_at": moment.isoformat(),
+                "attendance_confirmation_opened": needs_confirmation,
             },
         )
         archived_ids.append(event.id)

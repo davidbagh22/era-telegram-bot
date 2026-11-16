@@ -127,6 +127,41 @@ class EventArchiveServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(archived, [event.id])
             self.assertEqual(event.status, EventStatus.COMPLETED)
 
+    async def test_active_archive_opens_attendance_confirmation(self) -> None:
+        zone = ZoneInfo(TZ)
+        now = datetime(2026, 11, 17, 12, 0, tzinfo=zone)
+        async with self.session_factory() as session:
+            user = await self._user(session)
+            event = Event(
+                title="Started meetup",
+                description="d",
+                event_date=(now - timedelta(days=2)).date(),
+                event_time=time(10, 0),
+                location="Hall",
+                format="offline",
+                created_by=user.id,
+                status=EventStatus.ACTIVE,
+            )
+            session.add(event)
+            await session.flush()
+            session.add(
+                EventAttendanceSession(
+                    event_id=event.id,
+                    attendance_code=None,
+                    started_at=now - timedelta(days=2),
+                    started_by=user.id,
+                )
+            )
+            await session.flush()
+
+            archived = await archive_elapsed_events(session, timezone=TZ, now=now)
+            self.assertEqual(archived, [event.id])
+            self.assertEqual(event.status, EventStatus.COMPLETED)
+            runtime = await session.get(EventAttendanceSession, event.id)
+            self.assertIsNotNone(runtime.attendance_code)
+            self.assertIsNotNone(runtime.completed_at)
+            self.assertIsNone(runtime.confirmation_closed_at)
+
     async def test_closes_attendance_window_after_7_days(self) -> None:
         zone = ZoneInfo(TZ)
         now = datetime(2026, 11, 17, 12, 0, tzinfo=zone)
