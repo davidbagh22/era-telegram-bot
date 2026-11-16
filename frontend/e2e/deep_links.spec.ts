@@ -38,7 +38,7 @@ test("#/tasks deep link opens the standalone Tasks screen directly", async ({ pa
 test("#/events deep link opens the Events tab", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/events`);
 
-  await expect(page.getByRole("heading", { name: "События" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Афиша", exact: true })).toBeVisible();
   await expect(page.getByText("E2E тестовое мероприятие")).toBeVisible();
 });
 
