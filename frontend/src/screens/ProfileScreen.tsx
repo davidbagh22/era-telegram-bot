@@ -114,16 +114,17 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
   const registrations = data.registrations ?? [];
   const totalResults = Object.values(resultEntries).reduce((sum, entries) => sum + entries.length, 0);
   // История участия — только подтверждённые визиты и результаты (не заявки/регистрации).
+  // Backend already limits tasks/volunteer to approved submissions; keep a
+  // defensive match for both Russian labels and raw English codes.
+  const confirmedResult = /выполн|подтвержд|заверш|одобрен|принят|approved|completed|verified|leader_approved/i;
   const timeline = Object.entries(resultEntries)
     .flatMap(([group, entries]) => entries.map((entry) => ({ ...entry, group })))
     .filter((entry) => Boolean(entry.date_label))
     .filter((entry) => {
       if (entry.group === "events") return true;
-      if (entry.group === "tasks" || entry.group === "volunteer") {
-        return /выполн|подтвержд|заверш|одобрен/i.test(entry.status);
-      }
+      if (entry.group === "tasks" || entry.group === "volunteer") return confirmedResult.test(entry.status);
       if (entry.group === "achievements" || entry.group === "leadership") return true;
-      if (entry.group === "projects") return /подтвержд|заверш|вклад/i.test(entry.status);
+      if (entry.group === "projects") return /подтвержд|заверш|вклад|completed|verified/i.test(entry.status);
       return false;
     })
     .sort((a, b) => dateOrder(b.date_label) - dateOrder(a.date_label))

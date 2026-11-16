@@ -8,9 +8,9 @@ from datetime import date, time, timedelta
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.base import Base
-from app.database.models import Event, EventRegistration, User
+from app.database.models import Event, EventRegistration, Task, TaskSubmission, User
 from app.services.portfolio_service import build_portfolio_data
-from app.utils.constants import EventStatus, RegistrationStatus
+from app.utils.constants import EventStatus, RegistrationStatus, TaskStatus
 
 
 class PortfolioHistoryRegistrationsTests(unittest.IsolatedAsyncioTestCase):
@@ -85,3 +85,60 @@ class PortfolioHistoryRegistrationsTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([item.title for item in data.registrations], ["Only registered"])
             self.assertEqual(data.events[0].status, "Посетил")
             self.assertEqual(data.registrations[0].status, "Зарегистрирован")
+
+    async def test_only_approved_task_submissions_enter_portfolio_tasks(self) -> None:
+        async with self.session_factory() as session:
+            user = User(
+                telegram_id=902,
+                first_name="Boris",
+                phone="+10000000002",
+                city="Yerevan",
+                education_work="Study",
+                occupation="Student",
+                motivation="Grow",
+                available_time="Evenings",
+                desired_path="participant",
+                personal_data_consent=True,
+                is_channel_subscribed=True,
+                role="participant",
+            )
+            session.add(user)
+            await session.flush()
+
+            approved_task = Task(
+                title="Approved media task",
+                description="done",
+                creator_id=user.id,
+                status=TaskStatus.COMPLETED,
+                points=50,
+            )
+            pending_task = Task(
+                title="Pending media task",
+                description="waiting",
+                creator_id=user.id,
+                status=TaskStatus.REVIEW,
+                points=40,
+            )
+            session.add_all([approved_task, pending_task])
+            await session.flush()
+            session.add_all(
+                [
+                    TaskSubmission(
+                        task_id=approved_task.id,
+                        user_id=user.id,
+                        text="ready",
+                        status="approved",
+                    ),
+                    TaskSubmission(
+                        task_id=pending_task.id,
+                        user_id=user.id,
+                        text="draft",
+                        status="pending",
+                    ),
+                ]
+            )
+            await session.flush()
+
+            data = await build_portfolio_data(session, user)
+            self.assertEqual([item.title for item in data.tasks], ["Approved media task"])
+            self.assertEqual(data.tasks[0].status, "Принят")

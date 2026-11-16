@@ -31,11 +31,20 @@ from app.utils.constants import (
     EVENT_STATUS_LABELS,
     PROJECT_STATUS_LABELS,
     REGISTRATION_STATUS_LABELS,
+    REPORT_STATUS_LABELS,
     ROLE_LABELS,
     RegistrationStatus,
     STATUS_LABELS,
     TASK_STATUS_LABELS,
 )
+
+# Task/activity submission statuses are not TaskStatus values; reuse report
+# labels and cover the leader pre-approval path used by event activities.
+_SUBMISSION_STATUS_LABELS = {
+    **REPORT_STATUS_LABELS,
+    "leader_approved": "Одобрено лидером",
+}
+_CONFIRMED_SUBMISSION_STATUSES = frozenset({"approved", "leader_approved"})
 
 
 @dataclass(frozen=True)
@@ -323,12 +332,16 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                 PortfolioEntry(
                     title=_clean(task.title),
                     description=_clean(submission.text) or _clean(task.description),
-                    status=TASK_STATUS_LABELS.get(submission.status, _clean(submission.status)),
+                    status=_SUBMISSION_STATUS_LABELS.get(
+                        submission.status,
+                        TASK_STATUS_LABELS.get(submission.status, _clean(submission.status)),
+                    ),
                     date_label=_date_label(submission.created_at),
                     category="task",
                     file_id=submission.file_id,
                 )
                 for submission, task in task_rows
+                if submission.status in _CONFIRMED_SUBMISSION_STATUSES
             ]
         ),
         volunteer=_limited(
@@ -336,12 +349,16 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                 PortfolioEntry(
                     title="Активность после мероприятия",
                     description=_clean(submission.text) or "подтверждение активности",
-                    status=TASK_STATUS_LABELS.get(submission.status, _clean(submission.status)),
+                    status=_SUBMISSION_STATUS_LABELS.get(
+                        submission.status,
+                        TASK_STATUS_LABELS.get(submission.status, _clean(submission.status)),
+                    ),
                     date_label=_date_label(submission.created_at),
                     category="volunteer",
                     file_id=submission.file_id,
                 )
                 for submission in activity_rows
+                if submission.status in _CONFIRMED_SUBMISSION_STATUSES
             ]
         ),
         leadership=_limited(
