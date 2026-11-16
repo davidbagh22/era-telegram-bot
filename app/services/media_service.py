@@ -1042,7 +1042,7 @@ async def _send_media_deadline_notice(session, bot, settings, task, now: datetim
         notice_kind=f"deadline_{stage}",
         ref_type="task", ref_id=task.id,
         text=(
-            f"До дедлайна медиа-задачи меньше {3 if stage == '3h' else 24} часов\n\n"
+            f"До дедлайна медиа-задачи осталось не больше {3 if stage == '3h' else 24} часов\n\n"
             f"{task.title}\n"
             f"Нужен результат до {deadline.astimezone(ZoneInfo(settings.timezone)).strftime('%d.%m %H:%M')}."
         ),

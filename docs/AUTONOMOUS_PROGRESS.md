@@ -34,6 +34,10 @@
 ## Контрольная точка и отчёт
 Этот файл + существующая почасовая задача 6adcbd42ede08191a5c0a946e4147b52. После результата сохранять текущий SHA, PR, тесты, LIVE, блокер и следующий шаг. Итог до 10 строк: что исправлено/выпущено/проверено, что осталось и точное продолжение. «ПОЛНОСТЬЮ ГОТОВ» — только после выполнения всех критериев выше.
 
+## Продолжение 16.11.2026
+- C06: уточнён текст на включительных границах 24 и 3 часа. Существующий 3h opt-in сохранён. Приёмка доставки в реальном media-чате открыта.
+- Базовый main и Render LIVE: ab0c628, Bot checks [43764677578](https://github.com/davidbagh22/era-telegram-bot/actions/runs/43764677578), production smoke [43913145798](https://github.com/davidbagh22/era-telegram-bot/actions/runs/43913145798) успешны.
+
 ## Продолжение 15.11.2026
 - #500 merged after exact 6/6 and independent review -> main 30edfeb2b91df72d8789b339f4ea07a66d31ed51. Main CI / automatic LIVE pending.
 - #491 source + all six CI passed on bcb4e67; independent review clean. Reconciled progress conflict with #500; require new-head CI. Four extracted accounting cases and syntax compile PASS.
