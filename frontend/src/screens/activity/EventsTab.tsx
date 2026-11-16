@@ -36,7 +36,7 @@ const WAITLIST_STATUS = "waitlist";
 const SCOPES: { value: EventScope; label: string; description: string }[] = [
   { value: "for_me", label: "Для меня", description: "Ближайшие события и то, где вы уже участвуете" },
   { value: "all", label: "Все события", description: "Вся открытая афиша ЭРА" },
-  { value: "mine", label: "Мои регистрации", description: "События, на которые вы записаны" },
+  { value: "mine", label: "Мои мероприятия", description: "События, на которые вы записаны" },
   { value: "past", label: "Прошедшие", description: "История мероприятий" },
 ];
 
@@ -445,10 +445,11 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
 
 interface EventsTabProps {
   initialItemId?: number | null;
+  initialScope?: EventScope;
 }
 
-export function EventsTab({ initialItemId }: EventsTabProps = {}) {
-  const [scope, setScope] = useState<EventScope>(initialItemId ? "all" : "for_me");
+export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) {
+  const [scope, setScope] = useState<EventScope>(initialItemId ? "all" : initialScope ?? "for_me");
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchEvents(scope), [scope, refreshKey]);
   const [selectedId, setSelectedId] = useState<number | null>(initialItemId ?? null);
@@ -556,6 +557,7 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
             <span style={{ color: "var(--era-text-muted)" }}>{registrationSuccess.location}</span>
           </div>
           <EventCalendarButton event={registrationSuccess} />
+          <a href="#/events/mine" onClick={() => setRegistrationSuccess(null)}>Мои мероприятия</a>
           <button type="button" onClick={() => setRegistrationSuccess(null)}>Готово</button>
         </div>
       )}
@@ -611,7 +613,12 @@ export function EventsTab({ initialItemId }: EventsTabProps = {}) {
       </button>
 
       {state.status === "loading" && <SkeletonList count={3} />}
-      {state.status === "error" && <EmptyState text="Не удалось загрузить события. Попробуйте ещё раз чуть позже." />}
+      {state.status === "error" && (
+        <>
+          <EmptyState text="Не удалось загрузить события." />
+          <button type="button" onClick={refresh}>Повторить загрузку</button>
+        </>
+      )}
       {state.status === "ready" && state.data.length === 0 && (
         <EmptyState text="Пока нет событий в этом разделе. Как только появится новое мероприятие, оно будет здесь." />
       )}

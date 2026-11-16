@@ -28,8 +28,14 @@ def _registration_markup(bot_username: str | None = None) -> InlineKeyboardMarku
     if bot_username:
         rows.append([
             InlineKeyboardButton(
-                text="📅 Мероприятия",
-                url=telegram_miniapp_start_url(bot_username, "participation"),
+                text="📅 Афиша",
+                url=telegram_miniapp_start_url(bot_username, "events"),
+            ),
+        ])
+        rows.append([
+            InlineKeyboardButton(
+                text="🎟 Мои мероприятия",
+                url=telegram_miniapp_start_url(bot_username, "events_mine"),
             ),
             InlineKeyboardButton(
                 text="👤 Личный кабинет",
