@@ -13,6 +13,22 @@ import type { EventItem } from "../types/activity";
 import type { MiniAppUserSummary } from "../types/auth";
 import { AnniversaryRegistration } from "./activity/AnniversaryRegistration";
 import { EventPoster } from "./activity/EventsTab";
+import { projectStatusLabel } from "./projects/statusLabels";
+
+const TASK_STATUS_LABELS: Record<string, string> = {
+  draft: "Черновик",
+  new: "Новая",
+  published: "Открыт набор",
+  in_progress: "В работе",
+  review: "На проверке",
+  completed: "Выполнена",
+  overdue: "Просрочена",
+  cancelled: "Отменена",
+};
+
+function taskStatusLabel(status: string): string {
+  return TASK_STATUS_LABELS[status] ?? "Статус уточняется";
+}
 
 interface HomeScreenProps {
   user: MiniAppUserSummary;
@@ -59,6 +75,7 @@ function IconBubble({ children, tone }: { children: ReactNode; tone: "violet" | 
 export function HomeScreen({
   user,
   onOpenProfile,
+  onOpenProgress,
   onOpenDevelopment,
   onOpenAssessments,
   onOpenEvents,
@@ -123,7 +140,7 @@ export function HomeScreen({
     if (kind === "event" && entity_id != null && onOpenEvent) return () => onOpenEvent(entity_id);
     if (kind === "project" && entity_id != null && onOpenProject) return () => onOpenProject(entity_id);
     if (kind === "opportunity" && entity_id != null && onOpenOpportunity) return () => onOpenOpportunity(entity_id);
-    if (kind === "growth" && user.features.vector && onOpenDevelopment) return onOpenDevelopment;
+    if (kind === "growth" && onOpenProgress) return onOpenProgress;
     return undefined;
   })();
 
@@ -250,8 +267,13 @@ export function HomeScreen({
                 <div style={{ minWidth: 0 }}>
                   <strong style={{ display: "block" }}>{data.active_task.title}</strong>
                   <span style={{ display: "block", marginTop: ".25rem", color: "var(--era-text-secondary)", fontSize: ".82rem" }}>
-                    До {formatDate(data.active_task.deadline)} · {data.active_task.points} баллов
+                    {[
+                      taskStatusLabel(data.active_task.status),
+                      data.active_task.deadline ? `До ${formatDate(data.active_task.deadline)}` : null,
+                      data.active_task.points > 0 ? `${data.active_task.points} баллов` : null,
+                    ].filter(Boolean).join(" · ")}
                   </span>
+                  <span style={{ display: "block", marginTop: ".45rem", color: "var(--era-violet)", fontWeight: 800, fontSize: ".8rem" }}>Открыть задание →</span>
                 </div>
               </div>
             </Card>
@@ -271,16 +293,27 @@ export function HomeScreen({
         </Card>
       )}
 
-      <Card onClick={user.features.vector ? onOpenDevelopment : undefined} style={{ padding: "1rem" }}>
+      <Card onClick={onOpenProgress} style={{ padding: "1rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: ".8rem", alignItems: "center" }}>
           <div>
-            <MonoLabel>Мой путь</MonoLabel>
+            <MonoLabel>Как я развиваюсь</MonoLabel>
             <strong style={{ display: "block", marginTop: ".3rem", fontSize: "1.1rem" }}>{data.growth.label}</strong>
-            <span style={{ display: "block", marginTop: ".2rem", color: "var(--era-text-secondary)", fontSize: ".85rem" }}>Участник → Активный → Лидер</span>
+            <span style={{ display: "block", marginTop: ".2rem", color: "var(--era-text-secondary)", fontSize: ".85rem" }}>Участник → Активный участник → Лидер</span>
           </div>
-          {user.features.vector && <span aria-hidden="true" style={{ color: "var(--era-violet)" }}>→</span>}
+          {onOpenProgress && <span aria-hidden="true" style={{ color: "var(--era-violet)" }}>→</span>}
         </div>
       </Card>
+
+      {user.features.vector && onOpenDevelopment && (
+        <Card onClick={onOpenDevelopment} style={{ padding: "1rem" }}>
+          <MonoLabel>Мой вектор</MonoLabel>
+          <strong style={{ display: "block", marginTop: ".3rem" }}>Интересы и направление роста</strong>
+          <p style={{ margin: ".3rem 0 0", color: "var(--era-text-secondary)", fontSize: ".85rem" }}>
+            Личные ответы остаются в вашем профиле. Это не оценка личности и не назначение на роль.
+          </p>
+          <span style={{ display: "block", marginTop: ".55rem", color: "var(--era-violet)", fontWeight: 800, fontSize: ".8rem" }}>Открыть мой вектор →</span>
+        </Card>
+      )}
 
       <section style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
         <MonoLabel>Ближайшее</MonoLabel>
@@ -304,7 +337,7 @@ export function HomeScreen({
           <Card onClick={() => onOpenProject(data.active_project!.id)}>
             <div style={{ display: "flex", gap: ".75rem" }}>
               <IconBubble tone="orange"><ProjectsIcon width={18} height={18} /></IconBubble>
-              <div><strong>{data.active_project.title}</strong><p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>{data.active_project.status}</p></div>
+              <div><strong>{data.active_project.title}</strong><p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>{projectStatusLabel(data.active_project.status)}</p></div>
             </div>
           </Card>
         ) : <EmptyState text="На ближайшее время ничего не запланировано." />}

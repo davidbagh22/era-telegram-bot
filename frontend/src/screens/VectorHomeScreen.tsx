@@ -157,7 +157,7 @@ export function VectorHomeScreen({
           else if (nextAction.kind === "event" && nextAction.entity_id) window.location.hash = `#/events/${nextAction.entity_id}`;
           else if (nextAction.kind === "task" && nextAction.entity_id) window.location.hash = `#/tasks/${nextAction.entity_id}`;
           else if (nextAction.kind === "opportunity" && nextAction.entity_id) window.location.hash = `#/opportunities/${nextAction.entity_id}`;
-          else if (nextAction.kind === "growth") onNavigate("checkin");
+          else if (nextAction.kind === "growth") { window.location.hash = "#/progress"; }
         }}><strong>{nextAction.title}</strong><p style={{ margin: "0.3rem 0 0", color: "var(--era-text-secondary)", fontSize: "0.82rem" }}>{nextAction.description}</p><span style={{ display: "block", marginTop: "0.45rem", color: "var(--era-violet)", fontWeight: 800, fontSize: "0.8rem" }}>Перейти к действию →</span></Card> : <EmptyState text="Сейчас система не видит срочного следующего шага. Выбери одну цель и продолжай подтверждённую активность." />}
       </section>
 
