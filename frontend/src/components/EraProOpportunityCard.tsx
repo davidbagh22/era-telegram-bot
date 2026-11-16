@@ -13,7 +13,7 @@ const STATUS = {
   available: ["Заявка доступна", "success"],
   submitted: ["На рассмотрении", "violet"],
   needs_info: ["Нужно дополнить", "gold"],
-  approved: ["Вы в ЭРА PRO", "success"],
+  approved: ["Вы в Лидерах ЭРА", "success"],
   declined: ["Можно подать снова", "neutral"],
 } as const;
 
@@ -27,7 +27,7 @@ export function EraProOpportunityCard() {
   if (state.status === "loading") {
     return (
       <Card gradient>
-        <MonoLabel tone="violet">ЭРА PRO</MonoLabel>
+        <MonoLabel tone="violet">Лидеры ЭРА</MonoLabel>
         <strong style={{ display: "block", marginTop: "0.3rem" }}>Закрытое лидерское и наставническое сообщество</strong>
         <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "0.82rem" }}>Проверяем ваш текущий уровень…</p>
       </Card>
@@ -37,7 +37,7 @@ export function EraProOpportunityCard() {
   if (state.status === "error") {
     return (
       <Card onClick={open}>
-        <MonoLabel tone="violet">ЭРА PRO</MonoLabel>
+        <MonoLabel tone="violet">Лидеры ЭРА</MonoLabel>
         <strong style={{ display: "block", marginTop: "0.3rem" }}>Закрытое лидерское и наставническое сообщество</strong>
         <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "0.82rem" }}>Откройте раздел, чтобы проверить доступ.</p>
       </Card>
@@ -52,7 +52,7 @@ export function EraProOpportunityCard() {
     <Card gradient onClick={open} style={{ borderColor: "rgba(99,44,255,.2)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: "0.7rem", alignItems: "flex-start" }}>
         <div style={{ minWidth: 0 }}>
-          <MonoLabel tone="violet">ЭРА PRO</MonoLabel>
+          <MonoLabel tone="violet">Лидеры ЭРА</MonoLabel>
           <strong style={{ display: "block", marginTop: "0.32rem", fontSize: "1.05rem", lineHeight: 1.35 }}>Закрытое лидерское и наставническое сообщество</strong>
         </div>
         <StatusBadge label={label} tone={tone} />
@@ -76,12 +76,12 @@ export function EraProOpportunityCard() {
         {data.status === "locked" && `Ещё ${formatPoints(data.remaining_points)} баллов до подачи заявки.`}
         {data.status === "available" && "Порог достигнут. Можно подать заявку — баллы не списываются."}
         {data.status === "submitted" && "Заявка рассматривается командой ЭРА."}
-        {data.status === "needs_info" && "Откройте ЭРА PRO и дополните заявку."}
-        {data.status === "approved" && "Закрытый уровень открыт."}
+        {data.status === "needs_info" && "Откройте раздел «Лидеры ЭРА» и дополните заявку."}
+        {data.status === "approved" && "Лидерский статус открыт. Это не административные права."}
         {data.status === "declined" && "Баллы сохранены. Новую заявку можно подать позже."}
       </p>
       <span style={{ display: "block", marginTop: "0.7rem", color: "var(--era-violet)", fontWeight: 850, fontSize: "0.84rem" }}>
-        {data.status === "locked" ? "Как приблизиться" : data.status === "available" ? "Подать заявку" : "Открыть ЭРА PRO"} →
+        {data.status === "locked" ? "Как приблизиться" : data.status === "available" ? "Подать заявку" : "Открыть Лидеры ЭРА"} →
       </span>
     </Card>
   );

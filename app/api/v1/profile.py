@@ -78,6 +78,7 @@ class ProfileOut(BaseModel):
     stats: dict[str, int]
     projects: list[PortfolioEntryOut]
     events: list[PortfolioEntryOut]
+    registrations: list[PortfolioEntryOut] = []
     tasks: list[PortfolioEntryOut]
     volunteer: list[PortfolioEntryOut]
     leadership: list[PortfolioEntryOut]
@@ -130,6 +131,7 @@ async def read_profile(
         stats=portfolio.stats,
         projects=[PortfolioEntryOut(**asdict(item)) for item in portfolio.projects],
         events=[PortfolioEntryOut(**asdict(item)) for item in portfolio.events],
+        registrations=[PortfolioEntryOut(**asdict(item)) for item in portfolio.registrations],
         tasks=[PortfolioEntryOut(**asdict(item)) for item in portfolio.tasks],
         volunteer=[PortfolioEntryOut(**asdict(item)) for item in portfolio.volunteer],
         leadership=[PortfolioEntryOut(**asdict(item)) for item in portfolio.leadership],

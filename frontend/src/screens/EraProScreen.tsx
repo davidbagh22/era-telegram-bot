@@ -31,7 +31,7 @@ const BENEFITS = [
 ] as const;
 
 const PRO_SECTIONS = [
-  ["announcements", "Объявления", "Главное, что происходит внутри ЭРА PRO: встречи, обновления и важные сообщения."],
+  ["announcements", "Объявления", "Главное, что происходит у Лидеров ЭРА: встречи, обновления и важные сообщения."],
   ["opportunities", "Возможности", "Закрытые отборы, проекты, мероприятия и профессиональные предложения."],
   ["qa", "Вопрос — Ответ", "Место для вопросов наставникам и экспертам по реальным задачам развития."],
   ["community", "Общение", "Связь с участниками закрытого сообщества и людьми из разных профессиональных сфер."],
@@ -47,7 +47,7 @@ function formatPoints(value: number) {
 function statusCopy(status: string, comment?: string | null) {
   if (status === "submitted") return { title: "Заявка рассматривается", text: "Команда ЭРА изучает ответы и историю вашей активности. Баллы остаются на вашем счёте." };
   if (status === "needs_info") return { title: "Нужно дополнить", text: comment || "Команда ЭРА попросила уточнить информацию в заявке." };
-  if (status === "approved") return { title: "Вы в ЭРА PRO", text: "Доступ открыт. Теперь закрытые возможности и форматы ЭРА PRO доступны в этом разделе." };
+  if (status === "approved") return { title: "Вы в Лидерах ЭРА", text: "Лидерский статус открыт. Это не административные права — закрытые форматы и наставничество доступны в этом разделе." };
   if (status === "declined") return { title: "Рассмотрение завершено", text: "Сейчас доступ не выдан. Это не списывает баллы и не закрывает возможность подать новую заявку позже." };
   return null;
 }
@@ -72,7 +72,7 @@ export function EraProScreen({ onBack }: { onBack?: () => void }) {
   if (state.status === "loading") {
     return <div className="era-page" style={{ padding: "1.25rem", display: "grid", gap: "0.8rem" }}>{onBack && <button type="button" onClick={onBack}>← Назад</button>}<SkeletonCard /><SkeletonCard /></div>;
   }
-  if (state.status === "error") return <StatusBanner title="Не удалось открыть ЭРА PRO" description="Попробуйте открыть раздел ещё раз." />;
+  if (state.status === "error") return <StatusBanner title="Не удалось открыть «Лидеры ЭРА»" description="Попробуйте открыть раздел ещё раз." />;
 
   const data = state.data;
   const status = statusCopy(data.status, data.application?.admin_comment);
@@ -122,7 +122,7 @@ export function EraProScreen({ onBack }: { onBack?: () => void }) {
       {onBack && <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← Назад</button>}
 
       <Card gradient>
-        <MonoLabel tone="violet">ЭРА PRO</MonoLabel>
+        <MonoLabel tone="violet">Лидеры ЭРА</MonoLabel>
         <h1 style={{ margin: "0.35rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.8rem" }}>Следующий уровень твоего окружения.</h1>
         <p style={{ margin: "0.55rem 0 0", color: "var(--era-text-secondary)", lineHeight: 1.55 }}>
           Закрытая среда молодых лидеров и наставников, где можно получать обратную связь, находить связи, общаться с экспертами и открывать новые профессиональные возможности.
@@ -154,14 +154,14 @@ export function EraProScreen({ onBack }: { onBack?: () => void }) {
 
       {status && <StatusBanner title={status.title} description={status.text} />}
 
-      {!editing && data.status === "available" && <button type="button" className="era-btn-primary" onClick={beginApplication}>Подать заявку в ЭРА PRO</button>}
+      {!editing && data.status === "available" && <button type="button" className="era-btn-primary" onClick={beginApplication}>Подать заявку в Лидеры ЭРА</button>}
       {!editing && data.status === "needs_info" && <button type="button" className="era-btn-primary" onClick={beginApplication}>Дополнить заявку</button>}
       {!editing && data.status === "declined" && data.eligible && <button type="button" className="era-btn-primary" onClick={beginApplication}>Подать новую заявку</button>}
 
       {editing && (
         <Card style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
-          <div><MonoLabel tone="violet">Заявка ЭРА PRO</MonoLabel><h2 style={{ margin: "0.25rem 0 0" }}>Расскажи, куда хочешь вырасти</h2></div>
-          <Field label="Почему вы хотите попасть в ЭРА PRO?" value={form.motivation} onChange={(value) => setForm((current) => ({ ...current, motivation: value }))} />
+          <div><MonoLabel tone="violet">Заявка · Лидеры ЭРА</MonoLabel><h2 style={{ margin: "0.25rem 0 0" }}>Расскажи, куда хочешь вырасти</h2></div>
+          <Field label="Почему вы хотите стать Лидером ЭРА?" value={form.motivation} onChange={(value) => setForm((current) => ({ ...current, motivation: value }))} />
           <div>
             <strong style={{ display: "block", marginBottom: "0.45rem" }}>В каких направлениях хотите развиваться?</strong>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>{DIRECTIONS.map(([key, label]) => {
@@ -180,7 +180,7 @@ export function EraProScreen({ onBack }: { onBack?: () => void }) {
 
       {data.has_access && (
         <section style={{ display: "flex", flexDirection: "column", gap: "0.7rem" }}>
-          <h2 style={{ margin: 0, fontSize: "1.15rem" }}>Внутри ЭРА PRO</h2>
+          <h2 style={{ margin: 0, fontSize: "1.15rem" }}>Внутри Лидеров ЭРА</h2>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.45rem" }}>{PRO_SECTIONS.map(([key, label]) => <button key={key} type="button" aria-pressed={activeSection === key} onClick={() => setActiveSection(key)} style={{ minWidth: 0, padding: "0.62rem", borderRadius: "var(--era-radius-control)", border: activeSection === key ? "1px solid var(--era-violet)" : "1px solid var(--era-border)", background: activeSection === key ? "var(--era-tint-violet)" : "var(--era-surface)", color: activeSection === key ? "var(--era-violet)" : "var(--era-text)", fontWeight: 750 }}>{label}</button>)}</div>
           <Card><MonoLabel tone="violet">{activeSectionData[1]}</MonoLabel><p style={{ margin: "0.4rem 0 0", color: "var(--era-text-secondary)", lineHeight: 1.5 }}>{activeSectionData[2]}</p></Card>
         </section>

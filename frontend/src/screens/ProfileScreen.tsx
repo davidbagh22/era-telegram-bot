@@ -111,10 +111,21 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
     leadership: data.leadership,
     achievements: [...data.badges, ...data.certificates, ...data.recommendations],
   } satisfies Record<DashboardCell, PortfolioEntry[]>;
+  const registrations = data.registrations ?? [];
   const totalResults = Object.values(resultEntries).reduce((sum, entries) => sum + entries.length, 0);
+  // История участия — только подтверждённые визиты и результаты (не заявки/регистрации).
   const timeline = Object.entries(resultEntries)
     .flatMap(([group, entries]) => entries.map((entry) => ({ ...entry, group })))
     .filter((entry) => Boolean(entry.date_label))
+    .filter((entry) => {
+      if (entry.group === "events") return true;
+      if (entry.group === "tasks" || entry.group === "volunteer") {
+        return /выполн|подтвержд|заверш|одобрен/i.test(entry.status);
+      }
+      if (entry.group === "achievements" || entry.group === "leadership") return true;
+      if (entry.group === "projects") return /подтвержд|заверш|вклад/i.test(entry.status);
+      return false;
+    })
     .sort((a, b) => dateOrder(b.date_label) - dateOrder(a.date_label))
     .slice(0, 8);
 
@@ -159,7 +170,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
 
       <section>
         <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>История участия</h2>
-        {timeline.length === 0 ? <EmptyState text="История появится после первых подтверждённых действий." /> : (
+        {timeline.length === 0 ? <EmptyState text="История появится после первых подтверждённых посещений и результатов." /> : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
             {timeline.map((entry, index) => (
               <div key={`${entry.group}-${entry.title}-${entry.date_label}-${index}`} style={{ display: "grid", gridTemplateColumns: "1.25rem 1fr", gap: "0.65rem", minWidth: 0 }}>
@@ -173,6 +184,20 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
                   {entry.status && <span style={{ display: "block", marginTop: "0.15rem", color: "var(--era-text-secondary)", fontSize: "var(--era-text-sm)" }}>{entry.status}</span>}
                 </div>
               </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Мои регистрации</h2>
+        {registrations.length === 0 ? <EmptyState text="Активных регистраций пока нет." /> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+            {registrations.slice(0, 6).map((entry, index) => (
+              <Card key={`reg-${entry.title}-${entry.date_label}-${index}`} style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                <strong style={{ display: "block", overflowWrap: "anywhere" }}>{entry.title}</strong>
+                <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>{[entry.status, entry.date_label].filter(Boolean).join(" · ")}</p>
+              </Card>
             ))}
           </div>
         )}

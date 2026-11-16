@@ -57,11 +57,12 @@ const CATEGORY_LABELS: Record<string, string> = {
   delegations: "Делегации",
   grants: "Гранты и конкурсы",
   competitions: "Гранты и конкурсы",
-  era_pro: "ЭРА PRO",
+  era_pro: "Лидеры ЭРА",
   events: "Мероприятия",
   other: "Другое",
   projects: "Проекты",
   volunteering: "Волонтёрство",
+  public_activity: "Общественная активность",
   media: "Медиа",
   leadership: "Лидерство",
   international: "Международные возможности",
@@ -391,7 +392,7 @@ function OpportunityCard({ offer, expanded, pending, onToggle, onApply, onSave }
             <div style={{ minWidth: 0 }}>
               <MonoLabel tone="violet">{offer.partner_name}</MonoLabel>
               <strong style={{ display: "block", marginTop: "0.3rem", lineHeight: 1.3 }}>{offer.title}</strong>
-              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>{CATEGORY_LABELS[offer.category ?? ""] ?? offer.category ?? "Возможность"}</p>
+              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>{CATEGORY_LABELS[offer.category ?? ""] ?? "Возможность"}</p>
             </div>
             <StatusBadge label={offer.application_status ? APPLICATION_STATUS_LABELS[offer.application_status] ?? offer.application_status : STATE_LABELS[offer.state]} tone={offer.eligible ? "success" : "neutral"} />
           </div>

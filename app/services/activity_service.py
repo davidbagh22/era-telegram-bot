@@ -50,18 +50,24 @@ async def list_events(
                 )
             ).all()
         )
-        # Keep only *recent* completed events in the active afisha so attendance
-        # code still works right after the event — not months-old programs
-        # (e.g. «Проектный акселератор»). Older history lives under «Прошедшие».
-        recent_cutoff = date.today() - timedelta(days=14)
+        # Completed events stay actionable only while attendance is still open:
+        # REGISTERED/WILL_COME within a short post-event window. Attended rows
+        # and older leftovers belong in history / past, not the active feed.
+        # Keep only *recent* completed events (14 days) so months-old programs
+        # (e.g. «Проектный акселератор») stay under «Прошедшие».
+        attendance_open_statuses = (
+            RegistrationStatus.REGISTERED,
+            RegistrationStatus.WILL_COME,
+        )
+        attendance_horizon = date.today() - timedelta(days=14)
         registered_completed = list((await session.scalars(
             select(Event)
             .join(EventRegistration, EventRegistration.event_id == Event.id)
             .where(
                 EventRegistration.user_id == user.id,
-                EventRegistration.status.in_(ACTIVE_REGISTRATION_STATUSES),
+                EventRegistration.status.in_(attendance_open_statuses),
                 Event.status.in_((EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED)),
-                Event.event_date >= recent_cutoff,
+                Event.event_date >= attendance_horizon,
             )
         )).all())
         events_by_id = {event.id: event for event in [*public_events, *registered_completed]}
@@ -220,9 +226,11 @@ async def calendar_items(
     horizon = date.today() + timedelta(days=days_ahead)
     items: list[CalendarItem] = []
 
+    today = date.today()
     event_rows = await list_events(session, user, "mine")
     for event, _ in event_rows:
-        if event.event_date > horizon:
+        # «Сейчас» shows only upcoming involvement — past registrations archive.
+        if event.event_date < today or event.event_date > horizon:
             continue
         items.append(
             CalendarItem(
@@ -238,7 +246,7 @@ async def calendar_items(
         if task.deadline is None:
             continue
         deadline_date = task.deadline.date()
-        if deadline_date > horizon:
+        if deadline_date < today or deadline_date > horizon:
             continue
         items.append(
             CalendarItem(
