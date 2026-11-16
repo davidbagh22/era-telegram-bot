@@ -41,7 +41,7 @@ class MediaDeadlineStageTests(IsolatedAsyncioTestCase):
         self.assertTrue(result)
         self.assertEqual(send.await_count, 1)
         self.assertEqual(send.await_args.kwargs["notice_kind"], "deadline_3h")
-        self.assertIn("меньше 3 часов", send.await_args.kwargs["text"])
+        self.assertIn("не больше 3 часов", send.await_args.kwargs["text"])
 
     async def test_disabled_flag_preserves_existing_24h_behavior(self):
         self.settings.media_deadline_3h_enabled = False
@@ -99,3 +99,5 @@ class MediaDeadlineStageTests(IsolatedAsyncioTestCase):
                 ))
         self.assertEqual([c.kwargs["notice_kind"] for c in send.await_args_list],
                          ["deadline_24h", "deadline_3h"])
+        for hours, call in zip((24, 3), send.await_args_list):
+            self.assertIn(f"не больше {hours} часов", call.kwargs["text"])
