@@ -244,7 +244,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: "0 0 0.25rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Проект ЭРА</p>
             <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-xl)", overflowWrap: "anywhere" }}>{project.title}</strong>
-            {project.short_description && <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)" }}>{project.short_description}</p>}
+            {project.short_description && <p className="era-readable-copy" style={{ margin: "0.5rem 0 0" }}>{project.short_description}</p>}
           </div>
           <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
         </div>

@@ -262,7 +262,15 @@ export function EventPoster({ event, compact = false }: { event: EventItem; comp
       <img
         src={src}
         alt={`Афиша ${event.title}`}
-        style={{ width: "100%", height, objectFit: "contain", background: "var(--era-surface-2)", borderRadius: compact ? "1rem" : "1.25rem", display: "block" }}
+        style={{
+          width: "100%",
+          height: compact ? height : "auto",
+          maxHeight: compact ? undefined : "70vh",
+          objectFit: "contain",
+          background: "var(--era-surface-2)",
+          borderRadius: compact ? "1rem" : "1.25rem",
+          display: "block",
+        }}
       />
     );
   }
@@ -300,6 +308,9 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
   const registered = ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "");
   const waitlisted = event.registration_status === WAITLIST_STATUS;
   const chatUrl = safeEvidenceUrl(event.chat_url);
+  const description = (event.full_description || event.description || "").trim();
+  const summary = event.short_description?.trim();
+  const showSummary = summary && summary !== description;
 
   return (
     <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.85rem", paddingBottom: "calc(var(--era-page-bottom-safe, 10rem) + 5rem)" }}>
@@ -308,8 +319,8 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         <StatusBadge label={event.display_status} tone={registered ? "violet" : "neutral"} />
-        <h2 style={{ fontSize: "clamp(1.65rem, 7vw, 2.35rem)", lineHeight: 1.05, margin: 0 }}>{event.title}</h2>
-        {event.short_description && <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "1rem", lineHeight: 1.45 }}>{event.short_description}</p>}
+        <h2 style={{ fontSize: "clamp(1.65rem, 7vw, 2.35rem)", lineHeight: 1.05, margin: 0, overflowWrap: "anywhere", textWrap: "balance" }}>{event.title}</h2>
+        {showSummary && <p className="era-readable-copy" style={{ margin: 0 }}>{summary}</p>}
       </div>
 
       <Card style={{ padding: "0.95rem" }}>
@@ -320,10 +331,16 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
         </div>
       </Card>
 
-      <Card>
-        <strong style={{ fontSize: "1.05rem" }}>О событии</strong>
-        <p style={{ whiteSpace: "pre-wrap", lineHeight: 1.55, margin: "0.55rem 0 0", color: "var(--era-text-muted)" }}>{event.full_description ?? event.description}</p>
-      </Card>
+      {description && (
+        <Card>
+          <h3 style={{ margin: "0 0 .55rem", fontSize: "1.05rem" }}>О событии</h3>
+          <div className="era-readable-copy">
+            {description.split(/\r?\n(?:[^\S\r\n]*\r?\n)+/).map((paragraph, index) => (
+              <p key={index} style={{ margin: index === 0 ? 0 : ".75rem 0 0" }}>{paragraph.trim()}</p>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {event.participant_value && (
         <Card style={{ background: "linear-gradient(145deg, rgba(99,44,255,.12), rgba(255,100,0,.06))" }}>

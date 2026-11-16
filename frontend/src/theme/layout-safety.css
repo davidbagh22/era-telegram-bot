@@ -77,3 +77,10 @@ svg {
 .era-event-dialog {
   overscroll-behavior: contain;
 }
+
+.era-readable-copy {
+  color: var(--era-text-secondary);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}

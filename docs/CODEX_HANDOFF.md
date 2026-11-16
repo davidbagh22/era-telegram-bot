@@ -7,11 +7,8 @@
 - 18 November / attendance proofs in «Решить сегодня» **LIVE `63d5d83`**: `/health`+`/ready` ok; photo proofs queue (approve → points+cert).
 - 17 November / portfolio PDFs + export interview **LIVE `f778f6d`**: teal letterhead PDFs; export interview for skills/about; events + certificates first.
 - 17 November / attendance-certs-media **LIVE `9a9d084`**: owner TZ — auto participation PDF + seal, media briefs, contain posters, afisha cutoff, cert ladder 2000/5000.
-<<<<<<< HEAD
-- 17 November / ERA 2.0 UX stack (#676/#677/#679): participant UI renames «ЭРА PRO» → «Лидеры ЭРА»; hide raw `public_activity` keys; profile history = attended/results only, registrations separate; «Сейчас» calendar drops past items; tasks scopes label «Доступные»; auto-archive + media titles + welcome-chat routing on upstack. Rebased onto main; merge when CI green.
-=======
-- 17 November / ERA 2.0 stack open (#676→#677→#679): «Лидеры ЭРА», history vs registrations, «Сейчас» without past; auto-archive/media titles; welcome chats + PRO/RU cleanup. Restacked onto latest main. Do not claim LIVE until exact-head merge + Render SHA.
->>>>>>> 474c853f (fix(era): restack #679 welcome/PRO cleanup onto latest archive tip)
+- 17 November / ERA 2.0 UX stack (#676/#677/#679): «ЭРА PRO» → «Лидеры ЭРА»; hide raw `public_activity` keys; profile history = attended/results only; «Сейчас» without past; auto-archive + media titles + welcome-chat routing. Merged to main with #675; confirm LIVE SHA.
+- 17 November / #674: full event posters (height auto + contain), readable copy, wrapped project titles. Exact-head CI/review/LIVE still required.
 
 - 17 November / wave-4 (stacked): Admin queue retitled «Решить сегодня»; media request packages (фото/рилс/полный) + due_at; Leader media-request panel. Depends on wave-3.
 - 17 November / wave-3 (stacked): assessment complete → +25 digital points; result card «Твой профиль ЭРА» with share + event CTA + unlock ladder. Depends on wave-2.
