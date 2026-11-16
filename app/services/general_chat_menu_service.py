@@ -15,6 +15,7 @@ from app.services.chat_access_service import (
     GENERAL_REGISTRATION_PIN_TEXT,
     GENERAL_REGISTRATION_START_URL,
 )
+from app.utils.deep_links import telegram_miniapp_start_url, telegram_profile_miniapp_url
 
 logger = logging.getLogger(__name__)
 
@@ -22,17 +23,20 @@ GENERAL_CHAT_NAV_KEY = "general-chat-persistent-nav-v1"
 GENERAL_CHAT_NAV_TEXT = "Навигация ЭРА доступна внизу чата."
 
 
-def _registration_markup() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🚀 Начать",
-                    url=GENERAL_REGISTRATION_START_URL,
-                )
-            ]
-        ]
-    )
+def _registration_markup(bot_username: str | None = None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text="🚀 Начать", url=GENERAL_REGISTRATION_START_URL)]]
+    if bot_username:
+        rows.append([
+            InlineKeyboardButton(
+                text="📅 Мероприятия",
+                url=telegram_miniapp_start_url(bot_username, "participation"),
+            ),
+            InlineKeyboardButton(
+                text="👤 Личный кабинет",
+                url=telegram_profile_miniapp_url(bot_username),
+            ),
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def _restore_registration_pin(bot: Bot, chat_id: int) -> bool:
@@ -60,7 +64,7 @@ async def _restore_registration_pin(bot: Bot, chat_id: int) -> bool:
                 message_id=pinned.message_id,
                 text=GENERAL_REGISTRATION_PIN_TEXT,
                 parse_mode="HTML",
-                reply_markup=_registration_markup(),
+                reply_markup=_registration_markup(me.username),
                 disable_web_page_preview=True,
             )
         except TelegramAPIError as exc:
