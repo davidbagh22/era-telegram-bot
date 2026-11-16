@@ -139,7 +139,7 @@ export function EraProScreen({ onBack }: { onBack?: () => void }) {
         <p style={{ margin: "0.55rem 0 0", color: "var(--era-text-muted)", fontSize: "0.82rem" }}>
           {data.remaining_points > 0 ? `Ещё ${formatPoints(data.remaining_points)} баллов до права подать заявку.` : "Порог достигнут. Баллы не списываются при подаче или после одобрения."}
         </p>
-        {data.status === "locked" && <button type="button" onClick={() => { window.location.hash = "#/development"; }} style={{ marginTop: "0.7rem" }}>Как приблизиться →</button>}
+        {data.status === "locked" && <button type="button" onClick={() => { window.location.hash = "#/progress"; }} style={{ marginTop: "0.7rem" }}>Как приблизиться →</button>}
       </Card>
 
       <section>

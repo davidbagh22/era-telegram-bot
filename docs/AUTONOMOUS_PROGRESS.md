@@ -35,12 +35,11 @@
 Этот файл + существующая почасовая задача 6adcbd42ede08191a5c0a946e4147b52. После результата сохранять текущий SHA, PR, тесты, LIVE, блокер и следующий шаг. Итог до 10 строк: что исправлено/выпущено/проверено, что осталось и точное продолжение. «ПОЛНОСТЬЮ ГОТОВ» — только после выполнения всех критериев выше.
 
 ## Продолжение 17.11.2026
-- Готово: Возможности → ранги/рейтинг по баллам; компактная Афиша Home (без almost-тизеров) — в main.
-- ERA 2.0 UX (#676): «Лидеры ЭРА», история/регистрации, «Сейчас» без прошедших — rebased on main.
-- ERA 2.0 #677: auto-archive events, media titles, hide unfinished certs — restacked on #676.
-- ERA 2.0 #679: chats/PRO cleanup restacking next; merge green stack without per-PR approval.
+- Готово в main: ranks/afisha UX; ERA 2.0 #676/#677; portfolio/covers/proofs.
+- E08/#675: карточка уровня на главной открывает `/progress`. «Мой вектор» — отдельная кнопка; подсказка роста и «Как приблизиться» в Лидеры ЭРА больше не ведут в анкету вектора. CODE COMPLETE для навигации; мобильная приёмка не подтверждена.
+- ERA 2.0 #679: welcome chats + PRO/RU cleanup — CI after restack.
 - Блокеры: Telegram acceptance (E14).
-- Следующая: CI → merge #679 (includes downstack) → LIVE verify.
+- Следующая: exact-head CI → merge #675/#679 → LIVE verify.
 
 ## Продолжение 16.11.2026
 - C06: уточнён текст на включительных границах 24 и 3 часа. Существующий 3h opt-in сохранён. Приёмка доставки в реальном media-чате открыта.
@@ -117,7 +116,7 @@
 | E05 | Games and team mechanics | В РАЗРАБОТКЕ | Content/round/result acceptance; Mafia excluded |
 | E06 | Literature club | ВЫПУЩЕНО | Real issue, subscription, discussion and reporting |
 | E07 | FAQ and support | ВЫПУЩЕНО | Scoped handling, replies and privacy acceptance |
-| E08 | My Vector | В РАЗРАБОТКЕ | Methods/check-ins/goals/history/privacy and earlier backlog |
+| E08 | My Vector | IN PROGRESS | Home no longer opens the private vector from the growth nudge. Vector entry, check-in, privacy and real-device acceptance remain. |
 | E09 | Daily quotes | В РАЗРАБОТКЕ | Historical Nov 1–2 channel posts and Mini App quote API are evidenced, but future channel publications now require explicit approval for the exact text/day/target; approval UI and real authorized workflow are pending. No unapproved auto-posts permitted. |
 | E10 | Broadcasts and notifications | В РАЗРАБОТКЕ | #491 incomplete receipts; no uncertain replay |
 | E11 | Security and data protection | IN PROGRESS | Webhook release #662, configured-admin boundary #542, and remaining #484/#486 event privacy checks. |
