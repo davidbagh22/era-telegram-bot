@@ -1,5 +1,7 @@
 """Fail-closed MIME validation shared by public and authenticated event posters."""
 
+from __future__ import annotations
+
 SAFE_EVENT_POSTER_MIME_TYPES = frozenset(
     {
         "image/jpeg",

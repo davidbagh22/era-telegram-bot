@@ -17,7 +17,7 @@ class PublicPosterMimeTests(unittest.IsolatedAsyncioTestCase):
         self,
         content_type: str | None,
         poster_bytes: bytes = b"poster",
-        status: EventStatus | None = EventStatus.PUBLISHED,
+        status: EventStatus | str | None = EventStatus.PUBLISHED,
     ):
         session = SimpleNamespace(
             get=AsyncMock(
@@ -63,7 +63,7 @@ class PublicPosterMimeTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(response.headers["x-content-type-options"], "nosniff")
 
     async def test_moderation_only_posters_and_unknown_events_are_hidden(self) -> None:
-        for status in (EventStatus.DRAFT, EventStatus.PENDING_APPROVAL, None):
+        for status in (EventStatus.DRAFT, EventStatus.PENDING_APPROVAL, "unknown_status", None):
             with self.subTest(status=status):
                 with self.assertRaises(HTTPException) as caught:
                     await self._response("image/png", status=status)

@@ -23,6 +23,7 @@ from app.services.event_registration_notice_service import (
     enqueue_registration_notice,
 )
 from app.services.event_registration_service import mark_not_coming
+from app.services.event_poster_security import normalized_event_poster_mime
 from app.services.event_service import (
     available_places,
     promote_waitlist,
