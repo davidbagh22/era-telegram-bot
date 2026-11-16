@@ -155,6 +155,13 @@ export function HomeScreen({
           : null;
   const nextStepIsTask = data.next_step?.kind === "task"
     && data.next_step.entity_id === data.active_task?.id;
+  const posterEventIds = new Set<number>([
+    ...(featuredEvent ? [featuredEvent.id] : []),
+    ...upcomingEvents.slice(0, 3).map((event) => event.id),
+  ]);
+  const nextStepRepeatsPoster = data.next_step?.kind === "event"
+    && data.next_step.entity_id != null
+    && posterEventIds.has(data.next_step.entity_id);
 
   return (
     <div className="era-page era-stagger" style={{ padding: "1.15rem 1.15rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.75rem" }}>
@@ -223,7 +230,7 @@ export function HomeScreen({
         ))}
       </section>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+      {!nextStepRepeatsPoster && <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
         <MonoLabel>Следующий шаг</MonoLabel>
         {data.next_step ? (
           <Card gradient onClick={nextStepClick} style={{ padding: "1.15rem" }}>
@@ -237,7 +244,7 @@ export function HomeScreen({
             <p style={{ margin: ".35rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem" }}>Можно выбрать событие, задачу или возможность на свой темп.</p>
           </Card>
         )}
-      </section>
+      </section>}
 
       {user.features.vector && (onOpenAssessments || onOpenDevelopment) && (
         <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>

@@ -313,7 +313,7 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
   const showSummary = summary && summary !== description;
 
   return (
-    <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.85rem", paddingBottom: "calc(var(--era-page-bottom-safe, 10rem) + 5rem)" }}>
+    <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.75rem", paddingBottom: "calc(10.25rem + env(safe-area-inset-bottom, 0px))" }}>
       <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← К событиям</button>
       <EventPoster event={event} />
 
@@ -326,7 +326,13 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
       <Card style={{ padding: "0.95rem" }}>
         <div style={{ display: "grid", gap: "0.75rem" }}>
           <div><span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>КОГДА</span><div style={{ fontWeight: 800, marginTop: 2 }}>{formatDate(event.event_date)} · {event.event_time}{event.end_time ? `–${event.end_time}` : ""}</div></div>
-          <div><span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>ГДЕ</span><div style={{ fontWeight: 800, marginTop: 2 }}>{event.location}</div>{event.address && <div style={{ color: "var(--era-text-muted)", fontSize: "0.85rem" }}>{event.address}</div>}</div>
+          <div>
+            <span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>ГДЕ</span>
+            {safeEvidenceUrl(event.location) ? (
+              <a href={safeEvidenceUrl(event.location)!} target="_blank" rel="noopener noreferrer" className="era-btn-secondary" style={{ display: "inline-flex", marginTop: ".35rem", textDecoration: "none" }}>Открыть место</a>
+            ) : <div style={{ fontWeight: 800, marginTop: 2 }}>{event.location}</div>}
+            {event.address && <div style={{ color: "var(--era-text-muted)", fontSize: "0.85rem" }}>{event.address}</div>}
+          </div>
           {event.organizer && <div><span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>ОРГАНИЗАТОР</span><div style={{ fontWeight: 800, marginTop: 2 }}>{event.organizer}</div></div>}
         </div>
       </Card>
@@ -408,7 +414,9 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
       {event.project_id && <button type="button" onClick={() => { window.location.hash = `#/projects/${event.project_id}`; }}>Открыть связанный проект →</button>}
       <EventCalendarButton event={event} />
       {chatUrl && <a href={chatUrl} target="_blank" rel="noopener noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть чат</a>}
-      {event.contact && <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.86rem" }}>Связь: {event.contact}</p>}
+      {safeEvidenceUrl(event.contact) ? (
+        <a href={safeEvidenceUrl(event.contact)!} target="_blank" rel="noopener noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть ссылку</a>
+      ) : event.contact ? <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.86rem" }}>Связь: {event.contact}</p> : null}
       {actionError && <p style={{ color: "var(--era-error)", margin: 0 }}>{actionError}</p>}
 
       <div
