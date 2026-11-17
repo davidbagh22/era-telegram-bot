@@ -1,5 +1,6 @@
 # ERA bot and Mini App handoff
 
+- 18 November / E11 security (#691): CANCELLED event detail/poster privacy — public allowlist + Mini App detail/poster 404 unless registered. Complements #484.
 - 18 November / cleanup (#692): remove proven-dead unmounted handlers/stubs + unused Mini App components + dead `project:hint` keyboard path. No queues/roles/points/history/secrets touched.
 - 18 November / #675: Home separates participant growth progress from «Мой вектор».
 - 18 November / **PARALLEL GO-TO-READY** (`docs/TZ_PARALLEL_READY_2026_11_18.md`): never idle on one CI; parallel workstreams for UX/waves/security/matrix. Goal: code+CI+LIVE ceiling ASAP; E14 human acceptance remains separate.
