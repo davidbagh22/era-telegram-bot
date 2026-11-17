@@ -23,6 +23,7 @@ from app.services.event_registration_notice_service import (
     enqueue_registration_notice,
 )
 from app.services.event_registration_service import mark_not_coming
+from app.services.event_poster_security import normalized_event_poster_mime
 from app.services.event_service import (
     available_places,
     promote_waitlist,
@@ -265,8 +266,8 @@ async def read_event_poster(
     # Poster metadata may come from legacy imports or moderator uploads.
     # Never serve HTML/SVG (including scripts) under the Mini App origin.
     # Refuse unsupported MIME types rather than reflecting untrusted values.
-    poster_mime = (experience.poster_content_type or "image/jpeg").split(";", 1)[0].strip().lower()
-    if poster_mime not in {"image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/heic", "image/heif"}:
+    poster_mime = normalized_event_poster_mime(experience.poster_content_type)
+    if poster_mime is None:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
     return Response(
         content=experience.poster_bytes,

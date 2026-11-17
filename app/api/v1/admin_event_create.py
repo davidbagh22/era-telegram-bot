@@ -12,12 +12,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
-from app.api.v1.event_posters import _SAFE_POSTER_MIME_TYPES
 from app.config import Settings
 from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
 from app.services.audit_service import audit
 from app.services.authorization_service import can_manage_events
+from app.services.event_poster_security import normalized_event_poster_mime
 from app.services.notification_service import broadcast_detailed
 from app.services.event_publication_service import public_event_keyboard, publish_event_announcement, record_announcement_status
 from app.services.general_topics_service import send_general_topic
@@ -528,8 +528,8 @@ async def read_admin_event_poster_preview(
     experience = await session.get(EventExperience, event_id)
     if experience is None or not experience.poster_bytes:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
-    poster_mime = (experience.poster_content_type or "image/jpeg").split(";", 1)[0].strip().lower()
-    if poster_mime not in _SAFE_POSTER_MIME_TYPES:
+    poster_mime = normalized_event_poster_mime(experience.poster_content_type)
+    if poster_mime is None:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
     return Response(
         content=experience.poster_bytes,
