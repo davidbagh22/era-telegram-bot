@@ -50,9 +50,10 @@ async def list_events(
                 )
             ).all()
         )
-        # A completed event remains actionable for its registered participant:
-        # completion must never hide the attendance-code flow.  Reuse the same
-        # Event/EventRegistration models and merge them into the existing list.
+        # Keep only *recent* completed events in the active afisha so attendance
+        # code still works right after the event — not months-old programs
+        # (e.g. «Проектный акселератор»). Older history lives under «Прошедшие».
+        recent_cutoff = date.today() - timedelta(days=14)
         registered_completed = list((await session.scalars(
             select(Event)
             .join(EventRegistration, EventRegistration.event_id == Event.id)
@@ -60,6 +61,7 @@ async def list_events(
                 EventRegistration.user_id == user.id,
                 EventRegistration.status.in_(ACTIVE_REGISTRATION_STATUSES),
                 Event.status.in_((EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED)),
+                Event.event_date >= recent_cutoff,
             )
         )).all())
         events_by_id = {event.id: event for event in [*public_events, *registered_completed]}

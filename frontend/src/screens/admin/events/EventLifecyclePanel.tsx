@@ -151,8 +151,13 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
 
         {item.can_complete && (
           <button type="button" className="era-btn-primary" disabled={busy !== null} onClick={() => void complete()}>
-            {busy === "complete" ? "Завершаем…" : "Завершить и открыть ввод кода"}
+            {busy === "complete" ? "Завершаем…" : "Завершить · убрать с активной афиши · открыть код"}
           </button>
+        )}
+        {!item.can_complete && !completed && (
+          <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: ".78rem", lineHeight: 1.4 }}>
+            Чтобы убрать событие с афиши для всех — завершите его здесь. Участники увидят его во вкладке «Прошедшие».
+          </p>
         )}
 
         {item.confirmation_open && (

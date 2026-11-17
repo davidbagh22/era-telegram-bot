@@ -676,6 +676,7 @@ async def request_media_package(
     requester: User,
     settings: Settings,
     due_at: datetime | None = None,
+    bot: Bot | None = None,
 ) -> MediaRequest:
     if package_type not in MEDIA_PACKAGES:
         raise ValueError("invalid_package")
@@ -748,7 +749,73 @@ async def request_media_package(
         task_kinds=MEDIA_PACKAGES[package_type],
         task_deadline=due_at,
     )
+    if bot is not None:
+        await _notify_media_request_brief(
+            session,
+            bot=bot,
+            settings=settings,
+            requester=requester,
+            source_type=source_type,
+            source_title=source_title,
+            package_type=package_type,
+            due_at=due_at,
+            content_id=content.id,
+        )
     return request
+
+
+MEDIA_BRIEF_BY_PACKAGE = {
+    "photo": "Нужно фото: минимум 20 кадров (горизонталь + детали).",
+    "reels": "Нужно видео: минимум 16 кадров горизонтально + желательно короткий инфопродукт.",
+    "video": "Нужно видео: минимум 16 кадров горизонтально.",
+    "announcement": "Нужен пост о событии: текст + дизайн.",
+    "full": (
+        "Нужно: фото минимум 20 кадров, видео минимум 16 кадров горизонтально, "
+        "желательно инфопродукт + пост о событии."
+    ),
+}
+
+
+async def _notify_media_request_brief(
+    session: AsyncSession,
+    *,
+    bot: Bot,
+    settings: Settings,
+    requester: User,
+    source_type: str,
+    source_title: str,
+    package_type: str,
+    due_at: datetime | None,
+    content_id: int,
+) -> None:
+    """Short human brief into the media tasks topic — not a tech dump."""
+    if settings.media_chat_id is None:
+        return
+    who = f"{requester.first_name} {requester.last_name or ''}".strip() or f"id {requester.id}"
+    kind = "Проект" if source_type == "project" else "Событие"
+    due_line = ""
+    if due_at is not None:
+        local = due_at.astimezone(ZoneInfo(settings.timezone))
+        due_line = f"\nСрок: {local.strftime('%d.%m %H:%M')}"
+    brief = MEDIA_BRIEF_BY_PACKAGE.get(package_type, MEDIA_BRIEF_BY_PACKAGE["full"])
+    text = (
+        f"🎬 Медиа-запрос\n"
+        f"{kind}: {source_title}\n"
+        f"Пакет: {package_type}\n"
+        f"Кто: {who}"
+        f"{due_line}\n\n"
+        f"{brief}"
+    )
+    await _send_media_chat_notice(
+        session,
+        bot,
+        settings,
+        notice_key=f"media-request:{content_id}:{package_type}",
+        notice_kind="request_brief",
+        ref_type="media_content",
+        ref_id=content_id,
+        text=text,
+    )
 
 
 def _channel_target(settings: Settings) -> int | str:

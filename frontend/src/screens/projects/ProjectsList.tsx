@@ -118,14 +118,22 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
       {state.status === "error" && <EmptyState text="Не удалось загрузить проекты." />}
       {state.status === "ready" && state.data.length === 0 && <EmptyState text="Проектов в этом разделе пока нет." />}
       {state.status === "ready" && state.data.map((project) => (
-        <Card key={project.id}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+        <div
+          key={project.id}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.65rem",
+            padding: "1rem 0",
+            borderBottom: "1px solid var(--era-border)",
+          }}
+        >
             <button type="button" onClick={() => onSelect(project.id)} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
-                <strong>{project.title}</strong>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
+                <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1.15rem", lineHeight: 1.25 }}>{project.title}</strong>
                 <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
               </div>
-              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>{project.short_description}</p>
+              <p style={{ margin: "0.4rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>{project.short_description}</p>
             </button>
             {scope === "mine" && isDraft(project) && (
               <button
@@ -137,8 +145,7 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
                 Удалить черновик
               </button>
             )}
-          </div>
-        </Card>
+        </div>
       ))}
 
       <BottomSheet open={Boolean(deleteCandidate)} onClose={() => setDeleteCandidate(null)} title="Удалить черновик?">

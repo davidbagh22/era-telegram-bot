@@ -1,5 +1,6 @@
 # ERA bot and Mini App handoff
 
+- 17 November / attendance-certs-media: owner TZ locked (`docs/TZ_ATTENDANCE_CERTS_MEDIA_2026_11_17.md`). Points accumulate → apply for branded certs; auto participation PDF with seal after proof approve; short media-chat briefs; no-crop posters; hide old programs from active afisha. Do not claim LIVE until exact-head merge + Render SHA.
 - 17 November / wave-4 (stacked): Admin queue retitled «Решить сегодня»; media request packages (фото/рилс/полный) + due_at; Leader media-request panel. Depends on wave-3.
 - 17 November / wave-3 (stacked): assessment complete → +25 digital points; result card «Твой профиль ЭРА» with share + event CTA + unlock ladder. Depends on wave-2.
 - 17 November / wave-2 (stacked): Admin «Назначить руководителя» with function packages; Profile «Предложить в руководство»; Leader hub retitled + media-request tile. Depends on wave-1 merge.
