@@ -63,7 +63,9 @@ export function LeaderMediaRequestPanel({ onBack }: { onBack: () => void }) {
         </label>
       )}
 
-      {eventId ? <MediaRequestButton sourceType="event" sourceId={eventId} /> : null}
+      {eventId ? (
+        <MediaRequestButton key={eventId} sourceType="event" sourceId={eventId} />
+      ) : null}
     </div>
   );
 }

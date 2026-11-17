@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { requestEventMedia, requestProjectMedia } from "../api/media";
 
 interface MediaRequestButtonProps {
@@ -18,6 +18,14 @@ export function MediaRequestButton({ sourceType, sourceId }: MediaRequestButtonP
   const [done, setDone] = useState(false);
   const [packageType, setPackageType] = useState<"photo" | "reels" | "full">("full");
   const [dueLocal, setDueLocal] = useState("");
+
+  useEffect(() => {
+    setBusy(false);
+    setStatus(null);
+    setDone(false);
+    setPackageType("full");
+    setDueLocal("");
+  }, [sourceType, sourceId]);
 
   const request = async () => {
     setBusy(true);

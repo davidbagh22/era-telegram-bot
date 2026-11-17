@@ -424,6 +424,18 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
                 or 0
             )
             self.assertEqual(task_count, 1)
+            task_row = (
+                await session.execute(
+                    select(Task)
+                    .join(MediaContentTask, MediaContentTask.task_id == Task.id)
+                    .where(MediaContentTask.content_id == request.content_id)
+                )
+            ).scalar_one()
+            task_deadline = task_row.deadline
+            assert task_deadline is not None
+            if task_deadline.tzinfo is None:
+                task_deadline = task_deadline.replace(tzinfo=timezone.utc)
+            self.assertEqual(task_deadline, due)
 
     def _approved_auto(self, item: MediaContentItem):
         """Explicit test-only consent, never a production publication approval."""

@@ -595,12 +595,17 @@ async def create_content_tasks(
     *,
     creator_id: int,
     task_kinds: tuple[str, ...] | list[str],
+    task_deadline: datetime | None = None,
 ) -> list[MediaContentTask]:
     links: list[MediaContentTask] = []
-    deadline = item.scheduled_at or (datetime.now(timezone.utc) + timedelta(days=7))
-    # Give the team a buffer before publication whenever the item is still in
-    # the future, but never create a deadline in the past.
-    deadline = max(datetime.now(timezone.utc) + timedelta(hours=4), deadline - timedelta(hours=24))
+    if task_deadline is not None:
+        # Explicit requester due date is the editorial task deadline as-is.
+        deadline = task_deadline if task_deadline.tzinfo else task_deadline.replace(tzinfo=timezone.utc)
+    else:
+        deadline = item.scheduled_at or (datetime.now(timezone.utc) + timedelta(days=7))
+        # Give the team a buffer before publication whenever the item is still in
+        # the future, but never create a deadline in the past.
+        deadline = max(datetime.now(timezone.utc) + timedelta(hours=4), deadline - timedelta(hours=24))
     for task_kind in task_kinds:
         if task_kind not in MEDIA_TASK_KINDS:
             raise ValueError("invalid_media_task_kind")
@@ -741,6 +746,7 @@ async def request_media_package(
         content,
         creator_id=requester.id,
         task_kinds=MEDIA_PACKAGES[package_type],
+        task_deadline=due_at,
     )
     return request
 
