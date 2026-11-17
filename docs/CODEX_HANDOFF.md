@@ -1,6 +1,7 @@
 # ERA bot and Mini App handoff
 
-- 18 November / attendance proofs in «Решить сегодня»: pending photo proofs counter + Mini App queue (photo, approve → points+cert, reject with comment). Shared `attendance_proof_service` for bot + API. Follow-up: project covers without crop.
+- 18 November / project covers: `cover_bytes` on projects + Mini App upload/display with `object-fit: contain` (no crop). Migration `0065_project_cover`.
+- 18 November / attendance proofs in «Решить сегодня» merged `63d5d83` (await LIVE after main checksPass): pending photo proofs counter + Mini App queue.
 - 17 November / portfolio PDFs + export interview **LIVE `f778f6d`**: teal letterhead PDFs; export interview for skills/about; events + certificates first.
 - 17 November / attendance-certs-media **LIVE `9a9d084`**: owner TZ — auto participation PDF + seal, media briefs, contain posters, afisha cutoff, cert ladder 2000/5000.
 

@@ -3,8 +3,10 @@ import {
   cancelProject,
   describeActionError,
   fetchProject,
+  removeProjectCover,
   submitProject,
   updateProject,
+  uploadProjectCover,
 } from "../../api/client";
 import { fetchProjectBuilderQuestions } from "../../api/projectBuilder";
 import { BottomSheet } from "../../components/BottomSheet";
@@ -13,6 +15,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 import { hintForProjectQuestion } from "../../help/projectBuilderHints";
 import type { ProjectDetail as ProjectDetailType, ProjectQuestion } from "../../types/project";
+import { ProjectCover } from "./ProjectCover";
 import { projectStatusLabel } from "./statusLabels";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 
@@ -246,6 +249,62 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
           <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
         </div>
       </Card>
+
+      {(project.cover_url || project.can_edit_cover) && (
+        <Card>
+          {project.cover_url && <ProjectCover key={project.cover_url} coverUrl={project.cover_url} />}
+          {project.can_edit_cover && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem", marginTop: project.cover_url ? "0.75rem" : 0 }}>
+              <label style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 40, border: "1px solid var(--era-border)", borderRadius: "var(--era-radius-control)", cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}>
+                {project.cover_url ? "Заменить обложку" : "Прикрепить обложку"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={busy}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.currentTarget.value = "";
+                    if (!file) return;
+                    setBusy(true);
+                    setActionError(null);
+                    void uploadProjectCover(projectId, file)
+                      .then((updated) => {
+                        setProject(updated);
+                        setSavedNotice("Обложка сохранена");
+                      })
+                      .catch((error) => setActionError(actionMessage(error, "Не удалось загрузить обложку.")))
+                      .finally(() => setBusy(false));
+                  }}
+                  style={{ display: "none" }}
+                />
+              </label>
+              {project.cover_url && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setBusy(true);
+                    setActionError(null);
+                    void removeProjectCover(projectId)
+                      .then((updated) => {
+                        setProject(updated);
+                        setSavedNotice("Обложка удалена");
+                      })
+                      .catch((error) => setActionError(actionMessage(error, "Не удалось удалить обложку.")))
+                      .finally(() => setBusy(false));
+                  }}
+                  style={{ color: "var(--era-error)" }}
+                >
+                  Убрать обложку
+                </button>
+              )}
+              <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>
+                Картинка показывается целиком, без обрезки.
+              </p>
+            </div>
+          )}
+        </Card>
+      )}
 
       {actionError && <Card style={{ borderColor: "rgba(255,102,117,0.35)", background: "rgba(255,102,117,0.06)" }}><strong style={{ color: "var(--era-error)" }}>Нужно действие</strong><p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>{actionError}</p></Card>}
       {saveError && pendingRetry && currentQuestion?.key === pendingRetry.questionKey && (
