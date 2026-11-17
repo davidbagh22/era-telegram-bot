@@ -29,6 +29,7 @@ test("participant completes WHO-5 through My Vector and sees the saved result", 
 
   await expect(page.getByText("ГОТОВО К РЕЗУЛЬТАТУ")).toBeVisible();
   await page.getByRole("button", { name: "Получить результат" }).click();
-  await expect(page.getByText("ТВОЙ РЕЗУЛЬТАТ")).toBeVisible();
+  await expect(page.getByText("ТВОЙ ПРОФИЛЬ ЭРА")).toBeVisible();
   await expect(page.getByText(/100 из 100/)).toBeVisible();
+  await expect(page.getByText(/Что мне действительно интересно/)).toBeVisible();
 });
