@@ -376,6 +376,32 @@ export function fetchProject(projectId: number): Promise<ProjectDetail> {
   return authorizedGet<ProjectDetail>(`/api/v1/projects/${projectId}`);
 }
 
+export async function uploadProjectCover(projectId: number, file: File): Promise<ProjectDetail> {
+  if (!sessionToken) throw new ApiError(401, "missing_token");
+  const body = new FormData();
+  body.append("upload", file);
+  const response = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/cover`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${sessionToken}` },
+    body,
+  });
+  if (!response.ok) throw new ApiError(response.status, await parseErrorDetail(response));
+  return (await response.json()) as ProjectDetail;
+}
+
+export function removeProjectCover(projectId: number): Promise<ProjectDetail> {
+  return authorizedPost<ProjectDetail>(`/api/v1/projects/${projectId}/cover/remove`);
+}
+
+export async function fetchProjectCoverObjectUrl(coverUrl: string): Promise<string> {
+  if (!sessionToken) throw new ApiError(401, "missing_token");
+  const response = await fetch(`${API_BASE_URL}${coverUrl}`, {
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!response.ok) throw new ApiError(response.status, await parseErrorDetail(response));
+  return URL.createObjectURL(await response.blob());
+}
+
 export function createProject(idea: string): Promise<ProjectDetail> {
   return authorizedPost<ProjectDetail>("/api/v1/projects", { idea });
 }

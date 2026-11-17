@@ -13,6 +13,7 @@ from sqlalchemy import (
     Index,
     Integer,
     JSON,
+    LargeBinary,
     String,
     Text,
     Time,
@@ -428,6 +429,8 @@ class Project(TimestampMixin, Base):
         String(32), default=ProjectStatus.DRAFT, index=True
     )
     admin_comment: Mapped[str | None] = mapped_column(Text)
+    cover_content_type: Mapped[str | None] = mapped_column(String(100))
+    cover_bytes: Mapped[bytes | None] = mapped_column(LargeBinary)
 
     roles: Mapped[list[ProjectRole]] = relationship(
         back_populates="project", cascade="all, delete-orphan", lazy="selectin"

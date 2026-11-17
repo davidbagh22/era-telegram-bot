@@ -6,6 +6,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useAsync } from "../../hooks/useAsync";
 import type { ProjectScope, ProjectSummary } from "../../types/project";
+import { ProjectCover } from "./ProjectCover";
 import { projectStatusLabel } from "./statusLabels";
 
 const SCOPES: { value: ProjectScope; label: string }[] = [
@@ -129,6 +130,11 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
           }}
         >
             <button type="button" onClick={() => onSelect(project.id)} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}>
+              {project.cover_url && (
+                <div style={{ marginBottom: "0.65rem" }}>
+                  <ProjectCover coverUrl={project.cover_url} compact />
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
                 <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1.15rem", lineHeight: 1.25 }}>{project.title}</strong>
                 <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
