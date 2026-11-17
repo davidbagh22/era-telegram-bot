@@ -22,6 +22,17 @@ class EventDisplayStatusTests(unittest.TestCase):
         registration = SimpleNamespace(status=RegistrationStatus.REGISTERED)
         self.assertEqual(_display_status(event, registration, remaining=None), "Вы зарегистрированы")
 
+    def test_open_event_without_registration_requirement(self) -> None:
+        event = SimpleNamespace(status=EventStatus.PUBLISHED)
+        self.assertEqual(
+            _display_status(event, None, remaining=None, registration_required=False),
+            "Без регистрации",
+        )
+        self.assertEqual(
+            _display_status(event, None, remaining=None, registration_required=True),
+            "Регистрация открыта",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

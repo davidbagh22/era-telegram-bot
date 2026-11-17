@@ -100,7 +100,8 @@ class ActivityServiceTests(unittest.IsolatedAsyncioTestCase):
             user = await self._make_user(session)
             event1 = self._event(created_by=user.id, days_offset=1)
             event2 = self._event(created_by=user.id, days_offset=3)
-            session.add_all([event1, event2])
+            event3 = self._event(created_by=user.id, days_offset=4)
+            session.add_all([event1, event2, event3])
             await session.flush()
             session.add_all(
                 [
@@ -110,12 +111,15 @@ class ActivityServiceTests(unittest.IsolatedAsyncioTestCase):
                     EventRegistration(
                         event_id=event2.id, user_id=user.id, status=RegistrationStatus.CANCELLED
                     ),
+                    EventRegistration(
+                        event_id=event3.id, user_id=user.id, status=RegistrationStatus.WAITLIST
+                    ),
                 ]
             )
             await session.flush()
 
             rows = await list_events(session, user, "mine")
-            self.assertEqual([event.id for event, _ in rows], [event1.id])
+            self.assertEqual([event.id for event, _ in rows], [event1.id, event3.id])
 
     async def test_reverted_unpublished_events_are_hidden_from_participant_tabs(self) -> None:
         # An event can retain historical registrations after a moderator

@@ -85,13 +85,18 @@ async def list_events(
         return [(event, reg_by_event.get(event.id)) for event in events]
 
     if scope == "mine":
+        # Waitlist is an active personal seat claim: users must see and cancel it
+        # under «Мои мероприятия», not only from the open afisha card.
+        mine_registration_statuses = ACTIVE_REGISTRATION_STATUSES | {
+            RegistrationStatus.WAITLIST,
+        }
         rows = (
             await session.execute(
                 select(Event, EventRegistration)
                 .join(EventRegistration, EventRegistration.event_id == Event.id)
                 .where(
                     EventRegistration.user_id == user.id,
-                    EventRegistration.status.in_(ACTIVE_REGISTRATION_STATUSES),
+                    EventRegistration.status.in_(mine_registration_statuses),
                     # A previously registered event may be returned to draft/review.
                     # Keep unpublished moderation content out of participant tabs.
                     Event.status.not_in((EventStatus.DRAFT, EventStatus.PENDING_APPROVAL, EventStatus.CANCELLED)),

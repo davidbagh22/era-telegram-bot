@@ -36,7 +36,7 @@ const WAITLIST_STATUS = "waitlist";
 const SCOPES: { value: EventScope; label: string; description: string }[] = [
   { value: "for_me", label: "Для меня", description: "Ближайшие события и то, где вы уже участвуете" },
   { value: "all", label: "Все события", description: "Вся открытая афиша ЭРА" },
-  { value: "mine", label: "Мои мероприятия", description: "События, на которые вы записаны" },
+  { value: "mine", label: "Мои мероприятия", description: "Записи и лист ожидания" },
   { value: "past", label: "Прошедшие", description: "История мероприятий" },
 ];
 
@@ -436,7 +436,11 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
             {pending ? "● Сохраняем…" : event.remaining_count === 0 && event.waitlist_enabled ? "Встать в лист ожидания" : "Участвовать"}
           </button>
         ) : (
-          <button type="button" disabled style={{ width: "100%" }}>Регистрация недоступна</button>
+          <button type="button" disabled style={{ width: "100%" }}>
+            {!event.registration_required
+              ? "Регистрация не нужна"
+              : event.display_status || "Регистрация недоступна"}
+          </button>
         )}
       </div>
     </div>
@@ -620,7 +624,15 @@ export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) 
         </>
       )}
       {state.status === "ready" && state.data.length === 0 && (
-        <EmptyState text="Пока нет событий в этом разделе. Как только появится новое мероприятие, оно будет здесь." />
+        <EmptyState
+          text={
+            scope === "mine"
+              ? "Пока нет ваших записей. Запишитесь на событие в афише — оно появится здесь, в том числе из листа ожидания."
+              : scope === "past"
+                ? "Прошедших мероприятий пока нет."
+                : "Пока нет событий в этом разделе. Как только появится новое мероприятие, оно будет здесь."
+          }
+        />
       )}
       {state.status === "ready" && state.data.length > 0 && (
         <div className="era-stagger" style={{ display: "flex", flexDirection: "column", gap: ".8rem" }}>
