@@ -123,3 +123,41 @@ export function closeAdminEventConfirmation(eventId: number): Promise<AdminEvent
     method: "POST",
   });
 }
+
+export interface AdminAttendanceProof {
+  id: number;
+  event_id: number;
+  event_title: string;
+  user_id: number;
+  user_name: string;
+  status: string;
+  created_at: string | null;
+  photo_url: string;
+}
+
+export function fetchPendingAttendanceProofs(): Promise<AdminAttendanceProof[]> {
+  return requestJson<AdminAttendanceProof[]>("/api/v1/admin/events/attendance-proofs/pending");
+}
+
+export function approveAttendanceProof(proofId: number): Promise<AdminAttendanceProof> {
+  return requestJson<AdminAttendanceProof>(`/api/v1/admin/events/attendance-proofs/${proofId}/approve`, {
+    method: "POST",
+  });
+}
+
+export function rejectAttendanceProof(proofId: number, comment = ""): Promise<AdminAttendanceProof> {
+  return requestJson<AdminAttendanceProof>(`/api/v1/admin/events/attendance-proofs/${proofId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ comment }),
+  });
+}
+
+export async function attendanceProofPhotoBlobUrl(photoUrl: string): Promise<string> {
+  const sessionToken = await token();
+  const response = await fetch(`${API_BASE_URL}${photoUrl}`, {
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!response.ok) return parseError(response);
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}

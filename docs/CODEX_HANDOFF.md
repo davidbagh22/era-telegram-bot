@@ -1,7 +1,8 @@
 # ERA bot and Mini App handoff
 
-- 17 November / portfolio PDFs + export interview: restyled teal letterhead portfolio/recommendation PDFs (open signature lines); export asks skills/about before PDF; events + participation certificates first in resume order. Follow-ups: proofs in «Решить сегодня», project covers without crop.
-- 17 November / attendance-certs-media **LIVE `9a9d084`**: owner TZ (`docs/TZ_ATTENDANCE_CERTS_MEDIA_2026_11_17.md`) — auto participation PDF + seal, media briefs, contain posters, afisha cutoff, cert ladder 2000/5000.
+- 18 November / attendance proofs in «Решить сегодня»: pending photo proofs counter + Mini App queue (photo, approve → points+cert, reject with comment). Shared `attendance_proof_service` for bot + API. Follow-up: project covers without crop.
+- 17 November / portfolio PDFs + export interview **LIVE `f778f6d`**: teal letterhead PDFs; export interview for skills/about; events + certificates first.
+- 17 November / attendance-certs-media **LIVE `9a9d084`**: owner TZ — auto participation PDF + seal, media briefs, contain posters, afisha cutoff, cert ladder 2000/5000.
 
 - 17 November / wave-4 (stacked): Admin queue retitled «Решить сегодня»; media request packages (фото/рилс/полный) + due_at; Leader media-request panel. Depends on wave-3.
 - 17 November / wave-3 (stacked): assessment complete → +25 digital points; result card «Твой профиль ЭРА» with share + event CTA + unlock ladder. Depends on wave-2.
