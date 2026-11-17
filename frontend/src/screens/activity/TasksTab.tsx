@@ -21,7 +21,7 @@ const CLAIM_MODE_LABELS: Record<string, string> = {
 // single-selector BottomSheet pattern rather than 6 horizontal tabs.
 const SCOPES: { value: TaskScope; label: string; description: string }[] = [
   { value: "for_you", label: "Для тебя", description: "Подобрано по направлению и дедлайну" },
-  { value: "available", label: "Все", description: "Все задачи, к которым можно присоединиться" },
+  { value: "available", label: "Доступные", description: "Задачи, к которым можно присоединиться" },
   { value: "mine", label: "Мои", description: "То, что уже взято в работу" },
   { value: "team", label: "Командные", description: "Задачи с несколькими участниками" },
   { value: "review", label: "На проверке", description: "Отправленные результаты" },

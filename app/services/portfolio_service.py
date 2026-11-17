@@ -31,10 +31,20 @@ from app.utils.constants import (
     EVENT_STATUS_LABELS,
     PROJECT_STATUS_LABELS,
     REGISTRATION_STATUS_LABELS,
+    REPORT_STATUS_LABELS,
     ROLE_LABELS,
+    RegistrationStatus,
     STATUS_LABELS,
     TASK_STATUS_LABELS,
 )
+
+# Task/activity submission statuses are not TaskStatus values; reuse report
+# labels and cover the leader pre-approval path used by event activities.
+_SUBMISSION_STATUS_LABELS = {
+    **REPORT_STATUS_LABELS,
+    "leader_approved": "Одобрено лидером",
+}
+_CONFIRMED_SUBMISSION_STATUSES = frozenset({"approved", "leader_approved"})
 
 
 @dataclass(frozen=True)
@@ -66,6 +76,7 @@ class PortfolioData:
     stats: dict[str, int] = field(default_factory=dict)
     projects: list[PortfolioEntry] = field(default_factory=list)
     events: list[PortfolioEntry] = field(default_factory=list)
+    registrations: list[PortfolioEntry] = field(default_factory=list)
     tasks: list[PortfolioEntry] = field(default_factory=list)
     volunteer: list[PortfolioEntry] = field(default_factory=list)
     leadership: list[PortfolioEntry] = field(default_factory=list)
@@ -295,6 +306,25 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                     category=EVENT_STATUS_LABELS.get(event.status, _clean(event.status)),
                 )
                 for registration, event in event_rows
+                if registration.status == RegistrationStatus.ATTENDED
+            ]
+        ),
+        registrations=_limited(
+            [
+                PortfolioEntry(
+                    title=_clean(event.title),
+                    description=_clean(event.description),
+                    status=REGISTRATION_STATUS_LABELS.get(registration.status, _clean(registration.status)),
+                    date_label=_date_label(event.event_date),
+                    category=EVENT_STATUS_LABELS.get(event.status, _clean(event.status)),
+                )
+                for registration, event in event_rows
+                if registration.status
+                in (
+                    RegistrationStatus.REGISTERED,
+                    RegistrationStatus.WILL_COME,
+                    RegistrationStatus.WAITLIST,
+                )
             ]
         ),
         tasks=_limited(
@@ -302,12 +332,16 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                 PortfolioEntry(
                     title=_clean(task.title),
                     description=_clean(submission.text) or _clean(task.description),
-                    status=TASK_STATUS_LABELS.get(submission.status, _clean(submission.status)),
+                    status=_SUBMISSION_STATUS_LABELS.get(
+                        submission.status,
+                        TASK_STATUS_LABELS.get(submission.status, _clean(submission.status)),
+                    ),
                     date_label=_date_label(submission.created_at),
                     category="task",
                     file_id=submission.file_id,
                 )
                 for submission, task in task_rows
+                if submission.status in _CONFIRMED_SUBMISSION_STATUSES
             ]
         ),
         volunteer=_limited(
@@ -315,12 +349,16 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                 PortfolioEntry(
                     title="Активность после мероприятия",
                     description=_clean(submission.text) or "подтверждение активности",
-                    status=TASK_STATUS_LABELS.get(submission.status, _clean(submission.status)),
+                    status=_SUBMISSION_STATUS_LABELS.get(
+                        submission.status,
+                        TASK_STATUS_LABELS.get(submission.status, _clean(submission.status)),
+                    ),
                     date_label=_date_label(submission.created_at),
                     category="volunteer",
                     file_id=submission.file_id,
                 )
                 for submission in activity_rows
+                if submission.status in _CONFIRMED_SUBMISSION_STATUSES
             ]
         ),
         leadership=_limited(

@@ -79,9 +79,9 @@ export function FloatingNav({ active, onChange }: FloatingNavProps) {
               border: "none",
               boxShadow: "none",
               color: isActive ? "var(--era-violet)" : "var(--era-nav-muted, var(--era-text-muted))",
-              fontSize: "0.75rem",
+              fontSize: "0.62rem",
               fontWeight: isActive ? 800 : 650,
-              padding: "0.38rem 0.1rem",
+              padding: "0.38rem 0.05rem",
               borderRadius: "1.1rem",
               transition: "color var(--era-motion-fast), background var(--era-motion-fast)",
             }}
@@ -89,7 +89,7 @@ export function FloatingNav({ active, onChange }: FloatingNavProps) {
             <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 32, height: 26 }}>
               <Icon width={21} height={21} />
             </span>
-            <span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span style={{ maxWidth: "100%", lineHeight: 1.1, textAlign: "center", overflowWrap: "anywhere" }}>
               {label}
             </span>
           </button>
