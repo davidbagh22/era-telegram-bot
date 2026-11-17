@@ -13,7 +13,7 @@ from app.api.v1.router import api_router
 from app.config import Settings
 from app.database.base import Base
 from app.database.management_models import MonthlyGoal, OrganizationContact
-from app.database.models import ChatGreeting, Department, Direction, User
+from app.database.models import ChatGreeting, Department, Direction
 from app.services.admin_contacts_service import ContactError, archive_contact, create_contact, list_contacts
 from app.services.admin_goals_service import GoalError, create_goal, decide_goal, list_goals
 from app.services.admin_greetings_service import GreetingError, list_greetings, toggle_greeting, update_greeting_text

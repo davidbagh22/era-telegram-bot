@@ -321,17 +321,8 @@ def project_result_keyboard(project_id: int) -> InlineKeyboardMarkup:
     )
 
 
-def project_question_keyboard(index: int, has_hint: bool) -> InlineKeyboardMarkup:
-    rows = []
-    if has_hint:
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="✨ Получить подсказку", callback_data=f"project:hint:{index}"
-                )
-            ]
-        )
-    rows.append([InlineKeyboardButton(text="Сохранить и выйти", callback_data="project:pause")])
+def project_question_keyboard(index: int) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text="Сохранить и выйти", callback_data="project:pause")]]
     if index > 0:
         rows.append(
             [InlineKeyboardButton(text="← Предыдущий вопрос", callback_data="project:previous")]

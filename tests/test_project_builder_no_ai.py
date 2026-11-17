@@ -49,6 +49,7 @@ def test_participant_project_ui_contains_no_old_ai_writer_controls() -> None:
     api = (root / "frontend/src/api/projectBuilder.ts").read_text(encoding="utf-8")
     backend = (root / "app/api/v1/project_builder.py").read_text(encoding="utf-8")
     handler = (root / "app/handlers/participant/projects.py").read_text(encoding="utf-8")
+    keyboard = (root / "app/keyboards/participant.py").read_text(encoding="utf-8")
 
     forbidden = (
         "AI-подсказка",
@@ -57,11 +58,14 @@ def test_participant_project_ui_contains_no_old_ai_writer_controls() -> None:
         "Улучши мой вариант",
         "assistProjectBuilder",
         'callback_data="project:hint:',
+        "project:hint:",
     )
-    combined = "\n".join((frontend, api, backend, handler))
+    combined = "\n".join((frontend, api, backend, handler, keyboard))
     for marker in forbidden:
         assert marker not in combined
 
     assert "Теория шага" in frontend
     assert "Что написать" in frontend
     assert "Удалить черновик" in frontend
+    assert "def project_question_keyboard(index: int)" in keyboard
+    assert "has_hint" not in keyboard

@@ -10,7 +10,7 @@ import unittest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.base import Base
-from app.database.development_models import DevelopmentGoal, MonthlyCheckin
+from app.database.development_models import MonthlyCheckin
 from app.database.models import User
 from app.services.development_service import (
     checkin_questions,
