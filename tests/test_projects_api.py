@@ -35,6 +35,8 @@ def _project(**overrides) -> SimpleNamespace:
         admin_comment=None,
         form_data={},
         generated_document=None,
+        cover_content_type=None,
+        cover_bytes=None,
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)

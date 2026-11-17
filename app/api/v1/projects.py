@@ -212,9 +212,10 @@ def _cover_url(project: Project) -> str | None:
     # Presence via content_type only — cover_bytes is deferred and must not
     # be loaded for list/detail payloads. Cache-bust with updated_at so a
     # replaced cover remounts and skips the previous blob.
-    if not project.cover_content_type:
+    if not getattr(project, "cover_content_type", None):
         return None
-    stamp = int(project.updated_at.timestamp()) if project.updated_at else 0
+    updated_at = getattr(project, "updated_at", None)
+    stamp = int(updated_at.timestamp()) if updated_at else 0
     return f"/api/v1/projects/{project.id}/cover?v={stamp}"
 
 
