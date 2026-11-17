@@ -1119,8 +1119,30 @@ export function fetchAdminOffices(): Promise<Office[]> {
   return authorizedGet<Office[]>("/api/v1/admin/offices");
 }
 
-export function createOffice(title: string, description: string): Promise<Office> {
-  return authorizedPost<Office>("/api/v1/admin/offices", { title, description });
+export function createOffice(
+  title: string,
+  description: string,
+  permissionTemplate: string[] = [],
+): Promise<Office> {
+  return authorizedPost<Office>("/api/v1/admin/offices", {
+    title,
+    description,
+    permission_template: permissionTemplate,
+  });
+}
+
+export function updateOffice(
+  officeId: number,
+  payload: { title?: string; description?: string; permission_template?: string[] },
+): Promise<Office> {
+  return authorizedPost<Office>(`/api/v1/admin/offices/${officeId}/update`, payload);
+}
+
+export function nominateLeader(nomineeUserId: number, reason: string): Promise<{ ok: boolean }> {
+  return authorizedPost<{ ok: boolean }>("/api/v1/leadership/nominations", {
+    nominee_user_id: nomineeUserId,
+    reason,
+  });
 }
 
 export function deleteOffice(officeId: number): Promise<Office> {

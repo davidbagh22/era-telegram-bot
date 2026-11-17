@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { fetchMe, fetchProfile, requestAccountDeletion } from "../api/client";
+import { describeActionError, fetchMe, fetchProfile, nominateLeader, requestAccountDeletion } from "../api/client";
 import { ActionCell } from "../components/ActionCell";
 import { Avatar } from "../components/Avatar";
 import { BottomSheet } from "../components/BottomSheet";
@@ -67,6 +67,9 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
   const [deletionOpen, setDeletionOpen] = useState(false);
   const [requestingDeletion, setRequestingDeletion] = useState(false);
   const [deletionRequested, setDeletionRequested] = useState(false);
+  const [nominateOpen, setNominateOpen] = useState(false);
+  const [nominateReason, setNominateReason] = useState("");
+  const [nominating, setNominating] = useState(false);
 
   const referralsEnabled = me.status === "ready" && me.data.features.referrals;
   const vectorEnabled = me.status === "ready" && me.data.features.vector;
@@ -180,7 +183,15 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
         <ActionCell title="Моё портфолио" description="Резюме, сертификаты и подтверждённые результаты" meta="Открыть" onClick={() => setShowPortfolio(true)} />
         {vectorEnabled && onOpenDevelopment && <ActionCell title="Мой вектор" description="Личные цели, состояние и история развития" meta="Открыть" onClick={onOpenDevelopment} />}
         {referralsEnabled && <ActionCell title="Пригласить в ЭРА" description="Персональная ссылка и история приглашений" meta="Открыть" onClick={() => setShowReferral(true)} />}
-        {(isAdmin || isLeader) && onEnterWorkspace && <ActionCell title={isAdmin ? "Управление ЭРА" : "Пространство лидера"} description="Рабочие инструменты и управление" meta="Открыть" onClick={onEnterWorkspace} />}
+        {me.status === "ready" && (
+          <ActionCell
+            title="Предложить в руководство"
+            description="Отправь кандидатуру админам — они назначат пакет функций"
+            meta="Открыть"
+            onClick={() => setNominateOpen(true)}
+          />
+        )}
+        {(isAdmin || isLeader) && onEnterWorkspace && <ActionCell title={isAdmin ? "Управление ЭРА" : "Режим лидера"} description="Рабочие инструменты и управление" meta="Открыть" onClick={onEnterWorkspace} />}
       </section>
 
       <section>
@@ -197,6 +208,40 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
           <button type="button" onClick={() => setDeletionOpen(false)}>Отмена</button>
           <button type="button" className="era-btn-primary" disabled={requestingDeletion} onClick={handleRequestDeletion}>{requestingDeletion ? "Отправляем…" : "Отправить"}</button>
+        </div>
+      </BottomSheet>
+
+      <BottomSheet open={nominateOpen} onClose={() => setNominateOpen(false)} title="Предложить в руководство">
+        <p style={{ margin: "0 0 0.75rem", color: "var(--era-text-muted)", fontSize: "0.9rem", lineHeight: 1.45 }}>
+          Сейчас отправляется твоя кандидатура. Админ назначит должность и пакеты функций вручную.
+        </p>
+        <textarea
+          value={nominateReason}
+          onChange={(event) => setNominateReason(event.target.value)}
+          placeholder="Почему ты готов взять ответственность (минимум 8 символов)"
+          rows={4}
+        />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginTop: "0.75rem" }}>
+          <button type="button" onClick={() => setNominateOpen(false)}>Отмена</button>
+          <button
+            type="button"
+            className="era-btn-primary"
+            disabled={nominating || nominateReason.trim().length < 8 || me.status !== "ready"}
+            onClick={() => {
+              if (me.status !== "ready") return;
+              setNominating(true);
+              void nominateLeader(me.data.id, nominateReason.trim())
+                .then(() => {
+                  toast.show("Предложение отправлено админам", "success");
+                  setNominateOpen(false);
+                  setNominateReason("");
+                })
+                .catch((error) => toast.show(describeActionError(error), "error"))
+                .finally(() => setNominating(false));
+            }}
+          >
+            {nominating ? "Отправляем…" : "Отправить"}
+          </button>
         </div>
       </BottomSheet>
     </div>

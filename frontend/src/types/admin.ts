@@ -203,6 +203,7 @@ export interface Office {
   title: string;
   description: string | null;
   is_active: boolean;
+  permission_template?: string[];
   assignments: OfficeAssignment[];
 }
 

@@ -9,6 +9,7 @@ import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
 import { AdminDevelopmentScreen } from "./admin/AdminDevelopmentScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
 import { AdminMetricDetailScreen } from "./admin/AdminMetricDetailScreen";
+import { AdminAppointLeaderScreen } from "./admin/AdminAppointLeaderScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
 import { AdminOffersScreen, type OffersSection } from "./admin/AdminOffersScreen";
 import { AdminOverviewScreen } from "./admin/AdminOverviewScreen";
@@ -19,7 +20,7 @@ import { AdminToolsScreen } from "./admin/AdminToolsScreen";
 import { AdminUsersScreen } from "./admin/AdminUsersScreen";
 import { AdminVerificationScreen } from "./admin/AdminVerificationScreen";
 
-type PeopleSection = "participants" | "verification" | "development" | "career" | "applications" | "leaders-chat" | "offices" | "data-rights";
+type PeopleSection = "participants" | "verification" | "development" | "career" | "applications" | "leaders-chat" | "appoint-leader" | "offices" | "data-rights";
 type WorkSection = "pulse" | "projects" | "events" | "tasks" | "offers";
 type CommsSection = "surveys" | "tools";
 type SectionOption<T extends string> = { value: T; label: string; description: string };
@@ -37,6 +38,7 @@ const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
   { value: "career", label: "Портфолио и рекомендации", description: "Проверка достижений и утверждение официальных рекомендательных писем" },
   { value: "applications", label: "Заявки", description: "Новые регистрации и решения по ним" },
   { value: "leaders-chat", label: "Лидеры", description: "Команда, задачи, рассылки и Пульс" },
+  { value: "appoint-leader", label: "Назначить руководителя", description: "Человек → пакеты функций → права открываются сразу" },
   { value: "offices", label: "Должности", description: "Роли, набор, заявки, назначения и ответственность" },
   { value: "data-rights", label: "Данные и права", description: "Запросы на удаление персональных данных" },
 ];
@@ -70,6 +72,9 @@ function initialAdminRoute(): InitialAdminRoute {
   }
   if (section === "offices") {
     return { peopleSection: "offices", applicationId: null };
+  }
+  if (section === "appoint-leader") {
+    return { peopleSection: "appoint-leader", applicationId: null };
   }
   return { peopleSection: null, applicationId: null };
 }
@@ -177,6 +182,7 @@ export function AdminScreen() {
             {peopleSection === "career" && <AdminCareerScreen />}
             {peopleSection === "applications" && <AdminApplicationsScreen initialApplicationId={launchRoute.applicationId} />}
             {peopleSection === "leaders-chat" && <AdminWorkcenterScreen />}
+            {peopleSection === "appoint-leader" && <AdminAppointLeaderScreen />}
             {peopleSection === "offices" && <AdminOfficesScreen />}
             {peopleSection === "data-rights" && <AdminDataRightsScreen />}
           </div>
