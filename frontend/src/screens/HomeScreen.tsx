@@ -111,7 +111,7 @@ export function HomeScreen({
     ? eventBoard.filter((event) => event.id !== featuredEvent?.id)
     : [];
   const nearestEvent = data.nearest_event?.id === featuredEvent?.id
-    || upcomingEvents.slice(0, 5).some((event) => event.id === data.nearest_event?.id)
+    || upcomingEvents.slice(0, 3).some((event) => event.id === data.nearest_event?.id)
     ? null : data.nearest_event;
 
   const nextStepClick = (() => {
