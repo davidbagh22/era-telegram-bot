@@ -25,6 +25,13 @@ class OpportunitiesRanksHubTests(TestCase):
         self.assertNotIn('initialItemId ? "mine"', source)
         self.assertIn("setExpandedId(initialItemId)", source)
         self.assertIn('id="opportunities-offers"', source)
+        # Session category (e.g. events) must not hide public_activity certs.
+        self.assertIn("setCategory(null)", source)
+        self.assertIn('initialItemId ? null : stored?.category', source)
+        # Inactive/expired applications from admin notifications: mine then by-id.
+        self.assertIn('scope: "mine"', source)
+        self.assertIn("fetchOpportunity(initialItemId)", source)
+        self.assertIn("deepLinkOffer", source)
 
     def test_certificates_ladder_resolves_offer_not_same_hash(self) -> None:
         source = (ROOT / "frontend/src/screens/opportunities/CertificatesPanel.tsx").read_text(
