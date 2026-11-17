@@ -175,10 +175,9 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
             snapshot = await build_home_snapshot(session, user)
             self.assertEqual(snapshot.next_step.kind, "growth")
             self.assertEqual(snapshot.growth.level, "active")
-            # No single entity backs a growth nudge -- the frontend falls
-            # back to its "growth" kind handler (opens the Vector screen).
             self.assertIsNone(snapshot.next_step.entity_id)
-            self.assertEqual(snapshot.next_step.route, "/development")
+            self.assertEqual(snapshot.next_step.route, "/progress")
+            self.assertEqual(snapshot.next_step.action_label, "Смотреть прогресс")
 
     async def test_opportunity_suggested_for_leader_with_nothing_else(self) -> None:
         async with self.session_factory() as session:

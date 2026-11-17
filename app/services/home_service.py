@@ -44,9 +44,9 @@ class NextStep:
     # entity_id lets the frontend reuse its existing onOpenTask/onOpenEvent/
     # etc. callbacks (preferred, matches how every other Home card already
     # navigates), route is the literal path per the ToR's API contract for
-    # any future generic router. action_label is the CTA text; kinds with
-    # no single entity ("growth") leave entity_id/route unset and the
-    # frontend falls back to its kind-specific handler (e.g. onOpenDevelopment).
+    # any future generic router. action_label is the CTA text. A growth
+    # nudge has no single entity and opens the participation progress
+    # screen. It must not open the private «Мой вектор» questionnaire.
     entity_id: int | None = None
     route: str | None = None
     action_label: str = "Открыть"
@@ -437,9 +437,9 @@ def _build_next_step(
         return NextStep(
             kind="growth",
             title="Продолжайте расти в ЭРА",
-            description="Участвуйте в мероприятиях и задачах, чтобы перейти на следующий уровень.",
-            route="/development",
-            action_label="Пройти",
+            description="Участвуйте в мероприятиях и задачах, чтобы перейти на следующий уровень. Уровень не даёт прав администратора.",
+            route="/progress",
+            action_label="Смотреть прогресс",
         )
     if opportunities:
         return NextStep(
