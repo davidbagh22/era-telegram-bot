@@ -121,7 +121,7 @@ class MediaLeadershipTests(IsolatedAsyncioTestCase):
             await _send_main_menu(message, chair, settings)
             markup = message.answer.call_args.kwargs["reply_markup"]
             buttons = [button.text for row in markup.keyboard for button in row]
-            self.assertIn("🎬 Руководитель медиа", buttons)
+            self.assertIn("🎬 Медиа", buttons)
             self.assertNotIn("📊 Статистика", buttons)
             self.assertFalse(has_dashboard_access(chair, settings, chair.telegram_id))
             await leader_command(message, chair, session, settings)

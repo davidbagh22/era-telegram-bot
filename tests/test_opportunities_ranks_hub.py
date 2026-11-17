@@ -10,7 +10,9 @@ class OpportunitiesRanksHubTests(TestCase):
         source = (ROOT / "frontend/src/screens/OpportunitiesScreen.tsx").read_text(encoding="utf-8")
         self.assertIn("RanksPanel", source)
         self.assertIn("Открытые предложения", source)
-        self.assertIn('stored?.status ?? "available"', source)
+        # Preserve stored null (e.g. «Все») — do not coerce with ?? "available".
+        self.assertIn('if (!stored) return "available"', source)
+        self.assertIn("const value = stored.status", source)
 
     def test_ranks_panel_covers_ladder_and_points_board(self) -> None:
         source = (ROOT / "frontend/src/screens/opportunities/RanksPanel.tsx").read_text(encoding="utf-8")
