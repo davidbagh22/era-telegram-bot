@@ -595,12 +595,17 @@ async def create_content_tasks(
     *,
     creator_id: int,
     task_kinds: tuple[str, ...] | list[str],
+    task_deadline: datetime | None = None,
 ) -> list[MediaContentTask]:
     links: list[MediaContentTask] = []
-    deadline = item.scheduled_at or (datetime.now(timezone.utc) + timedelta(days=7))
-    # Give the team a buffer before publication whenever the item is still in
-    # the future, but never create a deadline in the past.
-    deadline = max(datetime.now(timezone.utc) + timedelta(hours=4), deadline - timedelta(hours=24))
+    if task_deadline is not None:
+        # Explicit requester due date is the editorial task deadline as-is.
+        deadline = task_deadline if task_deadline.tzinfo else task_deadline.replace(tzinfo=timezone.utc)
+    else:
+        deadline = item.scheduled_at or (datetime.now(timezone.utc) + timedelta(days=7))
+        # Give the team a buffer before publication whenever the item is still in
+        # the future, but never create a deadline in the past.
+        deadline = max(datetime.now(timezone.utc) + timedelta(hours=4), deadline - timedelta(hours=24))
     for task_kind in task_kinds:
         if task_kind not in MEDIA_TASK_KINDS:
             raise ValueError("invalid_media_task_kind")
@@ -670,6 +675,7 @@ async def request_media_package(
     package_type: str,
     requester: User,
     settings: Settings,
+    due_at: datetime | None = None,
 ) -> MediaRequest:
     if package_type not in MEDIA_PACKAGES:
         raise ValueError("invalid_package")
@@ -705,6 +711,11 @@ async def request_media_package(
     if not allowed:
         raise PermissionError("forbidden")
 
+    if due_at is not None:
+        if due_at.tzinfo is None:
+            due_at = due_at.replace(tzinfo=timezone.utc)
+        scheduled_at = due_at.astimezone(timezone.utc)
+
     content = await create_content(
         session,
         creator_id=requester.id,
@@ -716,6 +727,9 @@ async def request_media_package(
         source_type=source_type,
         source_id=source_id,
     )
+    meta: dict[str, Any] = {"source_title": source_title}
+    if due_at is not None:
+        meta["due_at"] = due_at.astimezone(timezone.utc).isoformat()
     request = MediaRequest(
         source_type=source_type,
         source_id=source_id,
@@ -723,7 +737,7 @@ async def request_media_package(
         requester_id=requester.id,
         content_id=content.id,
         status="open",
-        metadata_json={"source_title": source_title},
+        metadata_json=meta,
     )
     session.add(request)
     await session.flush()
@@ -732,6 +746,7 @@ async def request_media_package(
         content,
         creator_id=requester.id,
         task_kinds=MEDIA_PACKAGES[package_type],
+        task_deadline=due_at,
     )
     return request
 

@@ -7,7 +7,7 @@ import { useAsync } from "../../hooks/useAsync";
 import type { AdminMetricKey } from "../../types/adminMetrics";
 import { AdminDashboardScreen } from "./AdminDashboardScreen";
 
-// Every item shown in "Нужно решить" must open a screen where the admin can
+// Every item shown in "Решить сегодня" must open a screen where the admin can
 // actually complete the task. Do not add informational counters here without
 // a resolver flow — that creates dead-end cards on the command center.
 const ATTENTION_LABELS = {
@@ -132,7 +132,7 @@ export function AdminOverviewScreen({
       </section>
 
       <section>
-        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .5rem" }}>Нужно решить</h2>
+        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .5rem" }}>Решить сегодня</h2>
         {attentionItems.length === 0 && (metrics.event_waitlist ?? 0) === 0 ? (
           <Card style={{ background: "var(--era-surface-2)", textAlign: "center", padding: ".9rem" }}>
             <strong>Очередь чистая ✓</strong>

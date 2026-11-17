@@ -66,7 +66,7 @@ test("admin overview is a simple leader control surface", async ({ page }) => {
 
   await expect(page.getByText("Пульт руководителя", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Что происходит в ЭРА" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Нужно решить" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Решить сегодня" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Быстро сделать" })).toBeVisible();
   await expect(page.getByText("Регистрация и состав", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Аналитика/ })).toBeVisible();

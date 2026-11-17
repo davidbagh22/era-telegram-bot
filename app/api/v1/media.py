@@ -166,6 +166,8 @@ class MediaAnalyticsOut(BaseModel):
 
 class MediaRequestIn(BaseModel):
     package_type: Literal["announcement", "photo", "video", "reels", "full"] = "full"
+    # Optional desired delivery instant; drives content.scheduled_at → task deadlines.
+    due_at: datetime | None = None
 
 
 class MediaRequestOut(BaseModel):
@@ -645,6 +647,7 @@ async def _request_media(
             package_type=payload.package_type,
             requester=user,
             settings=settings,
+            due_at=payload.due_at,
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail="forbidden") from exc
