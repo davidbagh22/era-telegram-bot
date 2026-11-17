@@ -12,6 +12,7 @@ import { AdminMetricDetailScreen } from "./admin/AdminMetricDetailScreen";
 import { AdminAppointLeaderScreen } from "./admin/AdminAppointLeaderScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
 import { AdminOffersScreen, type OffersSection } from "./admin/AdminOffersScreen";
+import { AdminAttendanceProofsScreen } from "./admin/AdminAttendanceProofsScreen";
 import { AdminOverviewScreen } from "./admin/AdminOverviewScreen";
 import { AdminProjectsScreen } from "./admin/AdminProjectsScreen";
 import { AdminSurveysScreen } from "./admin/AdminSurveysScreen";
@@ -111,12 +112,14 @@ export function AdminScreen() {
   const [offersInitialSection, setOffersInitialSection] = useState<OffersSection>("applications");
   const [commsSection, setCommsSection] = useState<CommsSection | null>(null);
   const [metricDetail, setMetricDetail] = useState<MetricDetail | null>(null);
+  const [showAttendanceProofs, setShowAttendanceProofs] = useState(false);
 
   const clearSections = () => {
     setPeopleSection(null);
     setWorkSection(null);
     setCommsSection(null);
     setMetricDetail(null);
+    setShowAttendanceProofs(false);
   };
 
   const changeGroup = (next: AdminGroup) => {
@@ -157,7 +160,14 @@ export function AdminScreen() {
     <div className="era-page" style={{ minHeight: "100vh", display: "flex", flexDirection: "column", minWidth: 0 }}>
       <div style={{ flex: "1 1 auto", minWidth: 0, padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
         {group === "overview" && metricDetail && <AdminMetricDetailScreen metric={metricDetail.metric} expectedTotal={metricDetail.total} onBack={() => setMetricDetail(null)} onOpenEntity={(entityType) => openMetricEntity(entityType)} />}
-        {group === "overview" && !metricDetail && (
+        {group === "overview" && !metricDetail && showAttendanceProofs && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <button type="button" onClick={() => setShowAttendanceProofs(false)} style={{ alignSelf: "flex-start" }}>← Пульт</button>
+            <h1 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>Фото-подтверждения</h1>
+            <AdminAttendanceProofsScreen />
+          </div>
+        )}
+        {group === "overview" && !metricDetail && !showAttendanceProofs && (
           <AdminOverviewScreen
             onOpenPeople={() => openPeople("participants")}
             onOpenApplications={() => openPeople("applications")}
@@ -165,6 +175,7 @@ export function AdminScreen() {
             onOpenCareer={() => openPeople("career")}
             onOpenProjects={() => openWork("projects")}
             onOpenEvents={() => openWork("events")}
+            onOpenAttendanceProofs={() => { clearSections(); setGroup("overview"); setShowAttendanceProofs(true); }}
             onOpenTasks={() => openWork("tasks")}
             onOpenOffers={() => openWork("offers", "rewards")}
             onOpenComms={openComms}

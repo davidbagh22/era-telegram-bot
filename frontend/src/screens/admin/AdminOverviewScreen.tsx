@@ -14,6 +14,7 @@ const ATTENTION_LABELS = {
   users_pending: "Новые регистрации",
   projects_review: "Проекты на проверке",
   events_pending: "События на согласовании",
+  attendance_proofs: "Фото-подтверждения участия",
   tasks_attention: "Задачи требуют внимания",
   questions: "Обращения ждут ответа",
   activity_results: "Результаты активностей",
@@ -38,6 +39,7 @@ interface AdminOverviewScreenProps {
   onOpenApplications: () => void;
   onOpenProjects: () => void;
   onOpenEvents: () => void;
+  onOpenAttendanceProofs: () => void;
   onOpenTasks: () => void;
   onOpenComms: () => void;
   onOpenOffers: () => void;
@@ -63,6 +65,7 @@ export function AdminOverviewScreen({
   onOpenApplications,
   onOpenProjects,
   onOpenEvents,
+  onOpenAttendanceProofs,
   onOpenTasks,
   onOpenComms,
   onOpenOffers,
@@ -100,6 +103,7 @@ export function AdminOverviewScreen({
     users_pending: onOpenApplications,
     projects_review: onOpenProjects,
     events_pending: onOpenEvents,
+    attendance_proofs: onOpenAttendanceProofs,
     tasks_attention: () => openNativeQueue("admin_task_attention"),
     questions: () => openNativeQueue("admin_question_attention"),
     activity_results: onOpenEvents,
