@@ -22,11 +22,31 @@ test("participant completes WHO-5 through My Vector and sees the saved result", 
   await expect(page.getByRole("heading", { name: "Как мне сейчас?" })).toBeVisible();
   await page.getByRole("button", { name: "Начать" }).click();
 
-  for (let index = 0; index < 5; index += 1) {
+  for (let index = 0; index < 4; index += 1) {
     await expect(page.getByRole("button", { name: "Всё время" })).toBeVisible();
     await page.getByRole("button", { name: "Всё время" }).click();
   }
 
+  // Failed last-answer save must leave the question for retry (not open review).
+  await page.route("**/api/v1/development/assessment-sessions/*/answers", async (route) => {
+    if (route.request().method() === "PATCH") {
+      await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ detail: "save_failed" }) });
+      return;
+    }
+    await route.continue();
+  });
+  await expect(page.getByRole("button", { name: "Всё время" })).toBeVisible();
+  await page.getByRole("button", { name: "Всё время" }).click();
+  await expect(page.getByRole("alert")).toContainText("Ответ не сохранился");
+  await expect(page.getByText("ГОТОВО К РЕЗУЛЬТАТУ")).toHaveCount(0);
+  await page.unroute("**/api/v1/development/assessment-sessions/*/answers");
+
+  await page.getByRole("button", { name: "Всё время" }).click();
+  await expect(page.getByText("ГОТОВО К РЕЗУЛЬТАТУ")).toBeVisible();
+  // Re-checking the last answer must still return to the submit screen.
+  await page.getByRole("button", { name: "← Проверить последний ответ" }).click();
+  await expect(page.getByRole("button", { name: "Всё время" })).toBeVisible();
+  await page.getByRole("button", { name: "Всё время" }).click();
   await expect(page.getByText("ГОТОВО К РЕЗУЛЬТАТУ")).toBeVisible();
   await page.getByRole("button", { name: "Получить результат" }).click();
   await expect(page.getByText("ТВОЙ ПРОФИЛЬ ЭРА")).toBeVisible();

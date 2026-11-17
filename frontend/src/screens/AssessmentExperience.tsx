@@ -74,13 +74,15 @@ export function AssessmentExperience({ onBack }: AssessmentExperienceProps) {
     }
   }
 
-  async function answer(questionCode: string, value: number) {
-    if (!runner) return;
+  async function answer(questionCode: string, value: number): Promise<boolean> {
+    if (!runner) return false;
     setBusy(true);
     try {
       setRunner(await saveAssessmentAnswer(runner.id, questionCode, value));
+      return true;
     } catch {
       toast.show("Ответ не сохранился. Попробуй ещё раз.", "error");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -274,7 +276,7 @@ function AssessmentRunner({
 }: {
   session: AssessmentSession;
   busy: boolean;
-  onAnswer: (questionCode: string, value: number) => Promise<void>;
+  onAnswer: (questionCode: string, value: number) => Promise<boolean>;
   onComplete: () => Promise<void>;
   onBack: () => void;
 }) {
@@ -378,8 +380,14 @@ function AssessmentRunner({
               borderColor: selectedValue === option.value ? "var(--era-red)" : undefined,
             }}
             onClick={async () => {
-              await onAnswer(current.code, option.value);
+              const saved = await onAnswer(current.code, option.value);
+              if (!saved) return;
+              // Re-answering the last item after «Проверить последний ответ» does not
+              // change answered_count, so the review effect alone never re-fires.
+              // Only enter review after a successful save so a failed last answer stays
+              // on the question for retry instead of claiming «Все ответы сохранены».
               if (cursor < session.questions.length - 1) setCursor(cursor + 1);
+              else setReviewing(true);
             }}
           >
             {option.label}
