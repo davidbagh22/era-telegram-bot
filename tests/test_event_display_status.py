@@ -33,6 +33,31 @@ class EventDisplayStatusTests(unittest.TestCase):
             "Регистрация открыта",
         )
 
+    def test_deadline_closure_is_not_shown_as_open(self) -> None:
+        """Published event past registration_close_at must not say «открыта»."""
+        event = SimpleNamespace(status=EventStatus.PUBLISHED)
+        self.assertEqual(
+            _display_status(
+                event,
+                None,
+                remaining=5,
+                registration_required=True,
+                registration_closed=True,
+            ),
+            "Регистрация закрыта",
+        )
+        # No-registration events stay «Без регистрации» even after a stale deadline.
+        self.assertEqual(
+            _display_status(
+                event,
+                None,
+                remaining=None,
+                registration_required=False,
+                registration_closed=True,
+            ),
+            "Без регистрации",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

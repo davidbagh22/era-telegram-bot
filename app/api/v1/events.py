@@ -89,6 +89,7 @@ def _display_status(
     remaining: int | None,
     *,
     registration_required: bool = True,
+    registration_closed: bool = False,
 ) -> str:
     if registration is not None:
         if registration.status == RegistrationStatus.WAITLIST:
@@ -105,7 +106,9 @@ def _display_status(
         return "Отменено"
     if event.status == EventStatus.ACTIVE:
         return "Идёт сейчас"
-    if event.status == EventStatus.REGISTRATION_CLOSED:
+    if event.status == EventStatus.REGISTRATION_CLOSED or (
+        registration_closed and registration_required
+    ):
         return "Регистрация закрыта"
     if remaining is not None and remaining <= 3:
         return "Мест почти нет" if remaining > 0 else "Мест нет"
@@ -159,7 +162,11 @@ async def _to_event_out(
     anniversary_open = False
     anniversary_defaults = None
     display_status = _display_status(
-        event, registration, remaining, registration_required=registration_required
+        event,
+        registration,
+        remaining,
+        registration_required=registration_required,
+        registration_closed=registration_closed,
     )
     if guest_event:
         waitlisted = registration is not None and registration.status == RegistrationStatus.WAITLIST
