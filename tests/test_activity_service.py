@@ -457,7 +457,7 @@ class ActivityServiceTests(unittest.IsolatedAsyncioTestCase):
             )
             recent = self._event(
                 created_by=user.id, days_offset=-2, status=EventStatus.COMPLETED
-            )
+            )  # still inside the 7-day organizer confirmation window
             attended = self._event(
                 created_by=user.id, days_offset=-1, status=EventStatus.COMPLETED
             )

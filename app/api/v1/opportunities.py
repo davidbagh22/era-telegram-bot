@@ -327,8 +327,8 @@ async def read_opportunities(
         out = [await _to_opportunity_out(session, offer, partner, user) for offer, partner in rows]
 
     # Participants only see actionable or already-applied offers.
-    # Locked / «almost» teasers stay stored for admins but do not clutter the
-    # catalog — ranks and points ranking carry progression instead.
+    # Locked / «almost» teasers (incl. unfinished certificates/letters) stay
+    # stored for admins but do not clutter the catalog — ranks carry progression.
     out = [item for item in out if _visible_to_participant(item)]
     if state:
         out = [item for item in out if item.state == state]

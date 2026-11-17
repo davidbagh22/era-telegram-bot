@@ -36,9 +36,11 @@
 
 ## Продолжение 17.11.2026
 - Готово: Возможности → ранги/рейтинг по баллам; компактная Афиша Home (без almost-тизеров) — в main.
-- ERA 2.0 UX stack (#676/#677/#679, IN PROGRESS): «Лидеры ЭРА», скрыты raw category keys, история профиля = посещения/результаты, регистрации отдельно, «Сейчас» без прошедших; upstack — автоархив, медиа-заголовки, welcome-чаты. Rebase onto main; точечные тесты PASS.
-- Блокеры: Telegram acceptance blocked.
-- Следующая: CI на rebase → merge stack → LIVE verify.
+- ERA 2.0 UX (#676): «Лидеры ЭРА», история/регистрации, «Сейчас» без прошедших — rebased on main.
+- ERA 2.0 #677: auto-archive events, media titles, hide unfinished certs — restacked on #676.
+- ERA 2.0 #679: chats/PRO cleanup restacking next; merge green stack without per-PR approval.
+- Блокеры: Telegram acceptance (E14).
+- Следующая: CI → merge #679 (includes downstack) → LIVE verify.
 
 ## Продолжение 16.11.2026
 - C06: уточнён текст на включительных границах 24 и 3 часа. Существующий 3h opt-in сохранён. Приёмка доставки в реальном media-чате открыта.

@@ -59,7 +59,8 @@ async def list_events(
             RegistrationStatus.REGISTERED,
             RegistrationStatus.WILL_COME,
         )
-        attendance_horizon = date.today() - timedelta(days=14)
+        # Organizer self-service attendance window is 7 days after the event.
+        attendance_horizon = date.today() - timedelta(days=7)
         registered_completed = list((await session.scalars(
             select(Event)
             .join(EventRegistration, EventRegistration.event_id == Event.id)
