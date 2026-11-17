@@ -157,7 +157,7 @@ export function HomeScreen({
       <section aria-label="Афиша ЭРА" style={{ display: "flex", flexDirection: "column", gap: ".55rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
           <h2 style={{ margin: 0, fontSize: "1.15rem" }}>Афиша ЭРА</h2>
-          {onOpenEvents && <button type="button" className="era-btn-ghost" onClick={onOpenEvents}>Все →</button>}
+          {onOpenEvents && <button type="button" className="era-btn-ghost" onClick={onOpenEvents}>Все мероприятия →</button>}
         </div>
         {featuredEvent && (
           <Card style={{ padding: 0, overflow: "hidden", display: "grid" }}>
@@ -177,7 +177,7 @@ export function HomeScreen({
             >
               <EventPoster event={featuredEvent} compact />
               <div style={{ padding: "0.75rem 0.85rem 0" }}>
-                <strong style={{ display: "block", fontSize: "1.05rem", lineHeight: 1.3 }}>{featuredEvent.title}</strong>
+                <h2 style={{ margin: 0, fontSize: "1.05rem", lineHeight: 1.3, fontWeight: 800 }}>{featuredEvent.title}</h2>
                 <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-secondary)", fontSize: "0.84rem", lineHeight: 1.4 }}>
                   {formatDate(featuredEvent.event_date)} · {featuredEvent.event_time} · {featuredEvent.location}
                 </p>
