@@ -271,6 +271,12 @@ async def read_event_poster(
     event = await session.get(Event, event_id)
     if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
+    # Cancellation alone is not proof of prior publication. Keep posters for
+    # registered history only — same policy as calendar.ics delivery.
+    if event.status == EventStatus.CANCELLED and await _get_registration(
+        session, event_id, _user.id
+    ) is None:
+        raise HTTPException(status_code=404, detail="event_poster_not_found")
     experience = await session.get(EventExperience, event_id)
     if experience is None or not experience.poster_bytes:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
@@ -367,6 +373,10 @@ async def read_event(
     if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
         raise HTTPException(status_code=404, detail="event_not_found")
     registration = await _get_registration(session, event_id, user.id)
+    # A cancelled draft has no reliable publication marker. Do not expose its
+    # title/location to an unrelated participant by numeric event ID.
+    if event.status == EventStatus.CANCELLED and registration is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
     return await _to_event_out(session, event, registration, user)
 
 

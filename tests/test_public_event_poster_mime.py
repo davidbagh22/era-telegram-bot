@@ -71,11 +71,23 @@ class PublicPosterMimeTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(caught.exception.detail, "event_poster_not_found")
 
     async def test_cancelled_posters_are_not_public_without_publication_proof(self) -> None:
-        # Align with #486: CANCELLED alone is not proof of prior publication.
+        # Align with #486/#484: CANCELLED alone is not proof of prior publication.
         with self.assertRaises(HTTPException) as caught:
             await self._response("image/jpeg", status=EventStatus.CANCELLED)
         self.assertEqual(caught.exception.status_code, 404)
         self.assertEqual(caught.exception.detail, "event_poster_not_found")
+
+    async def test_lifecycle_public_posters_remain_available(self) -> None:
+        for status in (
+            EventStatus.PUBLISHED,
+            EventStatus.ACTIVE,
+            EventStatus.COMPLETED,
+            EventStatus.REPORT_SUBMITTED,
+        ):
+            with self.subTest(status=status):
+                response = await self._response("image/jpeg", status=status)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.headers["cache-control"], "no-store")
 
     async def test_missing_poster_remains_not_found(self) -> None:
         with self.assertRaises(HTTPException) as caught:
