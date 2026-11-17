@@ -6,7 +6,7 @@ import { useAsync } from "../../hooks/useAsync";
 
 /** Compact media-request flow for Mode лидера: pick an upcoming event → package + due date. */
 export function LeaderMediaRequestPanel({ onBack }: { onBack: () => void }) {
-  const eventsState = useAsync(() => fetchEvents("upcoming"), []);
+  const eventsState = useAsync(() => fetchEvents("all"), []);
   const [eventId, setEventId] = useState<number | null>(null);
 
   const events = useMemo(
