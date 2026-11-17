@@ -777,7 +777,8 @@ async def approve_proof(
                         target.telegram_id,
                         "Ваш сертификат участника ЭРА готов.",
                     )
-                    await bot.send_document(
+                    await safe_send_document(
+                        bot,
                         target.telegram_id,
                         BufferedInputFile(pdf, filename=f"ERA_certificate_{issue.document_number}.pdf"),
                     )
