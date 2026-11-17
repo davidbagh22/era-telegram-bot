@@ -719,6 +719,9 @@ async def result_payload(session: AsyncSession, row: AssessmentSession) -> dict[
         "scores": scores,
         "interpretation": _score_interpretation(definition.code, scores) if scores else None,
         "notice": (version.interpretation_constraints_json or {}).get("notice"),
+        # Reloads / idempotent complete must keep the unlock ladder visible.
+        "points_awarded": 0,
+        "next_unlock": _next_unlock(definition.code),
     }
 
 
