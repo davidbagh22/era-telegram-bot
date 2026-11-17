@@ -375,6 +375,56 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
                 media_service.MEDIA_TASK_POINTS,
             )
 
+    async def test_photo_package_respects_explicit_due_at(self) -> None:
+        async with self.session_factory() as session:
+            owner = User(
+                telegram_id=21,
+                first_name="Owner",
+                application_status=ApplicationStatus.APPROVED,
+            )
+            session.add(owner)
+            await session.flush()
+            event = Event(
+                title="Photo Event",
+                description="Description",
+                event_date=date.today() + timedelta(days=21),
+                event_time=time(19, 0),
+                location="Дом Москвы",
+                format="offline",
+                created_by=owner.id,
+            )
+            session.add(event)
+            await session.flush()
+            due = datetime.now(timezone.utc) + timedelta(days=2)
+            request = await media_service.request_media_package(
+                session,
+                source_type="event",
+                source_id=event.id,
+                package_type="photo",
+                requester=owner,
+                settings=self.settings,
+                due_at=due,
+            )
+            self.assertEqual(request.package_type, "photo")
+            self.assertEqual(request.metadata_json.get("due_at"), due.isoformat())
+            content = await session.get(MediaContentItem, request.content_id)
+            self.assertIsNotNone(content)
+            assert content is not None
+            stored = content.scheduled_at
+            assert stored is not None
+            if stored.tzinfo is None:
+                stored = stored.replace(tzinfo=timezone.utc)
+            self.assertEqual(stored, due)
+            task_count = int(
+                await session.scalar(
+                    select(func.count(MediaContentTask.id)).where(
+                        MediaContentTask.content_id == request.content_id
+                    )
+                )
+                or 0
+            )
+            self.assertEqual(task_count, 1)
+
     def _approved_auto(self, item: MediaContentItem):
         """Explicit test-only consent, never a production publication approval."""
         key = media_service._media_approval_key(item, media_service._channel_target(self.settings))

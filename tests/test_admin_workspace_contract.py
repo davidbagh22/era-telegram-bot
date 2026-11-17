@@ -26,7 +26,7 @@ class AdminWorkspaceContractTests(unittest.TestCase):
         self.assertIn("<AdminDashboardScreen onAction=", overview)
         self.assertNotIn("<SystemPanel />", overview)
         self.assertIn("Пульт руководителя", overview)
-        self.assertIn("Нужно решить", overview)
+        self.assertIn("Решить сегодня", overview)
         self.assertIn("Быстро сделать", overview)
         self.assertIn("Регистрация и состав", overview)
 

@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { ActionCell } from "../components/ActionCell";
 import { ActivitiesTab } from "./leader/ActivitiesTab";
+import { LeaderMediaRequestPanel } from "./leader/LeaderMediaRequestPanel";
 import { OpenTasksTab } from "./leader/OpenTasksTab";
 import { OverviewTab } from "./leader/OverviewTab";
 import { WeeklyPulseTab } from "./leader/WeeklyPulseTab";
 
-type LeaderSection = "overview" | "weekly-pulse" | "open-tasks" | "activities";
+type LeaderSection = "overview" | "weekly-pulse" | "open-tasks" | "activities" | "media-request";
 
 const SECTIONS: { value: LeaderSection; label: string; description: string }[] = [
   { value: "overview", label: "Моя команда", description: "Состояние зоны и кто в контуре" },
@@ -16,6 +17,10 @@ const SECTIONS: { value: LeaderSection; label: string; description: string }[] =
 
 export function LeaderScreen() {
   const [section, setSection] = useState<LeaderSection | null>(null);
+
+  if (section === "media-request") {
+    return <LeaderMediaRequestPanel onBack={() => setSection(null)} />;
+  }
 
   if (section) {
     const current = SECTIONS.find((item) => item.value === section);
@@ -65,9 +70,7 @@ export function LeaderScreen() {
         <ActionCell
           title="Медиа-запрос"
           description="Пакет (фото / рилс / полный) и срок для команды Медиа"
-          onClick={() => {
-            window.location.hash = "#/media";
-          }}
+          onClick={() => setSection("media-request")}
         />
       </div>
     </div>

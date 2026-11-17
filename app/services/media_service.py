@@ -670,6 +670,7 @@ async def request_media_package(
     package_type: str,
     requester: User,
     settings: Settings,
+    due_at: datetime | None = None,
 ) -> MediaRequest:
     if package_type not in MEDIA_PACKAGES:
         raise ValueError("invalid_package")
@@ -705,6 +706,11 @@ async def request_media_package(
     if not allowed:
         raise PermissionError("forbidden")
 
+    if due_at is not None:
+        if due_at.tzinfo is None:
+            due_at = due_at.replace(tzinfo=timezone.utc)
+        scheduled_at = due_at.astimezone(timezone.utc)
+
     content = await create_content(
         session,
         creator_id=requester.id,
@@ -716,6 +722,9 @@ async def request_media_package(
         source_type=source_type,
         source_id=source_id,
     )
+    meta: dict[str, Any] = {"source_title": source_title}
+    if due_at is not None:
+        meta["due_at"] = due_at.astimezone(timezone.utc).isoformat()
     request = MediaRequest(
         source_type=source_type,
         source_id=source_id,
@@ -723,7 +732,7 @@ async def request_media_package(
         requester_id=requester.id,
         content_id=content.id,
         status="open",
-        metadata_json={"source_title": source_title},
+        metadata_json=meta,
     )
     session.add(request)
     await session.flush()
