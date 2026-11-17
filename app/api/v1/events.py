@@ -31,7 +31,6 @@ from app.services.event_service import (
     registered_count,
 )
 from app.services.notification_service import safe_send_once
-from app.services.event_poster_security import normalized_event_poster_mime
 from app.services.event_calendar_service import build_event_calendar
 from app.services.event_service import PUBLIC_EVENT_STATUSES
 from app.utils.constants import EventStatus, RegistrationStatus

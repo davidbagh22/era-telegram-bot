@@ -46,7 +46,7 @@
 - Базовый main и Render LIVE: ab0c628, Bot checks [43764677578](https://github.com/davidbagh22/era-telegram-bot/actions/runs/43764677578), production smoke [43913145798](https://github.com/davidbagh22/era-telegram-bot/actions/runs/43913145798) успешны.
 
 - #672: исправление текста C06 выпущено, CI PR 6/6, main 5/5, Render LIVE 42a3cd0, /health и /ready 200.
-- E11 / #484: публичная афиша теперь использует явный список статусов, оба маршрута используют один MIME-фильтр. Исторические ссылки CANCELLED сохранены до решения #486. Следом CI и ревью точного HEAD #484.
+- E11 / #484: публичная афиша использует явный allowlist статусов и общий fail-closed MIME-фильтр; DRAFT/PENDING/CANCELLED/unknown остаются 404 (согласовано с #486). Следом CI и ревью точного HEAD #484.
 
 ## Продолжение 15.11.2026
 - #500 merged after exact 6/6 and independent review -> main 30edfeb2b91df72d8789b339f4ea07a66d31ed51. Main CI / automatic LIVE pending.
