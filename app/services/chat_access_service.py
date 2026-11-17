@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import (
     ChatPermissions,
     InlineKeyboardButton,
@@ -304,11 +304,17 @@ async def ensure_general_registration_pin(
                 )
                 message_id = message.message_id
 
-            await bot.pin_chat_message(
-                chat_id=chat_id,
-                message_id=message_id,
-                disable_notification=True,
-            )
+            try:
+                await bot.pin_chat_message(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    disable_notification=True,
+                )
+            except TelegramBadRequest as exc:
+                from app.utils.telegram_pin import telegram_already_pinned
+
+                if not telegram_already_pinned(exc):
+                    raise
 
             if delivery is None:
                 delivery = NotificationDelivery(

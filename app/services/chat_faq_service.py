@@ -165,8 +165,10 @@ async def publish_faq_message(
     pinned = True
     try:
         await bot.pin_chat_message(int(chat_id), message_id, disable_notification=True)
-    except TelegramAPIError:
-        pinned = False
+    except TelegramAPIError as exc:
+        from app.utils.telegram_pin import telegram_already_pinned
+
+        pinned = telegram_already_pinned(exc)
 
     await audit(
         session,

@@ -439,7 +439,7 @@ export function AdminEventCreatePanel() {
           <>
             <Question title="Есть отдельный чат мероприятия?" hint="Это отдельная сущность. Ссылка появится только на странице события и после регистрации." />
             <Toggle checked={Boolean(draft.chat_url)} onChange={(checked) => mutate((current) => ({ ...current, chat_url: checked ? "https://t.me/" : null }))} title="Да, есть чат" />
-            {draft.chat_url !== null && <Field label="URL Telegram-чата"><input type="url" value={draft.chat_url} onChange={(event) => mutate((current) => ({ ...current, chat_url: event.target.value }))} placeholder="https://t.me/+..." /></Field>}
+            {draft.chat_url !== null && <Field label="Ссылка на Telegram-чат"><input type="url" value={draft.chat_url} onChange={(event) => mutate((current) => ({ ...current, chat_url: event.target.value }))} placeholder="https://t.me/+..." /></Field>}
             <Field label="Организатор"><input value={draft.organizer ?? ""} onChange={(event) => mutate((current) => ({ ...current, organizer: event.target.value }))} placeholder="Команда ЭРА / имя ответственного" /></Field>
             <Field label="Контакт"><input value={draft.contact ?? ""} onChange={(event) => mutate((current) => ({ ...current, contact: event.target.value }))} placeholder="К кому обратиться по вопросам" /></Field>
             <Field label="Что получит участник"><textarea rows={4} value={draft.participant_value ?? ""} onChange={(event) => mutate((current) => ({ ...current, participant_value: event.target.value }))} placeholder="Практика, сертификат, новые знакомства, результат…" /></Field>

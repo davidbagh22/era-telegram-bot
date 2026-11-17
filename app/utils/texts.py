@@ -632,7 +632,7 @@ def links_text(settings, bot_username: str, include_leaders: bool = False) -> st
     return f"""Ссылки ЭРА
 
 Канал ЭРА: {settings.era_channel_url}
-ЭРА PRO: {settings.era_pro_channel_url}
+Лидеры ЭРА: {settings.era_pro_channel_url}
 Общий чат ЭРА: {settings.general_chat_url}
 Чат внутренних связей: {settings.internal_department_chat_url}
 Чат внешних связей: {settings.external_department_chat_url}{leaders}

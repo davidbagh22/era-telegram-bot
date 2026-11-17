@@ -199,6 +199,16 @@ TASK_STATUS_LABELS = {
     TaskStatus.CANCELLED: "Отменена",
 }
 
+ACTIVITY_SUBMISSION_TYPE_LABELS = {
+    "photo": "фото",
+    "link": "ссылка",
+    "text": "текст",
+    "file": "файл",
+    "video": "видео",
+    "manual": "вручную",
+    "feedback": "отзыв",
+}
+
 REPORT_TYPE_LABELS = {
     "event": "Отчёт по мероприятию",
     "monthly": "Месячный отчёт лидера",

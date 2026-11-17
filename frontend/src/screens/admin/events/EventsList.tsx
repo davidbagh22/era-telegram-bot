@@ -4,6 +4,7 @@ import { EmptyState } from "../../../components/EmptyState";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { useAsync } from "../../../hooks/useAsync";
 import { fetchOperationalEvents } from "../../../api/client";
+import { projectEventStatusLabel } from "../../projects/statusLabels";
 
 interface EventsListProps {
   onSelect: (eventId: number) => void;
@@ -49,7 +50,7 @@ export function EventsList({ onSelect, onEditPoster }: EventsListProps) {
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
               <strong>{event.title}</strong>
-              <StatusBadge label={event.status} tone="violet" />
+              <StatusBadge label={projectEventStatusLabel(event.status)} tone="violet" />
             </div>
             <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
               {event.event_date} · {event.event_time} · {event.location}

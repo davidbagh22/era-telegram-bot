@@ -244,18 +244,39 @@ async def _top_opportunities(
     applied_subquery = select(PartnerOfferApplication.initiative_id).where(
         PartnerOfferApplication.user_id == user_id
     )
-    result = await session.scalars(
-        select(PartnerInitiative)
-        .where(
-            PartnerInitiative.is_active.is_(True),
-            PartnerInitiative.is_archived.is_(False),
-            PartnerInitiative.id.not_in(applied_subquery),
-            (PartnerInitiative.expires_at.is_(None)) | (PartnerInitiative.expires_at >= now),
-        )
-        .order_by(PartnerInitiative.expires_at.asc().nullslast())
-        .limit(limit)
+    # Fetch a wider candidate set so we can drop unfinished recognition
+    # certificates without leaving the home strip empty.
+    candidates = list(
+        (
+            await session.execute(
+                select(PartnerInitiative, Partner)
+                .join(Partner, Partner.id == PartnerInitiative.partner_id)
+                .where(
+                    PartnerInitiative.is_active.is_(True),
+                    PartnerInitiative.is_archived.is_(False),
+                    Partner.is_active.is_(True),
+                    Partner.is_archived.is_(False),
+                    PartnerInitiative.id.not_in(applied_subquery),
+                    (PartnerInitiative.expires_at.is_(None)) | (PartnerInitiative.expires_at >= now),
+                )
+                .order_by(PartnerInitiative.expires_at.asc().nullslast(), PartnerInitiative.id.asc())
+                .limit(max(limit * 8, 24))
+            )
+        ).all()
     )
-    return list(result.all())
+    user = await session.get(User, user_id)
+    if user is None:
+        return []
+    selected: list[PartnerInitiative] = []
+    for offer, _partner in candidates:
+        if offer.opportunity_type in RECOGNITION_TYPES:
+            eligibility = await evaluate_eligibility(session, offer, user)
+            if not eligibility.eligible:
+                continue
+        selected.append(offer)
+        if len(selected) >= limit:
+            break
+    return selected
 
 
 def _rank_progress(user: User) -> RankProgress:
@@ -333,11 +354,11 @@ async def _recognition_progress(
     OpportunityProgress | None,
     OpportunityProgress | None,
 ]:
-    """Return one truthful available/almost/locked recognition opportunity.
+    """Return at most one *available* recognition opportunity for Home.
 
-    Eligibility itself remains owned by opportunity_service. Home only projects
-    its existing checks into concise progress text, so rank/metrics/prerequisites
-    can never be replaced by a misleading points-only countdown.
+    ERA 2.0: unfinished certificates stay in the catalog for admins, but Home
+    must not surface «almost/locked» / «Скоро доступно» teaser cards. Data is
+    not deleted — we simply omit non-eligible recognition from this projection.
     """
 
     now = datetime.now(timezone.utc)
@@ -363,27 +384,15 @@ async def _recognition_progress(
     ).all()
 
     available: OpportunityProgress | None = None
-    almost: OpportunityProgress | None = None
-    locked: OpportunityProgress | None = None
-    locked_missing_count: int | None = None
-
     for offer, partner in rows:
         eligibility = await evaluate_eligibility(session, offer, user)
         failed = [check for check in eligibility.checks if not check.ok]
-        progress = _opportunity_progress(offer, partner, failed=failed)
-        if not failed:
-            if available is None:
-                available = progress
+        if failed:
             continue
-        if len(failed) == 1:
-            if almost is None:
-                almost = progress
-            continue
-        if locked is None or locked_missing_count is None or len(failed) < locked_missing_count:
-            locked = progress
-            locked_missing_count = len(failed)
+        available = _opportunity_progress(offer, partner, failed=failed)
+        break
 
-    return available, almost, locked
+    return available, None, None
 
 
 def _build_next_step(

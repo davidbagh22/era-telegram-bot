@@ -33,11 +33,27 @@ def _ops_keyboard(active: str = "status") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text=label("status", "Система"), callback_data="admin:ops:status"),
-            InlineKeyboardButton(text=label("backup", "Backup"), callback_data="admin:ops:backup"),
+            InlineKeyboardButton(text=label("backup", "Резерв"), callback_data="admin:ops:backup"),
             InlineKeyboardButton(text=label("org", "Организация"), callback_data="admin:ops:org"),
         ],
         [InlineKeyboardButton(text="↻ Обновить", callback_data=f"admin:ops:{active}:refresh")],
     ])
+
+
+_CHECK_STATUS_LABELS = {
+    "ok": "в норме",
+    "warn": "внимание",
+    "warning": "внимание",
+    "fail": "сбой",
+    "failed": "сбой",
+    "error": "сбой",
+    "unknown": "нет данных",
+    "healthy": "в норме",
+    "degraded": "ограничена",
+    "down": "недоступна",
+    "open": "открыт",
+    "success": "успешно",
+}
 
 
 def _status_text(snapshot: dict) -> str:
@@ -48,18 +64,20 @@ def _status_text(snapshot: dict) -> str:
     failed_checks = [item for item in checks if item.get("status") != "ok"]
     check_lines = []
     for item in checks[:12]:
-        name = str(item.get("name") or item.get("check") or "check")
-        status = str(item.get("status") or "unknown")
-        check_lines.append(f"{'✅' if status == 'ok' else '⚠️'} {name}: {status}")
+        name = str(item.get("name") or item.get("check") or "проверка")
+        raw_status = str(item.get("status") or "unknown")
+        status = _CHECK_STATUS_LABELS.get(raw_status, "статус уточняется")
+        check_lines.append(f"{'✅' if raw_status == 'ok' else '⚠️'} {name}: {status}")
     details = "\n".join(check_lines) if check_lines else "Проверки: нет данных"
+    overall = _CHECK_STATUS_LABELS.get(str(latest.get("status") or ""), latest.get("status") or "нет данных")
     return (
         "Система ЭРА\n\n"
-        f"Состояние: {latest.get('status', 'нет данных')}\n"
-        f"Health: {latest.get('score', '—')}/100\n"
+        f"Состояние: {overall}\n"
+        f"Оценка: {latest.get('score', '—')}/100\n"
         f"Открытых инцидентов: {len(incidents)}\n"
         f"Высокой критичности: {len(critical)}\n"
         f"Проверок с отклонением: {len(failed_checks)}\n"
-        f"Commit: {(latest.get('commit_sha') or 'unknown')[:12]}\n\n"
+        f"Сборка: {(latest.get('commit_sha') or 'нет данных')[:12]}\n\n"
         f"{details}"
     )
 
@@ -67,17 +85,18 @@ def _status_text(snapshot: dict) -> str:
 def _backup_text(snapshot: dict) -> str:
     backups = snapshot.get("backups") or []
     if not backups:
-        return "Backup ЭРА\n\nВ BackupHistory пока нет подтверждённых записей."
+        return "Резервные копии ЭРА\n\nПодтверждённых записей о резервных копиях пока нет."
     latest = backups[0]
+    status = _CHECK_STATUS_LABELS.get(str(latest.get("status") or ""), "статус уточняется")
     return (
-        "Backup ЭРА\n\n"
-        f"Статус: {latest.get('status', 'unknown')}\n"
+        "Резервные копии ЭРА\n\n"
+        f"Статус: {status}\n"
         f"Тип: {latest.get('backup_type') or '—'}\n"
         f"Хранилище: {latest.get('storage_provider') or '—'}\n"
         f"Завершён: {latest.get('completed_at') or latest.get('created_at') or '—'}\n"
         f"Размер: {latest.get('size_bytes') or '—'}\n"
-        f"Commit: {(latest.get('commit_sha') or '—')[:12]}\n"
-        f"Restore verification: {latest.get('restore_verified_at') or 'нет'}\n"
+        f"Сборка: {(latest.get('commit_sha') or '—')[:12]}\n"
+        f"Проверка восстановления: {latest.get('restore_verified_at') or 'нет'}\n"
         f"История: {len(backups)} последних записей"
     )
 

@@ -126,7 +126,7 @@ function DetailView({ section, onBack }: { section: AnalyticsDetailSection; onBa
                       <strong style={{ display: "block", overflowWrap: "anywhere" }}>{item.title}</strong>
                       {item.subtitle && <span style={{ display: "block", marginTop: "0.25rem", color: "var(--era-text-muted)", fontSize: "0.78rem", overflowWrap: "anywhere" }}>{item.subtitle}</span>}
                     </div>
-                    {item.status && <StatusBadge label={STATUS_LABELS[item.status] ?? item.status} tone="neutral" />}
+                    {item.status && <StatusBadge label={STATUS_LABELS[item.status] ?? "Статус обновлён"} tone="neutral" />}
                   </div>
                 </Card>
               ))}

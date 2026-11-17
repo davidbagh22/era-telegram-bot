@@ -70,7 +70,7 @@ export function TeamPostsPanel() {
           <Card key={post.project_id}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
               <strong>{post.project_title}</strong>
-              <StatusBadge label={STATUS_LABELS[post.status] ?? post.status} tone="violet" />
+              <StatusBadge label={STATUS_LABELS[post.status] ?? "Статус обновлён"} tone="violet" />
             </div>
             <p style={{ margin: "0.25rem 0 0.5rem", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
               Автор: {post.author_name}

@@ -35,12 +35,10 @@
 Этот файл + существующая почасовая задача 6adcbd42ede08191a5c0a946e4147b52. После результата сохранять текущий SHA, PR, тесты, LIVE, блокер и следующий шаг. Итог до 10 строк: что исправлено/выпущено/проверено, что осталось и точное продолжение. «ПОЛНОСТЬЮ ГОТОВ» — только после выполнения всех критериев выше.
 
 ## Продолжение 17.11.2026
-- Готово: Возможности → ранги/рейтинг по баллам; компактная Афиша Home (без almost-тизеров) — в main.
-- ERA 2.0 UX (#676): «Лидеры ЭРА», история/регистрации, «Сейчас» без прошедших — rebased on main.
-- ERA 2.0 #677: auto-archive events, media titles, hide unfinished certs — restacked on #676.
-- ERA 2.0 #679: chats/PRO cleanup restacking next; merge green stack without per-PR approval.
-- Блокеры: Telegram acceptance (E14).
-- Следующая: CI → merge #679 (includes downstack) → LIVE verify.
+- Готово в main: ranks/afisha UX, product waves 1–4, certs/media, portfolio PDFs, project covers, portfolio visual v2.
+- ERA 2.0 stack CODE COMPLETE on tip: #676 UX + #677 auto-archive/media/certs + #679 welcome chats + PRO/RU cleanup — restacked onto latest main.
+- Блокеры: Telegram acceptance (E14); need CI after force-push.
+- Следующая: CI green → merge #679 (includes downstack) → LIVE verify.
 
 ## Продолжение 16.11.2026
 - C06: уточнён текст на включительных границах 24 и 3 часа. Существующий 3h opt-in сохранён. Приёмка доставки в реальном media-чате открыта.

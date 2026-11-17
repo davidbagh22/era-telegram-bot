@@ -40,7 +40,7 @@ async def show_home(message, session, settings, user):
         rows.append([('📢 Новая рассылка','lc:new'),('История рассылок','lc:history')])
     if await access.executive(session,user,settings):
         rows.append([('👥 Команда и лидеры','leaders_team:list:0')])
-    rows.append([('← Главное меню','home')])
+    rows.append([('← Главное меню','menu:main')])
     await message.answer('🧭 Лидеры ЭРА\n\nЗадачи, результаты и сообщения команды. Пульс недели доступен по /pulse.',reply_markup=kb(rows))
 
 
@@ -260,4 +260,4 @@ async def leader_operations(call, user, settings, session, bot):
     if not data.month_goals:
         lines.append('Цели пока не заданы.')
     lines.append('Результаты — подтверждённые проверки задач, без цифровых баллов и субъективного рейтинга людей.')
-    await edit_text_or_answer(call.message, '\n'.join(lines), reply_markup=kb([[('Назад', 'wc:home'), ('Главная', 'home')]]))
+    await edit_text_or_answer(call.message, '\n'.join(lines), reply_markup=kb([[('Назад', 'wc:home'), ('Главная', 'menu:main')]]))

@@ -116,7 +116,7 @@ router = Router(name="admin")
 
 SETTING_LINK_KEYS = {
     "channel": ("Официальный канал", "era_channel_url"),
-    "pro": ("Канал ERA PRO", "era_pro_channel_url"),
+    "pro": ("Канал Лидеры ЭРА", "era_pro_channel_url"),
     "general": ("Общий чат", "general_chat_url"),
     "internal": ("Чат внутренних связей", "internal_department_chat_url"),
     "external": ("Чат внешних связей", "external_department_chat_url"),

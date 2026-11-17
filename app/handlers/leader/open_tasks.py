@@ -326,7 +326,7 @@ async def open_task_applications(call: CallbackQuery, user: User | None, session
                 "accepted": "принят",
                 "joined": "в команде",
                 "rejected": "отклонён",
-            }.get(participant.status, participant.status)
+            }.get(participant.status, "статус уточняется")
             lines.append(f"• {person.first_name} {person.last_name or ''} — {username} — {status}")
             if participant.status == "pending":
                 await call.message.answer(

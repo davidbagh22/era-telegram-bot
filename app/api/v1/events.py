@@ -101,12 +101,16 @@ def _display_status(
         return "Завершено"
     if event.status == EventStatus.CANCELLED:
         return "Отменено"
+    if event.status == EventStatus.ACTIVE:
+        return "Идёт сейчас"
     if event.status == EventStatus.REGISTRATION_CLOSED:
         return "Регистрация закрыта"
     if remaining is not None and remaining <= 3:
         return "Мест почти нет" if remaining > 0 else "Мест нет"
     if event.status in {EventStatus.APPROVED, EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN}:
         return "Регистрация открыта"
+    if event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
+        return "Готовится"
     return "Скоро"
 
 
