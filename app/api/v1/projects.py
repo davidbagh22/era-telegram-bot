@@ -208,8 +208,17 @@ _COVER_TYPES = {"image/jpeg", "image/png", "image/webp"}
 _COVER_MAX_BYTES = 5 * 1024 * 1024
 
 
+def _cover_url(project: Project) -> str | None:
+    # Presence via content_type only — cover_bytes is deferred and must not
+    # be loaded for list/detail payloads. Cache-bust with updated_at so a
+    # replaced cover remounts and skips the previous blob.
+    if not project.cover_content_type:
+        return None
+    stamp = int(project.updated_at.timestamp()) if project.updated_at else 0
+    return f"/api/v1/projects/{project.id}/cover?v={stamp}"
+
+
 def _to_summary(project: Project) -> ProjectSummaryOut:
-    has_cover = bool(project.cover_bytes)
     return ProjectSummaryOut(
         id=project.id,
         title=project.title,
@@ -219,7 +228,7 @@ def _to_summary(project: Project) -> ProjectSummaryOut:
         updated_at=project.updated_at.isoformat(),
         submitted_at=project.submitted_at.isoformat() if project.submitted_at else None,
         admin_comment=project.admin_comment,
-        cover_url=(f"/api/v1/projects/{project.id}/cover" if has_cover else None),
+        cover_url=_cover_url(project),
     )
 
 
@@ -427,7 +436,7 @@ async def read_project_cover(
     return Response(
         content=project.cover_bytes,
         media_type=mime,
-        headers={"Cache-Control": "private, max-age=120", "X-Content-Type-Options": "nosniff"},
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )
 
 

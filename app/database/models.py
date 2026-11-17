@@ -430,7 +430,8 @@ class Project(TimestampMixin, Base):
     )
     admin_comment: Mapped[str | None] = mapped_column(Text)
     cover_content_type: Mapped[str | None] = mapped_column(String(100))
-    cover_bytes: Mapped[bytes | None] = mapped_column(LargeBinary)
+    # Deferred so list/detail queries do not pull multi-MB blobs into memory.
+    cover_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
 
     roles: Mapped[list[ProjectRole]] = relationship(
         back_populates="project", cascade="all, delete-orphan", lazy="selectin"

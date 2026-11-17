@@ -252,7 +252,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
 
       {(project.cover_url || project.can_edit_cover) && (
         <Card>
-          {project.cover_url && <ProjectCover coverUrl={project.cover_url} />}
+          {project.cover_url && <ProjectCover key={project.cover_url} coverUrl={project.cover_url} />}
           {project.can_edit_cover && (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem", marginTop: project.cover_url ? "0.75rem" : 0 }}>
               <label style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 40, border: "1px solid var(--era-border)", borderRadius: "var(--era-radius-control)", cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}>

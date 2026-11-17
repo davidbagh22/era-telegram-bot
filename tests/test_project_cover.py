@@ -39,11 +39,15 @@ async def _run() -> None:
             await session.refresh(project)
             await session.refresh(author)
 
+            session.expire(project, ["cover_bytes"])
             summary = _to_summary(project)
-            assert summary.cover_url == f"/api/v1/projects/{project.id}/cover"
+            assert summary.cover_url is not None
+            assert summary.cover_url.startswith(f"/api/v1/projects/{project.id}/cover?v=")
+            assert "cover_bytes" not in project.__dict__
             detail = _to_detail(project, viewer=author)
             assert detail.can_edit_cover is True
             assert detail.cover_url == summary.cover_url
+            assert "cover_bytes" not in project.__dict__
     finally:
         await engine.dispose()
 

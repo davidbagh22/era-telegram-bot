@@ -132,7 +132,7 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
             <button type="button" onClick={() => onSelect(project.id)} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}>
               {project.cover_url && (
                 <div style={{ marginBottom: "0.65rem" }}>
-                  <ProjectCover coverUrl={project.cover_url} compact />
+                  <ProjectCover key={project.cover_url} coverUrl={project.cover_url} compact />
                 </div>
               )}
               <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
