@@ -232,11 +232,25 @@ def _era_entry_bits(item: PortfolioEntry) -> tuple[str, str, str]:
     return item.title, meta, item.description or item.category or ""
 
 
+def _fit_canvas_text(canvas, text: str, *, font: str, max_size: float, min_size: float, max_width: float) -> tuple[str, float]:
+    """Shrink font (then ellipsize) so the string fits the hero band width."""
+    size = max_size
+    while size >= min_size:
+        if canvas.stringWidth(text, font, size) <= max_width:
+            return text, size
+        size -= 0.5
+    clipped = text
+    while clipped and canvas.stringWidth(clipped + "…", font, min_size) > max_width:
+        clipped = clipped[:-1]
+    return (clipped + "…") if clipped else text[:1], min_size
+
+
 def _draw_hero(canvas, doc, *, title: str, subtitle: str, brand_line: str) -> None:
     from reportlab.lib.units import mm
 
     width, height = doc.pagesize
     band = 46 * mm
+    side = 14 * mm
     canvas.saveState()
     canvas.setFillColorRGB(0x0F / 255, 0x3D / 255, 0x38 / 255)
     canvas.rect(0, height - band, width, band, fill=1, stroke=0)
@@ -256,13 +270,24 @@ def _draw_hero(canvas, doc, *, title: str, subtitle: str, brand_line: str) -> No
     canvas.setFillColorRGB(0xA8 / 255, 0xD5 / 255, 0xCE / 255)
     canvas.setFont("ERASans-Bold", 8)
     text_x = 44 * mm
-    canvas.drawString(text_x, height - 14 * mm, brand_line)
+    max_text_w = width - text_x - side
+    brand, brand_size = _fit_canvas_text(
+        canvas, brand_line, font="ERASans-Bold", max_size=8, min_size=6, max_width=max_text_w
+    )
+    canvas.setFont("ERASans-Bold", brand_size)
+    canvas.drawString(text_x, height - 14 * mm, brand)
     canvas.setFillColorRGB(1, 1, 1)
-    canvas.setFont("ERASans-Bold", 22)
-    canvas.drawString(text_x, height - 24 * mm, title[:48])
+    fitted_title, title_size = _fit_canvas_text(
+        canvas, title, font="ERASans-Bold", max_size=22, min_size=12, max_width=max_text_w
+    )
+    canvas.setFont("ERASans-Bold", title_size)
+    canvas.drawString(text_x, height - 24 * mm, fitted_title)
     canvas.setFillColorRGB(0xD5 / 255, 0xEB / 255, 0xE6 / 255)
-    canvas.setFont("ERASans", 9.5)
-    canvas.drawString(text_x, height - 31 * mm, subtitle[:90])
+    fitted_sub, sub_size = _fit_canvas_text(
+        canvas, subtitle, font="ERASans", max_size=9.5, min_size=7, max_width=max_text_w
+    )
+    canvas.setFont("ERASans", sub_size)
+    canvas.drawString(text_x, height - 31 * mm, fitted_sub)
     canvas.restoreState()
 
 
@@ -310,32 +335,48 @@ def _metric_card(styles, label: str, value: int):
     return table
 
 
-def _entry_block(styles, title: str, meta: str, description: str):
+def _entry_flowables(styles, title: str, meta: str, description: str, *, content_width_mm: float = 110) -> list:
+    """Accent card flowables. Long descriptions stay outside tables so ReportLab can split them."""
     from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
-    from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+    from reportlab.platypus import KeepTogether, Paragraph, Spacer, Table, TableStyle
 
-    body = [Paragraph(escape(title), styles["entry_title"])]
+    accent_w = 2.2 * mm
+    body_w = content_width_mm * mm
+    header_bits = [Paragraph(escape(title), styles["entry_title"])]
     if meta:
-        body.append(Paragraph(escape(meta), styles["entry_meta"]))
-    if description and len(description.strip()) >= 12:
-        body.append(Spacer(1, 1.2 * mm))
-        body.append(Paragraph(escape(description.strip()), styles["body"]))
-    inner = Table([[body]], colWidths=[108 * mm])
-    table = Table([["", inner]], colWidths=[2.2 * mm, 110 * mm])
-    table.setStyle(TableStyle([
+        header_bits.append(Paragraph(escape(meta), styles["entry_meta"]))
+    header = Table([["", header_bits]], colWidths=[accent_w, body_w])
+    header.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, 0), colors.HexColor(ACCENT)),
+        ("BACKGROUND", (1, 0), (1, 0), colors.HexColor("#F7FBFA")),
+        ("BOX", (1, 0), (1, 0), 0.3, colors.HexColor(RULE)),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (0, 0), 0),
         ("RIGHTPADDING", (0, 0), (0, 0), 0),
         ("LEFTPADDING", (1, 0), (1, 0), 6),
         ("RIGHTPADDING", (1, 0), (1, 0), 2),
-        ("TOPPADDING", (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("BACKGROUND", (1, 0), (1, 0), colors.HexColor("#F7FBFA")),
-        ("BOX", (1, 0), (1, 0), 0.3, colors.HexColor(RULE)),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
-    return table
+    text = (description or "").strip()
+    if len(text) < 12:
+        return [KeepTogether([header, Spacer(1, 1.5 * mm)])]
+    if len(text) > 900:
+        text = text[:897].rstrip() + "…"
+    body_style = ParagraphStyle(
+        "EraEntryBody",
+        parent=styles["body"],
+        leftIndent=accent_w + 6,
+        spaceBefore=1,
+        spaceAfter=4,
+    )
+    body = Paragraph(escape(text), body_style)
+    # Short cards stay together; long bodies split as a free Paragraph after the header.
+    if len(text) < 280:
+        return [KeepTogether([header, body, Spacer(1, 1.5 * mm)])]
+    return [header, body, Spacer(1, 1.5 * mm)]
 
 
 def _draw_resume_footer(canvas, doc, *, resume_note: bool = True) -> None:
@@ -425,6 +466,7 @@ def build_career_resume(
     from reportlab.lib.units import mm
     from reportlab.platypus import (
         Frame,
+        NextPageTemplate,
         PageTemplate,
         Paragraph,
         BaseDocTemplate,
@@ -505,8 +547,19 @@ def build_career_resume(
         id="right",
         showBoundary=0,
     )
-    doc.addPageTemplates([PageTemplate(id="main", frames=[left_frame, right_frame], onPage=_on_page)])
-
+    # Overflow pages use a full-width frame so wide activity cards are never forced into the 58 mm rail.
+    cont_frame = Frame(
+        side,
+        bottom,
+        page_width - side * 2,
+        page_height - top_margin - bottom,
+        id="continuation",
+        showBoundary=0,
+    )
+    doc.addPageTemplates([
+        PageTemplate(id="main", frames=[left_frame, right_frame], onPage=_on_page),
+        PageTemplate(id="continuation", frames=[cont_frame], onPage=_on_page),
+    ])
     left_story: list = [
         Paragraph("ПРОФИЛЬ", styles["rail_title"]),
         Paragraph(escape(headline or "Участник ЭРА"), styles["rail_body"]),
@@ -529,6 +582,7 @@ def build_career_resume(
     if about:
         right_story.extend([Paragraph("О себе", styles["section"]), Paragraph(escape(about), styles["body"]), Spacer(1, 2 * mm)])
 
+    right_w_mm = right_w / mm - 2.2
     seen: set[str] = set()
     for item_type in PURPOSE_ORDER.get(purpose, PURPOSE_ORDER["universal"]):
         own = grouped.get(item_type, [])
@@ -539,10 +593,10 @@ def build_career_resume(
         right_story.append(Paragraph(TYPE_LABELS.get(item_type, item_type.title()), styles["section"]))
         for item in system_items:
             title, meta, description = _era_entry_bits(item)
-            right_story.append(_entry_block(styles, title, meta, description))
+            right_story.extend(_entry_flowables(styles, title, meta, description, content_width_mm=right_w_mm))
         for item in own:
             title, meta, description = _user_item_bits(item)
-            right_story.append(_entry_block(styles, title, meta, description))
+            right_story.extend(_entry_flowables(styles, title, meta, description, content_width_mm=right_w_mm))
         right_story.append(Spacer(1, 1.5 * mm))
 
     for item_type, own in grouped.items():
@@ -551,7 +605,7 @@ def build_career_resume(
         right_story.append(Paragraph(TYPE_LABELS.get(item_type, item_type.title()), styles["section"]))
         for item in own:
             title, meta, description = _user_item_bits(item)
-            right_story.append(_entry_block(styles, title, meta, description))
+            right_story.extend(_entry_flowables(styles, title, meta, description, content_width_mm=right_w_mm))
 
     if is_sparse:
         from reportlab.lib import colors
@@ -567,7 +621,7 @@ def build_career_resume(
             "• языки и уровень",
             styles["body"],
         )
-        empty = Table([[empty_copy]], colWidths=[112 * mm])
+        empty = Table([[empty_copy]], colWidths=[right_w])
         empty.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(SOFT)),
             ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor(ACCENT)),
@@ -584,9 +638,12 @@ def build_career_resume(
             ("Проекты", "Одобренные вклады в проекты ЭРА"),
             ("Лидерские роли", "Назначения и ответственность в объединении"),
         ):
-            right_story.append(_entry_block(styles, ghost_title, "Ожидается", ghost_hint))
+            right_story.extend(
+                _entry_flowables(styles, ghost_title, "Ожидается", ghost_hint, content_width_mm=right_w_mm)
+            )
 
-    story = left_story + [FrameBreak()] + right_story
+    # After the first-page right column fills, continue on a full-width template (not the sidebar frame).
+    story = left_story + [FrameBreak(), NextPageTemplate("continuation")] + right_story
     doc.build(story)
     return stream.getvalue()
 
