@@ -441,6 +441,23 @@ def score_scale(values: list[tuple[int, bool]], rule: dict[str, Any]) -> tuple[f
     return round(raw, 2), round(max(0.0, min(100.0, normalized)), 1)
 
 
+def _next_unlock(code: str) -> dict[str, str] | None:
+    """Soft unlock ladder: short WHO-5 opens the richer instruments."""
+    ladder = {
+        "WHO5_RU": {
+            "code": "ERA_RIASEC_RU",
+            "title": "Что мне действительно интересно?",
+            "hint": "Открыто после короткого самочувствия — 5 минут про интересы.",
+        },
+        "ERA_RIASEC_RU": {
+            "code": "ERA_NEEDS_RU",
+            "title": "Чего мне сейчас не хватает?",
+            "hint": "Следующий шаг — понять потребности и подобрать событие.",
+        },
+    }
+    return ladder.get(code)
+
+
 def _score_interpretation(code: str, scores: dict[str, dict[str, Any]]) -> dict[str, Any]:
     ordered = sorted(scores.items(), key=lambda item: item[1]["normalized"], reverse=True)
     if code == "WHO5_RU":
@@ -657,6 +674,14 @@ async def complete_assessment(
     row.validity_status = "complete"
     row.completed_at = utcnow()
     await _update_profile(session, user_id, definition.code, score_payload)
+    from app.services.digital_engagement_service import award_assessment_complete
+
+    points_tx = await award_assessment_complete(
+        session,
+        user_id=user_id,
+        assessment_code=definition.code,
+        session_id=row.id,
+    )
     await session.flush()
     return {
         "session_id": row.id,
@@ -667,6 +692,8 @@ async def complete_assessment(
         "scores": score_payload,
         "interpretation": _score_interpretation(definition.code, score_payload),
         "notice": (version.interpretation_constraints_json or {}).get("notice"),
+        "points_awarded": int(points_tx.points) if points_tx is not None else 0,
+        "next_unlock": _next_unlock(definition.code),
     }
 
 
