@@ -1,5 +1,6 @@
 # ERA bot and Mini App handoff
 
+- 17 November / wave-1 product PR: teal+white air theme (anti-purple), haptic on primary CTAs, compact Home + ranks hub, Home «Узнай профиль · 3 мин», simplified bot reply keyboard (Лидеры/Медиа only with rights). Owner approved proposals 1–22,24–30; #23 bot admin freeze skipped. Next waves: appoint-leader packages, assessment result card + points, admin «решить сегодня», media request packages. Do not claim LIVE until exact-head merge + Render SHA + device check.
 - 16 November / #673: Home shows upcoming published events. The existing bot-owned registration pin exposes direct board, personal events and profile links. The registration confirmation links to personal events. Verify exact-head CI, automatic LIVE and the click-through on iPhone and Android.
 
 - 14 November: existing 12 December anniversary (screenshot title «12 декабря для ЭРА — особенная дата.») is featured above the Mini App home feed and first in the native bot reply menu. Mini App also registers from the participation card. Complete profile uses one tap, missing fields are collected in context.

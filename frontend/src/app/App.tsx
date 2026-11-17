@@ -236,6 +236,7 @@ function renderTab(
         onOpenProfile={() => navigateToRoute("profile")}
         onOpenProgress={() => navigateToRoute("progress")}
         onOpenDevelopment={() => navigateToRoute("development")}
+        onOpenAssessments={() => navigateToRoute("development/assessments")}
         onOpenEvents={() => navigateToRoute("events")}
         onOpenEvent={(id) => navigateToRoute(`events/${id}`)}
         onOpenProject={(id) => navigateToRoute(`projects/${id}`)}

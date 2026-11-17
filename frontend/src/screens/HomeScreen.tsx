@@ -19,6 +19,7 @@ interface HomeScreenProps {
   onOpenProfile?: () => void;
   onOpenProgress?: () => void;
   onOpenDevelopment?: () => void;
+  onOpenAssessments?: () => void;
   onOpenEvents?: () => void;
   onOpenEvent?: (id: number) => void;
   onOpenProject?: (id: number) => void;
@@ -59,6 +60,7 @@ export function HomeScreen({
   user,
   onOpenProfile,
   onOpenDevelopment,
+  onOpenAssessments,
   onOpenEvents,
   onOpenEvent,
   onOpenProject,
@@ -138,14 +140,14 @@ export function HomeScreen({
     && data.next_step.entity_id === data.active_task?.id;
 
   return (
-    <div className="era-page era-stagger" style={{ padding: "1rem 1rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+    <div className="era-page era-stagger" style={{ padding: "1.15rem 1.15rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.75rem" }}>
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
         <div>
           <MonoLabel tone="violet">ЭРА</MonoLabel>
-          <h1 style={{ margin: "0.35rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.8rem", lineHeight: 1.05 }}>
+          <h1 style={{ margin: "0.4rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.85rem", lineHeight: 1.05 }}>
             {greeting()}, {user.first_name}.
           </h1>
-          <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem" }}>
+          <p style={{ margin: "0.4rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem" }}>
             Вот что сейчас важнее всего.
           </p>
         </div>
@@ -154,13 +156,13 @@ export function HomeScreen({
         </button>
       </header>
 
-      <section aria-label="Афиша ЭРА" style={{ display: "flex", flexDirection: "column", gap: ".55rem" }}>
+      <section aria-label="Афиша ЭРА" style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
           <h2 style={{ margin: 0, fontSize: "1.15rem" }}>Афиша ЭРА</h2>
           {onOpenEvents && <button type="button" className="era-btn-ghost" onClick={onOpenEvents}>Все мероприятия →</button>}
         </div>
         {featuredEvent && (
-          <Card style={{ padding: 0, overflow: "hidden", display: "grid" }}>
+          <Card gradient style={{ padding: 0, overflow: "hidden", display: "grid" }}>
             <button
               type="button"
               onClick={onOpenEvent ? () => onOpenEvent(featuredEvent.id) : undefined}
@@ -207,7 +209,7 @@ export function HomeScreen({
       <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
         <MonoLabel>Следующий шаг</MonoLabel>
         {data.next_step ? (
-          <Card gradient onClick={nextStepClick} style={{ padding: "1.1rem" }}>
+          <Card gradient onClick={nextStepClick} style={{ padding: "1.15rem" }}>
             <strong style={{ display: "block", fontSize: "1.15rem" }}>{data.next_step.title}</strong>
             <p style={{ margin: ".4rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem", lineHeight: 1.5 }}>{data.next_step.description}</p>
             {nextStepClick && <span style={{ display: "block", marginTop: ".75rem", color: "var(--era-violet)", fontWeight: 800, fontSize: ".85rem" }}>{data.next_step.action_label} →</span>}
@@ -219,6 +221,21 @@ export function HomeScreen({
           </Card>
         )}
       </section>
+
+      {user.features.vector && (onOpenAssessments || onOpenDevelopment) && (
+        <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+          <MonoLabel>Профиль</MonoLabel>
+          <Card gradient onClick={onOpenAssessments ?? onOpenDevelopment} style={{ padding: "1.15rem" }}>
+            <strong style={{ display: "block", fontSize: "1.1rem" }}>Узнай свой профиль · 3 мин</strong>
+            <p style={{ margin: ".4rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem", lineHeight: 1.5 }}>
+              Короткий тест покажет сильные стороны и куда ты подходишь в ЭРА.
+            </p>
+            <span style={{ display: "block", marginTop: ".75rem", color: "var(--era-violet)", fontWeight: 800, fontSize: ".85rem" }}>
+              Пройти →
+            </span>
+          </Card>
+        </section>
+      )}
 
       {(data.active_task || data.tasks_available_count > 0 || data.tasks_in_progress_count > 0) && (
         <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>

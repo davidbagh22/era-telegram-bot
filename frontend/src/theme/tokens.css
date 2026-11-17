@@ -1,98 +1,95 @@
-/* ERA LIGHT / SIGNAL — premium light base + living gradient light + editorial type.
+/* ERA LIGHT / AIR — white surfaces, soft air, teal signal.
  *
- * Formula: 60% light base / 25% soft color fields / 15% saturated signal accents.
- * Never fully white/sterile, never fully dark. Dark surfaces are a rare accent
- * (see --era-surface-dark, .era-card-dark), not the default.
+ * Formula: 70% white/air / 20% soft cool fields / 10% teal–cyan signal.
+ * Accents from the neon palette are used sparingly on CTAs and hero only.
+ * No purple SaaS default, no heavy glow, no rainbow gradients everywhere.
  *
- * Legacy alias note: a handful of pre-redesign token names (--era-red,
- * --era-red-bright, --era-gold, --era-gold-ink, --era-tint-red, --era-tint-gold …)
- * are kept and repointed at the new palette below so every screen re-themes
- * without a file-by-file rewrite. New code should prefer the canonical names
- * (--era-violet, --era-blue, --era-magenta, --era-signal-red, --era-orange).
+ * Legacy aliases (--era-red, --era-gold, …) stay so screens re-theme without
+ * a file-by-file rewrite. Prefer --era-violet (primary teal), --era-blue,
+ * --era-magenta (rare), --era-signal-red, --era-orange.
  */
 :root,
 :root[data-theme="light"],
 :root[data-theme="dark"] {
   color-scheme: light;
 
-  /* --- Canonical signal palette (ToR §2/§29) --- */
-  --era-blue: #3c43ff;
-  --era-violet: #632cff;
-  --era-magenta: #d71978;
-  --era-signal-red: #f2294a;
-  --era-orange: #ff6400;
+  /* --- Canonical signal palette --- */
+  --era-blue: #0284c7;
+  --era-violet: #0f766e;
+  --era-magenta: #c0267a;
+  --era-signal-red: #e11d48;
+  --era-orange: #ea580c;
 
-  --era-bg: #f7f7fa;
-  --era-bg-soft: #f2effa;
+  --era-bg: #f4f6f8;
+  --era-bg-soft: #eef3f6;
   --era-surface: #ffffff;
-  --era-surface-dark: #111118;
+  --era-surface-dark: #0f172a;
 
-  --era-text: #111118;
-  --era-text-secondary: #6f7180;
-  --era-text-muted-token: #a1a3af;
+  --era-text: #0f172a;
+  --era-text-secondary: #64748b;
+  --era-text-muted-token: #94a3b8;
 
-  /* --- Legacy aliases (repointed, not renamed — see file header) --- */
+  /* --- Legacy aliases --- */
   --era-red: var(--era-violet);
-  --era-red-bright: #7b3bff;
-  --era-deep-red: #4a1fb8;
+  --era-red-bright: #14b8a6;
+  --era-deep-red: #115e59;
   --era-crimson: var(--era-signal-red);
   --era-gold: var(--era-orange);
-  --era-gold-ink: #b34700;
+  --era-gold-ink: #c2410c;
   --era-black: var(--era-surface-dark);
-  --era-plum: #1b1730;
+  --era-plum: #0f172a;
   --era-error: var(--era-signal-red);
 
-  --era-surface-2: #f3f3f8;
-  --era-surface-3: #ececf5;
+  --era-surface-2: #f8fafc;
+  --era-surface-3: #f1f5f9;
   --era-bg-subtle: var(--era-bg-soft);
-  --era-glass: rgba(255, 255, 255, 0.72);
+  --era-glass: rgba(255, 255, 255, 0.82);
   --era-hero-bg:
-    radial-gradient(85% 105% at 96% 0%, rgba(99, 44, 255, 0.16), transparent 54%),
-    radial-gradient(60% 80% at 6% 100%, rgba(255, 100, 0, 0.09), transparent 70%),
-    linear-gradient(145deg, #ffffff 0%, #f8f7fc 58%, #f3f0fb 100%);
+    radial-gradient(90% 80% at 100% 0%, rgba(14, 116, 110, 0.08), transparent 55%),
+    radial-gradient(70% 60% at 0% 100%, rgba(2, 132, 199, 0.06), transparent 60%),
+    linear-gradient(160deg, #ffffff 0%, #f8fafc 100%);
 
   --era-text-muted: var(--era-text-secondary);
   --era-text-faint: var(--era-text-muted-token);
-  --era-border: rgba(17, 17, 24, 0.08);
-  --era-border-strong: rgba(17, 17, 24, 0.14);
-  --era-success: #1f9d5c;
-  --era-success-bg: rgba(31, 157, 92, 0.12);
-  --era-warning: #c77700;
+  --era-border: rgba(15, 23, 42, 0.08);
+  --era-border-strong: rgba(15, 23, 42, 0.14);
+  --era-success: #15803d;
+  --era-success-bg: rgba(21, 128, 61, 0.1);
+  --era-warning: #b45309;
 
-  --era-shadow-soft: 0 10px 28px rgba(17, 17, 24, 0.07);
-  --era-shadow-lift: 0 18px 44px rgba(17, 17, 24, 0.10);
-  --era-shadow-floating: 0 18px 44px rgba(17, 17, 24, 0.10);
-  --era-shadow-dock: 0 20px 48px rgba(17, 17, 24, 0.14);
-  --era-shadow-overlay: 0 -18px 44px rgba(17, 17, 24, 0.10);
-  --era-shadow-red: 0 14px 32px rgba(99, 44, 255, 0.22);
+  --era-shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.04);
+  --era-shadow-lift: 0 2px 4px rgba(15, 23, 42, 0.05), 0 12px 28px rgba(15, 23, 42, 0.06);
+  --era-shadow-floating: 0 2px 4px rgba(15, 23, 42, 0.05), 0 12px 28px rgba(15, 23, 42, 0.06);
+  --era-shadow-dock: 0 8px 28px rgba(15, 23, 42, 0.1);
+  --era-shadow-overlay: 0 -12px 32px rgba(15, 23, 42, 0.08);
+  --era-shadow-red: 0 8px 20px rgba(15, 118, 110, 0.18);
 
-  --era-glow-violet: 0 0 0 1px rgba(99, 44, 255, 0.14), 0 12px 34px rgba(99, 44, 255, 0.28);
-  --era-glow-hot: 0 12px 34px rgba(215, 25, 120, 0.24), 0 0 46px rgba(255, 100, 0, 0.16);
+  --era-glow-violet: 0 0 0 1px rgba(15, 118, 110, 0.12), 0 8px 22px rgba(15, 118, 110, 0.16);
+  --era-glow-hot: 0 8px 22px rgba(192, 38, 122, 0.16);
 
-  --era-tint-violet: rgba(99, 44, 255, 0.09);
+  --era-tint-violet: rgba(15, 118, 110, 0.09);
   --era-tint-red: var(--era-tint-violet);
-  --era-tint-gold: rgba(255, 100, 0, 0.10);
-  --era-ring-track: rgba(17, 17, 24, 0.07);
+  --era-tint-gold: rgba(234, 88, 12, 0.1);
+  --era-ring-track: rgba(15, 23, 42, 0.07);
 
-  --era-gradient: linear-gradient(135deg, var(--era-violet) 0%, var(--era-magenta) 100%);
-  --era-gradient-cool: linear-gradient(135deg, var(--era-blue) 0%, var(--era-violet) 100%);
-  --era-gradient-hot: linear-gradient(135deg, var(--era-violet) 0%, var(--era-magenta) 55%, var(--era-orange) 100%);
-  --era-gradient-signal: linear-gradient(135deg, var(--era-violet) 0%, var(--era-magenta) 52%, var(--era-orange) 100%);
+  --era-gradient: linear-gradient(135deg, #0f766e 0%, #0284c7 100%);
+  --era-gradient-cool: linear-gradient(135deg, #0284c7 0%, #0f766e 100%);
+  --era-gradient-hot: linear-gradient(135deg, #0f766e 0%, #c0267a 100%);
+  --era-gradient-signal: linear-gradient(135deg, #14b8a6 0%, #0284c7 100%);
 
-  --era-grain-opacity: 0.025;
+  --era-grain-opacity: 0.018;
 
   --era-radius-sm: 0.75rem;
-  --era-radius-md: 1.125rem;
-  --era-radius-lg: 1.625rem;
-  --era-radius-xl: 1.875rem;
+  --era-radius-md: 1rem;
+  --era-radius-lg: 1.25rem;
+  --era-radius-xl: 1.5rem;
   --era-radius-card: var(--era-radius-lg);
   --era-radius-control: 0.875rem;
   --era-radius-pill: 999px;
-  --era-radius-sheet: 1.75rem;
+  --era-radius-sheet: 1.5rem;
 
   --era-bottom-nav-clearance: calc(6.15rem + env(safe-area-inset-bottom, 0px));
 
-  /* Motion standard from the final ERA design brief. */
   --era-motion-tap: 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
   --era-motion-fast: 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
   --era-motion-screen: 230ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -137,10 +134,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(62% 40% at 100% -6%, rgba(99, 44, 255, 0.12), transparent 62%),
-    radial-gradient(50% 34% at 6% 8%, rgba(60, 67, 255, 0.07), transparent 68%),
-    radial-gradient(56% 38% at -6% 78%, rgba(255, 100, 0, 0.055), transparent 68%),
-    radial-gradient(46% 30% at 96% 88%, rgba(215, 25, 120, 0.05), transparent 66%),
+    radial-gradient(55% 36% at 100% -4%, rgba(14, 116, 110, 0.07), transparent 62%),
+    radial-gradient(48% 30% at 0% 0%, rgba(2, 132, 199, 0.05), transparent 68%),
     var(--era-bg);
   color: var(--era-text);
   font-family: var(--era-font-body);
@@ -188,9 +183,9 @@ button {
     opacity var(--era-motion-fast);
 }
 
-button:active:not(:disabled) { transform: scale(0.98); }
+button:active:not(:disabled) { transform: scale(0.97); }
 button:disabled { opacity: 0.48; cursor: not-allowed; }
-button:focus-visible { outline: 2px solid rgba(99, 44, 255, 0.6); outline-offset: 2px; }
+button:focus-visible { outline: 2px solid rgba(15, 118, 110, 0.55); outline-offset: 2px; }
 
 @media (hover: hover) and (pointer: fine) {
   button:hover:not(:disabled) {
@@ -198,7 +193,7 @@ button:focus-visible { outline: 2px solid rgba(99, 44, 255, 0.6); outline-offset
     background: var(--era-surface-2);
   }
   .era-btn-primary:hover:not(:disabled) {
-    box-shadow: 0 16px 36px rgba(99, 44, 255, 0.26);
+    box-shadow: 0 10px 24px rgba(15, 118, 110, 0.22);
   }
   .era-card[role="button"]:hover,
   button.era-card:hover {
@@ -228,13 +223,13 @@ textarea:focus,
 select:focus {
   outline: none;
   background: var(--era-surface);
-  border-color: rgba(99, 44, 255, 0.45);
-  box-shadow: 0 0 0 3px rgba(99, 44, 255, 0.10);
+  border-color: rgba(15, 118, 110, 0.4);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.1);
 }
 input:disabled, textarea:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
 input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--era-violet); cursor: pointer; flex-shrink: 0; }
 
-/* Primary CTA: solid violet, per ToR §26 ("gradient only for rare high-value CTA"). */
+/* Primary CTA: solid teal. Gradient reserved for rare high-value CTA. */
 .era-btn-primary {
   position: relative;
   overflow: hidden;
@@ -252,21 +247,20 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
   width: 28%;
   opacity: 0;
   transform: skewX(-16deg);
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
   transition: left 420ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease;
   pointer-events: none;
 }
-.era-btn-primary:active:not(:disabled) { background: #5322d9; }
-.era-btn-primary:active:not(:disabled)::after { left: 112%; opacity: .8; }
+.era-btn-primary:active:not(:disabled) { background: #0d9488; }
+.era-btn-primary:active:not(:disabled)::after { left: 112%; opacity: .75; }
 
-/* Rare high-value CTA: the full signal gradient. Use sparingly. */
 .era-btn-signal {
   border: 1px solid transparent;
   background: var(--era-gradient-signal);
   color: #fff;
-  box-shadow: var(--era-glow-hot);
+  box-shadow: var(--era-glow-violet);
 }
-.era-btn-signal:active:not(:disabled) { filter: brightness(0.94); }
+.era-btn-signal:active:not(:disabled) { filter: brightness(0.96); }
 
 .era-btn-secondary {
   display: inline-flex;
@@ -303,15 +297,15 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
 .era-card[role="button"], button.era-card { cursor: pointer; }
 .era-card[role="button"]:active, button.era-card:active { transform: scale(0.98); }
 
-/* Rare dark accent card (ToR §7) — used for a handful of "statement" blocks. */
 .era-card-dark {
-  background: radial-gradient(120% 140% at 100% 0%, rgba(215, 25, 120, 0.38), transparent 55%),
-    radial-gradient(90% 100% at 0% 100%, rgba(255, 100, 0, 0.22), transparent 60%),
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(20, 184, 166, 0.22), transparent 55%),
+    radial-gradient(90% 100% at 0% 100%, rgba(2, 132, 199, 0.18), transparent 60%),
     var(--era-surface-dark);
-  color: #f7f5ff;
+  color: #f8fafc;
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
-.era-card-dark .era-muted-on-dark { color: rgba(247, 245, 255, 0.62); }
+.era-card-dark .era-muted-on-dark { color: rgba(248, 250, 252, 0.62); }
 
 .era-pilltabs-scroller { scrollbar-width: none; -ms-overflow-style: none; }
 .era-pilltabs-scroller::-webkit-scrollbar { display: none; }
@@ -346,7 +340,7 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
 }
 .era-premium-ambient {
   background-size: 180% 180% !important;
-  animation: era-ambient 12s ease-in-out infinite;
+  animation: era-ambient 14s ease-in-out infinite;
 }
 
 @keyframes era-shimmer {
@@ -354,14 +348,14 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
   100% { background-position: 120% 0; }
 }
 .era-skeleton {
-  background: linear-gradient(90deg, #edecf5 25%, #f7f6fb 50%, #edecf5 75%);
+  background: linear-gradient(90deg, #eef2f6 25%, #f8fafc 50%, #eef2f6 75%);
   background-size: 200% 100%;
   animation: era-shimmer 1.35s ease-in-out infinite;
   border-radius: var(--era-radius-sm);
 }
 
 @keyframes era-overlay-in { from { opacity: 0; } to { opacity: 1; } }
-.era-overlay-backdrop { position: fixed; inset: 0; background: rgba(17, 17, 24, 0.5); animation: era-overlay-in var(--era-motion-fast); z-index: 40; }
+.era-overlay-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); animation: era-overlay-in var(--era-motion-fast); z-index: 40; }
 @keyframes era-sheet-in { from { opacity: .6; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
 .era-bottom-sheet { animation: era-sheet-in var(--era-motion-fast) cubic-bezier(0.22, 1, 0.36, 1); }
 @keyframes era-modal-in { from { opacity: 0; transform: translateY(8px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -376,7 +370,6 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
 }
 .era-success-state { animation: era-success-pop 420ms cubic-bezier(0.22, 1, 0.36, 1); }
 
-/* Uppercase / mono-style technical label (ToR §8). */
 .era-mono-label {
   display: inline-flex;
   align-items: center;

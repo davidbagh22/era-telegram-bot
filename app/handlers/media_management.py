@@ -133,7 +133,7 @@ async def render_leader_menu(message: Message, session: AsyncSession, settings: 
 
 
 @router.message(Command("media_leader"))
-@router.message(F.text == "🎬 Руководитель медиа")
+@router.message(F.text.in_({"🎬 Медиа", "🎬 Руководитель медиа"}))
 async def leader_command(message: Message, user: User | None, session: AsyncSession, settings: Settings):
     if not await guard(message, user, session, settings):
         return
