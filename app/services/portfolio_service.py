@@ -30,6 +30,7 @@ from app.repositories.users import user_stats
 from app.utils.constants import (
     EVENT_STATUS_LABELS,
     PROJECT_STATUS_LABELS,
+    ProjectStatus,
     REGISTRATION_STATUS_LABELS,
     REPORT_STATUS_LABELS,
     ROLE_LABELS,
@@ -147,7 +148,12 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
         (
             await session.scalars(
                 select(Project)
-                .where(Project.author_id == user.id)
+                .where(
+                    Project.author_id == user.id,
+                    Project.status.notin_(
+                        (ProjectStatus.CANCELLED, ProjectStatus.REJECTED)
+                    ),
+                )
                 .order_by(desc(Project.created_at), desc(Project.id))
             )
         ).all()

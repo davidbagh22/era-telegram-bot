@@ -13,6 +13,7 @@ import type { EventItem } from "../types/activity";
 import type { MiniAppUserSummary } from "../types/auth";
 import { AnniversaryRegistration } from "./activity/AnniversaryRegistration";
 import { EventPoster } from "./activity/EventsTab";
+import { displayProjectTitle } from "./projects/displayTitle";
 import { projectStatusLabel } from "./projects/statusLabels";
 
 const TASK_STATUS_LABELS: Record<string, string> = {
@@ -155,6 +156,13 @@ export function HomeScreen({
           : null;
   const nextStepIsTask = data.next_step?.kind === "task"
     && data.next_step.entity_id === data.active_task?.id;
+  const posterEventIds = new Set<number>([
+    ...(featuredEvent ? [featuredEvent.id] : []),
+    ...upcomingEvents.slice(0, 3).map((event) => event.id),
+  ]);
+  const nextStepRepeatsPoster = data.next_step?.kind === "event"
+    && data.next_step.entity_id != null
+    && posterEventIds.has(data.next_step.entity_id);
 
   return (
     <div className="era-page era-stagger" style={{ padding: "1.15rem 1.15rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.75rem" }}>
@@ -223,7 +231,7 @@ export function HomeScreen({
         ))}
       </section>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+      {!nextStepRepeatsPoster && <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
         <MonoLabel>Следующий шаг</MonoLabel>
         {data.next_step ? (
           <Card gradient onClick={nextStepClick} style={{ padding: "1.15rem" }}>
@@ -237,7 +245,7 @@ export function HomeScreen({
             <p style={{ margin: ".35rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem" }}>Можно выбрать событие, задачу или возможность на свой темп.</p>
           </Card>
         )}
-      </section>
+      </section>}
 
       {user.features.vector && (onOpenAssessments || onOpenDevelopment) && (
         <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
@@ -337,7 +345,10 @@ export function HomeScreen({
           <Card onClick={() => onOpenProject(data.active_project!.id)}>
             <div style={{ display: "flex", gap: ".75rem" }}>
               <IconBubble tone="orange"><ProjectsIcon width={18} height={18} /></IconBubble>
-              <div><strong>{data.active_project.title}</strong><p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>{projectStatusLabel(data.active_project.status)}</p></div>
+              <div>
+                <strong style={{ display: "block", overflowWrap: "anywhere", textWrap: "balance" }}>{displayProjectTitle(data.active_project.title)}</strong>
+                <p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>{projectStatusLabel(data.active_project.status)}</p>
+              </div>
             </div>
           </Card>
         ) : <EmptyState text="На ближайшее время ничего не запланировано." />}
