@@ -9,7 +9,9 @@ from app.database.career_models import CareerPortfolioItem, CareerProfile, Recom
 from app.database.models import User
 from app.services.portfolio_service import PortfolioData, PortfolioEntry
 
-LOGO_PATH = Path(__file__).resolve().parents[1] / "assets" / "era_logo.jpg"
+_ASSETS = Path(__file__).resolve().parents[1] / "assets"
+_BRAND = _ASSETS / "era_logo_brand.jpg"
+LOGO_PATH = _BRAND if _BRAND.exists() else _ASSETS / "era_logo.jpg"
 
 PURPOSE_LABELS = {
     "work": "Работа",

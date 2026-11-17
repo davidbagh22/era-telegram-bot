@@ -262,7 +262,7 @@ export function EventPoster({ event, compact = false }: { event: EventItem; comp
       <img
         src={src}
         alt={`Афиша ${event.title}`}
-        style={{ width: "100%", height, objectFit: "cover", borderRadius: compact ? "1rem" : "1.25rem", display: "block" }}
+        style={{ width: "100%", height, objectFit: "contain", background: "var(--era-surface-2)", borderRadius: compact ? "1rem" : "1.25rem", display: "block" }}
       />
     );
   }

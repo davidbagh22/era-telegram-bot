@@ -753,7 +753,41 @@ async def approve_proof(
         issued_by=user.id if user else None,
         related_event_id=proof.event_id,
     )
-    await call.message.answer("Участие подтверждено.")
+    cert_note = ""
+    if user is not None and event is not None:
+        # Isolate optional cert issuance so a failure cannot poison the
+        # attendance approval + points commit on the shared session.
+        try:
+            async with session.begin_nested():
+                from app.services.certificate_service import auto_issue_participation_certificate
+                from app.services.certificate_pdf_service import build_certificate_pdf
+
+                issue = await auto_issue_participation_certificate(
+                    session, user, user_id=proof.user_id, event_id=proof.event_id
+                )
+                cert_note = f"\n\n📄 Сертификат участника: {issue.document_number}"
+                if target:
+                    pdf = build_certificate_pdf(
+                        issue.snapshot, number=issue.document_number, issued_at=issue.issued_at
+                    )
+                    from aiogram.types import BufferedInputFile
+
+                    await safe_send(
+                        bot,
+                        target.telegram_id,
+                        "Ваш сертификат участника ЭРА готов.",
+                    )
+                    await safe_send_document(
+                        bot,
+                        target.telegram_id,
+                        BufferedInputFile(pdf, filename=f"ERA_certificate_{issue.document_number}.pdf"),
+                    )
+        except Exception as exc:  # noqa: BLE001 — approval must not roll back
+            import logging
+
+            logging.getLogger(__name__).exception("auto certificate failed: %s", exc)
+            cert_note = "\n\n(Сертификат будет выдан отдельно — обратитесь к команде ЭРА.)"
+    await call.message.answer("Участие подтверждено." + cert_note)
     if target:
         feedback_keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -768,7 +802,7 @@ async def approve_proof(
         await safe_send(
             bot,
             target.telegram_id,
-            texts.SELFIE_APPROVED.format(points=points),
+            texts.SELFIE_APPROVED.format(points=points) + cert_note,
             reply_markup=feedback_keyboard,
         )
 

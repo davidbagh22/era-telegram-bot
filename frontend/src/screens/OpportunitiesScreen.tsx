@@ -17,6 +17,7 @@ import { useAsync } from "../hooks/useAsync";
 import type { Opportunity, OpportunityScope, OpportunitySort, OpportunityState } from "../types/opportunity";
 import { AuctionsPanel } from "./opportunities/AuctionsPanel";
 import { PointsRulesSheet } from "./opportunities/PointsRulesSheet";
+import { CertificatesPanel } from "./opportunities/CertificatesPanel";
 import { RanksPanel } from "./opportunities/RanksPanel";
 import { RewardsPanel } from "./opportunities/RewardsPanel";
 import { SurveysPanel } from "./opportunities/SurveysPanel";
@@ -456,6 +457,7 @@ export function OpportunitiesScreen({ initialSection = "offers", initialItemId, 
       {initialSection === "offers" && (
         <>
           <RanksPanel />
+          <CertificatesPanel />
           <PointsRulesSheet />
           <OffersList initialItemId={initialItemId ?? null} />
         </>

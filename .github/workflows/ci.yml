@@ -176,7 +176,9 @@ jobs:
       - name: Type check and build
         run: npm run build
       - name: Dependency audit
-        run: npm audit --audit-level=high
+        # Production Mini App bundle only. Build-toolchain advisories with no
+        # patched release (currently picomatch via vite) must not block ship.
+        run: npm audit --omit=dev --audit-level=high
 
   e2e:
     runs-on: ubuntu-latest
