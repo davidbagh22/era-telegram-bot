@@ -63,11 +63,20 @@ def build_certificate_pdf(snapshot, *, number=None, issued_at=None, revoked=Fals
             paragraph(event_date, 12, "#625C67", gap=8),
         ]
     )
-    if SEAL_PATH.exists():
+    # Baked seal/signature is only for auto participation certs (v2 + chair
+    # signatory). Manual /issue_certificate and older v1 docs keep the typed name.
+    use_seal = (
+        SEAL_PATH.exists()
+        and str(snapshot.get("template_version") or "") == "era-event-v2"
+        and str(snapshot.get("signatory") or "").strip() == "Багдасарян Д.С."
+    )
+    if use_seal:
         story.append(Image(str(SEAL_PATH), width=48 * mm, height=40 * mm, kind="proportional"))
         story.append(Spacer(1, 2 * mm))
+        story.append(paragraph(f"Подписант: {snapshot['signatory']}", 9, "#625C67", gap=4))
     else:
         story.append(paragraph(f"Подписант: {snapshot['signatory']}", 10, "#625C67"))
+        story.append(paragraph("Место для подписи и печати", 8, "#8A8490", gap=4))
     story.append(
         paragraph(
             f"{number or 'ПРЕДПРОСМОТР — номер не присвоен'}"
