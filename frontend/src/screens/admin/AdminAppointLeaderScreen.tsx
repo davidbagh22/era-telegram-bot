@@ -5,7 +5,6 @@ import {
   describeActionError,
   fetchAdminOffices,
   searchAssignableUsers,
-  updateOffice,
   workWrite,
 } from "../../api/client";
 import { Card } from "../../components/Card";
@@ -90,8 +89,8 @@ export function AdminAppointLeaderScreen() {
   };
 
   const appoint = async () => {
-    if (!userId || packages.length === 0) {
-      setError("Выбери человека и хотя бы один пакет функций.");
+    if (!userId || (!officeId && packages.length === 0)) {
+      setError(officeId ? "Выбери человека." : "Выбери человека и хотя бы один пакет функций.");
       return;
     }
     setBusy(true);
@@ -100,22 +99,28 @@ export function AdminAppointLeaderScreen() {
     try {
       let targetId = officeId;
       const template = uniquePermissions(packages);
+      // Never rewrite an existing office template — that would change rights for
+      // every current holder. Packages apply only when creating a new office.
       if (!targetId) {
         const title = newTitle.trim() || `Руководитель · ${selectedUser?.first_name ?? userId}`;
         const created = await createOffice(title, "Назначение через пакет функций", template);
         targetId = created.id;
-      } else {
-        await updateOffice(targetId, { permission_template: template });
       }
       await assignOffice(targetId, userId);
+      let leaderNote = "";
       if (alsoLeaderRole) {
+        const expectedRole = selectedUser?.role ?? "participant";
         try {
-          await workWrite(`team/${userId}/leader`, { enabled: true });
-        } catch {
-          // Executive-only; office rights still applied.
+          await workWrite(`team/${userId}/leader`, { enabled: true, expected_role: expectedRole });
+        } catch (err) {
+          leaderNote = ` Должность назначена; статус «Лидер» не включён (${describeActionError(err)}).`;
         }
       }
-      setMessage("Назначено. Функции открыты по выбранным пакетам.");
+      setMessage(
+        (officeId
+          ? "Назначено на существующую должность (её шаблон прав не менялся)."
+          : "Назначено. Функции открыты по выбранным пакетам.") + leaderNote,
+      );
       setQuery("");
       setCandidates([]);
       setUserId(null);
@@ -177,30 +182,38 @@ export function AdminAppointLeaderScreen() {
 
       <Card style={{ display: "grid", gap: "0.75rem" }}>
         <strong>Пакеты функций</strong>
-        <div style={{ display: "grid", gap: "0.45rem" }}>
-          {PACKAGES.map((pack) => {
-            const active = packages.includes(pack.key);
-            return (
-              <button
-                key={pack.key}
-                type="button"
-                onClick={() => togglePackage(pack.key)}
-                style={{
-                  textAlign: "left",
-                  border: active ? "1px solid var(--era-violet)" : "1px solid var(--era-border)",
-                  background: active ? "var(--era-tint-violet)" : "var(--era-surface)",
-                }}
-              >
-                <strong>{pack.label}</strong>
-                <span style={{ display: "block", color: "var(--era-text-secondary)", fontSize: "0.8rem" }}>{pack.hint}</span>
-              </button>
-            );
-          })}
-        </div>
-        {preview.length > 0 && (
-          <p style={{ margin: 0, color: "var(--era-text-secondary)", fontSize: "0.78rem" }}>
-            Откроется: {preview.join(" · ")}
+        {officeId ? (
+          <p style={{ margin: 0, color: "var(--era-text-secondary)", fontSize: "0.85rem", lineHeight: 1.45 }}>
+            Выбрана существующая должность — человек получит её текущий шаблон прав. Чтобы задать новые пакеты, создай новую должность.
           </p>
+        ) : (
+          <>
+            <div style={{ display: "grid", gap: "0.45rem" }}>
+              {PACKAGES.map((pack) => {
+                const active = packages.includes(pack.key);
+                return (
+                  <button
+                    key={pack.key}
+                    type="button"
+                    onClick={() => togglePackage(pack.key)}
+                    style={{
+                      textAlign: "left",
+                      border: active ? "1px solid var(--era-violet)" : "1px solid var(--era-border)",
+                      background: active ? "var(--era-tint-violet)" : "var(--era-surface)",
+                    }}
+                  >
+                    <strong>{pack.label}</strong>
+                    <span style={{ display: "block", color: "var(--era-text-secondary)", fontSize: "0.8rem" }}>{pack.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {preview.length > 0 && (
+              <p style={{ margin: 0, color: "var(--era-text-secondary)", fontSize: "0.78rem" }}>
+                Откроется: {preview.join(" · ")}
+              </p>
+            )}
+          </>
         )}
         <label style={{ display: "flex", gap: "0.55rem", alignItems: "center", fontSize: "0.88rem" }}>
           <input type="checkbox" checked={alsoLeaderRole} onChange={(event) => setAlsoLeaderRole(event.target.checked)} />
@@ -237,7 +250,12 @@ export function AdminAppointLeaderScreen() {
       {error && <p style={{ margin: 0, color: "var(--era-error)", fontSize: "0.85rem" }}>{error}</p>}
       {message && <p style={{ margin: 0, color: "var(--era-success)", fontSize: "0.85rem" }}>{message}</p>}
 
-      <button type="button" className="era-btn-signal" disabled={busy || !userId || packages.length === 0} onClick={() => void appoint()}>
+      <button
+        type="button"
+        className="era-btn-signal"
+        disabled={busy || !userId || (!officeId && packages.length === 0)}
+        onClick={() => void appoint()}
+      >
         {busy ? "Назначаем…" : "Назначить и открыть функции"}
       </button>
     </div>

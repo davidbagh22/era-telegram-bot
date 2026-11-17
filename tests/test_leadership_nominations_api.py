@@ -42,3 +42,6 @@ class LeadershipNominationTests(IsolatedAsyncioTestCase):
             )
         self.assertTrue(result.ok)
         notify.assert_awaited()
+        key = notify.await_args.kwargs["delivery_key"]
+        self.assertTrue(key.startswith("admin:leader_nomination:1:2:"))
+        self.assertEqual(len(key.rsplit(":", 1)[-1]), 32)

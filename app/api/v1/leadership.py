@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from hashlib import sha256
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -80,7 +81,10 @@ async def nominate_leader(
                 bot,
                 settings,
                 text,
-                delivery_key=f"admin:leader_nomination:{user.id}:{nominee.id}:{hash(reason) & 0xFFFF}",
+                delivery_key=(
+                    f"admin:leader_nomination:{user.id}:{nominee.id}:"
+                    f"{sha256(reason.encode('utf-8')).hexdigest()[:32]}"
+                ),
                 notification_type="leader_nomination",
                 reply_markup=markup,
             )
