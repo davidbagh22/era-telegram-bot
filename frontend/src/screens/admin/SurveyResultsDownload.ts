@@ -102,8 +102,8 @@ function buildAnswersSheet(
 ): string {
   const questionLabels = responses[0]?.answers.map((answer) => answer.question) ?? survey.questions;
   const headers = isConference
-    ? ["№", "Участник", "Дата ответа", "Выбранные спикеры", "Свой кандидат", "ID"]
-    : ["№", "Участник", "Дата ответа", ...questionLabels, "ID"];
+    ? ["№", "Участник", "Дата ответа", "Выбранные спикеры", "Свой кандидат", "Номер участника"]
+    : ["№", "Участник", "Дата ответа", ...questionLabels, "Номер участника"];
 
   const rows: string[] = [
     row([cell("ЭРА · КТО ЗА ЧТО ГОЛОСОВАЛ", "Hero")], 30),

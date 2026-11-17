@@ -23,5 +23,13 @@ class MediaTaskTitleTests(unittest.TestCase):
             rewrite_formulaic_media_title("Медиа · Текст · События ЭРА"),
             "Написать текст для «События ЭРА»",
         )
+        self.assertEqual(
+            rewrite_formulaic_media_title("Медиа · Stories · События ЭРА"),
+            "Собрать сторис для «События ЭРА»",
+        )
+        self.assertEqual(
+            media_task_display_title("stories", "События ЭРА"),
+            "Собрать сторис для «События ЭРА»",
+        )
         self.assertIsNone(rewrite_formulaic_media_title("Сними короткое видео об ЭРА"))
         self.assertIsNone(rewrite_formulaic_media_title("Свой авторский заголовок"))

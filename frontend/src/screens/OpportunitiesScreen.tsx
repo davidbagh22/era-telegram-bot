@@ -298,7 +298,7 @@ function OffersList({ initialItemId }: { initialItemId?: number | null }) {
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem", maxHeight: "68vh", overflowY: "auto" }}>
           <FilterGroup
             title="Категория"
-            options={[{ value: null, label: "Все категории" }, ...categories.map((value) => ({ value, label: CATEGORY_LABELS[value] ?? value }))]}
+            options={[{ value: null, label: "Все категории" }, ...categories.map((value) => ({ value, label: CATEGORY_LABELS[value] ?? "Другое" }))]}
             value={draftCategory}
             onChange={setDraftCategory}
           />

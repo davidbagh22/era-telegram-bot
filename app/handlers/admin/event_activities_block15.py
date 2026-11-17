@@ -14,6 +14,7 @@ from app.database.models import Event, EventActivity, EventActivitySubmission, P
 from app.handlers.admin.events_block6 import guard
 from app.services.notification_service import safe_answer_media, safe_send
 from app.services.points_service import add_points
+from app.utils.constants import ACTIVITY_SUBMISSION_TYPE_LABELS
 from app.utils.validators import clean_text
 
 router = Router(name="admin_event_activities_block15")
@@ -164,7 +165,7 @@ async def _submission_card(message: Message, session: AsyncSession, submission: 
         f"Мероприятие: {event.title if event else activity.event_id}\n"
         f"Активность: {activity.title}\n"
         f"Баллы: {activity.points}\n"
-        f"Тип: {submission.file_type or activity.submission_type}\n"
+        f"Тип: {ACTIVITY_SUBMISSION_TYPE_LABELS.get(submission.file_type or activity.submission_type, 'формат уточняется')}\n"
         f"Подтверждение: {submission.text or 'прикреплён файл'}",
         reply_markup=_review_keyboard(submission.id),
     )

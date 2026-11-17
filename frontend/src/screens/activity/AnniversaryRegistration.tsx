@@ -4,7 +4,7 @@ import { BottomSheet } from "../../components/BottomSheet";
 import { successHaptic } from "../../telegram/webApp";
 import type { AnniversaryRegistrationFields, EventItem } from "../../types/activity";
 
-const CONSENT = "Подтверждая регистрацию, вы передаёте имя, фамилию, организацию и Telegram ID организаторам для учёта участников.";
+const CONSENT = "Подтверждая регистрацию, вы передаёте имя, фамилию, организацию и номер Telegram организаторам для учёта участников.";
 const FIELDS = [
   { key: "first_name", label: "Имя", autoComplete: "given-name", maxLength: 80 },
   { key: "last_name", label: "Фамилия", autoComplete: "family-name", maxLength: 80 },

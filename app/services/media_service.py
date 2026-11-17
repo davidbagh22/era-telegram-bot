@@ -57,7 +57,7 @@ MEDIA_TASK_KINDS = {
     "photo": "Фото",
     "video": "Видео",
     "editing": "Монтаж",
-    "stories": "Stories",
+    "stories": "Сторис",
 }
 _MEDIA_TASK_TITLE_TEMPLATES = {
     "text": "Написать текст для «{rubric}»",
@@ -65,10 +65,10 @@ _MEDIA_TASK_TITLE_TEMPLATES = {
     "photo": "Сделать фото для «{rubric}»",
     "video": "Снять видео для «{rubric}»",
     "editing": "Смонтировать ролик для «{rubric}»",
-    "stories": "Собрать Stories для «{rubric}»",
+    "stories": "Собрать сторис для «{rubric}»",
 }
 _FORMULAIC_MEDIA_TITLE = re.compile(
-    r"^Медиа · (?P<kind>Текст|Дизайн|Фото|Видео|Монтаж|Stories) · (?P<rubric>.+)$"
+    r"^Медиа · (?P<kind>Текст|Дизайн|Фото|Видео|Монтаж|Stories|Сторис) · (?P<rubric>.+)$"
 )
 MEDIA_PACKAGES: dict[str, tuple[str, ...]] = {
     "announcement": ("text", "design"),
@@ -617,6 +617,7 @@ def rewrite_formulaic_media_title(title: str) -> str | None:
     kind_label = match.group("kind")
     rubric = match.group("rubric").strip()
     kind_by_label = {label: key for key, label in MEDIA_TASK_KINDS.items()}
+    kind_by_label["Stories"] = "stories"  # legacy formulaic English label
     task_kind = kind_by_label.get(kind_label)
     if task_kind is None:
         return None

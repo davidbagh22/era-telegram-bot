@@ -130,7 +130,7 @@ export function OverviewTab() {
               <Card key={task.id}>
                 <strong>{task.title}</strong>
                 <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>
-                  {TASK_STATUS_LABELS[task.status] ?? task.status} · {task.points} баллов
+                  {TASK_STATUS_LABELS[task.status] ?? "Статус обновлён"} · {task.points} баллов
                 </p>
               </Card>
             ))}

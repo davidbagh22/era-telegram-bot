@@ -195,7 +195,7 @@ export function RewardsPanel() {
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
               <strong>{redemption.reward_name}</strong>
               <StatusBadge
-                label={REDEMPTION_STATUS_LABELS[redemption.status] ?? redemption.status}
+                label={REDEMPTION_STATUS_LABELS[redemption.status] ?? "Статус обновлён"}
                 tone="violet"
               />
             </div>

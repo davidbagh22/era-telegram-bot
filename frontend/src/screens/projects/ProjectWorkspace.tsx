@@ -25,16 +25,22 @@ import { MetricCard } from "../../components/MetricCard";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusBadge } from "../../components/StatusBadge";
 import type { ProjectMember, ProjectRole, ProjectWorkspace as ProjectWorkspaceType } from "../../types/project";
-import { projectStatusLabel } from "./statusLabels";
+import {
+  projectContributionStatusLabel,
+  projectEventStatusLabel,
+  projectMilestoneStatusLabel,
+  projectRoleStatusLabel,
+  projectStatusLabel,
+  projectTaskStatusLabel,
+} from "./statusLabels";
 
-type WorkspaceSection = "team" | "tasks" | "milestones" | "events" | "materials" | "analytics";
+type WorkspaceSection = "team" | "tasks" | "milestones" | "events" | "analytics";
 
 const SECTIONS: { value: WorkspaceSection; label: string; description: string }[] = [
   { value: "team", label: "Команда", description: "Роли, заявки, участники и вклад" },
   { value: "tasks", label: "Задачи", description: "Работа команды, сроки и ответственные" },
   { value: "milestones", label: "Этапы", description: "Контроль ключевых точек проекта" },
   { value: "events", label: "События", description: "Связанные мероприятия проекта" },
-  { value: "materials", label: "Материалы", description: "Файлы и рабочие материалы" },
   { value: "analytics", label: "Аналитика", description: "Прогресс, вклад и выполнение" },
 ];
 
@@ -254,7 +260,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
           )}
           {workspace.roles.map((role) => (
             <Card key={role.id}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><div><strong>{role.title}</strong><p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>{roleFill(role)}</p></div><StatusBadge label={role.status} tone={role.status === "open" ? "violet" : "neutral"} /></div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><div><strong>{role.title}</strong><p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>{roleFill(role)}</p></div><StatusBadge label={projectRoleStatusLabel(role.status)} tone={role.status === "open" ? "violet" : "neutral"} /></div>
               {role.requirements && <p style={{ color: "var(--era-text-muted)" }}>{role.requirements}</p>}
               {workspace.can_manage ? (
                 <button type="button" disabled={busy} onClick={() => run(() => setProjectRoleStatus(projectId, role.id, role.status === "open" ? "closed" : "open"))} style={secondaryButtonStyle}>{role.status === "open" ? "Закрыть набор" : "Открыть набор"}</button>
@@ -269,10 +275,10 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
             ))}</ListStack>}</Card>
           )}
           {workspace.can_manage && (
-            <Card><SectionTitle title="Добавить участника" /><FormStack><input value={memberUserId} onChange={(event) => setMemberUserId(event.target.value)} inputMode="numeric" placeholder="ID участника" style={inputStyle} /><RoleSelect value={memberRoleId} roles={workspace.roles} onChange={setMemberRoleId} /><button type="button" disabled={busy || !optionalNumber(memberUserId)} onClick={() => run(async () => { await addProjectMember(projectId, { user_id: optionalNumber(memberUserId) ?? 0, role_id: optionalNumber(memberRoleId) }); setMemberUserId(""); })} style={buttonStyle}>Добавить</button></FormStack></Card>
+            <Card><SectionTitle title="Добавить участника" /><FormStack><input value={memberUserId} onChange={(event) => setMemberUserId(event.target.value)} inputMode="numeric" placeholder="Номер участника" style={inputStyle} /><RoleSelect value={memberRoleId} roles={workspace.roles} onChange={setMemberRoleId} /><button type="button" disabled={busy || !optionalNumber(memberUserId)} onClick={() => run(async () => { await addProjectMember(projectId, { user_id: optionalNumber(memberUserId) ?? 0, role_id: optionalNumber(memberRoleId) }); setMemberUserId(""); })} style={buttonStyle}>Добавить</button></FormStack></Card>
           )}
           <Card><SectionTitle title="Участники" />{activeMembers.length === 0 ? <EmptyState text="Команда пока не собрана." /> : <ListStack>{activeMembers.map((member) => (
-            <div key={member.id}><strong>{member.full_name}</strong><p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{member.role_title ?? "Роль не назначена"} · {member.contribution_status}</p>{workspace.can_manage && <RoleSelect value={member.role_id?.toString() ?? ""} roles={workspace.roles} onChange={(value) => run(() => changeProjectMemberRole(projectId, member.id, optionalNumber(value)))} />}</div>
+            <div key={member.id}><strong>{member.full_name}</strong><p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{member.role_title ?? "Роль не назначена"} · {projectContributionStatusLabel(member.contribution_status)}</p>{workspace.can_manage && <RoleSelect value={member.role_id?.toString() ?? ""} roles={workspace.roles} onChange={(value) => run(() => changeProjectMemberRole(projectId, member.id, optionalNumber(value)))} />}</div>
           ))}</ListStack>}</Card>
           {workspace.can_manage && activeMembers.length > 0 && (
             <Card><SectionTitle title="Вклад" /><FormStack><MemberSelect value={contributionMemberId} members={activeMembers} onChange={setContributionMemberId} /><textarea value={contributionSummary} onChange={(event) => setContributionSummary(event.target.value)} rows={2} style={inputStyle} /><input value={contributionResult} onChange={(event) => setContributionResult(event.target.value)} placeholder="Результат" style={inputStyle} /><button type="button" disabled={busy || !optionalNumber(contributionMemberId) || !contributionSummary.trim()} onClick={() => run(async () => { await confirmProjectContribution(projectId, optionalNumber(contributionMemberId) ?? 0, { summary: contributionSummary, result: contributionResult }); setContributionSummary(""); setContributionResult(""); })} style={buttonStyle}>Подтвердить вклад</button></FormStack></Card>
@@ -286,7 +292,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
             <Card><SectionTitle title="Новая задача" /><FormStack><input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="Название" style={inputStyle} /><textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} rows={2} style={inputStyle} /><input type="datetime-local" value={taskDeadline} onChange={(event) => setTaskDeadline(event.target.value)} style={inputStyle} /><MemberSelect value={taskAssigneeId} members={activeMembers} onChange={setTaskAssigneeId} /><div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.5rem" }}>{TASK_POINT_PRESETS.map((preset) => <button key={preset.points} type="button" aria-pressed={taskPoints === preset.points} onClick={() => setTaskPoints(preset.points)} style={{ ...secondaryButtonStyle, minHeight: "3.5rem", textAlign: "left", borderColor: taskPoints === preset.points ? "var(--era-violet)" : "var(--era-border)", background: taskPoints === preset.points ? "var(--era-tint-violet)" : "var(--era-surface)" }}><strong>{preset.label}</strong><span style={{ display: "block", color: "var(--era-text-muted)", fontSize: "0.75rem", marginTop: "0.15rem" }}>{preset.points} баллов</span></button>)}</div><button type="button" disabled={busy || !taskTitle.trim() || !taskDescription.trim() || !taskDeadline} onClick={() => run(async () => { await createProjectTask(projectId, { title: taskTitle, description: taskDescription, deadline: dateTimeLocalToIso(taskDeadline) ?? "", assignee_id: optionalNumber(taskAssigneeId), points: taskPoints }); setTaskTitle(""); setTaskDescription(""); setTaskDeadline(""); setTaskPoints(80); })} style={buttonStyle}>Создать задачу</button></FormStack></Card>
           )}
           {workspace.tasks.length === 0 ? <EmptyState text="Задач пока нет." /> : workspace.tasks.map((task) => (
-            <Card key={task.id}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><div><strong>{task.title}</strong><p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{formatDate(task.deadline)} · {task.points} баллов</p></div><StatusBadge label={task.status} tone="violet" /></div>{workspace.can_manage && <MemberSelect value={task.assignee_id?.toString() ?? ""} members={activeMembers} onChange={(value) => run(() => assignProjectTask(projectId, task.id, optionalNumber(value)))} />}</Card>
+            <Card key={task.id}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><div><strong>{task.title}</strong><p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{formatDate(task.deadline)} · {task.points} баллов</p></div><StatusBadge label={projectTaskStatusLabel(task.status)} tone="violet" /></div>{workspace.can_manage && <MemberSelect value={task.assignee_id?.toString() ?? ""} members={activeMembers} onChange={(value) => run(() => assignProjectTask(projectId, task.id, optionalNumber(value)))} />}</Card>
           ))}
         </div>
       )}
@@ -295,21 +301,20 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           {workspace.can_manage && <Card><SectionTitle title="Новый этап" /><FormStack><input value={milestoneTitle} onChange={(event) => setMilestoneTitle(event.target.value)} placeholder="Название" style={inputStyle} /><input type="datetime-local" value={milestoneDeadline} onChange={(event) => setMilestoneDeadline(event.target.value)} style={inputStyle} /><MemberSelect value={milestoneResponsibleId} members={activeMembers} onChange={setMilestoneResponsibleId} /><button type="button" disabled={busy || !milestoneTitle.trim()} onClick={() => run(async () => { await createProjectMilestone(projectId, { title: milestoneTitle, deadline: dateTimeLocalToIso(milestoneDeadline), responsible_id: optionalNumber(milestoneResponsibleId) }); setMilestoneTitle(""); setMilestoneDeadline(""); })} style={buttonStyle}>Создать этап</button></FormStack></Card>}
           {workspace.milestones.length === 0 ? <EmptyState text="Этапов пока нет." /> : <div style={{ borderLeft: "2px solid var(--era-border)", paddingLeft: "0.75rem" }}>{workspace.milestones.map((milestone) => (
-            <Card key={milestone.id} style={{ marginBottom: "0.75rem" }}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><div><strong>{milestone.title}</strong><p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{formatDate(milestone.deadline)}</p></div><StatusBadge label={milestone.status} tone={milestone.status === "completed" ? "neutral" : "violet"} /></div>{workspace.can_manage && milestone.status !== "completed" && <button type="button" disabled={busy} onClick={() => run(() => setProjectMilestoneStatus(projectId, milestone.id, "completed"), () => setAchievement({ title: "ЭТАП ЗАВЕРШЁН", description: `«${milestone.title}» — ещё одна ключевая точка проекта закрыта.` }))} style={secondaryButtonStyle}>Завершить этап</button>}</Card>
+            <Card key={milestone.id} style={{ marginBottom: "0.75rem" }}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><div><strong>{milestone.title}</strong><p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{formatDate(milestone.deadline)}</p></div><StatusBadge label={projectMilestoneStatusLabel(milestone.status)} tone={milestone.status === "completed" ? "neutral" : "violet"} /></div>{workspace.can_manage && milestone.status !== "completed" && <button type="button" disabled={busy} onClick={() => run(() => setProjectMilestoneStatus(projectId, milestone.id, "completed"), () => setAchievement({ title: "ЭТАП ЗАВЕРШЁН", description: `«${milestone.title}» — ещё одна ключевая точка проекта закрыта.` }))} style={secondaryButtonStyle}>Завершить этап</button>}</Card>
           ))}</div>}
         </div>
       )}
 
       {activeSection === "events" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          {workspace.can_manage && <Card><SectionTitle title="Связать событие" /><FormStack><input value={eventId} onChange={(event) => setEventId(event.target.value)} inputMode="numeric" placeholder="ID события" style={inputStyle} /><button type="button" disabled={busy || !optionalNumber(eventId)} onClick={() => run(async () => { await linkProjectEvent(projectId, optionalNumber(eventId) ?? 0); setEventId(""); })} style={buttonStyle}>Связать</button></FormStack></Card>}
+          {workspace.can_manage && <Card><SectionTitle title="Связать событие" /><FormStack><input value={eventId} onChange={(event) => setEventId(event.target.value)} inputMode="numeric" placeholder="Номер мероприятия" style={inputStyle} /><button type="button" disabled={busy || !optionalNumber(eventId)} onClick={() => run(async () => { await linkProjectEvent(projectId, optionalNumber(eventId) ?? 0); setEventId(""); })} style={buttonStyle}>Связать</button></FormStack></Card>}
           {workspace.events.length === 0 ? <EmptyState text="Связанных событий пока нет." /> : workspace.events.map((event) => (
-            <Card key={event.id}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><div><strong>{event.title}</strong><p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{event.event_date} · {event.event_time}</p></div><StatusBadge label={event.status} tone="violet" /></div></Card>
+            <Card key={event.id}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><div><strong>{event.title}</strong><p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{event.event_date} · {event.event_time}</p></div><StatusBadge label={projectEventStatusLabel(event.status)} tone="violet" /></div></Card>
           ))}
         </div>
       )}
 
-      {activeSection === "materials" && <EmptyState text="Материалов пока нет." />}
       {activeSection === "analytics" && <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem" }}><MetricCard label="Прогресс" value={`${workspace.progress_percent}%`} /><MetricCard label="Подтверждён вклад" value={`${confirmedMembers}/${activeMembers.length}`} /><MetricCard label="Задачи выполнены" value={`${completedTasks}/${workspace.tasks.length}`} /><MetricCard label="Роли открыты" value={workspace.roles.filter((role) => role.status === "open").length} /></div>}
 
       <AchievementOverlay

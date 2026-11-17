@@ -141,7 +141,23 @@ async def editorial_action(call: CallbackQuery, user: User | None, settings: Set
     if item.is_enabled and not item.is_skipped and (not receipt or receipt.status not in {'uncertain', 'conflict'}):
         rows.append([InlineKeyboardButton(text='📤 Отправить сейчас', callback_data=f'admin:literature:send:{item.id}:{revision}')])
     rows.append([InlineKeyboardButton(text='← Редакция', callback_data='admin:literature:home')])
-    status = f'Доставка: {receipt.status}' if receipt else 'Проверено редактором' if item.is_enabled else 'Черновик · публикация запрещена'
+    delivery_labels = {
+        'sent': 'доставлена',
+        'already_sent': 'уже отправлена',
+        'uncertain': 'исход неизвестен — нужна сверка',
+        'conflict': 'конфликт доставки — нужна сверка',
+        'blocked': 'получатель недоступен',
+        'unreachable': 'получатель недоступен',
+        'skipped': 'пропущена',
+        'failed': 'не доставлена',
+        'pending': 'в очереди',
+    }
+    if receipt:
+        status = f'Доставка: {delivery_labels.get(receipt.status, "статус уточняется")}'
+    elif item.is_enabled:
+        status = 'Проверено редактором'
+    else:
+        status = 'Черновик · публикация запрещена'
     await call.message.answer(render_editorial(json.loads(item.text))+'\n\n<i>'+status+'</i>', parse_mode='HTML',
                               reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 

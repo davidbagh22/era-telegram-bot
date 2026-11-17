@@ -464,7 +464,11 @@ async def survey_results(call: CallbackQuery, user: User | None, settings: Setti
     recent: list[str] = []
     for response in responses:
         respondent = users.get(response.user_id)
-        name = f"{respondent.first_name} {respondent.last_name or ''}".strip() if respondent else f"ID {response.user_id}"
+        name = (
+            f"{respondent.first_name} {respondent.last_name or ''}".strip()
+            if respondent
+            else "участник без имени"
+        )
         for item in answer_items(response):
             question_counts[item["question"]] = question_counts.get(item["question"], 0) + 1
         first_answer = next(iter(answer_items(response)), None)

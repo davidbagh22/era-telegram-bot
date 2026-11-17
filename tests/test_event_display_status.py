@@ -1,0 +1,27 @@
+"""Participant event badges must reflect real lifecycle states."""
+from __future__ import annotations
+
+import unittest
+from types import SimpleNamespace
+
+from app.api.v1.events import _display_status
+from app.utils.constants import EventStatus, RegistrationStatus
+
+
+class EventDisplayStatusTests(unittest.TestCase):
+    def test_active_event_is_happening_now(self) -> None:
+        event = SimpleNamespace(status=EventStatus.ACTIVE)
+        self.assertEqual(_display_status(event, None, remaining=0), "Идёт сейчас")
+
+    def test_draft_is_preparing_not_vague_soon(self) -> None:
+        event = SimpleNamespace(status=EventStatus.DRAFT)
+        self.assertEqual(_display_status(event, None, remaining=None), "Готовится")
+
+    def test_registered_overrides_active(self) -> None:
+        event = SimpleNamespace(status=EventStatus.ACTIVE)
+        registration = SimpleNamespace(status=RegistrationStatus.REGISTERED)
+        self.assertEqual(_display_status(event, registration, remaining=None), "Вы зарегистрированы")
+
+
+if __name__ == "__main__":
+    unittest.main()

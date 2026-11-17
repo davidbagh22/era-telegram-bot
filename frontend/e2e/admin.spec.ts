@@ -50,9 +50,9 @@ test("admin enters management workspace and approves a pending applicant", async
   await expect(application.getByText("Согласие и подача", { exact: true })).toBeVisible();
 
   await expect(application.getByText("Дата рождения", { exact: true })).toHaveCount(0);
-  await expect(application.getByText("Telegram ID", { exact: true })).not.toBeVisible();
+  await expect(application.getByText("номер Telegram", { exact: true })).not.toBeVisible();
   await application.locator("summary").filter({ hasText: "Служебные сведения" }).click();
-  await expect(application.getByText("Telegram ID", { exact: true })).toBeVisible();
+  await expect(application.getByText("номер Telegram", { exact: true })).toBeVisible();
   for (const width of [320, 430, 768]) {
     await page.setViewportSize({ width, height: 844 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
