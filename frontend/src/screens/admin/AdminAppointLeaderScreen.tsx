@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   assignOffice,
   createOffice,
@@ -34,7 +34,8 @@ export function AdminAppointLeaderScreen() {
   const [offices, setOffices] = useState<Office[] | "loading" | "error">("loading");
   const [query, setQuery] = useState("");
   const [candidates, setCandidates] = useState<UserListItem[]>([]);
-  const [userId, setUserId] = useState<number | null>(null);
+  // Keep the chosen person even after search clears — expected_role must stay accurate.
+  const [selectedUser, setSelectedUser] = useState<UserListItem | null>(null);
   const [officeId, setOfficeId] = useState<number | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [packages, setPackages] = useState<string[]>(["team", "tasks"]);
@@ -77,19 +78,15 @@ export function AdminAppointLeaderScreen() {
     };
   }, [query]);
 
-  const selectedUser = useMemo(
-    () => candidates.find((item) => item.id === userId) ?? null,
-    [candidates, userId],
-  );
-
   const preview = uniquePermissions(packages);
+  const userId = selectedUser?.id ?? null;
 
   const togglePackage = (key: string) => {
     setPackages((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
   };
 
   const appoint = async () => {
-    if (!userId || (!officeId && packages.length === 0)) {
+    if (!selectedUser || (!officeId && packages.length === 0)) {
       setError(officeId ? "Выбери человека." : "Выбери человека и хотя бы один пакет функций.");
       return;
     }
@@ -102,16 +99,18 @@ export function AdminAppointLeaderScreen() {
       // Never rewrite an existing office template — that would change rights for
       // every current holder. Packages apply only when creating a new office.
       if (!targetId) {
-        const title = newTitle.trim() || `Руководитель · ${selectedUser?.first_name ?? userId}`;
+        const title = newTitle.trim() || `Руководитель · ${selectedUser.first_name}`;
         const created = await createOffice(title, "Назначение через пакет функций", template);
         targetId = created.id;
       }
-      await assignOffice(targetId, userId);
+      await assignOffice(targetId, selectedUser.id);
       let leaderNote = "";
       if (alsoLeaderRole) {
-        const expectedRole = selectedUser?.role ?? "participant";
         try {
-          await workWrite(`team/${userId}/leader`, { enabled: true, expected_role: expectedRole });
+          await workWrite(`team/${selectedUser.id}/leader`, {
+            enabled: true,
+            expected_role: selectedUser.role,
+          });
         } catch (err) {
           leaderNote = ` Должность назначена; статус «Лидер» не включён (${describeActionError(err)}).`;
         }
@@ -123,7 +122,7 @@ export function AdminAppointLeaderScreen() {
       );
       setQuery("");
       setCandidates([]);
-      setUserId(null);
+      setSelectedUser(null);
       setNewTitle("");
       await reload();
     } catch (err) {
@@ -156,13 +155,13 @@ export function AdminAppointLeaderScreen() {
         {candidates.length > 0 && (
           <div style={{ display: "grid", gap: "0.4rem" }}>
             {candidates.map((person) => {
-              const active = person.id === userId;
+              const active = person.id === selectedUser?.id;
               const name = `${person.first_name}${person.last_name ? ` ${person.last_name}` : ""}`;
               return (
                 <button
                   key={person.id}
                   type="button"
-                  onClick={() => setUserId(person.id)}
+                  onClick={() => setSelectedUser(person)}
                   style={{
                     textAlign: "left",
                     border: active ? "1px solid var(--era-violet)" : "1px solid var(--era-border)",
@@ -171,12 +170,21 @@ export function AdminAppointLeaderScreen() {
                 >
                   <strong>{name}</strong>
                   <span style={{ display: "block", color: "var(--era-text-secondary)", fontSize: "0.8rem" }}>
-                    {person.username ? `@${person.username}` : `id ${person.id}`}
+                    {person.username ? `@${person.username}` : `id ${person.id}`} · {person.role}
                   </span>
                 </button>
               );
             })}
           </div>
+        )}
+        {selectedUser && candidates.length === 0 && (
+          <p style={{ margin: 0, fontSize: "0.88rem", lineHeight: 1.45 }}>
+            Выбран: <strong>{selectedUser.first_name}{selectedUser.last_name ? ` ${selectedUser.last_name}` : ""}</strong>
+            {" · "}
+            <span style={{ color: "var(--era-text-secondary)" }}>
+              {selectedUser.username ? `@${selectedUser.username}` : `id ${selectedUser.id}`} · {selectedUser.role}
+            </span>
+          </p>
         )}
       </Card>
 

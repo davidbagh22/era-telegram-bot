@@ -24,6 +24,8 @@ import { AdminVerificationScreen } from "./admin/AdminVerificationScreen";
 type PeopleSection = "participants" | "verification" | "development" | "career" | "applications" | "leaders-chat" | "appoint-leader" | "offices" | "data-rights";
 type WorkSection = "pulse" | "projects" | "events" | "tasks" | "offers";
 type CommsSection = "surveys" | "tools";
+type EventsLaunch = { section: "moderation" | "activities" | "operations" | "create"; activitiesMode?: "review" | "manage" };
+type ProjectsLaunch = { section: "create" | "moderation" | "team-posts" };
 type SectionOption<T extends string> = { value: T; label: string; description: string };
 type MetricDetail = { metric: AdminMetricKey; total: number };
 
@@ -110,6 +112,8 @@ export function AdminScreen() {
   const [peopleSection, setPeopleSection] = useState<PeopleSection | null>(launchRoute.peopleSection);
   const [workSection, setWorkSection] = useState<WorkSection | null>(null);
   const [offersInitialSection, setOffersInitialSection] = useState<OffersSection>("applications");
+  const [eventsLaunch, setEventsLaunch] = useState<EventsLaunch | null>(null);
+  const [projectsLaunch, setProjectsLaunch] = useState<ProjectsLaunch | null>(null);
   const [commsSection, setCommsSection] = useState<CommsSection | null>(null);
   const [metricDetail, setMetricDetail] = useState<MetricDetail | null>(null);
   const [showAttendanceProofs, setShowAttendanceProofs] = useState(false);
@@ -120,6 +124,8 @@ export function AdminScreen() {
     setCommsSection(null);
     setMetricDetail(null);
     setShowAttendanceProofs(false);
+    setEventsLaunch(null);
+    setProjectsLaunch(null);
   };
 
   const changeGroup = (next: AdminGroup) => {
@@ -132,11 +138,17 @@ export function AdminScreen() {
     clearSections();
     setPeopleSection(section);
   };
-  const openWork = (section: WorkSection, offersSection: OffersSection = "applications") => {
+  const openWork = (
+    section: WorkSection,
+    offersSection: OffersSection = "applications",
+    launch?: { events?: EventsLaunch | null; projects?: ProjectsLaunch | null },
+  ) => {
     setGroup("work");
     clearSections();
     setWorkSection(section);
     if (section === "offers") setOffersInitialSection(offersSection);
+    if (section === "events") setEventsLaunch(launch?.events ?? null);
+    if (section === "projects") setProjectsLaunch(launch?.projects ?? null);
   };
   const openCommsSection = (section: CommsSection) => {
     setGroup("comms");
@@ -174,7 +186,10 @@ export function AdminScreen() {
             onOpenVerification={() => openPeople("verification")}
             onOpenCareer={() => openPeople("career")}
             onOpenProjects={() => openWork("projects")}
+            onOpenProjectReview={() => openWork("projects", "applications", { projects: { section: "moderation" } })}
             onOpenEvents={() => openWork("events")}
+            onOpenEventModeration={() => openWork("events", "applications", { events: { section: "moderation" } })}
+            onOpenActivityResults={() => openWork("events", "applications", { events: { section: "activities", activitiesMode: "review" } })}
             onOpenAttendanceProofs={() => { clearSections(); setGroup("overview"); setShowAttendanceProofs(true); }}
             onOpenTasks={() => openWork("tasks")}
             onOpenOffers={() => openWork("offers", "rewards")}
@@ -204,8 +219,16 @@ export function AdminScreen() {
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={WORK_SECTIONS.find((item) => item.value === workSection)?.label ?? "Работа"} onBack={() => setWorkSection(null)} />
             {workSection === "pulse" && <AdminWorkcenterScreen />}
-            {workSection === "projects" && <AdminProjectsScreen />}
-            {workSection === "events" && <AdminEventsScreen />}
+            {workSection === "projects" && (
+              <AdminProjectsScreen key={projectsLaunch?.section ?? "menu"} initialSection={projectsLaunch?.section ?? null} />
+            )}
+            {workSection === "events" && (
+              <AdminEventsScreen
+                key={`${eventsLaunch?.section ?? "menu"}:${eventsLaunch?.activitiesMode ?? ""}`}
+                initialSection={eventsLaunch?.section ?? null}
+                initialActivitiesMode={eventsLaunch?.activitiesMode ?? null}
+              />
+            )}
             {workSection === "tasks" && <AdminTasksScreen />}
             {workSection === "offers" && <AdminOffersScreen key={offersInitialSection} initialSection={offersInitialSection} />}
           </div>

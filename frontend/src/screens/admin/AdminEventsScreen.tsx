@@ -21,13 +21,24 @@ const SECTIONS: { value: EventsSection; label: string; description: string; icon
 
 interface AdminEventsScreenProps {
   initialEventId?: number | null;
+  /** Deep-link from «Решить сегодня» into a concrete resolver, not the menu. */
+  initialSection?: EventsSection | null;
+  initialActivitiesMode?: ActivitiesMode | null;
 }
 
-export function AdminEventsScreen({ initialEventId = null }: AdminEventsScreenProps) {
-  const [section, setSection] = useState<EventsSection | null>(initialEventId ? "operations" : null);
+export function AdminEventsScreen({
+  initialEventId = null,
+  initialSection = null,
+  initialActivitiesMode = null,
+}: AdminEventsScreenProps) {
+  const [section, setSection] = useState<EventsSection | null>(
+    initialEventId ? "operations" : initialSection,
+  );
   const [selectedEventId, setSelectedEventId] = useState<number | null>(initialEventId);
   const [posterEventId, setPosterEventId] = useState<number | null>(null);
-  const [activitiesMode, setActivitiesMode] = useState<ActivitiesMode | null>(null);
+  const [activitiesMode, setActivitiesMode] = useState<ActivitiesMode | null>(
+    initialSection === "activities" ? initialActivitiesMode : null,
+  );
 
   const backToMenu = () => {
     setSection(null);

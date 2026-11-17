@@ -5,12 +5,16 @@ import { EmptyState } from "../../components/EmptyState";
 import { MetricCard } from "../../components/MetricCard";
 import { useAsync } from "../../hooks/useAsync";
 
+// Match TaskStatus / AdminWorkcenter labels — not open-task application states.
 const TASK_STATUS_LABELS: Record<string, string> = {
+  draft: "Черновик",
   new: "Новая",
+  published: "Открыт набор",
   in_progress: "В работе",
-  submitted: "На проверке",
-  approved: "Выполнена",
-  rejected: "Отклонена",
+  review: "На проверке",
+  completed: "Выполнена",
+  overdue: "Просрочена",
+  cancelled: "Отменена",
 };
 
 export function OverviewTab() {

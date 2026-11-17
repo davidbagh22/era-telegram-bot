@@ -38,7 +38,10 @@ interface AdminOverviewScreenProps {
   onOpenPeople: () => void;
   onOpenApplications: () => void;
   onOpenProjects: () => void;
+  onOpenProjectReview: () => void;
   onOpenEvents: () => void;
+  onOpenEventModeration: () => void;
+  onOpenActivityResults: () => void;
   onOpenAttendanceProofs: () => void;
   onOpenTasks: () => void;
   onOpenComms: () => void;
@@ -64,7 +67,10 @@ export function AdminOverviewScreen({
   onOpenPeople,
   onOpenApplications,
   onOpenProjects,
+  onOpenProjectReview,
   onOpenEvents,
+  onOpenEventModeration,
+  onOpenActivityResults,
   onOpenAttendanceProofs,
   onOpenTasks,
   onOpenComms,
@@ -101,12 +107,12 @@ export function AdminOverviewScreen({
 
   const attentionActions: Record<AttentionKey, () => void> = {
     users_pending: onOpenApplications,
-    projects_review: onOpenProjects,
-    events_pending: onOpenEvents,
+    projects_review: onOpenProjectReview,
+    events_pending: onOpenEventModeration,
     attendance_proofs: onOpenAttendanceProofs,
     tasks_attention: () => openNativeQueue("admin_task_attention"),
     questions: () => openNativeQueue("admin_question_attention"),
-    activity_results: onOpenEvents,
+    activity_results: onOpenActivityResults,
     rewards: onOpenOffers,
     portfolio: onOpenCareer,
   };

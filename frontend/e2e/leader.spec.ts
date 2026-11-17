@@ -9,6 +9,27 @@ async function enterLeaderWorkspace(page: import("@playwright/test").Page) {
   await expect(page.getByRole("heading", { name: "Режим лидера" })).toBeVisible();
 }
 
+test("leader overview shows real task status labels", async ({ page }) => {
+  await page.route("**/api/v1/leader/overview", (route) => route.fulfill({
+    json: {
+      departments: [],
+      directions: [],
+      participants: [],
+      events: [],
+      projects: [],
+      tasks: [
+        { id: 1, title: "E2E published task", status: "published", deadline: "2026-12-01T12:00:00Z", points: 80, assignee_id: null },
+        { id: 2, title: "E2E review task", status: "review", deadline: "2026-12-02T12:00:00Z", points: 40, assignee_id: 1 },
+      ],
+    },
+  }));
+  await enterLeaderWorkspace(page);
+  await page.getByRole("button", { name: /Моя команда/ }).click();
+  await expect(page.getByText("Открыт набор · 80 баллов")).toBeVisible();
+  await expect(page.getByText("На проверке · 40 баллов")).toBeVisible();
+  await expect(page.getByText(/Статус обновлён/)).toHaveCount(0);
+});
+
 test("leader opens the separate workspace and creates a new open task", async ({ page }) => {
   await enterLeaderWorkspace(page);
 

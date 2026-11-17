@@ -4,11 +4,12 @@
 - 18 November / **PARALLEL GO-TO-READY** (`docs/TZ_PARALLEL_READY_2026_11_18.md`): never idle on one CI; parallel workstreams for UX/waves/security/matrix. Goal: code+CI+LIVE ceiling ASAP; E14 human acceptance remains separate.
 - 18 November / portfolio visual v2 **CODE COMPLETE** (`cursor/era-portfolio-visual-v2-37e0`, #690): TZ `docs/TZ_PORTFOLIO_VISUAL_2026_11_18.md` — dark teal hero, two-column rail, entry cards, canvas-pinned signatures; sparse placeholders. Samples `/opt/cursor/artifacts/portfolio_era_{visual,sparse}_v2.png`. Rebased onto main → CI → merge → LIVE.
 - 18 November / project covers: `cover_bytes` + Mini App `object-fit: contain` (no crop). Migration `0065_project_cover`.
+- 18 November / admin UX (`cursor/admin-ux-fix-37e0`): «Решить сегодня» event/project queues open concrete resolvers; appoint-leader keeps selected person/`expected_role`; leader overview task status labels.
 - 18 November / attendance proofs in «Решить сегодня» **LIVE `63d5d83`**: `/health`+`/ready` ok; photo proofs queue (approve → points+cert).
 - 17 November / portfolio PDFs + export interview **LIVE `f778f6d`**: teal letterhead PDFs; export interview for skills/about; events + certificates first.
 - 17 November / attendance-certs-media **LIVE `9a9d084`**: owner TZ — auto participation PDF + seal, media briefs, contain posters, afisha cutoff, cert ladder 2000/5000.
-- 17 November / ERA 2.0 UX stack (#676/#677/#679): «ЭРА PRO» → «Лидеры ЭРА»; hide raw `public_activity` keys; profile history = attended/results only; «Сейчас» without past; auto-archive + media titles + welcome-chat routing. Merged to main with #675; confirm LIVE SHA.
-- 17 November / #674: full event posters, readable copy, full nav labels, no next-step duplicate of afisha events; portfolio hides cancelled/rejected authored projects; titles wrap/trim for display. Exact-head CI/review/LIVE still required.
+- 17 November / ERA 2.0 UX stack (#676/#677/#679) merged to main: «Лидеры ЭРА», history vs registrations, «Сейчас» without past; auto-archive/media titles; welcome chats + PRO/RU cleanup. Await Render LIVE SHA = main tip.
+- 17 November / #674 merged: full event posters, readable copy, full nav labels; portfolio hides cancelled/rejected authored projects.
 - Production DB read: screenshot events «1» / «й» / «Последний хранитель…» absent. Cancelled test projects 19/20/21 recorded as cleaned earlier — do not re-delete.
 
 - 17 November / wave-4 (stacked): Admin queue retitled «Решить сегодня»; media request packages (фото/рилс/полный) + due_at; Leader media-request panel. Depends on wave-3.
