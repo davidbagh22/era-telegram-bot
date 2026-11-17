@@ -19,6 +19,7 @@ interface HomeScreenProps {
   onOpenProfile?: () => void;
   onOpenProgress?: () => void;
   onOpenDevelopment?: () => void;
+  onOpenAssessments?: () => void;
   onOpenEvents?: () => void;
   onOpenEvent?: (id: number) => void;
   onOpenProject?: (id: number) => void;
@@ -59,6 +60,7 @@ export function HomeScreen({
   user,
   onOpenProfile,
   onOpenDevelopment,
+  onOpenAssessments,
   onOpenEvents,
   onOpenEvent,
   onOpenProject,
@@ -111,7 +113,7 @@ export function HomeScreen({
     ? eventBoard.filter((event) => event.id !== featuredEvent?.id)
     : [];
   const nearestEvent = data.nearest_event?.id === featuredEvent?.id
-    || upcomingEvents.slice(0, 5).some((event) => event.id === data.nearest_event?.id)
+    || upcomingEvents.slice(0, 3).some((event) => event.id === data.nearest_event?.id)
     ? null : data.nearest_event;
 
   const nextStepClick = (() => {
@@ -138,14 +140,14 @@ export function HomeScreen({
     && data.next_step.entity_id === data.active_task?.id;
 
   return (
-    <div className="era-page era-stagger" style={{ padding: "1rem 1rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+    <div className="era-page era-stagger" style={{ padding: "1.15rem 1.15rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.75rem" }}>
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
         <div>
           <MonoLabel tone="violet">ЭРА</MonoLabel>
-          <h1 style={{ margin: "0.35rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.8rem", lineHeight: 1.05 }}>
+          <h1 style={{ margin: "0.4rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.85rem", lineHeight: 1.05 }}>
             {greeting()}, {user.first_name}.
           </h1>
-          <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem" }}>
+          <p style={{ margin: "0.4rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem" }}>
             Вот что сейчас важнее всего.
           </p>
         </div>
@@ -154,21 +156,38 @@ export function HomeScreen({
         </button>
       </header>
 
-      <section aria-label="Афиша ЭРА" style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+      <section aria-label="Афиша ЭРА" style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
-          <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Афиша ЭРА</h2>
+          <h2 style={{ margin: 0, fontSize: "1.15rem" }}>Афиша ЭРА</h2>
           {onOpenEvents && <button type="button" className="era-btn-ghost" onClick={onOpenEvents}>Все мероприятия →</button>}
         </div>
         {featuredEvent && (
-          <Card style={{ padding: "0.8rem", display: "grid", gap: "0.55rem" }}>
-            <EventPoster event={featuredEvent} compact />
-            <h2 style={{ margin: 0, fontSize: "1.3rem" }}><strong>Первая годовщина ЭРА — 1 ГОД</strong></h2>
-            <p style={{ margin: 0, color: "var(--era-text-secondary)" }}>
-              {formatDate(featuredEvent.event_date)} · Сбор в 17:30 · Начало в {featuredEvent.event_time}
-            </p>
-            <p style={{ margin: 0, color: "var(--era-text-secondary)" }}>{featuredEvent.location}</p>
-            <AnniversaryRegistration key={featuredEvent.id} event={featuredEvent} />
-            {onOpenEvent && <button type="button" onClick={() => onOpenEvent(featuredEvent.id)}>Подробнее</button>}
+          <Card gradient style={{ padding: 0, overflow: "hidden", display: "grid" }}>
+            <button
+              type="button"
+              onClick={onOpenEvent ? () => onOpenEvent(featuredEvent.id) : undefined}
+              style={{
+                display: "grid",
+                gap: "0.4rem",
+                padding: 0,
+                border: 0,
+                background: "transparent",
+                textAlign: "left",
+                width: "100%",
+                fontWeight: 400,
+              }}
+            >
+              <EventPoster event={featuredEvent} compact />
+              <div style={{ padding: "0.75rem 0.85rem 0" }}>
+                <h2 style={{ margin: 0, fontSize: "1.05rem", lineHeight: 1.3, fontWeight: 800 }}>{featuredEvent.title}</h2>
+                <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-secondary)", fontSize: "0.84rem", lineHeight: 1.4 }}>
+                  {formatDate(featuredEvent.event_date)} · {featuredEvent.event_time} · {featuredEvent.location}
+                </p>
+              </div>
+            </button>
+            <div style={{ padding: "0.55rem 0.85rem 0.9rem" }}>
+              <AnniversaryRegistration key={featuredEvent.id} event={featuredEvent} />
+            </div>
           </Card>
         )}
         {eventBoard === "loading" && <SkeletonCard />}
@@ -176,11 +195,12 @@ export function HomeScreen({
         {Array.isArray(eventBoard) && upcomingEvents.length === 0 && !featuredEvent && (
           <EmptyState text="Пока нет ближайших мероприятий." />
         )}
-        {upcomingEvents.slice(0, 5).map((event) => (
-          <Card key={event.id} onClick={onOpenEvent ? () => onOpenEvent(event.id) : onOpenEvents}>
-            <strong>{event.title}</strong>
-            <p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>
-              {formatDate(event.event_date)} · {event.event_time} · {event.location}
+        {upcomingEvents.slice(0, 3).map((event) => (
+          <Card key={event.id} onClick={onOpenEvent ? () => onOpenEvent(event.id) : onOpenEvents} style={{ padding: "0.75rem 0.85rem" }}>
+            <strong style={{ display: "block", fontSize: "0.95rem", lineHeight: 1.3 }}>{event.title}</strong>
+            <p style={{ margin: ".2rem 0 0", color: "var(--era-text-secondary)", fontSize: "0.8rem" }}>
+              {formatDate(event.event_date)} · {event.event_time}
+              {event.location ? ` · ${event.location}` : ""}
             </p>
           </Card>
         ))}
@@ -189,7 +209,7 @@ export function HomeScreen({
       <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
         <MonoLabel>Следующий шаг</MonoLabel>
         {data.next_step ? (
-          <Card gradient onClick={nextStepClick} style={{ padding: "1.1rem" }}>
+          <Card gradient onClick={nextStepClick} style={{ padding: "1.15rem" }}>
             <strong style={{ display: "block", fontSize: "1.15rem" }}>{data.next_step.title}</strong>
             <p style={{ margin: ".4rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem", lineHeight: 1.5 }}>{data.next_step.description}</p>
             {nextStepClick && <span style={{ display: "block", marginTop: ".75rem", color: "var(--era-violet)", fontWeight: 800, fontSize: ".85rem" }}>{data.next_step.action_label} →</span>}
@@ -201,6 +221,21 @@ export function HomeScreen({
           </Card>
         )}
       </section>
+
+      {user.features.vector && (onOpenAssessments || onOpenDevelopment) && (
+        <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+          <MonoLabel>Профиль</MonoLabel>
+          <Card gradient onClick={onOpenAssessments ?? onOpenDevelopment} style={{ padding: "1.15rem" }}>
+            <strong style={{ display: "block", fontSize: "1.1rem" }}>Узнай свой профиль · 3 мин</strong>
+            <p style={{ margin: ".4rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem", lineHeight: 1.5 }}>
+              Короткий тест покажет сильные стороны и куда ты подходишь в ЭРА.
+            </p>
+            <span style={{ display: "block", marginTop: ".75rem", color: "var(--era-violet)", fontWeight: 800, fontSize: ".85rem" }}>
+              Пройти →
+            </span>
+          </Card>
+        </section>
+      )}
 
       {(data.active_task || data.tasks_available_count > 0 || data.tasks_in_progress_count > 0) && (
         <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>

@@ -74,17 +74,24 @@ def main_reply_keyboard(
     miniapp_url: str = "", *, admin: bool = False, leaders: bool = False,
     media_chair: bool = False, anniversary: bool = False,
 ) -> ReplyKeyboardMarkup:
-    """Persistent quick-access menu shown above the Telegram input field."""
+    """Persistent quick-access menu shown above the Telegram input field.
+
+    Keep short labels. «Лидеры» / «Медиа» only when the user actually has those
+    rights — do not show empty shells. Leisure stays in the inline shell.
+    """
     rows: list[list[KeyboardButton]] = []
     if anniversary:
         rows.append([KeyboardButton(text=MENU_BUTTON)])
     if miniapp_url:
+        # Reply-keyboard WebApps use Telegram's simple mode (no signed initData).
+        # «Открыть ЭРА» stays a message so the handler can offer an auth WebApp.
         rows.append([
-            # Reply-keyboard WebApps use Telegram's simple mode, which has
-            # no signed initData. Send a normal message so the handler can
-            # offer an authenticated inline WebApp button instead.
             KeyboardButton(text="🔥 Открыть ЭРА"),
-            KeyboardButton(text="🧭 Навигация"),
+            KeyboardButton(text="📅 Афиша"),
+        ])
+        rows.append([
+            KeyboardButton(text="🌱 Мой путь"),
+            KeyboardButton(text="⭐ Возможности"),
         ])
     else:
         rows.append([
@@ -92,22 +99,19 @@ def main_reply_keyboard(
             KeyboardButton(text="📅 Афиша"),
         ])
         rows.append([
+            KeyboardButton(text="🌱 Мой путь"),
             KeyboardButton(text="⭐ Возможности"),
-            KeyboardButton(text="🧭 Навигация"),
         ])
     if admin:
         rows.append([
             KeyboardButton(text="📊 Статистика"),
             KeyboardButton(text="📥 Заявки"),
         ])
-    if leaders or admin:
+    if leaders:
         rows.append([KeyboardButton(text="🧭 Лидеры")])
     if media_chair:
-        rows.append([KeyboardButton(text="🎬 Руководитель медиа")])
-    rows.append([
-        KeyboardButton(text="💬 Связь"),
-        KeyboardButton(text="🎲 Досуг"),
-    ])
+        rows.append([KeyboardButton(text="🎬 Медиа")])
+    rows.append([KeyboardButton(text="💬 Связь")])
     return ReplyKeyboardMarkup(
         keyboard=rows,
         resize_keyboard=True,

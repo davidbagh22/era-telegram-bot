@@ -47,7 +47,7 @@ export function RewardsPanel() {
     return <EmptyState text="Не удалось загрузить каталог." />;
   }
   if (state.data.length === 0) {
-    return <EmptyState text="Каталог возможностей пока пуст." />;
+    return <EmptyState text="Партнёрские предложения за баллы появятся здесь. Это не магазин подарков." />;
   }
 
   return (

@@ -70,11 +70,13 @@ def test_room_limits_and_question_bank():
 
 def test_leisure_is_accessible_from_both_bot_keyboards():
     from app.keyboards.bot_shell import main_inline_keyboard, main_reply_keyboard
+    # Wave-1: leisure stays on the inline shell only — reply keyboard stays short.
     reply_labels = [button.text for row in main_reply_keyboard().keyboard for button in row]
-    assert "🎲 Досуг" in reply_labels
+    assert "🎲 Досуг" not in reply_labels
     assert "📚 Литература" not in reply_labels
     inline_buttons = [button for row in main_inline_keyboard().inline_keyboard for button in row]
     assert any(button.callback_data == "leisure:home" for button in inline_buttons)
+    assert any(button.text == "🎲 Досуг" for button in inline_buttons)
 
 
 def test_leisure_hides_game_link_until_public_launch():

@@ -58,6 +58,7 @@ export function initTelegramWebApp(): void {
   webApp?.expand();
   // Re-apply ERA chrome if Telegram itself changes theme while the Mini App is open.
   webApp?.onEvent("themeChanged", applyTelegramTheme);
+  bindPrimaryButtonHaptics();
 }
 
 export function getColorScheme(): "light" | "dark" {
@@ -66,14 +67,14 @@ export function getColorScheme(): "light" | "dark" {
 
 export function applyTelegramTheme(): void {
   document.documentElement.dataset.theme = "light";
-  document.documentElement.style.backgroundColor = "#F7F7FA";
-  document.body?.style.setProperty("background-color", "#F7F7FA");
+  document.documentElement.style.backgroundColor = "#F4F6F8";
+  document.body?.style.setProperty("background-color", "#F4F6F8");
 
   const webApp = getTelegramWebApp();
   // Keep Telegram's surrounding Mini App chrome visually continuous with ERA.
-  try { webApp?.setHeaderColor?.("#F7F7FA"); } catch { /* older clients */ }
-  try { webApp?.setBackgroundColor?.("#F7F7FA"); } catch { /* older clients */ }
-  try { webApp?.setBottomBarColor?.("#F7F7FA"); } catch { /* older clients */ }
+  try { webApp?.setHeaderColor?.("#F4F6F8"); } catch { /* older clients */ }
+  try { webApp?.setBackgroundColor?.("#F4F6F8"); } catch { /* older clients */ }
+  try { webApp?.setBottomBarColor?.("#FFFFFF"); } catch { /* older clients */ }
 }
 
 function currentHashRoute(): string {
@@ -172,6 +173,29 @@ export function selectionHaptic(): void {
   try { getTelegramWebApp()?.HapticFeedback?.selectionChanged?.(); } catch { /* unsupported client */ }
 }
 
+export function impactHaptic(style: "light" | "medium" | "heavy" = "light"): void {
+  try { getTelegramWebApp()?.HapticFeedback?.impactOccurred?.(style); } catch { /* unsupported client */ }
+}
+
 export function successHaptic(): void {
   try { getTelegramWebApp()?.HapticFeedback?.notificationOccurred?.("success"); } catch { /* unsupported client */ }
+}
+
+let primaryHapticsBound = false;
+
+/** Light tap feedback on primary/signal CTAs without wiring every screen. */
+export function bindPrimaryButtonHaptics(): void {
+  if (primaryHapticsBound || typeof document === "undefined") return;
+  primaryHapticsBound = true;
+  document.addEventListener(
+    "click",
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const control = target.closest(".era-btn-primary, .era-btn-signal");
+      if (!control || (control instanceof HTMLButtonElement && control.disabled)) return;
+      impactHaptic("light");
+    },
+    true,
+  );
 }

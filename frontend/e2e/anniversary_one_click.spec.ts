@@ -49,7 +49,7 @@ async function mockAnniversary(page: Page, organization: string | null) {
 test("the pinned homepage action registers in one click and reflects the saved status", async ({ page }) => {
   const requests = await mockAnniversary(page, "ЭРА");
   await page.goto("/app/?devTelegramId=900001");
-  await expect(page.getByRole("heading", { name: "Первая годовщина ЭРА — 1 ГОД" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: event.title })).toBeVisible();
   await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Вы зарегистрированы" })).toBeVisible();
   expect(requests).toEqual([{}]);

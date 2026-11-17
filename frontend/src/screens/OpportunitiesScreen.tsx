@@ -17,11 +17,12 @@ import { useAsync } from "../hooks/useAsync";
 import type { Opportunity, OpportunityScope, OpportunitySort, OpportunityState } from "../types/opportunity";
 import { AuctionsPanel } from "./opportunities/AuctionsPanel";
 import { PointsRulesSheet } from "./opportunities/PointsRulesSheet";
+import { RanksPanel } from "./opportunities/RanksPanel";
 import { RewardsPanel } from "./opportunities/RewardsPanel";
 import { SurveysPanel } from "./opportunities/SurveysPanel";
 
 export type OpportunitiesSection = "offers" | "auctions" | "rewards" | "surveys";
-type QuickKey = "all" | "for_me" | "available" | "almost";
+type QuickKey = "all" | "for_me" | "available";
 type UiSort = "recommended" | "closing_soon" | "newest" | "required_points";
 
 const STORAGE_KEY = "era.opportunities.state.v2";
@@ -30,12 +31,11 @@ const QUICK_STATES: { key: QuickKey; label: string; scope: OpportunityScope; sta
   { key: "all", label: "Все", scope: "all", state: null },
   { key: "for_me", label: "Для тебя", scope: "for_me", state: null },
   { key: "available", label: "Доступно", scope: "all", state: "available" },
-  { key: "almost", label: "Скоро доступно", scope: "all", state: "almost" },
 ];
 
 const STATE_LABELS: Record<OpportunityState, string> = {
   available: "Доступно",
-  almost: "Скоро доступно",
+  almost: "Ещё не открыто",
   closed: "Закрыто",
   requested: "Заявка отправлена",
   review: "На рассмотрении",
@@ -122,7 +122,14 @@ function formatPoints(value: number): string {
 function OffersList({ initialItemId }: { initialItemId?: number | null }) {
   const stored = useMemo(() => loadStoredState(), []);
   const [scope, setScope] = useState<OpportunityScope>(initialItemId ? "mine" : stored?.scope ?? "all");
-  const [status, setStatus] = useState<OpportunityState | null>(initialItemId ? null : stored?.status ?? null);
+  // Default to actionable offers only when nothing was saved. An explicit
+  // stored null (e.g. «Все» / mine deep-link) must stay unfiltered.
+  const [status, setStatus] = useState<OpportunityState | null>(() => {
+    if (initialItemId) return null;
+    if (!stored) return "available";
+    const value = stored.status;
+    return value === "almost" ? "available" : value;
+  });
   const [category, setCategory] = useState<string | null>(stored?.category ?? null);
   const [sort, setSort] = useState<UiSort>(stored?.sort ?? "recommended");
   const [showFilterSheet, setShowFilterSheet] = useState(false);
@@ -270,22 +277,20 @@ function OffersList({ initialItemId }: { initialItemId?: number | null }) {
         })}
       </div>
 
-      <Card style={{ padding: "1rem" }}>
+      <Card style={{ padding: "0.9rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.8rem" }}>
           <div>
-            <MonoLabel tone="violet">Каталог возможностей</MonoLabel>
+            <MonoLabel tone="violet">Открытые предложения</MonoLabel>
             <strong style={{ display: "block", marginTop: "0.3rem" }}>
               {activeQuick ? QUICK_STATES.find((item) => item.key === activeQuick)?.label : "Подборка"}
             </strong>
             <p style={{ margin: "0.28rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8rem", lineHeight: 1.45 }}>
-              Баллы показывают подтверждённую активность и не списываются при открытии возможности.
+              Только то, чем можно воспользоваться сейчас. Баллы при открытии не списываются.
             </p>
           </div>
           <button type="button" onClick={openFilters}>Фильтры{category || status || sort !== "recommended" ? " •" : ""}</button>
         </div>
       </Card>
-
-      <PointsRulesSheet />
 
       <BottomSheet open={showFilterSheet} onClose={() => setShowFilterSheet(false)} title="Фильтры">
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem", maxHeight: "68vh", overflowY: "auto" }}>
@@ -300,7 +305,6 @@ function OffersList({ initialItemId }: { initialItemId?: number | null }) {
             options={[
               { value: null, label: "Все" },
               { value: "available", label: "Доступно" },
-              { value: "almost", label: "Скоро доступно" },
               { value: "closed", label: "Закрыто" },
             ]}
             value={draftStatus}
@@ -324,7 +328,7 @@ function OffersList({ initialItemId }: { initialItemId?: number | null }) {
       {actionError && <p style={{ margin: 0, color: "var(--era-error)", fontSize: "0.82rem" }}>{actionError}</p>}
       {listState.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>}
       {listState.status === "error" && <EmptyState text="Не удалось загрузить возможности." />}
-      {listState.status === "ready" && offers.length === 0 && <EmptyState text="По этим параметрам пока ничего нет." />}
+      {listState.status === "ready" && offers.length === 0 && <EmptyState text="Сейчас нет открытых предложений — смотрите ранг и рейтинг выше." />}
 
       {offers.map((offer) => (
         <OpportunityCard
@@ -419,7 +423,7 @@ function OpportunityCard({ offer, expanded, pending, onToggle, onApply, onSave }
               <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                 {!applied && (
                   <button type="button" className="era-btn-primary" disabled={pending || !offer.eligible} onClick={onApply}>
-                    {offer.eligible ? "Подать заявку" : offer.state === "almost" ? "Скоро доступно" : "Условия не выполнены"}
+                    {offer.eligible ? "Подать заявку" : "Условия не выполнены"}
                   </button>
                 )}
                 <button type="button" disabled={pending} onClick={onSave}>{offer.is_saved ? "Убрать из сохранённых" : "Сохранить"}</button>
@@ -443,11 +447,19 @@ export function OpportunitiesScreen({ initialSection = "offers", initialItemId, 
     <div className="era-page" style={{ padding: "1.25rem 1.25rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1rem" }}>
       {onBack && <button type="button" onClick={onBack}>← Назад</button>}
       <div>
-        <MonoLabel tone="violet">Рост открывает доступ</MonoLabel>
+        <MonoLabel tone="violet">Рост в ЭРА</MonoLabel>
         <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "1.75rem", fontWeight: 800, margin: "0.35rem 0 0" }}>Возможности</h1>
-        <p style={{ margin: "0.4rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>То, что становится доступно благодаря подтверждённой активности в ЭРА.</p>
+        <p style={{ margin: "0.4rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>
+          Ранги и рейтинг по баллам — главный ориентир. Открытые предложения появляются только когда к ним реально есть доступ.
+        </p>
       </div>
-      {initialSection === "offers" && <OffersList initialItemId={initialItemId ?? null} />}
+      {initialSection === "offers" && (
+        <>
+          <RanksPanel />
+          <PointsRulesSheet />
+          <OffersList initialItemId={initialItemId ?? null} />
+        </>
+      )}
       {initialSection === "auctions" && <AuctionsPanel />}
       {initialSection === "rewards" && <RewardsPanel />}
       {initialSection === "surveys" && <SurveysPanel />}

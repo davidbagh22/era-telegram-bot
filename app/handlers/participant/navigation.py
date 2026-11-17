@@ -168,7 +168,7 @@ async def opportunities_button(message: Message, user: User | None, session: Asy
                 [InlineKeyboardButton(text="🤝 Партнёрские предложения", callback_data="offers:list")],
                 [InlineKeyboardButton(text="🔨 Аукцион", callback_data="auctions:list")],
                 [InlineKeyboardButton(text="📜 Мои заявки", callback_data="offers:mine")],
-                [InlineKeyboardButton(text="🎁 Каталог возможностей", callback_data="rewards:menu")],
+                [InlineKeyboardButton(text="Партнёрский каталог", callback_data="rewards:menu")],
                 [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
             ]
         ),
