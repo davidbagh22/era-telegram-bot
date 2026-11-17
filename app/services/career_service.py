@@ -89,6 +89,7 @@ async def update_profile(
     headline: str | None,
     about: str | None,
     languages: list[dict[str, Any]] | None,
+    skills: list[str] | None = None,
 ) -> CareerProfile:
     profile = await get_or_create_profile(session, user_id)
     profile.headline = clean_text(headline, max_length=180) or None
@@ -101,6 +102,22 @@ async def update_profile(
             if name:
                 normalized.append({"name": name, "level": level})
         profile.languages = normalized
+    if skills is not None:
+        user = await session.get(User, user_id)
+        if user is not None:
+            # Match registration limits (20 × 120). PDF rendering may show fewer.
+            cleaned_skills: list[str] = []
+            seen: set[str] = set()
+            for skill in skills[:20]:
+                cleaned = clean_text(str(skill), max_length=120)
+                if not cleaned:
+                    continue
+                identity = cleaned.casefold()
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                cleaned_skills.append(cleaned)
+            user.skills = cleaned_skills
     await session.commit()
     await session.refresh(profile)
     return profile
@@ -548,6 +565,7 @@ async def dashboard(session: AsyncSession, user: User) -> dict[str, Any]:
             "headline": profile.headline or "",
             "about": profile.about or "",
             "languages": profile.languages or [],
+            "skills": [str(skill).strip() for skill in (user.skills or []) if str(skill).strip()],
         },
         "counts": {
             "confirmed": era_confirmed + len(verified_user_items),

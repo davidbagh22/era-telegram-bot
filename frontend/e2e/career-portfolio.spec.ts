@@ -11,9 +11,12 @@ test("participant can open professional portfolio and CV tools", async ({ page }
   await expect(page.getByText("Всё, что ты сделал. Всё, что можешь показать.")).toBeVisible();
   await expect(page.getByRole("button", { name: "＋ Добавить результат" })).toBeVisible();
   await expect(page.getByText("Рекомендация ЭРА", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Отправить резюме в чат с ботом" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Скачать резюме PDF" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Отправить портфолио в чат с ботом" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Скачать портфолио PDF" })).toBeVisible();
   await expect(page.getByText(/Моего вектора/)).toBeVisible();
+  await page.getByRole("button", { name: "Скачать портфолио PDF" }).click();
+  await expect(page.getByText("Перед выгрузкой портфолио")).toBeVisible();
+  await expect(page.getByPlaceholder("Ключевые навыки через запятую")).toBeVisible();
 });
 
 
