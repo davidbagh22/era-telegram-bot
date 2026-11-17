@@ -123,9 +123,12 @@ function formatPoints(value: number): string {
 
 function OffersList({ initialItemId }: { initialItemId?: number | null }) {
   const stored = useMemo(() => loadStoredState(), []);
-  const [scope, setScope] = useState<OpportunityScope>(initialItemId ? "mine" : stored?.scope ?? "all");
+  // Deep links from Home / cert ladder target a specific offer to apply.
+  // Scope "mine" only shows existing applications, so unapplied offers vanish —
+  // use "all" and leave status unfiltered so the card can expand + apply.
+  const [scope, setScope] = useState<OpportunityScope>(initialItemId ? "all" : stored?.scope ?? "all");
   // Default to actionable offers only when nothing was saved. An explicit
-  // stored null (e.g. «Все» / mine deep-link) must stay unfiltered.
+  // stored null (e.g. «Все» / deep-link) must stay unfiltered.
   const [status, setStatus] = useState<OpportunityState | null>(() => {
     if (initialItemId) return null;
     if (!stored) return "available";
@@ -142,6 +145,13 @@ function OffersList({ initialItemId }: { initialItemId?: number | null }) {
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(initialItemId ?? null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!initialItemId) return;
+    setScope("all");
+    setStatus(null);
+    setExpandedId(initialItemId);
+  }, [initialItemId]);
 
   const query: OpportunityFilters = {
     scope,
@@ -253,7 +263,7 @@ function OffersList({ initialItemId }: { initialItemId?: number | null }) {
   const previewCount = previewState.status === "ready" ? previewState.data.length : null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
+    <div id="opportunities-offers" style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.55rem" }}>
         {QUICK_STATES.map((option) => {
           const active = option.key === activeQuick;
