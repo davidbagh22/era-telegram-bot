@@ -13,6 +13,8 @@ export interface EventAttendanceState {
   confirmed: boolean;
   points_for_visit: number;
   points_awarded: boolean;
+  proof_status?: string | null;
+  can_submit_proof?: boolean;
 }
 
 export interface EventAttendanceConfirmation extends EventAttendanceState {
@@ -64,16 +66,26 @@ async function parseError(response: Response): Promise<never> {
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const sessionToken = await token();
+  const body = init?.body;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${sessionToken}`,
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(body && !(body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
       ...(init?.headers ?? {}),
     },
   });
   if (!response.ok) return parseError(response);
   return (await response.json()) as T;
+}
+
+export async function submitAttendanceProof(eventId: number, file: File): Promise<EventAttendanceState> {
+  const body = new FormData();
+  body.append("upload", file);
+  return requestJson<EventAttendanceState>(`/api/v1/events/${eventId}/attendance/proof`, {
+    method: "POST",
+    body,
+  });
 }
 
 export function fetchEventAttendanceState(eventId: number): Promise<EventAttendanceState> {
