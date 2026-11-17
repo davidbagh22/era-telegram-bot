@@ -122,10 +122,12 @@ function formatPoints(value: number): string {
 function OffersList({ initialItemId }: { initialItemId?: number | null }) {
   const stored = useMemo(() => loadStoredState(), []);
   const [scope, setScope] = useState<OpportunityScope>(initialItemId ? "mine" : stored?.scope ?? "all");
-  // Default to actionable offers only — locked teasers are hidden server-side too.
+  // Default to actionable offers only when nothing was saved. An explicit
+  // stored null (e.g. «Все» / mine deep-link) must stay unfiltered.
   const [status, setStatus] = useState<OpportunityState | null>(() => {
     if (initialItemId) return null;
-    const value = stored?.status ?? "available";
+    if (!stored) return "available";
+    const value = stored.status;
     return value === "almost" ? "available" : value;
   });
   const [category, setCategory] = useState<string | null>(stored?.category ?? null);
