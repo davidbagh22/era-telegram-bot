@@ -105,11 +105,19 @@ async def update_profile(
     if skills is not None:
         user = await session.get(User, user_id)
         if user is not None:
-            user.skills = [
-                cleaned
-                for cleaned in (clean_text(str(skill), max_length=80) for skill in skills[:16])
-                if cleaned
-            ]
+            # Match registration limits (20 × 120). PDF rendering may show fewer.
+            cleaned_skills: list[str] = []
+            seen: set[str] = set()
+            for skill in skills[:20]:
+                cleaned = clean_text(str(skill), max_length=120)
+                if not cleaned:
+                    continue
+                identity = cleaned.casefold()
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                cleaned_skills.append(cleaned)
+            user.skills = cleaned_skills
     await session.commit()
     await session.refresh(profile)
     return profile

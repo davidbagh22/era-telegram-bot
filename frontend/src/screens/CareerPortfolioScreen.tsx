@@ -256,7 +256,7 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
       .split(/[,;\n]/)
       .map((item) => item.trim())
       .filter(Boolean)
-      .slice(0, 16);
+      .slice(0, 20);
 
   const saveProfile = async () => {
     setSaving(true);
