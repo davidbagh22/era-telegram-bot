@@ -244,8 +244,15 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
         <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: "0 0 0.25rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Проект ЭРА</p>
-            <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-xl)", lineHeight: 1.25, overflowWrap: "anywhere", textWrap: "balance" }}>{displayProjectTitle(project.title)}</strong>
-            {project.short_description && <p className="era-readable-copy" style={{ margin: "0.5rem 0 0" }}>{project.short_description}</p>}
+            <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-xl)", lineHeight: 1.25, overflowWrap: "break-word", textWrap: "balance" }}>{displayProjectTitle(project.title)}</strong>
+            {/* short_description только если его ещё нет среди ответов конструктора — иначе дубль */}
+            {project.short_description
+              && !Object.values(answers).some((value) => {
+                const text = (value ?? "").trim();
+                const short = project.short_description!.trim();
+                return text === short || text.startsWith(short) || short.startsWith(text);
+              })
+              && <p className="era-readable-copy" style={{ margin: "0.5rem 0 0" }}>{project.short_description}</p>}
           </div>
           <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
         </div>

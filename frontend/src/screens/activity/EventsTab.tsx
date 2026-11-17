@@ -12,6 +12,7 @@ import {
 import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
+import { MediaRequestButton } from "../../components/MediaRequestButton";
 import { SkeletonList } from "../../components/Skeleton";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useToast } from "../../components/Toast";
@@ -49,6 +50,42 @@ function formatDate(value: string): string {
 function capacityText(event: EventItem): string {
   if (event.participant_limit === null) return "Без ограничения мест";
   return `${event.registered_count} / ${event.participant_limit} участников`;
+}
+
+/** Drop flyer lines already shown in КОГДА / ГДЕ / ОРГАНИЗАТОР so the card isn't doubled. */
+export function cleanEventDescriptionBody(text: string, event: EventItem): string {
+  const location = (event.location || "").trim().toLowerCase();
+  const address = (event.address || "").trim().toLowerCase();
+  const organizer = (event.organizer || "").trim().toLowerCase();
+  const title = (event.title || "").trim().toLowerCase();
+  const dateBits = [
+    event.event_date,
+    event.event_time,
+    event.end_time,
+    formatDate(event.event_date).toLowerCase(),
+  ].filter(Boolean).map(String);
+
+  const cleaned = text
+    .split(/\r?\n/)
+    .filter((raw) => {
+      const line = raw.trim();
+      if (!line) return true;
+      const lower = line.toLowerCase().replace(/\s+/g, " ");
+      const stripped = lower.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\s•\-–—]+/u, "");
+      if (/^[📅🗓⏰🕒🕐🕑🕓🕔🕕🕖🕗🕘🕙🕚🕛📍📌🏠🏢🗺✅🎫🌷💚🌸]/u.test(line) && line.length < 96) return false;
+      if (/^(когда|где|время|дата|место|адрес|организатор|регистрация)\b/i.test(stripped)) return false;
+      if (title && (lower === title || lower === `«${title}»` || lower === `"${title}"` || stripped === title)) return false;
+      if (location && lower.includes(location) && lower.length < location.length + 28) return false;
+      if (address && lower.includes(address) && lower.length < address.length + 28) return false;
+      if (organizer && (lower === organizer || stripped === organizer || lower.startsWith(`${organizer} ·`) || stripped.startsWith("организатор"))) return false;
+      if (dateBits.some((bit) => bit && lower.includes(bit.toLowerCase()) && lower.length < 56)) return false;
+      if (/^(https?:\/\/|t\.me\/|@)\S+$/i.test(stripped) && stripped.length < 120) return false;
+      return true;
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return cleaned;
 }
 
 // Calendar times are stored as local Asia/Yerevan clock times. Build explicit UTC
@@ -256,7 +293,9 @@ function EventActivitiesPanel({ eventId }: { eventId: number }) {
 }
 
 export function EventPoster({ event, compact = false }: { event: EventItem; compact?: boolean }) {
-  const height = compact ? 112 : 245;
+  // Compact feed: full-bleed cover in a fixed frame (no letterbox gaps).
+  // Detail: contain so the full flyer stays readable.
+  const height = compact ? 180 : 245;
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
@@ -292,19 +331,31 @@ export function EventPoster({ event, compact = false }: { event: EventItem; comp
 
   if (src) {
     return (
-      <img
-        src={src}
-        alt={`Афиша ${event.title}`}
+      <div
         style={{
           width: "100%",
-          height: compact ? height : "auto",
+          height: compact ? height : undefined,
           maxHeight: compact ? undefined : "70vh",
-          objectFit: "contain",
+          borderRadius: compact ? "0.85rem" : "1.25rem",
           background: "var(--era-surface-2)",
-          borderRadius: compact ? "1rem" : "1.25rem",
-          display: "block",
+          overflow: "hidden",
+          display: "grid",
+          placeItems: "center",
         }}
-      />
+      >
+        <img
+          src={src}
+          alt={`Афиша ${event.title}`}
+          style={{
+            width: "100%",
+            height: compact ? "100%" : "auto",
+            maxHeight: compact ? undefined : "70vh",
+            objectFit: compact ? "cover" : "contain",
+            objectPosition: "center top",
+            display: "block",
+          }}
+        />
+      </div>
     );
   }
   return (
@@ -312,7 +363,7 @@ export function EventPoster({ event, compact = false }: { event: EventItem; comp
       aria-hidden="true"
       style={{
         height,
-        borderRadius: compact ? "1rem" : "1.25rem",
+        borderRadius: compact ? "0.85rem" : "1.25rem",
         background: "radial-gradient(circle at 80% 20%, rgba(255,255,255,.16), transparent 32%), var(--era-gradient-signal)",
         display: "flex",
         alignItems: "flex-end",
@@ -341,9 +392,11 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
   const registered = ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "");
   const waitlisted = event.registration_status === WAITLIST_STATUS;
   const chatUrl = safeEvidenceUrl(event.chat_url);
-  const description = (event.full_description || event.description || "").trim();
-  const summary = event.short_description?.trim();
-  const showSummary = summary && summary !== description;
+  const rawDescription = (event.full_description || event.description || event.short_description || "").trim();
+  const summary = event.short_description?.trim() || "";
+  const cleanedBody = cleanEventDescriptionBody(rawDescription, event);
+  // One text block only — never stack short + full (they often repeat the flyer).
+  const bodyText = cleanedBody || summary;
 
   return (
     <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.75rem", paddingBottom: "calc(10.25rem + env(safe-area-inset-bottom, 0px))" }}>
@@ -352,8 +405,7 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         <StatusBadge label={event.display_status} tone={registered ? "violet" : "neutral"} />
-        <h2 style={{ fontSize: "clamp(1.65rem, 7vw, 2.35rem)", lineHeight: 1.05, margin: 0, overflowWrap: "anywhere", textWrap: "balance" }}>{event.title}</h2>
-        {showSummary && <p className="era-readable-copy" style={{ margin: 0 }}>{summary}</p>}
+        <h2 style={{ fontSize: "clamp(1.65rem, 7vw, 2.35rem)", lineHeight: 1.05, margin: 0, overflowWrap: "break-word", textWrap: "balance" }}>{event.title}</h2>
       </div>
 
       <Card style={{ padding: "0.95rem" }}>
@@ -370,11 +422,11 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
         </div>
       </Card>
 
-      {description && (
+      {bodyText && (
         <Card>
           <h3 style={{ margin: "0 0 .55rem", fontSize: "1.05rem" }}>О событии</h3>
           <div className="era-readable-copy">
-            {description.split(/\r?\n(?:[^\S\r\n]*\r?\n)+/).map((paragraph, index) => (
+            {bodyText.split(/\r?\n(?:[^\S\r\n]*\r?\n)+/).map((paragraph, index) => (
               <p key={index} style={{ margin: index === 0 ? 0 : ".75rem 0 0" }}>{paragraph.trim()}</p>
             ))}
           </div>
@@ -450,6 +502,7 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
       {safeEvidenceUrl(event.contact) ? (
         <a href={safeEvidenceUrl(event.contact)!} target="_blank" rel="noopener noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть ссылку</a>
       ) : event.contact ? <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.86rem" }}>Связь: {event.contact}</p> : null}
+      <MediaRequestButton sourceType="event" sourceId={event.id} />
       {actionError && <p style={{ color: "var(--era-error)", margin: 0 }}>{actionError}</p>}
 
       <div
@@ -693,43 +746,47 @@ export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) 
         />
       )}
       {state.status === "ready" && state.data.length > 0 && (
-        <div className="era-stagger" style={{ display: "flex", flexDirection: "column", gap: ".8rem" }}>
+        <div className="era-stagger" style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
           {state.data.map((event) => (
-            <Card key={event.id} style={{ padding: "0.65rem", overflow: "hidden" }}>
+            <Card key={event.id} style={{ padding: "0.55rem", overflow: "hidden" }}>
               <EventPoster event={event} compact />
-              <div style={{ padding: "0.7rem 0.3rem 0.2rem", display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+              <div style={{ padding: "0.75rem 0.4rem 0.35rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "flex-start" }}>
                   {event.anniversary_registered == null && (
                     <StatusBadge label={event.display_status} tone={ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "") ? "violet" : "neutral"} />
                   )}
-                  {event.points_for_visit > 0 && <strong style={{ fontSize: "0.82rem", color: "var(--era-gold-ink)" }}>+{event.points_for_visit} баллов</strong>}
+                  {event.points_for_visit > 0 && <strong style={{ fontSize: "0.82rem", color: "var(--era-gold-ink)" }}>+{event.points_for_visit}</strong>}
                 </div>
-                <strong style={{ fontSize: "1.18rem", lineHeight: 1.15 }}>{event.title}</strong>
-                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.88rem" }}>{formatDate(event.event_date)} · {event.event_time}</p>
-                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.88rem" }}>📍 {event.location}</p>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>
-                  <span>{capacityText(event)}</span>
-                  {event.remaining_count !== null && <span>Осталось {event.remaining_count}</span>}
-                </div>
+                <strong style={{ fontSize: "1.12rem", lineHeight: 1.2, overflowWrap: "break-word" }}>{event.title}</strong>
+                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.86rem", lineHeight: 1.35 }}>
+                  {formatDate(event.event_date)} · {event.event_time}
+                  {event.location ? ` · ${event.location}` : ""}
+                </p>
+                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.78rem" }}>{capacityText(event)}</p>
                 {event.anniversary_registered != null ? (
                   <>
                     <AnniversaryRegistration event={event} />
                     <button type="button" onClick={() => openEvent(event.id)}>Подробнее</button>
                   </>
-                ) : (
-                  <>
-                    {event.can_register && (
-                      <button type="button" className="era-btn-primary" disabled={pendingId !== null}
-                        onClick={() => void handleRegister(event.id)}>
-                        {pendingId === event.id ? "Сохраняем…" : event.remaining_count === 0 && event.waitlist_enabled
-                          ? "Встать в лист ожидания" : "Зарегистрироваться"}
-                      </button>
-                    )}
-                    <button type="button" className={event.can_register ? undefined : "era-btn-primary"}
-                      onClick={() => openEvent(event.id)} style={{ width: "100%", marginTop: "0.25rem" }}>
-                      Открыть событие
+                ) : ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "") || event.registration_status === WAITLIST_STATUS ? (
+                  <button type="button" className="era-btn-primary" onClick={() => openEvent(event.id)} style={{ width: "100%" }}>
+                    Открыть событие
+                  </button>
+                ) : event.can_register ? (
+                  <div style={{ display: "grid", gap: "0.4rem", marginTop: "0.15rem" }}>
+                    <button type="button" className="era-btn-primary" disabled={pendingId !== null}
+                      onClick={() => void handleRegister(event.id)}>
+                      {pendingId === event.id ? "Сохраняем…" : event.remaining_count === 0 && event.waitlist_enabled
+                        ? "Встать в лист ожидания" : "Зарегистрироваться"}
                     </button>
-                  </>
+                    <button type="button" onClick={() => openEvent(event.id)} style={{ width: "100%" }}>
+                      Подробнее
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" className="era-btn-primary" onClick={() => openEvent(event.id)} style={{ width: "100%" }}>
+                    Открыть событие
+                  </button>
                 )}
               </div>
             </Card>
