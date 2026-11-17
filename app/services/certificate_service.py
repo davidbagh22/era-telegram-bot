@@ -93,19 +93,25 @@ async def auto_issue_participation_certificate(session, actor, *, user_id: int, 
     """
     basis = f"event:{event_id}:user:{user_id}"
     await _lock(session, basis)
-    previous = await session.scalar(
+    issued = await session.scalar(
         select(CertificateIssue)
         .where(CertificateIssue.basis_key == basis, CertificateIssue.status == "issued")
         .order_by(CertificateIssue.revision.desc())
         .limit(1)
     )
-    if previous:
-        return previous
+    if issued:
+        return issued
+    latest = await session.scalar(
+        select(CertificateIssue)
+        .where(CertificateIssue.basis_key == basis)
+        .order_by(CertificateIssue.revision.desc())
+        .limit(1)
+    )
     snapshot = await certificate_snapshot(
         session, user_id, event_id, DEFAULT_PARTICIPATION_SIGNATORY
     )
     now = datetime.now(timezone.utc)
-    request_key = f"auto-proof:{event_id}:{user_id}"[:64]
+    request_key = f"auto-proof:{event_id}:{user_id}:{ (latest.revision + 1) if latest else 1 }"[:64]
     existing_request = await session.scalar(
         select(CertificateIssue).where(CertificateIssue.request_key == request_key)
     )
@@ -129,7 +135,7 @@ async def auto_issue_participation_certificate(session, actor, *, user_id: int, 
         event_id=event_id,
         portfolio_item_id=item.id,
         basis_key=basis,
-        revision=1,
+        revision=latest.revision + 1 if latest else 1,
         request_key=request_key,
         snapshot=snapshot,
         issued_by=actor.id,

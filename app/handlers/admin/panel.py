@@ -755,30 +755,33 @@ async def approve_proof(
     )
     cert_note = ""
     if user is not None and event is not None:
+        # Isolate optional cert issuance so a failure cannot poison the
+        # attendance approval + points commit on the shared session.
         try:
-            from app.services.certificate_service import auto_issue_participation_certificate
-            from app.services.certificate_pdf_service import build_certificate_pdf
+            async with session.begin_nested():
+                from app.services.certificate_service import auto_issue_participation_certificate
+                from app.services.certificate_pdf_service import build_certificate_pdf
 
-            issue = await auto_issue_participation_certificate(
-                session, user, user_id=proof.user_id, event_id=proof.event_id
-            )
-            cert_note = f"\n\n📄 Сертификат участника: {issue.document_number}"
-            if target:
-                pdf = build_certificate_pdf(
-                    issue.snapshot, number=issue.document_number, issued_at=issue.issued_at
+                issue = await auto_issue_participation_certificate(
+                    session, user, user_id=proof.user_id, event_id=proof.event_id
                 )
-                from aiogram.types import BufferedInputFile
+                cert_note = f"\n\n📄 Сертификат участника: {issue.document_number}"
+                if target:
+                    pdf = build_certificate_pdf(
+                        issue.snapshot, number=issue.document_number, issued_at=issue.issued_at
+                    )
+                    from aiogram.types import BufferedInputFile
 
-                await safe_send(
-                    bot,
-                    target.telegram_id,
-                    "Ваш сертификат участника ЭРА готов.",
-                )
-                await bot.send_document(
-                    target.telegram_id,
-                    BufferedInputFile(pdf, filename=f"ERA_certificate_{issue.document_number}.pdf"),
-                )
-        except Exception as exc:  # noqa: BLE001 — approval must not roll back on PDF/send failure
+                    await safe_send(
+                        bot,
+                        target.telegram_id,
+                        "Ваш сертификат участника ЭРА готов.",
+                    )
+                    await bot.send_document(
+                        target.telegram_id,
+                        BufferedInputFile(pdf, filename=f"ERA_certificate_{issue.document_number}.pdf"),
+                    )
+        except Exception as exc:  # noqa: BLE001 — approval must not roll back
             import logging
 
             logging.getLogger(__name__).exception("auto certificate failed: %s", exc)

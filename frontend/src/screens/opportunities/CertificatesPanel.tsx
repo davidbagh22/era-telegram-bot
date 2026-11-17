@@ -1,4 +1,6 @@
+import { fetchHome } from "../../api/client";
 import { Card } from "../../components/Card";
+import { useAsync } from "../../hooks/useAsync";
 
 /** Clear thresholds for branded certificates / thank-you letters (owner policy 17.11.2026). */
 const LADDER = [
@@ -9,7 +11,10 @@ const LADDER = [
   { issuer: "АСРВВА", points: 5000, label: "Сертификат АСРВВА" },
 ] as const;
 
-export function CertificatesPanel({ pointsBalance = 0 }: { pointsBalance?: number }) {
+export function CertificatesPanel() {
+  const home = useAsync(() => fetchHome(), []);
+  const pointsBalance = home.status === "ready" ? home.data.points_balance : 0;
+
   return (
     <section aria-label="Сертификаты и благодарственные письма" style={{ display: "grid", gap: "0.65rem" }}>
       <div>
@@ -18,7 +23,8 @@ export function CertificatesPanel({ pointsBalance = 0 }: { pointsBalance?: numbe
         </p>
         <h2 style={{ margin: "0.25rem 0 0", fontSize: "var(--era-text-xl)" }}>Сертификаты и благодарности</h2>
         <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "0.84rem", lineHeight: 1.45 }}>
-          Баллы копятся в профиле и открывают заявление. Когда порог набран — подайте заявку; решение принимает админ.
+          Баллы копятся в профиле и открывают заявление. Сейчас у вас{" "}
+          {home.status === "ready" ? pointsBalance.toLocaleString("ru-RU") : "…"} баллов.
         </p>
       </div>
       <div style={{ display: "grid", gap: "0.45rem" }}>
@@ -36,7 +42,7 @@ export function CertificatesPanel({ pointsBalance = 0 }: { pointsBalance?: numbe
                 <button
                   type="button"
                   className={ready ? "era-btn-primary" : undefined}
-                  disabled={!ready}
+                  disabled={!ready || home.status !== "ready"}
                   onClick={() => {
                     window.location.hash = "#/opportunities";
                   }}
