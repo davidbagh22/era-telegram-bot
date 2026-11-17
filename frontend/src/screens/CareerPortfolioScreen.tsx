@@ -166,8 +166,11 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
   const [error, setError] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportMode, setExportMode] = useState<"download" | "send">("download");
   const [form, setForm] = useState<CareerItemPayload>(EMPTY_FORM);
-  const [profileDraft, setProfileDraft] = useState({ headline: "", about: "", languages: "" });
+  const [profileDraft, setProfileDraft] = useState({ headline: "", about: "", languages: "", skills: "" });
+  const [exportDraft, setExportDraft] = useState({ headline: "", about: "", skills: "", languages: "" });
   const purpose: CareerPurpose = "universal";
   const [busyId, setBusyId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -186,10 +189,19 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
     try {
       const next = await fetchCareerDashboard();
       setData(next);
+      const languagesText = next.profile.languages.map((item) => `${item.name}${item.level ? ` — ${item.level}` : ""}`).join("\n");
+      const skillsText = (next.profile.skills ?? []).join(", ");
       setProfileDraft({
         headline: next.profile.headline,
         about: next.profile.about,
-        languages: next.profile.languages.map((item) => `${item.name}${item.level ? ` — ${item.level}` : ""}`).join("\n"),
+        languages: languagesText,
+        skills: skillsText,
+      });
+      setExportDraft({
+        headline: next.profile.headline,
+        about: next.profile.about,
+        languages: languagesText,
+        skills: skillsText,
       });
       setError(false);
     } catch {
@@ -229,18 +241,32 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
     }
   };
 
+  const parseLanguages = (raw: string) =>
+    raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [name, ...rest] = line.split("—");
+        return { name: name.trim(), level: rest.join("—").trim() };
+      });
+
+  const parseSkills = (raw: string) =>
+    raw
+      .split(/[,;\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 16);
+
   const saveProfile = async () => {
     setSaving(true);
     try {
-      const languages = profileDraft.languages
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line) => {
-          const [name, ...rest] = line.split("—");
-          return { name: name.trim(), level: rest.join("—").trim() };
-        });
-      await updateCareerProfile({ headline: profileDraft.headline, about: profileDraft.about, languages });
+      await updateCareerProfile({
+        headline: profileDraft.headline,
+        about: profileDraft.about,
+        languages: parseLanguages(profileDraft.languages),
+        skills: parseSkills(profileDraft.skills),
+      });
       setProfileOpen(false);
       await refresh();
       toast.show("Профессиональный профиль обновлён", "success");
@@ -249,6 +275,17 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const openExportInterview = (mode: "download" | "send") => {
+    setExportMode(mode);
+    setExportDraft({
+      headline: profileDraft.headline,
+      about: profileDraft.about,
+      languages: profileDraft.languages,
+      skills: profileDraft.skills,
+    });
+    setExportOpen(true);
   };
 
   const actOnItem = async (itemId: number, action: () => Promise<unknown>, success: string) => {
@@ -267,27 +304,30 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const downloadResume = async () => {
-    setDownloading(true);
+  const confirmExportInterview = async () => {
+    const busy = exportMode === "send" ? setSendingResume : setDownloading;
+    busy(true);
     try {
-      saveBlob(await downloadCareerResume(purpose), "Резюме_ЭРА.pdf");
-      toast.show("Резюме готово", "success");
+      await updateCareerProfile({
+        headline: exportDraft.headline,
+        about: exportDraft.about,
+        languages: parseLanguages(exportDraft.languages),
+        skills: parseSkills(exportDraft.skills),
+      });
+      setProfileDraft({ ...exportDraft });
+      setExportOpen(false);
+      if (exportMode === "send") {
+        await sendCareerResume(purpose);
+        toast.show("PDF отправлен в чат с ботом", "success");
+      } else {
+        saveBlob(await downloadCareerResume(purpose), "Портфолио_ЭРА.pdf");
+        toast.show("Портфолио готово", "success");
+      }
+      await refresh();
     } catch {
-      toast.show("Не удалось сформировать резюме", "error");
+      toast.show(exportMode === "send" ? "Не удалось отправить PDF. Попробуйте ещё раз." : "Не удалось сформировать портфолио", "error");
     } finally {
-      setDownloading(false);
-    }
-  };
-
-  const sendResume = async () => {
-    setSendingResume(true);
-    try {
-      await sendCareerResume(purpose);
-      toast.show("PDF отправлен в чат с ботом", "success");
-    } catch {
-      toast.show("Не удалось отправить PDF. Попробуйте ещё раз.", "error");
-    } finally {
-      setSendingResume(false);
+      busy(false);
     }
   };
 
@@ -386,21 +426,24 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
         <button
           type="button"
           className="era-btn-primary"
-          disabled={sendingResume}
-          onClick={() => void sendResume()}
+          disabled={sendingResume || downloading}
+          onClick={() => openExportInterview("send")}
           style={{ width: "100%" }}
         >
-          {sendingResume ? "Отправляем…" : "Отправить резюме в чат с ботом"}
+          {sendingResume ? "Отправляем…" : "Отправить портфолио в чат с ботом"}
         </button>
         <button
           type="button"
           className="era-btn-secondary"
-          disabled={downloading}
-          onClick={() => void downloadResume()}
+          disabled={downloading || sendingResume}
+          onClick={() => openExportInterview("download")}
           style={{ width: "100%", marginTop: "0.55rem" }}
         >
-          {downloading ? "Формируем…" : "Скачать резюме PDF"}
+          {downloading ? "Формируем…" : "Скачать портфолио PDF"}
         </button>
+        <p style={{ margin: "0.55rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>
+          Перед выгрузкой спросим навыки и коротко о себе — это попадёт в PDF вместе с участиями и сертификатами.
+        </p>
 
         <Card style={{ marginTop: "0.75rem" }}>
           <strong>Рекомендация ЭРА</strong>
@@ -446,8 +489,50 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <input placeholder="Кто ты / профессиональное позиционирование" value={profileDraft.headline} onChange={(event) => setProfileDraft((prev) => ({ ...prev, headline: event.target.value }))} />
           <textarea rows={5} placeholder="О себе — 3–5 сильных предложений" value={profileDraft.about} onChange={(event) => setProfileDraft((prev) => ({ ...prev, about: event.target.value }))} />
+          <textarea rows={3} placeholder="Навыки через запятую: коммуникация, организация, дизайн…" value={profileDraft.skills} onChange={(event) => setProfileDraft((prev) => ({ ...prev, skills: event.target.value }))} />
           <textarea rows={4} placeholder={"Языки — по одному на строку\nРусский — C2\nАнглийский — B2"} value={profileDraft.languages} onChange={(event) => setProfileDraft((prev) => ({ ...prev, languages: event.target.value }))} />
           <button type="button" className="era-btn-primary" disabled={saving} onClick={() => void saveProfile()}>{saving ? "Сохраняем…" : "Сохранить"}</button>
+        </div>
+      </BottomSheet>
+
+      <BottomSheet open={exportOpen} onClose={() => setExportOpen(false)} title="Перед выгрузкой портфолио">
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>
+            Ответьте коротко — эти формулировки попадут в PDF вместе с подтверждёнными участиями и сертификатами ЭРА.
+          </p>
+          <input
+            placeholder="Как вас представить? (позиция / роль)"
+            value={exportDraft.headline}
+            onChange={(event) => setExportDraft((prev) => ({ ...prev, headline: event.target.value }))}
+          />
+          <textarea
+            rows={4}
+            placeholder="О себе — 3–5 сильных предложений"
+            value={exportDraft.about}
+            onChange={(event) => setExportDraft((prev) => ({ ...prev, about: event.target.value }))}
+          />
+          <textarea
+            rows={3}
+            placeholder="Ключевые навыки через запятую"
+            value={exportDraft.skills}
+            onChange={(event) => setExportDraft((prev) => ({ ...prev, skills: event.target.value }))}
+          />
+          <textarea
+            rows={3}
+            placeholder={"Языки — по одному на строку\nРусский — C2"}
+            value={exportDraft.languages}
+            onChange={(event) => setExportDraft((prev) => ({ ...prev, languages: event.target.value }))}
+          />
+          <button
+            type="button"
+            className="era-btn-primary"
+            disabled={downloading || sendingResume}
+            onClick={() => void confirmExportInterview()}
+          >
+            {exportMode === "send"
+              ? (sendingResume ? "Отправляем…" : "Сохранить и отправить PDF")
+              : (downloading ? "Формируем…" : "Сохранить и скачать PDF")}
+          </button>
         </div>
       </BottomSheet>
     </div>

@@ -58,6 +58,7 @@ class CareerProfileIn(BaseModel):
     headline: str | None = Field(default=None, max_length=180)
     about: str | None = Field(default=None, max_length=1200)
     languages: list[dict[str, str]] | None = None
+    skills: list[str] | None = None
 
 
 class CareerItemIn(BaseModel):
@@ -128,11 +129,14 @@ async def patch_profile(
         headline=payload.headline,
         about=payload.about,
         languages=payload.languages,
+        skills=payload.skills,
     )
+    await session.refresh(user)
     return {
         "headline": profile.headline or "",
         "about": profile.about or "",
         "languages": profile.languages or [],
+        "skills": [str(skill).strip() for skill in (user.skills or []) if str(skill).strip()],
     }
 
 

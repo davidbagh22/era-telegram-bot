@@ -13,6 +13,14 @@ _ASSETS = Path(__file__).resolve().parents[1] / "assets"
 _BRAND = _ASSETS / "era_logo_brand.jpg"
 LOGO_PATH = _BRAND if _BRAND.exists() else _ASSETS / "era_logo.jpg"
 
+# Brand ink / teal — matches Mini App air theme (no purple SaaS default).
+INK = "#0F172A"
+MUTED = "#64748B"
+TEAL = "#0F766E"
+TEAL_SOFT = "#F0FDFA"
+RULE = "#CBD5E1"
+SURFACE = "#F8FAFC"
+
 PURPOSE_LABELS = {
     "work": "Работа",
     "internship": "Стажировка",
@@ -26,22 +34,44 @@ TYPE_LABELS = {
     "work": "Опыт работы",
     "internship": "Стажировки",
     "project": "Проекты",
+    "event": "Участие в мероприятиях",
     "achievement": "Достижения",
     "award": "Награды",
-    "certificate": "Сертификаты",
+    "certificate": "Сертификаты участия",
     "course": "Курсы",
     "publication": "Публикации",
     "speech": "Выступления",
     "volunteer": "Волонтёрство",
+    "task": "Задачи и миссии",
+    "leadership": "Лидерские роли",
     "other": "Дополнительно",
 }
+# Events + participation certificates first — owner requirement for portfolio export.
 PURPOSE_ORDER = {
-    "work": ["work", "internship", "project", "achievement", "education", "certificate", "course", "volunteer", "publication", "speech", "other"],
-    "internship": ["education", "project", "internship", "achievement", "certificate", "course", "volunteer", "work", "other"],
-    "university": ["education", "achievement", "project", "volunteer", "certificate", "course", "publication", "speech", "work", "other"],
-    "grant": ["achievement", "award", "project", "volunteer", "certificate", "education", "publication", "speech", "work", "other"],
-    "volunteer": ["volunteer", "project", "achievement", "education", "certificate", "course", "work", "other"],
-    "universal": ["work", "education", "project", "achievement", "award", "certificate", "volunteer", "internship", "course", "publication", "speech", "other"],
+    "work": [
+        "event", "certificate", "work", "internship", "project", "leadership",
+        "achievement", "education", "task", "course", "volunteer", "publication", "speech", "other",
+    ],
+    "internship": [
+        "event", "certificate", "education", "project", "internship", "achievement",
+        "leadership", "task", "course", "volunteer", "work", "other",
+    ],
+    "university": [
+        "event", "certificate", "education", "achievement", "project", "leadership",
+        "volunteer", "task", "course", "publication", "speech", "work", "other",
+    ],
+    "grant": [
+        "event", "certificate", "achievement", "award", "project", "leadership",
+        "volunteer", "education", "publication", "speech", "work", "other",
+    ],
+    "volunteer": [
+        "event", "certificate", "volunteer", "project", "achievement", "leadership",
+        "education", "task", "course", "work", "other",
+    ],
+    "universal": [
+        "event", "certificate", "project", "leadership", "achievement", "award",
+        "work", "education", "task", "volunteer", "internship", "course", "publication", "speech", "other",
+    ],
 }
 
 
@@ -76,13 +106,39 @@ def _document_styles():
 
     base = getSampleStyleSheet()
     return {
-        "name": ParagraphStyle("EraName", parent=base["Title"], fontName="ERAUnicode", fontSize=22, leading=26, textColor=colors.HexColor("#17151B"), spaceAfter=3),
-        "eyebrow": ParagraphStyle("EraEyebrow", parent=base["BodyText"], fontName="ERAUnicode", fontSize=7.8, leading=10, textColor=colors.HexColor("#9222A6"), spaceAfter=4),
-        "lead": ParagraphStyle("EraLead", parent=base["BodyText"], fontName="ERAUnicode", fontSize=10.4, leading=14, textColor=colors.HexColor("#625C67"), spaceAfter=5),
-        "section": ParagraphStyle("EraSection", parent=base["Heading2"], fontName="ERAUnicode", fontSize=12, leading=15, textColor=colors.HexColor("#E32731"), spaceBefore=9, spaceAfter=5),
-        "body": ParagraphStyle("EraBody", parent=base["BodyText"], fontName="ERAUnicode", fontSize=9.2, leading=13.3, textColor=colors.HexColor("#272329"), spaceAfter=5),
-        "small": ParagraphStyle("EraSmall", parent=base["BodyText"], fontName="ERAUnicode", fontSize=7.5, leading=10.2, textColor=colors.HexColor("#706A74")),
-        "letter": ParagraphStyle("EraLetter", parent=base["BodyText"], fontName="ERAUnicode", fontSize=10.2, leading=16, textColor=colors.HexColor("#272329"), spaceAfter=8),
+        "brand": ParagraphStyle(
+            "EraBrand", parent=base["BodyText"], fontName="ERAUnicode",
+            fontSize=9, leading=11, textColor=colors.HexColor(TEAL), spaceAfter=2,
+        ),
+        "name": ParagraphStyle(
+            "EraName", parent=base["Title"], fontName="ERAUnicode",
+            fontSize=20, leading=24, textColor=colors.HexColor(INK), spaceAfter=2,
+        ),
+        "eyebrow": ParagraphStyle(
+            "EraEyebrow", parent=base["BodyText"], fontName="ERAUnicode",
+            fontSize=7.5, leading=10, textColor=colors.HexColor(MUTED), spaceAfter=3,
+        ),
+        "lead": ParagraphStyle(
+            "EraLead", parent=base["BodyText"], fontName="ERAUnicode",
+            fontSize=10.2, leading=14, textColor=colors.HexColor(MUTED), spaceAfter=5,
+        ),
+        "section": ParagraphStyle(
+            "EraSection", parent=base["Heading2"], fontName="ERAUnicode",
+            fontSize=11.5, leading=14, textColor=colors.HexColor(TEAL),
+            spaceBefore=10, spaceAfter=5,
+        ),
+        "body": ParagraphStyle(
+            "EraBody", parent=base["BodyText"], fontName="ERAUnicode",
+            fontSize=9.2, leading=13.4, textColor=colors.HexColor(INK), spaceAfter=5,
+        ),
+        "small": ParagraphStyle(
+            "EraSmall", parent=base["BodyText"], fontName="ERAUnicode",
+            fontSize=7.5, leading=10.2, textColor=colors.HexColor(MUTED),
+        ),
+        "letter": ParagraphStyle(
+            "EraLetter", parent=base["BodyText"], fontName="ERAUnicode",
+            fontSize=10.4, leading=16.5, textColor=colors.HexColor(INK), spaceAfter=9,
+        ),
     }
 
 
@@ -94,24 +150,24 @@ def _header(styles, title: str, subtitle: str):
     if not LOGO_PATH.exists():
         raise RuntimeError("ERA logo asset is unavailable")
     logo = Image(str(LOGO_PATH))
-    logo_scale = (26 * mm) / max(logo.imageWidth, logo.imageHeight)
+    logo_scale = (28 * mm) / max(logo.imageWidth, logo.imageHeight)
     logo.drawWidth = logo.imageWidth * logo_scale
     logo.drawHeight = logo.imageHeight * logo_scale
     copy = [
-        Paragraph("ОБЪЕДИНЕНИЕ ЛИДЕРОВ И КУЛЬТУРНЫХ ИНИЦИАТИВ", styles["eyebrow"]),
+        Paragraph("ЭРА · ОБЪЕДИНЕНИЕ ЛИДЕРОВ И КУЛЬТУРНЫХ ИНИЦИАТИВ", styles["brand"]),
         Paragraph(escape(title), styles["name"]),
         Paragraph(escape(subtitle), styles["lead"]),
     ]
-    table = Table([[logo, copy]], colWidths=[36 * mm, 128 * mm])
+    table = Table([[logo, copy]], colWidths=[34 * mm, 132 * mm])
     table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ("LINEBELOW", (0, 0), (-1, -1), 1.1, colors.HexColor("#E32731")),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LINEBELOW", (0, 0), (-1, -1), 1.4, colors.HexColor(TEAL)),
     ]))
-    return [table, Spacer(1, 4 * mm)]
+    return [table, Spacer(1, 5 * mm)]
 
 
 def _signature_block(styles, *, resume_note: bool):
@@ -123,7 +179,7 @@ def _signature_block(styles, *, resume_note: bool):
         "Подписи и печать подтверждают только сведения с отметкой «Подтверждено ЭРА». "
         "Записи «Добавлено участником» включены в резюме по заявлению владельца портфолио."
         if resume_note
-        else "Место для подписей уполномоченных лиц и печати организации."
+        else "Место для собственноручных подписей уполномоченных лиц и печати организации при печати документа."
     )
     table = Table(
         [
@@ -131,25 +187,26 @@ def _signature_block(styles, *, resume_note: bool):
             ["Заместитель председателя", "________________________", "Карапетян Е.А."],
             ["М.П.", "________________________", ""],
         ],
-        colWidths=[49 * mm, 55 * mm, 61 * mm],
+        colWidths=[52 * mm, 55 * mm, 58 * mm],
     )
     table.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), "ERAUnicode"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8.2),
-        ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#2A262D")),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.4),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor(INK)),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("LINEABOVE", (0, 0), (-1, 0), 0.6, colors.HexColor(RULE)),
     ]))
-    return KeepTogether([Spacer(1, 8 * mm), Paragraph(escape(note), styles["small"]), Spacer(1, 6 * mm), table])
+    return KeepTogether([Spacer(1, 8 * mm), Paragraph(escape(note), styles["small"]), Spacer(1, 5 * mm), table])
 
 
 def _user_item_html(item: CareerPortfolioItem) -> str:
     meta = [value for value in (item.organization, item.issued_at.strftime("%d.%m.%Y") if item.issued_at else None) if value]
     verified = item.status == "verified"
     label = "✓ Подтверждено ЭРА" if verified else "Добавлено участником"
-    color = "#9222A6" if verified else "#77717B"
+    color = TEAL if verified else MUTED
     description = escape(item.description or "")
     return (
         f"<b>{escape(item.title)}</b>{(' · ' + escape(' · '.join(meta))) if meta else ''}<br/>"
@@ -163,7 +220,7 @@ def _era_entry_html(item: PortfolioEntry) -> str:
     description = item.description or item.category
     return (
         f"<b>{escape(item.title)}</b>{(' · ' + escape(meta)) if meta else ''}<br/>"
-        "<font color='#9222A6'>✓ Подтверждено ЭРА</font>"
+        f"<font color='{TEAL}'>✓ Подтверждено ЭРА</font>"
         f"{('<br/>' + escape(description)) if description else ''}"
     )
 
@@ -196,8 +253,21 @@ def build_career_resume(
     _register_font()
     styles = _document_styles()
     stream = BytesIO()
-    doc = SimpleDocTemplate(stream, pagesize=A4, rightMargin=18 * mm, leftMargin=18 * mm, topMargin=14 * mm, bottomMargin=14 * mm, title=f"Резюме — {_full_name(user)}", author="ЭРА")
-    story = _header(styles, _full_name(user), f"Резюме · {PURPOSE_LABELS.get(purpose, PURPOSE_LABELS['universal'])}")
+    doc = SimpleDocTemplate(
+        stream,
+        pagesize=A4,
+        rightMargin=18 * mm,
+        leftMargin=18 * mm,
+        topMargin=14 * mm,
+        bottomMargin=14 * mm,
+        title=f"Портфолио — {_full_name(user)}",
+        author="ЭРА",
+    )
+    story = _header(
+        styles,
+        _full_name(user),
+        f"Портфолио участника ЭРА · {PURPOSE_LABELS.get(purpose, PURPOSE_LABELS['universal'])}",
+    )
 
     headline = (career_profile.headline or user.occupation or portfolio.participation_status or "").strip()
     contacts = " · ".join(value for value in (user.city or "", user.email or "") if value)
@@ -208,7 +278,7 @@ def build_career_resume(
     about = (career_profile.about or user.experience or "").strip()
     if about:
         story.extend([Paragraph("О себе", styles["section"]), Paragraph(escape(about), styles["body"])])
-    skills = [str(value).strip() for value in (user.skills or []) if str(value).strip()][:8]
+    skills = [str(value).strip() for value in (user.skills or []) if str(value).strip()][:12]
     if skills:
         story.extend([Paragraph("Ключевые компетенции", styles["section"]), Paragraph(escape(" · ".join(skills)), styles["body"])])
 
@@ -247,6 +317,7 @@ def build_career_resume(
 
     metrics = [
         ("Мероприятия", len(era["event"])),
+        ("Сертификаты", len(era["certificate"])),
         ("Проекты / вклад", len(era["project"])),
         ("Задачи", len(era["task"])),
         ("Лидерские роли", len(era["leadership"])),
@@ -257,10 +328,11 @@ def build_career_resume(
         table = Table([[label, str(value)] for label, value in metrics], colWidths=[92 * mm, 24 * mm], hAlign="LEFT")
         table.setStyle(TableStyle([
             ("FONTNAME", (0, 0), (-1, -1), "ERAUnicode"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8.2),
-            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FAF6FA")),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#E7DDE8")),
-            ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#EFE7F0")),
+            ("FONTSIZE", (0, 0), (-1, -1), 8.4),
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(TEAL_SOFT)),
+            ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor(RULE)),
+            ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor(RULE)),
+            ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor(INK)),
             ("LEFTPADDING", (0, 0), (-1, -1), 7),
             ("TOPPADDING", (0, 0), (-1, -1), 6),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
@@ -271,6 +343,7 @@ def build_career_resume(
         "Подтверждённые записи отмечены ЭРА. Остальные сведения добавлены владельцем портфолио.",
         styles["small"],
     ))
+    story.append(_signature_block(styles, resume_note=True))
     doc.build(story)
     return stream.getvalue()
 
@@ -300,7 +373,16 @@ def build_official_recommendation(user: User, request: RecommendationRequest, *,
     _register_font()
     styles = _document_styles()
     stream = BytesIO()
-    doc = SimpleDocTemplate(stream, pagesize=A4, rightMargin=20 * mm, leftMargin=20 * mm, topMargin=14 * mm, bottomMargin=14 * mm, title=f"Рекомендательное письмо — {_full_name(user)}", author="ЭРА")
+    doc = SimpleDocTemplate(
+        stream,
+        pagesize=A4,
+        rightMargin=20 * mm,
+        leftMargin=20 * mm,
+        topMargin=14 * mm,
+        bottomMargin=14 * mm,
+        title=f"Рекомендательное письмо — {_full_name(user)}",
+        author="ЭРА",
+    )
     story = _header(styles, "Рекомендательное письмо", _full_name(user))
     issue_date = request.approved_at.date() if request.approved_at else date.today()
     meta = Table([
@@ -310,12 +392,17 @@ def build_official_recommendation(user: User, request: RecommendationRequest, *,
     ], colWidths=[36 * mm, 110 * mm])
     meta.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), "ERAUnicode"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8.3),
-        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#9222A6")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor(TEAL)),
+        ("TEXTCOLOR", (1, 0), (1, -1), colors.HexColor(INK)),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(SURFACE)),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor(RULE)),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
-    story.extend([meta, Spacer(1, 6 * mm)])
+    story.extend([meta, Spacer(1, 7 * mm)])
     text = (request.final_text or request.draft_text).strip()
     paragraphs = [part.strip() for part in text.split("\n") if part.strip()] or [text]
     for paragraph in paragraphs:
@@ -325,19 +412,23 @@ def build_official_recommendation(user: User, request: RecommendationRequest, *,
         _verification_qr(verification_url),
         [
             Paragraph("Проверка документа", styles["section"]),
-            Paragraph("QR подтверждает номер, дату выдачи и организацию. Личные материалы портфолио публично не раскрываются.", styles["small"]),
+            Paragraph(
+                "QR подтверждает номер, дату выдачи и организацию. "
+                "Личные материалы портфолио публично не раскрываются.",
+                styles["small"],
+            ),
             Paragraph(f"ID: {escape(request.document_number)}", styles["small"]),
         ],
     ]], colWidths=[31 * mm, 110 * mm])
     verify.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FAF6FA")),
-        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#E7DDE8")),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(TEAL_SOFT)),
+        ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor(RULE)),
         ("LEFTPADDING", (0, 0), (-1, -1), 7),
         ("RIGHTPADDING", (0, 0), (-1, -1), 7),
         ("TOPPADDING", (0, 0), (-1, -1), 7),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
     ]))
-    story.extend([Spacer(1, 4 * mm), verify, _signature_block(styles, resume_note=False)])
+    story.extend([Spacer(1, 5 * mm), verify, _signature_block(styles, resume_note=False)])
     doc.build(story)
     return stream.getvalue()

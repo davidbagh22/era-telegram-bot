@@ -10,6 +10,7 @@ export interface CareerProfileData {
   headline: string;
   about: string;
   languages: CareerLanguage[];
+  skills: string[];
 }
 
 export interface CareerPortfolioItem {
