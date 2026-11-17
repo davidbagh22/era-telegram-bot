@@ -10,9 +10,9 @@ export function ProjectsScreen({ initialProjectId = null }: ProjectsScreenProps)
   return (
     <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
       <EditorialHero
-        eyebrow="Рабочая зона"
+        eyebrow="Проекты ЭРА"
         title="Проекты"
-        description="Инициативы, команда, задачи и вклад в одном месте."
+        description="Идея, команда, задачи и вклад — в одном месте."
         glow="hot"
       >
         <span

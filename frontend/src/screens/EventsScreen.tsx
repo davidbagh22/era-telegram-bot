@@ -22,9 +22,9 @@ export function EventsScreen({ initialItemId = null, initialScope }: EventsScree
     >
       {!isDetail && (
         <EditorialHero
-          eyebrow="Здесь начинается движение"
+          eyebrow="Афиша ЭРА"
           title={initialScope === "mine" ? "Мои мероприятия" : "Афиша"}
-          description="Выбирайте формат, смотрите программу и занимайте место в один шаг."
+          description="Ближайшие встречи и форматы. Запись — в один шаг."
           glow="cool"
         >
           <span

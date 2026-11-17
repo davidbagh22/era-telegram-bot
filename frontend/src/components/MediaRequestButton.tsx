@@ -9,7 +9,7 @@ interface MediaRequestButtonProps {
 const PACKAGES: { key: "photo" | "reels" | "full"; label: string; hint: string }[] = [
   { key: "photo", label: "Фото", hint: "Съёмка и отбор кадров" },
   { key: "reels", label: "Рилс", hint: "Видео + монтаж" },
-  { key: "full", label: "Полный", hint: "Текст, дизайн, фото, видео, Stories" },
+  { key: "full", label: "Полный", hint: "Текст, дизайн, фото, видео, сторис" },
 ];
 
 export function MediaRequestButton({ sourceType, sourceId }: MediaRequestButtonProps) {
