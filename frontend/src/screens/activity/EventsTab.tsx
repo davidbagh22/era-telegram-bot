@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   cancelEventRegistration,
   describeActionError,
+  downloadEventCalendar,
+  downloadEventPoster,
   fetchEventActivities,
   fetchEvents,
-  downloadEventCalendar,
   sendEventCalendarToChat,
   registerForEvent,
 } from "../../api/client";
@@ -255,8 +256,40 @@ function EventActivitiesPanel({ eventId }: { eventId: number }) {
 }
 
 export function EventPoster({ event, compact = false }: { event: EventItem; compact?: boolean }) {
-  const src = event.poster_url ? `${API_BASE_URL}/api/v1/event-posters/${event.id}` : null;
   const height = compact ? 112 : 245;
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let alive = true;
+    setSrc(null);
+    if (!event.poster_url) {
+      return () => {
+        alive = false;
+      };
+    }
+    // Public /event-posters/{id} denies CANCELLED. Use authenticated /events/{id}/poster
+    // so registered «Прошедшие» history keeps the afisha (Codex P2 on #691).
+    void downloadEventPoster(event.id)
+      .then((blob) => {
+        if (!alive) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+      })
+      .catch(() => {
+        if (!alive) return;
+        if (event.status === "cancelled") {
+          setSrc(null);
+          return;
+        }
+        setSrc(`${API_BASE_URL}/api/v1/event-posters/${event.id}`);
+      });
+    return () => {
+      alive = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [event.id, event.poster_url, event.status]);
+
   if (src) {
     return (
       <img

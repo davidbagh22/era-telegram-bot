@@ -1255,6 +1255,17 @@ export async function downloadEventCalendar(eventId: number): Promise<Blob> {
   return response.blob();
 }
 
+/** Authenticated poster bytes — required for CANCELLED history (public /event-posters 404). */
+export async function downloadEventPoster(eventId: number): Promise<Blob> {
+  if (!sessionToken) throw new ApiError(401, "missing_token");
+  const response = await fetch(`${API_BASE_URL}/api/v1/events/${eventId}/poster`, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!response.ok) throw new ApiError(response.status, await parseErrorDetail(response));
+  return response.blob();
+}
+
 /** iPhone Telegram fallback: send private .ics to the same user's bot chat. */
 export function sendEventCalendarToChat(eventId: number): Promise<{ sent: boolean }> {
   return authorizedPost<{ sent: boolean }>(`/api/v1/events/${eventId}/calendar/send`);
