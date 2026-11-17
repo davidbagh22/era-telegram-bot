@@ -425,7 +425,6 @@ def build_career_resume(
     from reportlab.lib.units import mm
     from reportlab.platypus import (
         Frame,
-        NextPageTemplate,
         PageTemplate,
         Paragraph,
         BaseDocTemplate,
