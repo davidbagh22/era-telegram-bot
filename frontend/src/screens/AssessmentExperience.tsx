@@ -379,7 +379,10 @@ function AssessmentRunner({
             }}
             onClick={async () => {
               await onAnswer(current.code, option.value);
+              // Re-answering the last item after «Проверить последний ответ» does not
+              // change answered_count, so the review effect alone never re-fires.
               if (cursor < session.questions.length - 1) setCursor(cursor + 1);
+              else setReviewing(true);
             }}
           >
             {option.label}

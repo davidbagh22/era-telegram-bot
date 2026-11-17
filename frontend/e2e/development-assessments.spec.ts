@@ -28,6 +28,11 @@ test("participant completes WHO-5 through My Vector and sees the saved result", 
   }
 
   await expect(page.getByText("ГОТОВО К РЕЗУЛЬТАТУ")).toBeVisible();
+  // Re-checking the last answer must still return to the submit screen.
+  await page.getByRole("button", { name: "← Проверить последний ответ" }).click();
+  await expect(page.getByRole("button", { name: "Всё время" })).toBeVisible();
+  await page.getByRole("button", { name: "Всё время" }).click();
+  await expect(page.getByText("ГОТОВО К РЕЗУЛЬТАТУ")).toBeVisible();
   await page.getByRole("button", { name: "Получить результат" }).click();
   await expect(page.getByText("ТВОЙ ПРОФИЛЬ ЭРА")).toBeVisible();
   await expect(page.getByText(/100 из 100/)).toBeVisible();
