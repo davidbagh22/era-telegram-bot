@@ -10,7 +10,7 @@ class AdminWorkspaceContractTests(unittest.TestCase):
         app = (FRONTEND / "app" / "App.tsx").read_text(encoding="utf-8")
         profile = (FRONTEND / "screens" / "ProfileScreen.tsx").read_text(encoding="utf-8")
         self.assertIn("const [inWorkspace, setInWorkspace] = useState(false)", app)
-        self.assertIn('isAdmin ? "Управление ЭРА" : "Пространство лидера"', profile)
+        self.assertIn('isAdmin ? "Управление ЭРА" : "Режим лидера"', profile)
         self.assertIn("onEnterWorkspace", app)
 
     def test_admin_overview_is_the_single_simple_control_surface(self) -> None:

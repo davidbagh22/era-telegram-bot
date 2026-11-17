@@ -5,15 +5,15 @@ const LEADER_TELEGRAM_ID = 900002;
 async function enterLeaderWorkspace(page: import("@playwright/test").Page) {
   await page.goto(`/app/?devTelegramId=${LEADER_TELEGRAM_ID}`);
   await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Профиль", exact: true }).click();
-  await page.getByRole("button", { name: /Пространство лидера.*Рабочие инструменты и управление.*Открыть/ }).click();
-  await expect(page.getByRole("heading", { name: "Пространство лидера" })).toBeVisible();
+  await page.getByRole("button", { name: /Режим лидера.*Рабочие инструменты и управление.*Открыть/ }).click();
+  await expect(page.getByRole("heading", { name: "Режим лидера" })).toBeVisible();
 }
 
 test("leader opens the separate workspace and creates a new open task", async ({ page }) => {
   await enterLeaderWorkspace(page);
 
-  await page.getByRole("button", { name: /Открытые задачи/ }).click();
-  await expect(page.getByRole("heading", { name: "Открытые задачи" })).toBeVisible();
+  await page.getByRole("button", { name: /Задачи на проверке/ }).click();
+  await expect(page.getByRole("heading", { name: "Задачи на проверке" })).toBeVisible();
   await page.getByRole("button", { name: "Новая открытая задача" }).click();
 
   const taskTitle = `E2E задача ${Date.now()}`;

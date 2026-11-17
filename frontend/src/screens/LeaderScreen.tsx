@@ -26,7 +26,7 @@ export function LeaderScreen() {
         </button>
         <div>
           <p style={{ margin: "0 0 0.25rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
-            Пространство лидера
+            Режим лидера
           </p>
           <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)", margin: 0 }}>
             {current?.label}
