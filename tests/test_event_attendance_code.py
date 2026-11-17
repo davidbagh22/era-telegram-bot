@@ -6,7 +6,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.base import Base
-from app.database.event_attendance import EventAttendanceSession
 from app.database.models import Event, EventRegistration, PointTransaction, PortfolioItem, User
 from app.services import event_attendance_service
 from app.utils.constants import ApplicationStatus, EventStatus, RegistrationStatus, Role

@@ -17,7 +17,7 @@ interface EditorialHeroProps {
 /**
  * Large editorial section header (ToR §22 Media, §17 Projects, §16
  * Missions): big title, generous air, a soft signal glow behind it rather
- * than a boxed card. The base building block MissionHero specializes.
+ * than a boxed card.
  */
 export function EditorialHero({ eyebrow, title, description, meta, dark = false, glow = "signal", children, style }: EditorialHeroProps) {
   return (
