@@ -3,6 +3,7 @@ import {
   applyToOpportunity,
   describeActionError,
   fetchOpportunities,
+  fetchOpportunity,
   fetchOpportunityFacets,
   saveOpportunity,
   unsaveOpportunity,
@@ -123,16 +124,22 @@ function formatPoints(value: number): string {
 
 function OffersList({ initialItemId }: { initialItemId?: number | null }) {
   const stored = useMemo(() => loadStoredState(), []);
-  const [scope, setScope] = useState<OpportunityScope>(initialItemId ? "mine" : stored?.scope ?? "all");
+  // Deep links from Home / cert ladder target a specific offer to apply.
+  // Scope "mine" only shows existing applications, so unapplied offers vanish —
+  // use "all" and leave status/category unfiltered so the card can expand + apply.
+  // Inactive (expired/archived) applications are restored via mine/id fallback below.
+  const [scope, setScope] = useState<OpportunityScope>(initialItemId ? "all" : stored?.scope ?? "all");
   // Default to actionable offers only when nothing was saved. An explicit
-  // stored null (e.g. «Все» / mine deep-link) must stay unfiltered.
+  // stored null (e.g. «Все» / deep-link) must stay unfiltered.
   const [status, setStatus] = useState<OpportunityState | null>(() => {
     if (initialItemId) return null;
     if (!stored) return "available";
     const value = stored.status;
     return value === "almost" ? "available" : value;
   });
-  const [category, setCategory] = useState<string | null>(stored?.category ?? null);
+  // Session-restored category (e.g. «events») would hide ladder certs
+  // whose catalog category is public_activity — clear on deep-link.
+  const [category, setCategory] = useState<string | null>(initialItemId ? null : stored?.category ?? null);
   const [sort, setSort] = useState<UiSort>(stored?.sort ?? "recommended");
   const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [draftCategory, setDraftCategory] = useState<string | null>(category);
@@ -142,6 +149,18 @@ function OffersList({ initialItemId }: { initialItemId?: number | null }) {
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(initialItemId ?? null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [deepLinkOffer, setDeepLinkOffer] = useState<Opportunity | null>(null);
+  const [deepLinkFallbackTried, setDeepLinkFallbackTried] = useState(false);
+
+  useEffect(() => {
+    if (!initialItemId) return;
+    setScope("all");
+    setStatus(null);
+    setCategory(null);
+    setExpandedId(initialItemId);
+    setDeepLinkOffer(null);
+    setDeepLinkFallbackTried(false);
+  }, [initialItemId]);
 
   const query: OpportunityFilters = {
     scope,
@@ -160,10 +179,50 @@ function OffersList({ initialItemId }: { initialItemId?: number | null }) {
     [showFilterSheet, scope, draftStatus, draftCategory, draftSort],
   );
 
-  const offers = useMemo(
-    () => listState.status === "ready" ? sortClient(listState.data, sort) : [],
-    [listState, sort],
-  );
+  // Active catalog may omit expired/archived offers that still have an
+  // application (admin notification deep-links). Try mine, then GET by id.
+  useEffect(() => {
+    if (!initialItemId || listState.status !== "ready") return;
+    if (listState.data.some((item) => item.id === initialItemId)) {
+      setDeepLinkOffer(null);
+      return;
+    }
+    if (deepLinkFallbackTried) return;
+    setDeepLinkFallbackTried(true);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const applications = await fetchOpportunities({
+          scope: "mine",
+          state: null,
+          sort: "newest",
+          issuer: null,
+          type: null,
+          category: null,
+        });
+        const fromMine = applications.find((item) => item.id === initialItemId);
+        if (fromMine) {
+          if (!cancelled) setDeepLinkOffer(fromMine);
+          return;
+        }
+        const byId = await fetchOpportunity(initialItemId);
+        if (!cancelled) setDeepLinkOffer(byId);
+      } catch {
+        if (!cancelled) setDeepLinkOffer(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [deepLinkFallbackTried, initialItemId, listState]);
+
+  const offers = useMemo(() => {
+    const base = listState.status === "ready" ? sortClient(listState.data, sort) : [];
+    if (deepLinkOffer && !base.some((item) => item.id === deepLinkOffer.id)) {
+      return [deepLinkOffer, ...base];
+    }
+    return base;
+  }, [deepLinkOffer, listState, sort]);
   const activeQuick = QUICK_STATES.find((item) => item.scope === scope && item.state === status)?.key ?? null;
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
@@ -191,9 +250,11 @@ function OffersList({ initialItemId }: { initialItemId?: number | null }) {
 
   useEffect(() => {
     if (!initialItemId || listState.status !== "ready") return;
+    // Wait until the target is present (list or deep-link fallback).
+    if (!offers.some((item) => item.id === initialItemId)) return;
     const frame = window.requestAnimationFrame(() => document.getElementById(`opportunity-${initialItemId}`)?.scrollIntoView({ block: "center" }));
     return () => window.cancelAnimationFrame(frame);
-  }, [initialItemId, listState.status]);
+  }, [initialItemId, listState.status, offers]);
 
   const chooseQuick = (key: QuickKey) => {
     const option = QUICK_STATES.find((item) => item.key === key)!;
@@ -253,7 +314,7 @@ function OffersList({ initialItemId }: { initialItemId?: number | null }) {
   const previewCount = previewState.status === "ready" ? previewState.data.length : null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
+    <div id="opportunities-offers" style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.55rem" }}>
         {QUICK_STATES.map((option) => {
           const active = option.key === activeQuick;
