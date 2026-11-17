@@ -52,7 +52,7 @@ CATEGORY_ROLES: dict[str, list[tuple[str, str]]] = {
         ("photo", "Фото"),
         ("video", "Видео"),
         ("editing", "Монтаж"),
-        ("stories", "Stories"),
+        ("stories", "Сторис"),
         ("analytics", "Аналитика"),
     ],
     "social": [

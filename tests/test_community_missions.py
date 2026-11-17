@@ -11,6 +11,7 @@ from app.database.community_models import CommunityMissionTemplate, TaskSquad, T
 from app.database.models import Task, TaskParticipant, User
 from app.services import task_service
 from app.services.community_mission_service import (
+    CATEGORY_ROLES,
     launch_all_pending_missions,
     launch_mission,
     launched_template_ids,
@@ -35,6 +36,12 @@ class CommunityMissionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(items[0]["code"], "M1.1")
         self.assertEqual(items[-1]["code"], "M6.5")
         self.assertTrue(all(item["deliverable"] for item in items))
+
+    def test_media_role_labels_are_russian(self) -> None:
+        media_roles = dict(CATEGORY_ROLES["media"])
+        self.assertEqual(media_roles["stories"], "Сторис")
+        for _key, title in CATEGORY_ROLES["media"]:
+            self.assertRegex(title, r"[А-Яа-яЁё]")
 
     async def test_seed_is_idempotent(self) -> None:
         async with self.session_factory() as session:
