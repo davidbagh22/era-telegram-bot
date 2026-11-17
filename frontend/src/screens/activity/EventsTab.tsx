@@ -256,7 +256,7 @@ function EventActivitiesPanel({ eventId }: { eventId: number }) {
 
 export function EventPoster({ event, compact = false }: { event: EventItem; compact?: boolean }) {
   const src = event.poster_url ? `${API_BASE_URL}/api/v1/event-posters/${event.id}` : null;
-  const height = compact ? 150 : 245;
+  const height = compact ? 112 : 245;
   if (src) {
     return (
       <img

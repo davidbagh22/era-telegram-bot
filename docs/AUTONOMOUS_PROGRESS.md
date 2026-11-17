@@ -34,6 +34,13 @@
 ## Контрольная точка и отчёт
 Этот файл + существующая почасовая задача 6adcbd42ede08191a5c0a946e4147b52. После результата сохранять текущий SHA, PR, тесты, LIVE, блокер и следующий шаг. Итог до 10 строк: что исправлено/выпущено/проверено, что осталось и точное продолжение. «ПОЛНОСТЬЮ ГОТОВ» — только после выполнения всех критериев выше.
 
+## Продолжение 17.11.2026
+- Готово: PR в main — Возможности → ранги/рейтинг по баллам; компактная Афиша Home (без almost-тизеров).
+- Проверено: local suites; CI pending on ranks-afisha branch. LIVE was `1f4a39e` without this UX.
+- Осталось: independent review + merge to main + Render LIVE + device check.
+- Блокеры: нет review; Telegram acceptance blocked.
+- Следующая: CI → review → merge → LIVE verify.
+
 ## Продолжение 16.11.2026
 - C06: уточнён текст на включительных границах 24 и 3 часа. Существующий 3h opt-in сохранён. Приёмка доставки в реальном media-чате открыта.
 - Базовый main и Render LIVE: ab0c628, Bot checks [43764677578](https://github.com/davidbagh22/era-telegram-bot/actions/runs/43764677578), production smoke [43913145798](https://github.com/davidbagh22/era-telegram-bot/actions/runs/43913145798) успешны.
