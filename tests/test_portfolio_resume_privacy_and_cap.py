@@ -88,6 +88,54 @@ def test_era_sections_skips_hidden_certificates() -> None:
     assert "СКРЫТЫЙ_СЕРТИФИКАТ_XYZ" not in titles
 
 
+def test_career_pdf_keeps_legacy_confirmed_items_and_recommendations() -> None:
+    """Codex P2: bot PDF must not drop verified PortfolioItem / recommendation rows."""
+    portfolio = PortfolioData(
+        full_name="Анна Тестова",
+        role="Участник",
+        participation_status="Активный",
+        departments=[],
+        directions=[],
+        period="",
+        city="Ереван",
+        skills=["Коммуникация"],
+        confirmed_items=[
+            PortfolioEntry(
+                title="ЛЕГАСИ_ДОСТИЖЕНИЕ_БОТА",
+                description="Победа в хакатоне",
+                category="award",
+                date_label="01.05.2025",
+                include_in_resume=True,
+            )
+        ],
+        recommendations=[
+            PortfolioEntry(
+                title="ЛЕГАСИ_РЕКОМЕНДАЦИЯ_ПАРТНЁРА",
+                description="Для грантовой программы",
+                category="partner_recommendation",
+                date_label="02.05.2025",
+                include_in_resume=True,
+            )
+        ],
+    )
+    era = _era_sections(portfolio)
+    assert "ЛЕГАСИ_ДОСТИЖЕНИЕ_БОТА" in [item.title for item in era["achievement"]]
+    assert "ЛЕГАСИ_РЕКОМЕНДАЦИЯ_ПАРТНЁРА" in [item.title for item in era["recommendation"]]
+
+    # Empty career_items list: export must still render legacy verified rows from PortfolioData.
+    pdf = build_career_resume(
+        _user(),
+        _profile(),
+        portfolio,
+        [],
+        purpose="universal",
+        mode="portfolio",
+    )
+    text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf)).pages)
+    assert "ЛЕГАСИ_ДОСТИЖЕНИЕ_БОТА" in text
+    assert "ЛЕГАСИ_РЕКОМЕНДАЦИЯ_ПАРТНЁРА" in text
+
+
 def test_resume_mode_bounds_career_and_era_items() -> None:
     events = [
         PortfolioEntry(title=f"Мероприятие {idx}", status="Посетил", date_label=f"{idx:02d}.01.2026")

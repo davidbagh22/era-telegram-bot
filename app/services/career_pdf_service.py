@@ -45,32 +45,44 @@ TYPE_LABELS = {
     "volunteer": "Волонтёрство",
     "task": "Задачи и миссии",
     "leadership": "Лидерские роли",
+    "recommendation": "Рекомендации",
     "other": "Дополнительно",
 }
+# Bot-uploaded PortfolioItem.item_type values that belong in a shared PDF section.
+_ITEM_TYPE_ALIASES = {
+    "badge": "achievement",
+    "leader_recommendation": "recommendation",
+    "partner_recommendation": "recommendation",
+}
+_RECOMMENDATION_CATEGORIES = frozenset(
+    {"recommendation", "leader_recommendation", "partner_recommendation"}
+)
 PURPOSE_ORDER = {
     "work": [
         "event", "certificate", "work", "internship", "project", "leadership",
-        "achievement", "education", "task", "course", "volunteer", "publication", "speech", "other",
+        "achievement", "recommendation", "education", "task", "course", "volunteer",
+        "publication", "speech", "other",
     ],
     "internship": [
         "event", "certificate", "education", "project", "internship", "achievement",
-        "leadership", "task", "course", "volunteer", "work", "other",
+        "recommendation", "leadership", "task", "course", "volunteer", "work", "other",
     ],
     "university": [
-        "event", "certificate", "education", "achievement", "project", "leadership",
-        "volunteer", "task", "course", "publication", "speech", "work", "other",
+        "event", "certificate", "education", "achievement", "recommendation", "project",
+        "leadership", "volunteer", "task", "course", "publication", "speech", "work", "other",
     ],
     "grant": [
-        "event", "certificate", "achievement", "award", "project", "leadership",
-        "volunteer", "education", "publication", "speech", "work", "other",
+        "event", "certificate", "achievement", "recommendation", "award", "project",
+        "leadership", "volunteer", "education", "publication", "speech", "work", "other",
     ],
     "volunteer": [
-        "event", "certificate", "volunteer", "project", "achievement", "leadership",
-        "education", "task", "course", "work", "other",
+        "event", "certificate", "volunteer", "project", "achievement", "recommendation",
+        "leadership", "education", "task", "course", "work", "other",
     ],
     "universal": [
-        "event", "certificate", "project", "leadership", "achievement", "award",
-        "work", "education", "task", "volunteer", "internship", "course", "publication", "speech", "other",
+        "event", "certificate", "project", "leadership", "achievement", "recommendation",
+        "award", "work", "education", "task", "volunteer", "internship", "course",
+        "publication", "speech", "other",
     ],
 }
 
@@ -234,7 +246,18 @@ def _era_sections(
     Status filters must match Russian labels from ``build_portfolio_data``
     (e.g. approved submissions → «Принят»), not only raw English codes.
     Certificate / uploaded entries honor ``include_in_resume``.
+
+    Legacy bot-verified ``confirmed_items`` / ``recommendations`` are folded in
+    so the Mini App career builder does not drop documents that ``build_era_resume``
+    already exported for participants.
     """
+    legacy_achievements = [
+        item
+        for item in portfolio.confirmed_items
+        if _era_visible(item)
+        and item.category != "certificate"
+        and item.category not in _RECOMMENDATION_CATEGORIES
+    ]
     sections = {
         "project": [
             item
@@ -251,7 +274,8 @@ def _era_sections(
         ],
         "leadership": [item for item in portfolio.leadership if _era_visible(item)],
         "certificate": [item for item in portfolio.certificates if _era_visible(item)],
-        "achievement": [item for item in portfolio.badges if _era_visible(item)],
+        "achievement": [item for item in portfolio.badges if _era_visible(item)] + legacy_achievements,
+        "recommendation": [item for item in portfolio.recommendations if _era_visible(item)],
         "volunteer": [
             item
             for item in portfolio.volunteer
@@ -623,7 +647,8 @@ def build_career_resume(
     grouped: dict[str, list[CareerPortfolioItem]] = {}
     for item in items:
         if item.include_in_resume and item.status not in {"pending", "revoked"}:
-            grouped.setdefault(item.item_type, []).append(item)
+            section = _ITEM_TYPE_ALIASES.get(item.item_type, item.item_type)
+            grouped.setdefault(section, []).append(item)
     era = _era_sections(portfolio)
     if is_resume:
         era, grouped = _cap_resume_content(era, grouped, purpose=purpose)
