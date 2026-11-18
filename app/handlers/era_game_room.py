@@ -797,11 +797,29 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
             + "За незавершённую игру баллы не начисляются. Повторный ответ не увеличивает награду."
         )
     elif view in {"quiz", "puzzle"}:
-        modes = ({"era_game:solo", "era_game:play:true_or_myth", "era_game:play:guess_country", "era_game:play:culture"}
-                 if view == "quiz" else {"era_game:play:chronology", "era_game:play:word_chain", "era_game:play:associations", "era_game:play:logic", "era_game:play:memory"})
+        from app.services.game_room_presenter import game_card_line
+        mode_keys = (
+            ("solo", "era_game:solo"),
+            ("true_or_myth", "era_game:play:true_or_myth"),
+            ("guess_country", "era_game:play:guess_country"),
+            ("culture", "era_game:play:culture"),
+        ) if view == "quiz" else (
+            ("chronology", "era_game:play:chronology"),
+            ("word_chain", "era_game:play:word_chain"),
+            ("associations", "era_game:play:associations"),
+            ("logic", "era_game:play:logic"),
+            ("memory", "era_game:play:memory"),
+        )
         title = "⚡ Квизы и знания" if view == "quiz" else "🧠 Слова и логика"
-        text = f"<b>{title}</b>\n\nВыберите игру. Ответы и результат останутся здесь, в личном чате."
-        buttons = [row for row in menu_markup().inline_keyboard if row[0].callback_data in modes]
+        cards = "\n\n".join(game_card_line(mode) for mode, _ in mode_keys)
+        text = (
+            f"<b>{title}</b>\n\n"
+            "Выберите игру. Ответы и результат остаются в личном чате.\n"
+            "Чей ход — в карточке раунда; «← Все игры» вернёт в меню.\n\n"
+            + cards
+        )
+        wanted = {callback for _, callback in mode_keys}
+        buttons = [row for row in menu_markup().inline_keyboard if row[0].callback_data in wanted]
     elif view in {"history", "history_team", "history_duel"} or view.startswith("history_round_"):
         text = "🎮 <b>Мои результаты</b>"
         legacy_finished = [room for room in recent if room.get("status") == "finished" and uid in room.get("participants", [])]
@@ -862,7 +880,12 @@ async def show_game_cabinet(message: Message, settings: Settings, session: Async
                     buttons.append([InlineKeyboardButton(text=label, callback_data=f"era_game:catalog:history_round_{other['session_token']}")])
 
     else:
-        text = "🎮 <b>Игры ЭРА</b>\n\nНебольшая пауза с пользой: выберите игру для себя или присоединитесь к команде."
+        from app.services.game_room_presenter import game_card_line
+        text = (
+            "🎮 <b>Игры ЭРА</b>\n\n"
+            "Небольшая пауза с пользой. Соло — в личке; командные — в общей теме игр.\n\n"
+            f"{game_card_line('team')}\n\n{game_card_line('duel')}"
+        )
         if active:
             text += "\n\n<b>Можно продолжить</b>\n" + room_heading(active)
             buttons.append([InlineKeyboardButton(text="▶️ Продолжить игру", callback_data="era_game:resume")])
