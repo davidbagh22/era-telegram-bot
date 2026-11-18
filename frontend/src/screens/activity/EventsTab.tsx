@@ -417,7 +417,6 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         <StatusBadge label={event.display_status} tone={registrationBadgeTone(event.registration_status)} />
         <h2 style={{ fontSize: "clamp(1.65rem, 7vw, 2.35rem)", lineHeight: 1.05, margin: 0, overflowWrap: "anywhere", textWrap: "balance" }}>{event.title}</h2>
-        {showSummary && <p className="era-readable-copy" style={{ margin: 0 }}>{summary}</p>}
       </div>
 
       <Card style={{ padding: "0.95rem" }}>
