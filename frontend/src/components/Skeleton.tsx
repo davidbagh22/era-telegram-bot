@@ -1,3 +1,5 @@
+import type { CSSProperties, ReactNode } from "react";
+
 interface SkeletonProps {
   width?: string | number;
   height?: string | number;
@@ -14,6 +16,24 @@ export function Skeleton({ width = "100%", height = "1rem", radius }: SkeletonPr
       style={{ width, height, borderRadius: radius }}
       aria-hidden="true"
     />
+  );
+}
+
+/** Announce a loading region once; children stay decorative (aria-hidden). */
+export function LoadingRegion({
+  label = "Загрузка",
+  children,
+  style,
+}: {
+  label?: string;
+  children: ReactNode;
+  style?: CSSProperties;
+}) {
+  return (
+    <div role="status" aria-busy="true" aria-live="polite" aria-label={label} style={style}>
+      <span className="era-sr-only">{label}</span>
+      <div aria-hidden="true">{children}</div>
+    </div>
   );
 }
 
@@ -55,10 +75,12 @@ export function SkeletonCard({ lines = 2 }: { lines?: number }) {
  * loading state before the first real card renders). */
 export function SkeletonList({ count = 3 }: { count?: number }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-      {Array.from({ length: count }).map((_, index) => (
-        <SkeletonCard key={index} />
-      ))}
-    </div>
+    <LoadingRegion>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        {Array.from({ length: count }).map((_, index) => (
+          <SkeletonCard key={index} />
+        ))}
+      </div>
+    </LoadingRegion>
   );
 }

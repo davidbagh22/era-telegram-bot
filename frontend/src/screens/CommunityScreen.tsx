@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { fetchMe } from "../api/client";
+import { SkeletonList } from "../components/Skeleton";
 import { useAsync } from "../hooks/useAsync";
 import { LeaderboardScreen } from "./LeaderboardScreen";
 import { MediaScreen } from "./MediaScreen";
@@ -37,7 +38,11 @@ export function CommunityScreen({ initialSection = null, initialItemId = null, i
   };
 
   if (me.status === "loading" && initialSection && ["surveys", "media", "rewards", "auctions"].includes(initialSection)) {
-    return <div className="era-page" style={{ padding: "1.25rem", color: "var(--era-text-muted)" }}>Загрузка…</div>;
+    return (
+      <div className="era-page" style={{ padding: "1.25rem" }}>
+        <SkeletonList count={2} />
+      </div>
+    );
   }
 
   if (me.status === "ready") {

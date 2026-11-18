@@ -100,7 +100,16 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
     );
   }
 
-  if (state.status === "error") return <StatusBanner title="Не удалось загрузить профиль" description="Открой раздел ещё раз." />;
+  if (state.status === "error") {
+    return (
+      <StatusBanner
+        title="Не удалось загрузить профиль"
+        description="Проверь соединение и обнови экран."
+        actionLabel="Обновить"
+        onAction={state.reload}
+      />
+    );
+  }
 
   const { data } = state;
   const resultEntries = {

@@ -2,6 +2,7 @@ import { fetchHome, fetchLeaderboard } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { MonoLabel } from "../../components/MonoLabel";
+import { SkeletonList } from "../../components/Skeleton";
 import { useAsync } from "../../hooks/useAsync";
 
 const RANKS: { key: string; label: string }[] = [
@@ -22,10 +23,17 @@ export function RanksPanel() {
   const board = useAsync(() => fetchLeaderboard(), []);
 
   if (home.status === "loading" || board.status === "loading") {
-    return <p style={{ margin: 0, color: "var(--era-text-muted)" }}>Загрузка рангов…</p>;
+    return <SkeletonList count={2} />;
   }
   if (home.status === "error") {
-    return <EmptyState text="Не удалось загрузить ранги." />;
+    return (
+      <EmptyState
+        title="Не удалось загрузить ранги"
+        text="Проверьте соединение и обновите раздел."
+        actionLabel="Обновить"
+        onAction={() => { home.reload(); board.reload(); }}
+      />
+    );
   }
 
   const { rank, points_balance } = home.data;
@@ -102,7 +110,14 @@ export function RanksPanel() {
             Весь рейтинг →
           </button>
         </div>
-        {board.status === "error" && <EmptyState text="Рейтинг временно недоступен." />}
+        {board.status === "error" && (
+          <EmptyState
+            title="Рейтинг временно недоступен"
+            text="Обновите список лидеров чуть позже."
+            actionLabel="Обновить"
+            onAction={board.reload}
+          />
+        )}
         {board.status === "ready" && (
           <>
             {board.data.me && (

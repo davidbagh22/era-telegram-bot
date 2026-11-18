@@ -5,7 +5,7 @@ import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { MonoLabel } from "../components/MonoLabel";
 import { PosterCard } from "../components/PosterCard";
-import { Skeleton, SkeletonCard } from "../components/Skeleton";
+import { LoadingRegion, Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { EventIcon, ProjectsIcon, TaskIcon } from "../components/icons";
 import { useHome } from "../hooks/useHome";
@@ -90,14 +90,16 @@ export function HomeScreen({
   const home = useHome();
   const [dailyQuote, setDailyQuote] = useState("");
   const [eventBoard, setEventBoard] = useState<EventItem[] | "loading" | "error">("loading");
+  const [eventsTick, setEventsTick] = useState(0);
 
   useEffect(() => {
     let active = true;
+    setEventBoard("loading");
     void fetchEvents("all").then((events) => {
       if (active) setEventBoard(events.filter((event) => ["approved", "published", "registration_open", "registration_closed"].includes(event.status)));
     }).catch(() => { if (active) setEventBoard("error"); });
     return () => { active = false; };
-  }, []);
+  }, [eventsTick]);
 
   useEffect(() => {
     let active = true;
@@ -109,20 +111,32 @@ export function HomeScreen({
 
   if (home.status === "loading") {
     return (
-      <div className="era-page" style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <Skeleton width={44} height={44} radius="50%" />
-          <div style={{ flex: 1 }}><Skeleton height="1.1rem" width="58%" /></div>
-        </div>
-        <SkeletonCard />
-        <SkeletonCard />
-        <SkeletonCard />
+      <div className="era-page">
+        <LoadingRegion
+          label="Загрузка главной"
+          style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "1rem" }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <Skeleton width={44} height={44} radius="50%" />
+            <div style={{ flex: 1 }}><Skeleton height="1.1rem" width="58%" /></div>
+          </div>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </LoadingRegion>
       </div>
     );
   }
 
   if (home.status === "error") {
-    return <StatusBanner title="Не получилось загрузить главную" description="Проверь соединение и открой экран ещё раз." />;
+    return (
+      <StatusBanner
+        title="Не получилось загрузить главную"
+        description="Проверь соединение и попробуй ещё раз."
+        actionLabel="Обновить"
+        onAction={home.reload}
+      />
+    );
   }
 
   const { data } = home;
@@ -190,6 +204,7 @@ export function HomeScreen({
           <Card gradient style={{ padding: 0, overflow: "hidden", display: "grid" }}>
             <button
               type="button"
+              aria-label={`Открыть мероприятие «${featuredEvent.title}»`}
               onClick={onOpenEvent ? () => onOpenEvent(featuredEvent.id) : undefined}
               style={{
                 display: "grid",
@@ -215,8 +230,19 @@ export function HomeScreen({
             </div>
           </Card>
         )}
-        {eventBoard === "loading" && <SkeletonCard />}
-        {eventBoard === "error" && <EmptyState text="Афиша временно недоступна." />}
+        {eventBoard === "loading" && (
+          <LoadingRegion label="Загрузка афиши">
+            <SkeletonCard />
+          </LoadingRegion>
+        )}
+        {eventBoard === "error" && (
+          <EmptyState
+            title="Афиша временно недоступна"
+            text="Проверь соединение и обнови список мероприятий."
+            actionLabel="Обновить афишу"
+            onAction={() => setEventsTick((value) => value + 1)}
+          />
+        )}
         {Array.isArray(eventBoard) && upcomingEvents.length === 0 && !featuredEvent && (
           <EmptyState text="Пока нет ближайших мероприятий." />
         )}
@@ -231,7 +257,7 @@ export function HomeScreen({
         ))}
       </section>
 
-      {!nextStepRepeatsPoster && <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+      {!nextStepRepeatsPoster && <section aria-label="Следующий шаг" style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
         <MonoLabel>Следующий шаг</MonoLabel>
         {data.next_step ? (
           <Card gradient onClick={nextStepClick} style={{ padding: "1.15rem" }}>
@@ -263,7 +289,7 @@ export function HomeScreen({
       )}
 
       {(data.active_task || data.tasks_available_count > 0 || data.tasks_in_progress_count > 0) && (
-        <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+        <section aria-label="Мои задачи" style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
             <MonoLabel>Мои задачи</MonoLabel>
             {onOpenTasks && <button type="button" className="era-btn-ghost" onClick={onOpenTasks}>Все задачи →</button>}
@@ -323,7 +349,7 @@ export function HomeScreen({
         </Card>
       )}
 
-      <section style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
+      <section aria-label="Ближайшее" style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
         <MonoLabel>Ближайшее</MonoLabel>
         {nearestEvent ? (
           <PosterCard
@@ -354,7 +380,7 @@ export function HomeScreen({
         ) : <EmptyState text="На ближайшее время ничего не запланировано." />}
       </section>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
+      <section aria-label="Возможности для тебя" style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
           <MonoLabel>Возможности для тебя</MonoLabel>
           {onOpenCommunity && <button type="button" className="era-btn-ghost" onClick={onOpenCommunity}>Все →</button>}
@@ -374,7 +400,7 @@ export function HomeScreen({
         )) : <EmptyState text="Новых персональных возможностей пока нет." />}
       </section>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+      <section aria-label="Подтверждённый результат" style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
         <MonoLabel>Подтверждённый результат</MonoLabel>
         <Card>
           {confirmedResult ? (

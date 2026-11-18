@@ -4,6 +4,7 @@ import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { AuctionIcon } from "../../components/icons";
+import { SkeletonList } from "../../components/Skeleton";
 import { useAsync } from "../../hooks/useAsync";
 import type { Auction } from "../../types/opportunity";
 
@@ -233,10 +234,17 @@ export function AuctionsPanel() {
   );
 
   if (state.status === "loading") {
-    return <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>;
+    return <SkeletonList count={2} />;
   }
   if (state.status === "error") {
-    return <EmptyState text="Не удалось загрузить аукционы." />;
+    return (
+      <EmptyState
+        title="Не удалось загрузить аукционы"
+        text="Проверьте соединение и обновите список."
+        actionLabel="Обновить"
+        onAction={state.reload}
+      />
+    );
   }
   if (state.data.length === 0) {
     return <EmptyState text="Активных лотов пока нет." />;
