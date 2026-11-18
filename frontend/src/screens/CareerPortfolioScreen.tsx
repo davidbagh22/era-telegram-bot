@@ -168,6 +168,7 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportMode, setExportMode] = useState<"download" | "send">("download");
+  const [resumeMode, setResumeMode] = useState<"resume" | "portfolio" | "portfolio_with_certificates">("portfolio");
   const [form, setForm] = useState<CareerItemPayload>(EMPTY_FORM);
   const [profileDraft, setProfileDraft] = useState({ headline: "", about: "", languages: "", skills: "" });
   const [exportDraft, setExportDraft] = useState({ headline: "", about: "", skills: "", languages: "" });
@@ -317,10 +318,16 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
       setProfileDraft({ ...exportDraft });
       setExportOpen(false);
       if (exportMode === "send") {
-        await sendCareerResume(purpose);
+        await sendCareerResume(purpose, resumeMode);
         toast.show("PDF отправлен в чат с ботом", "success");
       } else {
-        saveBlob(await downloadCareerResume(purpose), "Портфолио_ЭРА.pdf");
+        const filename =
+          resumeMode === "resume"
+            ? "Резюме_ЭРА.pdf"
+            : resumeMode === "portfolio_with_certificates"
+              ? "Портфолио_ЭРА_с_сертификатами.pdf"
+              : "Портфолио_ЭРА.pdf";
+        saveBlob(await downloadCareerResume(purpose, resumeMode), filename);
         toast.show("Портфолио готово", "success");
       }
       await refresh();
@@ -523,6 +530,26 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
             value={exportDraft.languages}
             onChange={(event) => setExportDraft((prev) => ({ ...prev, languages: event.target.value }))}
           />
+          <div style={{ display: "grid", gap: "0.4rem" }}>
+            <strong style={{ fontSize: "0.85rem" }}>Формат PDF</strong>
+            {(
+              [
+                { value: "resume", label: "Резюме 1–2 стр." },
+                { value: "portfolio", label: "Полное портфолио" },
+                { value: "portfolio_with_certificates", label: "Портфолио + сертификаты" },
+              ] as const
+            ).map((option) => (
+              <label key={option.value} style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontSize: "0.86rem" }}>
+                <input
+                  type="radio"
+                  name="resume-mode"
+                  checked={resumeMode === option.value}
+                  onChange={() => setResumeMode(option.value)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
           <button
             type="button"
             className="era-btn-primary"

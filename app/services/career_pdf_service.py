@@ -45,32 +45,44 @@ TYPE_LABELS = {
     "volunteer": "Волонтёрство",
     "task": "Задачи и миссии",
     "leadership": "Лидерские роли",
+    "recommendation": "Рекомендации",
     "other": "Дополнительно",
 }
+# Bot-uploaded PortfolioItem.item_type values that belong in a shared PDF section.
+_ITEM_TYPE_ALIASES = {
+    "badge": "achievement",
+    "leader_recommendation": "recommendation",
+    "partner_recommendation": "recommendation",
+}
+_RECOMMENDATION_CATEGORIES = frozenset(
+    {"recommendation", "leader_recommendation", "partner_recommendation"}
+)
 PURPOSE_ORDER = {
     "work": [
         "event", "certificate", "work", "internship", "project", "leadership",
-        "achievement", "education", "task", "course", "volunteer", "publication", "speech", "other",
+        "achievement", "recommendation", "education", "task", "course", "volunteer",
+        "publication", "speech", "other",
     ],
     "internship": [
         "event", "certificate", "education", "project", "internship", "achievement",
-        "leadership", "task", "course", "volunteer", "work", "other",
+        "recommendation", "leadership", "task", "course", "volunteer", "work", "other",
     ],
     "university": [
-        "event", "certificate", "education", "achievement", "project", "leadership",
-        "volunteer", "task", "course", "publication", "speech", "work", "other",
+        "event", "certificate", "education", "achievement", "recommendation", "project",
+        "leadership", "volunteer", "task", "course", "publication", "speech", "work", "other",
     ],
     "grant": [
-        "event", "certificate", "achievement", "award", "project", "leadership",
-        "volunteer", "education", "publication", "speech", "work", "other",
+        "event", "certificate", "achievement", "recommendation", "award", "project",
+        "leadership", "volunteer", "education", "publication", "speech", "work", "other",
     ],
     "volunteer": [
-        "event", "certificate", "volunteer", "project", "achievement", "leadership",
-        "education", "task", "course", "work", "other",
+        "event", "certificate", "volunteer", "project", "achievement", "recommendation",
+        "leadership", "education", "task", "course", "work", "other",
     ],
     "universal": [
-        "event", "certificate", "project", "leadership", "achievement", "award",
-        "work", "education", "task", "volunteer", "internship", "course", "publication", "speech", "other",
+        "event", "certificate", "project", "leadership", "achievement", "recommendation",
+        "award", "work", "education", "task", "volunteer", "internship", "course",
+        "publication", "speech", "other",
     ],
 }
 
@@ -208,16 +220,78 @@ def _dedupe_short(value: str | None, *others: str | None) -> str | None:
     return text
 
 
-def _era_sections(portfolio: PortfolioData) -> dict[str, list[PortfolioEntry]]:
-    return {
-        "project": [item for item in portfolio.projects if item.status in {"Одобрен", "В работе", "Завершён", "вклад подтверждён"}],
-        "event": [item for item in portfolio.events if item.status == "Посетил"],
-        "task": [item for item in portfolio.tasks if item.status in {"Выполнена", "approved", "completed", "подтверждено"}],
-        "leadership": portfolio.leadership,
-        "certificate": portfolio.certificates,
-        "achievement": portfolio.badges,
-        "volunteer": [item for item in portfolio.volunteer if item.status in {"Выполнена", "approved", "completed", "подтверждено"}],
+_CONFIRMED_TASK_STATUSES = frozenset({
+    "Принят",
+    "Одобрено лидером",
+    "Выполнена",
+    "approved",
+    "leader_approved",
+    "completed",
+    "подтверждено",
+})
+
+
+def _era_visible(item: PortfolioEntry) -> bool:
+    """Skip portfolio entries the participant hid from PDF export."""
+    return bool(getattr(item, "include_in_resume", True))
+
+
+def _era_sections(
+    portfolio: PortfolioData,
+    *,
+    resume_cap: int | None = None,
+) -> dict[str, list[PortfolioEntry]]:
+    """Map live ERA activity into resume section buckets.
+
+    Status filters must match Russian labels from ``build_portfolio_data``
+    (e.g. approved submissions → «Принят»), not only raw English codes.
+    Certificate / uploaded entries honor ``include_in_resume``.
+
+    Legacy bot-verified ``confirmed_items`` / ``recommendations`` are folded in
+    so the Mini App career builder does not drop documents that ``build_era_resume``
+    already exported for participants.
+    """
+    legacy_achievements = [
+        item
+        for item in portfolio.confirmed_items
+        if _era_visible(item)
+        and item.category != "certificate"
+        and item.category not in _RECOMMENDATION_CATEGORIES
+    ]
+    sections = {
+        "project": [
+            item
+            for item in portfolio.projects
+            if item.status in {"Одобрен", "В работе", "Завершён", "вклад подтверждён"} and _era_visible(item)
+        ],
+        "event": [
+            item for item in portfolio.events if item.status == "Посетил" and _era_visible(item)
+        ],
+        "task": [
+            item
+            for item in portfolio.tasks
+            if item.status in _CONFIRMED_TASK_STATUSES and _era_visible(item)
+        ],
+        "leadership": [item for item in portfolio.leadership if _era_visible(item)],
+        "certificate": [item for item in portfolio.certificates if _era_visible(item)],
+        "achievement": [item for item in portfolio.badges if _era_visible(item)] + legacy_achievements,
+        "recommendation": [item for item in portfolio.recommendations if _era_visible(item)],
+        "volunteer": [
+            item
+            for item in portfolio.volunteer
+            if item.status in _CONFIRMED_TASK_STATUSES and _era_visible(item)
+        ],
     }
+    if resume_cap is not None:
+        return {key: value[:resume_cap] for key, value in sections.items()}
+    return sections
+
+
+# Short résumé («Резюме 1–2 стр.»): layout-aware caps for BOTH ERA and career items.
+# ~4 cards/section + global budget keeps A4 two-column layout within 1–2 pages.
+RESUME_SECTION_CAP = 4
+RESUME_TOTAL_CAP = 14
+RESUME_DESC_LIMIT = 220
 
 
 def _user_item_bits(item: CareerPortfolioItem) -> tuple[str, str, str]:
@@ -335,7 +409,15 @@ def _metric_card(styles, label: str, value: int):
     return table
 
 
-def _entry_flowables(styles, title: str, meta: str, description: str, *, content_width_mm: float = 110) -> list:
+def _entry_flowables(
+    styles,
+    title: str,
+    meta: str,
+    description: str,
+    *,
+    content_width_mm: float = 110,
+    desc_limit: int | None = None,
+) -> list:
     """Accent card flowables. Long descriptions stay outside tables so ReportLab can split them."""
     from reportlab.lib import colors
     from reportlab.lib.styles import ParagraphStyle
@@ -363,8 +445,9 @@ def _entry_flowables(styles, title: str, meta: str, description: str, *, content
     text = (description or "").strip()
     if len(text) < 12:
         return [KeepTogether([header, Spacer(1, 1.5 * mm)])]
-    if len(text) > 900:
-        text = text[:897].rstrip() + "…"
+    hard_limit = desc_limit if desc_limit is not None else 900
+    if len(text) > hard_limit:
+        text = text[: max(0, hard_limit - 1)].rstrip() + "…"
     body_style = ParagraphStyle(
         "EraEntryBody",
         parent=styles["body"],
@@ -377,6 +460,39 @@ def _entry_flowables(styles, title: str, meta: str, description: str, *, content
     if len(text) < 280:
         return [KeepTogether([header, body, Spacer(1, 1.5 * mm)])]
     return [header, body, Spacer(1, 1.5 * mm)]
+
+
+def _cap_resume_content(
+    era: dict[str, list[PortfolioEntry]],
+    grouped: dict[str, list[CareerPortfolioItem]],
+    *,
+    purpose: str,
+    per_section: int = RESUME_SECTION_CAP,
+    total: int = RESUME_TOTAL_CAP,
+) -> tuple[dict[str, list[PortfolioEntry]], dict[str, list[CareerPortfolioItem]]]:
+    """Layout-aware résumé budget across ERA + career items (not ERA-only)."""
+    order = PURPOSE_ORDER.get(purpose, PURPOSE_ORDER["universal"])
+    capped_era: dict[str, list[PortfolioEntry]] = {key: [] for key in era}
+    capped_grouped: dict[str, list[CareerPortfolioItem]] = {key: [] for key in grouped}
+    remaining = total
+    keys = list(dict.fromkeys([*order, *era.keys(), *grouped.keys()]))
+    for item_type in keys:
+        if remaining <= 0:
+            capped_era.setdefault(item_type, [])
+            capped_grouped.setdefault(item_type, [])
+            continue
+        system_items = list(era.get(item_type, []))[:per_section]
+        own_items = list(grouped.get(item_type, []))[:per_section]
+        # Prefer ERA facts first, then participant career items, within the section slice.
+        take_system = min(len(system_items), remaining, per_section)
+        system_slice = system_items[:take_system]
+        remaining -= len(system_slice)
+        take_own = min(len(own_items), remaining, max(0, per_section - len(system_slice)))
+        own_slice = own_items[:take_own]
+        remaining -= len(own_slice)
+        capped_era[item_type] = system_slice
+        capped_grouped[item_type] = own_slice
+    return capped_era, capped_grouped
 
 
 def _draw_resume_footer(canvas, doc, *, resume_note: bool = True) -> None:
@@ -454,6 +570,34 @@ def _signature_footer(styles, *, resume_note: bool):
     return KeepTogether([Spacer(1, 4 * mm), Paragraph(escape(note), styles["small"]), Spacer(1, 3 * mm), table])
 
 
+RESUME_MODES = frozenset({"resume", "portfolio", "portfolio_with_certificates"})
+
+
+def _dedupe_key(title: str, date_label: str = "", organization: str = "") -> str:
+    return "|".join(part.strip().casefold() for part in (title, date_label, organization) if part and part.strip())
+
+
+def merge_pdf_bytes(parts: list[bytes]) -> bytes:
+    """Append PDF parts with pypdf; skip empty/invalid blobs."""
+    from pypdf import PdfReader, PdfWriter
+
+    writer = PdfWriter()
+    for blob in parts:
+        if not blob:
+            continue
+        try:
+            reader = PdfReader(BytesIO(blob))
+        except Exception:
+            continue
+        for page in reader.pages:
+            writer.add_page(page)
+    if len(writer.pages) == 0:
+        raise ValueError("empty_pdf_merge")
+    out = BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
 def build_career_resume(
     user: User,
     career_profile: CareerProfile,
@@ -461,6 +605,8 @@ def build_career_resume(
     items: list[CareerPortfolioItem],
     *,
     purpose: str,
+    mode: str = "portfolio",
+    certificate_pdfs: list[bytes] | None = None,
 ) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
@@ -494,11 +640,18 @@ def build_career_resume(
         if str(item.get("name", "")).strip()
     ]
 
+    export_mode = mode if mode in RESUME_MODES else "portfolio"
+    is_resume = export_mode == "resume"
+    desc_limit = RESUME_DESC_LIMIT if is_resume else None
+
     grouped: dict[str, list[CareerPortfolioItem]] = {}
     for item in items:
         if item.include_in_resume and item.status not in {"pending", "revoked"}:
-            grouped.setdefault(item.item_type, []).append(item)
+            section = _ITEM_TYPE_ALIASES.get(item.item_type, item.item_type)
+            grouped.setdefault(section, []).append(item)
     era = _era_sections(portfolio)
+    if is_resume:
+        era, grouped = _cap_resume_content(era, grouped, purpose=purpose)
 
     metrics = [
         ("Мероприятия", len(era["event"])),
@@ -517,13 +670,14 @@ def build_career_resume(
     left_w = 58 * mm
     right_w = page_width - side * 2 - left_w - gap
     is_sparse = not any(True for key in PURPOSE_ORDER["universal"] if era.get(key) or grouped.get(key)) and not about
+    hero_title = "Резюме" if export_mode == "resume" else "Портфолио участника ЭРА"
 
     def _on_page(canvas, doc):
         _draw_hero(
             canvas,
             doc,
             title=name,
-            subtitle=hero_sub or "Портфолио участника ЭРА",
+            subtitle=hero_sub or hero_title,
             brand_line="ЭРА · ОБЪЕДИНЕНИЕ ЛИДЕРОВ И КУЛЬТУРНЫХ ИНИЦИАТИВ",
         )
         _draw_resume_footer(canvas, doc, resume_note=True)
@@ -591,21 +745,44 @@ def build_career_resume(
             continue
         seen.add(item_type)
         right_story.append(Paragraph(TYPE_LABELS.get(item_type, item_type.title()), styles["section"]))
+        used_keys: set[str] = set()
         for item in system_items:
             title, meta, description = _era_entry_bits(item)
-            right_story.extend(_entry_flowables(styles, title, meta, description, content_width_mm=right_w_mm))
+            key = _dedupe_key(title, item.date_label or "")
+            if key in used_keys:
+                continue
+            used_keys.add(key)
+            right_story.extend(
+                _entry_flowables(
+                    styles, title, meta, description, content_width_mm=right_w_mm, desc_limit=desc_limit
+                )
+            )
         for item in own:
             title, meta, description = _user_item_bits(item)
-            right_story.extend(_entry_flowables(styles, title, meta, description, content_width_mm=right_w_mm))
+            key = _dedupe_key(title, item.issued_at.strftime("%d.%m.%Y") if item.issued_at else "", item.organization or "")
+            if key in used_keys:
+                continue
+            used_keys.add(key)
+            right_story.extend(
+                _entry_flowables(
+                    styles, title, meta, description, content_width_mm=right_w_mm, desc_limit=desc_limit
+                )
+            )
         right_story.append(Spacer(1, 1.5 * mm))
 
     for item_type, own in grouped.items():
         if item_type in seen:
             continue
+        if not own:
+            continue
         right_story.append(Paragraph(TYPE_LABELS.get(item_type, item_type.title()), styles["section"]))
         for item in own:
             title, meta, description = _user_item_bits(item)
-            right_story.extend(_entry_flowables(styles, title, meta, description, content_width_mm=right_w_mm))
+            right_story.extend(
+                _entry_flowables(
+                    styles, title, meta, description, content_width_mm=right_w_mm, desc_limit=desc_limit
+                )
+            )
 
     if is_sparse:
         from reportlab.lib import colors
@@ -645,7 +822,13 @@ def build_career_resume(
     # After the first-page right column fills, continue on a full-width template (not the sidebar frame).
     story = left_story + [FrameBreak(), NextPageTemplate("continuation")] + right_story
     doc.build(story)
-    return stream.getvalue()
+    base_pdf = stream.getvalue()
+    if export_mode == "portfolio_with_certificates" and certificate_pdfs:
+        try:
+            return merge_pdf_bytes([base_pdf, *[blob for blob in certificate_pdfs if blob]])
+        except ValueError:
+            return base_pdf
+    return base_pdf
 
 
 def _verification_qr(url: str):

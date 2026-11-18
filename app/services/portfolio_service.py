@@ -57,6 +57,7 @@ class PortfolioEntry:
     category: str = ""
     file_id: str | None = None
     url: str | None = None
+    include_in_resume: bool = True
 
 
 @dataclass(frozen=True)
@@ -113,8 +114,16 @@ def _period(user: User) -> str:
     return f"с {_date_label(created_at)}"
 
 
-def _limited(items: list[PortfolioEntry], limit: int = 12) -> list[PortfolioEntry]:
+def _limited(items: list[PortfolioEntry], limit: int | None = 12) -> list[PortfolioEntry]:
+    """Preview helper. Pass limit=None for full export (PDF must not silently truncate)."""
+    if limit is None:
+        return items
     return items[:limit]
+
+
+def _resume_visible(item: PortfolioItem) -> bool:
+    """Honor per-item privacy toggle for PDF / ERA export buckets."""
+    return bool(getattr(item, "include_in_resume", True))
 
 
 def _portfolio_entry(item: PortfolioItem) -> PortfolioEntry:
@@ -127,10 +136,16 @@ def _portfolio_entry(item: PortfolioItem) -> PortfolioEntry:
         category=_clean(item.item_type),
         file_id=item.file_id,
         url=item.url,
+        include_in_resume=_resume_visible(item),
     )
 
 
-async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioData:
+async def build_portfolio_data(
+    session: AsyncSession,
+    user: User,
+    *,
+    preview_limit: int | None = 12,
+) -> PortfolioData:
     stats = await user_stats(session, user.id)
     portfolio_items = list(
         (
@@ -248,11 +263,18 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
 
     confirmed_items = [_portfolio_entry(item) for item in portfolio_items if item.status == "verified"]
     pending_items = [_portfolio_entry(item) for item in portfolio_items if item.status == "pending"]
-    certificates = [item for item in confirmed_items if item.category == "certificate"]
+    # Export / ERA certificate buckets honor include_in_resume; full confirmed_items
+    # remain available for management UIs that show privacy toggles.
+    certificates = [
+        item
+        for item in confirmed_items
+        if item.category == "certificate" and item.include_in_resume
+    ]
     recommendations = [
         item
         for item in confirmed_items
         if item.category in {"recommendation", "leader_recommendation", "partner_recommendation"}
+        and item.include_in_resume
     ]
 
     return PortfolioData(
@@ -300,7 +322,8 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                     or "project_contribution",
                 )
                 for member, project, role in contribution_rows
-            ]
+            ],
+            preview_limit,
         ),
         events=_limited(
             [
@@ -313,7 +336,8 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                 )
                 for registration, event in event_rows
                 if registration.status == RegistrationStatus.ATTENDED
-            ]
+            ],
+            preview_limit,
         ),
         registrations=_limited(
             [
@@ -331,7 +355,8 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                     RegistrationStatus.WILL_COME,
                     RegistrationStatus.WAITLIST,
                 )
-            ]
+            ],
+            preview_limit,
         ),
         tasks=_limited(
             [
@@ -348,7 +373,8 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                 )
                 for submission, task in task_rows
                 if submission.status in _CONFIRMED_SUBMISSION_STATUSES
-            ]
+            ],
+            preview_limit,
         ),
         volunteer=_limited(
             [
@@ -365,7 +391,8 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                 )
                 for submission in activity_rows
                 if submission.status in _CONFIRMED_SUBMISSION_STATUSES
-            ]
+            ],
+            preview_limit,
         ),
         leadership=_limited(
             [
@@ -377,7 +404,8 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                     category="leadership",
                 )
                 for user_office, office in office_rows
-            ]
+            ],
+            preview_limit,
         ),
         badges=_limited(
             [
@@ -389,13 +417,14 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                     category="badge",
                 )
                 for user_badge, badge in badge_rows
-            ]
+            ],
+            preview_limit,
         ),
-        certificates=_limited(certificates),
-        recommendations=_limited(recommendations),
-        uploaded_items=_limited([_portfolio_entry(item) for item in portfolio_items]),
-        confirmed_items=_limited(confirmed_items),
-        pending_items=_limited(pending_items),
+        certificates=_limited(certificates, preview_limit),
+        recommendations=_limited(recommendations, preview_limit),
+        uploaded_items=_limited([_portfolio_entry(item) for item in portfolio_items], preview_limit),
+        confirmed_items=_limited(confirmed_items, preview_limit),
+        pending_items=_limited(pending_items, preview_limit),
     )
 
 

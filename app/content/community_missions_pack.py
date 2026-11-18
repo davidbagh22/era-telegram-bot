@@ -15,9 +15,20 @@ _PACK = "eNrtXFtvG8cVfs+vGOi1size5IB+CIqiDwVipEiLvDSBQFMbi41EqhTlJA0C6GInduVIUWI
 
 
 def load_community_missions() -> list[dict]:
+    from app.content.community_missions_extra import load_extra_community_missions
+
     raw = zlib.decompress(base64.b64decode(_PACK))
     payload = json.loads(raw.decode("utf-8"))
     items = payload.get("items", [])
     if len(items) != 26:
         raise RuntimeError(f"community missions pack must contain 26 items, got {len(items)}")
+    extras = load_extra_community_missions()
+    codes = {item["code"] for item in items}
+    for extra in extras:
+        if extra["code"] in codes:
+            raise RuntimeError(f"duplicate community mission code: {extra['code']}")
+        codes.add(extra["code"])
+        items.append(extra)
+    if len(items) != 30:
+        raise RuntimeError(f"community missions catalog must contain 30 items, got {len(items)}")
     return items

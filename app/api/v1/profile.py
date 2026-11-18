@@ -53,6 +53,7 @@ class PortfolioEntryOut(BaseModel):
     category: str = ""
     file_id: str | None = None
     url: str | None = None
+    include_in_resume: bool = True
 
 
 class ProfileOut(BaseModel):
@@ -147,7 +148,7 @@ async def read_profile_resume(
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     """Backward-compatible resume URL serving the new universal career CV."""
-    portfolio = await build_portfolio_data(session, user)
+    portfolio = await build_portfolio_data(session, user, preview_limit=None)
     career_profile = await career_service.get_or_create_profile(session, user.id)
     career_items = await career_service.list_items(session, user.id)
     pdf_bytes = build_career_resume(

@@ -102,13 +102,21 @@ export const uploadCareerEvidence = (itemId: number, file: File) => {
 export const submitCareerVerification = (itemId: number) =>
   request<CareerPortfolioItem>(`/api/v1/career/items/${itemId}/verification`, { method: "POST" });
 
-export const downloadCareerResume = (purpose: CareerPurpose) =>
-  requestBlob(`/api/v1/career/resume.pdf?purpose=${encodeURIComponent(purpose)}`);
+export const downloadCareerResume = (
+  purpose: CareerPurpose,
+  mode: import("../types/career").CareerResumeMode = "portfolio",
+) =>
+  requestBlob(
+    `/api/v1/career/resume.pdf?purpose=${encodeURIComponent(purpose)}&mode=${encodeURIComponent(mode)}`,
+  );
 
-export const sendCareerResume = (purpose: CareerPurpose) =>
+export const sendCareerResume = (
+  purpose: CareerPurpose,
+  mode: import("../types/career").CareerResumeMode = "portfolio",
+) =>
   request<{ sent: boolean }>("/api/v1/career/resume/send", {
     method: "POST",
-    body: JSON.stringify({ purpose }),
+    body: JSON.stringify({ purpose, mode }),
   });
 
 export const requestOfficialRecommendation = (purpose: CareerPurpose) =>

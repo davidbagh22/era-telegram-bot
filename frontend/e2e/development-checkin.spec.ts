@@ -13,7 +13,9 @@ async function openVector(page: Page) {
 }
 
 async function openCurrentCheckin(page: Page) {
-  await page.getByRole("button", { name: /Посмотрим, что изменилось|Посмотреть результат месяца|Начать отметку/ }).click();
+  await page.getByRole("button", {
+    name: /Посмотрим, что изменилось|Посмотреть результат месяца|Начать отметку|3 минуты — и карта снова станет твоей/,
+  }).click();
 }
 
 async function currentSurface(page: Page): Promise<"question" | "context" | "result"> {
