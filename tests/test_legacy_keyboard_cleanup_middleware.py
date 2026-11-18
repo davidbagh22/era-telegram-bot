@@ -159,24 +159,39 @@ if __name__ == "__main__":
 
 class CurrentPersistentKeyboardMigrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_approved_admin_receives_statistics_keyboard_instead_of_remove(self):
+        from unittest.mock import patch
         from aiogram.types import ReplyKeyboardMarkup
         from app.config import Settings
         from app.utils.constants import ApplicationStatus, Role
-        user = SimpleNamespace(telegram_id=900001, legacy_reply_keyboard_removed=False,
-                               application_status=ApplicationStatus.APPROVED, role=Role.ADMIN,
-                               is_blocked=False, is_archived=False)
+        user = SimpleNamespace(
+            id=1,
+            telegram_id=900001,
+            legacy_reply_keyboard_removed=False,
+            application_status=ApplicationStatus.APPROVED,
+            role=Role.ADMIN,
+            is_blocked=False,
+            is_archived=False,
+            office_assignments=[],
+        )
         bot = FakeBot()
         handler = AsyncMock()
         settings = Settings(bot_token="1234567890:test-token")
         data = {"user": user, "event_chat": SimpleNamespace(id=42, type="private"), "bot": bot, "settings": settings}
         middleware = LegacyKeyboardCleanupMiddleware()
-        await middleware(handler, object(), data)
-        await middleware(handler, object(), data)
+        with patch(
+            "app.middlewares.legacy_keyboard_cleanup.anniversary.menu_available",
+            AsyncMock(return_value=False),
+        ):
+            await middleware(handler, object(), data)
+            await middleware(handler, object(), data)
         assert len(bot.sent) == 1
         markup = bot.sent[0][2]["reply_markup"]
         assert isinstance(markup, ReplyKeyboardMarkup)
         assert markup.is_persistent and markup.one_time_keyboard is False
-        assert "⚙️ Админ" in {button.text for row in markup.keyboard for button in row}
+        labels = {button.text for row in markup.keyboard for button in row}
+        assert "⚙️ Админ" in labels
+        assert "💬 Связь" in labels
+        assert any({button.text for button in row} == {"⚙️ Админ", "💬 Связь"} for row in markup.keyboard)
         assert user.legacy_reply_keyboard_removed
 
 
@@ -211,9 +226,14 @@ class VersionedPrivateMenuTests(unittest.IsolatedAsyncioTestCase):
             assert len(bot.sent) == 1
             labels = {b.text for row in bot.sent[0][2]['reply_markup'].keyboard for b in row}
             assert '⚙️ Админ' in labels and '💬 Связь' in labels
+            assert any({b.text for b in row} == {'⚙️ Админ', '💬 Связь'} for row in bot.sent[0][2]['reply_markup'].keyboard)
             assert '📊 Статистика' not in labels
             assert '❓ Вопросы и связь' not in labels
             assert '🔥 Открыть ЭРА' in labels
             assert all(b.web_app is None for row in bot.sent[0][2]['reply_markup'].keyboard for b in row)
+            saved = await session.scalar(
+                __import__('sqlalchemy', fromlist=['select']).select(AppSetting).where(AppSetting.key == 'private-menu:900001')
+            )
+            assert saved.value['version'] == '2026-11-18-admin-hub-ticket'
         finally:
             await engine.dispose()

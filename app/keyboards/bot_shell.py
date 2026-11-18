@@ -108,9 +108,6 @@ def main_reply_keyboard(
             KeyboardButton(text="🌱 Мой путь"),
             KeyboardButton(text="⭐ Возможности"),
         ])
-    if admin:
-        # One hub instead of two full-width admin rows on every home redraw.
-        rows.append([KeyboardButton(text=ADMIN_HUB_BUTTON)])
     role_row: list[KeyboardButton] = []
     if leaders:
         role_row.append(KeyboardButton(text="🧭 Лидеры"))
@@ -118,7 +115,11 @@ def main_reply_keyboard(
         role_row.append(KeyboardButton(text="🎬 Медиа"))
     if role_row:
         rows.append(role_row)
-    rows.append([KeyboardButton(text="💬 Связь")])
+    # Keep phone height short: admin hub shares the contact row.
+    if admin:
+        rows.append([KeyboardButton(text=ADMIN_HUB_BUTTON), KeyboardButton(text="💬 Связь")])
+    else:
+        rows.append([KeyboardButton(text="💬 Связь")])
     return ReplyKeyboardMarkup(
         keyboard=rows,
         resize_keyboard=True,
@@ -163,28 +164,27 @@ def navigation_guide_keyboard(
 
 
 def contact_keyboard(back_callback: str | None = None, *, support_threads: bool = False) -> InlineKeyboardMarkup:
-    """Compact service centre: every button has one clear destination."""
-    markup = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="❓ Задать вопрос", callback_data="question:start")],
-            [InlineKeyboardButton(text="👥 Кто за что отвечает", callback_data="team:menu")],
-            [
-                InlineKeyboardButton(text="🏛 Департаменты", callback_data="departments:menu"),
-                InlineKeyboardButton(text="💬 Чаты", callback_data="department:chats"),
-            ],
-            [
-                InlineKeyboardButton(text="📜 Правила", callback_data="rules:open"),
-                InlineKeyboardButton(text="ℹ️ О боте", callback_data="about:open"),
-            ],
-            [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
-        ]
-    )
-
+    """Compact service centre: primary actions first, then structure."""
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text="❓ Задать вопрос", callback_data="question:start")],
+    ]
     if support_threads:
-        markup.inline_keyboard.insert(1, [InlineKeyboardButton(text='💬 Мои обращения', callback_data='support:mine:page:0')])
+        rows.append([InlineKeyboardButton(text="💬 Мои обращения", callback_data="support:mine:page:0")])
+    rows.extend([
+        [InlineKeyboardButton(text="👥 Кто за что отвечает", callback_data="team:menu")],
+        [
+            InlineKeyboardButton(text="🏛 Департаменты", callback_data="departments:menu"),
+            InlineKeyboardButton(text="💬 Чаты", callback_data="department:chats"),
+        ],
+        [
+            InlineKeyboardButton(text="📜 Правила", callback_data="rules:open"),
+            InlineKeyboardButton(text="ℹ️ О боте", callback_data="about:open"),
+        ],
+    ])
     if back_callback:
-        markup.inline_keyboard.insert(-1, [InlineKeyboardButton(text="← К вопросам", callback_data=back_callback)])
-    return markup
+        rows.append([InlineKeyboardButton(text="← К вопросам", callback_data=back_callback)])
+    rows.append([InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def team_keyboard(general_chat_url: str | None = None) -> InlineKeyboardMarkup:

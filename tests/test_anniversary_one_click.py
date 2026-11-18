@@ -122,14 +122,26 @@ class AnniversaryOneClickTests(IsolatedAsyncioTestCase):
             self.assertIsNone(await rsvp.get_registration(session, 123))
 
     async def test_bot_menu_puts_anniversary_first_and_registers_once(self):
+        from app.config import Settings
+        settings = Settings(
+            bot_token="1234567890:test",
+            miniapp_auth_secret="test",
+            miniapp_url="https://era.example/app/",
+        )
         async with self.factory() as session:
             user = await session.get(User, self.user_id)
             message = SimpleNamespace(from_user=SimpleNamespace(id=user.telegram_id), answer=AsyncMock())
             state = AsyncMock()
             with patch.object(rsvp, "featured_event", AsyncMock(return_value=await session.get(Event, self.event_id))):
-                await _send_main_menu(message, user, session=session)
+                await _send_main_menu(message, user, settings, session=session)
                 self.assertEqual(message.answer.call_args.kwargs["reply_markup"].keyboard[0][0].text, rsvp.MENU_BUTTON)
-                await handler.menu_registration(message, state, session, user)
+                await handler.menu_registration(message, state, session, user, settings)
                 self.assertIn("Вы зарегистрированы", message.answer.call_args.args[0])
-                await handler.menu_registration(message, state, session, user)
-                self.assertIn("Вы уже зарегистрированы", message.answer.call_args.args[0])
+                await handler.menu_registration(message, state, session, user, settings)
+                self.assertIn("уже в списке", message.answer.call_args.args[0])
+                labels = {
+                    button.text
+                    for row in message.answer.call_args.kwargs["reply_markup"].keyboard
+                    for button in row
+                }
+                self.assertIn(rsvp.MENU_TICKET_BUTTON, labels)

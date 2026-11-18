@@ -49,6 +49,21 @@ def test_leaders_and_media_appear_only_with_rights():
     assert "📥 Заявки" not in admin
 
 
+def test_admin_and_contact_share_one_row():
+    markup = main_reply_keyboard(
+        "https://era.example/app/",
+        admin=True,
+        leaders=True,
+        media_chair=True,
+        anniversary=True,
+    )
+    assert len(markup.keyboard) == 5
+    assert {button.text for button in markup.keyboard[-1]} == {ADMIN_HUB_BUTTON, "💬 Связь"}
+    participant = main_reply_keyboard("https://era.example/app/")
+    assert len(participant.keyboard) == 3
+    assert [button.text for button in participant.keyboard[-1]] == ["💬 Связь"]
+
+
 def test_admin_hub_exposes_stats_and_applications():
     buttons = [
         button

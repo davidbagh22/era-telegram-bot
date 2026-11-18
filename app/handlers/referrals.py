@@ -136,7 +136,13 @@ async def registration_start_with_referral(
         return
 
     if user is not None:
-        await registration_start(call, state, bot, settings, user)
+        await call.answer()
+        await state.clear()
+        await call.message.answer(
+            "Вы уже в ЭРА. Код приглашения применяется только при первой регистрации."
+        )
+        from app.handlers.start import show_home
+        await show_home(call.message, user, settings, session)
         return
 
     await call.answer()

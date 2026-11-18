@@ -83,3 +83,35 @@ class ReferralDeepLinkRegisteredTests(IsolatedAsyncioTestCase):
         text = self.message.answer.await_args.args[0]
         assert "уже зарегистрированы" in text
         show_home.assert_awaited()
+
+    async def test_referral_start_callback_for_registered_user_opens_home(self):
+        from app.handlers.referrals import registration_start_with_referral
+
+        call = SimpleNamespace(
+            data="registration:ref:start:123456",
+            from_user=SimpleNamespace(id=11),
+            answer=AsyncMock(),
+            message=self.message,
+        )
+        with (
+            patch(
+                "app.handlers.referrals.validate_referral_code",
+                AsyncMock(return_value=(SimpleNamespace(code="123456"), SimpleNamespace())),
+            ),
+            patch("app.handlers.start.show_home", AsyncMock()) as show_home,
+            patch("app.handlers.referrals.registration_start", AsyncMock()) as reg_start,
+        ):
+            await registration_start_with_referral(
+                call,
+                self.state,
+                session=AsyncMock(),
+                bot=AsyncMock(),
+                settings=self.settings,
+                user=self.user,
+            )
+        call.answer.assert_awaited()
+        text = self.message.answer.await_args.args[0]
+        assert "уже в ЭРА" in text
+        assert "регистрацию через /start" not in text
+        show_home.assert_awaited()
+        reg_start.assert_not_awaited()

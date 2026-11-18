@@ -46,10 +46,19 @@ async def show_home(message, session, settings, user):
 
 @router.message(Command('leader','leaders'),F.chat.type=='private')
 @router.message(CommandStart(deep_link=True,magic=F.args=='leaders'),F.chat.type=='private')
-@router.message(F.text.in_({'🧭 Панель лидера','🧭 Лидеры','Лидеры'}),F.chat.type=='private')
+@router.message(StateFilter('*'),F.text.in_({'🧭 Панель лидера','🧭 Лидеры','Лидеры'}),F.chat.type=='private')
 async def native_leaders(message,state,user,settings,session,bot):
     if not await allowed(message,bot,settings,session,user):
-        await message.answer('Рабочий центр доступен участникам площадки лидеров. Для подключения аккаунта начните с /start.')
+        from app.utils.constants import ApplicationStatus
+        if user and user.application_status == ApplicationStatus.APPROVED and not user.is_blocked and not user.is_archived:
+            await message.answer(
+                'Раздел «Лидеры» открыт участникам площадки лидеров.\n'
+                'Если нужен доступ — напишите через «💬 Связь».'
+            )
+        else:
+            await message.answer(
+                'Рабочий центр лидеров доступен после регистрации в ЭРА. Начните с /start.'
+            )
         return
     await state.clear()
     await show_home(message,session,settings,user)

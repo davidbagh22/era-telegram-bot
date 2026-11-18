@@ -14,9 +14,14 @@ from sqlalchemy import select, text
 from app.database.models import AppSetting
 from app.utils.ux_texts import LEGACY_KEYBOARD_CLEARED
 from app.keyboards.bot_shell import has_leaders_entry, main_reply_keyboard
+from app.services import anniversary_registration_service as anniversary
+from app.services.media_leadership_service import is_media_chair
 from app.utils.constants import ApplicationStatus, Role
 
 logger = logging.getLogger(__name__)
+
+# Bump when reply-shell layout or labels change so clients refresh once.
+PRIVATE_MENU_VERSION = "2026-11-18-admin-hub-ticket"
 
 
 class LegacyKeyboardCleanupMiddleware(BaseMiddleware):
@@ -55,12 +60,26 @@ class LegacyKeyboardCleanupMiddleware(BaseMiddleware):
             )
             session = data.get("session")
             menu_key = f"private-menu:{user.telegram_id}"
+            leaders = approved and has_leaders_entry(user)
+            media = approved and bool(settings) and is_media_chair(user, settings)
+            featured = False
+            anniversary_registered = False
+            if approved and session is not None:
+                featured = await anniversary.menu_available(session)
+                if featured:
+                    anniversary_registered = await anniversary.user_already_registered(
+                        session, user.telegram_id, user,
+                    )
             # Replace previously cached simple-mode WebApp reply buttons on
             # the user's next private update, without a proactive broadcast.
-            version = {"version": "2026-10-26-authenticated-launch", "admin": bool(admin)}
-            leaders = approved and has_leaders_entry(user)
-            if leaders or admin:
-                version["leaders"] = True
+            version = {
+                "version": PRIVATE_MENU_VERSION,
+                "admin": bool(admin),
+                "leaders": bool(leaders),
+                "media": bool(media),
+                "anniversary": bool(featured),
+                "anniversary_ticket": bool(anniversary_registered),
+            }
             saved_menu = None
             if approved and session is not None:
                 if session.bind.dialect.name == "postgresql":
@@ -74,11 +93,18 @@ class LegacyKeyboardCleanupMiddleware(BaseMiddleware):
             # An old migration must never remove the current persistent menu.
             # Pending registrations keep their dedicated input keyboard flow.
             markup = (
-                main_reply_keyboard(settings.effective_miniapp_url, admin=bool(admin), leaders=bool(leaders))
+                main_reply_keyboard(
+                    settings.effective_miniapp_url,
+                    admin=bool(admin),
+                    leaders=bool(leaders),
+                    media_chair=bool(media),
+                    anniversary=bool(featured),
+                    anniversary_registered=bool(anniversary_registered),
+                )
                 if approved else ReplyKeyboardRemove()
             )
             notice = (
-                "Меню ЭРА обновлено. Админ-раздел — кнопка ⚙️ Админ внизу."
+                "Меню ЭРА обновлено. Админ-раздел — кнопка ⚙️ Админ рядом со «Связь»."
                 if admin else "Разделы ЭРА доступны в меню под полем ввода."
                 if approved else LEGACY_KEYBOARD_CLEARED
             )
