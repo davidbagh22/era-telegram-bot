@@ -91,33 +91,32 @@ def _directions_text(user: User) -> str:
 
 
 def _cabinet_text(user: User, stats: dict[str, int], place: int | str) -> str:
-    status = STATUS_LABELS.get(user.participation_status, user.participation_status)
-    return f"""👤 Личный кабинет
+    from app.utils.ux_texts import cabinet_home_text
 
-{user.first_name}, здесь собраны самые нужные разделы Вашего участия в ЭРА
-
-Статус: {status}
-Баланс: {stats['points']} баллов
-Место в рейтинге: {place}
-
-Выберите, что открыть"""
+    return cabinet_home_text(
+        user.first_name,
+        STATUS_LABELS.get(user.participation_status, user.participation_status),
+        stats["points"],
+        place,
+    )
 
 
 def _my_data_text(user: User, stats: dict[str, int]) -> str:
     birth_date, age = _birth_date_and_age(user)
     status = STATUS_LABELS.get(user.participation_status, user.participation_status)
-    return f"""⚙️ Мои данные
-
-Имя: {user.first_name}
-Фамилия: {user.last_name or 'не указана'}
-Дата рождения: {birth_date}
-Возраст: {age}
-Город: {user.city or 'не указан'}
-Телефон: {user.phone or 'не указан'}
-Эл. почта: {user.email or 'не указана'}
-Статус: {status}
-Баланс: {stats['points']} баллов
-Направления: {_directions_text(user)}"""
+    return (
+        "⚙️ Мои данные\n\n"
+        f"Имя: {user.first_name}\n"
+        f"Фамилия: {user.last_name or 'не указана'}\n"
+        f"Дата рождения: {birth_date}\n"
+        f"Возраст: {age}\n"
+        f"Город: {user.city or 'не указан'}\n"
+        f"Телефон: {user.phone or 'не указан'}\n"
+        f"Эл. почта: {user.email or 'не указана'}\n"
+        f"Статус: {status}\n"
+        f"Баланс: {stats['points']} баллов\n"
+        f"Направления: {_directions_text(user)}"
+    )
 
 
 async def _send_journey(
@@ -230,7 +229,15 @@ async def points(call: CallbackQuery, user: User | None, session: AsyncSession) 
     )
     await call.message.answer(
         texts.points_text(total, ((item.points, item.reason) for item in rows)),
-        reply_markup=back_keyboard("cabinet:open"),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🏅 Знаки", callback_data="cabinet:achievements"),
+                    InlineKeyboardButton(text="🏆 Рейтинг", callback_data="cabinet:rating"),
+                ],
+                [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
+            ]
+        ),
     )
 
 

@@ -26,6 +26,6 @@ async def points_hub(call: CallbackQuery, user: User | None) -> None:
     if not await _guard(call, user):
         return
     await call.message.answer(
-        "🏆 Баллы и достижения\n\nБаланс, история операций, знаки и место в рейтинге — здесь.",
+        "🏆 Баллы\n\nИстория, знаки или рейтинг — одним нажатием.",
         reply_markup=points_hub_keyboard(),
     )

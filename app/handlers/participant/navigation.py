@@ -2,7 +2,7 @@ from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -14,7 +14,12 @@ from app.keyboards.bot_shell import (
     navigation_guide_keyboard,
     team_keyboard,
 )
-from app.keyboards.participant import event_list_keyboard, journey_keyboard, open_app_button
+from app.keyboards.participant import (
+    event_list_keyboard,
+    journey_keyboard,
+    open_app_button,
+    opportunities_hub_keyboard,
+)
 from app.repositories.users import rating, user_stats
 from app.services import anniversary_registration_service as anniversary
 from app.services.event_service import published_events
@@ -28,31 +33,29 @@ router = Router(name="participant_navigation")
 
 LEADER_PANEL_TEXT = """Панель лидера
 
-Здесь лидер не просто смотрит разделы, а двигает команду: назначает задачи, публикует открытые задачи, ищет помощников, предлагает мероприятия, поощрения, повышения и знаки.
-
-Лидер в ЭРА — это ответственность за людей, движение и результат."""
+Задачи, помощники, мероприятия, поощрения и знаки — здесь. Лидер отвечает за людей и результат."""
 
 NAVIGATION_PARTICIPANT = """🧭 <b>Навигация по ЭРА</b>
 
-Приложение — основная рабочая среда. Выберите не «меню», а то, что хотите сделать:
+Работа в приложении. Выберите действие:
 
-🧭 <b>Мой вектор</b> — короткая личная отметка состояния прямо в Telegram
-💡 <b>Проекты</b> — придумать, собрать и вести свою идею
-📅 <b>События</b> — увидеть ближайшее и зарегистрироваться
-✅ <b>Мои задачи</b> — включиться в реальную работу
-⭐ <b>Возможности</b> — предложения, награды и специальные форматы
-👥 <b>Сообщество</b> — рейтинг, активность и жизнь ЭРА
-👤 <b>Профиль</b> — ваш путь, баллы, достижения и портфолио
+🧭 <b>Мой вектор</b> — короткая отметка в Telegram
+💡 <b>Проекты</b> — идея и ведение
+📅 <b>События</b> — афиша и регистрация
+✅ <b>Мои задачи</b> — включиться в работу
+⭐ <b>Возможности</b> — предложения и награды
+👥 <b>Сообщество</b> — рейтинг и активность
+👤 <b>Профиль</b> — путь, баллы, портфолио
 
-Если нужен не раздел, а человек — нажмите «💬 Связь»."""
+Нужен человек — «💬 Связь»."""
 
 NAVIGATION_LEADER = NAVIGATION_PARTICIPANT + """
 
-🧭 <b>Режим лидера</b> — отдельное рабочее пространство для команды, задач и решений по вашему направлению."""
+🧭 <b>Режим лидера</b> — команда, задачи и решения по направлению."""
 
 NAVIGATION_ADMIN = NAVIGATION_PARTICIPANT + """
 
-⚙️ <b>Режим администратора</b> — отдельный пульт управления ЭРА: заявки, проекты, мероприятия, задания, коммуникации, аналитика и состояние системы."""
+⚙️ <b>Режим администратора</b> — заявки, проекты, мероприятия, задания, коммуникации и аналитика."""
 
 CONTACT_TEXT = """💬 <b>Связь с ЭРА</b>
 
@@ -66,7 +69,7 @@ CONTACT_TEXT = """💬 <b>Связь с ЭРА</b>
 
 TEAM_TEXT = """👥 <b>Команда ЭРА</b>
 
-Найдите человека или направление по задаче. Если не уверены, кому писать — откройте «К кому обратиться»."""
+Кто за направление и куда писать — «К кому обратиться». Чаты и департаменты рядом."""
 
 
 def _approved(user: User | None) -> bool:
@@ -83,15 +86,7 @@ def _has_admin_access(user: User | None) -> bool:
 
 def _cabinet_text(user: User, stats: dict[str, int], place: int | str) -> str:
     status = STATUS_LABELS.get(user.participation_status, user.participation_status)
-    return f"""👤 <b>Ваш путь в ЭРА</b>
-
-{user.first_name}, здесь собирается то, что вы уже сделали и что можно открыть дальше.
-
-Статус: <b>{status}</b>
-Баланс: <b>{stats['points']} баллов</b>
-Место в рейтинге: <b>{place}</b>
-
-Выберите следующий шаг."""
+    return ux_texts.cabinet_home_text(user.first_name, status, stats["points"], place)
 
 
 async def _send_main_menu(
@@ -170,17 +165,9 @@ async def opportunities_button(message: Message, user: User | None, session: Asy
         return
     balance = await total_points(session, user.id)
     await message.answer(
-        "⭐ <b>Возможности</b>\n\nАктивность в ЭРА превращается в доступы, предложения и новые форматы.\n\n"
-        f"Ваш баланс: <b>{balance} баллов</b>",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🤝 Партнёрские предложения", callback_data="offers:list")],
-                [InlineKeyboardButton(text="🔨 Аукцион", callback_data="auctions:list")],
-                [InlineKeyboardButton(text="📜 Мои заявки", callback_data="offers:mine")],
-                [InlineKeyboardButton(text="Партнёрский каталог", callback_data="rewards:menu")],
-                [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
-            ]
-        ),
+        f"⭐ Возможности\n\nБаланс: {balance} баллов.\n"
+        "Предложения, аукцион и каталог за баллы — ниже.",
+        reply_markup=opportunities_hub_keyboard(),
     )
 
 

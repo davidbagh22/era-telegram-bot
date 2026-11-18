@@ -50,10 +50,24 @@ class V2ScenarioTests(unittest.TestCase):
         labels = _labels(journey_keyboard())
         self.assertEqual(
             labels,
-            ["⚙️ Мои данные", "✅ Задачи", "🎓 Портфолио", "🏆 Баллы", "← Главное меню"],
+            [
+                "⚙️ Мои данные",
+                "✅ Задачи",
+                "🎓 Портфолио",
+                "⭐ Баллы",
+                "🏅 Знаки",
+                "🏆 Рейтинг",
+                "← Главное меню",
+            ],
         )
+        journey_callbacks = _callbacks(journey_keyboard())
+        self.assertIn("cabinet:points", journey_callbacks)
+        self.assertIn("cabinet:achievements", journey_callbacks)
+        self.assertIn("cabinet:rating", journey_callbacks)
+        self.assertNotIn("cabinet:points_hub", journey_callbacks)
         points_labels = _labels(points_hub_keyboard())
-        self.assertIn("🏅 Достижения и знаки", points_labels)
+        self.assertIn("🏅 Знаки", points_labels)
+        self.assertIn("⭐ Баллы и история", points_labels)
         profile_labels = _labels(
             profile_sections_keyboard("https://t.me/internal", "https://t.me/external")
         )

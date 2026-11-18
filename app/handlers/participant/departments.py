@@ -74,11 +74,11 @@ async def team_offices(call: CallbackQuery, session: AsyncSession) -> None:
     ).all()
     if not rows:
         await call.message.edit_text(
-            "Команда должностных лиц сейчас формируется\n\nКонтакты появятся здесь после назначения",
+            "Контакты руководителей появятся после назначения.",
             reply_markup=departments_keyboard(),
         )
         return
-    lines = ["Кто отвечает за направления 👥"]
+    lines = ["Кто отвечает за направления"]
     buttons = []
     for office, holder in rows:
         name = f"{holder.first_name} {holder.last_name or ''}".strip()
