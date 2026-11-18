@@ -88,6 +88,7 @@ def _event_session(
 
     return SimpleNamespace(
         get=AsyncMock(side_effect=_get),
+        # `_require_participant_event` → `_get_registration` uses session.scalar.
         scalar=AsyncMock(side_effect=_scalar),
         commit=AsyncMock(),
     )

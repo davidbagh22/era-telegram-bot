@@ -7,7 +7,14 @@ from datetime import date, time, timedelta
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.api.v1.events import read_event, read_event_poster
+from app.api.v1.events import (
+    cancel_event_registration,
+    read_event,
+    read_event_activities,
+    read_event_poster,
+    register_event,
+)
+from app.config import Settings
 from app.database.base import Base
 from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
@@ -117,14 +124,25 @@ class EventVisibilityApiTests(unittest.IsolatedAsyncioTestCase):
             stranger = User(telegram_id=779_500, first_name="Unregistered")
             session.add(stranger)
             await session.flush()
+            settings = Settings(bot_token="0000000000:CITESTTOKEN")
 
             for endpoint in (
                 lambda: read_event(event.id, user=stranger, session=session),
                 lambda: read_event_poster(event.id, _user=stranger, session=session),
+                lambda: register_event(
+                    event.id, user=stranger, session=session, bot=None, settings=settings
+                ),
+                lambda: cancel_event_registration(
+                    event.id, user=stranger, session=session, bot=None, settings=settings
+                ),
+                lambda: read_event_activities(
+                    event.id, user=stranger, session=session, settings=settings
+                ),
             ):
                 with self.assertRaises(HTTPException) as caught:
                     await endpoint()
                 self.assertEqual(caught.exception.status_code, 404)
+                self.assertIn(caught.exception.detail, {"event_not_found", "event_poster_not_found"})
 
             # Existing historical registrations are not deleted or hidden.
             session.add(EventRegistration(
