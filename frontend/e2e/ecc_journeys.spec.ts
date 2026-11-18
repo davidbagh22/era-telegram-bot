@@ -53,9 +53,11 @@ test("full event → waitlist CTA → queue copy → cancel from waitlist", asyn
   await waitlistCta.click();
 
   // Waitlist opens its own success sheet (not «Место за вами»).
-  await expect(page.getByRole("heading", { name: "Вы в листе ожидания" })).toBeVisible();
-  await expect(page.getByText(/Если место освободится|если оно освободится/i)).toBeVisible();
-  await page.getByRole("button", { name: "Понятно" }).click();
+  // Scope copy to the dialog — detail still mounts «Если место освободится…» behind it.
+  const waitlistSheet = page.getByRole("dialog", { name: "Вы в листе ожидания" });
+  await expect(waitlistSheet).toBeVisible();
+  await expect(waitlistSheet.getByText(/если оно освободится/i)).toBeVisible();
+  await waitlistSheet.getByRole("button", { name: "Понятно" }).click();
 
   await expect(page.getByText("Вы в листе ожидания").first()).toBeVisible();
   await expect(page.getByText(/Лист ожидания/)).toBeVisible();
