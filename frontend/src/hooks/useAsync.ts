@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../api/client";
 
 export type AsyncState<T> =
@@ -6,8 +6,16 @@ export type AsyncState<T> =
   | { status: "ready"; data: T }
   | { status: "error"; detail: string };
 
-export function useAsync<T>(fetcher: () => Promise<T>, deps: unknown[]): AsyncState<T> {
+export type AsyncHookResult<T> = AsyncState<T> & { reload: () => void };
+
+export function useAsync<T>(fetcher: () => Promise<T>, deps: unknown[]): AsyncHookResult<T> {
   const [state, setState] = useState<AsyncState<T>>({ status: "loading" });
+  const [tick, setTick] = useState(0);
+
+  const reload = useCallback(() => {
+    setState({ status: "loading" });
+    setTick((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -26,7 +34,7 @@ export function useAsync<T>(fetcher: () => Promise<T>, deps: unknown[]): AsyncSt
     };
     // fetcher is expected to be stable per the caller-provided deps array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [...deps, tick]);
 
-  return state;
+  return { ...state, reload };
 }

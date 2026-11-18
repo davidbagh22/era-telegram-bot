@@ -13,6 +13,7 @@ import { BottomSheet } from "../components/BottomSheet";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { MonoLabel } from "../components/MonoLabel";
+import { SkeletonList } from "../components/Skeleton";
 import { StatusBadge } from "../components/StatusBadge";
 import { useAsync } from "../hooks/useAsync";
 import type { Opportunity, OpportunityScope, OpportunitySort, OpportunityState } from "../types/opportunity";
@@ -388,9 +389,16 @@ function OffersList({ initialItemId }: { initialItemId?: number | null }) {
         </div>
       </BottomSheet>
 
-      {actionError && <p style={{ margin: 0, color: "var(--era-error)", fontSize: "0.82rem" }}>{actionError}</p>}
-      {listState.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>}
-      {listState.status === "error" && <EmptyState text="Не удалось загрузить возможности." />}
+      {actionError && <p role="alert" style={{ margin: 0, color: "var(--era-error)", fontSize: "0.82rem" }}>{actionError}</p>}
+      {listState.status === "loading" && <SkeletonList count={3} />}
+      {listState.status === "error" && (
+        <EmptyState
+          title="Не удалось загрузить возможности"
+          text="Проверьте соединение и обновите список."
+          actionLabel="Обновить"
+          onAction={listState.reload}
+        />
+      )}
       {listState.status === "ready" && offers.length === 0 && <EmptyState text="Сейчас нет открытых предложений — смотрите ранг и рейтинг выше." />}
 
       {offers.map((offer) => (

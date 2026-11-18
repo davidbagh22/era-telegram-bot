@@ -3,11 +3,21 @@ interface StatusBannerProps {
   description: string;
   actionLabel?: string;
   onAction?: () => void;
+  /** Soft status vs blocking error. Defaults to alert so dead-end loads announce. */
+  tone?: "alert" | "status";
 }
 
-export function StatusBanner({ title, description, actionLabel, onAction }: StatusBannerProps) {
+export function StatusBanner({
+  title,
+  description,
+  actionLabel,
+  onAction,
+  tone = "alert",
+}: StatusBannerProps) {
   return (
     <div
+      role={tone}
+      aria-live={tone === "alert" ? "assertive" : "polite"}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -28,7 +38,7 @@ export function StatusBanner({ title, description, actionLabel, onAction }: Stat
           type="button"
           className="era-btn-primary"
           onClick={onAction}
-          style={{ marginTop: "0.5rem" }}
+          style={{ marginTop: "0.5rem", minHeight: 44 }}
         >
           {actionLabel}
         </button>

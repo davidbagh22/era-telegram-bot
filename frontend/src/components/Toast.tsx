@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 export type NotificationTone = "signal" | "attention" | "success" | "system";
@@ -33,7 +33,7 @@ const TONE_LABELS: Record<NotificationTone, string> = {
 
 const AUTO_DISMISS_MS = 3500;
 
-function normalizeTone(tone: ToastTone): NotificationTone {
+export function normalizeToastTone(tone: ToastTone): NotificationTone {
   // Compatibility aliases keep existing call sites safe while the visual
   // system itself has one explicit semantic vocabulary.
   if (tone === "error") return "attention";
@@ -48,13 +48,27 @@ function normalizeTone(tone: ToastTone): NotificationTone {
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const nextId = useRef(0);
+  const timers = useRef(new Map<number, number>());
+
+  const dismiss = useCallback((id: number) => {
+    const timer = timers.current.get(id);
+    if (timer != null) {
+      window.clearTimeout(timer);
+      timers.current.delete(id);
+    }
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  }, []);
 
   const show = useCallback((message: string, tone: ToastTone = "system") => {
     const id = nextId.current++;
-    setToasts((current) => [...current, { id, tone: normalizeTone(tone), message }]);
-    window.setTimeout(() => {
-      setToasts((current) => current.filter((toast) => toast.id !== id));
-    }, AUTO_DISMISS_MS);
+    setToasts((current) => [...current, { id, tone: normalizeToastTone(tone), message }]);
+    const timer = window.setTimeout(() => dismiss(id), AUTO_DISMISS_MS);
+    timers.current.set(id, timer);
+  }, [dismiss]);
+
+  useEffect(() => () => {
+    for (const timer of timers.current.values()) window.clearTimeout(timer);
+    timers.current.clear();
   }, []);
 
   const value = useMemo(() => ({ show }), [show]);
@@ -63,6 +77,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div
+        aria-live="polite"
+        aria-relevant="additions text"
         style={{
           position: "fixed",
           top: "calc(0.75rem + env(safe-area-inset-top, 0px))",
@@ -90,22 +106,48 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               fontSize: "var(--era-text-base)",
               color: "var(--era-text)",
               pointerEvents: "auto",
+              display: "grid",
+              gridTemplateColumns: "1fr auto",
+              gap: "0.65rem",
+              alignItems: "start",
             }}
           >
-            <span
+            <div>
+              <span
+                style={{
+                  display: "block",
+                  marginBottom: "0.15rem",
+                  color: TONE_COLORS[toast.tone],
+                  fontSize: "0.68rem",
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                {TONE_LABELS[toast.tone]}
+              </span>
+              {toast.message}
+            </div>
+            <button
+              type="button"
+              aria-label="Закрыть уведомление"
+              onClick={() => dismiss(toast.id)}
               style={{
-                display: "block",
-                marginBottom: "0.15rem",
-                color: TONE_COLORS[toast.tone],
-                fontSize: "0.68rem",
-                fontWeight: 800,
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
+                minWidth: 44,
+                minHeight: 44,
+                margin: "-0.35rem -0.35rem 0 0",
+                padding: 0,
+                border: 0,
+                borderRadius: "50%",
+                background: "transparent",
+                color: "var(--era-text-muted)",
+                fontSize: "1.1rem",
+                lineHeight: 1,
+                boxShadow: "none",
               }}
             >
-              {TONE_LABELS[toast.tone]}
-            </span>
-            {toast.message}
+              ×
+            </button>
           </div>
         ))}
       </div>
