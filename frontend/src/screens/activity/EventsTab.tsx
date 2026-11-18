@@ -785,7 +785,7 @@ export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) 
                         ? "Встать в лист ожидания" : "Зарегистрироваться"}
                     </button>
                     <button type="button" onClick={() => openEvent(event.id)} style={{ width: "100%" }}>
-                      Подробнее
+                      Открыть событие
                     </button>
                   </div>
                 ) : (
