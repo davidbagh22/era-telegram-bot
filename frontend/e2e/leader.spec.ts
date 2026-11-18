@@ -9,6 +9,95 @@ async function enterLeaderWorkspace(page: import("@playwright/test").Page) {
   await expect(page.getByRole("heading", { name: "Режим лидера" })).toBeVisible();
 }
 
+test("leader media request panel shows clear package steps", async ({ page }) => {
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  await page.route("**/api/v1/events?scope=all", (route) => route.fulfill({
+    json: [
+      {
+        id: 11,
+        title: "E2E Future Media Event",
+        description: "",
+        short_description: null,
+        full_description: null,
+        event_date: tomorrow,
+        event_time: "18:00",
+        end_time: null,
+        location: "Yerevan",
+        address: null,
+        format: "offline",
+        attendance_mode: "offline",
+        category: null,
+        organizer: null,
+        participant_value: null,
+        contact: null,
+        chat_url: null,
+        points_for_visit: 10,
+        project_id: null,
+        status: "published",
+        display_status: "published",
+        participant_limit: null,
+        registered_count: 0,
+        available_places: "без лимита",
+        remaining_count: null,
+        registration_status: null,
+        waitlist_enabled: false,
+        registration_required: true,
+        registration_close_at: null,
+        can_register: true,
+        program: [],
+        participant_tasks: [],
+        poster_url: null,
+      },
+      {
+        id: 12,
+        title: "E2E Past Media Event",
+        description: "",
+        short_description: null,
+        full_description: null,
+        event_date: "2020-01-01",
+        event_time: "18:00",
+        end_time: null,
+        location: "Yerevan",
+        address: null,
+        format: "offline",
+        attendance_mode: "offline",
+        category: null,
+        organizer: null,
+        participant_value: null,
+        contact: null,
+        chat_url: null,
+        points_for_visit: 10,
+        project_id: null,
+        status: "completed",
+        display_status: "completed",
+        participant_limit: null,
+        registered_count: 0,
+        available_places: "без лимита",
+        remaining_count: null,
+        registration_status: null,
+        waitlist_enabled: false,
+        registration_required: true,
+        registration_close_at: null,
+        can_register: false,
+        program: [],
+        participant_tasks: [],
+        poster_url: null,
+      },
+    ],
+  }));
+  await enterLeaderWorkspace(page);
+  await page.getByRole("button", { name: /Медиа-запрос/ }).click();
+  await expect(page.getByRole("heading", { name: "Медиа-запрос" })).toBeVisible();
+  await expect(page.getByText(/заказ материала, не пост в канал/)).toBeVisible();
+  const select = page.locator("select");
+  await expect(select.locator("option", { hasText: "E2E Future Media Event" })).toHaveCount(1);
+  await expect(select.locator("option", { hasText: "E2E Past Media Event" })).toHaveCount(0);
+  await select.selectOption({ label: `${tomorrow} · E2E Future Media Event` });
+  await expect(page.getByText("Заказать медиа команде")).toBeVisible();
+  await expect(page.getByText("1. Пакет", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "3. Отправить в Медиа" })).toBeVisible();
+});
+
 test("leader overview shows real task status labels", async ({ page }) => {
   await page.route("**/api/v1/leader/overview", (route) => route.fulfill({
     json: {

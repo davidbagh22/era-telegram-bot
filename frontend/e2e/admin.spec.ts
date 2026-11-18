@@ -106,8 +106,9 @@ test("Решить сегодня opens event and project resolvers, not section
         events_pending: 2,
         activity_results: 3,
         projects_review: 1,
+        event_waitlist: 4,
       },
-      attention_total: 6,
+      attention_total: 10,
     },
   }));
   await page.route("**/api/v1/admin/events", (route) => route.fulfill({ json: [] }));
@@ -118,6 +119,12 @@ test("Решить сегодня opens event and project resolvers, not section
   await page.getByRole("button", { name: /2 · События на согласовании/ }).click();
   await expect(page.getByRole("heading", { name: "На согласовании" })).toBeVisible();
   await expect(page.getByText("Создать мероприятие", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Обзор", exact: true }).click();
+  await page.getByRole("button", { name: /4 · лист ожидания/ }).click();
+  await expect(page.getByRole("heading", { name: "Участники и посещаемость" })).toBeVisible();
+  await expect(page.getByText("Создать мероприятие", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("На согласовании", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Обзор", exact: true }).click();
   await page.getByRole("button", { name: /3 · Результаты активностей/ }).click();
