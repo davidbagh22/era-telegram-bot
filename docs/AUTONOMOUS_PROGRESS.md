@@ -121,7 +121,7 @@
 | E08 | My Vector | В РАЗРАБОТКЕ | Methods/check-ins/goals/history/privacy and earlier backlog |
 | E09 | Daily quotes | В РАЗРАБОТКЕ | Historical Nov 1–2 channel posts and Mini App quote API are evidenced, but future channel publications now require explicit approval for the exact text/day/target; approval UI and real authorized workflow are pending. No unapproved auto-posts permitted. |
 | E10 | Broadcasts and notifications | В РАЗРАБОТКЕ | #491 incomplete receipts; no uncertain replay |
-| E11 | Security and data protection | IN PROGRESS | Webhook #662 + admin boundary #542 shipped; CANCELLED poster/detail privacy on `cursor/security-cancelled-event-privacy-37e0` (supersedes #484/#486 intent). Further IDOR/PII scan continues. |
+| E11 | Security and data protection | IN PROGRESS | Webhook #662 + admin boundary #542 + #691 CANCELLED detail/poster privacy shipped; follow-up `cursor/security-ecc-hardening-bd19` closes register/cancel/activities existence oracles. Anniversary/referral/portfolio downloads reviewed OK. |
 | E12 | Backup and restore | ПРОВЕРЕНО | 2026-11-02 scheduled backup run 41407674271 SUCCESS: real production OIDC snapshot, isolated PostgreSQL 18 restore and migrations, encrypted/checksum round-trip, stored private artifact 13123694669 (expires 2026-11-09). External S3 copy optional and not configured; retention improvement remains advisable. |
 | E13 | Legal/content organizational acceptance | В РАЗРАБОТКЕ | Draft #364 requires responsible human approval |
 | E14 | Final multi-role production acceptance | НЕ НАЧАТО | All required scenarios, no known blockers, observation |
