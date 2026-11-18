@@ -99,7 +99,11 @@ class ReferralDeepLinkRegisteredTests(IsolatedAsyncioTestCase):
                 AsyncMock(return_value=(SimpleNamespace(code="123456"), SimpleNamespace())),
             ),
             patch("app.handlers.start.show_home", AsyncMock()) as show_home,
-            patch("app.handlers.referrals.registration_start", AsyncMock()) as reg_start,
+            patch("app.handlers.referrals._begin_registration", AsyncMock()) as begin_registration,
+            patch(
+                "app.handlers.referrals.offer_registration_resume",
+                AsyncMock(return_value=False),
+            ) as offer_resume,
         ):
             await registration_start_with_referral(
                 call,
@@ -114,4 +118,5 @@ class ReferralDeepLinkRegisteredTests(IsolatedAsyncioTestCase):
         assert "уже в ЭРА" in text
         assert "регистрацию через /start" not in text
         show_home.assert_awaited()
-        reg_start.assert_not_awaited()
+        begin_registration.assert_not_awaited()
+        offer_resume.assert_not_awaited()

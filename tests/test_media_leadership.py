@@ -118,12 +118,14 @@ class MediaLeadershipTests(IsolatedAsyncioTestCase):
             chair.role = "participant"
             await session.flush()
             message = SimpleNamespace(from_user=SimpleNamespace(id=chair.telegram_id), answer=AsyncMock())
+            state = AsyncMock()
             await _send_main_menu(message, chair, settings)
             markup = message.answer.call_args.kwargs["reply_markup"]
             buttons = [button.text for row in markup.keyboard for button in row]
             self.assertIn("🎬 Медиа", buttons)
             self.assertNotIn("📊 Статистика", buttons)
             self.assertFalse(has_dashboard_access(chair, settings, chair.telegram_id))
-            await leader_command(message, chair, session, settings)
+            await leader_command(message, chair, session, settings, state)
+            state.clear.assert_awaited()
             native = message.answer.call_args.kwargs["reply_markup"]
             self.assertTrue(any(button.callback_data == "media:leader:choose" for row in native.inline_keyboard for button in row))
