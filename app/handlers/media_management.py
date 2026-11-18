@@ -1,7 +1,7 @@
 import secrets
 
 from aiogram import F, Router
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
@@ -133,8 +133,11 @@ async def render_leader_menu(message: Message, session: AsyncSession, settings: 
 
 
 @router.message(Command("media_leader"))
-@router.message(F.text.in_({"🎬 Медиа", "🎬 Руководитель медиа"}))
-async def leader_command(message: Message, user: User | None, session: AsyncSession, settings: Settings):
+@router.message(StateFilter("*"), F.text.in_({"🎬 Медиа", "🎬 Руководитель медиа"}))
+async def leader_command(
+    message: Message, user: User | None, session: AsyncSession, settings: Settings, state: FSMContext,
+):
+    await state.clear()
     if not await guard(message, user, session, settings):
         return
     await render_leader_menu(message, session, settings)

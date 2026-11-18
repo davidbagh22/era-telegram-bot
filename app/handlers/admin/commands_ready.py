@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from aiogram import F, Router
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import func, select
@@ -224,6 +224,23 @@ async def _management_report_access(user, telegram_id, settings, session) -> boo
     return telegram_id == user.telegram_id and (
         is_full_admin(user, settings, telegram_id)
         or telegram_id in await management_report_recipients(session, settings)
+    )
+
+
+@router.message(StateFilter('*'), F.text == '⚙️ Админ', F.chat.type == 'private')
+async def admin_hub_command(
+    message: Message, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext,
+) -> None:
+    """Compact reply-keyboard entry: stats + applications (+ Mini App admin)."""
+    from app.keyboards.bot_shell import admin_hub_keyboard
+    from app.services.authorization_service import is_full_admin
+    await state.clear()
+    if not user or user.is_blocked or user.is_archived or not is_full_admin(user, settings, message.from_user.id):
+        await message.answer('Админ-раздел доступен только администраторам ЭРА.')
+        return
+    await message.answer(
+        '⚙️ Админ-раздел ЭРА\n\nСтатистика, заявки и управление — в одном месте:',
+        reply_markup=admin_hub_keyboard(settings.effective_miniapp_url),
     )
 
 

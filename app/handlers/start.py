@@ -10,6 +10,7 @@ from app.keyboards.bot_shell import has_leaders_entry, main_reply_keyboard
 from app.keyboards.common import registration_keyboard, subscription_keyboard
 from app.keyboards.registration import pending_registration_keyboard
 from app.services import anniversary_registration_service as anniversary
+from app.services.media_leadership_service import is_media_chair
 from app.services.subscription_service import SubscriptionCheckError, is_channel_member
 from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus, Role
@@ -39,14 +40,25 @@ async def show_home(
         )
         return
     featured = session is not None and await anniversary.menu_available(session)
-    text = f"{ux_texts.MAIN_MENU}\n\n{anniversary.MENU_SHORTCUT}" if featured else ux_texts.MAIN_MENU
+    anniversary_registered = bool(
+        featured and session is not None
+        and await anniversary.user_already_registered(session, user.telegram_id, user)
+    )
+    if featured and anniversary_registered:
+        text = f"{ux_texts.MAIN_MENU}\n\n{anniversary.MENU_REGISTERED_SHORTCUT}"
+    elif featured:
+        text = f"{ux_texts.MAIN_MENU}\n\n{anniversary.MENU_SHORTCUT}"
+    else:
+        text = ux_texts.MAIN_MENU
     await message.answer(
         text,
         reply_markup=main_reply_keyboard(
             leaders=has_leaders_entry(user),
             miniapp_url=settings.effective_miniapp_url,
             admin=user.role == Role.ADMIN or getattr(user, 'telegram_id', None) in getattr(settings, 'admin_ids', []),
+            media_chair=is_media_chair(user, settings),
             anniversary=featured,
+            anniversary_registered=anniversary_registered,
         ),
     )
 

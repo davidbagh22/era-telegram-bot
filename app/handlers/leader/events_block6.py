@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Event, User
+from app.keyboards.bot_shell import ADMIN_HUB_BUTTON
+from app.services.anniversary_registration_service import MENU_BUTTON as ANNIVERSARY_MENU_BUTTON
+from app.services.anniversary_registration_service import MENU_TICKET_BUTTON as ANNIVERSARY_TICKET_BUTTON
 from app.services.audit_service import audit
 from app.services.notification_service import notify_admins
 from app.utils import texts
@@ -21,7 +24,23 @@ from app.utils.constants import PRIVILEGED_ROLES, EventStatus
 from app.utils.validators import clean_text, parse_date, parse_time
 
 router = Router(name="leader_events_block6")
-MENU_BUTTONS = {"👤 Личный кабинет", "📅 Афиша", "💡 Проекты", "⭐ Возможности", "💬 Связь", "⚙️ Панель", "🧭 Главное меню"}
+
+MENU_BUTTONS = {
+    "👤 Личный кабинет",
+    "📅 Афиша",
+    "💡 Проекты",
+    "⭐ Возможности",
+    "💬 Связь",
+    "⚙️ Панель",
+    ADMIN_HUB_BUTTON,
+    "🧭 Главное меню",
+    "🔥 Открыть ЭРА",
+    "🌱 Мой путь",
+    "🧭 Лидеры",
+    "🎬 Медиа",
+    ANNIVERSARY_MENU_BUTTON,
+    ANNIVERSARY_TICKET_BUTTON,
+}
 
 
 class EventBlock6States(StatesGroup):

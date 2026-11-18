@@ -8,10 +8,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
+from app.config import Settings
+from app.database.models import User
+from app.keyboards.bot_shell import has_leaders_entry, main_reply_keyboard
 from app.services import anniversary_registration_service as rsvp
 from app.services.authorization_service import is_full_admin
+from app.services.media_leadership_service import is_media_chair
 from app.services.notification_service import safe_answer_document
-from app.utils.constants import RegistrationStatus
+from app.utils.constants import ApplicationStatus, RegistrationStatus, Role
 
 router = Router(name="anniversary")
 
@@ -35,19 +39,37 @@ def summary(data: dict) -> str:
     return f"Имя: {data['first_name']}\nФамилия: {data['last_name']}\nОрганизация: {data['organization']}"
 
 
+def _approved_home_keyboard(user: User | None, settings: Settings | None, *, anniversary: bool = True):
+    """Refresh the persistent menu so RSVP flips the button to the ticket label."""
+    if user is None or settings is None:
+        return None
+    if getattr(user, "application_status", None) != ApplicationStatus.APPROVED:
+        return None
+    if getattr(user, "is_blocked", False) or getattr(user, "is_archived", False):
+        return None
+    return main_reply_keyboard(
+        settings.effective_miniapp_url,
+        leaders=has_leaders_entry(user),
+        admin=user.role == Role.ADMIN or user.telegram_id in getattr(settings, "admin_ids", []),
+        media_chair=is_media_chair(user, settings),
+        anniversary=anniversary,
+        anniversary_registered=True if anniversary else False,
+    )
+
+
 @router.message(StateFilter("*"), CommandStart(), F.chat.type == "private", F.text.regexp(r"^/start(?:@\w+)?\s+anniversary2026\s*$"))
-async def entry(message: Message, state: FSMContext, session, user):
+async def entry(message: Message, state: FSMContext, session, user, settings: Settings | None = None):
     if blocked(user):
         await message.answer("Регистрация недоступна. Свяжитесь с организаторами.")
         return
     await state.clear()
     existing = await rsvp.get_registration(session, message.from_user.id)
     if existing:
-        await message.answer(f"Вы уже зарегистрированы!\n\n{rsvp.DETAILS}\n\n{summary(existing)}", parse_mode=None)
+        await _show_result(message, state, existing, user=user, settings=settings, session=session, fresh=False)
         return
     try:
         if await _check_existing_event(session, user, message.from_user.id):
-            await _show_result(message, state)
+            await _show_result(message, state, user=user, settings=settings, session=session, fresh=False)
             return
     except ValueError as exc:
         await message.answer(_registration_error(exc))
@@ -95,15 +117,29 @@ def _registration_error(exc):
     return str(exc)
 
 
-async def _show_result(message, state, data=None):
+async def _show_result(message, state, data=None, *, user=None, settings=None, session=None, fresh: bool = True):
     await state.clear()
-    headline = "Вы зарегистрированы на годовщину ЭРЫ!" if data else "Вы уже зарегистрированы!"
+    telegram_id = getattr(user, "telegram_id", None)
+    if data is None and session is not None and telegram_id is not None:
+        data = await rsvp.get_registration(session, telegram_id)
+    if data is None and user is not None:
+        defaults = rsvp.profile_defaults(user)
+        if len(defaults) == 3:
+            data = defaults
+    if fresh and data is not None:
+        headline = "Вы зарегистрированы на годовщину ЭРЫ!"
+    elif data is not None:
+        headline = "Вы уже в списке на годовщину!"
+    else:
+        headline = "Вы уже зарегистрированы!"
     details = f"\n\n{summary(data)}\n\nДо встречи!" if data else ""
-    await message.answer(f"{headline}\n\n{rsvp.DETAILS}{details}", parse_mode=None)
+    featured = bool(session is not None and await rsvp.menu_available(session))
+    markup = _approved_home_keyboard(user, settings, anniversary=featured)
+    await message.answer(f"{headline}\n\n{rsvp.DETAILS}{details}", parse_mode=None, reply_markup=markup)
 
 
-@router.message(StateFilter("*"), F.chat.type == "private", F.text == rsvp.MENU_BUTTON)
-async def menu_registration(message: Message, state: FSMContext, session, user):
+@router.message(StateFilter("*"), F.chat.type == "private", F.text.in_({rsvp.MENU_BUTTON, rsvp.MENU_TICKET_BUTTON}))
+async def menu_registration(message: Message, state: FSMContext, session, user, settings: Settings | None = None):
     if blocked(user):
         await message.answer("Регистрация недоступна.")
         return
@@ -115,9 +151,12 @@ async def menu_registration(message: Message, state: FSMContext, session, user):
     defaults = rsvp.profile_defaults(user)
     try:
         if await rsvp.check_event_registration(session, event, telegram_id, user):
-            await _show_result(message, state)
+            await _show_result(message, state, user=user, settings=settings, session=session, fresh=False)
         elif len(defaults) == 3:
-            await _show_result(message, state, await rsvp.register(session, telegram_id, defaults))
+            await _show_result(
+                message, state, await rsvp.register(session, telegram_id, defaults),
+                user=user, settings=settings, session=session, fresh=True,
+            )
         else:
             await _start_form(message, state, defaults)
     except ValueError as exc:
@@ -125,7 +164,7 @@ async def menu_registration(message: Message, state: FSMContext, session, user):
 
 
 @router.callback_query(StateFilter("*"), F.message.chat.type == "private", F.data.in_({"anniversary:begin", "anniversary:quick"}))
-async def begin(call: CallbackQuery, state: FSMContext, session, user):
+async def begin(call: CallbackQuery, state: FSMContext, session, user, settings: Settings | None = None):
     if blocked(user) or not rsvp.registration_open():
         await call.answer("Регистрация недоступна.", show_alert=True)
         return
@@ -149,7 +188,7 @@ async def begin(call: CallbackQuery, state: FSMContext, session, user):
             except ValueError as exc:
                 await call.message.answer(str(exc), parse_mode=None)
                 return
-            await _show_result(call.message, state, data)
+            await _show_result(call.message, state, data, user=user, settings=settings, session=session, fresh=True)
         else:
             await state.clear()
             await state.update_data(**defaults)
@@ -193,20 +232,20 @@ async def field(message: Message, state: FSMContext, user):
 
 
 @router.callback_query(AnniversaryStates.confirm, F.message.chat.type == "private", F.data == "anniversary:save")
-async def save(call: CallbackQuery, state: FSMContext, session, user):
+async def save(call: CallbackQuery, state: FSMContext, session, user, settings: Settings | None = None):
     if blocked(user):
         await call.answer("Регистрация недоступна.", show_alert=True)
         return
     await call.answer()
     try:
         if await _check_existing_event(session, user, call.from_user.id):
-            await _show_result(call.message, state)
+            await _show_result(call.message, state, user=user, settings=settings, session=session, fresh=False)
             return
         data = await rsvp.register(session, call.from_user.id, await state.get_data())
     except ValueError as exc:
         await call.message.answer(_registration_error(exc), parse_mode=None)
         return
-    await _show_result(call.message, state, data)
+    await _show_result(call.message, state, data, user=user, settings=settings, session=session, fresh=True)
 
 
 @router.callback_query(F.message.chat.type == "private", F.data == "anniversary:save")

@@ -23,7 +23,9 @@ def test_main_menu_has_one_leisure_entry_and_no_flat_literature():
             assert not any(button.callback_data == "bookclub:home" for button in buttons(compatibility_menu(admin=admin, miniapp_url=url)))
             reply = main_reply_keyboard(url, admin=admin)
             assert reply.is_persistent and reply.one_time_keyboard is False
-            assert ("📊 Статистика" in {button.text for button in buttons(reply)}) == admin
+            labels = {button.text for button in buttons(reply)}
+            assert ("⚙️ Админ" in labels) == admin
+            assert "📊 Статистика" not in labels
 
 
 class LeisureNavigationTests(IsolatedAsyncioTestCase):
