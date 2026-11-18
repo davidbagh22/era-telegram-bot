@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, fetchHome } from "../api/client";
 import type { HomeSnapshot } from "../types/home";
 
@@ -34,5 +34,5 @@ export function useHome(): HomeHookResult {
     };
   }, [tick]);
 
-  return { ...state, reload };
+  return useMemo(() => ({ ...state, reload }), [state, reload]);
 }

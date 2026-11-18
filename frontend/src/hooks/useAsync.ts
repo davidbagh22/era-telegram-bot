@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError } from "../api/client";
 
 export type AsyncState<T> =
@@ -36,5 +36,8 @@ export function useAsync<T>(fetcher: () => Promise<T>, deps: unknown[]): AsyncHo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick]);
 
-  return { ...state, reload };
+  // Stable identity until status/data/reload change — consumers like AdminDashboard
+  // cache on `[snapshot]` and must not re-label a ready result under a new period key
+  // just because the parent re-rendered.
+  return useMemo(() => ({ ...state, reload }), [state, reload]);
 }

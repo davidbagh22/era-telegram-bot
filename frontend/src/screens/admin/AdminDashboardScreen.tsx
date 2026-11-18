@@ -219,8 +219,9 @@ export function AdminDashboardScreen({ onAction }: { onAction?: (action: Analyti
   const requestKey = `${period}/${start}/${end}`;
   const previousSnapshot = useRef<{ key: string; data: AnalyticsV2Snapshot | null } | null>(null);
   useEffect(() => {
-    if (snapshot.status === 'ready') previousSnapshot.current = { key: requestKey, data: snapshot.data };
-    // Do not re-label a previous period's ready snapshot when only the filter changes.
+    // useAsync memoizes result identity; do not list requestKey here or a period
+    // click would re-label the previous ready payload under the new key.
+    if (snapshot.status === "ready") previousSnapshot.current = { key: requestKey, data: snapshot.data };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot]);
   const data = snapshot.status === "ready" ? snapshot.data : snapshot.status === 'loading' && previousSnapshot.current?.key === requestKey ? previousSnapshot.current.data : null;
