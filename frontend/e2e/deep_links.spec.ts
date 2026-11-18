@@ -31,7 +31,9 @@ test("#/tasks deep link opens the standalone Tasks screen directly", async ({ pa
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/tasks`);
 
   await expect(page.getByRole("heading", { name: "Задания" })).toBeVisible();
-  await expect(page.getByText(/Пока нет задач в этом разделе/)).toBeVisible();
+  // Seed may include a published challenge for claim journeys — assert routing
+  // only, not the empty-state copy (that was true only when no tasks existed).
+  await expect(page.getByRole("button", { name: /Показать:/ })).toBeVisible();
   await expect(page).toHaveURL(/#\/tasks$/);
 });
 

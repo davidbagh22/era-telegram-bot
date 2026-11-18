@@ -18,6 +18,8 @@ test("media knowledge supports real text creation, search, editing, pinning and 
   await expect(page.getByText("Уточните ответ и попросите пример.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Скрыть материал", exact: true }).click();
   await expect(page.getByText(`Закреплено · ${title}`, { exact: true })).toHaveCount(0);
+  // Clear search so the archived toggle is not fighting a filtered empty list.
+  await page.getByLabel("Поиск в базе знаний", { exact: true }).fill("");
   await page.getByLabel("Показывать скрытые материалы", { exact: true }).check();
   await expect(page.getByText(`Закреплено · ${title} · скрыт`, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Вернуть в каталог", exact: true }).click();
