@@ -103,10 +103,14 @@ def duel_markup(reference: str, *, ready: bool = False) -> InlineKeyboardMarkup:
 
 
 def quiz_markup(room_id: str, options: tuple[str, ...]) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [InlineKeyboardButton(text=f"{chr(65 + index)} · Выбрать", callback_data=f"era_game:answer:{room_id}:{index}")]
         for index, _ in enumerate(options)
-    ])
+    ]
+    # Solo rounds live in DM — offer a way back to the games menu mid-round.
+    if str(room_id).startswith("solo-"):
+        rows.append([InlineKeyboardButton(text="← Меню игр", callback_data="era_game:cabinet")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def format_markup(reference: str, item: GameItem, *, hints_used: int = 0) -> InlineKeyboardMarkup:
@@ -118,6 +122,7 @@ def format_markup(reference: str, item: GameItem, *, hints_used: int = 0) -> Inl
             text=f"💡 Подсказка {hints_used + 1}/{len(item.challenge.hints)}",
             callback_data=f"era_game:hint:{reference}",
         )])
+    keyboard.append([InlineKeyboardButton(text="← Меню игр", callback_data="era_game:cabinet")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
