@@ -77,7 +77,8 @@ class EventDirectRegistrationTests(unittest.IsolatedAsyncioTestCase):
         event = SimpleNamespace(id=42, status=EventStatus.REGISTRATION_OPEN,
                                 participant_limit=None)
         session.get.side_effect = [event, None]
-        session.scalar.return_value = 0
+        # activities count, then current participant registration
+        session.scalar.side_effect = [0, None]
         with (
             patch.object(events, "registration_stats", new_callable=AsyncMock,
                          return_value={"free": 50, "registered": 0}),

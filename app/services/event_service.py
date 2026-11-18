@@ -1,6 +1,8 @@
 import logging
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
@@ -12,6 +14,7 @@ from app.services import anniversary_registration_service as anniversary
 from app.services.audit_service import audit
 from app.services.digital_engagement_service import award_event_registration
 from app.services.event_registration_policy import registration_is_closed
+from app.services.event_registration_service import mark_not_coming
 from app.utils.constants import EventStatus, RegistrationStatus
 
 logger = logging.getLogger(__name__)
@@ -196,6 +199,54 @@ async def promote_waitlist(session: AsyncSession, event: Event) -> EventRegistra
         entity_id=event.id,
     )
     return waiting
+
+
+LeaveOutcome = Literal["left_waitlist", "not_coming", "cannot_change"]
+
+
+@dataclass(frozen=True)
+class LeaveEventRegistrationResult:
+    event: Event
+    registration: EventRegistration
+    outcome: LeaveOutcome
+    promoted: EventRegistration | None
+
+
+async def leave_event_registration(
+    session: AsyncSession,
+    *,
+    event_id: int,
+    user_id: int,
+) -> LeaveEventRegistrationResult | None:
+    """Leave waitlist or free a seat under the shared event capacity lock.
+
+    Status is read only after the event row is locked and the registration is
+    refreshed, so a concurrent promotion cannot be overwritten as a waitlist
+    leave that skips promoting the next waiter.
+    """
+    event = await _lock_event_for_capacity(session, event_id)
+    if event is None:
+        return None
+    registration = await session.scalar(
+        select(EventRegistration)
+        .where(
+            EventRegistration.event_id == event_id,
+            EventRegistration.user_id == user_id,
+        )
+        .execution_options(populate_existing=True)
+    )
+    if registration is None:
+        return None
+
+    if registration.status == RegistrationStatus.WAITLIST:
+        registration.status = RegistrationStatus.CANCELLED
+        return LeaveEventRegistrationResult(event, registration, "left_waitlist", None)
+
+    if mark_not_coming(registration, event):
+        promoted = await promote_waitlist(session, event)
+        return LeaveEventRegistrationResult(event, registration, "not_coming", promoted)
+
+    return LeaveEventRegistrationResult(event, registration, "cannot_change", None)
 
 
 async def send_committed_registration_notice(

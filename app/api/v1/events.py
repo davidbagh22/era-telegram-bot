@@ -22,11 +22,10 @@ from app.services.event_registration_notice_service import (
     deliver_registration_notice,
     enqueue_registration_notice,
 )
-from app.services.event_registration_service import mark_not_coming
 from app.services.event_poster_security import normalized_event_poster_mime
 from app.services.event_service import (
     available_places,
-    promote_waitlist,
+    leave_event_registration,
     register_for_event,
     registered_count,
 )
@@ -447,24 +446,20 @@ async def cancel_event_registration(
     event = await session.get(Event, event_id)
     if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
         raise HTTPException(status_code=404, detail="event_not_found")
-    registration = await _get_registration(session, event_id, user.id)
-    if registration is None:
+    leave = await leave_event_registration(session, event_id=event_id, user_id=user.id)
+    if leave is None:
         raise HTTPException(status_code=404, detail="registration_not_found")
-    was_waiting = registration.status == RegistrationStatus.WAITLIST
-    if was_waiting:
-        registration.status = RegistrationStatus.CANCELLED
-    elif not mark_not_coming(registration, event):
+    if leave.outcome == "cannot_change":
         raise HTTPException(status_code=409, detail="cannot_change_plans")
 
-    promoted = None if was_waiting else await promote_waitlist(session, event)
     notice = None
-    if promoted is not None and bot is not None:
-        promoted_user = await session.get(User, promoted.user_id)
+    if leave.promoted is not None and bot is not None:
+        promoted_user = await session.get(User, leave.promoted.user_id)
         if promoted_user is not None:
             notice = await enqueue_registration_notice(
-                session, promoted, promoted_user.telegram_id, RegistrationNoticeKind.PROMOTION
+                session, leave.promoted, promoted_user.telegram_id, RegistrationNoticeKind.PROMOTION
             )
-    result = await _to_event_out(session, event, registration, user)
+    result = await _to_event_out(session, leave.event, leave.registration, user)
     await session.commit()
     if notice is not None and bot is not None:
         await deliver_registration_notice(session, notice, bot.send_message, settings)
