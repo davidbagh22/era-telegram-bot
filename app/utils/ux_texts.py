@@ -110,6 +110,18 @@ def journey_intro(name: str, has_activity: bool) -> str:
     return f"{name}, кабинет только открыт. Первое действие в ЭРА уже появится здесь."
 
 
+def cabinet_home_text(name: str, status: str, points: int, place: int | str) -> str:
+    """Shared cabinet root copy for reply-keyboard and cabinet:open."""
+    return (
+        f"👤 Ваш путь в ЭРА\n\n"
+        f"{name}, данные, задачи, портфолио и баллы — здесь.\n\n"
+        f"Статус: {status}\n"
+        f"Баланс: {points} баллов\n"
+        f"Место в рейтинге: {place}\n\n"
+        "Выберите следующий шаг."
+    )
+
+
 def rating_text(rows: Iterable[tuple[str, int]], current_place: int | str, points: int) -> str:
     top = "\n".join(
         f"{index}. {name} — {score}"

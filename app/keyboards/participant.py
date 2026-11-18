@@ -150,12 +150,17 @@ def navigation_guide_keyboard(
 
 
 def about_keyboard() -> InlineKeyboardMarkup:
+    """Legacy fallback menu (Mini App off). Keep short — one job per row."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="👤 Личный кабинет", callback_data="cabinet:open")],
-            [InlineKeyboardButton(text="📅 Афиша", callback_data="events:list")],
-            [InlineKeyboardButton(text="✅ Задачи", callback_data="cabinet:tasks")],
-            [InlineKeyboardButton(text="💡 Проекты", callback_data="projects:menu")],
+            [
+                InlineKeyboardButton(text="👤 Кабинет", callback_data="cabinet:open"),
+                InlineKeyboardButton(text="📅 Афиша", callback_data="events:list"),
+            ],
+            [
+                InlineKeyboardButton(text="✅ Задачи", callback_data="cabinet:tasks"),
+                InlineKeyboardButton(text="💡 Проекты", callback_data="projects:menu"),
+            ],
             [InlineKeyboardButton(text="⭐ Возможности", callback_data="offers:menu")],
             [InlineKeyboardButton(text="💬 Связь", callback_data="contact:menu")],
         ]
@@ -175,10 +180,10 @@ def contact_keyboard() -> InlineKeyboardMarkup:
 
 
 def team_keyboard(general_chat_url: str | None = None) -> InlineKeyboardMarkup:
+    """Legacy team menu. One offices entry — no duplicate labels for team:offices."""
     rows = [
         [InlineKeyboardButton(text="🏛 Департаменты", callback_data="departments:menu")],
         [InlineKeyboardButton(text="📞 К кому обратиться", callback_data="team:offices")],
-        [InlineKeyboardButton(text="👤 Руководители направлений", callback_data="team:offices")],
         [InlineKeyboardButton(text="💬 Чаты департаментов", callback_data="department:chats")],
     ]
     if general_chat_url:
@@ -191,25 +196,46 @@ def journey_keyboard(
     internal_chat_url: str | None = None,
     external_chat_url: str | None = None,
 ) -> InlineKeyboardMarkup:
+    """Participant cabinet root — no extra points-hub hop."""
     del internal_chat_url, external_chat_url
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="⚙️ Мои данные", callback_data="cabinet:profile")],
-            [InlineKeyboardButton(text="✅ Задачи", callback_data="cabinet:tasks")],
-            [InlineKeyboardButton(text="🎓 Портфолио", callback_data="cabinet:portfolio")],
-            [InlineKeyboardButton(text="🏆 Баллы", callback_data="cabinet:points_hub")],
+            [
+                InlineKeyboardButton(text="✅ Задачи", callback_data="cabinet:tasks"),
+                InlineKeyboardButton(text="🎓 Портфолио", callback_data="cabinet:portfolio"),
+            ],
+            [
+                InlineKeyboardButton(text="⭐ Баллы", callback_data="cabinet:points"),
+                InlineKeyboardButton(text="🏅 Знаки", callback_data="cabinet:achievements"),
+            ],
+            [InlineKeyboardButton(text="🏆 Рейтинг", callback_data="cabinet:rating")],
             [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
         ]
     )
 
 
 def points_hub_keyboard() -> InlineKeyboardMarkup:
+    """Kept for cabinet:points_hub deep links; same destinations as journey."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="⭐ Баланс и история", callback_data="cabinet:points")],
-            [InlineKeyboardButton(text="🏅 Достижения и знаки", callback_data="cabinet:achievements")],
+            [InlineKeyboardButton(text="⭐ Баллы и история", callback_data="cabinet:points")],
+            [InlineKeyboardButton(text="🏅 Знаки", callback_data="cabinet:achievements")],
             [InlineKeyboardButton(text="🏆 Рейтинг", callback_data="cabinet:rating")],
             [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
+        ]
+    )
+
+
+def opportunities_hub_keyboard() -> InlineKeyboardMarkup:
+    """Single opportunities menu for reply-keyboard and offers:menu."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🤝 Партнёрские предложения", callback_data="offers:list")],
+            [InlineKeyboardButton(text="🔨 Аукцион", callback_data="auctions:list")],
+            [InlineKeyboardButton(text="📜 Мои заявки", callback_data="offers:mine")],
+            [InlineKeyboardButton(text="🎁 Каталог за баллы", callback_data="rewards:menu")],
+            [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
         ]
     )
 
