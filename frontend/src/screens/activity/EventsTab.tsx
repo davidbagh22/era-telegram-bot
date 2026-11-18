@@ -64,6 +64,15 @@ export function cleanEventDescriptionBody(text: string, event: EventItem): strin
     event.end_time,
     formatDate(event.event_date).toLowerCase(),
   ].filter(Boolean).map(String);
+  const looksLikeMetaLine = (lower: string, stripped: string): boolean => {
+    if (/^(когда|где|время|дата|место|адрес|организатор)\b/i.test(stripped)) return true;
+    if (title && (lower === title || lower === `«${title}»` || lower === `"${title}"` || stripped === title)) return true;
+    if (location && lower.includes(location) && lower.length < location.length + 28) return true;
+    if (address && lower.includes(address) && lower.length < address.length + 28) return true;
+    if (organizer && (lower === organizer || stripped === organizer || lower.startsWith(`${organizer} ·`) || stripped.startsWith("организатор"))) return true;
+    if (dateBits.some((bit) => bit && lower.includes(bit.toLowerCase()) && lower.length < 56)) return true;
+    return false;
+  };
 
   const cleaned = text
     .split(/\r?\n/)
@@ -72,14 +81,10 @@ export function cleanEventDescriptionBody(text: string, event: EventItem): strin
       if (!line) return true;
       const lower = line.toLowerCase().replace(/\s+/g, " ");
       const stripped = lower.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\s•\-–—]+/u, "");
-      if (/^[📅🗓⏰🕒🕐🕑🕓🕔🕕🕖🕗🕘🕙🕚🕛📍📌🏠🏢🗺✅🎫🌷💚🌸]/u.test(line) && line.length < 96) return false;
-      if (/^(когда|где|время|дата|место|адрес|организатор|регистрация)\b/i.test(stripped)) return false;
-      if (title && (lower === title || lower === `«${title}»` || lower === `"${title}"` || stripped === title)) return false;
-      if (location && lower.includes(location) && lower.length < location.length + 28) return false;
-      if (address && lower.includes(address) && lower.length < address.length + 28) return false;
-      if (organizer && (lower === organizer || stripped === organizer || lower.startsWith(`${organizer} ·`) || stripped.startsWith("организатор"))) return false;
-      if (dateBits.some((bit) => bit && lower.includes(bit.toLowerCase()) && lower.length < 56)) return false;
-      if (/^(https?:\/\/|t\.me\/|@)\S+$/i.test(stripped) && stripped.length < 120) return false;
+      // Only drop calendar/pin/time flyer lines when they actually repeat structured meta.
+      // Do not delete ✅/💚/etc. instruction lines just because they start with an emoji.
+      if (/^[📅🗓⏰🕒🕐🕑🕓🕔🕕🕖🕗🕘🕙🕚🕛📍📌🏠🏢🗺]/u.test(line) && looksLikeMetaLine(lower, stripped)) return false;
+      if (looksLikeMetaLine(lower, stripped)) return false;
       return true;
     })
     .join("\n")
