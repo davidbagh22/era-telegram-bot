@@ -150,6 +150,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "media-task-cards",
                 "media-chat-automation",
                 "participation-reactivation",
+                "participation-mode-notifications",
                 "community-verification-expiry",
                 "my-vector-monthly-reminders",
                 "book-club-daily",
