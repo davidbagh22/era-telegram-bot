@@ -113,7 +113,10 @@ def _period(user: User) -> str:
     return f"с {_date_label(created_at)}"
 
 
-def _limited(items: list[PortfolioEntry], limit: int = 12) -> list[PortfolioEntry]:
+def _limited(items: list[PortfolioEntry], limit: int | None = 12) -> list[PortfolioEntry]:
+    """Preview helper. Pass limit=None for full export (PDF must not silently truncate)."""
+    if limit is None:
+        return items
     return items[:limit]
 
 
@@ -130,7 +133,12 @@ def _portfolio_entry(item: PortfolioItem) -> PortfolioEntry:
     )
 
 
-async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioData:
+async def build_portfolio_data(
+    session: AsyncSession,
+    user: User,
+    *,
+    preview_limit: int | None = 12,
+) -> PortfolioData:
     stats = await user_stats(session, user.id)
     portfolio_items = list(
         (
@@ -300,7 +308,8 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                     or "project_contribution",
                 )
                 for member, project, role in contribution_rows
-            ]
+            ],
+            preview_limit,
         ),
         events=_limited(
             [
@@ -313,7 +322,8 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                 )
                 for registration, event in event_rows
                 if registration.status == RegistrationStatus.ATTENDED
-            ]
+            ],
+            preview_limit,
         ),
         registrations=_limited(
             [
@@ -331,7 +341,8 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                     RegistrationStatus.WILL_COME,
                     RegistrationStatus.WAITLIST,
                 )
-            ]
+            ],
+            preview_limit,
         ),
         tasks=_limited(
             [
@@ -348,7 +359,8 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                 )
                 for submission, task in task_rows
                 if submission.status in _CONFIRMED_SUBMISSION_STATUSES
-            ]
+            ],
+            preview_limit,
         ),
         volunteer=_limited(
             [
@@ -365,7 +377,8 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                 )
                 for submission in activity_rows
                 if submission.status in _CONFIRMED_SUBMISSION_STATUSES
-            ]
+            ],
+            preview_limit,
         ),
         leadership=_limited(
             [
@@ -377,7 +390,8 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                     category="leadership",
                 )
                 for user_office, office in office_rows
-            ]
+            ],
+            preview_limit,
         ),
         badges=_limited(
             [
@@ -389,13 +403,14 @@ async def build_portfolio_data(session: AsyncSession, user: User) -> PortfolioDa
                     category="badge",
                 )
                 for user_badge, badge in badge_rows
-            ]
+            ],
+            preview_limit,
         ),
-        certificates=_limited(certificates),
-        recommendations=_limited(recommendations),
-        uploaded_items=_limited([_portfolio_entry(item) for item in portfolio_items]),
-        confirmed_items=_limited(confirmed_items),
-        pending_items=_limited(pending_items),
+        certificates=_limited(certificates, preview_limit),
+        recommendations=_limited(recommendations, preview_limit),
+        uploaded_items=_limited([_portfolio_entry(item) for item in portfolio_items], preview_limit),
+        confirmed_items=_limited(confirmed_items, preview_limit),
+        pending_items=_limited(pending_items, preview_limit),
     )
 
 

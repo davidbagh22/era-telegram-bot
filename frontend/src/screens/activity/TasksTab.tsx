@@ -39,6 +39,22 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Отменена",
 };
 
+/** Strip pack meta preamble; keep a short human description for list cards. */
+export function taskListDescription(raw: string, limit = 140): string {
+  let text = (raw || "").trim();
+  const taskMark = /Задача:\s*/i.exec(text);
+  if (taskMark) text = text.slice(taskMark.index + taskMark[0].length);
+  text = text
+    .replace(/^Тип:[^\n]*\n?/i, "")
+    .replace(/^Команда:[^\n]*\n?/i, "")
+    .replace(/^Чат:[^\n]*\n?/i, "")
+    .replace(/^Дедлайн:[^\n]*\n?/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit - 1).trimEnd()}…`;
+}
+
 interface TasksTabProps {
   initialItemId?: number | null;
 }
@@ -143,19 +159,42 @@ export function TasksTab({ initialItemId }: TasksTabProps = {}) {
       {state.status === "loading" && <SkeletonList count={3} />}
       {state.status === "error" && <EmptyState text="Не удалось загрузить задачи." />}
       {state.status === "ready" && state.data.length === 0 && <EmptyState text="Пока нет задач в этом разделе. Как только появится новое действие, оно будет здесь." />}
-      {state.status === "ready" && state.data.map((task) => (
-        <Card key={task.id}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: ".55rem", alignItems: "flex-start" }}>
-            <strong>{task.title}</strong>
-            <strong style={{ whiteSpace: "nowrap" }}>+{task.points}</strong>
-          </div>
-          <p style={{ margin: "0.3rem 0", color: "var(--era-text-muted)" }}>
-            До {new Date(task.deadline).toLocaleDateString("ru-RU")} · {STATUS_LABELS[task.status] ?? "Статус обновлён"}
-            {task.claim_mode && task.claim_mode !== "SOLO" ? ` · ${CLAIM_MODE_LABELS[task.claim_mode] ?? task.claim_mode} ${task.squad_size}/${task.max_people ?? "?"}` : ""}
-          </p>
-          <button type="button" onClick={() => { window.location.hash = `#/tasks/${task.id}`; }} style={{ width: "100%", marginTop: ".4rem" }}>Открыть задание</button>
-        </Card>
-      ))}
+      {state.status === "ready" && state.data.map((task) => {
+        const canTake = !task.is_joined_or_assigned && ["new", "published"].includes(task.status);
+        const description = taskListDescription(task.description || task.deliverable || "");
+        return (
+          <Card key={task.id} style={{ padding: "0.85rem 0.9rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: ".55rem", alignItems: "flex-start" }}>
+              <strong style={{ fontSize: "1.02rem", lineHeight: 1.25, overflowWrap: "break-word" }}>{task.title}</strong>
+              <span style={{ whiteSpace: "nowrap", color: "var(--era-gold-ink)", fontWeight: 800, fontSize: "0.86rem" }}>+{task.points}</span>
+            </div>
+            {description ? (
+              <p style={{ margin: "0.45rem 0 0", color: "var(--era-text-muted)", fontSize: "0.86rem", lineHeight: 1.45 }}>
+                {description}
+              </p>
+            ) : null}
+            {canTake ? (
+              <button
+                type="button"
+                className="era-btn-primary"
+                disabled={pendingId !== null}
+                onClick={() => void handleClaim(task.id)}
+                style={{ width: "100%", marginTop: "0.7rem" }}
+              >
+                {pendingId === task.id ? "Сохраняем…" : "Взять"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { window.location.hash = `#/tasks/${task.id}`; }}
+                style={{ width: "100%", marginTop: "0.7rem" }}
+              >
+                {task.is_joined_or_assigned ? "К заданию" : "Подробнее"}
+              </button>
+            )}
+          </Card>
+        );
+      })}
 
       <BottomSheet open={filterOpen} onClose={() => setFilterOpen(false)} title="Какие задания показать?">
         <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>

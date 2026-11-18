@@ -5,6 +5,7 @@ import { EmptyState } from "../components/EmptyState";
 import { MonoLabel } from "../components/MonoLabel";
 import { SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
+import { VectorRadar } from "../components/VectorRadar";
 import { useHome } from "../hooks/useHome";
 import type { DevelopmentHome, VectorDimension } from "../types/development";
 
@@ -109,22 +110,49 @@ export function VectorHomeScreen({
 
       <section style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
         <MonoLabel>Сейчас</MonoLabel>
-        <Card gradient>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.8rem", alignItems: "flex-start" }}>
-            <div><strong style={{ display: "block", fontSize: "1.2rem" }}>{data.growth.label}</strong><span style={{ display: "block", marginTop: "0.2rem", color: "var(--era-text-secondary)" }}>{formatPoints(data.points_balance)} баллов</span></div>
-            {development.profile?.index != null && <div style={{ textAlign: "right" }}><strong style={{ display: "block", fontSize: "1.2rem" }}>{Math.round(development.profile.index)}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.72rem" }}>индекс вектора</span></div>}
+        <Card gradient style={{ padding: "1rem 0.85rem 1.1rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.8rem", alignItems: "flex-start", marginBottom: "0.35rem" }}>
+            <div>
+              <strong style={{ display: "block", fontSize: "1.15rem" }}>{data.growth.label}</strong>
+              <span style={{ display: "block", marginTop: "0.2rem", color: "var(--era-text-secondary)", fontSize: "0.88rem" }}>
+                {formatPoints(data.points_balance)} баллов · живой профиль
+              </span>
+            </div>
           </div>
-          {dimensions.length > 0 && <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "0.35rem", marginTop: "0.9rem" }}>{dimensions.map(({ key, value }) => <div key={key} style={{ textAlign: "center", minWidth: 0 }}><strong style={{ display: "block" }}>{Math.round(value)}</strong><span style={{ display: "block", marginTop: "0.12rem", color: "var(--era-text-muted)", fontSize: "0.62rem", overflow: "hidden", textOverflow: "ellipsis", overflowWrap: "anywhere" }}>{DIMENSION_LABELS[key]}</span></div>)}</div>}
-          <p style={{ margin: "0.8rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>Последний снимок: {monthLabel(development.profile?.last_checkin_at)}</p>
+          {dimensions.length > 0 ? (
+            <VectorRadar
+              values={Object.fromEntries(dimensions.map(({ key, value }) => [key, value])) as Partial<Record<VectorDimension, number>>}
+              index={development.profile?.index ?? null}
+            />
+          ) : (
+            <p style={{ margin: "0.6rem 0 0", color: "var(--era-text-muted)", fontSize: "0.86rem", lineHeight: 1.45 }}>
+              Пройди первую отметку — здесь появится твоя карта роста.
+            </p>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "0.25rem", marginTop: "0.55rem" }}>
+            {dimensions.map(({ key, value }) => (
+              <div key={key} style={{ textAlign: "center", minWidth: 0 }}>
+                <strong style={{ display: "block", fontSize: "0.92rem" }}>{Math.round(value)}</strong>
+                <span style={{ display: "block", marginTop: 2, color: "var(--era-text-muted)", fontSize: "0.58rem", lineHeight: 1.15, overflowWrap: "break-word" }}>
+                  {DIMENSION_LABELS[key]}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p style={{ margin: "0.75rem 0 0", color: "var(--era-text-muted)", fontSize: "0.78rem" }}>
+            Обновляется после каждой отметки · {monthLabel(development.profile?.last_checkin_at)}
+          </p>
         </Card>
-        <Card onClick={() => onNavigate("checkin")} style={{ borderLeft: "3px solid var(--era-red)" }}>
+        <Card onClick={() => onNavigate("checkin")} style={{ borderLeft: "3px solid var(--era-teal, #0f766e)" }}>
           <strong>
             {development.current_checkin?.status === "completed"
               ? "Посмотреть результат месяца"
-              : "Посмотрим, что изменилось?"}
+              : "3 минуты — и карта снова станет твоей"}
           </strong>
-          <span style={{ display: "block", marginTop: "0.25rem", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>
-            Ежемесячная отметка · можно продолжить позже
+          <span style={{ display: "block", marginTop: "0.25rem", color: "var(--era-text-muted)", fontSize: "0.8rem", lineHeight: 1.4 }}>
+            {development.current_checkin?.status === "completed"
+              ? "Снимок сохранён. Можно вернуться к выводам."
+              : "Без оценок и гонки: короткая отметка покажет, где ты вырос и куда двигаться дальше."}
           </span>
         </Card>
       </section>

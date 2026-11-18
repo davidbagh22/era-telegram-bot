@@ -30,11 +30,11 @@ class CommunityMissionTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         await self.engine.dispose()
 
-    def test_authored_pack_contains_exactly_26_missions(self) -> None:
+    def test_authored_pack_contains_exactly_30_missions(self) -> None:
         items = load_community_missions()
-        self.assertEqual(len(items), 26)
+        self.assertEqual(len(items), 30)
         self.assertEqual(items[0]["code"], "M1.1")
-        self.assertEqual(items[-1]["code"], "M6.5")
+        self.assertEqual(items[-1]["code"], "M7.4")
         self.assertTrue(all(item["deliverable"] for item in items))
 
     def test_media_role_labels_are_russian(self) -> None:
@@ -50,11 +50,10 @@ class CommunityMissionTests(unittest.IsolatedAsyncioTestCase):
             count = int(
                 await session.scalar(select(func.count(CommunityMissionTemplate.id))) or 0
             )
-            self.assertEqual(count, 26)
+            self.assertEqual(count, 30)
 
-    async def test_launch_all_pending_missions_launches_all_26_once(self) -> None:
-        # DELTA ToR §13/§76 Phase 2 item 9: "Сделать все 26 missions
-        # доступными" -- and calling this twice must not create duplicates.
+    async def test_launch_all_pending_missions_launches_all_30_once(self) -> None:
+        # Catalog is 30 missions; calling launch twice must not create duplicates.
         async with self.session_factory() as session:
             admin = User(telegram_id=1, first_name="Admin", application_status=ApplicationStatus.APPROVED)
             session.add(admin)
@@ -62,7 +61,7 @@ class CommunityMissionTests(unittest.IsolatedAsyncioTestCase):
             await seed_community_missions(session)
 
             first_pass = await launch_all_pending_missions(session, creator_id=admin.id)
-            self.assertEqual(len(first_pass), 26)
+            self.assertEqual(len(first_pass), 30)
 
             second_pass = await launch_all_pending_missions(session, creator_id=admin.id)
             self.assertEqual(second_pass, [])
@@ -73,7 +72,7 @@ class CommunityMissionTests(unittest.IsolatedAsyncioTestCase):
                 )
                 or 0
             )
-            self.assertEqual(task_count, 26)
+            self.assertEqual(task_count, 30)
 
             templates = (await session.scalars(select(CommunityMissionTemplate))).all()
             self.assertEqual(await launched_template_ids(session), {t.id for t in templates})

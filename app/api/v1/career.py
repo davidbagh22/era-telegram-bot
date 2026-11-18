@@ -285,7 +285,7 @@ async def download_resume(
         raise HTTPException(status_code=400, detail="invalid_purpose")
     profile = await career_service.get_or_create_profile(session, user.id)
     items = await career_service.list_items(session, user.id)
-    portfolio = await build_portfolio_data(session, user)
+    portfolio = await build_portfolio_data(session, user, preview_limit=None)
     pdf = build_career_resume(user, profile, portfolio, items, purpose=purpose)
     return Response(
         content=pdf,
@@ -305,7 +305,7 @@ async def send_resume_to_bot_chat(
         raise HTTPException(status_code=400, detail="invalid_purpose")
     profile = await career_service.get_or_create_profile(session, user.id)
     items = await career_service.list_items(session, user.id)
-    portfolio = await build_portfolio_data(session, user)
+    portfolio = await build_portfolio_data(session, user, preview_limit=None)
     pdf = build_career_resume(user, profile, portfolio, items, purpose=payload.purpose)
     try:
         sent = await bot.send_document(

@@ -296,7 +296,7 @@ async def resume(call: CallbackQuery, user: User | None, session: AsyncSession) 
         return
     await call.message.answer("Собираю Ваше портфолио в PDF. Это займёт несколько секунд")
     try:
-        data = await build_portfolio_data(session, user)
+        data = await build_portfolio_data(session, user, preview_limit=None)
         content = build_era_resume(data)
     except Exception:
         logger.exception("Could not build ERA resume for user %s", user.id)
