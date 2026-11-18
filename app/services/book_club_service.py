@@ -193,6 +193,10 @@ async def series_status(
     receipt = await series_issue_delivery(session, start_day, number)
     published = bool(receipt and receipt.status in {'sent', 'already_sent'})
     uncertain = bool(receipt and receipt.status in {'uncertain', 'conflict'})
+    # daily_job prefers the editorial queue: when enabled (even paused/empty),
+    # run_editorial_queue returns True and the 48-issue series is skipped.
+    editorial = await editorial_settings(session)
+    editorial_blocks_series = bool(editorial.get('enabled'))
     if published:
         label, reason, action = 'Опубликован', f'Доставка в чат: {receipt.status}', 'none'
     elif uncertain:
@@ -200,6 +204,17 @@ async def series_status(
             'Нужна проверка',
             f'Исход отправки неизвестен ({receipt.status}). Повтор остановлен до сверки.',
             'none',
+        )
+    elif approved and editorial_blocks_series:
+        paused = ' (на паузе)' if editorial.get('paused') else ''
+        label, reason, action = (
+            'Нужна проверка',
+            (
+                f'Выпуск одобрен, но включена редакционная очередь{paused}. '
+                'Пока она активна, серия в 19:00 не уходит — отключите очередь, '
+                'чтобы возобновить плановую доставку.'
+            ),
+            'revoke',
         )
     elif approved:
         label, reason, action = (
@@ -222,6 +237,7 @@ async def series_status(
         'approved': approved,
         'published': published,
         'action': action,
+        'editorial_blocks_series': editorial_blocks_series,
         'title': get_issue(number).title,
         'preview': render_issue(number),
         'receipt_status': getattr(receipt, 'status', None),

@@ -176,6 +176,32 @@ class LiteratureTests(IsolatedAsyncioTestCase):
             await daily_job(self.bot, self.settings, self.sessions)
         topic.assert_not_awaited()
 
+    async def test_series_status_warns_when_editorial_queue_blocks_delivery(self):
+        """Enabled editorial queue skips series in daily_job — status must not say «Запланирован»."""
+        await self.approve_today()
+        async with self.sessions() as session:
+            status = await club.series_status(
+                session, self.settings, on_date=date(2026, 10, 10),
+            )
+            assert status['label'] == 'Запланирован'
+            assert status['editorial_blocks_series'] is False
+            await club.save_editorial_settings(session, actor_id=1, enabled=True, paused=True)
+            await session.commit()
+            status = await club.series_status(
+                session, self.settings, on_date=date(2026, 10, 10),
+            )
+            assert status['label'] == 'Нужна проверка'
+            assert status['editorial_blocks_series'] is True
+            assert 'редакцион' in status['reason'].lower()
+            assert status['action'] == 'revoke'
+        with patch('app.services.book_club_service.datetime') as clock, patch(
+            'app.services.book_club_service.send_general_topic', new=AsyncMock()
+        ) as topic:
+            clock.now.return_value = datetime(2026, 10, 10, 19, tzinfo=ZoneInfo('Asia/Yerevan'))
+            await daily_job(self.bot, self.settings, self.sessions)
+        topic.assert_not_awaited()
+        self.bot.send_message.assert_not_awaited()
+
 class ReflectionTests(LiteratureTests):
     async def test_private_answers_update_and_do_not_mix_users(self):
         from app.services.book_club_service import save_reflection, reflection_summary
