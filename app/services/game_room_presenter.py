@@ -45,7 +45,7 @@ def game_card_line(mode: str) -> str:
     kind = "группа" if meta["group"] else "соло"
     return (
         f"<b>{label}</b>\n"
-        f"{meta['players']} игр. · ~{meta['minutes']} мин · {kind}\n"
+        f"{meta['players']} игроков · ~{meta['minutes']} мин · {kind}\n"
         f"{meta['rules']}"
     )
 

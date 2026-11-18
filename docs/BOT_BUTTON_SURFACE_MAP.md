@@ -24,9 +24,13 @@
 | 🎮 Игры | каталог соло/группа с meta-карточками | #711 unit |
 | ← Досуг | возврат | leisure contract |
 
-## Команды (фрагмент)
+## Команды и deep links (контракт)
 
-`/start`, `/menu`, `/navigation`, `/literature_admin`, `/literature_stats`, admin/leader deep links — полный автосписок namespaces в агентском extract (72 callback-префикса, 77 команд).
+Ключевые: `/start`, `/start anniversary2026`, `/menu`, `/navigation`, `/literature_admin`, `/literature_stats`, `/anniversary_guests`, `/spy`, `/leader`, `/admin`, `/panel`.
+
+Legacy reply-алиасы (тот же обработчик, не дублировать удалением без сверки аудитории): `📖 Книжный клуб` → литература; `🎭 Развлечения` → досуг; `🌱 Мой путь` / `👤 Личный кабинет`.
+
+Автоextract: 77 команд, ~50 reply-текстов, 72 callback-префикса (`era_game:`, `bookclub:`, `leisure:`, `anniversary:`, …).
 
 ## Роли для живой приёмки (блокер без устройства)
 

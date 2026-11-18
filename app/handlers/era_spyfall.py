@@ -77,7 +77,7 @@ def _card(room: dict) -> tuple[str, InlineKeyboardMarkup | None]:
     spy_meta = GAME_CARDS.get("spyfall", {})
     heading = (
         "<b>🕵 Шпион</b>\n"
-        f"{spy_meta.get('players', '3–8')} игр. · ~{spy_meta.get('minutes', '8–15')} мин\n\n"
+        f"{spy_meta.get('players', '3–8')} игроков · ~{spy_meta.get('minutes', '8–15')} мин\n\n"
     )
     if room.get("status") == "lobby":
         ready = len(room.get("private_ready", []))
