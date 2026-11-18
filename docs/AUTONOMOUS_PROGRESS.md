@@ -87,7 +87,7 @@
 |---|---|---|---|
 | A01 | Registration and authorization full cycle | ВЫПУЩЕНО | Real fresh/resumed application, photo, approval and login |
 | A02 | Roles and access boundaries | IN PROGRESS | Configured-admin guard and release evidence in [#542](https://github.com/davidbagh22/era-telegram-bot/pull/542). Real admin/leader/employee/participant matrix is BLOCKED: HUMAN ACCEPTANCE. |
-| A03 | Convenient main menu | ВЫПУЩЕНО | Verify final mobile navigation and legacy keyboard |
+| A03 | Convenient main menu | CODE COMPLETE | #701 bot shell: admin hub + ticket RSVP + soft invites; device/legacy keyboard acceptance still open |
 | A04 | Remove «Мой путь» from profile | ВЫПУЩЕНО | Main ProfileScreen no longer renders «Мой путь»; real participant/mobile profile acceptance not confirmed |
 | A05 | Buttons, typography and logo | В РАЗРАБОТКЕ | Mobile visual review against agreed design |
 | A06 | iPhone and Android Mini App | В РАЗРАБОТКЕ | #620 iOS ICS calendar import, real Telegram iPhone/Android clients, not only Playwright |
