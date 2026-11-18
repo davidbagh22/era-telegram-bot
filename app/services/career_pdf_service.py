@@ -219,6 +219,11 @@ _CONFIRMED_TASK_STATUSES = frozenset({
 })
 
 
+def _era_visible(item: PortfolioEntry) -> bool:
+    """Skip portfolio entries the participant hid from PDF export."""
+    return bool(getattr(item, "include_in_resume", True))
+
+
 def _era_sections(
     portfolio: PortfolioData,
     *,
@@ -228,19 +233,41 @@ def _era_sections(
 
     Status filters must match Russian labels from ``build_portfolio_data``
     (e.g. approved submissions → «Принят»), not only raw English codes.
+    Certificate / uploaded entries honor ``include_in_resume``.
     """
     sections = {
-        "project": [item for item in portfolio.projects if item.status in {"Одобрен", "В работе", "Завершён", "вклад подтверждён"}],
-        "event": [item for item in portfolio.events if item.status == "Посетил"],
-        "task": [item for item in portfolio.tasks if item.status in _CONFIRMED_TASK_STATUSES],
-        "leadership": list(portfolio.leadership),
-        "certificate": list(portfolio.certificates),
-        "achievement": list(portfolio.badges),
-        "volunteer": [item for item in portfolio.volunteer if item.status in _CONFIRMED_TASK_STATUSES],
+        "project": [
+            item
+            for item in portfolio.projects
+            if item.status in {"Одобрен", "В работе", "Завершён", "вклад подтверждён"} and _era_visible(item)
+        ],
+        "event": [
+            item for item in portfolio.events if item.status == "Посетил" and _era_visible(item)
+        ],
+        "task": [
+            item
+            for item in portfolio.tasks
+            if item.status in _CONFIRMED_TASK_STATUSES and _era_visible(item)
+        ],
+        "leadership": [item for item in portfolio.leadership if _era_visible(item)],
+        "certificate": [item for item in portfolio.certificates if _era_visible(item)],
+        "achievement": [item for item in portfolio.badges if _era_visible(item)],
+        "volunteer": [
+            item
+            for item in portfolio.volunteer
+            if item.status in _CONFIRMED_TASK_STATUSES and _era_visible(item)
+        ],
     }
     if resume_cap is not None:
         return {key: value[:resume_cap] for key, value in sections.items()}
     return sections
+
+
+# Short résumé («Резюме 1–2 стр.»): layout-aware caps for BOTH ERA and career items.
+# ~4 cards/section + global budget keeps A4 two-column layout within 1–2 pages.
+RESUME_SECTION_CAP = 4
+RESUME_TOTAL_CAP = 14
+RESUME_DESC_LIMIT = 220
 
 
 def _user_item_bits(item: CareerPortfolioItem) -> tuple[str, str, str]:
@@ -358,7 +385,15 @@ def _metric_card(styles, label: str, value: int):
     return table
 
 
-def _entry_flowables(styles, title: str, meta: str, description: str, *, content_width_mm: float = 110) -> list:
+def _entry_flowables(
+    styles,
+    title: str,
+    meta: str,
+    description: str,
+    *,
+    content_width_mm: float = 110,
+    desc_limit: int | None = None,
+) -> list:
     """Accent card flowables. Long descriptions stay outside tables so ReportLab can split them."""
     from reportlab.lib import colors
     from reportlab.lib.styles import ParagraphStyle
@@ -386,8 +421,9 @@ def _entry_flowables(styles, title: str, meta: str, description: str, *, content
     text = (description or "").strip()
     if len(text) < 12:
         return [KeepTogether([header, Spacer(1, 1.5 * mm)])]
-    if len(text) > 900:
-        text = text[:897].rstrip() + "…"
+    hard_limit = desc_limit if desc_limit is not None else 900
+    if len(text) > hard_limit:
+        text = text[: max(0, hard_limit - 1)].rstrip() + "…"
     body_style = ParagraphStyle(
         "EraEntryBody",
         parent=styles["body"],
@@ -400,6 +436,39 @@ def _entry_flowables(styles, title: str, meta: str, description: str, *, content
     if len(text) < 280:
         return [KeepTogether([header, body, Spacer(1, 1.5 * mm)])]
     return [header, body, Spacer(1, 1.5 * mm)]
+
+
+def _cap_resume_content(
+    era: dict[str, list[PortfolioEntry]],
+    grouped: dict[str, list[CareerPortfolioItem]],
+    *,
+    purpose: str,
+    per_section: int = RESUME_SECTION_CAP,
+    total: int = RESUME_TOTAL_CAP,
+) -> tuple[dict[str, list[PortfolioEntry]], dict[str, list[CareerPortfolioItem]]]:
+    """Layout-aware résumé budget across ERA + career items (not ERA-only)."""
+    order = PURPOSE_ORDER.get(purpose, PURPOSE_ORDER["universal"])
+    capped_era: dict[str, list[PortfolioEntry]] = {key: [] for key in era}
+    capped_grouped: dict[str, list[CareerPortfolioItem]] = {key: [] for key in grouped}
+    remaining = total
+    keys = list(dict.fromkeys([*order, *era.keys(), *grouped.keys()]))
+    for item_type in keys:
+        if remaining <= 0:
+            capped_era.setdefault(item_type, [])
+            capped_grouped.setdefault(item_type, [])
+            continue
+        system_items = list(era.get(item_type, []))[:per_section]
+        own_items = list(grouped.get(item_type, []))[:per_section]
+        # Prefer ERA facts first, then participant career items, within the section slice.
+        take_system = min(len(system_items), remaining, per_section)
+        system_slice = system_items[:take_system]
+        remaining -= len(system_slice)
+        take_own = min(len(own_items), remaining, max(0, per_section - len(system_slice)))
+        own_slice = own_items[:take_own]
+        remaining -= len(own_slice)
+        capped_era[item_type] = system_slice
+        capped_grouped[item_type] = own_slice
+    return capped_era, capped_grouped
 
 
 def _draw_resume_footer(canvas, doc, *, resume_note: bool = True) -> None:
@@ -548,13 +617,16 @@ def build_career_resume(
     ]
 
     export_mode = mode if mode in RESUME_MODES else "portfolio"
-    resume_cap = 6 if export_mode == "resume" else None
+    is_resume = export_mode == "resume"
+    desc_limit = RESUME_DESC_LIMIT if is_resume else None
 
     grouped: dict[str, list[CareerPortfolioItem]] = {}
     for item in items:
         if item.include_in_resume and item.status not in {"pending", "revoked"}:
             grouped.setdefault(item.item_type, []).append(item)
-    era = _era_sections(portfolio, resume_cap=resume_cap)
+    era = _era_sections(portfolio)
+    if is_resume:
+        era, grouped = _cap_resume_content(era, grouped, purpose=purpose)
 
     metrics = [
         ("Мероприятия", len(era["event"])),
@@ -655,23 +727,37 @@ def build_career_resume(
             if key in used_keys:
                 continue
             used_keys.add(key)
-            right_story.extend(_entry_flowables(styles, title, meta, description, content_width_mm=right_w_mm))
+            right_story.extend(
+                _entry_flowables(
+                    styles, title, meta, description, content_width_mm=right_w_mm, desc_limit=desc_limit
+                )
+            )
         for item in own:
             title, meta, description = _user_item_bits(item)
             key = _dedupe_key(title, item.issued_at.strftime("%d.%m.%Y") if item.issued_at else "", item.organization or "")
             if key in used_keys:
                 continue
             used_keys.add(key)
-            right_story.extend(_entry_flowables(styles, title, meta, description, content_width_mm=right_w_mm))
+            right_story.extend(
+                _entry_flowables(
+                    styles, title, meta, description, content_width_mm=right_w_mm, desc_limit=desc_limit
+                )
+            )
         right_story.append(Spacer(1, 1.5 * mm))
 
     for item_type, own in grouped.items():
         if item_type in seen:
             continue
+        if not own:
+            continue
         right_story.append(Paragraph(TYPE_LABELS.get(item_type, item_type.title()), styles["section"]))
         for item in own:
             title, meta, description = _user_item_bits(item)
-            right_story.extend(_entry_flowables(styles, title, meta, description, content_width_mm=right_w_mm))
+            right_story.extend(
+                _entry_flowables(
+                    styles, title, meta, description, content_width_mm=right_w_mm, desc_limit=desc_limit
+                )
+            )
 
     if is_sparse:
         from reportlab.lib import colors

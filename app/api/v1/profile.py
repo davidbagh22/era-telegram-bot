@@ -53,6 +53,7 @@ class PortfolioEntryOut(BaseModel):
     category: str = ""
     file_id: str | None = None
     url: str | None = None
+    include_in_resume: bool = True
 
 
 class ProfileOut(BaseModel):

@@ -25,20 +25,31 @@ router = APIRouter(prefix="/career", tags=["career"])
 
 
 async def _active_certificate_pdfs(session: AsyncSession, user_id: int) -> list[bytes]:
+    """Issued certificate PDFs that the participant still wants in the export.
+
+    Honors ``PortfolioItem.include_in_resume`` on the linked career/portfolio row
+    so a privacy toggle actually removes the attachment from
+    ``portfolio_with_certificates``.
+    """
     from app.services.certificate_pdf_service import build_certificate_pdf
 
     rows = (
-        await session.scalars(
-            select(CertificateIssue)
+        await session.execute(
+            select(CertificateIssue, CareerPortfolioItem)
+            .join(
+                CareerPortfolioItem,
+                CareerPortfolioItem.id == CertificateIssue.portfolio_item_id,
+            )
             .where(
                 CertificateIssue.user_id == user_id,
                 CertificateIssue.status == "issued",
+                CareerPortfolioItem.include_in_resume.is_(True),
             )
             .order_by(CertificateIssue.id.asc())
         )
     ).all()
     blobs: list[bytes] = []
-    for issue in rows:
+    for issue, _item in rows:
         try:
             blobs.append(
                 build_certificate_pdf(

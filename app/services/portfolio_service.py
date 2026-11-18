@@ -57,6 +57,7 @@ class PortfolioEntry:
     category: str = ""
     file_id: str | None = None
     url: str | None = None
+    include_in_resume: bool = True
 
 
 @dataclass(frozen=True)
@@ -120,6 +121,11 @@ def _limited(items: list[PortfolioEntry], limit: int | None = 12) -> list[Portfo
     return items[:limit]
 
 
+def _resume_visible(item: PortfolioItem) -> bool:
+    """Honor per-item privacy toggle for PDF / ERA export buckets."""
+    return bool(getattr(item, "include_in_resume", True))
+
+
 def _portfolio_entry(item: PortfolioItem) -> PortfolioEntry:
     status = "подтверждено" if item.status == "verified" else "на проверке"
     return PortfolioEntry(
@@ -130,6 +136,7 @@ def _portfolio_entry(item: PortfolioItem) -> PortfolioEntry:
         category=_clean(item.item_type),
         file_id=item.file_id,
         url=item.url,
+        include_in_resume=_resume_visible(item),
     )
 
 
@@ -256,11 +263,18 @@ async def build_portfolio_data(
 
     confirmed_items = [_portfolio_entry(item) for item in portfolio_items if item.status == "verified"]
     pending_items = [_portfolio_entry(item) for item in portfolio_items if item.status == "pending"]
-    certificates = [item for item in confirmed_items if item.category == "certificate"]
+    # Export / ERA certificate buckets honor include_in_resume; full confirmed_items
+    # remain available for management UIs that show privacy toggles.
+    certificates = [
+        item
+        for item in confirmed_items
+        if item.category == "certificate" and item.include_in_resume
+    ]
     recommendations = [
         item
         for item in confirmed_items
         if item.category in {"recommendation", "leader_recommendation", "partner_recommendation"}
+        and item.include_in_resume
     ]
 
     return PortfolioData(
