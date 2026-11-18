@@ -39,18 +39,40 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Отменена",
 };
 
-/** Strip pack meta preamble; keep a short human description for list cards. */
+/**
+ * Strip pack meta preamble; keep a short human description for list cards.
+ * Pack lines look like: "Тип: Media Команда: 1–4 Чат: media <instruction>"
+ * — meta and instruction share one line, so never wipe a whole line as meta.
+ */
 export function taskListDescription(raw: string, limit = 140): string {
-  let text = (raw || "").trim();
-  const taskMark = /Задача:\s*/i.exec(text);
-  if (taskMark) text = text.slice(taskMark.index + taskMark[0].length);
-  text = text
-    .replace(/^Тип:[^\n]*\n?/i, "")
-    .replace(/^Команда:[^\n]*\n?/i, "")
-    .replace(/^Чат:[^\n]*\n?/i, "")
-    .replace(/^Дедлайн:[^\n]*\n?/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const original = (raw || "").trim();
+  if (!original) return "";
+  let text = original;
+  const taskMark = /(?:^|\n)Задача:\s*/i.exec(text);
+  if (taskMark) {
+    text = text.slice(taskMark.index + taskMark[0].length).trim();
+  }
+  // Fixed field order from community missions pack. Deadline values are short
+  // ("14 дней"); stop before the first real instruction sentence.
+  const packMeta = text.match(
+    /^Тип:\s*.+?\s+Команда:\s*.+?\s+Чат:\s*\S+(?:\s+Дедлайн:\s*\d+\s*(?:дн(?:я|ей|ень)|недел[ьяи]|час(?:а|ов)?)?)?\s*/iu,
+  );
+  if (packMeta) {
+    text = text.slice(packMeta[0].length).trim();
+  } else {
+    // Drop leading meta tokens only when the next known key follows.
+    text = text
+      .replace(/^Тип:\s*.+?(?=\s+Команда:)/iu, "")
+      .replace(/^\s*Команда:\s*.+?(?=\s+Чат:)/iu, "")
+      .replace(/^\s*Чат:\s*\S+(?=\s+(?:Дедлайн:|[«"A-ZА-ЯЁ]))/iu, "")
+      .replace(/^\s*Дедлайн:\s*\d+\s*(?:дн(?:я|ей|ень)|недел[ьяи]|час(?:а|ов)?)?/iu, "")
+      .trim();
+  }
+  text = text.replace(/\s+/g, " ").trim();
+  if (!text) {
+    // Boundary unclear — keep a truncated original rather than an empty card.
+    text = original.replace(/\s+/g, " ").trim();
+  }
   if (text.length <= limit) return text;
   return `${text.slice(0, limit - 1).trimEnd()}…`;
 }
@@ -173,25 +195,26 @@ export function TasksTab({ initialItemId }: TasksTabProps = {}) {
                 {description}
               </p>
             ) : null}
-            {canTake ? (
-              <button
-                type="button"
-                className="era-btn-primary"
-                disabled={pendingId !== null}
-                onClick={() => void handleClaim(task.id)}
-                style={{ width: "100%", marginTop: "0.7rem" }}
-              >
-                {pendingId === task.id ? "Сохраняем…" : "Взять"}
-              </button>
-            ) : (
+            <div style={{ display: "flex", gap: "0.45rem", marginTop: "0.7rem", flexWrap: "wrap" }}>
+              {canTake ? (
+                <button
+                  type="button"
+                  className="era-btn-primary"
+                  disabled={pendingId !== null}
+                  onClick={() => void handleClaim(task.id)}
+                  style={{ flex: "1 1 8rem" }}
+                >
+                  {pendingId === task.id ? "Сохраняем…" : "Взять"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => { window.location.hash = `#/tasks/${task.id}`; }}
-                style={{ width: "100%", marginTop: "0.7rem" }}
+                style={{ flex: "1 1 8rem" }}
               >
                 {task.is_joined_or_assigned ? "К заданию" : "Подробнее"}
               </button>
-            )}
+            </div>
           </Card>
         );
       })}

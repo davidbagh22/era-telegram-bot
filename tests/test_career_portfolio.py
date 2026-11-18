@@ -73,6 +73,11 @@ async def _run_flow() -> None:
                 raise AssertionError("verified item must be locked")
             except ValueError as exc:
                 assert str(exc) == "verified_item_locked"
+            # Privacy toggle remains allowed on verified items.
+            hidden = await career_service.update_item(session, item, include_in_resume=False)
+            assert hidden.include_in_resume is False
+            shown = await career_service.update_item(session, item, include_in_resume=True)
+            assert shown.include_in_resume is True
 
             profile = await career_service.update_profile(
                 session,

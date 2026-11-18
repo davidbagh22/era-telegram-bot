@@ -208,16 +208,39 @@ def _dedupe_short(value: str | None, *others: str | None) -> str | None:
     return text
 
 
-def _era_sections(portfolio: PortfolioData) -> dict[str, list[PortfolioEntry]]:
-    return {
+_CONFIRMED_TASK_STATUSES = frozenset({
+    "Принят",
+    "Одобрено лидером",
+    "Выполнена",
+    "approved",
+    "leader_approved",
+    "completed",
+    "подтверждено",
+})
+
+
+def _era_sections(
+    portfolio: PortfolioData,
+    *,
+    resume_cap: int | None = None,
+) -> dict[str, list[PortfolioEntry]]:
+    """Map live ERA activity into resume section buckets.
+
+    Status filters must match Russian labels from ``build_portfolio_data``
+    (e.g. approved submissions → «Принят»), not only raw English codes.
+    """
+    sections = {
         "project": [item for item in portfolio.projects if item.status in {"Одобрен", "В работе", "Завершён", "вклад подтверждён"}],
         "event": [item for item in portfolio.events if item.status == "Посетил"],
-        "task": [item for item in portfolio.tasks if item.status in {"Выполнена", "approved", "completed", "подтверждено"}],
-        "leadership": portfolio.leadership,
-        "certificate": portfolio.certificates,
-        "achievement": portfolio.badges,
-        "volunteer": [item for item in portfolio.volunteer if item.status in {"Выполнена", "approved", "completed", "подтверждено"}],
+        "task": [item for item in portfolio.tasks if item.status in _CONFIRMED_TASK_STATUSES],
+        "leadership": list(portfolio.leadership),
+        "certificate": list(portfolio.certificates),
+        "achievement": list(portfolio.badges),
+        "volunteer": [item for item in portfolio.volunteer if item.status in _CONFIRMED_TASK_STATUSES],
     }
+    if resume_cap is not None:
+        return {key: value[:resume_cap] for key, value in sections.items()}
+    return sections
 
 
 def _user_item_bits(item: CareerPortfolioItem) -> tuple[str, str, str]:
@@ -454,6 +477,34 @@ def _signature_footer(styles, *, resume_note: bool):
     return KeepTogether([Spacer(1, 4 * mm), Paragraph(escape(note), styles["small"]), Spacer(1, 3 * mm), table])
 
 
+RESUME_MODES = frozenset({"resume", "portfolio", "portfolio_with_certificates"})
+
+
+def _dedupe_key(title: str, date_label: str = "", organization: str = "") -> str:
+    return "|".join(part.strip().casefold() for part in (title, date_label, organization) if part and part.strip())
+
+
+def merge_pdf_bytes(parts: list[bytes]) -> bytes:
+    """Append PDF parts with pypdf; skip empty/invalid blobs."""
+    from pypdf import PdfReader, PdfWriter
+
+    writer = PdfWriter()
+    for blob in parts:
+        if not blob:
+            continue
+        try:
+            reader = PdfReader(BytesIO(blob))
+        except Exception:
+            continue
+        for page in reader.pages:
+            writer.add_page(page)
+    if len(writer.pages) == 0:
+        raise ValueError("empty_pdf_merge")
+    out = BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
 def build_career_resume(
     user: User,
     career_profile: CareerProfile,
@@ -461,6 +512,8 @@ def build_career_resume(
     items: list[CareerPortfolioItem],
     *,
     purpose: str,
+    mode: str = "portfolio",
+    certificate_pdfs: list[bytes] | None = None,
 ) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
@@ -494,11 +547,14 @@ def build_career_resume(
         if str(item.get("name", "")).strip()
     ]
 
+    export_mode = mode if mode in RESUME_MODES else "portfolio"
+    resume_cap = 6 if export_mode == "resume" else None
+
     grouped: dict[str, list[CareerPortfolioItem]] = {}
     for item in items:
         if item.include_in_resume and item.status not in {"pending", "revoked"}:
             grouped.setdefault(item.item_type, []).append(item)
-    era = _era_sections(portfolio)
+    era = _era_sections(portfolio, resume_cap=resume_cap)
 
     metrics = [
         ("Мероприятия", len(era["event"])),
@@ -517,13 +573,14 @@ def build_career_resume(
     left_w = 58 * mm
     right_w = page_width - side * 2 - left_w - gap
     is_sparse = not any(True for key in PURPOSE_ORDER["universal"] if era.get(key) or grouped.get(key)) and not about
+    hero_title = "Резюме" if export_mode == "resume" else "Портфолио участника ЭРА"
 
     def _on_page(canvas, doc):
         _draw_hero(
             canvas,
             doc,
             title=name,
-            subtitle=hero_sub or "Портфолио участника ЭРА",
+            subtitle=hero_sub or hero_title,
             brand_line="ЭРА · ОБЪЕДИНЕНИЕ ЛИДЕРОВ И КУЛЬТУРНЫХ ИНИЦИАТИВ",
         )
         _draw_resume_footer(canvas, doc, resume_note=True)
@@ -591,11 +648,20 @@ def build_career_resume(
             continue
         seen.add(item_type)
         right_story.append(Paragraph(TYPE_LABELS.get(item_type, item_type.title()), styles["section"]))
+        used_keys: set[str] = set()
         for item in system_items:
             title, meta, description = _era_entry_bits(item)
+            key = _dedupe_key(title, item.date_label or "")
+            if key in used_keys:
+                continue
+            used_keys.add(key)
             right_story.extend(_entry_flowables(styles, title, meta, description, content_width_mm=right_w_mm))
         for item in own:
             title, meta, description = _user_item_bits(item)
+            key = _dedupe_key(title, item.issued_at.strftime("%d.%m.%Y") if item.issued_at else "", item.organization or "")
+            if key in used_keys:
+                continue
+            used_keys.add(key)
             right_story.extend(_entry_flowables(styles, title, meta, description, content_width_mm=right_w_mm))
         right_story.append(Spacer(1, 1.5 * mm))
 
@@ -645,7 +711,13 @@ def build_career_resume(
     # After the first-page right column fills, continue on a full-width template (not the sidebar frame).
     story = left_story + [FrameBreak(), NextPageTemplate("continuation")] + right_story
     doc.build(story)
-    return stream.getvalue()
+    base_pdf = stream.getvalue()
+    if export_mode == "portfolio_with_certificates" and certificate_pdfs:
+        try:
+            return merge_pdf_bytes([base_pdf, *[blob for blob in certificate_pdfs if blob]])
+        except ValueError:
+            return base_pdf
+    return base_pdf
 
 
 def _verification_qr(url: str):

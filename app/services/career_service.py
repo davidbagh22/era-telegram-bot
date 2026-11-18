@@ -174,8 +174,17 @@ async def update_item(
     item: CareerPortfolioItem,
     **changes: Any,
 ) -> CareerPortfolioItem:
-    if item.status in {"verified", "revoked"}:
+    # Verified facts stay locked, but the participant may hide them from PDF.
+    privacy_only = set(changes) <= {"include_in_resume"} and changes.get("include_in_resume") is not None
+    if item.status == "revoked":
         raise ValueError("verified_item_locked")
+    if item.status == "verified" and not privacy_only:
+        raise ValueError("verified_item_locked")
+    if item.status == "verified" and privacy_only:
+        item.include_in_resume = bool(changes["include_in_resume"])
+        await session.commit()
+        await session.refresh(item)
+        return item
     # Validate before mutating any field: a rejected PATCH must not leave a
     # partially changed ORM object that another operation could later commit.
     evidence_url = valid_evidence_url(changes["url"]) if "url" in changes else None

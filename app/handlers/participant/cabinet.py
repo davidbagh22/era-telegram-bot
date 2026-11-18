@@ -33,8 +33,9 @@ from app.keyboards.participant import (
 from app.repositories.users import rating, user_stats
 from app.services.event_activity_service import REVIEWABLE_STATUSES
 from app.services.notification_service import safe_answer_document, safe_answer_photo
+from app.services import career_service
+from app.services.career_pdf_service import build_career_resume
 from app.services.portfolio_service import build_portfolio_data, portfolio_summary_text
-from app.services.resume_service import build_era_resume
 from app.utils import texts
 from app.utils.constants import (
     ApplicationStatus,
@@ -297,7 +298,16 @@ async def resume(call: CallbackQuery, user: User | None, session: AsyncSession) 
     await call.message.answer("Собираю Ваше портфолио в PDF. Это займёт несколько секунд")
     try:
         data = await build_portfolio_data(session, user, preview_limit=None)
-        content = build_era_resume(data)
+        career_profile = await career_service.get_or_create_profile(session, user.id)
+        career_items = await career_service.list_items(session, user.id)
+        content = build_career_resume(
+            user,
+            career_profile,
+            data,
+            career_items,
+            purpose="universal",
+            mode="portfolio",
+        )
     except Exception:
         logger.exception("Could not build ERA resume for user %s", user.id)
         await call.message.answer(
