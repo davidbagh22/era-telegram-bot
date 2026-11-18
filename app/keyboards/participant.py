@@ -284,10 +284,6 @@ def profile_settings_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def cabinet_keyboard() -> InlineKeyboardMarkup:
-    return journey_keyboard()
-
-
 def event_list_keyboard(events: Iterable) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(text=event.title[:50], callback_data=f"event:view:{event.id}")]
