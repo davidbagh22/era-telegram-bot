@@ -1,5 +1,6 @@
 # ERA bot and Mini App handoff
 
+- 19 November / literature recovery (`cursor/literature-games-audit-37e0`): root cause = empty `APPROVED_SCHEDULED_LITERATURE_ISSUES` after #649; DB AppSetting approvals + /literature_admin series preview/approve/revoke; no missed-day catch-up. LIVE was 57c4108.
 - 18 November evening / merge wave: #699/#702 on main; rebasing #700–#708 for squash merge. E14 human acceptance still required.
 - 18 November / UX feed dedupe (#699 merged): poster-first feed + meta strip + «Открыть событие» e2e label.
 - 18 November / tasks+vector+portfolio (`cursor/tasks-vector-portfolio-37e0`, #700): task cards «Взять»+«Подробнее»; PDF modes; include_in_resume privacy; legacy confirmed_items in career PDF.
