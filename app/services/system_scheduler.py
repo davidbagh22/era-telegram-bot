@@ -30,6 +30,9 @@ from app.services.media_attachment_service import post_missing_media_task_cards
 from app.services.media_pipeline_service import reconcile_media_pipeline_job
 from app.services.media_service import process_media_chat_automation, publish_due_channel_content
 from app.services.participation_lifecycle_service import run_reactivation_cycle
+from app.services.participation_mode_notification_service import (
+    process_participation_mode_notifications,
+)
 from app.services.project_scoring_reconciliation_service import reconcile_project_scoring_job
 from app.services.system_health_service import run_system_diagnostics, send_daily_system_summary
 from app.services.vacancy_reconciliation_service import reconcile_vacancies_job
@@ -98,6 +101,18 @@ def add_system_jobs(
     scheduler.add_job(post_missing_media_task_cards, "interval", minutes=1, args=(bot, settings, session_factory), id="media-task-cards", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(process_media_chat_automation, "interval", minutes=1, args=(bot, settings, session_factory), id="media-chat-automation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(run_reactivation_cycle, "interval", hours=1, args=(bot, settings, session_factory), id="participation-reactivation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    # Pause-end and observer check-ins: service existed but was never wired.
+    scheduler.add_job(
+        process_participation_mode_notifications,
+        "interval",
+        minutes=15,
+        args=(bot, settings, session_factory),
+        id="participation-mode-notifications",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
+    )
     scheduler.add_job(complete_verification_campaigns_job, "interval", minutes=5, args=(session_factory,), id="community-verification-expiry", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(send_monthly_development_reminders, "cron", hour=18, minute=0, args=(bot, settings, session_factory), id="my-vector-monthly-reminders", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(book_club_daily_job, "cron", hour=19, minute=0, timezone="Asia/Yerevan", args=(bot, settings, session_factory), id="book-club-daily", replace_existing=True, max_instances=1, coalesce=True)

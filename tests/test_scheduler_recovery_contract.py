@@ -72,6 +72,20 @@ class SchedulerRecoveryContractTests(unittest.TestCase):
                 _, _, options = self.scheduler.jobs[job_id]
                 self.assertIsNotNone(options.get("next_run_time"))
 
+    def test_participation_mode_notifications_are_scheduled(self):
+        """Pause/observer reminders must run; the processor alone never delivers."""
+        from app.services.participation_mode_notification_service import (
+            process_participation_mode_notifications,
+        )
+
+        callback, trigger, options = self.scheduler.jobs["participation-mode-notifications"]
+        self.assertIs(callback, process_participation_mode_notifications)
+        self.assertEqual(trigger, "interval")
+        self.assertEqual(options["minutes"], 15)
+        self.assertEqual(options["max_instances"], 1)
+        self.assertTrue(options["coalesce"])
+        self.assertIsNotNone(options.get("next_run_time"))
+
 
 if __name__ == "__main__":
     unittest.main()
