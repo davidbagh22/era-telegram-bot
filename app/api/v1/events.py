@@ -240,6 +240,20 @@ async def _get_registration(
     )
 
 
+async def _require_participant_event(
+    session: AsyncSession, event_id: int, user: User
+) -> tuple[Event, EventRegistration | None]:
+    """Same visibility gate as GET /events/{id}: hide drafts and unregistered
+    cancelled events so status-code oracles cannot enumerate them."""
+    event = await session.get(Event, event_id)
+    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    registration = await _get_registration(session, event_id, user.id)
+    if event.status == EventStatus.CANCELLED and registration is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    return event, registration
+
+
 @router.get("", response_model=list[EventOut])
 async def read_events(
     scope: EventScope = Query("all"),
@@ -369,14 +383,9 @@ async def read_event(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> EventOut:
-    event = await session.get(Event, event_id)
-    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
-        raise HTTPException(status_code=404, detail="event_not_found")
-    registration = await _get_registration(session, event_id, user.id)
     # A cancelled draft has no reliable publication marker. Do not expose its
     # title/location to an unrelated participant by numeric event ID.
-    if event.status == EventStatus.CANCELLED and registration is None:
-        raise HTTPException(status_code=404, detail="event_not_found")
+    event, registration = await _require_participant_event(session, event_id, user)
     return await _to_event_out(session, event, registration, user)
 
 
@@ -419,9 +428,8 @@ async def register_event(
     bot: Bot | None = Depends(get_bot),
     settings: Settings = Depends(get_settings),
 ) -> EventOut:
-    event = await session.get(Event, event_id)
-    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
-        raise HTTPException(status_code=404, detail="event_not_found")
+    # Match detail/poster privacy: do not confirm CANCELLED existence via 409.
+    event, _existing = await _require_participant_event(session, event_id, user)
     registration, error = await register_for_event(session, event, user.id)
     if error:
         raise HTTPException(status_code=409, detail=error)
@@ -444,10 +452,9 @@ async def cancel_event_registration(
     bot: Bot | None = Depends(get_bot),
     settings: Settings = Depends(get_settings),
 ) -> EventOut:
-    event = await session.get(Event, event_id)
-    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
-        raise HTTPException(status_code=404, detail="event_not_found")
-    registration = await _get_registration(session, event_id, user.id)
+    # Unregistered callers must not learn that a cancelled event id exists
+    # through a distinct registration_not_found response.
+    event, registration = await _require_participant_event(session, event_id, user)
     if registration is None:
         raise HTTPException(status_code=404, detail="registration_not_found")
     was_waiting = registration.status == RegistrationStatus.WAITLIST
@@ -488,9 +495,8 @@ async def read_event_activities(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> list[EventActivityOut]:
-    event = await session.get(Event, event_id)
-    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
-        raise HTTPException(status_code=404, detail="event_not_found")
+    # Hide cancelled events from strangers before the not_registered oracle.
+    event, _registration = await _require_participant_event(session, event_id, user)
     activities = await event_activity_service.list_activities_for_participant(session, event, user)
     if activities is None:
         raise HTTPException(status_code=409, detail="not_registered")

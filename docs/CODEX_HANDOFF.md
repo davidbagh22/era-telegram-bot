@@ -1,6 +1,7 @@
 # ERA bot and Mini App handoff
 
 - 18 November / CONTENT bot RU (`cursor/content-bot-ru-voice-37e0`): tighten AI-template voice in `texts.py` / `ux_texts.py` (menus, empty states, registration, portfolio, departments). Mini App leftovers already covered by #697; no behavior/roles/points changes.
+- 18 November / E11 security follow-up (`cursor/security-ecc-hardening-bd19`): CANCELLED existence oracles closed on Mini App register/cancel/activities (same 404 gate as #691 detail/poster). Anniversary guest CSV remains admin-only; referrals return counts only; portfolio/career downloads stay owner-scoped.
 - 18 November / E11 security (#691): CANCELLED event detail/poster privacy — public allowlist + Mini App detail/poster 404 unless registered. Complements #484.
 - 18 November / cleanup (#692): remove proven-dead unmounted handlers/stubs + unused Mini App components + dead `project:hint` keyboard path. No queues/roles/points/history/secrets touched.
 - 18 November / #675: Home separates participant growth progress from «Мой вектор».
