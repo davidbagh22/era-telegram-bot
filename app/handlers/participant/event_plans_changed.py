@@ -1,17 +1,15 @@
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Event, EventRegistration, User
+from app.database.models import User
 from app.keyboards.common import back_keyboard
 from app.services.event_registration_notice_service import (
     RegistrationNoticeKind,
     deliver_registration_notice,
     enqueue_registration_notice,
 )
-from app.services.event_registration_service import mark_not_coming
-from app.services.event_service import promote_waitlist, send_committed_registration_notice
+from app.services.event_service import leave_event_registration, send_committed_registration_notice
 from app.utils import texts
 from app.utils.constants import ApplicationStatus, RegistrationStatus
 
@@ -61,30 +59,24 @@ async def plans_changed(call: CallbackQuery, user: User | None, session: AsyncSe
             reply_markup=back_keyboard("events:list"),
         )
         return
-    registration = await session.scalar(
-        select(EventRegistration).where(
-            EventRegistration.event_id == event_id,
-            EventRegistration.user_id == user.id,
-        )
-    )
-    event = await session.get(Event, event_id)
 
-    if registration is None or event is None:
+    result = await leave_event_registration(session, event_id=event_id, user_id=user.id)
+    if result is None:
         await call.message.answer(
             "Регистрация на мероприятие не найдена.",
             reply_markup=back_keyboard("events:list"),
         )
         return
 
-    was_waiting = registration.status == RegistrationStatus.WAITLIST
-    if was_waiting:
-        registration.status = RegistrationStatus.CANCELLED
+    event = result.event
+    registration = result.registration
+    if result.outcome == "left_waitlist":
         reply = (
             f"Вы покинули лист ожидания на «{event.title}».\n\n"
             "Если снова захотите участвовать и регистрация ещё открыта — вернитесь в афишу."
         )
         expected_status = RegistrationStatus.CANCELLED
-    elif mark_not_coming(registration, event):
+    elif result.outcome == "not_coming":
         reply = (
             f"Поняли. Отметили, что вы не сможете прийти на «{event.title}».\n\n"
             "Спасибо, что сообщили заранее — место сможет занять участник из листа ожидания."
@@ -97,19 +89,16 @@ async def plans_changed(call: CallbackQuery, user: User | None, session: AsyncSe
         )
         return
 
-    # Mirror Mini App cancel: free seat → promote oldest waiter after write, before commit.
     notice = None
-    if not was_waiting:
-        promoted = await promote_waitlist(session, event)
-        if promoted is not None:
-            promoted_user = await session.get(User, promoted.user_id)
-            if promoted_user is not None:
-                notice = await enqueue_registration_notice(
-                    session,
-                    promoted,
-                    promoted_user.telegram_id,
-                    RegistrationNoticeKind.PROMOTION,
-                )
+    if result.promoted is not None:
+        promoted_user = await session.get(User, result.promoted.user_id)
+        if promoted_user is not None:
+            notice = await enqueue_registration_notice(
+                session,
+                result.promoted,
+                promoted_user.telegram_id,
+                RegistrationNoticeKind.PROMOTION,
+            )
 
     await session.commit()
     if notice is not None:

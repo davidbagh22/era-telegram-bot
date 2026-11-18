@@ -434,6 +434,71 @@ class EventCommitBeforeNotificationTests(IsolatedAsyncioTestCase):
         call.message.answer.assert_awaited_once()
         self.assertIn("листа ожидания", call.message.answer.await_args.args[0])
 
+    async def test_leave_after_concurrent_promotion_frees_seat_for_next_waiter(self) -> None:
+        """Codex P2: stale WAITLIST read must not skip promote after a concurrent seat free."""
+        from app.services import event_service
+
+        async with self.sessions() as session:
+            third = User(
+                telegram_id=103,
+                first_name="Third",
+                application_status=ApplicationStatus.APPROVED,
+            )
+            session.add(third)
+            await session.flush()
+            self.third_id = third.id
+            event = await session.get(Event, self.event_id)
+            for user_id in (self.first_id, self.second_id, self.third_id):
+                _, error = await register_for_event(session, event, user_id)
+                self.assertIsNone(error)
+            await session.commit()
+
+        self.assertEqual(await self._stored_status(self.second_id), RegistrationStatus.WAITLIST)
+        self.assertEqual(await self._stored_status(self.third_id), RegistrationStatus.WAITLIST)
+
+        real_lock = event_service._lock_event_for_capacity
+        concurrent_promote_done = False
+
+        async def promote_second_before_lock(session, event_id: int):
+            nonlocal concurrent_promote_done
+            if not concurrent_promote_done:
+                concurrent_promote_done = True
+                # Simulate another txn freeing the seat and promoting this waiter
+                # before our leave path locks/refreshes status.
+                async with self.sessions() as other:
+                    holder = await other.scalar(
+                        select(EventRegistration).where(
+                            EventRegistration.event_id == self.event_id,
+                            EventRegistration.user_id == self.first_id,
+                        )
+                    )
+                    waiter_reg = await other.scalar(
+                        select(EventRegistration).where(
+                            EventRegistration.event_id == self.event_id,
+                            EventRegistration.user_id == self.second_id,
+                        )
+                    )
+                    holder.status = RegistrationStatus.NOT_COMING
+                    waiter_reg.status = RegistrationStatus.REGISTERED
+                    await other.commit()
+                self.assertEqual(await self._stored_status(self.second_id), RegistrationStatus.REGISTERED)
+            return await real_lock(session, event_id)
+
+        async with self.sessions() as session:
+            waiter = await session.get(User, self.second_id)
+            call = self._event_callback("plans_changed")
+            with patch.object(event_service, "_lock_event_for_capacity", side_effect=promote_second_before_lock):
+                with patch(
+                    "app.handlers.participant.event_plans_changed.deliver_registration_notice",
+                    new=AsyncMock(),
+                ):
+                    await plans_changed(call, waiter, session)
+
+        self.assertEqual(await self._stored_status(self.second_id), RegistrationStatus.NOT_COMING)
+        self.assertEqual(await self._stored_status(self.third_id), RegistrationStatus.REGISTERED)
+        call.message.answer.assert_awaited_once()
+        self.assertIn("не сможете прийти", call.message.answer.await_args.args[0])
+
     async def test_deadline_and_disabled_registration_reject_stale_callbacks_in_both_clients(self) -> None:
         expired = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)
         for required, deadline, detail, reply in (
