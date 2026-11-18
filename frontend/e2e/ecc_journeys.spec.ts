@@ -52,20 +52,24 @@ test("full event → waitlist CTA → queue copy → cancel from waitlist", asyn
   await expect(waitlistCta).toBeVisible();
   await waitlistCta.click();
 
-  // Waitlist skips the "Место за вами" sheet; dock + toast carry the copy.
+  // Waitlist opens its own success sheet (not «Место за вами»).
+  await expect(page.getByRole("heading", { name: "Вы в листе ожидания" })).toBeVisible();
+  await expect(page.getByText(/Если место освободится|если оно освободится/i)).toBeVisible();
+  await page.getByRole("button", { name: "Понятно" }).click();
+
   await expect(page.getByText("Вы в листе ожидания").first()).toBeVisible();
-  await expect(page.getByText("В листе ожидания").first()).toBeVisible();
-  await expect(page.getByText(/Если место освободится/)).toBeVisible();
+  await expect(page.getByText(/Лист ожидания/)).toBeVisible();
 
-  await page.getByRole("button", { name: "Отказаться", exact: true }).click();
-  await expect(page.getByText("Отказаться от участия?")).toBeVisible();
-  await page.getByRole("button", { name: "Остаться" }).click();
-  await expect(page.getByText("В листе ожидания").first()).toBeVisible();
+  // Dock CTA for waitlist is «Покинуть», not «Отказаться».
+  await page.getByRole("button", { name: "Покинуть", exact: true }).click();
+  await expect(page.getByText("Покинуть лист ожидания?")).toBeVisible();
+  await page.getByRole("button", { name: "Остаться в очереди" }).click();
+  await expect(page.getByText("Вы в листе ожидания").first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Отказаться", exact: true }).click();
-  await page.getByRole("button", { name: "Отказаться", exact: true }).last().click();
+  await page.getByRole("button", { name: "Покинуть", exact: true }).click();
+  await page.getByRole("button", { name: "Покинуть", exact: true }).last().click();
   await expect(page.getByRole("button", { name: "Встать в лист ожидания" })).toBeVisible();
-  await expect(page.getByText("Участие отменено")).toBeVisible();
+  await expect(page.getByText("Вы покинули лист ожидания")).toBeVisible();
 });
 
 test("tasks list → detail → claim SOLO assignment", async ({ page }) => {
@@ -73,9 +77,10 @@ test("tasks list → detail → claim SOLO assignment", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Задания" })).toBeVisible();
 
   // Default scope is «Для тебя»; seeded challenge should land there.
+  // Cards expose «Взять» + «Подробнее» (claim from list is allowed; we open detail).
   const card = page.locator(".era-card", { hasText: "E2E открытое задание" }).first();
   await expect(card).toBeVisible();
-  await card.getByRole("button", { name: "Открыть задание" }).click();
+  await card.getByRole("button", { name: "Подробнее" }).click();
 
   await expect(page.getByRole("heading", { name: "E2E открытое задание" })).toBeVisible();
   await expect(page.getByText("Что нужно сделать")).toBeVisible();
