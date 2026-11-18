@@ -36,11 +36,17 @@ const ACTIVE_REGISTRATION_STATUSES = new Set(["registered", "will_come", "attend
 const WAITLIST_STATUS = "waitlist";
 
 const SCOPES: { value: EventScope; label: string; description: string }[] = [
-  { value: "for_me", label: "Для меня", description: "Ближайшие события и то, где вы уже участвуете" },
+  { value: "for_me", label: "Для меня", description: "Ближайшие события, ваши записи и лист ожидания" },
   { value: "all", label: "Все события", description: "Вся открытая афиша ЭРА" },
   { value: "mine", label: "Мои мероприятия", description: "Записи и лист ожидания" },
   { value: "past", label: "Прошедшие", description: "История мероприятий" },
 ];
+
+function registrationBadgeTone(status: string | null | undefined): "violet" | "gold" | "neutral" {
+  if (status === WAITLIST_STATUS) return "gold";
+  if (ACTIVE_REGISTRATION_STATUSES.has(status ?? "")) return "violet";
+  return "neutral";
+}
 
 function formatDate(value: string): string {
   const date = new Date(`${value}T00:00:00`);
@@ -409,8 +415,9 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
       <EventPoster event={event} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-        <StatusBadge label={event.display_status} tone={registered ? "violet" : "neutral"} />
-        <h2 style={{ fontSize: "clamp(1.65rem, 7vw, 2.35rem)", lineHeight: 1.05, margin: 0, overflowWrap: "break-word", textWrap: "balance" }}>{event.title}</h2>
+        <StatusBadge label={event.display_status} tone={registrationBadgeTone(event.registration_status)} />
+        <h2 style={{ fontSize: "clamp(1.65rem, 7vw, 2.35rem)", lineHeight: 1.05, margin: 0, overflowWrap: "anywhere", textWrap: "balance" }}>{event.title}</h2>
+        {showSummary && <p className="era-readable-copy" style={{ margin: 0 }}>{summary}</p>}
       </div>
 
       <Card style={{ padding: "0.95rem" }}>
@@ -541,9 +548,9 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
         ) : waitlisted ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: ".5rem" }}>
             <div style={{ minHeight: 44, borderRadius: "var(--era-radius-control)", display: "grid", placeItems: "center", background: "var(--era-tint-gold)", color: "var(--era-gold-ink)", fontWeight: 850 }}>
-              В листе ожидания
+              Лист ожидания · место не закреплено
             </div>
-            <button type="button" disabled={pending} onClick={onCancelRequest} style={{ minWidth: 106 }}>Отказаться</button>
+            <button type="button" disabled={pending} onClick={onCancelRequest} style={{ minWidth: 106 }}>Покинуть</button>
           </div>
         ) : anniversary ? (
           <AnniversaryRegistration key={event.id} event={event} />
@@ -579,6 +586,7 @@ export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) 
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<EventItem | null>(null);
   const [registrationSuccess, setRegistrationSuccess] = useState<EventItem | null>(null);
+  const [waitlistSuccess, setWaitlistSuccess] = useState<EventItem | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [deepLinkFallbackTried, setDeepLinkFallbackTried] = useState(false);
   const toast = useToast();
@@ -618,7 +626,8 @@ export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) 
       setSelectedOverride(result);
       refresh();
       if (result.registration_status === WAITLIST_STATUS) {
-        toast.show("Вы в листе ожидания", "success");
+        setWaitlistSuccess(result);
+        toast.show("Вы в листе ожидания — место ещё не закреплено", "success");
       } else {
         successHaptic();
         setRegistrationSuccess(result);
@@ -637,24 +646,26 @@ export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) 
   const handleCancel = useCallback(async (eventId: number) => {
     setPendingId(eventId);
     setActionError(null);
+    const leavingWaitlist = cancelTarget?.registration_status === WAITLIST_STATUS;
     try {
       const result = await cancelEventRegistration(eventId);
       setSelectedOverride(result);
       refresh();
-      toast.show("Участие отменено", "info");
+      toast.show(leavingWaitlist ? "Вы покинули лист ожидания" : "Участие отменено", "info");
     } catch (error) {
       setActionError(describeActionError(error));
     } finally {
       setPendingId(null);
       setCancelTarget(null);
     }
-  }, [refresh, toast]);
+  }, [cancelTarget, refresh, toast]);
 
   const openEvent = (id: number) => {
     setSelectedId(id);
     setSelectedOverride(null);
     setActionError(null);
     setRegistrationSuccess(null);
+    setWaitlistSuccess(null);
     window.location.hash = `#/events/${id}`;
   };
 
@@ -663,25 +674,43 @@ export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) 
     setSelectedOverride(null);
     setActionError(null);
     setRegistrationSuccess(null);
+    setWaitlistSuccess(null);
     setScope("for_me");
     window.location.hash = "#/events";
   };
 
   const registrationPrompt = (
-    <BottomSheet open={registrationSuccess !== null} onClose={() => setRegistrationSuccess(null)} title="Место за вами">
-      {registrationSuccess && (
-        <div className="era-success-state" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: ".25rem" }}>
-            <strong style={{ fontSize: "var(--era-text-lg)" }}>{registrationSuccess.title}</strong>
-            <span style={{ color: "var(--era-text-muted)" }}>{formatDate(registrationSuccess.event_date)} · {registrationSuccess.event_time}</span>
-            <span style={{ color: "var(--era-text-muted)" }}>{registrationSuccess.location}</span>
+    <>
+      <BottomSheet open={registrationSuccess !== null} onClose={() => setRegistrationSuccess(null)} title="Место за вами">
+        {registrationSuccess && (
+          <div className="era-success-state" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: ".25rem" }}>
+              <strong style={{ fontSize: "var(--era-text-lg)" }}>{registrationSuccess.title}</strong>
+              <span style={{ color: "var(--era-text-muted)" }}>{formatDate(registrationSuccess.event_date)} · {registrationSuccess.event_time}</span>
+              <span style={{ color: "var(--era-text-muted)" }}>{registrationSuccess.location}</span>
+            </div>
+            <EventCalendarButton event={registrationSuccess} />
+            <a href="#/events/mine" onClick={() => setRegistrationSuccess(null)}>Мои мероприятия</a>
+            <button type="button" onClick={() => setRegistrationSuccess(null)}>Готово</button>
           </div>
-          <EventCalendarButton event={registrationSuccess} />
-          <a href="#/events/mine" onClick={() => setRegistrationSuccess(null)}>Мои мероприятия</a>
-          <button type="button" onClick={() => setRegistrationSuccess(null)}>Готово</button>
-        </div>
-      )}
-    </BottomSheet>
+        )}
+      </BottomSheet>
+      <BottomSheet open={waitlistSuccess !== null} onClose={() => setWaitlistSuccess(null)} title="Вы в листе ожидания">
+        {waitlistSuccess && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <p style={{ margin: 0, color: "var(--era-text-muted)" }}>
+              Сейчас свободных мест нет. Место ещё не закреплено — если оно освободится, бот сообщит вам автоматически.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: ".25rem" }}>
+              <strong style={{ fontSize: "var(--era-text-lg)" }}>{waitlistSuccess.title}</strong>
+              <span style={{ color: "var(--era-text-muted)" }}>{formatDate(waitlistSuccess.event_date)} · {waitlistSuccess.event_time}</span>
+            </div>
+            <a href="#/events/mine" onClick={() => setWaitlistSuccess(null)}>Мои мероприятия</a>
+            <button type="button" onClick={() => setWaitlistSuccess(null)}>Понятно</button>
+          </div>
+        )}
+      </BottomSheet>
+    </>
   );
 
   if (selectedId !== null) {
@@ -710,11 +739,23 @@ export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) 
             onBack={closeEvent}
           />
 
-          <BottomSheet open={cancelTarget !== null} onClose={() => setCancelTarget(null)} title="Отказаться от участия?">
-            <p style={{ color: "var(--era-text-muted)", margin: "0 0 1rem" }}>Место освободится для другого участника. Вернуться можно будет только если регистрация всё ещё открыта.</p>
+          <BottomSheet
+            open={cancelTarget !== null}
+            onClose={() => setCancelTarget(null)}
+            title={cancelTarget?.registration_status === WAITLIST_STATUS ? "Покинуть лист ожидания?" : "Отказаться от участия?"}
+          >
+            <p style={{ color: "var(--era-text-muted)", margin: "0 0 1rem" }}>
+              {cancelTarget?.registration_status === WAITLIST_STATUS
+                ? "Вы уйдёте из очереди. Место вам ещё не было закреплено — вернуться можно, если регистрация и лист ожидания всё ещё открыты."
+                : "Место освободится для участника из листа ожидания. Вернуться можно будет только если регистрация всё ещё открыта."}
+            </p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
-              <button type="button" onClick={() => setCancelTarget(null)}>Остаться</button>
-              <button type="button" className="era-btn-primary" disabled={pendingId === selected.id} onClick={() => void handleCancel(selected.id)}>Отказаться</button>
+              <button type="button" onClick={() => setCancelTarget(null)}>
+                {cancelTarget?.registration_status === WAITLIST_STATUS ? "Остаться в очереди" : "Остаться"}
+              </button>
+              <button type="button" className="era-btn-primary" disabled={pendingId === selected.id} onClick={() => void handleCancel(selected.id)}>
+                {cancelTarget?.registration_status === WAITLIST_STATUS ? "Покинуть" : "Отказаться"}
+              </button>
             </div>
           </BottomSheet>
 
@@ -758,7 +799,7 @@ export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) 
               <div style={{ padding: "0.75rem 0.4rem 0.35rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "flex-start" }}>
                   {event.anniversary_registered == null && (
-                    <StatusBadge label={event.display_status} tone={ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "") ? "violet" : "neutral"} />
+                    <StatusBadge label={event.display_status} tone={registrationBadgeTone(event.registration_status)} />
                   )}
                   {event.points_for_visit > 0 && <strong style={{ fontSize: "0.82rem", color: "var(--era-gold-ink)" }}>+{event.points_for_visit}</strong>}
                 </div>

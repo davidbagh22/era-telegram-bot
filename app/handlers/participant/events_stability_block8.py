@@ -52,10 +52,18 @@ def _approved(user: User | None) -> bool:
     )
 
 
-def _event_keyboard(event_id: int, *, registration_button: str | None, has_activities: bool) -> InlineKeyboardMarkup:
+def _event_keyboard(
+    event_id: int,
+    *,
+    registration_button: str | None,
+    leave_button: str | None = None,
+    has_activities: bool,
+) -> InlineKeyboardMarkup:
     rows = []
     if registration_button is not None:
         rows.append([InlineKeyboardButton(text=registration_button, callback_data=f"event:join:{event_id}")])
+    if leave_button is not None:
+        rows.append([InlineKeyboardButton(text=leave_button, callback_data=f"event:plans_changed:{event_id}")])
     if has_activities:
         rows.append([InlineKeyboardButton(text="✨ Активности", callback_data=f"event:activities:{event_id}")])
     rows.append([InlineKeyboardButton(text="Добавить в календарь", callback_data=f"event:calendar:{event_id}")])
@@ -146,19 +154,51 @@ async def show_public_event_registration_card(
             .where(EventActivity.event_id == event.id, EventActivity.is_active.is_(True))
         )
     )
+    existing = await session.scalar(
+        select(EventRegistration).where(
+            EventRegistration.event_id == event.id,
+            EventRegistration.user_id == user.id,
+        )
+    )
+    existing_status = existing.status if existing is not None else None
     extra = None
     registration_button = None
-    if experience is not None and not experience.registration_required:
+    leave_button = None
+    if existing_status == RegistrationStatus.WAITLIST:
+        extra = (
+            "Вы в листе ожидания. Место ещё не закреплено — "
+            "если оно освободится, бот сообщит вам автоматически."
+        )
+        leave_button = "Покинуть лист ожидания"
+    elif existing_status in {
+        RegistrationStatus.REGISTERED,
+        RegistrationStatus.WILL_COME,
+        RegistrationStatus.ATTENDED,
+    }:
+        extra = "Вы зарегистрированы на это мероприятие."
+        if existing_status in {RegistrationStatus.REGISTERED, RegistrationStatus.WILL_COME}:
+            leave_button = "Отказаться от места"
+    elif experience is not None and not experience.registration_required:
         extra = "Для этого мероприятия регистрация не нужна."
     elif not registration_open:
         extra = "Регистрация закрыта, но карточка мероприятия остаётся доступна."
     elif full:
-        extra = "Свободных мест сейчас нет."
         if experience is not None and experience.waitlist_enabled:
+            extra = (
+                "Свободных мест нет — можно встать в лист ожидания. "
+                "Если место освободится, бот сообщит вам."
+            )
             registration_button = "Встать в лист ожидания"
+        else:
+            extra = "Свободных мест сейчас нет."
     else:
         registration_button = "Зарегистрироваться"
-    keyboard = _event_keyboard(event.id, registration_button=registration_button, has_activities=has_activities)
+    keyboard = _event_keyboard(
+        event.id,
+        registration_button=registration_button,
+        leave_button=leave_button,
+        has_activities=has_activities,
+    )
     if settings is not None:
         from app.services.event_attendance_service import attendance_v2_enabled, participant_state
         if attendance_v2_enabled(settings, telegram_id):

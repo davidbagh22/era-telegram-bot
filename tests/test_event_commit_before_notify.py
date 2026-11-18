@@ -329,15 +329,25 @@ class EventCommitBeforeNotificationTests(IsolatedAsyncioTestCase):
 
     def _event_callback(self, action: str) -> SimpleNamespace:
         return SimpleNamespace(
-            data=f"event:{action}:{self.event_id}", answer=AsyncMock(),
+            data=f"event:{action}:{self.event_id}",
+            answer=AsyncMock(),
+            bot=SimpleNamespace(send_message=AsyncMock()),
             message=SimpleNamespace(answer=AsyncMock()),
         )
 
-    async def _native_join_buttons(self, user: User, session) -> list[str]:
+    async def _native_card(self, user: User, session):
         with patch("app.handlers.participant.events_stability_block8.send_event_card", new=AsyncMock()) as card:
             await event_view(self._event_callback("view"), user, session)
-        buttons = card.await_args.kwargs["keyboard"].inline_keyboard
-        return [button.text for row in buttons for button in row if button.callback_data == f"event:join:{self.event_id}"]
+        return card.await_args.kwargs
+
+    async def _native_join_buttons(self, user: User, session) -> list[str]:
+        keyboard = (await self._native_card(user, session))["keyboard"].inline_keyboard
+        return [
+            button.text
+            for row in keyboard
+            for button in row
+            if button.callback_data == f"event:join:{self.event_id}"
+        ]
 
     async def test_native_legacy_full_event_and_enabled_waitlist_use_correct_actions(self) -> None:
         async with self.sessions() as session:
@@ -368,6 +378,61 @@ class EventCommitBeforeNotificationTests(IsolatedAsyncioTestCase):
             call = self._event_callback("join")
             await event_join(call, user, session)
             self.assertIn("уже в листе ожидания", call.message.answer.await_args.args[0])
+
+    async def test_native_card_shows_waitlist_status_and_leave_action(self) -> None:
+        async with self.sessions() as session:
+            event = await session.get(Event, self.event_id)
+            _, error = await register_for_event(session, event, self.first_id)
+            self.assertIsNone(error)
+            _, error = await register_for_event(session, event, self.second_id)
+            self.assertIsNone(error)
+            await session.commit()
+            waiter = await session.get(User, self.second_id)
+            card = await self._native_card(waiter, session)
+            joins = await self._native_join_buttons(waiter, session)
+        self.assertIn("листе ожидания", card["extra_text"])
+        self.assertIn("не закреплено", card["extra_text"])
+        leave = [
+            button.text
+            for row in card["keyboard"].inline_keyboard
+            for button in row
+            if button.callback_data == f"event:plans_changed:{self.event_id}"
+        ]
+        self.assertEqual(leave, ["Покинуть лист ожидания"])
+        self.assertEqual(joins, [])
+
+    async def test_native_full_waitlist_copy_explains_queue(self) -> None:
+        async with self.sessions() as session:
+            event = await session.get(Event, self.event_id)
+            _, error = await register_for_event(session, event, self.first_id)
+            self.assertIsNone(error)
+            await session.commit()
+            user = await session.get(User, self.second_id)
+            card = await self._native_card(user, session)
+            joins = await self._native_join_buttons(user, session)
+        self.assertIn("лист ожидания", card["extra_text"])
+        self.assertEqual(joins, ["Встать в лист ожидания"])
+
+    async def test_native_cancel_promotes_waitlist_after_commit(self) -> None:
+        async with self.sessions() as session:
+            event = await session.get(Event, self.event_id)
+            _, error = await register_for_event(session, event, self.first_id)
+            self.assertIsNone(error)
+            _, error = await register_for_event(session, event, self.second_id)
+            self.assertIsNone(error)
+            await session.commit()
+            holder = await session.get(User, self.first_id)
+            call = self._event_callback("plans_changed")
+            with patch(
+                "app.handlers.participant.event_plans_changed.deliver_registration_notice",
+                new=AsyncMock(),
+            ) as deliver:
+                await plans_changed(call, holder, session)
+        self.assertEqual(await self._stored_status(self.first_id), RegistrationStatus.NOT_COMING)
+        self.assertEqual(await self._stored_status(self.second_id), RegistrationStatus.REGISTERED)
+        deliver.assert_awaited_once()
+        call.message.answer.assert_awaited_once()
+        self.assertIn("листа ожидания", call.message.answer.await_args.args[0])
 
     async def test_deadline_and_disabled_registration_reject_stale_callbacks_in_both_clients(self) -> None:
         expired = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)
