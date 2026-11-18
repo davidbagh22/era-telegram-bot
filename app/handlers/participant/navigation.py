@@ -103,7 +103,16 @@ async def _send_main_menu(
         return
     from app.services.media_leadership_service import is_media_chair
     featured = session is not None and await anniversary.menu_available(session)
-    menu_text = f"{ux_texts.MAIN_INLINE_MENU}\n\n{anniversary.MENU_SHORTCUT}" if featured else ux_texts.MAIN_INLINE_MENU
+    anniversary_registered = bool(
+        featured and session is not None and user is not None
+        and await anniversary.user_already_registered(session, user.telegram_id, user)
+    )
+    if featured and anniversary_registered:
+        menu_text = f"{ux_texts.MAIN_INLINE_MENU}\n\n{anniversary.MENU_REGISTERED_SHORTCUT}"
+    elif featured:
+        menu_text = f"{ux_texts.MAIN_INLINE_MENU}\n\n{anniversary.MENU_SHORTCUT}"
+    else:
+        menu_text = ux_texts.MAIN_INLINE_MENU
     await message.answer(
         menu_text,
         parse_mode=ParseMode.HTML,
@@ -113,6 +122,7 @@ async def _send_main_menu(
             admin=user.role == Role.ADMIN or bool(settings and getattr(user, 'telegram_id', None) in getattr(settings, 'admin_ids', [])),
             media_chair=bool(settings and is_media_chair(user, settings)),
             anniversary=featured,
+            anniversary_registered=anniversary_registered,
         ),
     )
 

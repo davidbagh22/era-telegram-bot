@@ -102,7 +102,7 @@ async def _show_result(message, state, data=None):
     await message.answer(f"{headline}\n\n{rsvp.DETAILS}{details}", parse_mode=None)
 
 
-@router.message(StateFilter("*"), F.chat.type == "private", F.text == rsvp.MENU_BUTTON)
+@router.message(StateFilter("*"), F.chat.type == "private", F.text.in_({rsvp.MENU_BUTTON, rsvp.MENU_TICKET_BUTTON}))
 async def menu_registration(message: Message, state: FSMContext, session, user):
     if blocked(user):
         await message.answer("Регистрация недоступна.")

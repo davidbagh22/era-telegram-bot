@@ -21,7 +21,12 @@ TITLE = "Первая годовщина ЭРА — 1 ГОД"
 DETAILS = f"{TITLE}\n12 декабря 2026 · Сбор в 17:30 · Начало в 18:00\nКинозал Дома Москвы в Ереване"
 CONSENT = "Подтверждая регистрацию, вы передаёте имя, фамилию, организацию и Telegram ID организаторам для учёта участников."
 MENU_BUTTON = "🎟 Зарегистрироваться на годовщину"
+MENU_TICKET_BUTTON = "🎟 Годовщина · я в списке"
 MENU_SHORTCUT = f"🎟 Годовщина ЭРА · 12 декабря\n{CONSENT}"
+MENU_REGISTERED_SHORTCUT = (
+    "🎟 Вы уже в списке на годовщину · 12 декабря.\n"
+    "Кнопка ниже открывает детали регистрации."
+)
 EVENT_TITLES = {
     TITLE.casefold(),
     "первая годовщина эра",
@@ -149,6 +154,19 @@ def clean_field(value: str, *, name: bool = False) -> str:
 
 async def get_registration(session: AsyncSession, telegram_id: int) -> dict | None:
     return await session.scalar(select(AppSetting.value).where(AppSetting.key == f"{PREFIX}{telegram_id}"))
+
+
+async def user_already_registered(
+    session: AsyncSession, telegram_id: int, user: User | None = None,
+) -> bool:
+    """True when guest RSVP or an active event registration already exists."""
+    if await get_registration(session, telegram_id):
+        return True
+    event = await featured_event(session) or await find_event(session)
+    if event is None or user is None:
+        return False
+    status = await legacy_registration_status(session, event, user)
+    return status in ACTIVE_REGISTRATION_STATUSES
 
 
 async def register(session: AsyncSession, telegram_id: int, data: dict) -> dict:

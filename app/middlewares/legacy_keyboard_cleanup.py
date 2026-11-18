@@ -78,7 +78,7 @@ class LegacyKeyboardCleanupMiddleware(BaseMiddleware):
                 if approved else ReplyKeyboardRemove()
             )
             notice = (
-                "Меню ЭРА обновлено. Статистика доступна по кнопке внизу."
+                "Меню ЭРА обновлено. Админ-раздел — кнопка ⚙️ Админ внизу."
                 if admin else "Разделы ЭРА доступны в меню под полем ввода."
                 if approved else LEGACY_KEYBOARD_CLEARED
             )

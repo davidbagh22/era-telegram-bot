@@ -227,6 +227,20 @@ async def _management_report_access(user, telegram_id, settings, session) -> boo
     )
 
 
+@router.message(F.text == '⚙️ Админ', F.chat.type == 'private')
+async def admin_hub_command(message: Message, user: User | None, settings: Settings, session: AsyncSession) -> None:
+    """Compact reply-keyboard entry: stats + applications (+ Mini App admin)."""
+    from app.keyboards.bot_shell import admin_hub_keyboard
+    from app.services.authorization_service import is_full_admin
+    if not user or user.is_blocked or user.is_archived or not is_full_admin(user, settings, message.from_user.id):
+        await message.answer('Админ-раздел доступен только администраторам ЭРА.')
+        return
+    await message.answer(
+        '⚙️ Админ-раздел ЭРА\n\nВыберите действие:',
+        reply_markup=admin_hub_keyboard(settings.effective_miniapp_url),
+    )
+
+
 @router.message(Command('report'), F.chat.type == 'private')
 @router.message(F.text.in_({'📊 Статистика', '📊 Админ-сводка'}), F.chat.type == 'private')
 async def management_report_command(message: Message, user: User | None, settings: Settings, session: AsyncSession) -> None:

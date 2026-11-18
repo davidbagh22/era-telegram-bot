@@ -12,7 +12,7 @@ from app.keyboards.participant import (
     main_inline_keyboard as legacy_main_inline_keyboard,
     navigation_guide_keyboard as legacy_navigation_guide_keyboard,
 )
-from app.services.anniversary_registration_service import MENU_BUTTON
+from app.services.anniversary_registration_service import MENU_BUTTON, MENU_TICKET_BUTTON
 from app.utils.deep_links import miniapp_admin_url, miniapp_leader_url
 from app.utils.constants import PRIVILEGED_ROLES
 from app.services.leadership_permission_service import is_assignment_active
@@ -70,18 +70,24 @@ def main_inline_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+ADMIN_HUB_BUTTON = "⚙️ Админ"
+
+
 def main_reply_keyboard(
     miniapp_url: str = "", *, admin: bool = False, leaders: bool = False,
     media_chair: bool = False, anniversary: bool = False,
+    anniversary_registered: bool = False,
 ) -> ReplyKeyboardMarkup:
     """Persistent quick-access menu shown above the Telegram input field.
 
     Keep short labels. «Лидеры» / «Медиа» only when the user actually has those
-    rights — do not show empty shells. Leisure stays in the inline shell.
+    rights — do not show empty shells. Admin tools collapse into one hub so the
+    keyboard stays short on phones. Leisure stays in the inline shell.
     """
     rows: list[list[KeyboardButton]] = []
     if anniversary:
-        rows.append([KeyboardButton(text=MENU_BUTTON)])
+        anniversary_label = MENU_TICKET_BUTTON if anniversary_registered else MENU_BUTTON
+        rows.append([KeyboardButton(text=anniversary_label)])
     if miniapp_url:
         # Reply-keyboard WebApps use Telegram's simple mode (no signed initData).
         # «Открыть ЭРА» stays a message so the handler can offer an auth WebApp.
@@ -103,14 +109,15 @@ def main_reply_keyboard(
             KeyboardButton(text="⭐ Возможности"),
         ])
     if admin:
-        rows.append([
-            KeyboardButton(text="📊 Статистика"),
-            KeyboardButton(text="📥 Заявки"),
-        ])
+        # One hub instead of two full-width admin rows on every home redraw.
+        rows.append([KeyboardButton(text=ADMIN_HUB_BUTTON)])
+    role_row: list[KeyboardButton] = []
     if leaders:
-        rows.append([KeyboardButton(text="🧭 Лидеры")])
+        role_row.append(KeyboardButton(text="🧭 Лидеры"))
     if media_chair:
-        rows.append([KeyboardButton(text="🎬 Медиа")])
+        role_row.append(KeyboardButton(text="🎬 Медиа"))
+    if role_row:
+        rows.append(role_row)
     rows.append([KeyboardButton(text="💬 Связь")])
     return ReplyKeyboardMarkup(
         keyboard=rows,
@@ -119,6 +126,25 @@ def main_reply_keyboard(
         one_time_keyboard=False,
         input_field_placeholder="Выберите раздел ЭРА",
     )
+
+
+def admin_hub_keyboard(miniapp_url: str = "") -> InlineKeyboardMarkup:
+    """Inline shortcuts opened from the compact ⚙️ Админ reply button."""
+    rows = [
+        [
+            InlineKeyboardButton(text="📊 Статистика", callback_data="admin:management:open"),
+            InlineKeyboardButton(text="📥 Заявки", callback_data="admin:applications"),
+        ],
+    ]
+    if miniapp_url:
+        rows.append([
+            InlineKeyboardButton(
+                text="⚙️ Управление ЭРА",
+                web_app=WebAppInfo(url=miniapp_admin_url(miniapp_url)),
+            )
+        ])
+    rows.append([InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def navigation_guide_keyboard(

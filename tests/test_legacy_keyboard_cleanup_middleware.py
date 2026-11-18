@@ -176,7 +176,7 @@ class CurrentPersistentKeyboardMigrationTests(unittest.IsolatedAsyncioTestCase):
         markup = bot.sent[0][2]["reply_markup"]
         assert isinstance(markup, ReplyKeyboardMarkup)
         assert markup.is_persistent and markup.one_time_keyboard is False
-        assert "📊 Статистика" in {button.text for row in markup.keyboard for button in row}
+        assert "⚙️ Админ" in {button.text for row in markup.keyboard for button in row}
         assert user.legacy_reply_keyboard_removed
 
 
@@ -210,7 +210,8 @@ class VersionedPrivateMenuTests(unittest.IsolatedAsyncioTestCase):
                     await session.commit()
             assert len(bot.sent) == 1
             labels = {b.text for row in bot.sent[0][2]['reply_markup'].keyboard for b in row}
-            assert '📊 Статистика' in labels and '💬 Связь' in labels
+            assert '⚙️ Админ' in labels and '💬 Связь' in labels
+            assert '📊 Статистика' not in labels
             assert '❓ Вопросы и связь' not in labels
             assert '🔥 Открыть ЭРА' in labels
             assert all(b.web_app is None for row in bot.sent[0][2]['reply_markup'].keyboard for b in row)
