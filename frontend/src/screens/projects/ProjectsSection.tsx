@@ -27,12 +27,12 @@ export function ProjectsSection({ initialProjectId = null }: ProjectsSectionProp
   }
   return (
     <div style={{ display: "grid", gap: "0.75rem" }}>
-      <MediaRequestButton sourceType="project" sourceId={selectedId} />
       <ProjectDetail
         projectId={selectedId}
         initialShowWorkspace={Boolean(initialProjectId)}
         onBack={() => setSelectedId(null)}
       />
+      <MediaRequestButton sourceType="project" sourceId={selectedId} />
     </div>
   );
 }

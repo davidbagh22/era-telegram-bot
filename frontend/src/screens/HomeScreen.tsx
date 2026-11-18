@@ -346,7 +346,7 @@ export function HomeScreen({
             <div style={{ display: "flex", gap: ".75rem" }}>
               <IconBubble tone="orange"><ProjectsIcon width={18} height={18} /></IconBubble>
               <div>
-                <strong style={{ display: "block", overflowWrap: "anywhere", textWrap: "balance" }}>{displayProjectTitle(data.active_project.title)}</strong>
+                <strong style={{ display: "block", overflowWrap: "break-word", textWrap: "balance" }}>{displayProjectTitle(data.active_project.title)}</strong>
                 <p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>{projectStatusLabel(data.active_project.status)}</p>
               </div>
             </div>

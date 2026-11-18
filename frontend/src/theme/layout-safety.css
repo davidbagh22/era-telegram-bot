@@ -76,6 +76,7 @@ svg {
 .era-readable-copy {
   color: var(--era-text-secondary);
   line-height: 1.65;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
   white-space: pre-line;
 }
