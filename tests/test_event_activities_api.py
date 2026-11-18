@@ -95,7 +95,10 @@ class ParticipantEventActivitiesApiTests(unittest.TestCase):
 
     def test_not_registered_returns_409(self) -> None:
         event = _event()
-        session = SimpleNamespace(get=AsyncMock(return_value=event))
+        session = SimpleNamespace(
+            get=AsyncMock(return_value=event),
+            scalar=AsyncMock(return_value=None),
+        )
         app = _build_app(_participant(), session)
         client = TestClient(app)
         with patch(
@@ -108,7 +111,10 @@ class ParticipantEventActivitiesApiTests(unittest.TestCase):
     def test_list_activities_success(self) -> None:
         event = _event()
         activity = _activity()
-        session = SimpleNamespace(get=AsyncMock(return_value=event))
+        session = SimpleNamespace(
+            get=AsyncMock(return_value=event),
+            scalar=AsyncMock(return_value=None),
+        )
         app = _build_app(_participant(), session)
         app.dependency_overrides[get_settings] = lambda: Settings(
             bot_token="1234567890:test-token", bot_username="era_test_bot"
