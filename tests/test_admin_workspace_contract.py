@@ -40,12 +40,25 @@ class AdminWorkspaceContractTests(unittest.TestCase):
         self.assertIn("projects_review: onOpenProjectReview", overview)
         self.assertIn("events_pending: onOpenEventModeration", overview)
         self.assertIn("activity_results: onOpenActivityResults", overview)
+        self.assertIn("onOpenEventWaitlist", overview)
+        self.assertNotIn("лист ожидания`} description=\"Проверить места на событиях\" leading=\"!\" onClick={onOpenEvents}", overview)
         self.assertIn('projects: { section: "moderation" }', screen)
         self.assertIn('events: { section: "moderation" }', screen)
         self.assertIn('events: { section: "activities", activitiesMode: "review" }', screen)
+        self.assertIn('events: { section: "operations" }', screen)
         self.assertIn("initialSection", events)
         self.assertIn("initialActivitiesMode", events)
         self.assertIn("initialSection", projects)
+
+    def test_leader_media_request_panel_is_explicit_and_filters_past(self) -> None:
+        panel = (FRONTEND / "screens" / "leader" / "LeaderMediaRequestPanel.tsx").read_text(encoding="utf-8")
+        button = (FRONTEND / "components" / "MediaRequestButton.tsx").read_text(encoding="utf-8")
+        self.assertIn("isMediaCandidate", panel)
+        self.assertIn("defaultOpen", panel)
+        self.assertIn("заказ материала, не пост в канал", panel)
+        self.assertIn("Заказать медиа команде", button)
+        self.assertIn("1. Пакет", button)
+        self.assertIn("3. Отправить в Медиа", button)
 
     def test_appoint_leader_keeps_selected_user_for_expected_role(self) -> None:
         appoint = (FRONTEND / "screens" / "admin" / "AdminAppointLeaderScreen.tsx").read_text(

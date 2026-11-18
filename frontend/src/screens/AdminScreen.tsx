@@ -189,6 +189,7 @@ export function AdminScreen() {
             onOpenProjectReview={() => openWork("projects", "applications", { projects: { section: "moderation" } })}
             onOpenEvents={() => openWork("events")}
             onOpenEventModeration={() => openWork("events", "applications", { events: { section: "moderation" } })}
+            onOpenEventWaitlist={() => openWork("events", "applications", { events: { section: "operations" } })}
             onOpenActivityResults={() => openWork("events", "applications", { events: { section: "activities", activitiesMode: "review" } })}
             onOpenAttendanceProofs={() => { clearSections(); setGroup("overview"); setShowAttendanceProofs(true); }}
             onOpenTasks={() => openWork("tasks")}

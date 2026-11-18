@@ -41,6 +41,7 @@ interface AdminOverviewScreenProps {
   onOpenProjectReview: () => void;
   onOpenEvents: () => void;
   onOpenEventModeration: () => void;
+  onOpenEventWaitlist: () => void;
   onOpenActivityResults: () => void;
   onOpenAttendanceProofs: () => void;
   onOpenTasks: () => void;
@@ -70,6 +71,7 @@ export function AdminOverviewScreen({
   onOpenProjectReview,
   onOpenEvents,
   onOpenEventModeration,
+  onOpenEventWaitlist,
   onOpenActivityResults,
   onOpenAttendanceProofs,
   onOpenTasks,
@@ -150,7 +152,14 @@ export function AdminOverviewScreen({
           </Card>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: ".45rem" }}>
-            {(metrics.event_waitlist ?? 0) > 0 && <ActionCell title={`${metrics.event_waitlist} · лист ожидания`} description="Проверить места на событиях" leading="!" onClick={onOpenEvents} />}
+            {(metrics.event_waitlist ?? 0) > 0 && (
+              <ActionCell
+                title={`${metrics.event_waitlist} · лист ожидания`}
+                description="Открыть участников и посещаемость"
+                leading="!"
+                onClick={onOpenEventWaitlist}
+              />
+            )}
             {attentionItems.map((item) => <ActionCell key={item.key} title={`${item.value} · ${item.label}`} description={item.key === "tasks_attention" || item.key === "questions" ? "Открыть рабочую очередь в боте" : "Открыть и решить"} leading="!" onClick={attentionActions[item.key]} />)}
           </div>
         )}

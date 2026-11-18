@@ -10,7 +10,8 @@
 - 18 November / **PARALLEL GO-TO-READY** (`docs/TZ_PARALLEL_READY_2026_11_18.md`): never idle on one CI; parallel workstreams for UX/waves/security/matrix. Goal: code+CI+LIVE ceiling ASAP; E14 human acceptance remains separate.
 - 18 November / portfolio visual v2 **CODE COMPLETE** (`cursor/era-portfolio-visual-v2-37e0`, #690): TZ `docs/TZ_PORTFOLIO_VISUAL_2026_11_18.md` — dark teal hero, two-column rail, entry cards, canvas-pinned signatures; sparse placeholders. Samples `/opt/cursor/artifacts/portfolio_era_{visual,sparse}_v2.png`. Rebased onto main → CI → merge → LIVE.
 - 18 November / project covers: `cover_bytes` + Mini App `object-fit: contain` (no crop). Migration `0065_project_cover`.
-- 18 November / admin UX (`cursor/admin-ux-fix-37e0`): «Решить сегодня» event/project queues open concrete resolvers; appoint-leader keeps selected person/`expected_role`; leader overview task status labels.
+- 18 November / admin UX follow-up (`cursor/admin-ux-waitlist-media-37e0`): «Решить сегодня» waitlist opens participants/operations (not events menu); leader media-request panel shows numbered package steps and hides past events. Prior #698 (`cursor/admin-ux-fix-37e0`) already on main.
+- 18 November / admin UX (`cursor/admin-ux-fix-37e0`, #698 merged): «Решить сегодня» event/project queues open concrete resolvers; appoint-leader keeps selected person/`expected_role`; leader overview task status labels.
 - 18 November / attendance proofs in «Решить сегодня» **LIVE `63d5d83`**: `/health`+`/ready` ok; photo proofs queue (approve → points+cert).
 - 17 November / portfolio PDFs + export interview **LIVE `f778f6d`**: teal letterhead PDFs; export interview for skills/about; events + certificates first.
 - 17 November / attendance-certs-media **LIVE `9a9d084`**: owner TZ — auto participation PDF + seal, media briefs, contain posters, afisha cutoff, cert ladder 2000/5000.
