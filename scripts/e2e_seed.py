@@ -148,10 +148,12 @@ async def seed() -> None:
         session.add(Event(title="E2E тестовое мероприятие", description="Создано seed-скриптом для E2E-проверки регистрации.", event_date=date.today() + timedelta(days=14), event_time=time(18, 0), location="Онлайн", format="online", status=EventStatus.REGISTRATION_OPEN, points_for_visit=5, created_by=admin.id))
         # Isolated Home → register → cancel journey (must not share state with
         # participant.spec / event_cancel_confirmation.spec on the shared event).
+        # Keep dates AFTER the shared «E2E тестовое мероприятие» (+14d) so Home
+        # still surfaces that card for deep_links / board assertions.
         home_event = Event(
             title="E2E путь Home→регистрация",
             description="Изолированная проверка Home → событие → регистрация → отказ.",
-            event_date=date.today() + timedelta(days=10),
+            event_date=date.today() + timedelta(days=21),
             event_time=time(19, 0),
             location="Онлайн",
             format="online",
@@ -164,7 +166,7 @@ async def seed() -> None:
         waitlist_event = Event(
             title="E2E лист ожидания",
             description="Изолированная проверка листа ожидания и отказа из очереди.",
-            event_date=date.today() + timedelta(days=12),
+            event_date=date.today() + timedelta(days=28),
             event_time=time(17, 30),
             location="Онлайн",
             format="online",
