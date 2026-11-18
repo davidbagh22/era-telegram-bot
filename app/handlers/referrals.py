@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.handlers.registration import _begin_registration, offer_registration_resume, registration_start
+from app.handlers.registration import _begin_registration, offer_registration_resume
 from app.keyboards.registration import consent_keyboard, referral_code_keyboard
 from app.services.consent_policy import CONSENT_SUMMARY
 from app.services.referral_service import validate_referral_code
