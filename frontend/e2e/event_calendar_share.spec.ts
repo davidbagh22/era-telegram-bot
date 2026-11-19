@@ -24,8 +24,7 @@ async function openCalendarChoices(page: Page) {
     });
   });
   await page.goto("/app/?devTelegramId=900001#/events");
-  await expect(page.getByRole("button", { name: "Открыть событие" }).first()).toBeVisible();
-  await page.getByRole("button", { name: "Открыть событие" }).first().click();
+  await page.getByRole("button", { name: /Встреча ЭРА/ }).first().click();
   await expect(page.getByRole("link", { name: "Google Календарь" })).toBeVisible();
 }
 

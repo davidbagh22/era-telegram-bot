@@ -49,7 +49,7 @@ export function EraProOpportunityCard() {
   const [label, tone] = STATUS[data.status];
 
   return (
-    <Card gradient onClick={open} style={{ borderColor: "rgba(99,44,255,.2)" }}>
+    <Card gradient onClick={open} style={{ borderColor: "var(--era-border-strong)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: "0.7rem", alignItems: "flex-start" }}>
         <div style={{ minWidth: 0 }}>
           <MonoLabel tone="violet">Лидеры ЭРА</MonoLabel>

@@ -76,6 +76,9 @@ class ProjectSummaryOut(BaseModel):
     id: int
     title: str
     status: str
+    proposed_date: str | None = None
+    proposed_time: str | None = None
+    date_is_tentative: bool = True
 
 
 class OpportunitySummaryOut(BaseModel):

@@ -6,7 +6,7 @@ const ADMIN_TELEGRAM_ID = 900003;
 function profileTab(page: import("@playwright/test").Page) {
   return page
     .getByRole("navigation", { name: "Основная навигация" })
-    .getByRole("button", { name: "Профиль", exact: true });
+    .getByRole("button", { name: "Я", exact: true });
 }
 
 async function enterAdminWorkspace(page: import("@playwright/test").Page) {

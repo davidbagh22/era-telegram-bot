@@ -7,7 +7,7 @@ const PARTICIPANT_TELEGRAM_ID = 900001;
 function profileTab(page: import("@playwright/test").Page) {
   return page
     .getByRole("navigation", { name: "Основная навигация" })
-    .getByRole("button", { name: "Профиль", exact: true });
+    .getByRole("button", { name: "Я", exact: true });
 }
 
 async function openProfile(page: import("@playwright/test").Page) {

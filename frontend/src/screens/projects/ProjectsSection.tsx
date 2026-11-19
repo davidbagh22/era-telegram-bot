@@ -17,20 +17,25 @@ export function ProjectsSection({ initialProjectId = null }: ProjectsSectionProp
   const [selectedId, setSelectedId] = useState<number | null>(initialProjectId);
 
   useEffect(() => {
-    if (initialProjectId) {
-      setSelectedId(initialProjectId);
-    }
+    setSelectedId(initialProjectId);
   }, [initialProjectId]);
 
   if (selectedId === null) {
-    return <ProjectsList onSelect={setSelectedId} />;
+    return <ProjectsList onSelect={(id) => {
+      setSelectedId(id);
+      const prefix = window.location.hash.startsWith("#/admin") ? "admin/projects/" : "projects/";
+      window.location.hash = "#/" + prefix + id;
+    }} />;
   }
   return (
     <div style={{ display: "grid", gap: "0.75rem" }}>
       <ProjectDetail
+        key={selectedId}
         projectId={selectedId}
-        initialShowWorkspace={Boolean(initialProjectId)}
-        onBack={() => setSelectedId(null)}
+        onBack={() => {
+          setSelectedId(null);
+          window.location.hash = window.location.hash.startsWith("#/admin") ? "#/admin" : "#/projects";
+        }}
       />
       <MediaRequestButton sourceType="project" sourceId={selectedId} />
     </div>

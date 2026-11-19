@@ -100,8 +100,9 @@ function AuctionHeroCard({ auction, onOpen }: AuctionHeroCardProps) {
               fontWeight: 600,
               padding: "0.25rem 0.5rem",
               borderRadius: "var(--era-radius-pill)",
-              background: countdown.urgent ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.18)",
-              color: countdown.urgent ? "var(--era-red)" : "#fff",
+              background: countdown.urgent ? "var(--era-surface)" : "rgba(255,255,255,0.14)",
+              color: countdown.urgent ? "var(--era-warning)" : "#fff",
+              border: countdown.urgent ? "1px solid var(--era-border-strong)" : "1px solid transparent",
               whiteSpace: "nowrap",
             }}
           >

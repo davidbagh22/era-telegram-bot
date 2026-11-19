@@ -71,7 +71,7 @@ export function RanksPanel() {
                   padding: "0.55rem 0.65rem",
                   borderRadius: "var(--era-radius-md)",
                   background: current ? "var(--era-tint-violet)" : "transparent",
-                  border: current ? "1px solid rgba(99,44,255,.22)" : "1px solid transparent",
+                  border: current ? "1px solid var(--era-border-strong)" : "1px solid transparent",
                 }}
               >
                 <span
@@ -121,7 +121,7 @@ export function RanksPanel() {
         {board.status === "ready" && (
           <>
             {board.data.me && (
-              <Card style={{ background: "var(--era-tint-violet)", border: "1px solid rgba(99,44,255,.22)", padding: "0.8rem" }}>
+              <Card style={{ background: "var(--era-selected)", border: "1px solid var(--era-border-strong)", padding: "0.8rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "baseline" }}>
                   <strong style={{ color: "var(--era-violet)" }}>
                     #{board.data.me.rank} · Вы

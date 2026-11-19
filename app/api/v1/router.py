@@ -38,6 +38,7 @@ from app.api.v1 import (
     features,
     home,
     leader,
+    leisure,
     leaderboard,
     leadership,
     me,
@@ -56,6 +57,7 @@ from app.api.v1 import (
     surveys,
     system,
     tasks,
+    teams,
     weekly_pulse_admin,
 )
 from app.services.feature_flags import Feature
@@ -65,6 +67,8 @@ api_router.include_router(auth.router)
 api_router.include_router(me.router)
 api_router.include_router(features.router)
 api_router.include_router(home.router)
+api_router.include_router(leisure.router)
+api_router.include_router(teams.router)
 api_router.include_router(participation.router)
 api_router.include_router(engagement.router)
 api_router.include_router(development.router, dependencies=[Depends(require_feature(Feature.VECTOR))])

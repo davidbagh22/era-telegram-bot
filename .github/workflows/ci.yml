@@ -274,3 +274,13 @@ jobs:
         with:
           name: playwright-report
           path: frontend/playwright-report
+      - name: Upload AURA screenshots and motion recordings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: aura-orbit-visuals
+          path: |
+            frontend/test-results/**/aura-*.png
+            frontend/test-results/**/video.webm
+          if-no-files-found: ignore
+          retention-days: 7

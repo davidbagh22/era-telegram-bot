@@ -98,6 +98,22 @@ import type {
 // when the Mini App is hosted separately from the FastAPI backend.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
+export function fetchLiterature() {
+  return authorizedGet<import("../types/leisure").LiteratureCatalog>("/api/v1/literature");
+}
+export function fetchLiteratureIssue(number: number) {
+  return authorizedGet<import("../types/leisure").LiteratureIssue>("/api/v1/literature/" + number);
+}
+export function setLiteratureSubscription(subscribed: boolean) {
+  return authorizedPatch<{ subscribed: boolean }>("/api/v1/literature-subscription", { subscribed });
+}
+export function fetchGamesCatalog() {
+  return authorizedGet<import("../types/leisure").GamesCatalog>("/api/v1/leisure/games");
+}
+export function fetchTeams(scope: "mine" | "open") {
+  return authorizedGet<ProjectSummary[]>("/api/v1/teams?scope=" + scope);
+}
+
 // Kept in memory only. Telegram re-supplies fresh initData on every Mini
 // App open, so there is no need for a long-lived token in localStorage.
 let sessionToken: string | null = null;

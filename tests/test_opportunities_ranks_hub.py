@@ -53,7 +53,8 @@ class OpportunitiesRanksHubTests(TestCase):
 
     def test_home_afisha_uses_event_title_without_hardcoded_gathering(self) -> None:
         source = (ROOT / "frontend/src/screens/HomeScreen.tsx").read_text(encoding="utf-8")
-        self.assertIn("{featuredEvent.title}", source)
+        self.assertIn("TypographyFeedCard", source)
+        self.assertIn("title={event.title}", source)
         self.assertNotIn("Сбор в 17:30", source)
         self.assertNotIn("Первая годовщина ЭРА — 1 ГОД", source)
-        self.assertIn("upcomingEvents.slice(0, 3)", source)
+        self.assertIn("nearestCards", source)

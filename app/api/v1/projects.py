@@ -50,6 +50,11 @@ class ProjectSummaryOut(BaseModel):
     submitted_at: str | None
     admin_comment: str | None
     cover_url: str | None = None
+    # Proposed schedule from the project wizard. Always tentative until a
+    # linked published event exists — never substitute updated_at/submitted_at.
+    proposed_date: str | None = None
+    proposed_time: str | None = None
+    date_is_tentative: bool = True
 
 
 class ProjectDetailOut(ProjectSummaryOut):
@@ -219,7 +224,27 @@ def _cover_url(project: Project) -> str | None:
     return f"/api/v1/projects/{project.id}/cover?v={stamp}"
 
 
+def _format_proposed_date(value) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    text = str(value).strip()
+    return text or None
+
+
+def _format_proposed_time(value) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "strftime"):
+        return value.strftime("%H:%M")
+    text = str(value).strip()
+    return text[:5] if text else None
+
+
 def _to_summary(project: Project) -> ProjectSummaryOut:
+    proposed_date = _format_proposed_date(getattr(project, "proposed_date", None))
+    proposed_time = _format_proposed_time(getattr(project, "proposed_time", None))
     return ProjectSummaryOut(
         id=project.id,
         title=project.title,
@@ -230,6 +255,9 @@ def _to_summary(project: Project) -> ProjectSummaryOut:
         submitted_at=project.submitted_at.isoformat() if project.submitted_at else None,
         admin_comment=project.admin_comment,
         cover_url=_cover_url(project),
+        proposed_date=proposed_date,
+        proposed_time=proposed_time,
+        date_is_tentative=True,
     )
 
 

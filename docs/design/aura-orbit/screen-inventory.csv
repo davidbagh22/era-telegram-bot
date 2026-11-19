@@ -1,0 +1,108 @@
+screen,route_or_parent,role,theme,visual_acceptance
+frontend/src/screens/ActivityScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/AdminScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/AssessmentExperience.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/AuthErrorScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/BlockedScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/CareerPortfolioScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/CommunityScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/DevelopmentScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/DiscoverScreen.tsx,#/discover,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/EraProScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/EventsScreen.tsx,#/events,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/GamesScreen.tsx,#/games,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/HomeScreen.tsx,#/home,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/IdeasScreen.tsx,#/ideas,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/LeaderScreen.tsx,nested screen; see App.tsx and parent switcher,leader,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/LeaderboardScreen.tsx,nested screen; see App.tsx and parent switcher,leader,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/LiteratureScreen.tsx,#/literature/:number,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/MediaGuideScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/MediaKnowledge.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/MediaScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/MediaWorkspaceScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/ObjectUnavailableScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/OpportunitiesScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/PendingScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/PeopleScreen.tsx,#/people,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/ProfileScreen.tsx,#/profile,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/ProgressScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/ProjectsScreen.tsx,#/projects,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/ReferralScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/TasksScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/TeamsScreen.tsx,#/teams,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/UserPublicProfileScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/VectorHomeScreen.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/activity/AnniversaryRegistration.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/activity/CalendarTab.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/activity/EventAttendancePanel.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/activity/EventsTab.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/activity/HistoryTab.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/activity/TaskSquadPanel.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/activity/TasksTab.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminApplicationsScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminAppointLeaderScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminAttendanceProofsScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminCareerScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminDashboardScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminDataRightsScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminDevelopmentScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminEraProScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminEventsScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminMaintenanceScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminMetricDetailScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminOffersScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminOfficesScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminOverviewScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminParticipationScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminProjectsScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminPulseScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminSurveysScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminTasksScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminToolsScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminUsersScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminVerificationScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/AdminWorkcenterScreen.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/events/ActivitySubmissionsPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/events/AdminEventCreatePanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/events/EventActivitiesPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/events/EventLifecyclePanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/events/EventModerationPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/events/EventParticipantsPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/events/EventPosterEditor.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/events/EventsList.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/events/QuickEventCreateDialog.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/offers/AuctionsPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/offers/OfferApplicationsPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/offers/OffersPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/offers/PartnersPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/offers/RewardsPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/people/AdminDevelopmentProfileCard.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/people/PeopleList.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/people/PersonDetail.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/people/PersonDetailRich.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/projects/ProjectModerationPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/projects/TeamPostsPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/tools/AutoContentPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/tools/BroadcastPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/tools/ChatsPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/tools/ContactsPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/tools/GoalsPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/tools/GreetingsPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/tools/StructurePanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/admin/tools/SystemPanel.tsx,nested screen; see App.tsx and parent switcher,admin,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/leader/ActivitiesTab.tsx,nested screen; see App.tsx and parent switcher,leader,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/leader/LeaderMediaRequestPanel.tsx,nested screen; see App.tsx and parent switcher,leader,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/leader/OpenTasksTab.tsx,nested screen; see App.tsx and parent switcher,leader,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/leader/OverviewTab.tsx,nested screen; see App.tsx and parent switcher,leader,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/leader/WeeklyPulseTab.tsx,nested screen; see App.tsx and parent switcher,leader,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/opportunities/AuctionsPanel.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/opportunities/CertificatesPanel.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/opportunities/PointsRulesSheet.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/opportunities/RanksPanel.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/opportunities/RewardsPanel.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/opportunities/SurveysPanel.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/projects/ProjectCover.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/projects/ProjectDetail.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/projects/ProjectWorkspace.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/projects/ProjectsList.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence
+frontend/src/screens/projects/ProjectsSection.tsx,nested screen; see App.tsx and parent switcher,participant,AURA semantic tokens,PENDING CI/browser/device evidence

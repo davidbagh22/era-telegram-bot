@@ -61,9 +61,7 @@ test("a pending applicant's Mini App updates itself after admin approval, withou
     // approval — proving the sync is real, not dependent on a fresh load.
     await applicantPage.getByRole("button", { name: "Проверить сейчас" }).click();
 
-    // The approved user now lands in the redesigned light Home. The Vector
-    // card is the stable landmark in the current simplified navigation.
-    await expect(applicantPage.getByText("Вот что сейчас важнее всего.", { exact: true })).toBeVisible();
+    await expect(applicantPage.getByRole("heading", { name: "Твоя орбита" })).toBeVisible();
     await expect(
       applicantPage.getByRole("heading", { name: "Заявка на проверке" }),
     ).not.toBeVisible();

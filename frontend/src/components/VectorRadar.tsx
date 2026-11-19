@@ -47,8 +47,8 @@ export function VectorRadar({ values, index = null }: VectorRadarProps) {
       <svg viewBox="0 0 260 260" width="100%" height="auto" role="img" aria-label="Динамика вектора">
         <defs>
           <radialGradient id="era-vector-glow" cx="50%" cy="50%" r="55%">
-            <stop offset="0%" stopColor="rgba(15, 118, 110, 0.22)" />
-            <stop offset="100%" stopColor="rgba(15, 118, 110, 0)" />
+            <stop offset="0%" stopColor="rgba(188, 33, 132, 0.22)" />
+            <stop offset="100%" stopColor="rgba(188, 33, 132, 0)" />
           </radialGradient>
           <linearGradient id="era-vector-fill" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="rgba(13, 148, 136, 0.45)" />
@@ -74,7 +74,7 @@ export function VectorRadar({ values, index = null }: VectorRadarProps) {
         <polygon
           points={polygon}
           fill="url(#era-vector-fill)"
-          stroke="var(--era-teal, #0f766e)"
+          stroke="var(--era-cyan, #ffa5ea)"
           strokeWidth={2.2}
           style={{
             transformOrigin: "130px 130px",
@@ -86,7 +86,7 @@ export function VectorRadar({ values, index = null }: VectorRadarProps) {
           const [lx, ly] = polar(cx, cy, maxR + 22, p.angle);
           return (
             <g key={p.key}>
-              <circle cx={x} cy={y} r={4.5} fill="var(--era-teal, #0f766e)" stroke="#fff" strokeWidth={1.5} />
+              <circle cx={x} cy={y} r={4.5} fill="var(--era-cyan, #ffa5ea)" stroke="#fff" strokeWidth={1.5} />
               <text
                 x={lx}
                 y={ly}

@@ -160,7 +160,7 @@ function DailyChart({ title, days }: { title: string; days: TelegramAnalyticsSou
       <line x1="25" y1="90" x2="357" y2="90" stroke="currentColor" opacity=".25" />
       {days.map((day, i) => { const value = day.value ?? day.observed; const width = 330 / Math.max(days.length, 1); return <rect key={day.date}
         x={26 + i * width} y={90 - value / max * 70} width={Math.max(.4, width - 1)} height={value / max * 70}
-        fill="var(--era-violet, #632cff)" opacity={day.value === null ? .35 : .9}>
+        fill="var(--era-primary, #bc2184)" opacity={day.value === null ? .35 : .9}>
         <title>{day.date}: {value}{day.value === null ? " учтено, покрытие неполное" : ""}</title></rect>; })}
     </svg>
     <div className="analytics-chart-dates"><span>{days[0]?.date}</span><span>{days[days.length - 1]?.date}</span></div>

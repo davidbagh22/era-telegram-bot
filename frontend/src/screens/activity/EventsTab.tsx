@@ -15,9 +15,11 @@ import { EmptyState } from "../../components/EmptyState";
 import { MediaRequestButton } from "../../components/MediaRequestButton";
 import { SkeletonList } from "../../components/Skeleton";
 import { StatusBadge } from "../../components/StatusBadge";
+import { TypographyFeedCard } from "../../components/TypographyFeedCard";
 import { useToast } from "../../components/Toast";
 import { useAsync } from "../../hooks/useAsync";
 import { safeEvidenceUrl } from "../../utils/safeEvidenceUrl";
+import { formatFeedDateLine } from "../../utils/feedDate";
 import { getTelegramWebApp, successHaptic } from "../../telegram/webApp";
 import type { EventActivity, EventItem, EventScope } from "../../types/activity";
 import { AnniversaryRegistration } from "./AnniversaryRegistration";
@@ -445,7 +447,7 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
       )}
 
       {event.participant_value && (
-        <Card style={{ background: "linear-gradient(145deg, rgba(99,44,255,.12), rgba(255,100,0,.06))" }}>
+        <Card style={{ background: "linear-gradient(145deg, rgba(188, 33, 132,.14), rgba(255, 165, 234,.06))" }}>
           <strong>Что вы получите</strong>
           <p style={{ whiteSpace: "pre-wrap", margin: "0.45rem 0 0", lineHeight: 1.5 }}>{event.participant_value}</p>
         </Card>
@@ -793,48 +795,16 @@ export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) 
       {state.status === "ready" && state.data.length > 0 && (
         <div className="era-stagger" style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
           {state.data.map((event) => (
-            <Card key={event.id} style={{ padding: "0.55rem", overflow: "hidden" }}>
-              <EventPoster event={event} compact />
-              <div style={{ padding: "0.75rem 0.4rem 0.35rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "flex-start" }}>
-                  {event.anniversary_registered == null && (
-                    <StatusBadge label={event.display_status} tone={registrationBadgeTone(event.registration_status)} />
-                  )}
-                  {event.points_for_visit > 0 && <strong style={{ fontSize: "0.82rem", color: "var(--era-gold-ink)" }}>+{event.points_for_visit}</strong>}
-                </div>
-                <strong style={{ fontSize: "1.12rem", lineHeight: 1.2, overflowWrap: "break-word" }}>{event.title}</strong>
-                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.86rem", lineHeight: 1.35 }}>
-                  {formatDate(event.event_date)} · {event.event_time}
-                  {event.location ? ` · ${event.location}` : ""}
-                </p>
-                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.78rem" }}>{capacityText(event)}</p>
-                {event.anniversary_registered != null ? (
-                  <>
-                    <AnniversaryRegistration event={event} />
-                    <button type="button" onClick={() => openEvent(event.id)}>Подробнее</button>
-                  </>
-                ) : ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "") || event.registration_status === WAITLIST_STATUS ? (
-                  <button type="button" className="era-btn-primary" onClick={() => openEvent(event.id)} style={{ width: "100%" }}>
-                    Открыть событие
-                  </button>
-                ) : event.can_register ? (
-                  <div style={{ display: "grid", gap: "0.4rem", marginTop: "0.15rem" }}>
-                    <button type="button" className="era-btn-primary" disabled={pendingId !== null}
-                      onClick={() => void handleRegister(event.id)}>
-                      {pendingId === event.id ? "Сохраняем…" : event.remaining_count === 0 && event.waitlist_enabled
-                        ? "Встать в лист ожидания" : "Зарегистрироваться"}
-                    </button>
-                    <button type="button" onClick={() => openEvent(event.id)} style={{ width: "100%" }}>
-                      Открыть событие
-                    </button>
-                  </div>
-                ) : (
-                  <button type="button" className="era-btn-primary" onClick={() => openEvent(event.id)} style={{ width: "100%" }}>
-                    Открыть событие
-                  </button>
-                )}
-              </div>
-            </Card>
+            <TypographyFeedCard
+              key={event.id}
+              title={event.title}
+              dateLine={formatFeedDateLine({
+                date: event.event_date,
+                time: event.event_time,
+                endTime: event.end_time,
+              })}
+              onClick={() => openEvent(event.id)}
+            />
           ))}
         </div>
       )}

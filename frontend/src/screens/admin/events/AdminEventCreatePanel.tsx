@@ -407,7 +407,7 @@ export function AdminEventCreatePanel() {
             <Question title="Добавим афишу?" hint="Фото сразу станет главным визуалом карточки и страницы события. До 5 МБ." />
             {draft.has_poster ? (
               <div style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
-                <div style={{ minHeight: 150, borderRadius: "1rem", background: "linear-gradient(135deg,#632CFF,#D71978,#FF6400)", display: "grid", placeItems: "center", fontWeight: 900 }}>{posterUrl ? <img src={posterUrl} alt="Афиша мероприятия" style={{ width: "100%", maxHeight: 250, objectFit: "contain", borderRadius: "1rem" }} /> : "Афиша загружена ✓"}</div>
+                <div style={{ minHeight: 150, borderRadius: "1rem", background: "linear-gradient(135deg,#512074,#bc2184,#ffa5ea)", display: "grid", placeItems: "center", fontWeight: 900 }}>{posterUrl ? <img src={posterUrl} alt="Афиша мероприятия" style={{ width: "100%", maxHeight: 250, objectFit: "contain", borderRadius: "1rem" }} /> : "Афиша загружена ✓"}</div>
                 <label className="era-btn-primary" style={{ textAlign: "center", cursor: "pointer" }}>Заменить афишу<input hidden disabled={busy} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void changePoster(file); }} /></label>
                 <button type="button" disabled={busy} onClick={() => void changePoster(null)}>Удалить</button>
               </div>
@@ -506,7 +506,7 @@ export function AdminEventCreatePanel() {
         {step === 10 && (
           <>
             <Question title="Так событие увидят участники" hint="Проверьте главное. Вернуться на любой шаг можно кнопкой «Назад». Рассылка отправится только после публикации." />
-            <div style={{ minHeight: 150, borderRadius: "1rem", background: posterUrl ? `url("${posterUrl}") center/cover` : "linear-gradient(135deg,#632CFF,#D71978,#FF6400)", marginBottom: ".75rem" }} />
+            <div style={{ minHeight: 150, borderRadius: "1rem", background: posterUrl ? `url("${posterUrl}") center/cover` : "linear-gradient(135deg,#512074,#bc2184,#ffa5ea)", marginBottom: ".75rem" }} />
             <h2 style={{ margin: "0 0 .35rem", fontSize: "1.55rem" }}>{draft.title}</h2>
             <p style={{ margin: "0 0 .8rem", color: "var(--era-text-muted)" }}>{draft.short_description}</p>
             <Card style={{ padding: ".8rem" }}><strong>📅 {draft.event_date} · {draft.event_time}{draft.end_time ? `–${draft.end_time}` : ""}</strong><p style={{ margin: ".25rem 0 0" }}>📍 {draft.location}</p><p style={{ margin: ".25rem 0 0" }}>{draft.participant_limit ? `${draft.participant_limit} мест` : "Без ограничения мест"} · {draft.points_for_visit} баллов</p></Card>
