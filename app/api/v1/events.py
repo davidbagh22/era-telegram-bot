@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 
 from typing import Any
 
@@ -36,6 +37,7 @@ from app.utils.constants import EventStatus, RegistrationStatus
 from app.utils.deep_links import activity_submit_deep_link
 
 router = APIRouter(prefix="/events", tags=["events"])
+logger = logging.getLogger(__name__)
 
 
 class AnniversaryRegistrationIn(BaseModel):
@@ -458,16 +460,25 @@ async def register_event(
         notice = await enqueue_registration_notice(session, registration, user.telegram_id, RegistrationNoticeKind.MINI_APP)
     result = await _to_event_out(session, event, registration, user)
     await session.commit()
+    # Registration has already been committed. A Telegram outage must not
+    # tell the participant that their registration failed or cause a retry.
     if notice is not None and bot is not None:
-        await deliver_registration_notice(session, notice, bot.send_message, settings)
+        try:
+            await deliver_registration_notice(session, notice, bot.send_message, settings)
+        except Exception:
+            logger.exception("Registration saved, notice delivery pending event_id=%s", event.id)
     if signup is not None and bot and registration.status == RegistrationStatus.REGISTERED:
-        manager = await session.get(User, settings.era_chair_user_id or event.created_by)
-        from app.services.authorization_service import can_manage_events
-        if manager and can_manage_events(manager, settings, manager.telegram_id):
-            await safe_send_once(bot, settings, manager.telegram_id,
-                f"Новая регистрация · {event.title}\n{event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n"
-                f"{event.location}\n{result.chat_url or ''}\n\n{signup.full_name}\n{signup.phone}\n{signup.organization}",
-                delivery_key=f"organizer:{notice}", notification_type="event_signup", max_attempts=1)
+        try:
+            manager = await session.get(User, settings.era_chair_user_id or event.created_by)
+            from app.services.authorization_service import can_manage_events
+            if manager and can_manage_events(manager, settings, manager.telegram_id):
+                await safe_send_once(bot, settings, manager.telegram_id,
+                    f"Новая регистрация · {event.title}\n{event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n"
+                    f"{event.location}\n{result.chat_url or ''}\n\n{signup.full_name}\n{signup.phone}\n{signup.organization}",
+                    delivery_key=f"organizer:{notice or registration.id}",
+                    notification_type="event_signup", max_attempts=1)
+        except Exception:
+            logger.exception("Registration saved, organizer delivery pending event_id=%s", event.id)
     return result
 
 

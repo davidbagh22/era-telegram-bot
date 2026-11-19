@@ -13,6 +13,7 @@ from sqlalchemy import select, text as sql_text
 from app.database.event_experience import EventExperience
 from app.database.models import AppSetting, Event, User
 from app.database.system_models import NotificationDelivery
+from app.services.event_announcement_format import event_topic_html
 from app.services.event_forum_service import event_thread
 from app.services.general_topics_service import send_general_topic_once
 from app.services.notification_service import broadcast_detailed_once, safe_send_once
@@ -102,9 +103,23 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
         markup = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="Зарегистрироваться", url=register_url)
         ]])
-        text = f"{event.title}\n\n{experience.full_description or event.description}\n\n📅 {event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n📍 {event.location}"
-        text += f"\n\nРегистрация: {register_url}\nОбщий чат ЭРА: {settings.general_chat_url}\nТема мероприятия: {url}"
-    parts = escaped_text_parts(text, 1000 if poster else 4000)
+        text = event_topic_html(
+            event, experience, registration=register_url,
+            chat=settings.general_chat_url, topic=url,
+        )
+    # The formatted version is already HTML-escaped token by token. Keep
+    # legacy safe plain-text splitting for very large descriptions/captions;
+    # never split through an HTML tag or expose raw user-provided markup.
+    limit = 1000 if poster else 4000
+    if thread and len(text.encode("utf-16-le")) // 2 <= limit:
+        parts = [text]
+    elif thread:
+        raw = f"{event.title}\n\n{experience.full_description or event.description}\n\n"
+        raw += f"📅 {event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n📍 {event.location}"
+        raw += f"\n\nРегистрация: {register_url}\nОбщий чат ЭРА: {settings.general_chat_url}\nТема мероприятия: {url}"
+        parts = escaped_text_parts(raw, limit)
+    else:
+        parts = escaped_text_parts(text, limit)
     for index, part in enumerate(parts):
         media = {}
         if index == 0 and poster:

@@ -404,6 +404,7 @@ interface EventDetailProps {
 
 function EventDetail({ event, openSignup, pending, actionError, onRegister, onCancelRequest, onBack }: EventDetailProps) {
   const [showForm, setShowForm] = useState(Boolean(openSignup && event.signup_defaults));
+  const [formError, setFormError] = useState<string | null>(null);
   const anniversary = event.anniversary_registered != null;
   const registered = ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "");
   const waitlisted = event.registration_status === WAITLIST_STATUS;
@@ -559,18 +560,44 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
         ) : anniversary ? (
           <AnniversaryRegistration key={event.id} event={event} />
         ) : event.can_register && event.signup_defaults && showForm ? (
-          <form style={{ display: "grid", gap: 8, maxHeight: "55dvh", overflowY: "auto" }} onSubmit={e => {
+          <form style={{ display: "grid", gap: 10, maxHeight: "58dvh", overflowY: "auto", paddingBottom: 8 }} onSubmit={e => {
             e.preventDefault();
             const data = new FormData(e.currentTarget);
-            onRegister({ full_name: String(data.get("full_name")).trim(), phone: String(data.get("phone")).trim(),
-              organization: String(data.get("organization")).trim() });
+            const fullName = String(data.get("full_name") ?? "").trim().replace(/\s+/g, " ");
+            const organization = String(data.get("organization") ?? "").trim();
+            const phone = String(data.get("phone") ?? "").trim();
+            if (fullName.split(" ").filter(Boolean).length < 3) {
+              setFormError("Добавьте отчество: для регистрации нужны фамилия, имя и отчество полностью.");
+              return;
+            }
+            if (phone.replace(/\D/g, "").length < 7) {
+              setFormError("Проверьте номер телефона: не менее семи цифр.");
+              return;
+            }
+            if (organization.length < 2) {
+              setFormError("Укажите полное название организации или учебного заведения.");
+              return;
+            }
+            setFormError(null);
+            onRegister({ full_name: fullName, phone, organization });
           }}>
-            <label>Фамилия, имя и отчество<input required name="full_name" maxLength={255} defaultValue={event.signup_defaults.full_name} /></label>
-            <label>Организация или вуз полностью<input required name="organization" maxLength={255} defaultValue={event.signup_defaults.organization} /></label>
-            <label>Номер телефона<input required type="tel" name="phone" maxLength={32} defaultValue={event.signup_defaults.phone} /></label>
-            <small>Данные получит руководитель мероприятия.</small>
-            <button disabled={pending}>Подтвердить регистрацию</button>
-            <button type="button" disabled={pending} onClick={() => setShowForm(false)}>Назад</button>
+            <label>Фамилия, имя и отчество
+              <input required name="full_name" autoComplete="name" maxLength={255} defaultValue={event.signup_defaults.full_name} onChange={() => setFormError(null)} />
+              <small style={{ display: "block", color: "var(--era-text-muted)", marginTop: 4 }}>
+                Все три части без сокращений. Например: Иванова Анна Сергеевна.
+              </small>
+            </label>
+            <label>Полное название вуза или организации
+              <input required name="organization" maxLength={255} defaultValue={event.signup_defaults.organization} onChange={() => setFormError(null)} />
+              <small style={{ display: "block", color: "var(--era-text-muted)", marginTop: 4 }}>
+                Не аббревиатура: укажите полное официальное название.
+              </small>
+            </label>
+            <label>Номер телефона<input required type="tel" autoComplete="tel" inputMode="tel" name="phone" maxLength={32} defaultValue={event.signup_defaults.phone} onChange={() => setFormError(null)} /></label>
+            <small>Данные доступны только организаторам мероприятия.</small>
+            {formError && <p role="alert" style={{ color: "var(--era-error)", margin: 0 }}>{formError}</p>}
+            <button type="submit" className="era-btn-primary" disabled={pending}>{pending ? "Регистрируем…" : "Подтвердить регистрацию"}</button>
+            <button type="button" disabled={pending} onClick={() => { setFormError(null); setShowForm(false); }}>Назад</button>
           </form>
         ) : event.can_register ? (
           <button type="button" className="era-btn-primary" disabled={pending} onClick={() => event.signup_defaults ? setShowForm(true) : onRegister()} style={{ width: "100%" }}>

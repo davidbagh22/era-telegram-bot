@@ -202,10 +202,28 @@ export function describeActionError(error: unknown): string {
 
 async function parseErrorDetail(response: Response): Promise<string> {
   try {
+    // FastAPI returns validation failures as an array of field issues. Never
+    // turn that object into "[object Object]" in an error toast.
     const body = (await response.json()) as ApiErrorBody;
-    return body.detail ?? response.statusText;
+    const detail: unknown = body.detail;
+    if (typeof detail === "string") return detail || response.statusText;
+    if (Array.isArray(detail)) {
+      const issues = detail.filter((item): item is { loc?: unknown; msg?: unknown } =>
+        Boolean(item) && typeof item === "object");
+      const touches = (field: string) => issues.some((issue) =>
+        Array.isArray(issue.loc) && issue.loc.includes(field));
+      if (touches("full_name"))
+        return "Укажите фамилию, имя и отчество полностью (не менее трёх слов).";
+      if (touches("phone"))
+        return "Проверьте номер телефона: не менее семи цифр.";
+      if (touches("organization"))
+        return "Укажите полное название вуза или организации.";
+      return "Проверьте заполненные поля и попробуйте ещё раз.";
+    }
+    if (detail && typeof detail === "object") return "Проверьте введённые данные и повторите действие.";
+    return response.statusText || "Не удалось выполнить действие.";
   } catch {
-    return response.statusText;
+    return response.statusText || "Не удалось выполнить действие.";
   }
 }
 
