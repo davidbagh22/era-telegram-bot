@@ -62,7 +62,7 @@ def add_system_jobs(
     now = datetime.now(ZoneInfo(settings.timezone))
     if os.getenv("RENDER_SERVICE_ID") == "srv-d91r1j7avr4c73fs8h00" and date(2026, 11, 19) <= now.date() < date(2026, 11, 23):
         from app.services.moscow_house_november import publish_november_program
-        scheduler.add_job(publish_november_program, "date", run_date=now, args=(bot, settings, session_factory), id="moscow-house-november", misfire_grace_time=300)
+        scheduler.add_job(publish_november_program, "interval", minutes=15, args=(bot, settings, session_factory), id="moscow-house-november", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now, misfire_grace_time=300)
     # A restart interrupts verifiable continuous coverage, even when permissions persist.
     for chat_id in source_targets(settings).values():
         mark_coverage_gap(chat_id)
