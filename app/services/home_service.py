@@ -205,14 +205,26 @@ async def _earned_points_periods(
 
 
 async def _returned_task(session: AsyncSession, user_id: int) -> Task | None:
-    """Task with an open needs_revision submission for this participant."""
+    """Task whose *latest* submission for this user is still needs_revision.
+
+    Resubmit creates a new pending row and leaves the old needs_revision row in
+    place — only the newest submission decides Home priority.
+    """
+    latest_by_task = (
+        select(
+            TaskSubmission.task_id.label("task_id"),
+            func.max(TaskSubmission.id).label("latest_id"),
+        )
+        .where(TaskSubmission.user_id == user_id)
+        .group_by(TaskSubmission.task_id)
+    ).subquery()
     return await session.scalar(
         select(Task)
-        .join(TaskSubmission, TaskSubmission.task_id == Task.id)
+        .join(latest_by_task, latest_by_task.c.task_id == Task.id)
+        .join(TaskSubmission, TaskSubmission.id == latest_by_task.c.latest_id)
         .where(
-            TaskSubmission.user_id == user_id,
             TaskSubmission.status == "needs_revision",
-            Task.status.in_(ACTIVE_TASK_STATUSES + (TaskStatus.REVIEW, TaskStatus.PUBLISHED)),
+            Task.status.notin_((TaskStatus.COMPLETED, TaskStatus.CANCELLED)),
         )
         .order_by(TaskSubmission.id.desc())
         .limit(1)
