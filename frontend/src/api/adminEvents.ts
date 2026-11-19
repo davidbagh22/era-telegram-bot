@@ -175,6 +175,10 @@ export function fetchEventDraft(eventId: number): Promise<AdminEventDraft> {
   return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/draft`);
 }
 
+export function fetchEventShareText(eventId: number): Promise<{ text: string }> {
+  return requestJson<{ text: string }>(`/api/v1/admin/events/${eventId}/share-text`);
+}
+
 export function saveEventDraft(eventId: number, patch: AdminEventDraftPatch): Promise<AdminEventDraft> {
   return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/draft`, {
     method: "PATCH",
