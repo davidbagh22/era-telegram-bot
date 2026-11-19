@@ -4,7 +4,7 @@ const PARTICIPANT_TELEGRAM_ID = 900001;
 
 test("participant can open professional portfolio and CV tools", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
-  await page.getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Моё портфолио/ }).click();
 
   await expect(page.getByRole("heading", { name: "Моё портфолио" })).toBeVisible();
@@ -23,7 +23,7 @@ test("portfolio export interview completes a local PDF download smoke", async ({
   // «Отправить портфолио в чат с ботом» needs a live Telegram delivery and is
   // quarantined here: fake BOT_TOKEN returns 502 resume_delivery_unavailable.
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
-  await page.getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Моё портфолио/ }).click();
   await page.getByRole("button", { name: "Скачать портфолио PDF" }).click();
   await expect(page.getByText("Перед выгрузкой портфолио")).toBeVisible();
@@ -67,7 +67,7 @@ test("portfolio hides unsafe evidence links and wraps long mobile cards", async 
   });
 
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
-  await page.getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Моё портфолио/ }).click();
   await expect(page.getByText(longTitle)).toBeVisible();
   const unsafeCard = page.getByText(longTitle).locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' era-card ')][1]");

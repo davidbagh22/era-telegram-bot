@@ -244,14 +244,22 @@ function renderTab(
         onOpenTasks={() => navigateToRoute("tasks")}
         onOpenCommunity={() => navigateToRoute("opportunities")}
         onOpenOpportunity={(id) => navigateToRoute(`opportunities/${id}`)}
+        onOpenProjects={() => navigateToRoute("projects")}
       />
     );
   }
   if (tab === "projects") return <ProjectsScreen initialProjectId={initialProjectId} />;
   if (tab === "events") {
-    return isDeepLinkedTab && (initialItemId || initialActivitySection === "events")
-      ? <EventsScreen key={initialEventScope ?? "all"} initialItemId={initialItemId} initialScope={initialEventScope ?? undefined} />
-      : <ActivityScreen />;
+    if (isDeepLinkedTab && initialActivitySection && initialActivitySection !== "events") {
+      return <ActivityScreen initialSection={initialActivitySection} initialItemId={initialItemId} />;
+    }
+    return (
+      <EventsScreen
+        key={initialEventScope ?? "all"}
+        initialItemId={isDeepLinkedTab ? initialItemId : null}
+        initialScope={initialEventScope ?? undefined}
+      />
+    );
   }
   if (tab === "community") return <CommunityScreen initialSection={isDeepLinkedTab ? initialCommunitySection : null} initialItemId={isDeepLinkedTab ? initialItemId : null} initialMediaRoute={isDeepLinkedTab ? initialMediaRoute : null} />;
   return <ProfileScreen onOpenDevelopment={() => navigateToRoute("development")} />;

@@ -1,6 +1,6 @@
 // Minimal typed bridge to the Telegram WebApp JS SDK loaded via the
-// <script> tag in index.html. ERA intentionally keeps its own light,
-// signal-gradient visual system instead of inheriting Telegram's palette.
+// <script> tag in index.html. ERA AURA×ORBIT uses a dark blue glass chrome
+// aligned with Telegram Mini App header/background/bottom bar.
 interface TelegramHapticFeedback {
   impactOccurred?: (style: "light" | "medium" | "heavy" | "rigid" | "soft") => void;
   notificationOccurred?: (type: "error" | "success" | "warning") => void;
@@ -62,19 +62,22 @@ export function initTelegramWebApp(): void {
 }
 
 export function getColorScheme(): "light" | "dark" {
-  return "light";
+  return "dark";
 }
 
+const AURA_BG = "#070b18";
+const AURA_BAR = "#0a1223";
+
 export function applyTelegramTheme(): void {
-  document.documentElement.dataset.theme = "light";
-  document.documentElement.style.backgroundColor = "#F4F6F8";
-  document.body?.style.setProperty("background-color", "#F4F6F8");
+  document.documentElement.dataset.theme = "aura";
+  document.documentElement.style.backgroundColor = AURA_BG;
+  document.body?.style.setProperty("background-color", AURA_BG);
 
   const webApp = getTelegramWebApp();
-  // Keep Telegram's surrounding Mini App chrome visually continuous with ERA.
-  try { webApp?.setHeaderColor?.("#F4F6F8"); } catch { /* older clients */ }
-  try { webApp?.setBackgroundColor?.("#F4F6F8"); } catch { /* older clients */ }
-  try { webApp?.setBottomBarColor?.("#FFFFFF"); } catch { /* older clients */ }
+  // Keep Telegram's surrounding Mini App chrome visually continuous with AURA.
+  try { webApp?.setHeaderColor?.(AURA_BG); } catch { /* older clients */ }
+  try { webApp?.setBackgroundColor?.(AURA_BG); } catch { /* older clients */ }
+  try { webApp?.setBottomBarColor?.(AURA_BAR); } catch { /* older clients */ }
 }
 
 function currentHashRoute(): string {

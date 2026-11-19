@@ -2,23 +2,19 @@ import { expect, test } from "@playwright/test";
 
 const PARTICIPANT_TELEGRAM_ID = 900001;
 
-test("participant gets light ERA UI, opens event details, and registers", async ({ page }) => {
+test("participant gets AURA orbit UI, opens event details, and registers", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
 
-  // The Vector-first Home card is the stable landmark for every approved
-  // participant after the growth-system redesign.
-  await expect(page.getByText("Вот что сейчас важнее всего.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Твоя орбита" })).toBeVisible();
   const bodyBackground = await page.locator("body").evaluate((node) => getComputedStyle(node).backgroundColor);
-  expect(bodyBackground).not.toBe("rgb(17, 17, 24)");
+  // AURA base #070b18
+  expect(bodyBackground).toBe("rgb(7, 11, 24)");
 
-  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Участие" }).click();
-  await page.getByRole("tab", { name: "События" }).click();
-  await expect(page.getByRole("tab", { name: "События", selected: true })).toBeVisible();
+  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Афиша" }).click();
+  await expect(page.getByRole("heading", { name: "Афиша", exact: true })).toBeVisible();
 
-  const eventCard = page.getByText("E2E тестовое мероприятие");
-  await expect(eventCard).toBeVisible();
-  const card = page.locator(".era-card", { hasText: "E2E тестовое мероприятие" }).first();
-  await card.getByRole("button", { name: "Открыть событие" }).click();
+  await expect(page.getByText("E2E тестовое мероприятие")).toBeVisible();
+  await page.getByRole("button", { name: /E2E тестовое мероприятие/ }).first().click();
 
   await expect(page.getByRole("heading", { name: "E2E тестовое мероприятие" })).toBeVisible();
   await page.getByRole("button", { name: "Участвовать" }).click();
@@ -31,9 +27,9 @@ test("participant gets light ERA UI, opens event details, and registers", async 
 
 test("the home board and group shortcuts open the intended event lists", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
-  const board = page.getByRole("region", { name: "Афиша ЭРА" });
+  const board = page.getByRole("region", { name: "Ближайшее" });
   await expect(board.getByText("E2E тестовое мероприятие")).toBeVisible();
-  await board.getByRole("button", { name: "Все мероприятия" }).click();
+  await board.getByRole("button", { name: "Афиша →" }).click();
   await expect(page.getByRole("heading", { name: "Афиша", exact: true })).toBeVisible();
 
   const personalEvents = page.waitForRequest((request) => new URL(request.url()).searchParams.get("scope") === "mine");

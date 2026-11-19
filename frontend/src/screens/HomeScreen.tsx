@@ -1,35 +1,19 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { fetchDailyQuote, fetchEvents } from "../api/client";
 import { Avatar } from "../components/Avatar";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { MonoLabel } from "../components/MonoLabel";
-import { PosterCard } from "../components/PosterCard";
+import { OrbitNavigator, type OrbitNodeKey } from "../components/OrbitNavigator";
 import { LoadingRegion, Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
-import { EventIcon, ProjectsIcon, TaskIcon } from "../components/icons";
+import { TypographyFeedCard } from "../components/TypographyFeedCard";
 import { useHome } from "../hooks/useHome";
+import { useMotionPreference } from "../motion/MotionPreference";
 import type { EventItem } from "../types/activity";
 import type { MiniAppUserSummary } from "../types/auth";
-import { AnniversaryRegistration } from "./activity/AnniversaryRegistration";
-import { EventPoster } from "./activity/EventsTab";
+import { formatFeedDateLine } from "../utils/feedDate";
 import { displayProjectTitle } from "./projects/displayTitle";
-import { projectStatusLabel } from "./projects/statusLabels";
-
-const TASK_STATUS_LABELS: Record<string, string> = {
-  draft: "Черновик",
-  new: "Новая",
-  published: "Открыт набор",
-  in_progress: "В работе",
-  review: "На проверке",
-  completed: "Выполнена",
-  overdue: "Просрочена",
-  cancelled: "Отменена",
-};
-
-function taskStatusLabel(status: string): string {
-  return TASK_STATUS_LABELS[status] ?? "Статус уточняется";
-}
 
 interface HomeScreenProps {
   user: MiniAppUserSummary;
@@ -44,12 +28,7 @@ interface HomeScreenProps {
   onOpenTasks?: () => void;
   onOpenCommunity?: () => void;
   onOpenOpportunity?: (id: number) => void;
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" }).replace(".", "");
+  onOpenProjects?: () => void;
 }
 
 function greeting() {
@@ -58,19 +37,6 @@ function greeting() {
   if (hour < 12) return "Доброе утро";
   if (hour < 18) return "Добрый день";
   return "Добрый вечер";
-}
-
-function IconBubble({ children, tone }: { children: ReactNode; tone: "violet" | "orange" | "magenta" }) {
-  const styles = {
-    violet: { background: "var(--era-tint-violet)", color: "var(--era-violet)" },
-    orange: { background: "var(--era-tint-gold)", color: "var(--era-gold-ink)" },
-    magenta: { background: "rgba(215,25,120,0.10)", color: "var(--era-magenta)" },
-  }[tone];
-  return (
-    <span style={{ flexShrink: 0, width: 40, height: 40, borderRadius: "50%", display: "grid", placeItems: "center", ...styles }}>
-      {children}
-    </span>
-  );
 }
 
 export function HomeScreen({
@@ -86,8 +52,11 @@ export function HomeScreen({
   onOpenTasks,
   onOpenCommunity,
   onOpenOpportunity,
+  onOpenProjects,
 }: HomeScreenProps) {
   const home = useHome();
+  const { liveBackground, toggleLiveBackground } = useMotionPreference();
+  const [viewMode, setViewMode] = useState<"orbit" | "list">("orbit");
   const [dailyQuote, setDailyQuote] = useState("");
   const [eventBoard, setEventBoard] = useState<EventItem[] | "loading" | "error">("loading");
   const [eventsTick, setEventsTick] = useState(0);
@@ -96,9 +65,19 @@ export function HomeScreen({
     let active = true;
     setEventBoard("loading");
     void fetchEvents("all").then((events) => {
-      if (active) setEventBoard(events.filter((event) => ["approved", "published", "registration_open", "registration_closed"].includes(event.status)));
-    }).catch(() => { if (active) setEventBoard("error"); });
-    return () => { active = false; };
+      if (active) {
+        setEventBoard(
+          events.filter((event) =>
+            ["approved", "published", "registration_open", "registration_closed"].includes(event.status),
+          ),
+        );
+      }
+    }).catch(() => {
+      if (active) setEventBoard("error");
+    });
+    return () => {
+      active = false;
+    };
   }, [eventsTick]);
 
   useEffect(() => {
@@ -106,21 +85,22 @@ export function HomeScreen({
     void fetchDailyQuote().then((item) => {
       if (active) setDailyQuote(item.text);
     }).catch(() => undefined);
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
   if (home.status === "loading") {
     return (
       <div className="era-page">
         <LoadingRegion
-          label="Загрузка главной"
+          label="Загрузка орбиты"
           style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "1rem" }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
             <Skeleton width={44} height={44} radius="50%" />
             <div style={{ flex: 1 }}><Skeleton height="1.1rem" width="58%" /></div>
           </div>
-          <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
         </LoadingRegion>
@@ -131,7 +111,7 @@ export function HomeScreen({
   if (home.status === "error") {
     return (
       <StatusBanner
-        title="Не получилось загрузить главную"
+        title="Не получилось загрузить орбиту"
         description="Проверь соединение и попробуй ещё раз."
         actionLabel="Обновить"
         onAction={home.reload}
@@ -141,12 +121,17 @@ export function HomeScreen({
 
   const { data } = home;
   const featuredEvent = data.featured_event;
+
   const upcomingEvents = Array.isArray(eventBoard)
     ? eventBoard.filter((event) => event.id !== featuredEvent?.id)
     : [];
-  const nearestEvent = data.nearest_event?.id === featuredEvent?.id
-    || upcomingEvents.slice(0, 3).some((event) => event.id === data.nearest_event?.id)
-    ? null : data.nearest_event;
+
+  const nearestCards: EventItem[] = [];
+  if (featuredEvent) nearestCards.push(featuredEvent);
+  for (const event of upcomingEvents) {
+    if (nearestCards.length >= 3) break;
+    nearestCards.push(event);
+  }
 
   const nextStepClick = (() => {
     if (!data.next_step) return undefined;
@@ -159,260 +144,262 @@ export function HomeScreen({
     return undefined;
   })();
 
-  const confirmedResult = data.activity.completed_tasks > 0
-    ? `Выполнено заданий: ${data.activity.completed_tasks}`
-    : (data.activity.attended_events ?? 0) > 0
-      ? `Подтверждено посещений: ${data.activity.attended_events}`
-      : (data.activity.completed_projects ?? 0) > 0
-        ? `Завершено проектов: ${data.activity.completed_projects}`
-        : (data.activity.verified_portfolio_items ?? 0) > 0
-          ? `Подтверждено записей: ${data.activity.verified_portfolio_items}`
-          : null;
-  const nextStepIsTask = data.next_step?.kind === "task"
-    && data.next_step.entity_id === data.active_task?.id;
-  const posterEventIds = new Set<number>([
-    ...(featuredEvent ? [featuredEvent.id] : []),
-    ...upcomingEvents.slice(0, 3).map((event) => event.id),
-  ]);
-  const nextStepRepeatsPoster = data.next_step?.kind === "event"
+  const nextStepRepeatsNearest = data.next_step?.kind === "event"
     && data.next_step.entity_id != null
-    && posterEventIds.has(data.next_step.entity_id);
+    && nearestCards.some((event) => event.id === data.next_step?.entity_id);
+
+  const handleOrbitNode = (node: OrbitNodeKey) => {
+    if (node === "people") {
+      onOpenCommunity?.();
+      return;
+    }
+    if (node === "events") {
+      onOpenEvents?.();
+      return;
+    }
+    if (node === "ideas") {
+      onOpenProjects?.();
+      return;
+    }
+    onOpenProjects?.();
+  };
 
   return (
-    <div className="era-page era-stagger" style={{ padding: "1.15rem 1.15rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.75rem" }}>
+    <div
+      className="era-page era-stagger"
+      style={{
+        padding: "1.15rem 1.15rem var(--era-page-bottom-safe)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "1.5rem",
+      }}
+    >
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
-        <div>
+        <div style={{ minWidth: 0 }}>
           <MonoLabel tone="violet">ЭРА</MonoLabel>
-          <h1 style={{ margin: "0.4rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.85rem", lineHeight: 1.05 }}>
-            {greeting()}, {user.first_name}.
+          <h1 style={{ margin: "0.35rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.55rem", lineHeight: 1.08 }}>
+            {greeting()}, {user.first_name}
           </h1>
-          <p style={{ margin: "0.4rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem" }}>
-            Вот что сейчас важнее всего.
-          </p>
         </div>
-        <button type="button" onClick={onOpenProfile} aria-label="Открыть профиль" style={{ minWidth: 44, width: 44, height: 44, minHeight: 44, padding: 0, border: 0, borderRadius: "50%", background: "transparent", boxShadow: "none" }}>
-          <Avatar firstName={user.first_name} lastName={user.last_name} />
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={toggleLiveBackground}
+            aria-pressed={liveBackground}
+            aria-label={liveBackground ? "Пауза живого фона" : "Включить живой фон"}
+            style={{
+              minHeight: 36,
+              minWidth: 36,
+              padding: "0.35rem 0.55rem",
+              borderRadius: "var(--era-radius-pill)",
+              fontSize: "0.72rem",
+              fontWeight: 700,
+              border: "1px solid var(--era-border)",
+              background: "var(--era-glass)",
+              color: "var(--era-text-secondary)",
+            }}
+          >
+            {liveBackground ? "⏸" : "▶"}
+          </button>
+          <button
+            type="button"
+            onClick={onOpenProfile}
+            aria-label="Открыть профиль"
+            style={{
+              minWidth: 44,
+              width: 44,
+              height: 44,
+              minHeight: 44,
+              padding: 0,
+              border: 0,
+              borderRadius: "50%",
+              background: "transparent",
+              boxShadow: "none",
+            }}
+          >
+            <Avatar firstName={user.first_name} lastName={user.last_name} />
+          </button>
+        </div>
       </header>
 
-      <section aria-label="Афиша ЭРА" style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
-          <h2 style={{ margin: 0, fontSize: "1.15rem" }}>Афиша ЭРА</h2>
-          {onOpenEvents && <button type="button" className="era-btn-ghost" onClick={onOpenEvents}>Все мероприятия →</button>}
+      <section aria-label="Твоя орбита" style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
+          <h2 style={{ margin: 0, fontFamily: "var(--era-font-display)", fontSize: "1.35rem" }}>Твоя орбита</h2>
+          <div
+            role="group"
+            aria-label="Вид орбиты"
+            style={{
+              display: "inline-flex",
+              padding: "0.2rem",
+              borderRadius: "var(--era-radius-pill)",
+              border: "1px solid var(--era-border)",
+              background: "var(--era-surface)",
+            }}
+          >
+            {(["orbit", "list"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={viewMode === mode}
+                onClick={() => setViewMode(mode)}
+                style={{
+                  minHeight: 36,
+                  padding: "0.3rem 0.7rem",
+                  border: "none",
+                  borderRadius: "var(--era-radius-pill)",
+                  background: viewMode === mode ? "var(--era-selected)" : "transparent",
+                  color: viewMode === mode ? "var(--era-cyan)" : "var(--era-text-secondary)",
+                  fontSize: "0.78rem",
+                  fontWeight: 700,
+                }}
+              >
+                {mode === "orbit" ? "Орбита" : "Список"}
+              </button>
+            ))}
+          </div>
         </div>
-        {featuredEvent && (
-          <Card gradient style={{ padding: 0, overflow: "hidden", display: "grid" }}>
-            <button
-              type="button"
-              aria-label={`Открыть мероприятие «${featuredEvent.title}»`}
-              onClick={onOpenEvent ? () => onOpenEvent(featuredEvent.id) : undefined}
-              style={{
-                display: "grid",
-                gap: "0.4rem",
-                padding: 0,
-                border: 0,
-                background: "transparent",
-                textAlign: "left",
-                width: "100%",
-                fontWeight: 400,
-              }}
-            >
-              <EventPoster event={featuredEvent} compact />
-              <div style={{ padding: "0.75rem 0.85rem 0" }}>
-                <h2 style={{ margin: 0, fontSize: "1.05rem", lineHeight: 1.3, fontWeight: 800 }}>{featuredEvent.title}</h2>
-                <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-secondary)", fontSize: "0.84rem", lineHeight: 1.4 }}>
-                  {formatDate(featuredEvent.event_date)} · {featuredEvent.event_time} · {featuredEvent.location}
-                </p>
-              </div>
-            </button>
-            <div style={{ padding: "0.55rem 0.85rem 0.9rem" }}>
-              <AnniversaryRegistration key={featuredEvent.id} event={featuredEvent} />
-            </div>
-          </Card>
+
+        {viewMode === "orbit" ? (
+          <OrbitNavigator onSelect={handleOrbitNode} />
+        ) : (
+          <div style={{ display: "grid", gap: "0.55rem" }}>
+            {(
+              [
+                { key: "people" as const, label: "Люди", hint: "Участники и профили" },
+                { key: "events" as const, label: "События", hint: "Афиша и записи" },
+                { key: "ideas" as const, label: "Идеи", hint: "Предложить проект" },
+                { key: "teams" as const, label: "Команды", hint: "Проектные команды" },
+              ]
+            ).map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => handleOrbitNode(item.key)}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                  padding: "0.9rem 1rem",
+                  borderRadius: "var(--era-radius-lg)",
+                  border: "1px solid var(--era-border)",
+                  background: "var(--era-glass)",
+                  textAlign: "left",
+                }}
+              >
+                <span>
+                  <strong style={{ display: "block" }}>{item.label}</strong>
+                  <span style={{ color: "var(--era-text-faint)", fontSize: "0.8rem" }}>{item.hint}</span>
+                </span>
+                <span aria-hidden="true" style={{ color: "var(--era-cyan)" }}>→</span>
+              </button>
+            ))}
+          </div>
         )}
+      </section>
+
+      {!nextStepRepeatsNearest && (
+        <section aria-label="Следующий шаг" style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+          <MonoLabel>Следующий шаг</MonoLabel>
+          {data.next_step ? (
+            <Card gradient onClick={nextStepClick} style={{ padding: "1.15rem" }}>
+              <strong style={{ display: "block", fontSize: "1.1rem" }}>{data.next_step.title}</strong>
+              <p style={{ margin: ".4rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem", lineHeight: 1.5 }}>
+                {data.next_step.description}
+              </p>
+              {nextStepClick && (
+                <span style={{ display: "block", marginTop: ".75rem", color: "var(--era-cyan)", fontWeight: 800, fontSize: ".85rem" }}>
+                  {data.next_step.action_label} →
+                </span>
+              )}
+            </Card>
+          ) : (
+            <Card onClick={onOpenEvents}>
+              <strong>Выбери событие или предложи идею</strong>
+              <p style={{ margin: ".35rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem" }}>
+                Первый шаг в орбите — живое участие.
+              </p>
+            </Card>
+          )}
+        </section>
+      )}
+
+      <section aria-label="Ближайшее" style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
+          <MonoLabel>Ближайшее</MonoLabel>
+          {onOpenEvents && (
+            <button type="button" className="era-btn-ghost" onClick={onOpenEvents}>
+              Афиша →
+            </button>
+          )}
+        </div>
         {eventBoard === "loading" && (
-          <LoadingRegion label="Загрузка афиши">
+          <LoadingRegion label="Загрузка ближайшего">
             <SkeletonCard />
           </LoadingRegion>
         )}
         {eventBoard === "error" && (
           <EmptyState
-            title="Афиша временно недоступна"
-            text="Проверь соединение и обнови список мероприятий."
-            actionLabel="Обновить афишу"
+            title="Расписание временно недоступно"
+            text="Проверь соединение и обнови список."
+            actionLabel="Обновить"
             onAction={() => setEventsTick((value) => value + 1)}
           />
         )}
-        {Array.isArray(eventBoard) && upcomingEvents.length === 0 && !featuredEvent && (
-          <EmptyState text="Пока нет ближайших мероприятий." />
+        {Array.isArray(eventBoard) && nearestCards.length === 0 && (
+          data.active_project && onOpenProject ? (
+            <TypographyFeedCard
+              title={displayProjectTitle(data.active_project.title)}
+              dateLine="Дата уточняется"
+              onClick={() => onOpenProject(data.active_project!.id)}
+            />
+          ) : data.active_task && onOpenTask ? (
+            <Card onClick={() => onOpenTask(data.active_task!.id)}>
+              <strong>{data.active_task.title}</strong>
+              <p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>Открыть задание</p>
+            </Card>
+          ) : (
+            <EmptyState text="Пока нет ближайших мероприятий." />
+          )
         )}
-        {upcomingEvents.slice(0, 3).map((event) => (
-          <Card key={event.id} onClick={onOpenEvent ? () => onOpenEvent(event.id) : onOpenEvents} style={{ padding: "0.75rem 0.85rem" }}>
-            <strong style={{ display: "block", fontSize: "0.95rem", lineHeight: 1.3 }}>{event.title}</strong>
-            <p style={{ margin: ".2rem 0 0", color: "var(--era-text-secondary)", fontSize: "0.8rem" }}>
-              {formatDate(event.event_date)} · {event.event_time}
-              {event.location ? ` · ${event.location}` : ""}
-            </p>
-          </Card>
+        {nearestCards.map((event) => (
+          <TypographyFeedCard
+            key={event.id}
+            title={event.title}
+            dateLine={formatFeedDateLine({ date: event.event_date, time: event.event_time, endTime: event.end_time })}
+            onClick={onOpenEvent ? () => onOpenEvent(event.id) : onOpenEvents}
+          />
         ))}
       </section>
 
-      {!nextStepRepeatsPoster && <section aria-label="Следующий шаг" style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
-        <MonoLabel>Следующий шаг</MonoLabel>
-        {data.next_step ? (
-          <Card gradient onClick={nextStepClick} style={{ padding: "1.15rem" }}>
-            <strong style={{ display: "block", fontSize: "1.15rem" }}>{data.next_step.title}</strong>
-            <p style={{ margin: ".4rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem", lineHeight: 1.5 }}>{data.next_step.description}</p>
-            {nextStepClick && <span style={{ display: "block", marginTop: ".75rem", color: "var(--era-violet)", fontWeight: 800, fontSize: ".85rem" }}>{data.next_step.action_label} →</span>}
-          </Card>
-        ) : (
-          <Card>
-            <strong>Срочных действий нет</strong>
-            <p style={{ margin: ".35rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem" }}>Можно выбрать событие, задачу или возможность на свой темп.</p>
-          </Card>
-        )}
-      </section>}
-
-      {user.features.vector && (onOpenAssessments || onOpenDevelopment) && (
-        <section style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
-          <MonoLabel>Профиль</MonoLabel>
-          <Card gradient onClick={onOpenAssessments ?? onOpenDevelopment} style={{ padding: "1.15rem" }}>
-            <strong style={{ display: "block", fontSize: "1.1rem" }}>Узнай свой профиль · 3 мин</strong>
-            <p style={{ margin: ".4rem 0 0", color: "var(--era-text-secondary)", fontSize: ".9rem", lineHeight: 1.5 }}>
-              Короткий тест покажет сильные стороны и куда ты подходишь в ЭРА.
-            </p>
-            <span style={{ display: "block", marginTop: ".75rem", color: "var(--era-violet)", fontWeight: 800, fontSize: ".85rem" }}>
-              Пройти →
-            </span>
-          </Card>
-        </section>
-      )}
-
-      {(data.active_task || data.tasks_available_count > 0 || data.tasks_in_progress_count > 0) && (
-        <section aria-label="Мои задачи" style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
-            <MonoLabel>Мои задачи</MonoLabel>
-            {onOpenTasks && <button type="button" className="era-btn-ghost" onClick={onOpenTasks}>Все задачи →</button>}
-          </div>
-          {data.active_task && !nextStepIsTask ? (
-            <Card onClick={onOpenTask ? () => onOpenTask(data.active_task!.id) : undefined}>
-              <div style={{ display: "flex", alignItems: "center", gap: ".75rem" }}>
-                <IconBubble tone="violet"><TaskIcon width={18} height={18} /></IconBubble>
-                <div style={{ minWidth: 0 }}>
-                  <strong style={{ display: "block" }}>{data.active_task.title}</strong>
-                  <span style={{ display: "block", marginTop: ".25rem", color: "var(--era-text-secondary)", fontSize: ".82rem" }}>
-                    {[
-                      taskStatusLabel(data.active_task.status),
-                      data.active_task.deadline ? `До ${formatDate(data.active_task.deadline)}` : null,
-                      data.active_task.points > 0 ? `${data.active_task.points} баллов` : null,
-                    ].filter(Boolean).join(" · ")}
-                  </span>
-                  <span style={{ display: "block", marginTop: ".45rem", color: "var(--era-violet)", fontWeight: 800, fontSize: ".8rem" }}>Открыть задание →</span>
-                </div>
-              </div>
-            </Card>
-          ) : (
-            <Card onClick={onOpenTasks}>
-              <strong>{data.tasks_in_progress_count > 0 ? `В работе: ${data.tasks_in_progress_count} задач` : `Доступно задач: ${data.tasks_available_count}`}</strong>
-              <p style={{ margin: ".3rem 0 0", color: "var(--era-text-secondary)", fontSize: ".85rem" }}>Открой список и выбери, за что взяться дальше.</p>
-            </Card>
-          )}
-        </section>
-      )}
-
       {dailyQuote && (
-        <Card style={{ borderLeft: "3px solid var(--era-violet)", padding: "1rem" }}>
-          <MonoLabel>Мысль дня</MonoLabel>
+        <Card style={{ borderLeft: "3px solid var(--era-primary)", padding: "1rem" }}>
+          <MonoLabel>Новое</MonoLabel>
           <p style={{ margin: ".45rem 0 0", lineHeight: 1.55, color: "var(--era-text-secondary)" }}>«{dailyQuote}»</p>
         </Card>
       )}
 
-      <Card onClick={onOpenProgress} style={{ padding: "1rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: ".8rem", alignItems: "center" }}>
-          <div>
-            <MonoLabel>Как я развиваюсь</MonoLabel>
-            <strong style={{ display: "block", marginTop: ".3rem", fontSize: "1.1rem" }}>{data.growth.label}</strong>
-            <span style={{ display: "block", marginTop: ".2rem", color: "var(--era-text-secondary)", fontSize: ".85rem" }}>Участник → Активный участник → Лидер</span>
-          </div>
-          {onOpenProgress && <span aria-hidden="true" style={{ color: "var(--era-violet)" }}>→</span>}
-        </div>
-      </Card>
-
-      {user.features.vector && onOpenDevelopment && (
-        <Card onClick={onOpenDevelopment} style={{ padding: "1rem" }}>
-          <MonoLabel>Мой вектор</MonoLabel>
-          <strong style={{ display: "block", marginTop: ".3rem" }}>Интересы и направление роста</strong>
-          <p style={{ margin: ".3rem 0 0", color: "var(--era-text-secondary)", fontSize: ".85rem" }}>
-            Личные ответы остаются в вашем профиле. Это не оценка личности и не назначение на роль.
-          </p>
-          <span style={{ display: "block", marginTop: ".55rem", color: "var(--era-violet)", fontWeight: 800, fontSize: ".8rem" }}>Открыть мой вектор →</span>
+      {user.features.vector && (onOpenAssessments || onOpenDevelopment) && (
+        <Card gradient onClick={onOpenAssessments ?? onOpenDevelopment} style={{ padding: "1.05rem" }}>
+          <strong style={{ display: "block", fontSize: "1.05rem" }}>Узнай свой профиль · 3 мин</strong>
+          <span style={{ display: "block", marginTop: ".55rem", color: "var(--era-cyan)", fontWeight: 800, fontSize: ".85rem" }}>
+            Пройти →
+          </span>
         </Card>
       )}
 
-      <section aria-label="Ближайшее" style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
-        <MonoLabel>Ближайшее</MonoLabel>
-        {nearestEvent ? (
-          <PosterCard
-            dark
-            eyebrow={formatDate(nearestEvent.event_date)}
-            title={nearestEvent.title}
-            subtitle={`${nearestEvent.event_time} · ${nearestEvent.location}`}
-            cta="Открыть событие"
-            onClick={onOpenEvent ? () => onOpenEvent(nearestEvent.id) : onOpenEvents}
-          />
-        ) : data.active_task && onOpenTask ? (
-          <Card onClick={() => onOpenTask(data.active_task!.id)}>
-            <div style={{ display: "flex", gap: ".75rem" }}>
-              <IconBubble tone="violet"><TaskIcon width={18} height={18} /></IconBubble>
-              <div><strong>{data.active_task.title}</strong><p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>До {formatDate(data.active_task.deadline)}</p></div>
-            </div>
-          </Card>
-        ) : data.active_project && onOpenProject ? (
-          <Card onClick={() => onOpenProject(data.active_project!.id)}>
-            <div style={{ display: "flex", gap: ".75rem" }}>
-              <IconBubble tone="orange"><ProjectsIcon width={18} height={18} /></IconBubble>
-              <div>
-                <strong style={{ display: "block", overflowWrap: "break-word", textWrap: "balance" }}>{displayProjectTitle(data.active_project.title)}</strong>
-                <p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)" }}>{projectStatusLabel(data.active_project.status)}</p>
-              </div>
-            </div>
-          </Card>
-        ) : <EmptyState text="На ближайшее время ничего не запланировано." />}
-      </section>
-
-      <section aria-label="Возможности для тебя" style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
-          <MonoLabel>Возможности для тебя</MonoLabel>
-          {onOpenCommunity && <button type="button" className="era-btn-ghost" onClick={onOpenCommunity}>Все →</button>}
-        </div>
-        {data.opportunities.length ? data.opportunities.slice(0, 3).map((item) => (
-          <Card key={item.id} onClick={onOpenOpportunity ? () => onOpenOpportunity(item.id) : onOpenCommunity}>
-            <div style={{ display: "flex", gap: ".75rem" }}>
-              <IconBubble tone="magenta"><EventIcon width={18} height={18} /></IconBubble>
-              <div style={{ minWidth: 0 }}>
-                <strong>{item.title}</strong>
-                <p style={{ margin: ".25rem 0 0", color: "var(--era-text-secondary)", fontSize: ".82rem" }}>
-                  {item.expires_at ? `До ${formatDate(item.expires_at)}` : "Доступно сейчас"}
-                </p>
-              </div>
-            </div>
-          </Card>
-        )) : <EmptyState text="Новых персональных возможностей пока нет." />}
-      </section>
-
-      <section aria-label="Подтверждённый результат" style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
-        <MonoLabel>Подтверждённый результат</MonoLabel>
-        <Card>
-          {confirmedResult ? (
-            <>
-              <strong>{confirmedResult}</strong>
-              <p style={{ margin: ".3rem 0 0", color: "var(--era-text-secondary)", fontSize: ".85rem" }}>Опыт сохраняется в профиле и портфолио.</p>
-            </>
-          ) : (
-            <p style={{ margin: 0, color: "var(--era-text-secondary)", fontSize: ".9rem" }}>Первый подтверждённый результат появится после события, задачи или проекта.</p>
-          )}
+      {(data.tasks_available_count > 0 || data.tasks_in_progress_count > 0 || data.active_task) && onOpenTasks && (
+        <Card onClick={onOpenTasks}>
+          <strong>
+            {data.tasks_in_progress_count > 0
+              ? `В работе: ${data.tasks_in_progress_count}`
+              : `Доступно задач: ${data.tasks_available_count}`}
+          </strong>
+          <p style={{ margin: ".3rem 0 0", color: "var(--era-text-secondary)", fontSize: ".85rem" }}>
+            Открыть задания
+          </p>
         </Card>
-      </section>
+      )}
     </div>
   );
 }

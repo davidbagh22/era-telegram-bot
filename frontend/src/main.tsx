@@ -3,13 +3,13 @@ import { createRoot } from "react-dom/client";
 import { installProductAnalytics } from "./analytics/productAnalytics";
 import { App } from "./app/App";
 import { ToastProvider } from "./components/Toast";
+import { MotionPreferenceProvider } from "./motion/MotionPreference";
 import { applyTelegramTheme, initTelegramBackNavigation } from "./telegram/webApp";
 import "./theme/tokens.css";
 import "./theme/motion.css";
 import "./theme/layout-safety.css";
 
-// ERA uses one intentional light/signal product identity inside Telegram.
-// Apply it before first paint to avoid a flash of the wrong chrome color.
+// AURA×ORBIT dark chrome — apply before first paint.
 applyTelegramTheme();
 initTelegramBackNavigation();
 installProductAnalytics();
@@ -21,8 +21,10 @@ if (!container) {
 
 createRoot(container).render(
   <StrictMode>
-    <ToastProvider>
-      <App />
-    </ToastProvider>
+    <MotionPreferenceProvider>
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    </MotionPreferenceProvider>
   </StrictMode>,
 );

@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("certificate holder downloads their issued PDF from portfolio", async ({ page }) => {
   await page.goto("/app/?devTelegramId=900011");
-  await page.getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Моё портфолио/ }).click();
   const section = page.getByRole("region", { name: "Сертификаты ЭРА" });
   await expect(section).toContainText("E2E Подтверждённое участие");
@@ -21,8 +21,7 @@ test("event calendar download uses UTC rather than the device timezone", async (
   const event = events.find((e: { title: string }) => e.title === "E2E тестовое мероприятие");
   expect(event).toBeTruthy();
   await page.goto("/app/?devTelegramId=900001#/events");
-  const card = page.locator(".era-card", { hasText: event.title }).first();
-  await card.getByRole("button", { name: "Открыть событие" }).click();
+  await page.getByRole("button", { name: new RegExp(event.title) }).first().click();
   // The UI now offers explicit Google and .ics paths; desktop keeps file download.
   const google = page.getByRole("link", { name: "Google Календарь" });
   await expect(google).toBeVisible();

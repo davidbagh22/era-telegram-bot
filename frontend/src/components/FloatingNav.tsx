@@ -10,11 +10,11 @@ import { selectionHaptic } from "../telegram/webApp";
 export type TabKey = "home" | "projects" | "events" | "community" | "profile";
 
 const TABS: { key: TabKey; label: string; Icon: typeof HomeIcon }[] = [
-  { key: "home", label: "Главная", Icon: HomeIcon },
-  { key: "events", label: "Участие", Icon: EventIcon },
+  { key: "home", label: "Орбита", Icon: HomeIcon },
+  { key: "events", label: "Афиша", Icon: EventIcon },
   { key: "projects", label: "Проекты", Icon: ProjectsIcon },
-  { key: "community", label: "Возможности", Icon: OpportunitiesIcon },
-  { key: "profile", label: "Профиль", Icon: ProfileIcon },
+  { key: "community", label: "Открытия", Icon: OpportunitiesIcon },
+  { key: "profile", label: "Я", Icon: ProfileIcon },
 ];
 
 interface FloatingNavProps {
@@ -22,7 +22,7 @@ interface FloatingNavProps {
   onChange: (tab: TabKey) => void;
 }
 
-/** Five primary participant destinations. Active state stays quiet and clear. */
+/** Five primary participant destinations (AURA×ORBIT D08). */
 export function FloatingNav({ active, onChange }: FloatingNavProps) {
   return (
     <nav
@@ -75,10 +75,10 @@ export function FloatingNav({ active, onChange }: FloatingNavProps) {
               gap: "0.15rem",
               minHeight: 52,
               minWidth: 0,
-              background: isActive ? "rgba(99,44,255,.10)" : "transparent",
+              background: isActive ? "var(--era-selected)" : "transparent",
               border: "none",
               boxShadow: "none",
-              color: isActive ? "var(--era-violet)" : "var(--era-nav-muted, var(--era-text-muted))",
+              color: isActive ? "var(--era-cyan)" : "var(--era-nav-muted, var(--era-text-muted))",
               fontSize: "0.62rem",
               fontWeight: isActive ? 800 : 650,
               padding: "0.38rem 0.05rem",

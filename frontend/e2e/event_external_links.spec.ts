@@ -37,8 +37,7 @@ async function openEventWithLinks(page: Page, chatUrl: string, submitUrl: string
   });
 
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}#/events`);
-  await expect(page.getByRole("button", { name: "Открыть событие" }).first()).toBeVisible();
-  await page.getByRole("button", { name: "Открыть событие" }).first().click();
+  await page.locator(".era-typography-feed-card").first().click();
   await expect(page.getByText("E2E проверка ссылки")).toBeVisible();
 }
 

@@ -1,5 +1,6 @@
 # ERA bot and Mini App handoff
 
+- 19 November / **AURA×ORBIT redesign** (`cursor/aura-orbit-redesign-37e0`): Stage A docs+refs; Stage B IN PROGRESS — dark AURA tokens, Onest (CDN), AppShell+OrbitAmbient, nav Орбита/Афиша/Проекты/Открытия/Я, OrbitNavigator (Люди/События/Идеи/Команды), TypographyFeedCard (title+date), home «Твоя орбита», EventsScreen as Афиша default, no poster prefetch on lists. Remaining: Stage C people/date API, local WOFF2, full surface pass D/E, device VERIFIED. Coverage: `docs/design/aura-orbit/coverage.csv`.
 - 19 November / literature recovery (#711 `2fa6c9a5`, CI green, MERGEABLE): root cause = empty `APPROVED_SCHEDULED_*` after #649 (LIVE still `57c4108`, issue ~41); DB AppSetting approve/revoke; editorial-enabled → status «Нужна проверка»; games cards + mid-round return; mode-notification job wired; dead `cabinet_keyboard` removed. Blockers: merge→LIVE editor approve for message_id; device Telegram/role matrix; full module audit incomplete.
 - 19 November / literature recovery (`cursor/literature-games-audit-37e0`): root cause = empty `APPROVED_SCHEDULED_LITERATURE_ISSUES` after #649; DB AppSetting approvals + /literature_admin series preview/approve/revoke; no missed-day catch-up. LIVE was 57c4108.
 - 18 November evening / merge wave: #699/#702 on main; rebasing #700–#708 for squash merge. E14 human acceptance still required.

@@ -1,0 +1,16 @@
+screen,route,role,source,destination,states,check_status,evidence
+Орбита (Home),#/home,participant,HomeScreen light afisha,Orbit + TypographyFeedCard,loading/error/empty/data,IN_PROGRESS,Stage B code
+Афиша list,#/events · #/participation,participant,ActivityScreen/EventsTab posters,EventsScreen + TypographyFeedCard,loading/error/empty/data,IN_PROGRESS,Stage B code
+Event detail,#/events/:id,participant,EventsTab detail + poster,same detail after card click (poster after open),register/waitlist/cancel,IN_PROGRESS,Stage B code
+Проекты list,#/projects,participant,ProjectsList cover+status,open/completed/proposals → TypographyFeedCard; mine workflow,draft delete,IN_PROGRESS,Stage B code
+Открытия,#/opportunities,participant,Возможности tab,Открытия nav label → CommunityScreen,feature gates,IN_PROGRESS,nav only Stage B
+Я,#/profile,participant,Профиль tab,Я nav label,workspace entry,IN_PROGRESS,nav only Stage B
+Orbit nodes,home,participant,n/a,Люди→opportunities; События→events; Идеи/Команды→projects,empty via destination,IN_PROGRESS,Stage B code
+OrbitAmbient,AppShell,all,n/a,fixed CSS ambient + pause/reduced,hidden tab pause,IN_PROGRESS,Stage B code
+Admin shell,admin workspace,admin,AdminLayout,AppShell ambient,—,IN_PROGRESS,Stage B code
+Leader shell,leader workspace,leader,LeaderLayout,AppShell ambient,—,IN_PROGRESS,Stage B code
+People catalog,orbit→people,participant,missing public directory,opportunities until Stage C,—,NOT STARTED,blocked on API projection
+Ideas catalog,orbit→ideas,participant,project create entry,projects,—,IN_PROGRESS,uses projects
+Project event_date,public cards,participant,updated_at misuse risk,«Дата уточняется» until API,—,BLOCKED,Stage C
+Local Onest WOFF2,index.html,all,Google Fonts CDN,local fonts+license,—,NOT STARTED,Stage B partial (CDN Onest)
+Device Telegram iOS/Android,—,participant,—,—,—,NOT STARTED,E14

@@ -32,20 +32,18 @@ svg {
 }
 
 /*
- * ERA visual refinement layer, light/signal identity. Imported after
- * tokens.css. Nav-specific tokens live here since FloatingNav is the only
- * consumer; everything else comes from tokens.css.
+ * AURA nav glass refinements. Imported after tokens.css.
  */
 :root {
-  --era-nav-border: rgba(17, 17, 24, 0.06);
-  --era-nav-muted: var(--era-text-faint);
-  --era-nav-glass: rgba(255, 255, 255, 0.78);
+  --era-nav-border: rgba(157, 190, 255, 0.25);
+  --era-nav-muted: #b4c2dd;
+  --era-nav-glass: rgba(10, 18, 35, 0.9);
 }
 
 .era-bottom-nav {
   box-shadow:
-    0 20px 50px rgba(17, 17, 24, 0.12),
-    0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+    0 16px 40px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(157, 190, 255, 0.08) inset;
 }
 
 .era-bottom-nav::after {
@@ -54,7 +52,7 @@ svg {
   pointer-events: none;
   inset: 0.35rem 12% auto;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent);
+  background: linear-gradient(90deg, transparent, rgba(157, 190, 255, 0.35), transparent);
   z-index: 2;
 }
 

@@ -4,11 +4,12 @@ import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
+import { TypographyFeedCard } from "../../components/TypographyFeedCard";
 import { useAsync } from "../../hooks/useAsync";
 import type { ProjectScope, ProjectSummary } from "../../types/project";
-import { ProjectCover } from "./ProjectCover";
 import { displayProjectTitle } from "./displayTitle";
 import { projectStatusLabel } from "./statusLabels";
+
 
 const SCOPES: { value: ProjectScope; label: string }[] = [
   { value: "mine", label: "Мои" },
@@ -120,22 +121,25 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
       {state.status === "error" && <EmptyState text="Не удалось загрузить проекты." />}
       {state.status === "ready" && state.data.length === 0 && <EmptyState text="Проектов в этом разделе пока нет." />}
       {state.status === "ready" && state.data.map((project) => (
-        <div
-          key={project.id}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.65rem",
-            padding: "1rem 0",
-            borderBottom: "1px solid var(--era-border)",
-          }}
-        >
+        scope === "open" || scope === "completed" || scope === "proposals" ? (
+          <TypographyFeedCard
+            key={project.id}
+            title={displayProjectTitle(project.title)}
+            dateLine="Дата уточняется"
+            onClick={() => onSelect(project.id)}
+          />
+        ) : (
+          <div
+            key={project.id}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.65rem",
+              padding: "1rem 0",
+              borderBottom: "1px solid var(--era-border)",
+            }}
+          >
             <button type="button" onClick={() => onSelect(project.id)} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}>
-              {project.cover_url && (
-                <div style={{ marginBottom: "0.65rem" }}>
-                  <ProjectCover key={project.cover_url} coverUrl={project.cover_url} compact />
-                </div>
-              )}
               <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
                 <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1.15rem", lineHeight: 1.3, overflowWrap: "break-word", textWrap: "balance" }}>{displayProjectTitle(project.title)}</strong>
                 <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
@@ -146,7 +150,7 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
                 </p>
               )}
             </button>
-            {scope === "mine" && isDraft(project) && (
+            {isDraft(project) && (
               <button
                 type="button"
                 disabled={deleting}
@@ -156,7 +160,8 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
                 Удалить черновик
               </button>
             )}
-        </div>
+          </div>
+        )
       ))}
 
       <BottomSheet open={Boolean(deleteCandidate)} onClose={() => setDeleteCandidate(null)} title="Удалить черновик?">

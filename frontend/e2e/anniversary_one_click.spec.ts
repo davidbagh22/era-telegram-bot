@@ -13,6 +13,28 @@ const event = {
   anniversary_registration_open: true,
   anniversary_registered: false,
   anniversary_defaults: { first_name: "Анна", last_name: "Иванова", organization: "ЭРА" },
+  program: [],
+  participant_tasks: [],
+  status: "published",
+  can_register: true,
+  registration_status: null,
+  waitlist_enabled: false,
+  registration_required: true,
+  short_description: null,
+  full_description: null,
+  description: "",
+  end_time: null,
+  address: null,
+  format: "offline",
+  attendance_mode: "in_person",
+  category: null,
+  organizer: null,
+  participant_value: null,
+  contact: null,
+  chat_url: null,
+  project_id: null,
+  available_places: "",
+  poster_url: null,
 };
 
 async function mockAnniversary(page: Page, organization: string | null) {
@@ -46,14 +68,16 @@ async function mockAnniversary(page: Page, organization: string | null) {
   return requests;
 }
 
-test("the pinned homepage action registers in one click and reflects the saved status", async ({ page }) => {
+test("orbit card opens detail where anniversary registers in one click", async ({ page }) => {
   const requests = await mockAnniversary(page, "ЭРА");
   await page.goto("/app/?devTelegramId=900001");
+  await page.getByRole("button", { name: new RegExp(event.title) }).first().click();
   await expect(page.getByRole("heading", { name: event.title })).toBeVisible();
   await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Вы зарегистрированы" })).toBeVisible();
   expect(requests).toEqual([{}]);
   await page.reload();
+  await page.getByRole("button", { name: new RegExp(event.title) }).first().click();
   await expect(page.getByRole("status").filter({ hasText: "Вы зарегистрированы" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Зарегистрироваться", exact: true })).toHaveCount(0);
 });
@@ -61,6 +85,7 @@ test("the pinned homepage action registers in one click and reflects the saved s
 test("the participation card opens the short form when the profile lacks an organization", async ({ page }) => {
   const requests = await mockAnniversary(page, null);
   await page.goto("/app/?devTelegramId=900001#/events");
+  await page.getByRole("button", { name: new RegExp(event.title) }).first().click();
   await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
   const form = page.getByRole("dialog", { name: "Регистрация на годовщину" });
   await expect(form.getByLabel("Имя", { exact: true })).toHaveValue("Анна");

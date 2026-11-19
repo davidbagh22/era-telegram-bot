@@ -1,0 +1,14 @@
+screen,route,role,old_place,new_place,states,status,evidence
+Orbit home,#/ (home),participant,HomeScreen / Главная,Орбита + 4 узла + следующий шаг,empty|data|error,IN_PROGRESS,Stage B
+Events feed,#/events,participant,EventsScreen / Участие,Афиша TypographyFeedCard,empty|data|error,NOT STARTED,
+Event detail,#/events/:id,participant,EventsTab detail,detail + poster + RSVP,loading|ticket|waitlist,NOT STARTED,
+Projects feed,#/projects,participant,ProjectsScreen,Проекты TypographyFeedCard,empty|data,NOT STARTED,
+Project detail,#/projects/:id,participant,ProjectDetail,detail + cover + actions,draft|published,NOT STARTED,
+Discoveries,#/discoveries,participant,(leisure via bot),Открытия lit/games,empty|data,NOT STARTED,
+Profile,#/profile,participant,ProfileScreen,Я,default,NOT STARTED,
+People,#/people,participant,partial community,Орбита→Люди,empty|denied,NOT STARTED,
+Ideas,#/ideas,participant,projects propose?,Орбита→Идеи,empty,NOT STARTED,
+Teams,#/teams,participant,project teams,Орбита→Команды,empty|denied,NOT STARTED,
+Leader hub,#/leader,leader,LeaderScreen,AURA shell,roles,NOT STARTED,
+Media,#/media,media,MediaScreen,AURA shell,roles,NOT STARTED,
+Admin,#/admin,admin,AdminScreen,AURA shell,roles,NOT STARTED,

@@ -11,22 +11,18 @@ const WAITLIST_CLAIMER_TELEGRAM_ID = 900022;
 const TASK_CLAIMER_TELEGRAM_ID = 900023;
 
 async function openEventFromActivity(page: Page, title: string) {
-  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Участие" }).click();
-  await page.getByRole("tab", { name: "События" }).click();
-  await expect(page.getByRole("tab", { name: "События", selected: true })).toBeVisible();
-  const card = page.locator(".era-card", { hasText: title }).first();
-  await expect(card).toBeVisible();
-  await card.getByRole("button", { name: "Открыть событие" }).click();
+  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Афиша" }).click();
+  await expect(page.getByRole("heading", { name: "Афиша", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: new RegExp(title) }).first().click();
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
 }
 
 test("Home → event → register → cancel keeps confirmation copy paths", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${HOME_REGISTER_TELEGRAM_ID}`);
-  await expect(page.getByText("Вот что сейчас важнее всего.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Твоя орбита" })).toBeVisible();
 
-  const board = page.getByRole("region", { name: "Афиша ЭРА" });
-  // Home board cards are clickable surfaces (no separate «Открыть событие» CTA).
-  await board.getByText("E2E путь Home→регистрация").click();
+  const board = page.getByRole("region", { name: "Ближайшее" });
+  await board.getByRole("button", { name: /E2E путь Home→регистрация/ }).click();
 
   await expect(page.getByRole("heading", { name: "E2E путь Home→регистрация" })).toBeVisible();
   await page.getByRole("button", { name: "Участвовать" }).click();
