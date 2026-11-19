@@ -30,7 +30,7 @@ def _body(text: str) -> str:
         if not value:
             paragraphs.append("")
             continue
-        match = re.match(r"^(\\d{1,2}:\\d{2})\\s*[—–-]\\s*(.+)$", value)
+        match = re.match(r"^(\d{1,2}:\d{2})\s*[—–-]\s*(.+)$", value)
         if match:
             paragraphs.append(f"• <b>{escape(match.group(1))}</b> — {escape(match.group(2))}")
         else:
