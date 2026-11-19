@@ -14,9 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.config import Settings
+from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
 from app.services.notification_service import broadcast_detailed_once
-from app.utils.constants import RegistrationStatus
+from app.utils.constants import EventStatus, RegistrationStatus
+from app.utils.deep_links import telegram_event_miniapp_url
 from app.services import event_registration_service
 from app.services.authorization_service import can_manage_events
 
@@ -142,6 +144,58 @@ async def export_event_participants_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="ERA_event_{event_id}_participants.csv"'},
     )
+
+
+class EventShareTextOut(BaseModel):
+    text: str
+
+
+@router.get("/{event_id}/share-text", response_model=EventShareTextOut)
+async def read_event_share_text(
+    event_id: int,
+    _admin: User = Depends(require_event_manager),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> EventShareTextOut:
+    """Copy-ready public announcement, built from the *current* saved event.
+
+    It never generates speculative forum URLs, and never sends a Telegram
+    message. The registration deep link is tied to the selected event.
+    """
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    if event.status not in {EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN}:
+        raise HTTPException(status_code=409, detail="event_not_published")
+
+    experience = await session.get(EventExperience, event_id)
+    description = (
+        (experience.full_description if experience else None)
+        or event.description
+        or ""
+    ).strip()
+    title = event.title.strip()
+    body = description if description.split("\n", 1)[0].strip() == title else f"{title}\n\n{description}"
+    end_time = experience.end_time if experience else None
+    interval = event.event_time.strftime("%H:%M")
+    if end_time:
+        interval += "–" + end_time.strftime("%H:%M")
+    parts = [
+        body.strip(),
+        f"📅 {event.event_date:%d.%m.%Y} · {interval}",
+        f"📍 {event.location}",
+    ]
+
+    general_link = str(settings.general_chat_url or "").strip()
+    topic_link = str(experience.chat_url or "").strip() if experience else ""
+    register_link = telegram_event_miniapp_url(settings.bot_username or "ERA_1bot", event.id)
+    if general_link:
+        parts.append("💬 Общий чат ЭРА: " + general_link)
+    if topic_link:
+        parts.append("📌 Тема мероприятия: " + topic_link)
+    if register_link:
+        parts.append("📝 Зарегистрироваться: " + register_link)
+    return EventShareTextOut(text="\n\n".join(parts))
 
 
 class RegistrantMessage(BaseModel):
