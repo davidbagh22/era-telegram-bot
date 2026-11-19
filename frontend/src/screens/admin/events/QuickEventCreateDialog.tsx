@@ -73,7 +73,7 @@ export function QuickEventCreateDialog({ draft, posterUrl, busy, saving, saveLab
                 {draft.full_description.split("\n")[0].trim() !== draft.title.trim() && <h3>{draft.title}</h3>}
                 <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{draft.full_description}</p>
                 <p>📅 {draft.event_date.split("-").reverse().join(".")} · {draft.event_time.slice(0, 5)}<br />📍 {draft.location}</p>
-                <p style={{ color: "var(--era-text-muted)" }}>{draft.registration_required ? "Регистрация открывается после публикации." : "Без регистрации."} Анонс отправится в тему «Мероприятия».</p>
+                <p style={{ color: "var(--era-text-muted)" }}>{draft.registration_required ? "Регистрация открывается после публикации." : "Без регистрации."} Будет создана тема с формой регистрации. Рассылка пойдёт по выбранным направлениям.</p>
               </>
             ) : (
               <>
@@ -88,6 +88,14 @@ export function QuickEventCreateDialog({ draft, posterUrl, busy, saving, saveLab
                 <Field label="Фото (до 5 МБ)"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void poster(file); event.target.value = ""; }} /></Field>
                 {draft.has_poster && <div style={{ marginBottom: ".8rem" }}>{posterUrl && <img alt="Прикреплённая афиша" src={posterUrl} style={{ width: "100%", maxHeight: 200, objectFit: "contain", borderRadius: ".8rem" }} /> }<button type="button" onClick={() => void poster(null)}>Удалить фото</button></div>}
                 <details><summary>Регистрация и баллы</summary>
+                  <label><input type="checkbox" checked={draft.issue_certificate === true} onChange={e => onChange(current => ({ ...current, issue_certificate: e.target.checked }))} /> Сертификат участника с подписью и печатью</label>
+                  <Field label="Анонс"><select value={draft.broadcast_enabled ? draft.broadcast_targets[0] : "general"} onChange={e => {
+                    const choice = e.target.value;
+                    onChange(current => ({ ...current, broadcast_enabled: choice !== "general", broadcast_targets: [choice] }));
+                  }}><option value="general">Общий чат</option><option value="bot">В личные сообщения участников</option><option value="bot_and_chat">Общий чат и личные сообщения</option></select></Field>
+                  <p>Напомнить зарегистрированным</p>
+                  {[1440, 180, 60].map(minutes => <label key={minutes}><input type="checkbox" checked={draft.reminders.includes(minutes)}
+                    onChange={e => onChange(current => ({ ...current, reminders: e.target.checked ? [...current.reminders, minutes] : current.reminders.filter(m => m !== minutes) }))}/> За {minutes / 60} ч </label>)}
                   <Field label="Формат"><select value={draft.attendance_mode} onChange={(event) => onChange((current) => ({ ...current, attendance_mode: event.target.value as AdminEventDraft["attendance_mode"] }))}><option value="offline">Офлайн</option><option value="online">Онлайн</option><option value="hybrid">Гибрид</option></select></Field>
                   <label><input type="checkbox" checked={draft.registration_required} onChange={(event) => onChange((current) => ({ ...current, registration_required: event.target.checked }))} /> Нужна регистрация</label>
                   {draft.registration_required && <Field label="Количество мест"><input type="number" min={1} max={5000} value={draft.participant_limit ?? ""} onChange={(event) => onChange((current) => ({ ...current, participant_limit: event.target.value ? Number(event.target.value) : null }))} placeholder="Без ограничения" /></Field>}

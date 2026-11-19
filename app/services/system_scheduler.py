@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+import os
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
@@ -58,6 +59,9 @@ def add_system_jobs(
 ) -> None:
     """Attach production-health jobs and durable infrastructure maintenance."""
     now = datetime.now(ZoneInfo(settings.timezone))
+    if os.getenv("RENDER_SERVICE_ID") == "srv-d91r1j7avr4c73fs8h00" and date(2026, 11, 19) <= now.date() < date(2026, 11, 23):
+        from app.services.moscow_house_november import publish_november_program
+        scheduler.add_job(publish_november_program, "date", run_date=now, args=(bot, settings, session_factory), id="moscow-house-november", misfire_grace_time=300)
     # A restart interrupts verifiable continuous coverage, even when permissions persist.
     for chat_id in source_targets(settings).values():
         mark_coverage_gap(chat_id)

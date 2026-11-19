@@ -23,7 +23,10 @@ export interface EventParticipantTask {
   reviewer?: string;
 }
 
+export interface EventSignup { full_name: string; phone: string; organization: string }
+
 export interface EventItem {
+  signup_defaults?: EventSignup | null;
   id: number;
   title: string;
   description: string;

@@ -38,7 +38,7 @@ async def certificate_snapshot(session, user_id, event_id, signatory):
             or target.application_status != ApplicationStatus.APPROVED
             or not event or not reg or reg.status != RegistrationStatus.ATTENDED):
         raise ValueError("Выдача доступна только одобренному участнику с подтверждённым посещением.")
-    return dict(full_name=f"{target.first_name} {target.last_name or ''}".strip(),
+    return dict(full_name=(reg.signup or {}).get("full_name") or f"{target.first_name} {target.last_name or ''}".strip(),
                 event_title=event.title, event_date=event.event_date.isoformat(),
                 signatory=signatory, template_version=TEMPLATE_VERSION)
 

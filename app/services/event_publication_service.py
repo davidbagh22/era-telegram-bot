@@ -13,8 +13,9 @@ from sqlalchemy import select, text as sql_text
 from app.database.event_experience import EventExperience
 from app.database.models import AppSetting, Event, User
 from app.database.system_models import NotificationDelivery
+from app.services.event_forum_service import event_thread
 from app.services.general_topics_service import send_general_topic_once
-from app.services.notification_service import broadcast_detailed_once
+from app.services.notification_service import broadcast_detailed_once, safe_send_once
 from app.utils.constants import ApplicationStatus, EventStatus
 from app.utils.deep_links import telegram_event_miniapp_url
 
@@ -87,6 +88,21 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
     markup = await public_event_keyboard(bot, settings, event)
     text = announcement_text(event, experience)
     poster = getattr(experience, "poster_bytes", None)
+    targets = set(experience.broadcast_targets or [])
+    thread = None
+    if "project_topic" in targets:
+        thread = await event_thread(bot, settings, event)
+        if not thread or not markup:
+            experience.announcement_status = "needs_attention"
+            return False
+        url = f"https://t.me/c/{str(settings.general_chat_id)[4:]}/{thread}"
+        if not experience.chat_url:
+            experience.chat_url = url
+        register_url = markup.inline_keyboard[0][0].url
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Зарегистрироваться", url=register_url)
+        ]])
+        text += f"\n\nРегистрация: {register_url}\nОбщий чат ЭРА: {settings.general_chat_url}\nТема мероприятия: {url}"
     parts = escaped_text_parts(text, 1000 if poster else 4000)
     for index, part in enumerate(parts):
         media = {}
@@ -94,6 +110,18 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
             content_type = experience.poster_content_type or "image/jpeg"
             extension = {"image/png": "png", "image/webp": "webp"}.get(content_type, "jpg")
             media["photo"] = BufferedInputFile(poster, filename=f"event-{event.id}.{extension}")
+        if thread:
+            posted = await safe_send_once(
+                bot, settings, settings.general_chat_id, part,
+                message_thread_id=thread, parse_mode="HTML",
+                delivery_key=f"event-topic:{event.id}:{index}", max_attempts=1,
+                reply_markup=markup if index in {0, len(parts) - 1} else None, **media,
+            )
+            if not posted.sent:
+                experience.announcement_status = "needs_attention"
+                return False
+            if "digest_only" in targets or ("bot" in targets and "general" not in targets and "bot_and_chat" not in targets):
+                continue
         result = await send_general_topic_once(
             bot, settings, "announcements", part, parse_mode="HTML",
             reply_markup=markup if index == len(parts) - 1 else None,

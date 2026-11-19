@@ -24,6 +24,8 @@ export function EventDetailsEditor({ eventId, onClose }: { eventId: number; onCl
     }
     if (!value("title") || !value("location")) { setError("Заполните название и место."); return; }
     if (Number(value("points")) !== event.points_for_visit) patch.points_for_visit = Number(value("points"));
+    const certificate = data.has("certificate");
+    if (certificate !== Boolean(event.issue_certificate)) patch.issue_certificate = certificate;
     if (!Object.keys(patch).length) { onClose(); return; }
     setBusy(true);
     try { await saveEventDraft(eventId, patch); onClose(); }
@@ -39,6 +41,7 @@ export function EventDetailsEditor({ eventId, onClose }: { eventId: number; onCl
     <label>Место<input required maxLength={255} name="location" defaultValue={event.location}/></label>
     <label>Ссылка на чат<input type="url" maxLength={500} name="chat_url" defaultValue={event.chat_url ?? ""}/></label>
     <label>Баллы за посещение<input required type="number" min={0} max={200} name="points" defaultValue={event.points_for_visit}/></label>
+    <label><input type="checkbox" name="certificate" defaultChecked={Boolean(event.issue_certificate)} /> Сертификат после посещения</label>
     <small>При изменении даты, времени или места бот отправит обновление в «Мероприятия», записанным и в лист ожидания.</small>
     {error && <p role="alert">{error}</p>}
     <button type="submit">{busy ? "Сохраняем…" : "Сохранить изменения"}</button>

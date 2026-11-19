@@ -162,6 +162,8 @@ export interface OperationalEvent {
 }
 
 export interface EventParticipant {
+  organization?: string | null;
+  phone?: string | null;
   registration_id: number;
   participant_id: number;
   participant_name: string;

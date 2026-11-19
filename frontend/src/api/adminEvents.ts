@@ -45,6 +45,7 @@ export interface EventTaskDraftItem {
 }
 
 export interface AdminEventDraft {
+  issue_certificate?: boolean | null;
   creation_mode: "wizard" | "quick";
   announcement_status: "not_requested" | "pending" | "sent" | "needs_attention";
   id: number;
@@ -82,7 +83,7 @@ export interface AdminEventDraft {
 }
 
 export type AdminEventDraftPatch = Partial<{
-  creation_mode: "wizard" | "quick";
+  issue_certificate: boolean | null;  creation_mode: "wizard" | "quick";
   wizard_step: number;
   title: string;
   short_description: string;
@@ -182,7 +183,7 @@ export function saveEventDraft(eventId: number, patch: AdminEventDraftPatch): Pr
 }
 
 export function publishEventDraft(eventId: number): Promise<AdminEventDraft> {
-  return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/publish`, { method: "POST" });
+  return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/publish?project_topic=true`, { method: "POST" });
 }
 
 export function cancelAdminEvent(eventId: number): Promise<AdminEventDraft> {
@@ -234,4 +235,18 @@ export async function downloadEventParticipants(
   anchor.download = `ERA_event_${eventId}_participants.${format}`;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
+export function previewRegistrantMessage(eventId: number, message: string) {
+  return requestJson<{ confirmation: string; message: string; count: number }>(
+    `/api/v1/admin/events/${eventId}/participants/message`,
+    { method: "POST", body: JSON.stringify({ message }) },
+  );
+}
+
+export function sendRegistrantMessage(eventId: number, message: string, confirmation: string) {
+  return requestJson<{ sent: number; failed: number; already_sent: number }>(
+    `/api/v1/admin/events/${eventId}/participants/message`,
+    { method: "POST", body: JSON.stringify({ message, confirmation }) },
+  );
 }

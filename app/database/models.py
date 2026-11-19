@@ -259,6 +259,7 @@ class Event(TimestampMixin, Base):
 
 
 class EventRegistration(TimestampMixin, Base):
+    signup: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     __tablename__ = "event_registrations"
     __table_args__ = (UniqueConstraint("event_id", "user_id"),)
 

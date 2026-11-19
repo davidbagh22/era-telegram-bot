@@ -2,7 +2,7 @@ import type {
   AnniversaryRegistrationFields,
   CalendarItem,
   EventActivity,
-  EventItem,
+  EventItem, EventSignup,
   EventScope,
   HistoryEntry,
   MissionTemplate,
@@ -308,8 +308,8 @@ export function fetchEvents(scope: EventScope): Promise<EventItem[]> {
   return authorizedGet<EventItem[]>(`/api/v1/events?scope=${scope}`);
 }
 
-export function registerForEvent(eventId: number): Promise<EventItem> {
-  return authorizedPost<EventItem>(`/api/v1/events/${eventId}/register`);
+export function registerForEvent(eventId: number, fields?: EventSignup): Promise<EventItem> {
+  return authorizedPost<EventItem>(`/api/v1/events/${eventId}/register`, fields);
 }
 
 export function registerForAnniversary(

@@ -568,6 +568,14 @@ async def confirm_attendance(
     if participant is not None:
         await score_event_role_bonus(session, event, registration, participant, approved_by_id=approved_by_id)
 
+    from app.database.event_experience import EventExperience
+    experience = await session.get(EventExperience, event.id)
+    if experience and experience.issue_certificate:
+        from app.services.certificate_service import auto_issue_participation_certificate
+        issuer = await session.get(User, approved_by_id or event.created_by)
+        if issuer:
+            await auto_issue_participation_certificate(session, issuer, user_id=user_id, event_id=event.id)
+
     portfolio_exists = await session.scalar(
         select(PortfolioItem.id).where(
             PortfolioItem.user_id == user_id,

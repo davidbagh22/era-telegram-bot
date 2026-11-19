@@ -44,7 +44,14 @@ class AnniversaryRegistrationIn(BaseModel):
     organization: str | None = Field(default=None, max_length=160)
 
 
+class EventSignup(BaseModel):
+    full_name: str = Field(min_length=3, max_length=255, pattern=r"^\S+(?:\s+\S+){2,}$")
+    phone: str = Field(min_length=7, max_length=32, pattern=r"^\+?[0-9 ()-]+$")
+    organization: str = Field(min_length=2, max_length=255)
+
+
 class EventOut(BaseModel):
+    signup_defaults: dict[str, str] | None = None
     id: int
     title: str
     description: str
@@ -187,6 +194,10 @@ async def _to_event_out(
 
     return EventOut(
         id=event.id,
+        signup_defaults={
+            "full_name": f"{user.last_name or ''} {user.first_name or ''}".strip(),
+            "phone": user.phone or "", "organization": user.education_work or "",
+        } if experience and "project_topic" in (getattr(experience, "broadcast_targets", None) or []) else None,
         title=event.title,
         description=event.description,
         short_description=(experience.short_description if experience else None) or event.description,
@@ -426,10 +437,16 @@ async def register_event(
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
     settings: Settings = Depends(get_settings),
+    signup: EventSignup | None = None,
 ) -> EventOut:
     # Match detail/poster privacy: do not confirm CANCELLED existence via 409.
     event, _existing = await _require_participant_event(session, event_id, user)
-    registration, error = await register_for_event(session, event, user.id)
+    if signup is not None:
+        if not signup.organization.strip() or sum(ch.isdigit() for ch in signup.phone) < 7:
+            raise HTTPException(422, "Проверьте название организации и номер телефона")
+        registration, error = await register_for_event(session, event, user.id, signup.model_dump())
+    else:
+        registration, error = await register_for_event(session, event, user.id)
     if error:
         raise HTTPException(status_code=409, detail=error)
     assert registration is not None
@@ -440,6 +457,14 @@ async def register_event(
     await session.commit()
     if notice is not None and bot is not None:
         await deliver_registration_notice(session, notice, bot.send_message, settings)
+    if signup is not None and bot and registration.status == RegistrationStatus.REGISTERED:
+        manager = await session.get(User, settings.era_chair_user_id or event.created_by)
+        from app.services.authorization_service import can_manage_events
+        if manager and can_manage_events(manager, settings, manager.telegram_id):
+            await safe_send_once(bot, settings, manager.telegram_id,
+                f"Новая регистрация · {event.title}\n{event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n"
+                f"{event.location}\n{result.chat_url or ''}\n\n{signup.full_name}\n{signup.phone}\n{signup.organization}",
+                delivery_key=f"organizer:{notice}", notification_type="event_signup", max_attempts=1)
     return result
 
 

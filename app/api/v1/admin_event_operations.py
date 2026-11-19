@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import csv
+from hashlib import sha256
+
+from aiogram import Bot
 from io import BytesIO, StringIO
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from openpyxl import Workbook
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_session, get_settings
+from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.config import Settings
-from app.database.models import Event, User
+from app.database.models import Event, EventRegistration, User
+from app.services.notification_service import broadcast_detailed_once
+from app.utils.constants import RegistrationStatus
 from app.services import event_registration_service
 from app.services.authorization_service import can_manage_events
 
@@ -27,6 +33,8 @@ async def require_event_manager(
 
 
 class EventParticipantDetailOut(BaseModel):
+    organization: str | None = None
+    phone: str | None = None
     registration_id: int
     participant_id: int
     participant_name: str
@@ -55,11 +63,13 @@ async def read_event_participants(
     for registration, participant in await _rows(session, event_id):
         first_name = participant.first_name or ""
         last_name = participant.last_name or ""
+        signup = getattr(registration, "signup", None) or {}
         result.append(
             EventParticipantDetailOut(
                 registration_id=registration.id,
                 participant_id=participant.id,
-                participant_name=f"{first_name} {last_name}".strip(),
+                participant_name=signup.get("full_name") or f"{first_name} {last_name}".strip(),
+                organization=signup.get("organization"), phone=signup.get("phone"),
                 first_name=first_name,
                 last_name=last_name,
                 status=registration.status,
@@ -69,7 +79,8 @@ async def read_event_participants(
 
 
 def _safe_export_name(value: str) -> str:
-    return value.replace("\r", " ").replace("\n", " ").strip()
+    clean = value.replace("\r", " ").replace("\n", " ").strip()
+    return "'" + clean if clean.startswith(("=", "+", "-", "@")) else clean
 
 
 @router.get("/{event_id}/participants/export.xlsx")
@@ -82,13 +93,15 @@ async def export_event_participants_xlsx(
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Участники"
-    sheet.append(["Имя", "Фамилия", "Номер телефона"])
+    sheet.append(["Имя", "Фамилия", "Номер телефона", "ФИО для регистрации", "Организация или вуз"])
     for _registration, participant in rows:
         sheet.append(
             [
                 _safe_export_name(participant.first_name or ""),
                 _safe_export_name(participant.last_name or ""),
-                participant.phone or "",
+                _safe_export_name((getattr(_registration, "signup", None) or {}).get("phone") or participant.phone or ""),
+                _safe_export_name((getattr(_registration, "signup", None) or {}).get("full_name", "")),
+                _safe_export_name((getattr(_registration, "signup", None) or {}).get("organization", "")),
             ]
         )
     sheet.freeze_panes = "A2"
@@ -113,13 +126,15 @@ async def export_event_participants_csv(
     rows = await _rows(session, event_id)
     output = StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Имя", "Фамилия", "Номер телефона"])
+    writer.writerow(["Имя", "Фамилия", "Номер телефона", "ФИО для регистрации", "Организация или вуз"])
     for _registration, participant in rows:
         writer.writerow(
             [
                 _safe_export_name(participant.first_name or ""),
                 _safe_export_name(participant.last_name or ""),
-                participant.phone or "",
+                _safe_export_name((getattr(_registration, "signup", None) or {}).get("phone") or participant.phone or ""),
+                _safe_export_name((getattr(_registration, "signup", None) or {}).get("full_name", "")),
+                _safe_export_name((getattr(_registration, "signup", None) or {}).get("organization", "")),
             ]
         )
     return Response(
@@ -127,3 +142,46 @@ async def export_event_participants_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="ERA_event_{event_id}_participants.csv"'},
     )
+
+
+class RegistrantMessage(BaseModel):
+    message: str = Field(min_length=1, max_length=3500)
+    confirmation: str | None = Field(default=None, max_length=64)
+
+
+@router.post("/{event_id}/participants/message")
+async def message_registrants(
+    event_id: int, payload: RegistrantMessage,
+    admin: User = Depends(require_event_manager), session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings), bot: Bot | None = Depends(get_bot),
+):
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(404, "event_not_found")
+    body = payload.message.strip()
+    message = f"{event.title}\n\n{body}"
+    if not body or len(message.encode("utf-16-le")) // 2 > 4096:
+        raise HTTPException(422, "message_length")
+    recipients = list(await session.scalars(select(User.telegram_id).join(
+        EventRegistration, EventRegistration.user_id == User.id,
+    ).where(
+        EventRegistration.event_id == event_id,
+        EventRegistration.status.in_([RegistrationStatus.REGISTERED, RegistrationStatus.WILL_COME]),
+        User.is_blocked.is_(False), User.is_archived.is_(False),
+    ).distinct().order_by(User.telegram_id)))
+    digest = sha256(message.encode()).hexdigest()
+    identity = f"{admin.id}:{event_id}:{digest}:{recipients}"
+    confirmation = sha256(identity.encode()).hexdigest()
+    if payload.confirmation is None:
+        return {"message": message, "count": len(recipients), "confirmation": confirmation}
+    if payload.confirmation != confirmation:
+        raise HTTPException(409, "Аудитория или текст изменились. Откройте предпросмотр ещё раз.")
+    if bot is None:
+        raise HTTPException(503, "Бот временно недоступен")
+    result = await broadcast_detailed_once(
+        bot, settings, recipients, message,
+        delivery_key=f"event-members:{event_id}:{digest}", notification_type="event_members",
+        max_attempts=1,
+    )
+    return {"sent": result.sent, "failed": result.failed, "total": result.total,
+            "already_sent": result.total - result.sent - result.failed}
