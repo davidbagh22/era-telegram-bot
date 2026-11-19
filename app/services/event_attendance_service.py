@@ -574,7 +574,8 @@ async def confirm_attendance(
         from app.services.certificate_service import auto_issue_participation_certificate
         issuer = await session.get(User, approved_by_id or event.created_by)
         if issuer:
-            await auto_issue_participation_certificate(session, issuer, user_id=user_id, event_id=event.id)
+            issue = await auto_issue_participation_certificate(session, issuer, user_id=user_id, event_id=event.id)
+            session.add(AppSetting(key=f"event-certificate:pending:{issue.id}", value={"issue_id": issue.id}))
 
     portfolio_exists = await session.scalar(
         select(PortfolioItem.id).where(

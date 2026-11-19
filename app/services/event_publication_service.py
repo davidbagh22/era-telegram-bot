@@ -102,6 +102,7 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
         markup = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="Зарегистрироваться", url=register_url)
         ]])
+        text = f"{event.title}\n\n{experience.full_description or event.description}\n\n📅 {event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n📍 {event.location}"
         text += f"\n\nРегистрация: {register_url}\nОбщий чат ЭРА: {settings.general_chat_url}\nТема мероприятия: {url}"
     parts = escaped_text_parts(text, 1000 if poster else 4000)
     for index, part in enumerate(parts):

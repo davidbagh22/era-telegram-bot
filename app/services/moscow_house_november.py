@@ -66,6 +66,7 @@ async def _launch(bot, settings, session):
         return
     links = []
     ids = []
+    topics = []
     for day, hour, title, description in EVENTS:
         event_date = date(2026, 11, day)
         marker = f"{KEY}:{day}"
@@ -98,6 +99,7 @@ async def _launch(bot, settings, session):
             await session.commit()
         links.append(f"{day} ноября · {hour}:00 — {title}\nРегистрация: {telegram_event_miniapp_url(username, event.id)}\nТема: {exp.chat_url}")
         ids.append(event.id)
+        topics.append(exp.chat_url)
     message = "Четыре повода встретиться в Доме Москвы\n\n" + "\n\n".join(links)
     message += f"\n\n📍 {PLACE}\nДля участия выберите мероприятие и зарегистрируйтесь.\nОбщий чат ЭРА: {settings.general_chat_url}"
     result = await send_general_topic_once(bot, settings, "announcements", message,
@@ -105,4 +107,4 @@ async def _launch(bot, settings, session):
     if result.sent:
         session.add(AppSetting(key=KEY, value={"complete": True, "events": ids, "message": result.message_id}))
         await session.commit()
-        logger.info("November programme published events=%s thread=26205 message=%s", ids, result.message_id)
+        logger.info("November programme published events=%s topics=%s thread=26205 message=%s", ids, topics, result.message_id)

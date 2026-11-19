@@ -133,6 +133,17 @@ export function AdminOverviewScreen({
         </div>
       </Card>
 
+      <section>
+        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .5rem" }}>Быстро сделать</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
+          <ActionCell title="Мероприятие" description="Создать и вести" leading="＋" onClick={onOpenEvents} />
+          <ActionCell title="Редактировать мероприятие" description="Карточка, афиша и сообщения зарегистрированным" leading="✎" onClick={onOpenEventWaitlist} />
+          <ActionCell title="Рассылка" description="Написать людям" leading="↗" onClick={onOpenComms} />
+          <ActionCell title="Проект" description="Создать и проверить" leading="＋" onClick={onOpenProjects} />
+          <ActionCell title="Участники" description="Состав и роли" leading="👥" onClick={onOpenPeople} />
+        </div>
+      </section>
+
       <section aria-label="Сейчас">
         <h2 style={{ fontSize: ".82rem", color: "var(--era-text-muted)", margin: "0 0 .5rem", letterSpacing: ".04em" }}>СЕЙЧАС</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: ".5rem" }}>
@@ -165,15 +176,7 @@ export function AdminOverviewScreen({
         )}
       </section>
 
-      <section>
-        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .5rem" }}>Быстро сделать</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
-          <ActionCell title="Мероприятие" description="Создать и вести" leading="＋" onClick={onOpenEvents} />
-          <ActionCell title="Рассылка" description="Написать людям" leading="↗" onClick={onOpenComms} />
-          <ActionCell title="Проект" description="Создать и проверить" leading="＋" onClick={onOpenProjects} />
-          <ActionCell title="Участники" description="Состав и роли" leading="👥" onClick={onOpenPeople} />
-        </div>
-      </section>
+
 
       <section>
         <Card style={{ padding: ".9rem" }}>

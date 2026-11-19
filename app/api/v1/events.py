@@ -442,6 +442,9 @@ async def register_event(
     # Match detail/poster privacy: do not confirm CANCELLED existence via 409.
     event, _existing = await _require_participant_event(session, event_id, user)
     if signup is not None:
+        policy = await session.get(EventExperience, event_id)
+        if policy is None or "project_topic" not in (policy.broadcast_targets or []):
+            raise HTTPException(422, "Анкета не требуется для этого мероприятия")
         if not signup.organization.strip() or sum(ch.isdigit() for ch in signup.phone) < 7:
             raise HTTPException(422, "Проверьте название организации и номер телефона")
         registration, error = await register_for_event(session, event, user.id, signup.model_dump())
