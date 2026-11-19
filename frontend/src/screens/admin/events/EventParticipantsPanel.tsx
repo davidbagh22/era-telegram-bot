@@ -3,7 +3,7 @@ import {
   describeActionError,
   fetchEventParticipants,
 } from "../../../api/client";
-import { downloadEventParticipants } from "../../../api/adminEvents";
+import { downloadEventParticipants, fetchEventShareText } from "../../../api/adminEvents";
 import { Card } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { StatusBadge } from "../../../components/StatusBadge";
@@ -49,6 +49,9 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
   const state = useAsync(() => fetchEventParticipants(eventId), [eventId, refreshKey]);
   const [exporting, setExporting] = useState<"xlsx" | "csv" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareText, setShareText] = useState<string | null>(null);
+  const [shareStatus, setShareStatus] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterValue>("all");
 
@@ -63,6 +66,31 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
       setActionError(describeActionError(error));
     } finally {
       setExporting(null);
+    }
+  };
+
+  const copyAnnouncement = async () => {
+    setShareBusy(true);
+    setShareStatus("");
+    try {
+      // Fetch on every click: the text must reflect the latest published edit,
+      // topic link and registration deep link.
+      const { text } = await fetchEventShareText(eventId);
+      setShareText(text);
+      if (!navigator.clipboard?.writeText) {
+        setShareStatus("Выделите текст ниже и скопируйте вручную.");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        setShareStatus("Анонс со ссылками скопирован.");
+      } catch {
+        setShareStatus("Автокопирование недоступно. Выделите текст ниже.");
+      }
+    } catch (error) {
+      setShareStatus(describeActionError(error));
+    } finally {
+      setShareBusy(false);
     }
   };
 
@@ -95,6 +123,18 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
         </p>
       </Card>
 
+      <Card>
+        <strong>Поделиться мероприятием</strong>
+        <p style={{ margin: ".3rem 0 .7rem", color: "var(--era-text-muted)", fontSize: ".82rem" }}>
+          Актуальные дата, место, ссылка на тему и прямая регистрация. Ничего не отправляется автоматически.
+        </p>
+        <button type="button" onClick={() => void copyAnnouncement()} disabled={shareBusy}>
+          {shareBusy ? "Подготавливаем…" : "Скопировать анонс"}
+        </button>
+        {shareStatus && <p role="status">{shareStatus}</p>}
+        {shareText && <textarea aria-label="Готовый анонс для копирования" readOnly value={shareText} rows={7} onFocus={(e) => e.currentTarget.select()}
+          style={{ display: "block", width: "100%", boxSizing: "border-box", marginTop: ".65rem" }} />}
+      </Card>
       <RegistrantMessagePanel key={eventId} eventId={eventId} />
       <EventLifecyclePanel eventId={eventId} onChanged={refresh} />
 
@@ -110,7 +150,7 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
 
       <Card>
         <strong>Скачать список</strong>
-        <p style={{ margin: ".3rem 0 .7rem", color: "var(--era-text-muted)", fontSize: ".82rem" }}>Только Имя, Фамилия и номер телефона из профиля. Никаких лишних персональных данных.</p>
+        <p style={{ margin: ".3rem 0 .7rem", color: "var(--era-text-muted)", fontSize: ".82rem" }}>ФИО, телефон и организация из регистрационной формы. Доступно только организаторам.</p>
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: ".5rem" }}>
           <button type="button" className="era-btn-primary" disabled={exporting !== null} onClick={() => void handleExport("xlsx")}>{exporting === "xlsx" ? "Готовим…" : "↓ XLSX"}</button>
           <button type="button" disabled={exporting !== null} onClick={() => void handleExport("csv")}>{exporting === "csv" ? "Готовим…" : "↓ CSV"}</button>
